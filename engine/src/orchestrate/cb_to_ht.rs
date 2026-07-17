@@ -89,39 +89,89 @@ fn rule_term_name(t: &JRuleTerm) -> (bool, &str) {
 /// Build the HT clause for one DL-safe rule (`ht_rules` path). Each distinct rule
 /// term gets a Subst index; every variable is O-guarded (`__O__(v)`) and every
 /// `Ind(a)` term is pinned by `__nom__a(v)`, so the matcher only binds variables
-/// to named individuals. Returns `None` (rule dropped, sound) when the rule has a
-/// Same/Diff atom (an (in)equality guard not yet encoded) or an empty head. The
-/// second tuple element is the individual names the rule references (so they are
-/// registered as nominal nodes). Concept/role ids are assigned in `ids`.
+/// to named individuals.
+///
+/// SameIndividual atoms ARE encoded (the fragment the frontend contract now
+/// promises to fire):
+///   - a *body* `SameAs(u, v)` guard unifies u and v onto ONE Subst variable
+///     (both positions share a node). Sound: a single O-guarded node trivially
+///     satisfies u ≈ v, and any binding where the two named individuals are the
+///     same collapses onto that node (which then carries both `__nom__` pins).
+///   - a *head* `SameAs(u, v)` conclusion emits `HAtom::Eq{u,v}` (the rule
+///     derives the equality, which the tableau o-rule then merges).
+/// A `DifferentIndividuals` atom has NO sound encoding in the fast Ht (it tracks
+/// no node distinctness, so a body guard `u ≠ v` cannot be tested and a head
+/// `u ≠ v` cannot be recorded). Such a rule is DEFERRED wholesale: `None` is
+/// returned and the caller counts it as `dropped`. Dropping a rule from the
+/// one-sided consistency precheck is sound (a lost constraint can lose an
+/// inconsistency, never invent one). `None` is likewise returned for an empty
+/// head. The second tuple element is the individual names the rule references
+/// (so they are registered as nominal nodes). Concept/role ids are assigned in
+/// `ids`.
 fn build_rule_clause(
     rule: &JRule,
     ids: &mut Ids,
     oguard: usize,
 ) -> Option<(HtClause, Vec<String>)> {
-    let mut var_of: HashMap<(bool, String), usize> = HashMap::new();
+    type Key = (bool, String);
+    let key = |t: &JRuleTerm| -> Key {
+        let (is_ind, name) = rule_term_name(t);
+        (is_ind, name.to_string())
+    };
+    // Union-find over rule terms; a body `SameAs` unifies its two terms. A body
+    // `DifferentIndividuals` defers the whole rule (no sound distinctness here).
+    fn find(parent: &mut HashMap<Key, Key>, k: Key) -> Key {
+        match parent.get(&k).cloned() {
+            Some(p) if p != k => {
+                let root = find(parent, p);
+                parent.insert(k, root.clone());
+                root
+            }
+            _ => k,
+        }
+    }
+    let mut parent: HashMap<Key, Key> = HashMap::new();
+    for a in &rule.body {
+        match a {
+            JRuleAtom::Same { left, right } => {
+                let ra = find(&mut parent, key(left));
+                let rb = find(&mut parent, key(right));
+                if ra != rb {
+                    parent.insert(ra, rb);
+                }
+            }
+            JRuleAtom::Diff { .. } => return None, // no sound distinctness encoding
+            _ => {}
+        }
+    }
+    // Resolve every term to its canonical (unified) root up front, so `vget`
+    // never mutates the union-find while `conv` holds it.
+    let mut canon: HashMap<Key, usize> = HashMap::new();
     let mut next_var = 0usize;
     let mut ind_vars: Vec<(usize, String)> = Vec::new();
     let mut all_vars: Vec<usize> = Vec::new();
     let mut vget = |t: &JRuleTerm| -> usize {
-        let (is_ind, name) = rule_term_name(t);
-        let key = (is_ind, name.to_string());
-        let v = if let Some(&v) = var_of.get(&key) {
+        let root = find(&mut parent, key(t));
+        let v = if let Some(&v) = canon.get(&root) {
             v
         } else {
             let v = next_var;
             next_var += 1;
-            var_of.insert(key, v);
-            if is_ind {
-                ind_vars.push((v, name.to_string()));
-            }
+            canon.insert(root, v);
             v
         };
         if !all_vars.contains(&v) {
             all_vars.push(v);
         }
+        // pin every `Ind(a)` occurrence, regardless of which side of a SameAs it
+        // sits on, so `SameAs(x, a)` still pins x's shared variable to `__nom__a`.
+        let (is_ind, name) = rule_term_name(t);
+        if is_ind && !ind_vars.iter().any(|(vv, n)| *vv == v && n == name) {
+            ind_vars.push((v, name.to_string()));
+        }
         v
     };
-    let mut conv = |atoms: &[JRuleAtom], ids: &mut Ids| -> Option<Vec<HAtom>> {
+    let mut conv = |atoms: &[JRuleAtom], ids: &mut Ids, is_head: bool| -> Option<Vec<HAtom>> {
         let mut out = Vec::new();
         for a in atoms {
             match a {
@@ -145,13 +195,23 @@ fn build_rule_clause(
                         t,
                     });
                 }
-                JRuleAtom::Same { .. } | JRuleAtom::Diff { .. } => return None,
+                JRuleAtom::Same { left, right } => {
+                    // Register both terms (variable assignment + `__nom__` pins);
+                    // a body guard emits no atom (already unified via `canon`), a
+                    // head conclusion emits the equality.
+                    let l = vget(left);
+                    let r = vget(right);
+                    if is_head {
+                        out.push(HAtom::Eq { s: l, t: r });
+                    }
+                }
+                JRuleAtom::Diff { .. } => return None, // deferred (see doc comment)
             }
         }
         Some(out)
     };
-    let mut body = conv(&rule.body, ids)?;
-    let head = conv(&rule.head, ids)?;
+    let mut body = conv(&rule.body, ids, false)?;
+    let head = conv(&rule.head, ids, true)?;
     if head.is_empty() {
         return None;
     }
@@ -1940,8 +2000,10 @@ pub fn convert(
             }
         }
         // rule clauses: every variable carries an `__O__` guard; an `Ind(a)` term is
-        // additionally pinned by `__nom__a`. A rule with a Same/Diff atom (an
-        // (in)equality guard we do not yet encode) is dropped wholesale (sound).
+        // additionally pinned by `__nom__a`. SameIndividual atoms fire (body guard
+        // = variable identification, head = derived equality); a DifferentIndividuals
+        // atom has no sound fast-Ht encoding, so its rule is DEFERRED wholesale and
+        // counted in `dropped` (sound: a lost constraint never invents an inconsistency).
         let oguard = ids.cid(O_GUARD);
         for rule in rules {
             match build_rule_clause(rule, &mut ids, oguard) {
@@ -2973,5 +3035,135 @@ mod trigger_absorb_tests {
             !tin.fenced.iter().any(|f| f.reason.contains("SHIQ")),
             "inverse-free number restrictions must not arm the SHIQ fence"
         );
+    }
+}
+
+#[cfg(test)]
+mod rule_clause_tests {
+    //! Encoding contract for DL-safe rule → HT clauses (`build_rule_clause`):
+    //! SameIndividual atoms fire (body = unification, head = derived equality);
+    //! DifferentIndividuals atoms defer the whole rule (no sound distinctness).
+    use super::*;
+
+    fn var(n: &str) -> JRuleTerm {
+        JRuleTerm::Var { name: n.to_string() }
+    }
+    fn ind(n: &str) -> JRuleTerm {
+        JRuleTerm::Ind { name: n.to_string() }
+    }
+    fn class(c: &str, t: JRuleTerm) -> JRuleAtom {
+        JRuleAtom::Class { concept: c.to_string(), term: t }
+    }
+    fn role(r: &str, s: JRuleTerm, t: JRuleTerm) -> JRuleAtom {
+        JRuleAtom::Role { role: r.to_string(), source: s, target: t }
+    }
+    fn build(rule: &JRule) -> Option<(HtClause, Vec<String>)> {
+        let mut ids = Ids::new();
+        let oguard = ids.cid(O_GUARD);
+        build_rule_clause(rule, &mut ids, oguard)
+    }
+
+    #[test]
+    fn body_same_guard_unifies_its_two_terms() {
+        // Body: r(x,y) ∧ SameAs(x,y); Head: D(x). The guard forces x = y, so the
+        // role edge must land on ONE variable (s == t).
+        let rule = JRule {
+            body: vec![role("r", var("x"), var("y")), JRuleAtom::Same { left: var("x"), right: var("y") }],
+            head: vec![class("D", var("x"))],
+        };
+        let (cl, _) = build(&rule).expect("SameAs body rule fires");
+        let edge = cl
+            .body
+            .iter()
+            .find_map(|a| match a {
+                HAtom::Role { s, t, .. } => Some((*s, *t)),
+                _ => None,
+            })
+            .expect("role edge present");
+        assert_eq!(edge.0, edge.1, "SameAs(x,y) must unify the two terms onto one variable");
+        // No stray Eq atom in a body-guard-only rule.
+        assert!(!cl.body.iter().any(|a| matches!(a, HAtom::Eq { .. })));
+        assert!(!cl.head.iter().any(|a| matches!(a, HAtom::Eq { .. })));
+    }
+
+    #[test]
+    fn head_same_derives_an_equality() {
+        // Body: C(x) ∧ C(y); Head: SameAs(x,y). x and y stay distinct variables
+        // (no body guard); the head concludes the equality as an Eq atom.
+        let rule = JRule {
+            body: vec![class("C", var("x")), class("C", var("y"))],
+            head: vec![JRuleAtom::Same { left: var("x"), right: var("y") }],
+        };
+        let (cl, _) = build(&rule).expect("SameAs head rule fires");
+        let eq = cl
+            .head
+            .iter()
+            .find_map(|a| match a {
+                HAtom::Eq { s, t } => Some((*s, *t)),
+                _ => None,
+            })
+            .expect("head equality present");
+        assert_ne!(eq.0, eq.1, "distinct body variables remain distinct in the derived equality");
+    }
+
+    #[test]
+    fn different_individuals_atom_defers_the_rule() {
+        // A Diff guard has no sound fast-Ht encoding, so the whole rule is
+        // deferred (dropped, counted). Body and head positions both defer.
+        let body_diff = JRule {
+            body: vec![role("r", var("x"), var("y")), JRuleAtom::Diff { left: var("x"), right: var("y") }],
+            head: vec![class("D", var("x"))],
+        };
+        assert!(build(&body_diff).is_none(), "body DifferentIndividuals defers the rule");
+
+        let head_diff = JRule {
+            body: vec![class("C", var("x")), class("C", var("y"))],
+            head: vec![JRuleAtom::Diff { left: var("x"), right: var("y") }],
+        };
+        assert!(build(&head_diff).is_none(), "head DifferentIndividuals defers the rule");
+    }
+
+    #[test]
+    fn same_as_individual_pins_the_shared_variable_to_the_nominal() {
+        // Body: SameAs(x, a) ∧ C(x); Head: D(x). x is pinned to individual a, so
+        // `a` is registered and the shared variable carries the `__nom__a` guard.
+        let rule = JRule {
+            body: vec![JRuleAtom::Same { left: var("x"), right: ind("a") }, class("C", var("x"))],
+            head: vec![class("D", var("x"))],
+        };
+        let (cl, inds) = build(&rule).expect("SameAs(x,a) rule fires");
+        assert!(inds.contains(&"a".to_string()), "individual a is registered as a nominal node");
+        // the C(x), D(x), __nom__a, and __O__ all sit on the same single variable.
+        let vars: std::collections::HashSet<usize> = cl
+            .body
+            .iter()
+            .chain(cl.head.iter())
+            .filter_map(|a| match a {
+                HAtom::Concept { t, .. } => Some(*t),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(vars.len(), 1, "x unified with a onto one variable");
+    }
+
+    #[test]
+    fn pure_class_role_rule_is_unchanged_by_the_union_find() {
+        // Regression: a rule with no Same/Diff must encode exactly as before —
+        // one variable per distinct term, one role edge, an O-guard per variable.
+        let rule = JRule {
+            body: vec![role("r", var("x"), var("y")), class("C", var("x"))],
+            head: vec![class("D", var("y"))],
+        };
+        let (cl, inds) = build(&rule).expect("pure rule fires");
+        assert!(inds.is_empty());
+        let edge = cl
+            .body
+            .iter()
+            .find_map(|a| match a {
+                HAtom::Role { s, t, .. } => Some((*s, *t)),
+                _ => None,
+            })
+            .expect("role edge present");
+        assert_ne!(edge.0, edge.1, "distinct terms x,y stay distinct without a SameAs guard");
     }
 }

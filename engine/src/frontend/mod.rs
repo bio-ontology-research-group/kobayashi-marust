@@ -450,10 +450,25 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
 }
 
 /// Convert the ontology's parsed `DLSafeRule` axioms into the JSON rule channel
-/// (`JRule`). Only Class/Role/Same/Diff atoms over named classes are
-/// representable. Any unrepresentable rule rejects the rule-aware route rather
-/// than being silently dropped: omission is sound as an approximation, but it
-/// is not complete and therefore cannot back an automatic policy leaf.
+/// (`JRule`). The rule fragment has three tiers:
+///
+///   * FIRED — every atom is a `ClassAtom` over a *named* class, an
+///     `ObjectPropertyAtom`, or a `SameIndividualAtom`. These reach the fast Ht
+///     and fire (`cb_to_ht::build_rule_clause`); a body `SameAs` unifies its two
+///     terms, a head `SameAs` derives an equality.
+///   * DEFERRED — the rule additionally carries a `DifferentIndividualsAtom`. It
+///     is carried through here but dropped at firing time (the fast Ht tracks no
+///     node distinctness). Dropping a rule from the one-sided consistency
+///     precheck is sound: a lost constraint can lose an inconsistency, never
+///     invent one. This is why a Diff-bearing rule does NOT decline the route
+///     (that would forfeit the fired rules that DO detect 2669/15516's clash).
+///   * DECLINED — the rule has an atom the parser cannot represent at all
+///     (`DataPropertyAtom` / `BuiltInAtom` / `DataRangeAtom`, i.e. a concrete
+///     domain), or a `ClassAtom` over a complex class expression. The parser
+///     omits that AST rule, so `parsed < source` here and the whole rule-aware
+///     route is REJECTED rather than silently dropped: a datatype/built-in
+///     obligation is not an approximable constraint, so KM declines (the honest
+///     ORE 10860 decline: 4 of its 17 rules use SWRL built-ins).
 fn collect_rules(
     ontology: &syntax::Ontology,
     source_rule_count: u64,
@@ -539,5 +554,52 @@ mod rule_contract_tests {
             "Ontology(DLSafeRule(Body(ClassAtom(ObjectIntersectionOf(<A> <B>) Variable(<x>))) Head(ClassAtom(<C> Variable(<x>)))))",
         );
         assert!(collect_rules(&complex, 1).is_err());
+    }
+
+    #[test]
+    fn same_individual_rule_is_representable() {
+        // SameIndividual is in the FIRED tier: the contract accepts it (it fires
+        // downstream via variable identification / a derived equality).
+        let parsed = ontology(
+            "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) SameIndividualAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<x>)))))",
+        );
+        let rules = collect_rules(&parsed, 1).expect("SameAs rule accepted");
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn different_individuals_rule_does_not_decline_the_route() {
+        // DEFERRED tier: a Diff-bearing rule is carried through the contract (it
+        // must NOT decline the route — that would forfeit the fired rules that
+        // detect the 2669/15516 clash). It is dropped at firing time instead.
+        let parsed = ontology(
+            "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentIndividualsAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<x>)))))",
+        );
+        let rules = collect_rules(&parsed, 1).expect("Diff rule carried, route not declined");
+        assert_eq!(rules.len(), 1, "the rule is represented (Diff dropped only at firing)");
+
+        // A mixed corpus (one fired + one deferred) is still accepted wholesale.
+        let mixed = ontology(
+            "Ontology(\
+DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))) \
+DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentIndividualsAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<C> Variable(<x>)))))",
+        );
+        assert_eq!(collect_rules(&mixed, 2).expect("mixed accepted").len(), 2);
+    }
+
+    #[test]
+    fn builtin_bearing_corpus_declines_even_with_representable_rules() {
+        // Negative contract: one built-in rule beside representable rules still
+        // declines the whole route (the honest ORE 10860 shape). The parser drops
+        // the built-in rule, so parsed (1) < source (2) and collect_rules errs.
+        let parsed = ontology(
+            "Ontology(\
+DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))) \
+DLSafeRule(Body(BuiltInAtom(<gt> Variable(<x>) \"5\")) Head(ClassAtom(<C> Variable(<x>)))))",
+        );
+        assert!(
+            collect_rules(&parsed, 2).is_err(),
+            "a concrete-domain built-in rule declines the route wholesale"
+        );
     }
 }

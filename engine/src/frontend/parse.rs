@@ -879,4 +879,47 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
         let o = parse_axioms(&mut reg, txt).expect("parse");
         assert_eq!(o.rules().count(), 0, "rule with builtin atom dropped");
     }
+
+    #[test]
+    fn dlsafe_rule_with_data_atoms_is_dropped() {
+        // DataPropertyAtom / DataRangeAtom are concrete-domain obligations with no
+        // DL encoding; either drops the whole rule at the parser (so the frontend
+        // count mismatch later DECLINES the route rather than approximating it).
+        for data_atom in [
+            "DataPropertyAtom(<http://e#p> Variable(<http://e#x>) Variable(<http://e#v>))",
+            "DataRangeAtom(<http://www.w3.org/2001/XMLSchema#integer> Variable(<http://e#v>))",
+        ] {
+            let txt = format!(
+                "Ontology(DLSafeRule(Body(\
+ClassAtom(<http://e#C> Variable(<http://e#x>)) {data_atom})\
+Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))"
+            );
+            let mut reg = IriRegistry::new();
+            let o = parse_axioms(&mut reg, &txt).expect("parse");
+            assert_eq!(o.rules().count(), 0, "rule with {data_atom} dropped");
+        }
+    }
+
+    #[test]
+    fn dlsafe_rule_with_same_individual_atom_parses() {
+        // SameIndividualAtom is inside the fired fragment: the parser keeps it as
+        // a RuleAtom::Same (a body guard here) alongside the class/role atoms.
+        let txt = "Ontology(\
+DLSafeRule(Body(\
+ClassAtom(<http://e#C> Variable(<http://e#x>)) \
+ObjectPropertyAtom(<http://e#r> Variable(<http://e#x>) Variable(<http://e#y>)) \
+SameIndividualAtom(Variable(<http://e#x>) Variable(<http://e#y>)))\
+Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
+        let mut reg = IriRegistry::new();
+        let o = parse_axioms(&mut reg, txt).expect("parse");
+        let rules: Vec<&Axiom> = o.rules().collect();
+        assert_eq!(rules.len(), 1, "the SameAs rule parses (fired fragment)");
+        match rules[0] {
+            Axiom::Rule(body, _) => assert!(
+                body.iter().any(|a| matches!(a, RuleAtom::Same(..))),
+                "SameIndividual guard kept"
+            ),
+            _ => panic!("not a rule"),
+        }
+    }
 }

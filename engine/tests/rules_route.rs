@@ -125,3 +125,37 @@ fn automatic_route_selects_the_rules_bundle_for_rule_ontologies() {
     assert!(stderr.contains("route=ht_rules"), "stderr: {stderr}");
     assert_eq!(v["consistent"], false, "stderr: {stderr}");
 }
+
+#[test]
+fn same_individual_guard_fires_and_drives_a_clash() {
+    // A body `SameAs(x, y)` guard fires ONLY when x and y bind to one individual.
+    // Here `SameIndividual(a, b)` merges a and b, so the merged node carries both
+    // A (from a) and B (from b); the rule `A(x) ∧ B(y) ∧ SameAs(x,y) → Bad(x)`
+    // then fires, and `Bad ⊓ Good` (disjoint, Good asserted on a) clashes.
+    let out = classify(&["--route", "ht_rules"], &fixture("rule_same_unsat.ofn"));
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    let v = json_of(&out);
+    assert_eq!(
+        v["consistent"], false,
+        "the SameAs-guarded rule must fire on the merged node (stderr: {stderr})"
+    );
+    assert!(
+        stderr.contains("rules-consistency done") && stderr.contains("consistent=false"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn same_individual_guard_does_not_fire_without_the_merge() {
+    // Control: identical ontology WITHOUT `SameIndividual(a, b)`. Now no single
+    // node carries both A and B, the guarded rule never fires, and the ontology
+    // is consistent — proving the guard is a real condition, not always-on.
+    let out = classify(&["--route", "ht_rules"], &fixture("rule_same_consistent.ofn"));
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    let v = json_of(&out);
+    assert_eq!(
+        v["consistent"], true,
+        "without the merge the SameAs guard is false, so no clash (stderr: {stderr})"
+    );
+    assert!(!stderr.contains("consistent=false"), "stderr: {stderr}");
+}

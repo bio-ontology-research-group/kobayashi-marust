@@ -9,6 +9,55 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### DL-safe rule fragment: SameIndividual fires; precise 3-tier contract (2026-07-17)
+
+Audited the full DL-safe rule contract against the ORE 10860 rule set (the 17
+`DLSafeRule` axioms partition into **8 pure Class+Role**, **5 Class+Role+Diff**,
+and **4 Data/BuiltIn** — greaterThan on dates, `hasClass`/`isSubClassOf`
+built-ins). The rule pipeline had two divergent notions of "supported": the
+parser/`collect_rules` contract accepted `SameIndividual`/`DifferentIndividuals`
+atoms, but `cb_to_ht::build_rule_clause` then **silently dropped** any rule
+carrying one (returned `None`). A `SameAs`-guarded rule was therefore presented
+as classified while its guard was ignored.
+
+Changes:
+- **`SameIndividual` now fires** (the largest soundly-representable shape that
+  was being dropped). A *body* `SameAs(u,v)` guard unifies u and v onto one
+  Subst variable via a union-find over rule terms (both `__nom__` pins land on
+  the shared node); a *head* `SameAs(u,v)` emits `HAtom::Eq` so the rule derives
+  the equality. Sound: a single O-guarded node trivially satisfies u ≈ v, and
+  any binding where the two individuals coincide collapses onto that node.
+- **`DifferentIndividuals` is an explicit, documented deferral.** The fast Ht
+  tracks no node distinctness (`HAtom` has only Concept/Role/Eq/Exist), so a
+  `u ≠ v` guard has no sound encoding; the rule is dropped at firing and counted.
+  Dropping a rule from the one-sided consistency precheck is sound (a lost
+  constraint can lose an inconsistency, never invent one), so a Diff-bearing
+  rule must NOT decline the route — that would forfeit the fired rules that
+  detect the 2669/15516 clash.
+- **Data/BuiltIn/DataRange and complex-class atoms still DECLINE the route**
+  (strict defer). These are concrete-domain obligations with no DL encoding; the
+  parser omits the AST rule, `parsed < source`, and `collect_rules` rejects. This
+  keeps ORE 10860 the honest 0.01 s decline (4 of 17 rules use SWRL built-ins),
+  as intended — no partial-firing of a datatype ontology.
+
+Regression-safe: 2669 (5 pure fire, 3 Diff deferred) and 15516 (2 pure fire) are
+byte-identical; rule-free ontologies are untouched (`build_rule_clause` runs only
+under `ht_rules`). The Ht encoding change needs no Lean re-cert (the CB calculus
+is unchanged; this is the HT bridge). Tests: parser (SameIndividual parses;
+Data/BuiltIn/DataRange drop the rule), encoding (body-guard unification, head
+equality, Diff deferral, individual pinning, pure-rule regression), contract
+(SameAs accepted, Diff does not decline, mixed corpus accepted, built-in corpus
+declines), and end-to-end reasoning (a `SameAs` guard fires on a merged node to
+drive a disjointness clash, and does NOT fire without the merge).
+
+Quantified: of the 6 ORE `DLSafeRule` ontologies, the soundly-representable
+firing fragment grows from {Class, Role} to {Class, Role, SameIndividual}; the
+`DifferentIndividuals` and datatype/built-in shapes remain out of the sound
+fragment and are handled by explicit deferral (Diff) or honest decline (built-in).
+ORE 10860 is not closed (its built-in date/subclass rules need a concrete domain).
+
+
+
 ### Incremental CB indexes and interning hot paths (2026-07-17)
 
 Three fixpoint-preserving CB optimizations from the parallel review cycle are
