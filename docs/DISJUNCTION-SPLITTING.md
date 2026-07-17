@@ -106,6 +106,16 @@ context into split mode. Gate: `KM_SPLIT` (default OFF).
 > residue readout instead of the selection machinery sketched below — see
 > docs/ROOT-ORDERED-RESOLUTION.md for the design, the soundness/completeness
 > argument, the focused tests, and the precise Lean obligations (O1–O3).
+>
+> **2026-07-17 update:** measured on the four shared timeout targets
+> (10702/15672/6934/9540) — it is sound + complete-preserving (15/15
+> byte-identical to the default engine on the finishable local onts) but
+> recovers **0** of the family: 15672/9540 are tiny-bounded-memory search spins
+> (not disjunction-product-bound), and on 10702 ordering only slows, never
+> bounds, the wide-head proliferation. This confirms §8 below: ordered
+> resolution over the monotone engine cannot recover the family; the
+> interleaved decision-trail + blocking is the required capability. See
+> docs/ROOT-ORDERED-RESOLUTION.md §5.1.
 
 Layered on B (or standalone): within a branch (or in a context not yet split),
 order same-term concepts (the `KM_SEQ_ORDER` regime) so Hyper fires only on the

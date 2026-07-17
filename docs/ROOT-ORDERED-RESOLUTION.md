@@ -162,21 +162,66 @@ lib suite 1529 passed / 0 failed):
 - `root_ordered_matches_default_engine` — subsumption-map equality with the
   default engine on a mixed ontology.
 
-NOT yet done (needs ws/ibex, out of scope for this session):
+### 5.1 Family measurement (cycle 8, 2026-07-17) — MEASURED: does NOT recover the family
+
+Ran mode 1 and mode 2 directly on the four shared timeout targets on the
+workstation (`km engine` on the `ofn` clause set, isolated target dir), and a
+differential vs the default engine on the local finishable onts. Two questions
+from item 2 below are now answered, both NEGATIVELY for recovery.
+
+**Recovery — NONE of 10702 / 15672 / 6934 / 9540 converges.** Both modes time
+out at 240 s; the two tiniest still time out at 520 s; 10702 mode 2 was traced
+to ~600 s. Peak RSS stays bounded (so this is search / propagation
+non-convergence, not the arena OOM the default engine hits):
+
+| ont | mode 1 (240 s) | mode 2 (240 s) | mode 2 peak RSS | shape at timeout |
+|-----|----------------|----------------|-----------------|------------------|
+| 10702 | timeout | timeout (also ~600 s) | 604 MB | disjunctive-product blow-up: worked_off 160k→620k+, wide heads h3 841→280k, h4+ 3→86k, max_head 5→7, still climbing (no plateau) |
+| 6934  | timeout | timeout | 40 MB | intermediate |
+| 15672 | timeout | timeout (also 520 s) | 21 MB | tiny bounded memory, no disjunctive growth — nominal/cardinality search spin |
+| 9540  | timeout | timeout (also 520 s) | 18 MB | tiny bounded memory — SHOIQ cardinality search spin |
+
+The decisive split: **15672 and 9540 are not disjunction-product-bound at all**
+(≤21 MB, no wide-head growth — the "pure search non-convergence at tiny memory"
+of docs/THROUGHPUT-SATURATION.md), so ordered resolution is simply orthogonal to
+their bottleneck. **10702 is** disjunction-product-bound, but mode 2 only *slows*
+the wide-head proliferation (it keeps the run under 604 MB where the default
+OOMs, and caps max head width at 7 vs the default's 9) — it does not *bound* it;
+worked_off keeps climbing. mode 1 (root contexts only) leaves the successor /
+ground-context disjunctions incomparable, so it matches the default blow-up.
+
+Root cause of the non-recovery: ordering prunes *which* Hyper instances fire but
+still materialises the disjunctive closure of the hard part, exactly the lesson
+of docs/DISJUNCTION-SPLITTING.md §1/§8. Recovering this family needs the
+interleaved decision-trail + blocking capability (splitting *during* saturation,
+DISJUNCTION-SPLITTING §8; or the SHIQ-completion re-architecture,
+THROUGHPUT-SATURATION §3), not ordered resolution over the monotone engine.
+
+**Correctness — sound + complete preserved (differential, 15/15 byte-identical).**
+mode 1 and mode 2 produce the *exact* subsumption map of the default engine on
+every finishable local ont tested: 178, 394, 1481, 2453, 2744, 5184, 5564,
+11016, 13035, 13132, **13383** (368 keys, named disjunction), 3050, 148 (~3000
+keys), and the disjunction-family **12698** (15 566 keys) and **5107** — 0
+differing subjects, matching consistency. So the complement-guard residue readout
+restores completeness with no regression: KM_ROOT_ORDERED is correct, just inert
+on the target family. This partially discharges item 1 (byte-identical on the
+finishable local subset; the full ORE corpus A/B still needs a sweep).
+
+Verdict: **KM_ROOT_ORDERED stays gated OFF** — not because it is unsound (it is
+not), but because it recovers 0 of the family it was designed for. Do not spend
+a future cycle re-measuring ordered resolution on 10702/15672/6934/9540.
+
+### 5.2 Still open (needs ws/ibex)
 
 1. Corpus A/B (full ORE 2015) vs the default engine: byte-identical
    signatures on the finishable ontologies, soundness-vs-gold table must not
-   regress (AGENTS.md).
-2. Family measurement: does mode 1 or mode 2 converge in budget on 10702 /
-   15672 / 6934 / 9540? The ordering tames the disjunctive closure
-   (KM_ORDERED_ALL measured recoveries: 12698 / 2313 / 5107 single-threaded);
-   the repair adds per-candidate refutation saturations — bounded by
-   (named concepts occurring maximal in the root) per query, sharing one
-   engine. If refutation cost dominates, the next lever is batching the
-   candidate contexts before one message fixpoint.
-3. Lean obligations O2/O3 (and the O1 instance note) — §4.
-4. Routing: only after 1–3, wire a `root_ordered` procedure into the routing
-   matrix as a policy-eligible bundle. Until then the flag is manual.
+   regress (AGENTS.md). Partially done: 15/15 byte-identical on the local
+   finishable subset (§5.1); the full-corpus sweep remains.
+2. Lean obligations O2/O3 (and the O1 instance note) — §4.
+3. Routing: moot for this family (§5.1 shows 0 recovery). If a *different*
+   ontology class is ever found where the ordered closure converges strictly
+   faster than the default AND the residue cost is bounded, only then wire a
+   `root_ordered` procedure into the routing matrix.
 
 ## 6. Interactions and caveats
 
