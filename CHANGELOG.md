@@ -36,6 +36,17 @@ during Ht re-drive passed four focused release tests but ore_ont_9635 still
 missed `FiniteSemanticStructure ⊑ FiniteRuleSetModel`. Both changes were
 reverted; their commits remain in history as diagnostic starting points.
 
+A subsequent clause-level trace established the complete missing 9635 chain:
+`FiniteSemanticStructure` implies the exact-one definer `Q_19`; `Q_19` creates a
+`hasUniverseOfDiscourse` successor; that role's domain implies `RuleSetModel`;
+the resulting conjunction recognises `FiniteRuleSetModel`. Eagerly resolving
+the successor generator with its domain added 12 sound clauses but timed out;
+restricting the transformation to the single directly useful clause
+`Q_19(x) -> RuleSetModel(x)` still changed the formerly terminating run into a
+190.7 s internal engine timeout at about 6.7 GiB. The experiment was reverted.
+The next 9635 implementation must preserve this recognition outside the CB
+context explosion, or fix successor-domain re-drive in the validated Ht route.
+
 The sweep also exposed a scorer resource bug on ore_ont_10689 (14.8 million
 canonical subsumptions): the runner parsed KM's JSON taxonomy twice and then
 materialized a second complete gold set after reasoner timing ended. Scoring
