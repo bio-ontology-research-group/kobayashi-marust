@@ -121,26 +121,28 @@ Selected measured rows from that matrix:
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
 
 The current `production_all` portfolio was rerun across the complete 592-entry
-corpus on IBEX as array job `49009500`, using immutable binary SHA
-`86eb38310683ab964d88ed87a86b61811fb6e2debc843f2c91c784c4bf535230`.
+corpus on IBEX as array job `49012346`, using immutable binary SHA
+`8771789c1afe5e80471caa9f7ed263eab2ab09af48673d1cb3f6b7ec0aa6284d`.
 The guarded finalizer recorded `3524` and `15703` as memout only after their
 Slurm logs contained explicit OOM-kill evidence. The resulting dataset has 592
 unique, SHA-validated rows: 582 returned `ok`, six timed out, three reached the
 memory cap, and one declined an unsupported DL-safe-rule input. It contains
-576 literal stored-gold matches. Over those exact rows, the candidate averages
-4.581 seconds and 614 MB, with medians of 0.227 seconds and 38 MB. These figures
+575 literal stored-signature matches. Over those rows, the candidate averages
+4.608 seconds and 620 MB, with medians of 0.223 seconds and 38 MB. These figures
 describe the single production route, not the larger all-route union in the
 headline row.
 
-Against the preceding integrated dataset, the strict comparator reports three
-new literal exact matches: `10908` moved from timeout to exact, `16303` moved
-from incomplete to exact, and `13503` now emits its directly-unsatisfiable
-named class and therefore matches the stored signature without adjudication.
-`7499` moved from timeout to a completed but incomplete result and is not
-counted exact. There are no exact-to-wrong regressions. Exact-row average wall
-time rose from 4.230 to 4.581 seconds because the newly restored `10908` takes
-about 206 seconds; median wall time improved from 0.268 to 0.227 seconds and
-average peak memory improved from 615 to 614 MB.
+Against job `49009500`, the strict literal comparator reports one changed row:
+`13503` now includes `daml+oil#Nothing` in the unsatisfiable block. The ontology
+asserts that class equivalent to `ObjectComplementOf(owl:Thing)`, so the new
+answer is required and the retained Konclude signature is missing an entailment.
+The apparent `11745` extra pair was also a harness error: its left class has an
+empty local name, and the old loader stripped the leading tab from that valid
+gold row. Faithful tab parsing makes KM, Konclude, ELK, and HermiT exact there.
+Together with the independently proved inconsistent answers for `2669` and
+`15516`, this production run has 579 adjudicated-correct cases. `7499` adds one
+more complete classification under the documented CHEBI namespace-collision
+adjudication, for 580 demonstrated-correct production cases.
 
 The KM headline is the union of every retained, valid exact closure, not only
 the routes present in one matrix binary. The complete frozen matrix contains

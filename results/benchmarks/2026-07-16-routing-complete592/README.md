@@ -35,7 +35,7 @@ come from different configurations.
 
 | route | solved / 592 | wall avg s | wall med s | memory avg MB | memory med MB |
 |---|---:|---:|---:|---:|---:|
-| **KM union, exact oracle minima** | **576** | **3.333** | **0.192** | **292** | **27** |
+| **KM union, exact oracle minima** | **576** | **3.325** | **0.192** | **292** | **27** |
 | Konclude 16 threads | 588 | 2.129 | 0.264 | 738 | 245 |
 | Konclude 1 thread | 588 | 2.483 | 0.265 | 590 | 143 |
 | ELK | 579 | 1.995 | 0.824 | 611 | 349 |
@@ -46,7 +46,7 @@ plus validated follow-up routes, not a measured automatic router run and not
 KM's all-retained-run coverage headline. Retained exact closures from route
 families absent or not faithfully reproduced here raise the demonstrated exact
 union to 584; the top-level README tracks that broader union. The current
-registry's p95 wall time is 18.280 seconds and its p95 minimum memory is 1,764
+registry's p95 wall time is 19.553 seconds and its p95 minimum memory is 1,771
 MB.
 
 ## Individual KM configurations
@@ -94,11 +94,14 @@ to 576 exact ontologies. The broader 584-ontology demonstrated union still
 includes retained historical routes that must be rerun successfully before
 they enter the current-result registry.
 
-Production sweep `49009500` adds 576 exact `production_all` route rows to the
-registry, plus one completed no-gold row. It independently restores `10908`,
-makes `13503` literally exact, and restores `16303`; these ontologies were
-already members of the 576-case current-result union through other validated
-routes, so the union count stays 576 while their route coverage expands.
+Production sweep `49012346` contributes the fastest retained `production_all`
+row on 267 ontologies and keeps the current-result union at 576 literal exact
+ontologies. It has 592 SHA-validated terminal rows for binary `8771789c…`:
+582 ok, six timeout, three memout, and one unsupported. Literal comparison has
+575 matches because `13503` now emits an unsatisfiable named class omitted by
+the stored Konclude signature. The corrected tab-delimited gold loader proves
+that `11745` is exact, while the committed witnesses adjudicate `13503`, `2669`,
+and `15516`; `7499` is the separately documented CHEBI local-name collision.
 
 ## Named-route proof run audit
 

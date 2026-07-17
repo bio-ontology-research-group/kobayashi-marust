@@ -2,28 +2,30 @@
 
 ## Current production sweep checkpoint (2026-07-17)
 
-The current production array, job `49009500`, has completed. It published 590
+The current production array, job `49012346`, has completed. It published 590
 ordinary rows; `3524` and `15703` reproduced explicit Slurm OOM kills, after
 which the guarded finalizer published their SHA-matched `memout` rows. The
-dataset contains exactly 592 unique rows for binary SHA `86eb3831…`.
+dataset contains exactly 592 unique rows for binary SHA `8771789c…`.
 
 The current `production_all` candidate reports 582 `ok`, six timeout, three
-memout, and one unsupported. It has 576 literal matches to stored signatures.
-It restores `10908`, makes `13503` literally exact, and recovers `16303` from
-incomplete to exact. Its remaining production-route timeout tail is `10702`,
+memout, and one unsupported. It has 575 literal matches to stored signatures.
+Its only literal outcome change from job `49009500` is `13503`, where KM now
+reports the logically required unsatisfiability of `daml+oil#Nothing`; the
+stored signature omits that entailment. Correct tab-delimited gold loading also
+removes the false `extra=1` verdict on `11745`. Its remaining production-route timeout tail is `10702`,
 `15672`, `6934`, `9540`, `3215`, and `10621`; `7499` completes but remains
-incomplete. `1194`, `3524`, and `15703` are memout, while `10860` is
-unsupported. This checkpoint
+incomplete only under the known CHEBI local-name-collision comparison; its
+reasoning result is complete. `1194`, `3524`, and `15703` are memout, while
+`10860` is unsupported. This checkpoint
 does not replace the 584-case cross-run exact union: it measures one current
 production route and identifies which historic route closures still need to
 be restored into that route.
 
-Next work proceeds in this order: land the guarded OOM finalizer and keep the
-production worker allocation at its normal size; review and integrate the
-active route, correctness, timeout, and watchdog patches; run release tests and
-focused ontology checks; then freeze and sweep the next candidate over all 592
-inputs. Only validated exact rows may update the route TSV and union/min
-time-memory table.
+The current-result route registry retains 576 literal exact ontologies. Its
+oracle-minimum averages are 3.325 seconds and 292 MB, with medians of 0.192
+seconds and 27 MB. The next cycle reviews the remaining route and correctness
+patches, runs release tests and focused ontology checks, then freezes and sweeps
+the next candidate over all 592 inputs.
 
 This is the durable status record for the six ontologies that were called the
 "hard residuals" during the 2026-07-15 routing-matrix analysis:

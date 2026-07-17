@@ -9,6 +9,14 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Keep the strict sweep comparator runnable on IBEX (2026-07-17)
+
+`compare_production_sweeps.py` now computes arithmetic means with `sum/len`
+instead of `statistics.fmean`, which is unavailable in IBEX's Python 3.7. The
+formula is identical for the finite benchmark measurements. This allowed the
+strict 592-row SHA and terminal-status comparison for production job
+`49012346` to run on the host that stores the immutable datasets.
+
 ### Fix false `unsound` verdict on ore_ont_11745 (empty local-name gold rows) (2026-07-17)
 
 `ore_ont_11745`'s lone remaining `unsound` verdict was a benchmark-harness

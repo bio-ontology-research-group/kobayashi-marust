@@ -56,9 +56,12 @@ def summary(rows):
         "verdict": dict(
             sorted(collections.Counter(r.get("verdict") for r in rows.values()).items())
         ),
-        "exact_wall_avg_s": statistics.fmean(wall),
+        # IBEX still provides Python 3.7, before statistics.fmean.  The values
+        # are ordinary finite benchmark measurements, so sum/len has the same
+        # semantics and keeps the strict comparator runnable where sweeps live.
+        "exact_wall_avg_s": sum(wall) / len(wall),
         "exact_wall_median_s": statistics.median(wall),
-        "exact_peak_avg_mb": statistics.fmean(peak),
+        "exact_peak_avg_mb": sum(peak) / len(peak),
         "exact_peak_median_mb": statistics.median(peak),
     }
 
