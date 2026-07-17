@@ -1943,25 +1943,28 @@ impl Engine {
     }
 
     /// Find the arena id of a clause with this exact (body, head) content in
-    /// the given ordering domain, if it was ever interned.  The arena is
-    /// content-unique, so at most one id matches.
-    fn cc_find(&self, root: bool, c: &ContextClause) -> Option<u32> {
+    /// the given ordering domain, if it was ever interned, and return the
+    /// content hash alongside it. The arena is content-unique, so at most one
+    /// id matches. A caller that will intern on a miss can hand the hash back
+    /// to `intern_cc_known_new` instead of recomputing it, so a genuinely new
+    /// clause is hashed once rather than three times.
+    fn cc_lookup(&self, root: bool, c: &ContextClause) -> (u64, Option<u32>) {
         let d = root as usize;
         let h = content_hash(&(&c.body, &c.head));
-        self.cc_intern_idx[d].get(&h)?.iter().copied().find(|&i| {
-            let a = &self.cc_arena[d][i as usize];
-            a.body == c.body && a.head == c.head
-        })
+        let found = self.cc_intern_idx[d].get(&h).and_then(|ids| {
+            ids.iter().copied().find(|&i| {
+                let a = &self.cc_arena[d][i as usize];
+                a.body == c.body && a.head == c.head
+            })
+        });
+        (h, found)
     }
 
-    /// Intern a context clause in the given ordering domain, returning its
-    /// stable arena id.
-    fn intern_cc(&mut self, root: bool, c: ContextClause) -> u32 {
-        if let Some(i) = self.cc_find(root, &c) {
-            return i;
-        }
+    /// Intern a context clause the caller has already confirmed is absent from
+    /// the arena (via `cc_lookup`), reusing the content hash `h` that lookup
+    /// computed. Skips the redundant find + re-hash that a naive intern does.
+    fn intern_cc_known_new(&mut self, root: bool, c: ContextClause, h: u64) -> u32 {
         let d = root as usize;
-        let h = content_hash(&(&c.body, &c.head));
         let id = self.cc_arena[d].len() as u32;
         self.cc_arena[d].push(c);
         self.cc_intern_idx[d].entry(h).or_default().push(id);
@@ -2269,7 +2272,8 @@ impl Engine {
         let root = self.contexts[id].root;
         let d = root as usize;
         // Exact-duplicate check: the arena id is the canonical content key.
-        let existing = self.cc_find(root, &clause);
+        // Reuse the hash lookup computes so a new clause is hashed only once.
+        let (clause_hash, existing) = self.cc_lookup(root, &clause);
         if let Some(cid) = existing {
             if self.contexts[id].clause_keys.contains(&cid) {
                 return false;
@@ -2309,7 +2313,7 @@ impl Engine {
         }
         let cid = match existing {
             Some(c) => c,
-            None => self.intern_cc(root, clause),
+            None => self.intern_cc_known_new(root, clause, clause_hash),
         };
         let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
