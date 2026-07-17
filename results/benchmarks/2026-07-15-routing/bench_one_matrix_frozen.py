@@ -61,14 +61,15 @@ def load_output(path, output_format):
         consistent, pairs, unsat, capped = _ore_canon.canonicalize(
             text, output_format
         )
-        if output_format == "json":
-            data = json.loads(text)
-        else:
-            data = {
-                "consistent": consistent,
-                "subsumption_count": len(pairs),
-                "unsatisfiable_count": len(unsat),
-            }
+        # Keep only the summary consumed by the benchmark row. Parsing the JSON
+        # a second time retained a complete duplicate of multi-GB taxonomies
+        # beside the canonical pair set (ore_ont_10689), even though no caller
+        # uses the full object after canonicalisation.
+        data = {
+            "consistent": consistent,
+            "subsumption_count": len(pairs),
+            "unsatisfiable_count": len(unsat),
+        }
     except (OSError, ValueError):
         return None, None
     if capped:
@@ -129,15 +130,55 @@ def compare_output(output, output_format, gold_path):
     if signature is None:
         return "noparse", 0, 0, 0, 0, False, None, None
     output_sha = signature_sha256(signature)
-    gold = load_gold(gold_path)
-    if gold is None:
+    if not gold_path or not os.path.exists(gold_path):
         return "nogold", 0, 0, 0, 0, False, data, output_sha
     out_consistent, out_pairs, out_unsat = signature
-    gold_consistent, gold_pairs, gold_unsat = gold
-    extra = len(out_pairs - gold_pairs)
-    missing = len(gold_pairs - out_pairs)
-    extra_unsat = len(out_unsat - gold_unsat)
-    missing_unsat = len(gold_unsat - out_unsat)
+    missing = 0
+    missing_unsat = 0
+    matched_pairs = 0
+    matched_unsat = 0
+    # Gold signatures are sorted and de-duplicated by the ORE harness. Stream
+    # them through the output sets instead of materialising a second pair/UNSAT
+    # set. Count each match; output_count - matched_count is exactly the
+    # output-only (extra) count. This bounds comparison memory to one signature
+    # and works with the canonicalizer's immutable frozensets.
+    previous_pair = None
+    previous_unsat = None
+    with gzip.open(gold_path, "rt", encoding="utf-8", errors="replace") as handle:
+        first = handle.readline().strip()
+        gold_consistent = first == "1"
+        in_unsat = False
+        for line in handle:
+            line = line.rstrip("\n")
+            if line == "#UNSAT":
+                in_unsat = True
+                continue
+            if not line:
+                continue
+            if in_unsat:
+                if line == previous_unsat:
+                    continue
+                previous_unsat = line
+                if line in out_unsat:
+                    matched_unsat += 1
+                else:
+                    missing_unsat += 1
+                continue
+            if "\t" not in line:
+                continue
+            left, right = line.split("\t", 1)
+            if left == right or right in ("Thing", "owlThing", "owlNothing"):
+                continue
+            pair = (left, right)
+            if pair == previous_pair:
+                continue
+            previous_pair = pair
+            if pair in out_pairs:
+                matched_pairs += 1
+            else:
+                missing += 1
+    extra = len(out_pairs) - matched_pairs
+    extra_unsat = len(out_unsat) - matched_unsat
     consistency_mismatch = out_consistent != gold_consistent
     if not extra and not missing and not extra_unsat and not missing_unsat \
             and not consistency_mismatch:
