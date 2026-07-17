@@ -9,6 +9,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Incremental CB indexes and interning hot paths (2026-07-17)
+
+Three fixpoint-preserving CB optimizations from the parallel review cycle are
+integrated for the next production candidate. Back-subsumption now removes a
+discarded worked-off clause from each affected posting instead of rebuilding
+every head index. Differential tests compare the incremental state with a full
+rebuild for concept, role, ground-endpoint, body, bridge, and merge indexes.
+Context-core indexes now store a content hash and collision bucket of context
+ids rather than a second owned copy of every `Vec<Pred>` core; exact core
+comparison still resolves every lookup. Context-clause insertion also reuses
+the hash calculated by its failed lookup instead of hashing new clauses again.
+These changes alter storage and enumeration cost only, not rules, ordering,
+redundancy, or the derived fixpoint, so they require no Lean re-certification.
+
+### Reject positive-CCEQ trigger candidate after complete sweep (2026-07-17)
+
+Immutable candidate `a0d0148` was built on an IBEX compute node, passed 1,584
+release tests plus a 19-ontology sentinel panel, and completed all 592
+production tasks as job `49014377`. The candidate left ore_ont_9635 incomplete
+on the same missing `FiniteSemanticStructure` to `FiniteRuleSetModel` pair and
+regressed ore_ont_9724 from exact completion to a 20 GiB memout. The trigger
+change was therefore reverted. Correct tab-delimited gold parsing independently
+establishes ore_ont_11745 as exact and raises the current verified route union
+to 577; this is a harness correction, not a benefit of the rejected engine
+change.
+
+### Bind production rows to the exact benchmark runner (2026-07-17)
+
+Production tasks now accept a content-addressed `SWEEP_RUNNER`, record its path
+and SHA in the manifest, and reject result or checkpoint rows whose
+`runner_sha256` differs. The evidence-gated OOM finalizer also requires the
+runner and records its SHA. Tests verify both runner identity and refusal to
+finalize a missing row without explicit Slurm OOM evidence.
+
 ### Keep the strict sweep comparator runnable on IBEX (2026-07-17)
 
 `compare_production_sweeps.py` now computes arithmetic means with `sum/len`

@@ -21,11 +21,17 @@ does not replace the 584-case cross-run exact union: it measures one current
 production route and identifies which historic route closures still need to
 be restored into that route.
 
-The current-result route registry retains 576 literal exact ontologies. Its
-oracle-minimum averages are 3.325 seconds and 292 MB, with medians of 0.192
+The current-result route registry retains 577 literal exact ontologies. Its
+oracle-minimum averages are 3.368 seconds and 297 MB, with medians of 0.191
 seconds and 27 MB. The next cycle reviews the remaining route and correctness
 patches, runs release tests and focused ontology checks, then freezes and sweeps
 the next candidate over all 592 inputs.
+
+Full sweep `49014377` tested the attempted `9635` positive-`CCEQ` recognition
+repair. It left the missing `FiniteSemanticStructure` to `FiniteRuleSetModel`
+subsumption unchanged and made `9724` exceed the 20 GiB cap, so that repair was
+reverted. The corrected tab-delimited gold loader independently verifies
+`11745` as exact and accounts for the registry increase from 576 to 577.
 
 This is the durable status record for the six ontologies that were called the
 "hard residuals" during the 2026-07-15 routing-matrix analysis:
