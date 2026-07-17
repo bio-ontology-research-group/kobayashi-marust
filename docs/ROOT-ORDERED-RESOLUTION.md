@@ -162,14 +162,14 @@ lib suite 1529 passed / 0 failed):
 - `root_ordered_matches_default_engine` — subsumption-map equality with the
   default engine on a mixed ontology.
 
-### 5.1 Family measurement (cycle 8, 2026-07-17) — MEASURED: does NOT recover the family
+### 5.1 Family measurement (cycle 8, 2026-07-17): measured, does not recover the family
 
 Ran mode 1 and mode 2 directly on the four shared timeout targets on the
 workstation (`km engine` on the `ofn` clause set, isolated target dir), and a
 differential vs the default engine on the local finishable onts. Two questions
 from item 2 below are now answered, both NEGATIVELY for recovery.
 
-**Recovery — NONE of 10702 / 15672 / 6934 / 9540 converges.** Both modes time
+**Recovery: none of 10702 / 15672 / 6934 / 9540 converges.** Both modes time
 out at 240 s; the two tiniest still time out at 520 s; 10702 mode 2 was traced
 to ~600 s. Peak RSS stays bounded (so this is search / propagation
 non-convergence, not the arena OOM the default engine hits):
@@ -178,15 +178,15 @@ non-convergence, not the arena OOM the default engine hits):
 |-----|----------------|----------------|-----------------|------------------|
 | 10702 | timeout | timeout (also ~600 s) | 604 MB | disjunctive-product blow-up: worked_off 160k→620k+, wide heads h3 841→280k, h4+ 3→86k, max_head 5→7, still climbing (no plateau) |
 | 6934  | timeout | timeout | 40 MB | intermediate |
-| 15672 | timeout | timeout (also 520 s) | 21 MB | tiny bounded memory, no disjunctive growth — nominal/cardinality search spin |
-| 9540  | timeout | timeout (also 520 s) | 18 MB | tiny bounded memory — SHOIQ cardinality search spin |
+| 15672 | timeout | timeout (also 520 s) | 21 MB | tiny bounded memory, no disjunctive growth; nominal/cardinality search spin |
+| 9540  | timeout | timeout (also 520 s) | 18 MB | tiny bounded memory; SHOIQ cardinality search spin |
 
 The decisive split: **15672 and 9540 are not disjunction-product-bound at all**
-(≤21 MB, no wide-head growth — the "pure search non-convergence at tiny memory"
+(≤21 MB, no wide-head growth: the "pure search non-convergence at tiny memory"
 of docs/THROUGHPUT-SATURATION.md), so ordered resolution is simply orthogonal to
 their bottleneck. **10702 is** disjunction-product-bound, but mode 2 only *slows*
 the wide-head proliferation (it keeps the run under 604 MB where the default
-OOMs, and caps max head width at 7 vs the default's 9) — it does not *bound* it;
+OOMs, and caps max head width at 7 vs the default's 9). It does not *bound* it;
 worked_off keeps climbing. mode 1 (root contexts only) leaves the successor /
 ground-context disjunctions incomparable, so it matches the default blow-up.
 
@@ -197,18 +197,18 @@ interleaved decision-trail + blocking capability (splitting *during* saturation,
 DISJUNCTION-SPLITTING §8; or the SHIQ-completion re-architecture,
 THROUGHPUT-SATURATION §3), not ordered resolution over the monotone engine.
 
-**Correctness — sound + complete preserved (differential, 15/15 byte-identical).**
+**Correctness: sound + complete preserved (differential, 15/15 byte-identical).**
 mode 1 and mode 2 produce the *exact* subsumption map of the default engine on
 every finishable local ont tested: 178, 394, 1481, 2453, 2744, 5184, 5564,
 11016, 13035, 13132, **13383** (368 keys, named disjunction), 3050, 148 (~3000
-keys), and the disjunction-family **12698** (15 566 keys) and **5107** — 0
+keys), and the disjunction-family **12698** (15 566 keys) and **5107**: 0
 differing subjects, matching consistency. So the complement-guard residue readout
 restores completeness with no regression: KM_ROOT_ORDERED is correct, just inert
 on the target family. This partially discharges item 1 (byte-identical on the
 finishable local subset; the full ORE corpus A/B still needs a sweep).
 
-Verdict: **KM_ROOT_ORDERED stays gated OFF** — not because it is unsound (it is
-not), but because it recovers 0 of the family it was designed for. Do not spend
+Verdict: **KM_ROOT_ORDERED stays gated OFF**. It is sound, but it recovers 0 of
+the family it was designed for. Do not spend
 a future cycle re-measuring ordered resolution on 10702/15672/6934/9540.
 
 ### 5.2 Still open (needs ws/ibex)

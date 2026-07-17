@@ -108,7 +108,7 @@ context into split mode. Gate: `KM_SPLIT` (default OFF).
 > argument, the focused tests, and the precise Lean obligations (O1–O3).
 >
 > **2026-07-17 update:** measured on the four shared timeout targets
-> (10702/15672/6934/9540) — it is sound + complete-preserving (15/15
+> (10702/15672/6934/9540). It is sound + complete-preserving (15/15
 > byte-identical to the default engine on the finishable local onts) but
 > recovers **0** of the family: 15672/9540 are tiny-bounded-memory search spins
 > (not disjunction-product-bound), and on 10702 ordering only slows, never
