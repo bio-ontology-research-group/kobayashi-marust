@@ -8142,6 +8142,67 @@ mod tests {
         );
     }
 
+    /// The exact ore_ont_9635 shape (`FiniteSemanticStructure ⊑
+    /// FiniteRuleSetModel`), reduced to the interacting fragment: an EXACT
+    /// cardinality forces an r-successor, `Domain(r)=D` makes the subject a D,
+    /// and an unrelated ⊤-level DISJUNCTION plus an ALL-values restriction
+    /// reproduce the phantomization that historically dropped the domain
+    /// consequence (an unrelated open branch phantomizes the forced successor
+    /// edge, and the per-pass requeue cannot re-fire the generating operator).
+    /// With the same-node forced-successor domain re-derivation the entailment
+    /// `A ⊑ D` is now DERIVED (`Some(true)`), not deferred.
+    #[test]
+    fn bridge_ore9635_forced_successor_domain_under_disjunction() {
+        // A = FiniteSemanticStructure, D = FiniteRuleSetModel, r = the exact
+        // role, E behind an unrelated ∀, Q7/Q8 an unrelated ⊤-EM disjunction.
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:E))\n\
+             Declaration(Class(:Q7)) Declaration(Class(:Q8))\n\
+             Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:h))\n\
+             SubClassOf(:A ObjectExactCardinality(1 :r))\n\
+             ObjectPropertyDomain(:r :D)\n\
+             SubClassOf(:A ObjectAllValuesFrom(:h :E))\n\
+             SubClassOf(owl:Thing ObjectUnionOf(:Q7 :Q8))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        assert_eq!(
+            env.try_subsumes("A", "D"),
+            Some(true),
+            "A ⊑ D via Domain(r)=D and A's =1 r forced successor (the ore_ont_9635 pair)"
+        );
+        // NEGATIVE CONTROLS.
+        // (1) The converse must not hold: D carries no forced successor.
+        assert_ne!(env.try_subsumes("D", "A"), Some(true), "D ⊑ A must NOT hold");
+        // (2) The ∀h.E restriction forces nothing (A has no h-successor), so
+        //     the domain rule must not spuriously conclude A ⊑ E.
+        assert_ne!(env.try_subsumes("A", "E"), Some(true), "A ⊑ E must NOT hold");
+    }
+
+    /// Negative control for the forced-successor domain rule WITHOUT the domain
+    /// axiom: the exact cardinality alone (plus the same unrelated disjunction /
+    /// ∀) entails nothing about D, so `A ⊑ D` must NOT be derived. Guards the
+    /// rule against concluding a domain subsumption that the ontology does not
+    /// state.
+    #[test]
+    fn bridge_ore9635_no_domain_axiom_does_not_subsume() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:E))\n\
+             Declaration(Class(:Q7)) Declaration(Class(:Q8))\n\
+             Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:h))\n\
+             SubClassOf(:A ObjectExactCardinality(1 :r))\n\
+             SubClassOf(:A ObjectAllValuesFrom(:h :E))\n\
+             SubClassOf(owl:Thing ObjectUnionOf(:Q7 :Q8))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        assert_ne!(
+            env.try_subsumes("A", "D"),
+            Some(true),
+            "A ⊑ D must NOT hold without a domain axiom on r"
+        );
+    }
+
     #[test]
     fn bridge_exists_recognition_inverse() {
         // ∃R.B ⊑ Q (the definer-recognition / absorption shape, frontend-

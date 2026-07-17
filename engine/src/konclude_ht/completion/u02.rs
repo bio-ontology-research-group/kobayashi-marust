@@ -1235,8 +1235,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         use super::super::model::op;
-        use super::super::process::descriptor::{ConceptProcessDescriptor, ConceptProcessPriority};
+        use super::super::model::RoleId;
+        use super::super::process::descriptor::{
+            ConceptDescriptor, ConceptProcessDescriptor, ConceptProcessPriority,
+        };
         let mut work: Vec<(NodeId, Vec<ConDescId>)> = Vec::new();
+        // FORCED-SUCCESSOR DOMAIN re-derivations (ore_ont_9635): each entry is a
+        // same-node domain/range consequence of a POSITIVE generating operator,
+        // `(node, concept, negated, dep_track_point)`. Collected below, queued
+        // with `work`.
+        let mut domain_work: Vec<(NodeId, ConceptId, bool, TrackPointId)> = Vec::new();
         {
             let ctx = calc_alg_context.process_context();
             let onto = calc_alg_context.ontology_arenas();
@@ -1258,37 +1266,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if label.is_none() {
                     continue;
                 }
-                let entries: Vec<ConDescId> = ctx
-                    .label_set(label)
-                    .concept_des_dep_map
-                    .values()
-                    .filter(|d| {
-                        if d.concept_descriptor.is_none() {
-                            return false;
+                let mut entries: Vec<ConDescId> = Vec::new();
+                for d in ctx.label_set(label).concept_des_dep_map.values() {
+                    if d.concept_descriptor.is_none() {
+                        continue;
+                    }
+                    let cd_id = d.concept_descriptor;
+                    let cd = ctx.con_desc(cd_id);
+                    let con = cd.get_concept();
+                    let oc = onto.concept(con).get_operator_code();
+                    let neg = cd.is_negated();
+                    // idempotent propagation/unfold classes only; a
+                    // NEGATED CCSOME is a ∀ (and vice versa) — classify
+                    // by the EFFECTIVE rule.
+                    let requeue = match oc {
+                        op::CCALL => !neg,
+                        op::CCSOME => neg,
+                        op::CCIMPL | op::CCSUB => true,
+                        op::CCAND => !neg,
+                        op::CCOR => neg,
+                        _ => false,
+                    };
+                    if requeue {
+                        entries.push(cd_id);
+                    }
+                    // FORCED-SUCCESSOR DOMAIN (ore_ont_9635): a POSITIVE
+                    // generating operator (`∃r.C` / `≥n r`, n≥1) guarantees an
+                    // r-successor, so `Domain(s)=D` for any super-role `s ⊒ r`
+                    // (and `Range(s)=D` through an inverse super-role) puts D on
+                    // THIS node — a SAME-NODE deterministic consequence,
+                    // independent of the successor object. The completion
+                    // normally derives it on edge creation
+                    // (`ht_apply_role_domain_range`, add-to-source), but that
+                    // consequence is lost when an unrelated disjunction's
+                    // unrestored advance phantomizes the successor edge and the
+                    // per-pass requeue cannot re-fire the generating operator
+                    // (successor-creating ops are excluded — see the doc above).
+                    // Re-deriving it here as a label-idempotent same-node add
+                    // makes the domain closure survive that loss, which is the
+                    // ore_ont_9635 `FiniteSemanticStructure ⊑ FiniteRuleSetModel`
+                    // completeness gap. Sound: the fact is entailed by the
+                    // generating operator alone, so any resulting clash is
+                    // genuine; it carries the operator's own track point, so
+                    // backjumping stays correct.
+                    if !neg
+                        && onto.concept(con).is_generating_operator(false)
+                        && !(oc == op::CCATLEAST && onto.concept(con).get_parameter() < 1)
+                    {
+                        let r: RoleId = onto.concept(con).get_role();
+                        if r.is_some() {
+                            let tp = cd.dep_track_point;
+                            // self + indirect super-roles, mirroring saturation
+                            // s02 `saturation_indirect_super_roles` (cpp
+                            // 7038-7053): a non-negated super link contributes
+                            // the super-role's DOMAIN, a negated (inverse) super
+                            // link its RANGE.
+                            let mut supers: Vec<NegLink<RoleId>> = vec![NegLink {
+                                target: r,
+                                negated: false,
+                            }];
+                            for link in onto.role(r).get_indirect_super_role_list() {
+                                if !(link.target == r && !link.negated) {
+                                    supers.push(*link);
+                                }
+                            }
+                            for sl in supers {
+                                for dl in
+                                    onto.role(sl.target).get_domain_range_concept_list(sl.negated)
+                                {
+                                    domain_work.push((node_id, dl.target, dl.negated, tp));
+                                }
+                            }
                         }
-                        let cd = ctx.con_desc(d.concept_descriptor);
-                        let oc = onto.concept(cd.get_concept()).get_operator_code();
-                        let neg = cd.is_negated();
-                        // idempotent propagation/unfold classes only; a
-                        // NEGATED CCSOME is a ∀ (and vice versa) — classify
-                        // by the EFFECTIVE rule.
-                        match oc {
-                            op::CCALL => !neg,
-                            op::CCSOME => neg,
-                            op::CCIMPL | op::CCSUB => true,
-                            op::CCAND => !neg,
-                            op::CCOR => neg,
-                            _ => false,
-                        }
-                    })
-                    .map(|d| d.concept_descriptor)
-                    .collect();
+                    }
+                }
                 if !entries.is_empty() {
                     work.push((node_id, entries));
                 }
             }
         }
-        if work.is_empty() {
+        if work.is_empty() && domain_work.is_empty() {
             return;
         }
         let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
@@ -1315,6 +1372,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context.process_context_mut(),
                 );
             }
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(iq)
+                .insert_indiviudal_process_node(m);
+        }
+        // Queue the forced-successor domain/range re-derivations. Each is a
+        // fresh named-concept descriptor added to the source node's label
+        // (idempotent: `add_concept_to_individual` no-ops if already present).
+        for (m, concept, negated, tp) in domain_work {
+            let con_des = {
+                let mut cd_val = ConceptDescriptor::new();
+                cd_val.concept = concept;
+                cd_val.negated = negated;
+                cd_val.dep_track_point = tp;
+                calc_alg_context.process_context_mut().alloc_con_desc(cd_val)
+            };
+            let queue = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(m, true);
+            let mut cpd_val = ConceptProcessDescriptor::new();
+            cpd_val.concept_des = con_des;
+            cpd_val.priority = ConceptProcessPriority::new(DETERMINISTIC_PROCESS_PRIORITY as f64);
+            cpd_val.dep_track_point = tp;
+            let cpd = calc_alg_context
+                .process_context_mut()
+                .alloc_con_proc_desc(cpd_val);
+            ConceptProcessingQueue::insert_concept_process_descriptor(
+                queue,
+                cpd,
+                calc_alg_context.process_context_mut(),
+            );
             calc_alg_context
                 .process_context_mut()
                 .indi_unsorted_proc_queue_mut(iq)
