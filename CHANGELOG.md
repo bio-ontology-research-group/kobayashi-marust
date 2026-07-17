@@ -9,6 +9,15 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Recognise OWL bottom by namespace, not local name (2026-07-17)
+
+The CB adapter and classification readout now recognise only canonical OWL
+vocabulary spellings of `owl:Nothing` (plus `⊥` at readout). A user-defined
+class in another namespace whose local name is `Nothing` remains an ordinary
+named class. This removes a spurious inconsistency and unsatisfiable-class
+classification without changing the calculus. Focused tests cover both the
+adapter and output boundary.
+
 ### Report directly-unsatisfiable named classes (2026-07-17)
 
 A direct `C ⊑ ⊥` axiom marks `C` as a bottom-equivalent concept during CB

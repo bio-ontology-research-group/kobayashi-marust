@@ -135,7 +135,13 @@ impl Builder {
             JAtom::Concept { concept, term } => {
                 let t = self.term(term, varmap)?;
                 let iri = self.sig.concept(concept);
-                if short(concept) == "Nothing" {
+                // Only the canonical OWL vocabulary denotes bottom. A source
+                // class in another namespace may legitimately have the local
+                // name `Nothing`; treating that class as bottom makes ordinary
+                // subclass axioms spuriously unsatisfiable.
+                if concept == "owl:Nothing"
+                    || concept == "http://www.w3.org/2002/07/owl#Nothing"
+                {
                     self.sig.bottom = Some(iri);
                 }
                 Some(Pred::Concept { iri, t })
@@ -780,6 +786,19 @@ mod tests {
         assert!(!supers(&rr, "A").contains("owl:Nothing"));
         assert!(!supers(&rr, "B").contains("owl:Nothing"));
         assert!(supers(&rr, "A").contains("B"));
+    }
+
+    #[test]
+    fn user_class_named_nothing_is_not_bottom() {
+        let rr = run(vec![
+            cl(vec![c("A", vx())], vec![c("Nothing", vx())]),
+            cl(vec![c("B", vx())], vec![c("A", vx())]),
+        ]);
+        assert!(supers(&rr, "A").contains("Nothing"));
+        assert!(supers(&rr, "B").contains("A"));
+        assert!(!supers(&rr, "A").contains("owl:Nothing"));
+        assert!(!supers(&rr, "B").contains("owl:Nothing"));
+        assert!(!rr.inconsistent());
     }
 
     #[test]

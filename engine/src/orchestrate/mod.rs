@@ -27,9 +27,15 @@ use std::path::Path;
 pub use config::Config;
 use config::Mechanism;
 
-/// Local names denoting the bottom concept (⊥). Matches `owl_classify.BOTTOM`.
+/// Canonical spellings of the OWL bottom concept (⊥).
+///
+/// A class in another namespace may legitimately have local name `Nothing`;
+/// the frontend keeps it as an ordinary named class, so bare `Nothing` must
+/// not be interpreted as OWL bottom here.
 fn is_bottom(s: &str) -> bool {
-    s == "Nothing" || s == "owl:Nothing" || s == "\u{22A5}"
+    s == "owl:Nothing"
+        || s == "http://www.w3.org/2002/07/owl#Nothing"
+        || s == "\u{22A5}"
 }
 
 // ---------------------------------------------------------------------------
@@ -946,7 +952,7 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
-    use super::{inproc_engine_out, use_elc_portfolio};
+    use super::{inproc_engine_out, is_bottom, use_elc_portfolio};
     use crate::reasoner::Reasoner;
 
     /// Regression: the in-process CB fast path published a resource-truncated
@@ -997,5 +1003,14 @@ mod tests {
         assert!(!use_elc_portfolio(true, true, false, true));
         assert!(!use_elc_portfolio(true, true, true, false));
         assert!(!use_elc_portfolio(false, true, false, false));
+    }
+
+    #[test]
+    fn bottom_recognition_is_namespace_exact() {
+        assert!(is_bottom("owl:Nothing"));
+        assert!(is_bottom("http://www.w3.org/2002/07/owl#Nothing"));
+        assert!(is_bottom("\u{22A5}"));
+        assert!(!is_bottom("Nothing"));
+        assert!(!is_bottom("http://example.org#Nothing"));
     }
 }
