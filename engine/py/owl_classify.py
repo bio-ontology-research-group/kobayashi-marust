@@ -26,6 +26,11 @@ import frontend  # noqa: E402  (parse/normalise/augment; locates moose itself)
 import el_route  # noqa: E402  (EL++ fast path via moose's completion reasoner)
 
 BOTTOM = {"Nothing", "owl:Nothing", "⊥"}
+# The strict OWL bottom spellings only. Used to filter the bottom concept when
+# it appears as a subsumption SUBJECT: bottom is not a reportable unsatisfiable
+# named class. This deliberately EXCLUDES bare "Nothing" so a namespaced class
+# named `Nothing` (e.g. daml+oil#Nothing, a distinct IRI) stays reported.
+OWL_BOTTOM = {"owl:Nothing", "http://www.w3.org/2002/07/owl#Nothing", "⊥"}
 
 
 def engine_path() -> Path:
@@ -1092,7 +1097,13 @@ def classify(ofn_path: str) -> dict:
     subs, unsat = [], []
     unsat_names = set()
     for a, sups in out["subsumptions"].items():
-        if is_internal(a):
+        # A bottom subject (owl:Nothing / ⊥) is the bottom concept itself, not a
+        # reportable unsatisfiable named class — skip it so the signature is
+        # order-independent regardless of which engine arm produced the map (the
+        # tableau arm lists owl:Nothing in `unsatisfiable`; a parallel context
+        # union can surface it). OWL_BOTTOM is the strict spelling, so a
+        # namespaced class named `Nothing` (a distinct IRI) is still reported.
+        if is_internal(a) or a in OWL_BOTTOM or short(a) in OWL_BOTTOM:
             continue
         sa = short(a)
         fa = full_iri(a)

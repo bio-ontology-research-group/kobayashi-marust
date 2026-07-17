@@ -38,6 +38,66 @@ fn is_bottom(s: &str) -> bool {
         || s == "\u{22A5}"
 }
 
+/// Map the engine's raw `{subject: [supers]}` map into the output
+/// `(subs, unsat, unsat_names)` triple, emitting FULL IRIs (the harness
+/// canonicalises to local names once), filtering generated names, and dropping
+/// self-subsumptions.
+///
+/// The OWL bottom concept (`owl:Nothing` / `⊥`) is never reported as an
+/// unsatisfiable *named class*: as a SUBJECT it is bottom itself, not an
+/// entailed unsatisfiable user class. Filtering it on the subject side makes
+/// the signature independent of which engine arm produced the map. The CB
+/// engine never emits a bottom subject, but the tableau/HT arm lists
+/// `owl:Nothing` in its `unsatisfiable` set (see `race::tableau_to_out`) and a
+/// parallel context union can surface it; whichever arm answered then decided
+/// whether an extra `Nothing` local name appeared — the nondeterministic
+/// ore_ont_13503 defect. A class merely *named* `Nothing` in another namespace
+/// (`daml+oil#Nothing`) is a distinct IRI that `is_bottom` (strict OWL
+/// spelling) does not match, so its genuine unsatisfiability stays reported.
+fn map_engine_subsumptions(
+    subsumptions: &BTreeMap<String, Vec<String>>,
+    named: &HashSet<&str>,
+    iri_map: &BTreeMap<String, String>,
+) -> (Vec<[String; 2]>, Vec<String>, HashSet<String>) {
+    // In the Rust-frontend path the per-ontology short registry is empty, so
+    // `short(n) == n`; is_internal keys directly on the internal name.
+    let is_internal = |n: &str| -> bool {
+        if named.contains(n) {
+            return false;
+        }
+        n.starts_with("Q_")
+            || n.starts_with("__")
+            || n.starts_with("aux_")
+            || n.starts_with("def_")
+            || (n.contains(':') && !is_bottom(n))
+    };
+    let full_iri = |n: &str| -> String { iri_map.get(n).cloned().unwrap_or_else(|| n.to_string()) };
+    let mut subs: Vec<[String; 2]> = Vec::new();
+    let mut unsat: Vec<String> = Vec::new();
+    let mut unsat_names: HashSet<String> = HashSet::new();
+    for (a, sups) in subsumptions {
+        // A bottom subject (owl:Nothing / ⊥) is the bottom concept itself, not a
+        // reportable unsatisfiable named class — skip it so the signature is
+        // order-independent. `is_bottom` is the strict OWL spelling, so a
+        // namespaced class named `Nothing` (a distinct IRI) is still reported.
+        if is_internal(a) || is_bottom(a) {
+            continue;
+        }
+        let fa = full_iri(a);
+        for s in sups {
+            if is_bottom(s) {
+                if !unsat.iter().any(|u| u == &fa) {
+                    unsat.push(fa.clone());
+                    unsat_names.insert(a.clone());
+                }
+            } else if !is_internal(s) && s != a {
+                subs.push([fa.clone(), full_iri(s)]);
+            }
+        }
+    }
+    (subs, unsat, unsat_names)
+}
+
 // ---------------------------------------------------------------------------
 // errors (hand-rolled; no extra dependency)
 // ---------------------------------------------------------------------------
@@ -533,18 +593,6 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     // class is always a query even when its spelling resembles an internal
     // frontend symbol.
     let named_set: HashSet<String> = meta.named.iter().cloned().collect();
-    // In the Rust-frontend path the per-ontology short registry is empty, so
-    // `short(n) == n`; is_internal keys directly on the internal name.
-    let is_internal = |n: &str| -> bool {
-        if named.contains(n) {
-            return false;
-        }
-        n.starts_with("Q_")
-            || n.starts_with("__")
-            || n.starts_with("aux_")
-            || n.starts_with("def_")
-            || (n.contains(':') && !is_bottom(n))
-    };
 
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
@@ -728,32 +776,11 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     }
     // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
     // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
-    let full_iri = |n: &str| -> String {
-        meta.iri_map
-            .get(n)
-            .cloned()
-            .unwrap_or_else(|| n.to_string())
-    };
-    let mut subs: Vec<[String; 2]> = Vec::new();
-    let mut unsat: Vec<String> = Vec::new();
-    let mut unsat_names: HashSet<&str> = HashSet::new();
-    for (a, sups) in &out.subsumptions {
-        if is_internal(a) {
-            continue;
-        }
-        let fa = full_iri(a);
-        for s in sups {
-            if is_bottom(s) {
-                if !unsat.iter().any(|u| u == &fa) {
-                    unsat.push(fa.clone());
-                    unsat_names.insert(a.as_str());
-                }
-            } else if !is_internal(s) && s != a {
-                subs.push([fa.clone(), full_iri(s)]);
-            }
-        }
-    }
-    if unsat_names.iter().any(|n| asserted.contains(*n)) {
+    // The OWL bottom concept is never reported as a named unsatisfiable class
+    // (see `map_engine_subsumptions`), so the signature is order-independent.
+    let (mut subs, mut unsat, unsat_names) =
+        map_engine_subsumptions(&out.subsumptions, &named, &meta.iri_map);
+    if unsat_names.iter().any(|n| asserted.contains(n.as_str())) {
         return Ok(Classification {
             consistent: false,
             subsumptions: vec![],
@@ -1012,5 +1039,81 @@ mod tests {
         assert!(is_bottom("\u{22A5}"));
         assert!(!is_bottom("Nothing"));
         assert!(!is_bottom("http://example.org#Nothing"));
+    }
+
+    // ------------------------------------------------------------------
+    // ore_ont_13503: the nondeterministic extra unsatisfiable `Nothing`.
+    //
+    // The ontology declares `daml+oil#Nothing ≡ ObjectComplementOf(owl:Thing)`,
+    // so that DAML class (local name `Nothing`, a distinct IRI) is genuinely
+    // unsatisfiable and MUST be reported. The OWL bottom concept `owl:Nothing`
+    // must NEVER be reported as a named unsatisfiable class. Whichever engine
+    // arm answered decided whether an `owl:Nothing` subject reached the output
+    // mapper, so the extra `Nothing` local name appeared only sometimes. The
+    // mapper now filters a bottom subject on the subject side, deterministically.
+    // ------------------------------------------------------------------
+    use super::map_engine_subsumptions;
+    use std::collections::{BTreeMap, HashSet};
+
+    const DAML_NOTHING: &str = "http://www.daml.org/2001/03/daml+oil#Nothing";
+
+    /// Build the fixture map + side data for the 13503 shape. When `bottom_leak`
+    /// spells the bottom-concept subject as `bottom_subject`, the raw map carries
+    /// an extra `owl:Nothing`-family subject that a non-CB arm can emit.
+    fn map13503(bottom_subject: Option<&str>) -> (Vec<[String; 2]>, Vec<String>, HashSet<String>) {
+        let mut subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        // The genuine DAML unsatisfiable class (short name `Nothing`).
+        subs.insert("Nothing".into(), vec!["owl:Nothing".into()]);
+        // A normal, satisfiable subsumption pair.
+        subs.insert("A".into(), vec!["B".into()]);
+        if let Some(b) = bottom_subject {
+            // The bottom concept surfaced as a subject (tableau arm / context
+            // union). It must be dropped, not reported as a class.
+            subs.insert(b.into(), vec!["owl:Nothing".into()]);
+        }
+        let mut iri_map: BTreeMap<String, String> = BTreeMap::new();
+        iri_map.insert("Nothing".into(), DAML_NOTHING.into());
+        iri_map.insert("A".into(), "http://ex#A".into());
+        iri_map.insert("B".into(), "http://ex#B".into());
+        let named: HashSet<&str> = ["Nothing", "A", "B"].into_iter().collect();
+        map_engine_subsumptions(&subs, &named, &iri_map)
+    }
+
+    #[test]
+    fn daml_nothing_is_reported_unsatisfiable() {
+        let (subs, unsat, _) = map13503(None);
+        assert_eq!(unsat, vec![DAML_NOTHING.to_string()]);
+        assert_eq!(subs, vec![["http://ex#A".to_string(), "http://ex#B".to_string()]]);
+    }
+
+    #[test]
+    fn owl_bottom_subject_is_never_reported_as_a_class() {
+        // Every OWL-bottom spelling of the leaked subject must be filtered, and
+        // the result must equal the leak-free result exactly (order-independent).
+        let baseline = map13503(None);
+        for leak in [
+            "owl:Nothing",
+            "http://www.w3.org/2002/07/owl#Nothing",
+            "\u{22A5}",
+        ] {
+            let (subs, unsat, names) = map13503(Some(leak));
+            assert_eq!(
+                unsat,
+                vec![DAML_NOTHING.to_string()],
+                "leaked bottom subject {leak:?} must not add an unsatisfiable class"
+            );
+            assert_eq!((subs, unsat, names), baseline.clone());
+        }
+    }
+
+    /// The mapper must be a pure function of its input: repeated calls on the
+    /// same (leaked) map produce byte-identical output. This is the unit-level
+    /// analogue of the "require repeated identical signatures" acceptance rule.
+    #[test]
+    fn map_output_is_deterministic_across_repeats() {
+        let first = map13503(Some("owl:Nothing"));
+        for _ in 0..16 {
+            assert_eq!(map13503(Some("owl:Nothing")), first);
+        }
     }
 }

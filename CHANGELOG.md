@@ -9,6 +9,47 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### ore_ont_13503: the OWL bottom concept is never a reported unsat class (2026-07-17)
+
+Fixed the nondeterministic extra unsatisfiable local name `Nothing` on
+ore_ont_13503 flagged in the `43bce75` sweep note below. The ontology declares
+`daml+oil#Nothing ≡ ObjectComplementOf(owl:Thing)`, so that DAML class (local
+name `Nothing`, a distinct IRI) is genuinely unsatisfiable and must be reported;
+`owl:Nothing` (the bottom concept itself) must never be reported as a named
+unsatisfiable class.
+
+Root cause was in the output mapper, not the calculus. The CB engine is
+deterministic here and never emits a bottom subject (verified over 40 threaded
+runs of the raw `engine` worker: subject `Nothing → owl:Nothing`, never an
+`owl:Nothing` subject). But `owl:Nothing` can reach the mapper as a *subject*
+from another arm — the tableau/HT racer lists `owl:Nothing` in its
+`unsatisfiable` set, which `race::tableau_to_out` turns into an
+`owl:Nothing → owl:Nothing` subject, and a parallel context union can surface it
+too. The mapper filtered generated names and treated a bottom *super* as the
+unsat signal, but did not filter a bottom *subject*: `is_internal("owl:Nothing")`
+is false and `is_bottom` (strict OWL spelling) let it through, so it was emitted
+as an extra unsatisfiable class whose local name is also `Nothing`. Whichever arm
+answered decided whether the extra appeared — an order/race-dependent signature.
+
+The fix filters a bottom subject on the subject side of the mapper, the single
+choke point every arm converges on:
+- `engine/src/orchestrate/mod.rs`: extracted the inline output loop into
+  `map_engine_subsumptions`, which now skips any subject matching `is_bottom`
+  (strict `owl:Nothing` / full owl IRI / `⊥`). A namespaced class named `Nothing`
+  (e.g. `daml+oil#Nothing`) is a distinct IRI that `is_bottom` does not match, so
+  its genuine unsatisfiability is preserved.
+- `engine/py/owl_classify.py` (the sweep's byte-identity oracle): the same guard
+  via a strict `OWL_BOTTOM` set that deliberately excludes bare `Nothing`.
+
+Tests (`orchestrate::tests`): `daml_nothing_is_reported_unsatisfiable`,
+`owl_bottom_subject_is_never_reported_as_a_class` (every bottom spelling of a
+leaked subject is dropped and the result equals the leak-free result), and
+`map_output_is_deterministic_across_repeats`. Ten real `km classify` repeats over
+threads 1–8 on both the full ore_ont_13503.owl and the
+`results/contested-cores/ore_ont_13503_daml_nothing.min.owl` witness produce a
+single signature: `consistent=true`, `UNSAT={Nothing}` (the DAML class). Full lib
+suite 1599 passed, 0 failed, 8 ignored.
+
 ### Complete `43bce75` sweep and rejected 1194/9635 candidates (2026-07-17)
 
 Immutable candidate `43bce75` completed all 592 production tasks on IBEX. The
