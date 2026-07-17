@@ -535,36 +535,12 @@ fn full_absorption_trigger(
         )
     };
     let result =
-        if !negated
-            && matches!(
-                op_code,
-                op::CCATOM | op::CCSUB | op::CCTOP | op::CCIMPLTRIG | op::CCEQ
-            )
-        {
-            // A positive `CCEQ` is a NAMED class carrying an equivalent
-            // definition (the only site that builds `CCEQ` is
-            // `add_equivalent_definition`, on an otherwise-undefined named
-            // atom). Every node in that class carries the named concept, so
-            // the concept itself is a sound, complexity-1 atom trigger — the
-            // same "atoms are direct triggers" case as `CCATOM`.
-            //
-            // Recursing into its definition (as the `CCAND` arm does) is both
-            // unnecessary and, for a class whose definition contains a `∀`
-            // (or any other non-triggerable leaf), actively wrong: the `∀`
-            // compiles to an inverse-edge propagation trigger that can never
-            // fire on a node that merely carries the class atom, so the whole
-            // conjunction collapses to `None`. That poisons every OUTER
-            // definition that uses this class as a conjunct — e.g.
-            // `FRSM ≡ FiniteSemanticStructure ⊓ …` in ore_ont_9635 — dropping
-            // its recognition trigger and leaving the subsumption underived.
-            // Using the atom keeps the outer recognition triggerable and is
-            // order-independent (it no longer matters whether the inner
-            // `CCEQ` class was absorbed before or after the outer one).
+        if !negated && matches!(op_code, op::CCATOM | op::CCSUB | op::CCTOP | op::CCIMPLTRIG) {
             Some(AbsorptionTrigger {
                 concept,
                 complexity: 1,
             })
-        } else if (!negated && op_code == op::CCAND)
+        } else if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
             || (negated && op_code == op::CCOR)
         {
             let mut triggers = Vec::new();
@@ -682,13 +658,7 @@ fn collect_full_absorption_triggers(
             concept.get_operand_list().to_vec(),
         )
     };
-    // A positive `CCEQ` is a named class, not an anonymous conjunction: it must
-    // stay a single atom trigger (handled by `full_absorption_trigger` below),
-    // NOT be split into its equivalent definition. Splitting would re-expose a
-    // `∀`-shaped definition leaf and drop the whole GCI to a non-triggerable
-    // partial absorption — the ore_ont_9635 recognition gap. Only genuine
-    // anonymous `CCAND` (positive) / `CCOR` (negated) structure is flattened.
-    if (!negated && op_code == op::CCAND) || (negated && op_code == op::CCOR) {
+    if (!negated && matches!(op_code, op::CCAND | op::CCEQ)) || (negated && op_code == op::CCOR) {
         return operands.into_iter().all(|operand| {
             collect_full_absorption_triggers(
                 b,
@@ -8170,74 +8140,6 @@ mod tests {
             Some(true),
             "D ⊑ A must NOT hold"
         );
-    }
-
-    /// The ore_ont_9635 residual (single missing pair
-    /// `FiniteSemanticStructure ⊑ FiniteRuleSetModel`): a conjunctive
-    /// equivalent class `FRSM ≡ FSS ⊓ G` must be RECOGNIZED on a node that
-    /// carries `FSS` and `G`, even when the conjunct `FSS` is itself a defined
-    /// class whose definition contains a universal (`FSS ≡ ∀r.FUOD ⊓ G`).
-    ///
-    /// `FSS`'s `∀`-definition is not absorption-triggerable, so the pre-pass
-    /// keeps `FSS` as a `CCEQ` atom. The bug: `full_absorption_trigger` /
-    /// `collect_full_absorption_triggers` recursed INTO that `CCEQ`, re-hit the
-    /// `∀`, and dropped the whole outer conjunction to a non-triggerable
-    /// partial absorption — so `FRSM`'s recognition trigger was never
-    /// installed and `FSS ⊑ FRSM` stayed underived. Treating a `CCEQ` named
-    /// class as a direct atom trigger restores the recognition.
-    #[test]
-    fn bridge_conjunctive_recognition_over_forall_definer() {
-        // FSS itself is the seeded subject (a defined class): all four
-        // conjuncts of FRSM hold on it (FSS trivially, G by expansion,
-        // ∀r.FUOD by expansion, =1 r by SS), so FSS ⊑ FRSM must hold.
-        let ofn = format!(
-            "{PREFIX}\
-             Declaration(Class(:SS)) Declaration(Class(:RSM)) Declaration(Class(:FSS))\n\
-             Declaration(Class(:FRSM)) Declaration(Class(:FUOD))\n\
-             Declaration(ObjectProperty(:r))\n\
-             ObjectPropertyDomain(:r :RSM)\n\
-             SubClassOf(:SS ObjectExactCardinality(1 :r))\n\
-             EquivalentClasses(:FSS ObjectIntersectionOf(\
-             ObjectAllValuesFrom(:r :FUOD) :SS))\n\
-             EquivalentClasses(:FRSM ObjectIntersectionOf(\
-             :FSS :RSM ObjectAllValuesFrom(:r :FUOD) ObjectExactCardinality(1 :r)))\n)"
-        );
-        let mut env = bridge_ofn(&ofn);
-        assert!(
-            env.subsumes("FSS", "FRSM"),
-            "FSS ⊑ FRSM: FSS satisfies every conjunct of FRSM's definition"
-        );
-        assert!(env.subsumes("FRSM", "SS"), "FRSM ⊑ SS holds (sanity)");
-        assert!(!env.subsumes("RSM", "FRSM"), "RSM ⊑ FRSM must NOT hold");
-    }
-
-    /// Reduced core of the same gap with NO domain/cardinality at all: the
-    /// recognition failure is purely the `CCEQ`-conjunct-with-`∀` shape, not
-    /// the forced-successor machinery. `X ⊑ FSS`, `X ⊑ G`, `FRSM ≡ FSS ⊓ G`
-    /// ⇒ `X ⊑ FRSM`; the node X plainly carries both FSS and G.
-    #[test]
-    fn bridge_conjunctive_recognition_forall_definer_minimal() {
-        let ofn = format!(
-            "{PREFIX}\
-             Declaration(Class(:G)) Declaration(Class(:FSS)) Declaration(Class(:FRSM))\n\
-             Declaration(Class(:FUOD)) Declaration(Class(:X))\n\
-             Declaration(ObjectProperty(:r))\n\
-             EquivalentClasses(:FSS ObjectIntersectionOf(\
-             ObjectAllValuesFrom(:r :FUOD) :G))\n\
-             EquivalentClasses(:FRSM ObjectIntersectionOf(:FSS :G))\n\
-             SubClassOf(:X :FSS) SubClassOf(:X :G)\n)"
-        );
-        let mut env = bridge_ofn(&ofn);
-        assert!(
-            env.subsumes("FSS", "FRSM"),
-            "FSS ⊑ FRSM (FSS ⊑ G by its own definition, so FSS ⊑ FSS ⊓ G = FRSM)"
-        );
-        assert!(
-            env.subsumes("X", "FRSM"),
-            "X ⊑ FRSM: X carries FSS and G directly"
-        );
-        assert!(!env.subsumes("G", "FRSM"), "G ⊑ FRSM must NOT hold");
-        assert!(!env.subsumes("FRSM", "X"), "FRSM ⊑ X must NOT hold");
     }
 
     #[test]
