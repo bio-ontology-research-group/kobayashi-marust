@@ -1,1 +1,31 @@
-{"completed_unadjudicated": 1, "exact_ontologies": 576, "ontologies": 592, "rows": 10793, "unresolved": ["ore_ont_1194.owl", "ore_ont_2669.owl", "ore_ont_3215.owl", "ore_ont_3524.owl", "ore_ont_6934.owl", "ore_ont_7499.owl", "ore_ont_9540.owl", "ore_ont_9635.owl", "ore_ont_10621.owl", "ore_ont_10702.owl", "ore_ont_10860.owl", "ore_ont_11745.owl", "ore_ont_15516.owl", "ore_ont_15672.owl", "ore_ont_15703.owl"]}
+{
+  "completed_unadjudicated": 1,
+  "exact_ontologies": 576,
+  "ontologies": 592,
+  "production_route_exact": 576,
+  "production_route_rows": 577,
+  "production_rows_added": 0,
+  "production_rows_replaced": 0,
+  "rows": 11370,
+  "union_min_peak_avg_mb": 291.9666840277778,
+  "union_min_peak_median_mb": 26.955,
+  "union_min_wall_avg_s": 3.3330493055555555,
+  "union_min_wall_median_s": 0.19245,
+  "unresolved": [
+    "ore_ont_1194.owl",
+    "ore_ont_2669.owl",
+    "ore_ont_3215.owl",
+    "ore_ont_3524.owl",
+    "ore_ont_6934.owl",
+    "ore_ont_7499.owl",
+    "ore_ont_9540.owl",
+    "ore_ont_9635.owl",
+    "ore_ont_10621.owl",
+    "ore_ont_10702.owl",
+    "ore_ont_10860.owl",
+    "ore_ont_11745.owl",
+    "ore_ont_15516.owl",
+    "ore_ont_15672.owl",
+    "ore_ont_15703.owl"
+  ]
+}
