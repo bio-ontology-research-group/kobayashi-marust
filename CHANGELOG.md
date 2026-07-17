@@ -9,6 +9,36 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Fix false `unsound` verdict on ore_ont_11745 (empty local-name gold rows) (2026-07-17)
+
+`ore_ont_11745`'s lone remaining `unsound` verdict was a benchmark-harness
+artifact, not a reasoner error. KM's classification of the ontology is exact:
+under both the authoritative `ore_aggregate.load_sig` and `ore_canon`, KM's
+output equals the Konclude gold signature (438277 subsumptions, 1592
+unsatisfiable classes, consistent), matching Konclude, ELK, and HermiT.
+
+Root cause: the ontology has a class whose IRI ends in `#`,
+`<http://purl.org/obo/owl/UniProtKB#>`, whose canonical local name is the empty
+string. Its subsumption `UniProtKB# ⊑ PRO_000003147` is written to the gold
+`.sig.gz` (by `ore_runone.py`) as the tab-delimited row `\tPRO_000003147` — an
+empty left field. The routing-matrix runners' `load_gold`
+(`bench_one_matrix_frozen.py`, `bench_one.py`) parsed rows with `line.strip()`
+(which deletes the leading tab) followed by whitespace `line.split()` (which
+discards empty fields), so this one pair vanished from the parsed gold while
+every reasoner's own canonicalized output still contained it. Result: a phantom
+`extra=1` and a false `unsound` verdict for KM, Konclude, ELK, and HermiT alike
+(observed identically across all four in matrix `c229366f`).
+
+Fix: parse the signature faithfully as tab-delimited rows (`line.split("\t", 1)`
+after `rstrip("\n")`, guarded by `"\t" in line`), exactly as the authoritative
+`ore_aggregate.load_sig` and `results/router-sweep-harness/fast_soundness.py`
+already do. General (fixes any ontology with a `#`/`/`-terminated class IRI),
+alters no gold, special-cases no ontology, and never drops a genuine entailment.
+Regression test: `results/benchmarks/2026-07-15-routing/
+test_load_gold_empty_localname.py`. The same latent `line.split()` pattern
+survives in the archived `2026-07-14-9663-closure` analysis scripts, which do
+not produce verdicts and are left untouched.
+
 ### Skip unchanged role-successor cross scans (2026-07-17)
 
 The CB engine now runs its semi-naive successor×reach cross-step only after

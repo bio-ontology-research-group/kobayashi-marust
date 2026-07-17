@@ -83,7 +83,7 @@ def load_gold(path):
         consistent = first == "1"
         in_unsat = False
         for line in handle:
-            line = line.strip()
+            line = line.rstrip("\n")
             if line == "#UNSAT":
                 in_unsat = True
                 continue
@@ -92,10 +92,18 @@ def load_gold(path):
             if in_unsat:
                 unsat.add(local_name(line))
                 continue
-            fields = line.split()
-            if len(fields) != 2:
+            # Signature rows are tab-delimited `left\tright` (ore_runone.py's
+            # `"\t".join(...)` writer; the same split `ore_aggregate.load_sig`
+            # uses). Split on the tab ONLY and keep the leading field: a class
+            # whose IRI ends in `#`/`/` has an empty local name, so its row is
+            # `\tRIGHT`. The old `line.strip()` + whitespace `line.split()`
+            # dropped that field, silently removing the pair from gold and
+            # scoring a phantom `extra` for EVERY reasoner (ore_ont_11745's
+            # `<http://purl.org/obo/owl/UniProtKB#> ⊑ PRO_000003147`, which
+            # Konclude, ELK, HermiT, and KM all derive and gold contains).
+            if "\t" not in line:
                 continue
-            left, right = map(local_name, fields)
+            left, right = map(local_name, line.split("\t", 1))
             if left != right and right not in ("Thing", "owlThing", "owlNothing"):
                 pairs.add((left, right))
     return consistent, pairs, unsat
