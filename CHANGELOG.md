@@ -9,6 +9,18 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Skip unchanged role-successor cross scans (2026-07-17)
+
+The CB engine now runs its semi-naive successor×reach cross-step only after
+the reach set grows or a successor edge is inserted or re-targeted. Unrelated
+context churn previously rebuilt the successor vector and scanned every edge
+even though every edge high-water mark already equalled the reach length. The
+guard changes only scheduling: it suppresses scans that can emit no messages,
+so the derived fixpoint is unchanged and no Lean re-certification is needed. A
+differential schedule test compares the gated and unconditional drivers across
+edge growth, reach growth, re-targeting, unchanged re-insertion, and idle
+rounds; both emit the same ordered message triples and final pushed set.
+
 ### Recognise OWL bottom by namespace, not local name (2026-07-17)
 
 The CB adapter and classification readout now recognise only canonical OWL

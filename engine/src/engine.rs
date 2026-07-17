@@ -1155,6 +1155,22 @@ struct Context {
     /// avoiding the per-`propagate` full `successors × reach` rescan while
     /// emitting an identical `Msg::Succ` set and order (see `rsucc_cross_step`).
     rsucc_pair_reach_hwm: HashMap<(Term, usize), usize>,
+    /// Semi-naive r-Succ cross-product driver gate.  `rsucc_offered` is the
+    /// `rsucc_reach.len()` at the last time the `successors × reach` cross-step
+    /// ran; `rsucc_edges_grew` records that a successor edge was added or
+    /// re-targeted (a new `(f, target)` pair) since that run.  The cross-step can
+    /// fire a *new* triple only when reach grew (`rsucc_reach.len() >
+    /// rsucc_offered`) or an edge changed (`rsucc_edges_grew`); otherwise every
+    /// current edge already has `hwm == rsucc_reach.len()` (advanced by the prior
+    /// run) so the sweep is provably empty.  Skipping it then avoids the
+    /// O(|successors|) hwm sweep and the transient `successors` Vec allocation on
+    /// the (common) `propagate` rounds where the context was re-dirtied by
+    /// unrelated predecessor / Pred churn.  `successors` is insert-only (never
+    /// pruned), so a set flag can only over-approximate genuine growth — never
+    /// miss it — keeping the emitted `Msg::Succ` set/order (hence the fixpoint)
+    /// identical to the unconditional driver.
+    rsucc_offered: usize,
+    rsucc_edges_grew: bool,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -1219,6 +1235,8 @@ impl Context {
             rsucc_hwm: 0,
             pushed_rsucc: HashSet::new(),
             rsucc_pair_reach_hwm: HashMap::new(),
+            rsucc_offered: 0,
+            rsucc_edges_grew: false,
             seeded_inds: HashSet::new(),
             ground_body_index: HashMap::new(),
             bridge_index: HashMap::new(),
@@ -3820,7 +3838,11 @@ impl Engine {
                 // forward map: f -> x, x -> y
                 let psigma = p.apply(&|v| forwards(f, v));
                 self.contexts[id].pushed_succ.insert(p);
-                self.contexts[id].successors.insert(f, target);
+                if self.contexts[id].successors.insert(f, target) != Some(target) {
+                    // New / re-targeted edge: the r-Succ cross-step must offer it
+                    // the reach set (see `rsucc_edges_grew`).
+                    self.contexts[id].rsucc_edges_grew = true;
+                }
                 self.msgs.push_back(Msg::Succ {
                     from: id,
                     f,
@@ -3920,6 +3942,9 @@ impl Engine {
                 let target = self.central_successor_for_core(core, seed_src);
                 let prev = self.contexts[id].successors.insert(f, target);
                 if prev != Some(target) {
+                    // New / re-targeted edge: the r-Succ cross-step must offer it
+                    // the reach set (see `rsucc_edges_grew`).
+                    self.contexts[id].rsucc_edges_grew = true;
                     // New target (first push or fact-core growth): send the full
                     // set so the new context's edge records every pushed
                     // predicate.
@@ -3981,35 +4006,57 @@ impl Engine {
                 fold_reach_unique(&mut ctx.rsucc_reach, &mut ctx.rsucc_reach_set, new_reach);
                 ctx.rsucc_hwm = ctx.rsucc_pool.len();
             }
-            let successors: Vec<(Term, usize)> = self.contexts[id]
-                .successors
-                .iter()
-                .map(|(&f, &t)| (f, t))
-                .collect();
-            // Semi-naive cross-product: for each successor edge scan only the
-            // reach preds it has not yet been offered (`reach[hwm(edge)..]`),
-            // still gated by `pushed_rsucc`.  `rsucc_reach` only grew in the scan
-            // above (not in this loop) so its length is stable; `rsucc_cross_step`
-            // reproduces the former full `successors × reach` rescan's fired
-            // triples and order exactly (see its doc-comment).  Disjoint field
-            // borrows let it read `rsucc_reach` while mutating the two maps.
-            let fired = {
-                let ctx = &mut self.contexts[id];
-                rsucc_cross_step(
-                    &successors,
-                    &ctx.rsucc_reach,
-                    &mut ctx.rsucc_pair_reach_hwm,
-                    &mut ctx.pushed_rsucc,
-                )
-            };
-            for (f, target, p) in fired {
-                let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
-                self.msgs.push_back(Msg::Succ {
-                    from: id,
-                    f,
-                    p: psigma,
-                    target,
-                });
+            // Semi-naive cross-product DRIVER gate: run the `successors × reach`
+            // sweep only on a genuine delta — reach grew, or a successor edge was
+            // added/re-targeted since the last sweep.  When neither holds, every
+            // current edge already has `hwm == rsucc_reach.len()` (the prior sweep
+            // advanced it), so `rsucc_cross_step` would fire nothing; skipping it
+            // drops only the O(|successors|) hwm scan + the `successors` Vec
+            // allocation on the (common) rounds a context is re-dirtied by
+            // unrelated predecessor / Pred churn.  Because `successors` is
+            // insert-only, `rsucc_edges_grew` can only over-approximate growth, so
+            // the guard never skips a round that would fire — the emitted
+            // `Msg::Succ` set/order (hence the fixpoint) is identical to running
+            // the sweep unconditionally.
+            let reach_len = self.contexts[id].rsucc_reach.len();
+            let run =
+                self.contexts[id].rsucc_edges_grew || reach_len > self.contexts[id].rsucc_offered;
+            if run {
+                let successors: Vec<(Term, usize)> = self.contexts[id]
+                    .successors
+                    .iter()
+                    .map(|(&f, &t)| (f, t))
+                    .collect();
+                // Semi-naive cross-product: for each successor edge scan only the
+                // reach preds it has not yet been offered (`reach[hwm(edge)..]`),
+                // still gated by `pushed_rsucc`.  `rsucc_reach` only grew in the
+                // scan above (not in this loop) so its length is stable;
+                // `rsucc_cross_step` reproduces the former full `successors ×
+                // reach` rescan's fired triples and order exactly (see its
+                // doc-comment).  Disjoint field borrows let it read `rsucc_reach`
+                // while mutating the two maps.
+                let fired = {
+                    let ctx = &mut self.contexts[id];
+                    rsucc_cross_step(
+                        &successors,
+                        &ctx.rsucc_reach,
+                        &mut ctx.rsucc_pair_reach_hwm,
+                        &mut ctx.pushed_rsucc,
+                    )
+                };
+                // Every current edge is now offered `rsucc_reach[..reach_len]`;
+                // record it so the next round can skip an unchanged sweep.
+                self.contexts[id].rsucc_offered = reach_len;
+                self.contexts[id].rsucc_edges_grew = false;
+                for (f, target, p) in fired {
+                    let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
+                    self.msgs.push_back(Msg::Succ {
+                        from: id,
+                        f,
+                        p: psigma,
+                        target,
+                    });
+                }
             }
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
@@ -6878,5 +6925,200 @@ mod rsucc_rolechain_tests {
             full_fired.contains(&(fa, ta, r1)) && full_fired.contains(&(fa, ta, r2)),
             "restored edge should receive reach preds appended while it was absent"
         );
+    }
+
+    // A per-round schedule for the driver-gate tests: `inserts` are the
+    // successor edges `propagate` records this round (mirroring the engine's
+    // per-round `successors.insert` calls, including re-targets), and
+    // `new_reach` are the reach preds appended to the accumulator this round.
+    // A round with both empty is a pure churn round (the context was re-dirtied
+    // by unrelated predecessor / Pred work) — exactly what the gate must skip.
+    type GateRound = (Vec<(Term, usize)>, Vec<Pred>);
+
+    /// Replay `schedule` with the DRIVER GATE (run the cross-step only when reach
+    /// grew or an edge changed) and, independently, UNCONDITIONALLY (run every
+    /// round). Returns `(gated_fired, gated_pushed, uncond_fired, uncond_pushed,
+    /// gated_runs, total_rounds)`. `successors` is modelled insert-only + retarget
+    /// (never pruned), exactly as the engine maintains it, so this certifies the
+    /// gate on the real state evolution.
+    fn replay_driver_gate(
+        schedule: &[GateRound],
+    ) -> (
+        Vec<(Term, usize, Pred)>,
+        HashSet<(Term, usize, Pred)>,
+        Vec<(Term, usize, Pred)>,
+        HashSet<(Term, usize, Pred)>,
+        usize,
+        usize,
+    ) {
+        // Shared successor-map evolution (both paths see identical edges).
+        let mut succ_map: HashMap<Term, usize> = HashMap::new();
+        // Gated path state.
+        let mut g_reach: Vec<Pred> = Vec::new();
+        let mut g_seen: HashSet<Pred> = HashSet::new();
+        let mut g_hwm: HashMap<(Term, usize), usize> = HashMap::new();
+        let mut g_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut g_fired: Vec<(Term, usize, Pred)> = Vec::new();
+        let mut edges_grew = false;
+        let mut offered: usize = 0;
+        let mut gated_runs = 0usize;
+        // Unconditional (reference) path state.
+        let mut u_reach: Vec<Pred> = Vec::new();
+        let mut u_seen: HashSet<Pred> = HashSet::new();
+        let mut u_hwm: HashMap<(Term, usize), usize> = HashMap::new();
+        let mut u_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut u_fired: Vec<(Term, usize, Pred)> = Vec::new();
+
+        for (inserts, new_reach) in schedule {
+            // Apply this round's successor inserts (identically to both paths);
+            // an insert whose mapping changes flags the gate (engine: the
+            // `insert(f,target) != Some(target)` check at the two Succ sites).
+            for &(f, t) in inserts {
+                if succ_map.insert(f, t) != Some(t) {
+                    edges_grew = true;
+                }
+            }
+            // Grow the append-only reach accumulator (fold-unique, first wins) —
+            // identical growth for both paths.
+            fold_reach_unique(&mut g_reach, &mut g_seen, new_reach.clone());
+            fold_reach_unique(&mut u_reach, &mut u_seen, new_reach.clone());
+            let successors: Vec<(Term, usize)> = succ_map.iter().map(|(&f, &t)| (f, t)).collect();
+
+            // Reference: cross-step every round.
+            u_fired.extend(rsucc_cross_step(
+                &successors,
+                &u_reach,
+                &mut u_hwm,
+                &mut u_pushed,
+            ));
+
+            // Gated: cross-step only on a genuine delta.
+            let reach_len = g_reach.len();
+            if edges_grew || reach_len > offered {
+                g_fired.extend(rsucc_cross_step(
+                    &successors,
+                    &g_reach,
+                    &mut g_hwm,
+                    &mut g_pushed,
+                ));
+                offered = reach_len;
+                edges_grew = false;
+                gated_runs += 1;
+            }
+        }
+        (
+            g_fired,
+            g_pushed,
+            u_fired,
+            u_pushed,
+            gated_runs,
+            schedule.len(),
+        )
+    }
+
+    // ---- Test 7 (crux of THIS optimization): the driver GATE (run the
+    //      `successors × reach` cross-step only on a genuine reach/edge delta)
+    //      produces the identical cumulative fired sequence and `pushed_rsucc`
+    //      set as running the cross-step unconditionally every round — while
+    //      actually skipping the pure-churn rounds.  Since `successors` is
+    //      insert-only, the gate can only over-approximate growth, so on a
+    //      skipped round the unconditional path also fires nothing; equal fired
+    //      sequences ⇒ identical `Msg::Succ` emission ⇒ identical fixpoint. ----
+    #[test]
+    fn rsucc_driver_gate_equals_unconditional() {
+        let mut sig = Sig::default();
+        let r0 = cx(sig.concept("__trans__R__A"), X);
+        let r1 = cx(sig.concept("__trans__R__B"), X);
+        let r2 = cx(sig.concept("__chain__S__A"), X);
+        let (fa, fb, fc) = (fterm(1), fterm(2), fterm(3));
+        let (ta, tb, tb2, tc) = (10usize, 20, 21, 30);
+
+        // Interleaves every delta shape with pure-churn rounds the gate must skip:
+        let schedule: Vec<GateRound> = vec![
+            (vec![(fa, ta)], vec![r0]),   // edge + reach  -> run
+            (vec![], vec![]),             // churn         -> SKIP
+            (vec![], vec![r1]),           // reach only    -> run
+            (vec![], vec![]),             // churn         -> SKIP
+            (vec![(fb, tb)], vec![]),     // edge only     -> run
+            (vec![], vec![]),             // churn         -> SKIP
+            (vec![(fb, tb2)], vec![]),    // re-target fb  -> run (new (fb,tb2) pair)
+            (vec![(fc, tc)], vec![r2]),   // edge + reach  -> run
+            (vec![(fa, ta)], vec![]),     // re-insert unchanged edge -> no delta -> SKIP
+            (vec![], vec![]),             // churn         -> SKIP
+        ];
+
+        let (g_fired, g_pushed, u_fired, u_pushed, gated_runs, rounds) =
+            replay_driver_gate(&schedule);
+
+        assert_eq!(
+            g_fired, u_fired,
+            "driver gate fired a different (triple, order) sequence than the unconditional driver"
+        );
+        assert_eq!(
+            g_pushed, u_pushed,
+            "driver gate built a different pushed_rsucc set than the unconditional driver"
+        );
+        // The gate must genuinely skip: 5 delta rounds run, 5 churn/no-op skip.
+        assert_eq!(
+            gated_runs, 5,
+            "gate should run only the 5 genuine-delta rounds"
+        );
+        assert_eq!(rounds, 10);
+        // A re-inserted unchanged edge (round 9) is NOT a delta and must be skipped.
+        // (Covered by gated_runs == 5, but noted here for intent.)
+    }
+
+    // ---- Test 8 (microbenchmark, #[ignore]): quantify the sweep the gate
+    //      avoids.  With many successor edges and mostly-churn propagate rounds
+    //      (the steady state on transitive / role-chain contexts), the
+    //      unconditional driver rebuilds the `successors` Vec and sweeps every
+    //      edge's hwm each round; the gate collapses that to O(1) per churn
+    //      round.  Prints the invocation counts and wall times.  Run with:
+    //        cargo test --release -- --ignored --nocapture rsucc_driver_gate_micro
+    #[test]
+    #[ignore]
+    fn rsucc_driver_gate_microbench() {
+        let mut sig = Sig::default();
+        let reach_preds: Vec<Pred> = (0..8)
+            .map(|i| cx(sig.concept(&format!("__trans__R__C{i}")), X))
+            .collect();
+        let n_edges = 4_000usize; // successor edges on the context
+        let churn_per_reach = 200usize; // churn rounds between reach-growth events
+        // Build a schedule: seed all edges in round 0, then alternate a single
+        // reach-growth round with a long run of pure-churn rounds.
+        let mut schedule: Vec<GateRound> = Vec::new();
+        let all_edges: Vec<(Term, usize)> =
+            (0..n_edges).map(|i| (fterm(i as i32 + 1), i)).collect();
+        schedule.push((all_edges, vec![reach_preds[0]]));
+        for rp in reach_preds.iter().skip(1) {
+            for _ in 0..churn_per_reach {
+                schedule.push((vec![], vec![])); // pure churn: gate skips
+            }
+            schedule.push((vec![], vec![*rp])); // reach grows: gate runs
+        }
+
+        let t0 = std::time::Instant::now();
+        let (g_fired, g_pushed, u_fired, u_pushed, gated_runs, rounds) =
+            replay_driver_gate(&schedule);
+        let dt = t0.elapsed();
+
+        assert_eq!(g_fired, u_fired, "microbench: gate diverged from unconditional");
+        assert_eq!(g_pushed, u_pushed, "microbench: gate pushed set diverged");
+        // Both paths ran inside `replay_driver_gate`; report the sweep counts.
+        // Unconditional cross-step runs = every round; gated runs = delta rounds.
+        let uncond_sweeps = rounds;
+        let saved = uncond_sweeps - gated_runs;
+        eprintln!(
+            "rsucc_driver_gate_microbench: edges={n_edges} rounds={rounds} \
+             uncond_cross_step_runs={uncond_sweeps} gated_cross_step_runs={gated_runs} \
+             skipped={saved} ({:.1}% of rounds) \
+             uncond_edge_sweeps={} gated_edge_sweeps={} \
+             replay(both paths)={:?}",
+            100.0 * saved as f64 / uncond_sweeps as f64,
+            uncond_sweeps * n_edges,
+            gated_runs * n_edges,
+            dt,
+        );
+        assert!(saved > 0, "gate should skip the churn rounds");
     }
 }
