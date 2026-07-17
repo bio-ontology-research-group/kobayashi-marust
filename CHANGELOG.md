@@ -9,6 +9,44 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Complete `43bce75` sweep and rejected 1194/9635 candidates (2026-07-17)
+
+Immutable candidate `43bce75` completed all 592 production tasks on IBEX. The
+final evidence set contains **582 ok, 6 timeout, 3 memout, and 1 unsupported**;
+against the retained Konclude signatures it contains **576 exact matches, 2
+incomplete, 2 consistency mismatches, 1 unsound, and 1 no-gold** among the
+successful runs. This has the same terminal-status distribution as `a639ab5`.
+The only verdict change is ore_ont_11745 (`unsound` to exact), caused by the
+correct tab-delimited gold loader rather than an engine change. The two worker
+rows lost to whole-step OOM, ore_ont_3524 and ore_ont_15703, were finalized only
+after explicit Slurm `OUT_OF_MEMORY` evidence; all 592 rows carry one binary SHA
+and one runner SHA.
+
+Ore_ont_13503 is not stable enough for a single-run correctness claim: the same
+immutable `43bce75` binary matched gold in the focused panel but emitted one
+extra unsatisfiable local name (`Nothing`) in the complete sweep; `feb0cc6`
+reproduced the latter signature. Treat this as a nondeterministic correctness
+defect and require repeated identical signatures in future acceptance panels.
+
+Two follow-up implementation candidates were rejected after real-ontology
+tests. Sharing seeded-closure head indexes across contexts passed the complete
+library suite (1,588 passed, 8 ignored) but ore_ont_1194 still exceeded the 20
+GiB cap (20,483 MiB, 89.5 s). Re-deriving forced-successor role-domain facts
+during Ht re-drive passed four focused release tests but ore_ont_9635 still
+missed `FiniteSemanticStructure ⊑ FiniteRuleSetModel`. Both changes were
+reverted; their commits remain in history as diagnostic starting points.
+
+The sweep also exposed a scorer resource bug on ore_ont_10689 (14.8 million
+canonical subsumptions): the runner parsed KM's JSON taxonomy twice and then
+materialized a second complete gold set after reasoner timing ended. Scoring
+alone took the Slurm task to 6:40 and about 13.7 GiB. The content-addressed
+runner now keeps only the canonical summary and streams sorted gold rows,
+computing extras as `output_count - matched_count`. Synthetic differential
+cases match the original two-set comparator, including empty local names,
+UNSAT differences, and consistency differences. A real ore_ont_9635 run also
+validated the corrected immutable-set path. This changes benchmark
+post-processing only, not KM output or measured reasoner time/memory.
+
 ### DL-safe rule fragment: SameIndividual fires; precise 3-tier contract (2026-07-17)
 
 Audited the full DL-safe rule contract against the ORE 10860 rule set (the 17
