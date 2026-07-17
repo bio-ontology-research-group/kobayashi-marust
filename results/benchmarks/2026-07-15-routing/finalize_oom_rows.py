@@ -22,12 +22,18 @@ def main():
     ap.add_argument("--root", required=True)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--binary", required=True)
+    ap.add_argument(
+        "--runner",
+        required=True,
+        help="exact benchmark runner used by the worker array",
+    )
     ap.add_argument("--worker-job", required=True)
     ap.add_argument("--indices", required=True, help="comma-separated array indices")
     ap.add_argument("--memcap-mb", type=int, default=20480)
     args = ap.parse_args()
 
     expected_sha = sha256(args.binary)
+    runner_sha = sha256(args.runner)
     onts = [line.strip() for line in open(os.path.join(args.root, "onts.txt")) if line.strip()]
     result_dir = os.path.join(args.root, "production-sweeps", args.tag, "results")
     os.makedirs(result_dir, exist_ok=True)
@@ -53,6 +59,7 @@ def main():
             "wall_s": None,
             "peak_mb": args.memcap_mb,
             "binary_sha256": expected_sha,
+            "runner_sha256": runner_sha,
             "requested_route": "production_all",
             "solved": False,
             "checkpointed": False,
