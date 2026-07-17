@@ -9,6 +9,19 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Preserve named-class triggers through equivalent definitions (2026-07-17)
+
+The Konclude bridge's full-absorption pass now treats a positive `CCEQ` named
+class as an atomic trigger when that class occurs in another conjunction. The
+old traversal reopened the named class's equivalent definition; if that
+definition contained a universal restriction, trigger construction failed and
+the outer recognition rule was silently dropped. This is the one-pair
+completeness gap on ORE 9635 (`FiniteSemanticStructure ⊑
+FiniteRuleSetModel`). Two focused regressions cover the full cardinality/domain
+shape and a reduced universal-definition core. Treating membership in the
+named class as the trigger is sound and order-independent. This changes the
+Konclude-port absorption implementation, not the Lean-certified CB calculus.
+
 ### Keep the strict sweep comparator runnable on IBEX (2026-07-17)
 
 `compare_production_sweeps.py` now computes arithmetic means with `sum/len`
