@@ -1048,6 +1048,39 @@ fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap
 
 // ------------------------------- contexts ----------------------------------
 
+/// r-Succ (KM_RSUCC) per-context propagation state, boxed off `Context` so it
+/// costs one pointer instead of ~200 bytes of inline collection headers on the
+/// contexts that never use it.  The whole group is inert unless `sig.rsucc` is
+/// set (KM_RSUCC, default OFF, unset in the production sweep), so on every
+/// production ontology the box stays `None` for every context.  Storing it
+/// behind `Option<Box<..>>` therefore shrinks `size_of::<Context>()` for the
+/// high-context-count blow-up ontologies (where `contexts: Vec<Context>` is a
+/// primary peak-memory driver) without changing any derived clause, rule,
+/// ordering, or message: the fields hold exactly the same values, just reached
+/// through the box.  Allocated lazily on the first r-Succ write.
+#[derive(Default)]
+struct RSuccState {
+    /// append-only pool of worked-off clauses with a maximal CENTRAL
+    /// reachability head (`__trans__`/`__chain__(x)`), and the high-water mark
+    /// of entries already folded into `reach`.
+    pool: Vec<u32>,
+    hwm: usize,
+    /// the distinct CENTRAL reachability predicates extracted from `pool`, in
+    /// first-occurrence (pool) order; `reach_set` mirrors it for O(1) dedup.
+    reach: Vec<Pred>,
+    reach_set: HashSet<Pred>,
+    /// per (successor function term, target ctx, central reach pred) already
+    /// forwarded, deduping the edge × reach-fact cross-product across rounds.
+    pushed: HashSet<(Term, usize, Pred)>,
+    /// per successor edge `(f, target)` the number of `reach` entries already
+    /// offered to the `pushed` gate.
+    pair_reach_hwm: HashMap<(Term, usize), usize>,
+    /// `reach.len()` at the last `successors × reach` cross-step, and whether a
+    /// successor edge was added/re-targeted since — the cross-step driver gate.
+    offered: usize,
+    edges_grew: bool,
+}
+
 struct Context {
     id: usize,
     core: Vec<Pred>,
@@ -1165,53 +1198,15 @@ struct Context {
     /// Entries are arena ids.
     succ_pool: Vec<u32>,
     succ_hwm: usize,
-    /// r-Succ (KM_RSUCC): append-only pool of worked-off clauses with a maximal
-    /// head predicate that is a CENTRAL reachability fact (`__trans__`/`__chain__(x)`).
-    /// These are forwarded to every successor as edge-conditioned neighbour facts
-    /// (the predecessor vouching "my reach holds at your neighbour"), the missing
-    /// step that lets a successor fire the transitivity clause across an inverse
-    /// back-edge.  Entries are arena ids.  Empty unless `sig.rsucc`.
-    rsucc_pool: Vec<u32>,
-    /// Semi-naive r-Succ: the distinct CENTRAL reachability predicates extracted
-    /// from `rsucc_pool` so far, in first-occurrence (pool) order, with
-    /// `rsucc_hwm` the count of `rsucc_pool` entries already scanned into it.
-    /// `rsucc_pool` is append-only and its reach extraction never consults
-    /// `clause_keys`, so accumulating incrementally reproduces exactly the
-    /// ordered-unique set a full rescan would build — the same delta discipline
-    /// as `succ_hwm`/`pred_hwm`, avoiding the per-`propagate` full-pool rescan.
-    /// `rsucc_reach_set` mirrors `rsucc_reach` for O(1) dedup on insertion.
-    rsucc_reach: Vec<Pred>,
-    rsucc_reach_set: HashSet<Pred>,
-    rsucc_hwm: usize,
-    /// per (successor function term, target ctx, central reach pred) already
-    /// forwarded, to dedup the edge × reach-fact cross-product across `propagate`
-    /// rounds.  The target id is part of the key so a re-targeted (grown-core)
-    /// successor is re-sent the reach facts.
-    pushed_rsucc: HashSet<(Term, usize, Pred)>,
-    /// Semi-naive r-Succ cross-product: per successor edge `(f, target)` the
-    /// number of `rsucc_reach` entries already offered to the `pushed_rsucc`
-    /// gate for that edge.  `rsucc_reach` is append-only, so `reach[..hwm]` were
-    /// all offered (hence already gate-checked) in prior rounds; scanning only
-    /// `reach[hwm..]` per round skips work `pushed_rsucc.insert` would reject,
-    /// avoiding the per-`propagate` full `successors × reach` rescan while
-    /// emitting an identical `Msg::Succ` set and order (see `rsucc_cross_step`).
-    rsucc_pair_reach_hwm: HashMap<(Term, usize), usize>,
-    /// Semi-naive r-Succ cross-product driver gate.  `rsucc_offered` is the
-    /// `rsucc_reach.len()` at the last time the `successors × reach` cross-step
-    /// ran; `rsucc_edges_grew` records that a successor edge was added or
-    /// re-targeted (a new `(f, target)` pair) since that run.  The cross-step can
-    /// fire a *new* triple only when reach grew (`rsucc_reach.len() >
-    /// rsucc_offered`) or an edge changed (`rsucc_edges_grew`); otherwise every
-    /// current edge already has `hwm == rsucc_reach.len()` (advanced by the prior
-    /// run) so the sweep is provably empty.  Skipping it then avoids the
-    /// O(|successors|) hwm sweep and the transient `successors` Vec allocation on
-    /// the (common) `propagate` rounds where the context was re-dirtied by
-    /// unrelated predecessor / Pred churn.  `successors` is insert-only (never
-    /// pruned), so a set flag can only over-approximate genuine growth — never
-    /// miss it — keeping the emitted `Msg::Succ` set/order (hence the fixpoint)
-    /// identical to the unconditional driver.
-    rsucc_offered: usize,
-    rsucc_edges_grew: bool,
+    /// r-Succ (KM_RSUCC) propagation state — the pool of CENTRAL reachability
+    /// clauses forwarded to successors, the semi-naive reach accumulator, and
+    /// the cross-product dedup/driver gate (see `RSuccState` for the fields and
+    /// the semi-naive invariants they preserve).  Boxed off `Context` so it
+    /// costs one pointer, not ~200 bytes of collection headers, on the contexts
+    /// that never use r-Succ; `None` for every context on any run with
+    /// `sig.rsucc` unset (KM_RSUCC default OFF, the production sweep).  Allocated
+    /// lazily by `rsucc_mut` on the first r-Succ write.
+    rsucc: Option<Box<RSuccState>>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -1270,20 +1265,47 @@ impl Context {
             edge_seen: HashMap::new(),
             succ_pool: Vec::new(),
             succ_hwm: 0,
-            rsucc_pool: Vec::new(),
-            rsucc_reach: Vec::new(),
-            rsucc_reach_set: HashSet::new(),
-            rsucc_hwm: 0,
-            pushed_rsucc: HashSet::new(),
-            rsucc_pair_reach_hwm: HashMap::new(),
-            rsucc_offered: 0,
-            rsucc_edges_grew: false,
+            rsucc: None,
             seeded_inds: HashSet::new(),
             ground_body_index: HashMap::new(),
             bridge_index: HashMap::new(),
             merge_clauses: Vec::new(),
             dirty: true,
         }
+    }
+
+    /// The r-Succ state for a write, allocating the box on first use.  Only
+    /// reached from r-Succ writes (the `pool` push under `rsucc_eligible`, and
+    /// the `edges_grew` flag under `sig.rsucc`), so on a run with `sig.rsucc`
+    /// unset the box is never allocated and `size_of::<Context>()` shrinks by
+    /// the whole r-Succ group.
+    #[inline]
+    fn rsucc_mut(&mut self) -> &mut RSuccState {
+        self.rsucc.get_or_insert_with(Default::default)
+    }
+
+    /// `true` iff this context has any r-Succ reachability clause in its pool.
+    /// A `None` box reads as empty (no allocation), exactly as an empty inline
+    /// `rsucc_pool` did.
+    #[inline]
+    fn rsucc_pool_nonempty(&self) -> bool {
+        self.rsucc.as_ref().is_some_and(|r| !r.pool.is_empty())
+    }
+
+    /// r-Succ state, known present because the caller is inside the
+    /// `sig.rsucc && rsucc_pool_nonempty()` propagate block, which only runs
+    /// once the pool push has allocated the box.
+    #[inline]
+    fn rsucc_present(&self) -> &RSuccState {
+        self.rsucc
+            .as_deref()
+            .expect("rsucc box present in the r-Succ propagate block")
+    }
+    #[inline]
+    fn rsucc_present_mut(&mut self) -> &mut RSuccState {
+        self.rsucc
+            .as_deref_mut()
+            .expect("rsucc box present in the r-Succ propagate block")
     }
 
     /// Add the worked-off clause with arena id `cid` to the head-predicate
@@ -2733,7 +2755,7 @@ impl Engine {
                     ctx.succ_pool.push(cid);
                 }
                 if rsucc_eligible {
-                    ctx.rsucc_pool.push(cid);
+                    ctx.rsucc_mut().pool.push(cid);
                 }
                 ctx.worked_off.push(cid);
                 ctx.index_clause(arena, cid);
@@ -4011,8 +4033,14 @@ impl Engine {
                 self.contexts[id].pushed_succ.insert(p);
                 if self.contexts[id].successors.insert(f, target) != Some(target) {
                     // New / re-targeted edge: the r-Succ cross-step must offer it
-                    // the reach set (see `rsucc_edges_grew`).
-                    self.contexts[id].rsucc_edges_grew = true;
+                    // the reach set (see `RSuccState::edges_grew`).  The flag is
+                    // only ever read inside the `sig.rsucc` block below, so
+                    // recording it (and materialising the box) only under
+                    // `sig.rsucc` is behaviour-identical and keeps the box `None`
+                    // on non-r-Succ runs.
+                    if self.sig.rsucc {
+                        self.contexts[id].rsucc_mut().edges_grew = true;
+                    }
                 }
                 self.msgs.push_back(Msg::Succ {
                     from: id,
@@ -4114,8 +4142,12 @@ impl Engine {
                 let prev = self.contexts[id].successors.insert(f, target);
                 if prev != Some(target) {
                     // New / re-targeted edge: the r-Succ cross-step must offer it
-                    // the reach set (see `rsucc_edges_grew`).
-                    self.contexts[id].rsucc_edges_grew = true;
+                    // the reach set (see `RSuccState::edges_grew`).  Only read
+                    // under `sig.rsucc`, so gate the write (and the box
+                    // allocation) on it.
+                    if self.sig.rsucc {
+                        self.contexts[id].rsucc_mut().edges_grew = true;
+                    }
                     // New target (first push or fact-core growth): send the full
                     // set so the new context's edge records every pushed
                     // predicate.
@@ -4155,7 +4187,7 @@ impl Engine {
         // body, and the Pred routing sends it back ONLY to predecessor edges whose
         // pushed set contains `reach(y)` — i.e. only to predecessors that actually
         // vouched for `reach`; a co-sharing predecessor that did not is unaffected.
-        if self.sig.rsucc && !self.contexts[id].rsucc_pool.is_empty() {
+        if self.sig.rsucc && self.contexts[id].rsucc_pool_nonempty() {
             // Semi-naive: extend the persistent reach set from only the
             // `rsucc_pool` entries appended since the last scan (`rsucc_hwm`).
             // Because `rsucc_pool` is append-only and its reach extraction never
@@ -4169,13 +4201,14 @@ impl Engine {
                 let new_reach = {
                     let ctx = &self.contexts[id];
                     let arena = &self.cc_arena[ctx.root as usize];
-                    rsucc_reach_tail(arena, &ctx.rsucc_pool[ctx.rsucc_hwm..], &self.sig)
+                    let rs = ctx.rsucc_present();
+                    rsucc_reach_tail(arena, &rs.pool[rs.hwm..], &self.sig)
                 };
                 // Mutable pass: fold the tail into the persistent ordered-unique
                 // accumulator (first occurrence wins, matching a full rescan).
-                let ctx = &mut self.contexts[id];
-                fold_reach_unique(&mut ctx.rsucc_reach, &mut ctx.rsucc_reach_set, new_reach);
-                ctx.rsucc_hwm = ctx.rsucc_pool.len();
+                let rs = self.contexts[id].rsucc_present_mut();
+                fold_reach_unique(&mut rs.reach, &mut rs.reach_set, new_reach);
+                rs.hwm = rs.pool.len();
             }
             // Semi-naive cross-product DRIVER gate: run the `successors × reach`
             // sweep only on a genuine delta — reach grew, or a successor edge was
@@ -4189,9 +4222,11 @@ impl Engine {
             // the guard never skips a round that would fire — the emitted
             // `Msg::Succ` set/order (hence the fixpoint) is identical to running
             // the sweep unconditionally.
-            let reach_len = self.contexts[id].rsucc_reach.len();
-            let run =
-                self.contexts[id].rsucc_edges_grew || reach_len > self.contexts[id].rsucc_offered;
+            let reach_len = self.contexts[id].rsucc_present().reach.len();
+            let run = {
+                let rs = self.contexts[id].rsucc_present();
+                rs.edges_grew || reach_len > rs.offered
+            };
             if run {
                 let successors: Vec<(Term, usize)> = self.contexts[id]
                     .successors
@@ -4207,18 +4242,19 @@ impl Engine {
                 // doc-comment).  Disjoint field borrows let it read `rsucc_reach`
                 // while mutating the two maps.
                 let fired = {
-                    let ctx = &mut self.contexts[id];
+                    let rs = self.contexts[id].rsucc_present_mut();
                     rsucc_cross_step(
                         &successors,
-                        &ctx.rsucc_reach,
-                        &mut ctx.rsucc_pair_reach_hwm,
-                        &mut ctx.pushed_rsucc,
+                        &rs.reach,
+                        &mut rs.pair_reach_hwm,
+                        &mut rs.pushed,
                     )
                 };
-                // Every current edge is now offered `rsucc_reach[..reach_len]`;
-                // record it so the next round can skip an unchanged sweep.
-                self.contexts[id].rsucc_offered = reach_len;
-                self.contexts[id].rsucc_edges_grew = false;
+                // Every current edge is now offered `reach[..reach_len]`; record
+                // it so the next round can skip an unchanged sweep.
+                let rs = self.contexts[id].rsucc_present_mut();
+                rs.offered = reach_len;
+                rs.edges_grew = false;
                 for (f, target, p) in fired {
                     let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
                     self.msgs.push_back(Msg::Succ {
@@ -7044,6 +7080,91 @@ mod rsucc_rolechain_tests {
             .unwrap_or_default();
         s.sort();
         s
+    }
+
+    /// Oracle for the `Option<Box<RSuccState>>` layout change: the r-Succ state
+    /// is boxed off `Context` so it costs one pointer, not the whole inline
+    /// group, on contexts that never use r-Succ.  The memory win rests on two
+    /// invariants this test pins:
+    ///   1. the box is a single pointer (null-pointer optimisation) and the
+    ///      group it replaces is genuinely large; and
+    ///   2. on a run with `sig.rsucc` off (the production default) the box is
+    ///      never allocated for ANY context — so `size_of::<Context>()` shrinks
+    ///      by the full group on exactly the high-context-count ontologies that
+    ///      drive peak memory.
+    /// Enabling r-Succ must still exercise the boxed path (some context pools a
+    /// reach clause) and derive the identical answer — the fixpoint-preserving
+    /// half of the change.
+    #[test]
+    fn rsucc_state_box_inert_off_active_on() {
+        assert_eq!(
+            std::mem::size_of::<Option<Box<RSuccState>>>(),
+            std::mem::size_of::<usize>(),
+            "Option<Box<RSuccState>> must be one pointer (null-ptr optimisation)"
+        );
+        assert!(
+            std::mem::size_of::<RSuccState>() >= 120,
+            "the boxed r-Succ group should be a substantial inline saving; got {} bytes",
+            std::mem::size_of::<RSuccState>()
+        );
+
+        // Transitive-reachability ontology (same shape as
+        // `transitive_witness_answer_invariant`) that DOES pool r-Succ clauses
+        // when r-Succ is enabled.
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let p = sig.concept("__trans__R__C");
+        let r = sig.role("R");
+        let (f1, f2) = (fterm(1), fterm(2));
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(rl(r, X, f2))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, f2))]),
+            OntologyClause::new(vec![rl(r, X, Y), cx(c, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![rl(r, X, Y), cx(p, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![cx(p, X)], vec![Lit::P(cx(d, X))]),
+        ];
+
+        let a_supers = |e: &Engine| -> Vec<String> {
+            let mut v = e
+                .subsumptions()
+                .into_iter()
+                .find(|(n, _)| n == "A")
+                .map(|(_, v)| v)
+                .unwrap_or_default();
+            v.sort();
+            v
+        };
+
+        // r-Succ OFF: the peak-memory invariant — no context allocates the box.
+        let mut e_off = Engine::new(sig_clone(&sig), clauses.clone(), 0);
+        e_off.sig.rsucc = false;
+        e_off.run_for(&[a]);
+        assert!(
+            e_off.contexts.iter().all(|ctx| ctx.rsucc.is_none()),
+            "r-Succ box was allocated even though sig.rsucc = false"
+        );
+        let off = a_supers(&e_off);
+        assert!(off.contains(&"D".to_string()), "transitive A ⊑ D (off): {off:?}");
+
+        // r-Succ ON: the boxed path is genuinely exercised and the answer is
+        // unchanged.
+        let mut e_on = Engine::new(sig, clauses, 0);
+        e_on.sig.rsucc = true;
+        e_on.run_for(&[a]);
+        assert!(
+            e_on.contexts.iter().any(|ctx| ctx.rsucc.is_some()),
+            "r-Succ box never allocated with sig.rsucc = true (path not exercised)"
+        );
+        assert_eq!(
+            a_supers(&e_on),
+            off,
+            "boxing r-Succ state changed the derived answer"
+        );
     }
 
     // ---- Test 2: transitive witness. ∃R.C ⊑ D over transitive R, two R-hops. --
