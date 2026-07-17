@@ -31,6 +31,37 @@ use crate::clause::*;
 /// the same id sequence, stored inline below the spill threshold.
 type Posting = SmallVec<[u32; 2]>;
 
+/// Remove one clause id from a `worked_off` head-index posting, dropping the
+/// key when its posting becomes empty.  This is the incremental inverse of the
+/// per-key `.push(cid)` in `index_clause`: applied for every key that clause
+/// would have been inserted under, it reproduces exactly the state a full
+/// `rebuild_head_index` would leave (each surviving id kept once, in work-off
+/// order, and no empty postings), at O(keys-of-one-clause) instead of
+/// O(worked_off) cost.
+fn posting_remove<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Posting>, key: K, cid: u32) {
+    if let Some(posting) = map.get_mut(&key) {
+        posting.retain(|candidate| *candidate != cid);
+        if posting.is_empty() {
+            map.remove(&key);
+        }
+    }
+}
+
+/// `posting_remove` for the `Vec<u32>`-valued indexes (`ground_body_index`,
+/// `bridge_index`) — same incremental-inverse semantics as above.
+fn vec_posting_remove<K: std::hash::Hash + Eq>(
+    map: &mut HashMap<K, Vec<u32>>,
+    key: K,
+    cid: u32,
+) {
+    if let Some(posting) = map.get_mut(&key) {
+        posting.retain(|candidate| *candidate != cid);
+        if posting.is_empty() {
+            map.remove(&key);
+        }
+    }
+}
+
 /// One component of Sequoia's context-clause redundancy-trie key.  Sequoia
 /// encodes every head literal below every body predicate (by setting the sign
 /// bit on head UIDs), then sorts the two regions.  Keeping the exact values in
@@ -170,6 +201,16 @@ thread_local! {
     static PREDLOCAL_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static EQRULE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static PROPAGATE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Back-subsumption head-index maintenance (read under KM_PROF). `EVENTS`
+    /// counts back-subsume calls that removed at least one worked-off clause
+    /// (each such call previously triggered a full `rebuild_head_index`).
+    /// `REINDEX_AVOIDED` sums the surviving worked-off clauses those rebuilds
+    /// would have re-indexed but the incremental `unindex_clause` path skips.
+    /// Together they quantify the rebuild work this optimisation removes on the
+    /// disjunction-heavy contexts. Process-lifetime counters (KM runs one engine
+    /// process per ontology), so they read as the per-ontology totals.
+    static BACKSUB_UNINDEX_EVENTS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static BACKSUB_REINDEX_AVOIDED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Add `t.elapsed()` ns to a per-rule profiling cell (no-op cost is a branch on
@@ -1341,7 +1382,98 @@ impl Context {
         }
     }
 
-    /// Rebuild every `worked_off` index from scratch after back-subsumption.
+    /// Incrementally drop one `worked_off` clause from every head index.  This
+    /// mirrors `index_clause` key-for-key, removing `cid` from each posting it
+    /// was inserted under, so the resulting index state is identical to a full
+    /// `rebuild_head_index` over `worked_off \ {cid}` (a posting is a set of
+    /// clause ids; removing the id leaves the survivors in the same work-off
+    /// order).  Used by back-subsumption instead of rebuilding the whole index
+    /// whenever a worked-off clause is subsumed away.
+    fn unindex_clause(&mut self, arena: &[ContextClause], cid: u32) {
+        let c = &arena[cid as usize];
+        let mut concept_iris: Vec<Iri> = Vec::new();
+        let mut role_iris: Vec<Iri> = Vec::new();
+        for (p, _) in c.max_head_predicates() {
+            match p {
+                Pred::Concept { iri, .. } => {
+                    if !concept_iris.contains(&iri) {
+                        concept_iris.push(iri);
+                    }
+                }
+                Pred::Role { iri, .. } => {
+                    if !role_iris.contains(&iri) {
+                        role_iris.push(iri);
+                    }
+                }
+            }
+        }
+        for iri in concept_iris {
+            posting_remove(&mut self.head_concept_index, iri, cid);
+        }
+        for iri in role_iris {
+            posting_remove(&mut self.head_role_index, iri, cid);
+        }
+        for (p, _) in c.max_head_predicates() {
+            posting_remove(&mut self.max_head_pred_index, p, cid);
+            if let Pred::Role { iri, s, t } = p {
+                if is_individual(s) || is_comp(s) {
+                    posting_remove(&mut self.ground_role_source_index, (iri, s), cid);
+                }
+                if is_individual(t) || is_comp(t) {
+                    posting_remove(&mut self.ground_role_target_index, (iri, t), cid);
+                }
+            }
+        }
+        let mut rewrite_terms: SmallVec<[Term; 2]> = SmallVec::new();
+        for l in c.max_head() {
+            match l {
+                Lit::P(Pred::Concept { t, .. }) => {
+                    if !rewrite_terms.contains(&t) {
+                        rewrite_terms.push(t);
+                    }
+                }
+                Lit::P(Pred::Role { s, t, .. }) => {
+                    if !rewrite_terms.contains(&s) {
+                        rewrite_terms.push(s);
+                    }
+                    if !rewrite_terms.contains(&t) {
+                        rewrite_terms.push(t);
+                    }
+                }
+                Lit::Eq { s, .. } | Lit::Ineq { s, .. } => {
+                    if !rewrite_terms.contains(&s) {
+                        rewrite_terms.push(s);
+                    }
+                }
+            }
+        }
+        for term in rewrite_terms {
+            posting_remove(&mut self.max_head_term_index, term, cid);
+        }
+        for p in &c.body {
+            if p.is_ground() {
+                vec_posting_remove(&mut self.ground_body_index, *p, cid);
+            }
+        }
+        if c.body.is_empty() {
+            for l in c.max_head() {
+                if let Lit::Eq { s, t } = l {
+                    if is_individual(s) && t == X {
+                        vec_posting_remove(&mut self.bridge_index, s, cid);
+                    }
+                }
+            }
+        }
+        if c.head.iter().any(is_merge_lit) {
+            self.merge_clauses.retain(|&x| x != cid);
+        }
+    }
+
+    /// Rebuild every `worked_off` index from scratch.  Back-subsumption now
+    /// maintains the head index incrementally via `unindex_clause`; this full
+    /// rebuild is retained as the reference oracle that the incremental path is
+    /// differentially tested against (`back_subsume_incremental_unindex_matches_rebuild`).
+    #[cfg(test)]
     fn rebuild_head_index(&mut self, arena: &[ContextClause]) {
         self.head_concept_index.clear();
         self.head_role_index.clear();
@@ -1478,15 +1610,30 @@ impl Context {
             return;
         }
 
-        let removed_worked = self.worked_off.iter().any(|ci| removed.contains(ci));
+        // Only worked-off clauses carry head-index postings (todo clauses are
+        // indexed only in the active redundancy index, cleared below); collect
+        // the removed worked-off ids so we can drop them from the head index
+        // incrementally rather than rebuilding it from scratch.
+        let removed_worked: Vec<u32> = self
+            .worked_off
+            .iter()
+            .copied()
+            .filter(|ci| removed.contains(ci))
+            .collect();
         for &ci in &removed {
             self.unindex_active_clause(arena, ci);
             self.clause_keys.remove(&ci);
         }
         self.worked_off.retain(|ci| !removed.contains(ci));
         self.todo.retain(|ci| !removed.contains(ci));
-        if removed_worked {
-            self.rebuild_head_index(arena);
+        if !removed_worked.is_empty() {
+            // Diagnostic: this call would previously have rebuilt the whole head
+            // index, re-indexing every surviving worked-off clause.
+            BACKSUB_UNINDEX_EVENTS.with(|c| c.set(c.get() + 1));
+            BACKSUB_REINDEX_AVOIDED.with(|c| c.set(c.get() + self.worked_off.len() as u64));
+        }
+        for ci in removed_worked {
+            self.unindex_clause(arena, ci);
         }
     }
 }
@@ -2378,9 +2525,11 @@ impl Engine {
                 if iters % 200_000 == 0 {
                     let ctx = &self.contexts[id];
                     eprintln!(
-                        "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={}",
+                        "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={} | backsub_unindex_events={} reindex_avoided={}",
                         id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off.len(),
-                        nhyper, npred, neqp, neqe, nfact
+                        nhyper, npred, neqp, neqe, nfact,
+                        BACKSUB_UNINDEX_EVENTS.with(|c| c.get()),
+                        BACKSUB_REINDEX_AVOIDED.with(|c| c.get())
                     );
                     if self.prof_time {
                         let ms = |cell: &'static std::thread::LocalKey<std::cell::Cell<u64>>| {
@@ -5886,6 +6035,145 @@ mod tests {
             // And the trail must leave the substitution empty again at the top.
             assert_eq!(sigma.mark(), 0, "trail leaked bindings at depth 0");
         }
+    }
+
+    /// Back-subsumption maintains the `worked_off` head index incrementally
+    /// (`unindex_clause`) instead of rebuilding it from scratch.  This is a
+    /// differential test against the full-rebuild oracle: after a strengthening
+    /// clause subsumes two worked-off clauses away, the incrementally maintained
+    /// index must equal the index a full `rebuild_head_index` produces over the
+    /// survivors — same keys, same posting id-sequences, no empty postings.  A
+    /// divergence in `unindex_clause`'s key set would change what Hyper/Pred see
+    /// as candidates and so silently alter derivability.
+    #[test]
+    fn back_subsume_incremental_unindex_matches_rebuild() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let e = sig.concept("E");
+        let f = sig.concept("F");
+        let g = sig.concept("G");
+        let cc = |body: Vec<Pred>, head: Vec<Lit>| ContextClause::new(body, head, true, &sig);
+        // 0 and 2 are strengthened away by the A→B clause (id 3); 1 survives.
+        let arena = vec![
+            cc(vec![cx(a, X)], vec![Lit::P(cx(b, X)), Lit::P(cx(c, X))]), // 0: A → B ⊔ C
+            cc(vec![cx(d, X)], vec![Lit::P(cx(e, X))]),                   // 1: D → E (survivor)
+            cc(
+                vec![cx(a, X), cx(f, X)],
+                vec![Lit::P(cx(b, X)), Lit::P(cx(c, X)), Lit::P(cx(g, X))],
+            ), // 2: A ⊓ F → B ⊔ C ⊔ G
+            cc(vec![cx(a, X)], vec![Lit::P(cx(b, X))]),                   // 3: A → B (subsumer)
+        ];
+        let mut ctx = Context::new(0, vec![], true, None);
+        for cid in [0u32, 1, 2] {
+            ctx.clause_keys.insert(cid);
+            ctx.index_active_clause(&arena, cid);
+            ctx.worked_off.push(cid);
+            ctx.index_clause(&arena, cid);
+        }
+        ctx.back_subsume(&arena, &arena[3]);
+        assert_eq!(
+            ctx.worked_off,
+            vec![1u32],
+            "clauses 0 and 2 must be back-subsumed away, exercising unindex_clause"
+        );
+        let snapshot = |ctx: &Context| {
+            (
+                ctx.head_concept_index.clone(),
+                ctx.head_role_index.clone(),
+                ctx.ground_role_source_index.clone(),
+                ctx.ground_role_target_index.clone(),
+                ctx.max_head_pred_index.clone(),
+                ctx.max_head_term_index.clone(),
+                ctx.ground_body_index.clone(),
+                ctx.bridge_index.clone(),
+                ctx.merge_clauses.clone(),
+            )
+        };
+        let incremental = snapshot(&ctx);
+        ctx.rebuild_head_index(&arena);
+        let rebuilt = snapshot(&ctx);
+        assert!(
+            incremental == rebuilt,
+            "incremental unindex_clause diverged from full rebuild_head_index"
+        );
+    }
+
+    /// A role-carrying variant so `unindex_clause` is exercised on the role /
+    /// ground-endpoint / body-index postings too, not only concept heads.  A
+    /// clause with a maximal role head and a ground body atom is worked off, then
+    /// strengthened away; the incremental index must again match the rebuild.
+    #[test]
+    fn back_subsume_incremental_unindex_matches_rebuild_roles() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let r = sig.role("R");
+        let o = ind_term(1);
+        let cc = |body: Vec<Pred>, head: Vec<Lit>| ContextClause::new(body, head, true, &sig);
+        let arena = vec![
+            // 0: A(x) → R(x,o) ⊔ B(x) — maximal role head with a ground endpoint.
+            cc(
+                vec![cx(a, X)],
+                vec![Lit::P(rl(r, X, o)), Lit::P(cx(b, X))],
+            ),
+            // 1: A(x) → R(x,o) — strengthens 0.
+            cc(vec![cx(a, X)], vec![Lit::P(rl(r, X, o))]),
+            // 2: survivor.
+            cc(vec![cx(b, X)], vec![Lit::P(cx(a, X))]),
+        ];
+        let mut ctx = Context::new(0, vec![], true, None);
+        for cid in [0u32, 2] {
+            ctx.clause_keys.insert(cid);
+            ctx.index_active_clause(&arena, cid);
+            ctx.worked_off.push(cid);
+            ctx.index_clause(&arena, cid);
+        }
+        ctx.back_subsume(&arena, &arena[1]);
+        assert_eq!(ctx.worked_off, vec![2u32], "clause 0 must be subsumed away");
+        let snapshot = |ctx: &Context| {
+            (
+                ctx.head_concept_index.clone(),
+                ctx.head_role_index.clone(),
+                ctx.ground_role_source_index.clone(),
+                ctx.ground_role_target_index.clone(),
+                ctx.max_head_pred_index.clone(),
+                ctx.max_head_term_index.clone(),
+                ctx.ground_body_index.clone(),
+                ctx.bridge_index.clone(),
+                ctx.merge_clauses.clone(),
+            )
+        };
+        let incremental = snapshot(&ctx);
+        ctx.rebuild_head_index(&arena);
+        let rebuilt = snapshot(&ctx);
+        assert!(
+            incremental == rebuilt,
+            "incremental unindex_clause (roles) diverged from full rebuild_head_index"
+        );
+    }
+
+    /// End-to-end: a live disjunction strengthened to a unit by resolution
+    /// (`A ⊑ B ⊔ C`, `C ⊑ B` ⟹ `A ⊑ B`) drives real back-subsumption of a
+    /// worked-off clause through the incremental `unindex_clause` path.  The
+    /// derived subsumption must be unchanged.
+    #[test]
+    fn disjunct_strengthening_backsubsumes_and_derives() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, X)), Lit::P(cx(c, X))]),
+            OntologyClause::new(vec![cx(c, X)], vec![Lit::P(cx(b, X))]),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        let sups = supers_of(&e, "A");
+        assert!(sups.contains(&"B".to_string()), "expected A ⊑ B, got {sups:?}");
+        assert!(!e.inconsistent());
     }
 
     /// arXiv:1805.01396 Example 3 — the O+I+Q interaction that needs the Nom
