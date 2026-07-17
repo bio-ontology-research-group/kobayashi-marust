@@ -22,7 +22,10 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-ca86b612.py
+# Keep the historical runner as the reproducibility default, but permit a
+# content-addressed corrected runner for new sweeps.  The selected runner and
+# its hash are recorded in every result row below.
+runner=${SWEEP_RUNNER:-$root/bench_one_matrix-ca86b612.py}
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
@@ -46,12 +49,13 @@ ckpt=$result.ckpt
 [[ -s "$SWEEP_KM" && -s "$runner" && -s "$ontology_path" ]] \
   || { echo "missing sweep input for $ontology" >&2; exit 2; }
 km_sha=$(/usr/bin/sha256sum "$SWEEP_KM" | /usr/bin/cut -d' ' -f1)
+runner_sha=$(/usr/bin/sha256sum "$runner" | /usr/bin/cut -d' ' -f1)
 
 # One publishable row per ontology: exactly one JSON object naming this
 # ontology and arm, with a status and a binary hash. A memout row satisfies
 # this too, so a genuine 20 GB blow-up publishes and is never retried forever.
 validate_row() {
-  /usr/bin/python3 - "$1" "$ontology" "$km_sha" <<'PY'
+  /usr/bin/python3 - "$1" "$ontology" "$km_sha" "$runner_sha" <<'PY'
 import json, sys
 try:
     rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -63,6 +67,7 @@ row = rows[0]
 sys.exit(0 if (row.get("ont") == sys.argv[2]
                and row.get("arm") == "production_all"
                and row.get("binary_sha256") == sys.argv[3]
+               and row.get("runner_sha256") == sys.argv[4]
                and row.get("status") in
                    {"ok", "timeout", "memout", "unsupported"}) else 1)
 PY
@@ -98,6 +103,8 @@ esac
   echo "ontology=$ontology"
   echo "km=$SWEEP_KM"
   echo "km_sha=$km_sha"
+  echo "runner=$runner"
+  echo "runner_sha=$runner_sha"
   echo "host=$(hostname)"
 } > "$manifest_dir/$ontology.txt"
 
