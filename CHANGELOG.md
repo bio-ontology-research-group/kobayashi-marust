@@ -39,6 +39,28 @@ test_load_gold_empty_localname.py`. The same latent `line.split()` pattern
 survives in the archived `2026-07-14-9663-closure` analysis scripts, which do
 not produce verdicts and are left untouched.
 
+### End-to-end restoration guard for chain-domain recognition (2026-07-17)
+
+Adds `engine/tests/chain_domain_route.rs`, an integration test that locks in
+the role-chain domain recognition restoration for ORE 11745 at the `classify`
+level, plus the fixture `engine/tests/fixtures/chain_domain_unsat.ofn` (a copy
+of the HermiT-confirmed witness `oracle/ontologies/11745_unsat_core.ofn`). With
+a scrubbed `KM_*` environment the witness must classify inconsistent
+(`GO_0008046` unsatisfiable); with `KM_NO_CHAIN_DOMAIN=1` it reverts to the
+historical under-detection (consistent). Test-only, no engine or calculus
+change — off-flag behaviour and every other route are untouched.
+
+Motivation from the historical-restore audit: the existing clause-level tests
+(`domain_consumer_chain_recognition`,
+`domain_consumer_transitive_chain_recognition` in `src/frontend/preprocess.rs`)
+verify the recognition *builder* in isolation, but nothing guarded that the
+pass is actually wired into `classify` and enabled by default. Losing that
+wiring would again omit 11745's unsatisfiable classes. This is separate from
+the false `extra:1` verdict above, which came from the gold loader. The new
+suite fails closed if the default is ever silently flipped or the pass is
+unwired. Verified locally: both directions pass (default → inconsistent,
+opt-out → consistent) on a HEAD `km classify` build.
+
 ### Skip unchanged role-successor cross scans (2026-07-17)
 
 The CB engine now runs its semi-naive successor×reach cross-step only after
