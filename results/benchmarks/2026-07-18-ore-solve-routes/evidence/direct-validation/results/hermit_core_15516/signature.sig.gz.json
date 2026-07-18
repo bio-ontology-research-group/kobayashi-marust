@@ -1,0 +1,18 @@
+{
+  "canonicalizer": "/ibex/scratch/hohndor/km/routing_20260715/oracle/ore/ore_canon.py",
+  "canonicalizer_sha256": "2fc28764e34418ae3004f6dca7bb9bb6c6f763b022b0d356b80f896fa18173a2",
+  "capped": false,
+  "consistent": false,
+  "format": "json",
+  "input": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/hermit_core_15516/stdout.log",
+  "input_sha256": "6d6435b05a99d8dbd3a21747e5a67ed083d468157c84d274e2ecba2536a33e21",
+  "schema_version": 1,
+  "signature": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/hermit_core_15516/signature.sig.gz",
+  "signature_bytes": 49,
+  "signature_gzip_sha256": "ffdb007679a2566145d4666e2a557898f439f82e3a30b7e51626d0f659a30c1e",
+  "signature_sha256": "3c48c283d1292f55fe67383942d35be768499f1f96e83f0adf812c000ac3b9dd",
+  "status": "ok",
+  "subsumptions": 0,
+  "unsatisfiable": 0,
+  "wall_s": 0.0034
+}

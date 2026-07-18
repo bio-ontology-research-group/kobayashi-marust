@@ -1,6 +1,28 @@
 # Hard residual audit and gold-adjudication status
 
-## Current production sweep checkpoint (2026-07-17)
+## Current closure status (2026-07-18)
+
+Direct full-IRI validation supersedes the local-name-only status below for the
+source-collision family. Identity-safe source symbols close 3524, 15703, and
+13503; a fixed 7581 run remains exact. The complete route registry now records
+586 exact-to-authoritative-gold ontologies and two additional independently
+adjudicated correct inconsistent ontologies, for 588 demonstrated-correct
+inputs out of 592.
+
+Four ontologies remain unclosed:
+
+| Ontology | Current state | Blocking evidence |
+|---|---|---|
+| `4669` | completed outputs are unsound | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable; no authoritative full taxonomy is available. |
+| `10621` | no completion within 240 s / 20 GiB | Fresh Konclude matches the stored gold exactly; KM times out in the shared inverse-role, cardinality, and functional-datatype closure. |
+| `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain data-property or SWRL built-in atoms outside KM's sound rule encoding; CB bypass reaches its internal cap. |
+| `1194` | no completion within 240 s / 20 GiB | Production KM, HT, and Konclude exceed 20 GiB; HermiT times out on the 221,086-assertion SRIQ ABox. |
+
+The executable identities, full-IRI fingerprints, told-edge checks, HermiT
+counterexamples, and per-ontology commands are retained under
+[`../results/benchmarks/2026-07-18-ore-solve-routes/`](../results/benchmarks/2026-07-18-ore-solve-routes/).
+
+## Previous production sweep checkpoint (2026-07-17)
 
 The current production array, job `49012346`, has completed. It published 590
 ordinary rows; `3524` and `15703` reproduced explicit Slurm OOM kills, after
@@ -17,8 +39,8 @@ removes the false `extra=1` verdict on `11745`. Its remaining production-route t
 incomplete only under the known CHEBI local-name-collision comparison; its
 reasoning result is complete. `1194`, `3524`, and `15703` are memout, while
 `10860` is unsupported. This checkpoint
-does not replace the 584-case cross-run exact union: it measures one current
-production route and identifies which historic route closures still need to
+did not replace the then-584-case cross-run exact union: it measured one
+production route and identified which historic route closures still needed to
 be restored into that route.
 
 The current-result route registry retains 577 literal exact ontologies. Its
@@ -85,33 +107,34 @@ three more that HermiT could not adjudicate in that run:
 
 | Ontology | HermiT status | Audited status |
 |---|---|---|
-| `15703` | error | **No authoritative gold; unadjudicated** |
-| `3524` | error | **No authoritative gold; unadjudicated** |
-| `4669` | timeout | **No authoritative gold; unadjudicated** |
+| `15703` | error | **Closed by fixed KM; fresh full-IRI Konclude and ELK agree exactly** |
+| `3524` | error | **Closed by fixed KM; fresh full-IRI Konclude and ELK agree exactly** |
+| `4669` | timeout | **Completed KM outputs disproved by targeted HermiT queries** |
 
 The strict analyzer deliberately exited with code 2, and no `nogold` result was
-promoted to a match. These three still need an independent oracle; do not count
-a KM `ok` result as correct without adjudication.
+promoted to a match. Subsequent full-IRI Konclude/ELK checks supply the missing
+references for 3524 and 15703; targeted HermiT queries refute 4669's completed
+answers. The original fail-closed handling was therefore correct.
 
 ## Corpus remainder after the all-retained-run union
 
-After restoring every retained exact closure, eight ontologies lie outside the
-584-case exact-to-authoritative-gold union:
+After restoring every retained exact closure and applying the source-symbol
+fix, six ontologies lie outside the 586-case exact-to-authoritative-gold union:
 
 - `2669` and `15516` are solved by KM and independently adjudicated
   inconsistent, but cannot enter the exact-Konclude column because their stored
   Konclude signatures are stale parse-failure artifacts.
-- `3524`, `15703`, and `4669` have completed KM classifications, but no
-  authoritative reference signature. They are candidate closures, not yet
-  demonstrated-correct full taxonomies.
+- `4669` has completed KM classifications, but targeted HermiT queries disprove
+  both retained answers.
 - `10621` has authoritative current gold and a confirmed unsatisfiability
   witness, but no retained complete KM classification within the benchmark
   budget.
 - `10860` and `1194` have neither an authoritative full gold signature nor a
   confirmed retained KM closure.
 
-Thus the current counts are 584 exact, 586 demonstrated correct after gold
-adjudication, and three further completed-but-unadjudicated candidates.
+Thus the current counts are 586 exact and 588 demonstrated correct after gold
+adjudication. One additional ontology completes incorrectly, and three have no
+complete validated route within the limits.
 
 ## Consequences for coverage accounting
 
@@ -119,17 +142,19 @@ adjudication, and three further completed-but-unadjudicated candidates.
   frontiers.
 - The frozen 592-ontology route matrix also omitted retained exact closures for
   `10908`, `11745`, `7499`, `9540`, `9635`, and `3215`. Together with the three
-  hard-residual restorations, these nine closures raise the exact cross-run KM
-  union from the matrix-local 575 to 584.
-- `2669` and `15516` raise the adjudicated demonstrated-correct total to 586,
+  hard-residual restorations, these nine closures raised the pre-fix exact
+  cross-run KM union from the matrix-local 575 to 584. The corrected route
+  registry and source-symbol fix establish the current exact count of 586.
+- `2669` and `15516` raise the adjudicated demonstrated-correct total to 588,
   but must not be described as matches to their stale Konclude signatures.
 - `10621` may be scored against the current IBEX Konclude signature. Do not use
   or describe the older zero-unsatisfiable signature. KM still owes a complete
   within-budget taxonomy.
 - `1194` and `10860` must not count as correct merely because a KM route returns
   `ok` or `nogold`. They need adjudicated gold.
-- Therefore the phrase "six unsolved hard residuals" is prohibited in reports
-  unless the report immediately separates these three categories.
+- Therefore the phrase "six unsolved hard residuals" remains prohibited. The
+  current unclosed frontier has four ontologies with the distinct blockers
+  listed at the top of this document.
 
 ## Primary retained evidence
 

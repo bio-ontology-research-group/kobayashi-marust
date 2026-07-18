@@ -1,0 +1,14 @@
+{
+  "class": "http://www.daml.org/2001/03/daml+oil#Nothing",
+  "index": 0,
+  "peak_mb": 175.4,
+  "return_code": 0,
+  "satisfiable": false,
+  "schema_version": 1,
+  "slurm_array_job_id": "49081910",
+  "slurm_array_task_id": "0",
+  "slurm_job_id": "49081910",
+  "status": "ok",
+  "stderr_tail": "SLF4J: Failed to load class \"org.slf4j.impl.StaticLoggerBinder\".\nSLF4J: Defaulting to no-operation (NOP) logger implementation\nSLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.\n",
+  "stdout_sha256": "2b1cbb9889d982e8fad90084e861331d6600dacd761274f2808011680a16f56b"
+}

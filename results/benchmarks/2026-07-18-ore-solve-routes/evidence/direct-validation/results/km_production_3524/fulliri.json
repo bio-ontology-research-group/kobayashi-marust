@@ -1,0 +1,23 @@
+{
+  "algorithm": "full-iri-scc-component-bitset-fingerprint-v1",
+  "components": 123311,
+  "consistent": true,
+  "format": "json",
+  "input": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_production_3524/stdout.log",
+  "input_sha256": "0906163c07e9cd3ceb9773e2afcef957d7b1c21a8e8df52f46bf640be6d3b6ef",
+  "node_fingerprints": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_production_3524/fulliri.nodes.tsv.gz",
+  "node_fingerprints_sha256": "788147fe08c2e42abb1467532f3912202d5ba91246efdeb4e37dbe3c3035637d",
+  "nonempty_lefts": 80342,
+  "peak_mb": 830.74,
+  "schema_version": 1,
+  "source_declarations": 0,
+  "source_edges": 1481076,
+  "source_equivalence_groups": 0,
+  "status": "ok",
+  "subsumptions": 1481076,
+  "taxonomy_sha256": "1c78a2a01f8b7ba9868cd59a443a9c9dea9a8acb21eb794f746065d423e9ce47",
+  "unsatisfiable": 0,
+  "unsatisfiable_names": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_production_3524/fulliri.unsat.txt.gz",
+  "unsatisfiable_names_sha256": "ecc1e00885d9a995fa34fdb5f991ab0a0bbc0efea35abb54b8c4d8775d563d4c",
+  "wall_s": 13.4788
+}

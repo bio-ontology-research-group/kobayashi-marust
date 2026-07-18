@@ -1,0 +1,12 @@
+{
+  "comparison": "canonical lines",
+  "fresh_signature_bytes": 5468371,
+  "fresh_signature_sha256": "cb490ae3d086535d4ef467ed5277e5f497e221d84a79a70fb0dc87afb8a45ccf",
+  "fresh_trailing_newline": true,
+  "line_equal": true,
+  "schema_version": 1,
+  "stored_signature_bytes": 5468370,
+  "stored_signature_sha256": "7815a115049d7752f7407725e93adbfcbcd232738e6cab5bcd705a7033f63c68",
+  "stored_trailing_newline": false,
+  "validation_date": "2026-07-18"
+}

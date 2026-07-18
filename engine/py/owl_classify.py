@@ -62,6 +62,17 @@ def short(n: str) -> str:
     return frontend.local_name(n)
 
 
+def is_semantic_bottom(n: str, named_iri=frontend.is_named_iri) -> bool:
+    """True only for an unowned engine spelling of OWL bottom.
+
+    The local-name projection is intentionally lossy and must not decide
+    semantics: a named source class such as ``km_src_Nothing`` projects to
+    ``Nothing`` too. IRI ownership distinguishes that source symbol from the
+    unowned constants emitted by the reasoners.
+    """
+    return not named_iri(n) and n in BOTTOM
+
+
 def is_internal(n: str) -> bool:
     # A name backed by a real OWL IRI is a real class, even if its local name
     # happens to match a moose-internal prefix (e.g. a `Q_minus`/`Q_plus` class
@@ -1097,7 +1108,7 @@ def classify(ofn_path: str) -> dict:
         sa = short(a)
         fa = full_iri(a)
         for s in sups:
-            if short(s) in BOTTOM:
+            if is_semantic_bottom(s, named_iri):
                 if fa not in unsat:
                     unsat.append(fa)
                     unsat_names.add(a)

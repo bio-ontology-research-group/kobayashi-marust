@@ -115,7 +115,7 @@ Selected measured rows from that matrix:
 
 | reasoner | solved / 592 | average wall time | median wall time | average peak RSS | median peak RSS |
 |---|---:|---:|---:|---:|---:|
-| **KM, demonstrated union of all exact routes** | **584** | pending current-route recheck | pending | pending | pending |
+| **KM, demonstrated union of all exact routes** | **586** | pending current-route recheck | pending | pending | pending |
 | Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB | 245 MB |
 | ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
@@ -145,14 +145,23 @@ more complete classification under the documented CHEBI namespace-collision
 adjudication, for 580 demonstrated-correct production cases.
 
 The KM headline is the union of every retained, valid exact closure, not only
-the routes present in one matrix binary. The complete frozen matrix contains
-575 exact KM closures. Retained route-specific runs add `10702`, `10908`,
-`11745`, `15672`, `6934`, `7499`, `9540`, `9635`, and `3215`, giving 584 exact
-matches to authoritative gold. In addition, `2669` and `15516` are
+the routes present in one matrix binary. The complete one-row registry now
+contains 586 exact classifications. Identity-safe handling of legal source
+IRIs ending in `#Thing` or `#Nothing` closes 3524, 15703, and 13503; a fixed
+7581 rerun preserves its exact full-IRI result. In addition, 2669 and 15516 are
 independently adjudicated inconsistent while their stored Konclude signatures
-are stale, so KM has 586 demonstrated-correct corpus cases under the
+are stale. KM therefore has 588 demonstrated-correct corpus cases under the
 adjudicated-gold accounting described in
-[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
+[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md). The exact command, binary,
+resource use, gold hash, and evidence for every ontology are in
+[`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv).
+
+Four ontologies remain unclosed. Existing completed outputs for 4669 are
+unsound; 10621 has valid gold but no KM completion within the limits; 10860
+contains unsupported DL-safe rule atoms and no authoritative complete gold;
+and 1194 exceeds the 20 GiB limit on every tested complete route. Their direct
+counterexamples and resource diagnoses are recorded in
+[`results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md`](results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md).
 
 The time and memory cells are temporarily withheld while the restored routes
 are rerun under the current binary, 240 second timeout, and 20 GiB cap.
@@ -176,17 +185,18 @@ The 592-row dataset has 581 ok, six timeout, four memout, and one unsupported
 result. It did not recover `9635` and regressed `9724` from exact completion to
 memout, so the engine change was rejected and reverted. Correct tab-delimited
 gold parsing verifies `11745` as an exact `production_all` result. The
-current-result route registry therefore contains 577 exact ontologies; its
+then-current route registry therefore contained 577 exact ontologies; its
 per-ontology route minima average 3.368 seconds and 297 MB, with medians of
-0.191 seconds and 27 MB. The broader retained exact union remains 584.
+0.191 seconds and 27 MB. The broader retained exact union at that checkpoint
+was 584; the 2026-07-18 full-IRI registry raises it to 586.
 
 Individual KM configurations remain available in the complete matrix report.
 For example, `cb_plain16` completed 537 ontologies, `ht_bridge` completed 505,
 and `elc_cert` completed 467; their separate time and memory distributions are
 reported in the linked CSV and JSON. The 575-case matrix union is an oracle
-envelope over that matrix's measured configurations. The 584-case headline
-also includes retained exact closures from route families omitted or not
-faithfully reproduced by that frozen matrix.
+envelope over that matrix's measured configurations. The current 586-case
+headline also includes retained exact closures and the directly validated
+source-symbol repairs omitted from that frozen matrix.
 
 KM uses a typed production portfolio rather than one universal procedure.
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md) records the mechanism

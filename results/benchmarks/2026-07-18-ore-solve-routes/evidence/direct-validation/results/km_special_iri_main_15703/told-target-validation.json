@@ -1,0 +1,18 @@
+{
+  "first_missing_axiom": null,
+  "first_missing_left": null,
+  "ignored_reflexive": false,
+  "km_output": "/ibex/scratch/hohndor/km/routing_20260715/special-iri-main-20260718/results/km_special_iri_main_15703/stdout.log",
+  "km_output_sha256": "bfeb6c5f196e1dfa846f376b06105f5de2257ab39653eca9fe96fe75a8778058",
+  "km_returned_distinct_lefts": 123310,
+  "missing_told_subsumptions": 0,
+  "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_15703.owl",
+  "ontology_sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+  "schema_version": 1,
+  "target": "http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing",
+  "told_compared_distinct_lefts": 123310,
+  "told_distinct_lefts": 123310,
+  "told_occurrences": 123310,
+  "unexpected_returned_lefts": 0,
+  "verdict": "preserved"
+}

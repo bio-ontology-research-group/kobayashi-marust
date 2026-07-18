@@ -1,0 +1,11 @@
+ontology	candidate_route	km_status	wall_s	peak_mb	independent_check	validated_result
+ore_ont_2669.owl	ht_rules	ok	0.1177	15.31	HermiT inconsistent-core signature is identical	correct completion
+ore_ont_15516.owl	ht_rules	ok	0.1187	15.94	HermiT inconsistent-core signature is identical	correct completion
+ore_ont_3524.owl	fixed production_all	ok	27.7082	4600.92	All 123310 strict told pairs are preserved; full-IRI taxonomy matches Konclude and ELK	exact output
+ore_ont_15703.owl	fixed production_all	ok	24.4224	4350.15	All 123310 told pairs are preserved; full-IRI taxonomy matches Konclude and ELK	exact output
+ore_ont_4669.owl	production_default	ok	15.3261	3815.15	HermiT proves 8 of 10 sampled KM-UNSAT classes satisfiable; 2 queries time out	unsound output
+ore_ont_7581.owl	fixed production_all	ok	19.4446	4318.46	Fixed KM and Konclude full-IRI fingerprints match at 1246911 pairs	exact output
+ore_ont_10621.owl	production_default	timeout	240.0573	5863.76	Fresh Konclude completes and is line-identical to current stored gold	no KM completion within limit
+ore_ont_10860.owl	production_default	unsupported	0.0604	7.50	CB bypass reaches its 190-second internal cap; HermiT unsupported and Konclude crashes	no complete validated route
+ore_ont_1194.owl	production_default	memout	68.8887	20482.44	HT, production KM and Konclude exceed 20 GiB; HermiT times out	no complete validated route
+ore_ont_13503.owl	fixed production_all	ok	0.0618	7.10	KM and Konclude full-IRI fingerprints match at 113 pairs and one named UNSAT class; HermiT independently agrees	exact output

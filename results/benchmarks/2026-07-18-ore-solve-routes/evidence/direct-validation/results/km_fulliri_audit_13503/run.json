@@ -1,0 +1,36 @@
+{
+  "binary": "/ibex/scratch/hohndor/km/routing_20260715/candidate-a068059/km",
+  "binary_sha256": "86eb38310683ab964d88ed87a86b61811fb6e2debc843f2c91c784c4bf535230",
+  "command": [
+    "/ibex/scratch/hohndor/km/routing_20260715/candidate-a068059/km",
+    "classify",
+    "/ibex/scratch/hohndor/km/corpus/ore_ont_13503.owl"
+  ],
+  "cpu_model": "AMD EPYC 7702 64-Core Processor",
+  "cpus": 16,
+  "environment": {
+    "KM_ROUTE": "production_all"
+  },
+  "host": "cn506-11-l",
+  "kind": "km",
+  "label": "km_fulliri_audit_13503",
+  "memory_limit_mb": 20480,
+  "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_13503.owl",
+  "ontology_sha256": "319fa7ff1858ed5c0547156479621b028ba6779b9f3c2b43889abdcb46ae0626",
+  "output_format": "json",
+  "peak_mb": 6.33,
+  "primary_output": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_fulliri_audit_13503/stdout.log",
+  "primary_output_bytes": 13785,
+  "primary_output_exists": true,
+  "primary_output_sha256": "41eedb62530e76e6d2c535a9621f5d276f96dd90eeaf116cc5e91b120faff6e1",
+  "return_code": 0,
+  "runtime_sha256": null,
+  "schema_version": 1,
+  "slurm_array_job_id": "49081761",
+  "slurm_array_task_id": "3",
+  "slurm_job_id": "49081765",
+  "status": "ok",
+  "stderr_tail": "",
+  "timeout_s": 240.0,
+  "wall_s": 0.0892
+}

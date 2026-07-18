@@ -805,12 +805,12 @@ SubClassOf(<http://example.org#Thing> <http://example.org#B>) \
 SubClassOf(<http://example.org#A> <http://example.org#Nothing>))",
         );
         assert!(axs.contains(&Axiom::SubClassOf(
-            Concept::Name("Thing".into()),
+            Concept::Name("km_src_Thing".into()),
             Concept::Name("B".into())
         )));
         assert!(axs.contains(&Axiom::SubClassOf(
             Concept::Name("A".into()),
-            Concept::Name("Nothing".into())
+            Concept::Name("km_src_Nothing".into())
         )));
     }
 

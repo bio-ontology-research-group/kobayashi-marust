@@ -6,6 +6,26 @@
 
 use std::collections::HashMap;
 
+const OWL_THING_IRI: &str = "http://www.w3.org/2002/07/owl#Thing";
+const OWL_NOTHING_IRI: &str = "http://www.w3.org/2002/07/owl#Nothing";
+
+/// Return KM's canonical spelling for an actual OWL top/bottom IRI.
+///
+/// This tests the complete source token rather than its local name. A non-OWL
+/// class IRI may legally end in `#Thing` or `#Nothing` and must remain named.
+fn owl_builtin_class(name: &str) -> Option<&'static str> {
+    let raw = name.trim();
+    let raw = raw
+        .strip_prefix('<')
+        .and_then(|s| s.strip_suffix('>'))
+        .unwrap_or(raw);
+    match raw {
+        "owl:Thing" | OWL_THING_IRI => Some("owl:Thing"),
+        "owl:Nothing" | OWL_NOTHING_IRI => Some("owl:Nothing"),
+        _ => None,
+    }
+}
+
 /// Fragment / local-name of an IRI. Port of `_short_base`. NOT collision-safe
 /// on its own; `IriRegistry::short` disambiguates collisions.
 pub fn short_base(name: &str) -> String {
@@ -64,19 +84,13 @@ impl IriRegistry {
         if let Some(cached) = self.short_iri.get(&full) {
             return cached.clone();
         }
-        // Canonicalise only the standard OWL builtin IRIs. A user class in
-        // another namespace may legitimately have the local name Thing or
-        // Nothing and must remain an ordinary named class.
-        let raw_base = match full.as_str() {
-            "http://www.w3.org/2002/07/owl#Thing" => "owl:Thing".to_string(),
-            "http://www.w3.org/2002/07/owl#Nothing" => "owl:Nothing".to_string(),
-            _ => short_base(name),
-        };
-        if raw_base == "owl:Thing" || raw_base == "owl:Nothing" {
-            // specials: never disambiguate
-            self.short_iri.insert(full, raw_base.clone());
-            return raw_base;
+        if let Some(builtin) = owl_builtin_class(name) {
+            // Builtins are semantic constants rather than source-owned named
+            // classes. Canonicalise both abbreviated and full spellings.
+            self.short_iri.insert(full, builtin.to_string());
+            return builtin.to_string();
         }
+        let raw_base = short_base(name);
         // Source IRIs and generated concepts are different symbol kinds in
         // Sequoia. KM historically encoded that distinction through prefixes,
         // so a legal source class such as `#__A` was mistaken for an auxiliary:
@@ -145,7 +159,8 @@ impl IriRegistry {
 }
 
 fn reserved_internal_prefix(name: &str) -> bool {
-    name.starts_with("Q_")
+    matches!(name, "Thing" | "Nothing" | "owl:Thing" | "owl:Nothing")
+        || name.starts_with("Q_")
         || name.starts_with("__")
         || name.starts_with("_aux")
         || name.starts_with("aux_")
@@ -181,17 +196,38 @@ mod tests {
     }
 
     #[test]
-    fn canonicalises_only_standard_owl_top_and_bottom() {
+    fn only_actual_owl_thing_and_nothing_are_builtins() {
         let mut reg = IriRegistry::new();
-        assert_eq!(
-            reg.short("<http://www.w3.org/2002/07/owl#Thing>"),
-            "owl:Thing"
-        );
-        assert_eq!(
-            reg.short("<http://www.w3.org/2002/07/owl#Nothing>"),
-            "owl:Nothing"
-        );
-        assert_eq!(reg.short("<http://example.org#Thing>"), "Thing");
-        assert_eq!(reg.short("<http://example.org#Nothing>"), "Nothing");
+        for (source, canonical) in [
+            ("owl:Thing", "owl:Thing"),
+            ("<http://www.w3.org/2002/07/owl#Thing>", "owl:Thing"),
+            ("owl:Nothing", "owl:Nothing"),
+            ("<http://www.w3.org/2002/07/owl#Nothing>", "owl:Nothing"),
+        ] {
+            let internal = reg.short(source);
+            assert_eq!(internal, canonical, "{source}");
+            assert!(!reg.is_named_iri(&internal), "{source} is a builtin");
+        }
+    }
+
+    #[test]
+    fn non_owl_thing_and_nothing_local_names_remain_named() {
+        let mut reg = IriRegistry::new();
+        for source in [
+            "<http://example.org#Thing>",
+            "<http://example.org#Nothing>",
+            "example:Thing",
+            "example:Nothing",
+            "<http://example.org#owl:Thing>",
+            "<http://example.org#owl:Nothing>",
+        ] {
+            let full = source.trim_matches(['<', '>']);
+            let internal = reg.short(source);
+            assert!(internal.starts_with("km_src_"), "{source} -> {internal}");
+            assert_ne!(internal, "owl:Thing");
+            assert_ne!(internal, "owl:Nothing");
+            assert_eq!(reg.full_iri(&internal), full);
+            assert!(reg.is_named_iri(&internal));
+        }
     }
 }

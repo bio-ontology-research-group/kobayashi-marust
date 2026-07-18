@@ -1,0 +1,18 @@
+{
+  "canonicalizer": "/ibex/scratch/hohndor/km/routing_20260715/oracle/ore/ore_canon.py",
+  "canonicalizer_sha256": "2fc28764e34418ae3004f6dca7bb9bb6c6f763b022b0d356b80f896fa18173a2",
+  "capped": false,
+  "consistent": true,
+  "format": "owlxml",
+  "input": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/konclude_fulliri_audit_7581/taxonomy.owl",
+  "input_sha256": "df6707651693ccaaf1181a5dfd9f562bf603fe9c505ff5b08dff157f2af80566",
+  "schema_version": 1,
+  "signature": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/konclude_fulliri_audit_7581/signature.sig.gz",
+  "signature_bytes": 1682526,
+  "signature_gzip_sha256": "cd136d25ec0a3c7ab6fb0b4c08eacab3141373de8786551e39d12be4c299e891",
+  "signature_sha256": "d54544ddd6a2f4e91994f13794369403aaa5fd0a5de2c24e8df517e89580021d",
+  "status": "ok",
+  "subsumptions": 565317,
+  "unsatisfiable": 0,
+  "wall_s": 5.535
+}

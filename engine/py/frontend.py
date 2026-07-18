@@ -119,6 +119,15 @@ def _short_base(name: str) -> str:
 _short_iri: dict[str, str] = {}   # full IRI -> assigned unique short name
 _short_owner: dict[str, str] = {}  # short name -> full IRI that owns it
 
+_OWL_CLASS_BUILTINS = {
+    "owl:Thing": "owl:Thing",
+    "owl:Nothing": "owl:Nothing",
+    "http://www.w3.org/2002/07/owl#Thing": "owl:Thing",
+    "http://www.w3.org/2002/07/owl#Nothing": "owl:Nothing",
+}
+
+_SOURCE_RESERVED_NAMES = {"Thing", "Nothing", "owl:Thing", "owl:Nothing"}
+
 
 def reset_short() -> None:
     _short_iri.clear()
@@ -131,17 +140,22 @@ def short(name: str) -> str:
     cached = _short_iri.get(full)
     if cached is not None:
         return cached
+    builtin = _OWL_CLASS_BUILTINS.get(full)
+    if builtin is not None:
+        # Recognise OWL's top and bottom by source identity, not by the local
+        # name produced below. `...#Thing` and `...#Nothing` are otherwise
+        # legal named classes (ORE 3524/15703 and 13503 respectively).
+        _short_iri[full] = builtin
+        return builtin
     raw_base = _short_base(name)
-    if raw_base in ("owl:Thing", "owl:Nothing"):   # specials: never disambiguate
-        _short_iri[full] = raw_base
-        return raw_base
     # Sequoia represents source concepts and generated definers as different
     # symbol kinds. Preserve that distinction despite KM's prefix-based engine
     # encoding: a legal source IRI such as `#__A` must remain a named query.
     # Generated symbols are constructed after parsing and never call short().
     base = (
         f"km_src_{raw_base}"
-        if raw_base.startswith(("Q_", "__", "_aux", "aux_", "def_"))
+        if (raw_base in _SOURCE_RESERVED_NAMES
+            or raw_base.startswith(("Q_", "__", "_aux", "aux_", "def_")))
         else raw_base
     )
     cand = base
@@ -259,9 +273,9 @@ def _dt_value_concept(args):
 def cls(node):
     if isinstance(node, str):
         s = short(node)
-        if s in ("owl:Thing", "Thing"):
+        if s == "owl:Thing":
             return sx.Top()
-        if s in ("owl:Nothing", "Nothing"):
+        if s == "owl:Nothing":
             return sx.Bottom()
         return sx.ConceptName(s)
     head, args = node
@@ -489,9 +503,9 @@ def _plain_class(node):
     """Named class -> short string; ⊤ -> "" (trivial); complex/⊥ -> None."""
     if isinstance(node, str):
         s = short(node)
-        if s in ("owl:Thing", "Thing"):
+        if s == "owl:Thing":
             return ""          # trivial domain/range constraint, skip silently
-        if s in ("owl:Nothing", "Nothing"):
+        if s == "owl:Nothing":
             return None        # bottom domain/range: rare, fence as complex
         return s
     return None

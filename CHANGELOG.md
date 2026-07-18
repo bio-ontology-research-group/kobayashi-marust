@@ -9,6 +9,42 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Preserve legal source classes named Thing or Nothing (2026-07-18)
+
+ORE 3524 and 15703 each lost 123,310 strict told subsumptions because their
+legal nested source class ends in `#Thing`. ORE 13503 similarly lost the named
+UNSAT class `http://www.daml.org/2001/03/daml+oil#Nothing`. The frontend reduced
+each full IRI to its last fragment and then treated bare `Thing` or `Nothing`
+as OWL top or bottom.
+
+Builtin recognition now tests the complete source identity: only
+`owl:Thing`, `owl:Nothing`, and their full W3C IRIs become semantic constants.
+Non-OWL source classes with reserved spellings receive collision-safe
+`km_src_*` internal names, and the inverse registry restores the exact IRI in
+public output. The Python reference frontend and output path mirror the same
+ownership-aware rule. A small end-to-end Rust regression checks the told-edge,
+named-UNSAT, and 7581 coexistence cases.
+
+After rebasing onto the latest active branch, IBEX job 49088657 passes 1,597
+Rust library tests with zero failures and 8 ignored, all 8 integration tests,
+and 6 Python parity tests. Fixed `production_all` runs in job 49088661 then
+match fresh full-IRI Konclude fingerprints exactly:
+
+| Ontology | Wall (s) | Peak (MB) | Pairs | UNSAT | Full-IRI taxonomy SHA-256 |
+|---|---:|---:|---:|---:|---|
+| 3524 | 27.7082 | 4600.92 | 1,604,386 | 0 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
+| 15703 | 24.4224 | 4350.15 | 1,604,386 | 0 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
+| 13503 | 0.0618 | 7.10 | 113 | 1 | `1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b` |
+| 7581 regression | 19.4446 | 4318.46 | 1,246,911 | 0 | `27a29aab966ffea74df4aa09c0520545f5908c9fc8e3fc5d10cd3e027b9118d4` |
+
+The giant-specific checker confirms all 123,310 strict told target edges are
+present in both 3524 and 15703. HermiT independently confirms the 13503 named
+class is unsatisfiable. The regenerated 592-row route registry now contains
+586 exact-gold rows, 2 additional adjudicated-correct rows, 1 completed but
+unsound row, and 3 rows without a complete validated route. Validated KM
+coverage is 588/592. This changes frontend symbol encoding, not CB-calculus
+derivations, so it requires no Lean re-certification.
+
 ### Complete `43bce75` sweep and rejected 1194/9635 candidates (2026-07-17)
 
 Immutable candidate `43bce75` completed all 592 production tasks on IBEX. The

@@ -1,0 +1,60 @@
+{
+  "canonicalization": {
+    "canonicalizer": "/ibex/scratch/hohndor/km/routing_20260715/oracle/ore/ore_canon.py",
+    "canonicalizer_sha256": "2fc28764e34418ae3004f6dca7bb9bb6c6f763b022b0d356b80f896fa18173a2",
+    "capped": false,
+    "consistent": true,
+    "format": "json",
+    "input": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_bridge_4669/stdout.log",
+    "input_sha256": "09abe8c0a9d7aceb551ae5e9db7e9db1613920e00289d7b92a24f6132cadbff0",
+    "schema_version": 1,
+    "signature": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_bridge_4669/signature.sig.gz",
+    "signature_bytes": 424349,
+    "signature_gzip_sha256": "98d66109f9720a9f19aa11b1818bdcbd7c294598b98933887c0837125d597c0d",
+    "signature_sha256": "4b0c33ff1adfd642cb96e24e7d1a56a83d8a0a01e10eeade9777161e24363749",
+    "status": "ok",
+    "subsumptions": 122092,
+    "unsatisfiable": 24690,
+    "wall_s": 1.9189
+  },
+  "canonicalizer_return_code": 0,
+  "label": "km_ht_bridge_4669",
+  "run": {
+    "binary": "/ibex/scratch/hohndor/km/routing_20260715/km-source-symbol-c229366f",
+    "binary_sha256": "c229366fcc9efbfec729f5a7dcc1a5f1ef9b12fe41f433b67282930bf18a92f6",
+    "command": [
+      "/ibex/scratch/hohndor/km/routing_20260715/km-source-symbol-c229366f",
+      "classify",
+      "/ibex/scratch/hohndor/km/corpus/ore_ont_4669.owl"
+    ],
+    "cpu_model": "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz",
+    "cpus": 16,
+    "environment": {
+      "KM_ROUTE": "ht_bridge"
+    },
+    "host": "gpu510-32",
+    "kind": "km",
+    "label": "km_ht_bridge_4669",
+    "memory_limit_mb": 20480,
+    "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_4669.owl",
+    "ontology_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+    "output_format": "json",
+    "peak_mb": 2178.42,
+    "primary_output": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_bridge_4669/stdout.log",
+    "primary_output_bytes": 12343801,
+    "primary_output_exists": true,
+    "primary_output_sha256": "09abe8c0a9d7aceb551ae5e9db7e9db1613920e00289d7b92a24f6132cadbff0",
+    "return_code": 0,
+    "runtime_sha256": null,
+    "schema_version": 1,
+    "slurm_array_job_id": "49073416",
+    "slurm_array_task_id": "5",
+    "slurm_job_id": "49073462",
+    "status": "ok",
+    "stderr_tail": "",
+    "timeout_s": 240.0,
+    "wall_s": 14.2205
+  },
+  "runner_return_code": 0,
+  "task": 5
+}

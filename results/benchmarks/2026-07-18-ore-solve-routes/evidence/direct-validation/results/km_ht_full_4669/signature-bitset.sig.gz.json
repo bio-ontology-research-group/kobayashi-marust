@@ -1,0 +1,20 @@
+{
+  "algorithm": "scc-component-python-int-bitset-v1",
+  "canonicalizer": "/ibex/scratch/hohndor/km/routing_20260715/oracle/ore/ore_canon.py",
+  "canonicalizer_sha256": "2fc28764e34418ae3004f6dca7bb9bb6c6f763b022b0d356b80f896fa18173a2",
+  "components": 34865,
+  "consistent": true,
+  "format": "json",
+  "input": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_full_4669/stdout.log",
+  "input_sha256": "09abe8c0a9d7aceb551ae5e9db7e9db1613920e00289d7b92a24f6132cadbff0",
+  "peak_mb": 94.23,
+  "schema_version": 1,
+  "signature": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_full_4669/signature-bitset.sig.gz",
+  "signature_bytes": 424356,
+  "signature_gzip_sha256": "a24294c04bdab3f3a611d6b8a12d797ea9e2738d2cbaa0aba38e776c4aee7920",
+  "signature_sha256": "4b0c33ff1adfd642cb96e24e7d1a56a83d8a0a01e10eeade9777161e24363749",
+  "status": "ok",
+  "subsumptions": 122092,
+  "unsatisfiable": 24690,
+  "wall_s": 1.8983
+}

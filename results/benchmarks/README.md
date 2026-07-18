@@ -39,3 +39,8 @@ correct where.
   2 giants; a router beats blanket-on. `absorb`/`tabrace` now +0 (subsumed by base);
   `KM_HT_CONTRA` neutral. Union 568. Deployable: `base + ht_emelim` + giant-excluded
   `elcport`.
+- [`2026-07-18-ore-solve-routes/`](2026-07-18-ore-solve-routes/) — one
+  reproducible route row for every ORE 2015 ontology, direct full-IRI validation
+  of the source-symbol repairs, and retained counterexamples for the four
+  unclosed inputs. The adjudicated union is 588/592 correct: 586 gold-exact and
+  two correct inconsistent cases with stale stored gold.

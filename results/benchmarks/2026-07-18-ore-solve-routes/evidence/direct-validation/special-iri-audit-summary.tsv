@@ -1,0 +1,8 @@
+ontology	in_592_registry	collision_iri	validated_result
+ore_ont_3524.owl	yes	http://phenoscape.org/not_has_part/http://www.w3.org/2002/07/owl#Thing; http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing	fixed output exact to full-IRI gold
+ore_ont_4669.owl	yes	http://phenoscape.org/not_has_part/http://www.w3.org/2002/07/owl#Thing	unsound KM output
+ore_ont_7581.owl	yes	http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing	fixed output retains exact full-IRI KM/Konclude match
+ore_ont_12174.owl	no	http://data.nasa.gov/qudt/owl/qudt#Thing	outside selected 592-row registry
+ore_ont_12566.owl	no	http://www.aktors.org/ontology/support#Thing	outside selected 592-row registry
+ore_ont_13503.owl	yes	http://www.daml.org/2001/03/daml+oil#Nothing	fixed output exact to full-IRI gold and HermiT query
+ore_ont_15703.owl	yes	http://phenoscape.org/not_has_part/http://www.w3.org/2002/07/owl#Thing; http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing	fixed output exact to full-IRI gold

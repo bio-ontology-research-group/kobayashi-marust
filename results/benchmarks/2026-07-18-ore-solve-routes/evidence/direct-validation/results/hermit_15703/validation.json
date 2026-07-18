@@ -1,0 +1,43 @@
+{
+  "canonicalizer_return_code": 137,
+  "label": "hermit_15703",
+  "run": {
+    "binary": "/ibex/scratch/hohndor/km/bench/Oracle.class",
+    "binary_sha256": "60258bda6848304b1f113ba1c62c58f017d58fb848c248b45ef2792086a5d619",
+    "command": [
+      "/ibex/scratch/hohndor/km/bench/jdk8u492-b09/bin/java",
+      "-Xmx16g",
+      "-cp",
+      "/ibex/scratch/hohndor/km/bench:/ibex/scratch/hohndor/km/bench/hermit_cp/*",
+      "Oracle",
+      "/ibex/scratch/hohndor/km/corpus/ore_ont_15703.owl"
+    ],
+    "cpu_model": "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz",
+    "cpus": 16,
+    "environment": {},
+    "host": "gpu510-32",
+    "kind": "hermit",
+    "label": "hermit_15703",
+    "memory_limit_mb": 20480,
+    "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_15703.owl",
+    "ontology_sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+    "output_format": "json",
+    "peak_mb": 6509.38,
+    "primary_output": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/hermit_15703/stdout.log",
+    "primary_output_bytes": 24737153,
+    "primary_output_exists": true,
+    "primary_output_sha256": "ea825e9357e02ca79dc2c981db3d075016136cd3a0c8f0973cfae894f08c1706",
+    "return_code": 0,
+    "runtime_sha256": "854f27091cbf804f7fa6bfb2d958210740eb55e6d21f59d931f95a354a1a0619",
+    "schema_version": 1,
+    "slurm_array_job_id": "49073416",
+    "slurm_array_task_id": "19",
+    "slurm_job_id": "49073609",
+    "status": "ok",
+    "stderr_tail": "SLF4J: Failed to load class \"org.slf4j.impl.StaticLoggerBinder\".\nSLF4J: Defaulting to no-operation (NOP) logger implementation\nSLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.\n",
+    "timeout_s": 240.0,
+    "wall_s": 33.9373
+  },
+  "runner_return_code": 0,
+  "task": 19
+}

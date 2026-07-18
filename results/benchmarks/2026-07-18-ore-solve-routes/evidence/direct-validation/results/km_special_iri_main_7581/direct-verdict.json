@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "consistent": true,
+    "status_ok": true,
+    "subsumptions": true,
+    "taxonomy_sha256": true,
+    "unsatisfiable": true
+  },
+  "expected_subsumptions": 1246911,
+  "expected_taxonomy_sha256": "27a29aab966ffea74df4aa09c0520545f5908c9fc8e3fc5d10cd3e027b9118d4",
+  "expected_unsatisfiable": 0,
+  "observed_subsumptions": 1246911,
+  "observed_taxonomy_sha256": "27a29aab966ffea74df4aa09c0520545f5908c9fc8e3fc5d10cd3e027b9118d4",
+  "observed_unsatisfiable": 0,
+  "ontology_id": 7581,
+  "schema_version": 1,
+  "verdict": "match"
+}

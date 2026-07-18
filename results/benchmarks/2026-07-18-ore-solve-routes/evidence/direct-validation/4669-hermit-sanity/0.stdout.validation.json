@@ -1,0 +1,14 @@
+{
+  "class": "http://www.w3.org/2002/07/owl#Nothing",
+  "index": 0,
+  "peak_mb": 1994.76,
+  "return_code": 0,
+  "satisfiable": false,
+  "schema_version": 1,
+  "slurm_array_job_id": "49076433",
+  "slurm_array_task_id": "0",
+  "slurm_job_id": "49076434",
+  "status": "ok",
+  "stderr_tail": "SLF4J: Failed to load class \"org.slf4j.impl.StaticLoggerBinder\".\nSLF4J: Defaulting to no-operation (NOP) logger implementation\nSLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.\n",
+  "stdout_sha256": "c13e45737f2458b205361754c726c0fe40ff1c1e7ead7677bc68946bf8f4d09b"
+}

@@ -1,0 +1,24 @@
+job_id	purpose	result
+49073377	isolated smoke validation	completed
+49073416	31-task tail validation matrix	completed
+49073549	c229 production reruns for 10621, 10860 and 1194	completed
+49074551	full-IRI taxonomy fingerprints	completed
+49075432	compile targeted HermiT satisfiability oracle	completed
+49075466	4669 HT-only UNSAT queries 0 through 2	3 successful queries, all satisfiable
+49075584	4669 HT-only UNSAT queries 3 through 55	53 successful queries, all satisfiable
+49075857	4669 production-UNSAT query for GO_0000006	successful query, satisfiable
+49076340	3524 and 15703 told-target preservation checks	both incomplete
+49076433	HermiT owl:Nothing and owl:Thing sanity controls	Nothing false, Thing true
+49076590	4669 production-UNSAT ten-class sample	7 satisfiable, 3 timeouts; GO_0000006 separately succeeds in 49075857
+49081313	all-source Thing/Nothing collision audit	912 files scanned; five collision-bearing files belong to the 592-row registry
+49081761	fresh KM, Konclude and HermiT runs for 7581 and 13503	KM and Konclude complete both; HermiT completes 13503 and times out on 7581
+49081774	full-IRI fingerprints with shared source declarations	7581 exact; 13503 differs on one named UNSAT class
+49081910	targeted HermiT query for daml+oil#Nothing in 13503	successful query, unsatisfiable
+49082588	all-token Thing/Nothing source collision audit	912 files scanned; same seven files found, with no undeclared collision classes
+49086702	build fixed KM and run Rust/Python regression suites	1524 Rust tests passed, 7 ignored, 0 failed; special-IRI integration and 6 Python parity tests passed
+49086707	classify fixed 3524, 15703, 13503 and 7581	all four KM classifications completed within 240 seconds and 20 GiB; giant local-name postprocessing was replaced by full-IRI fingerprinting
+49087121	low-memory full-IRI fingerprints for fixed giants	15703 matched exactly; 3524 matched exactly and exposed one intentionally omitted reflexive told edge in the first checker pass
+49087226	strict told-edge recheck for fixed 3524	all 123310 strict told subsumptions preserved; full-IRI taxonomy matched Konclude exactly
+49088639	first latest-branch release gate	1596 tests passed; one stale unit assertion expected bare Thing/Nothing internal spellings and was corrected to the collision-safe km_src spellings
+49088657	final latest-branch build and full test gate	1597 Rust library tests and 8 integration tests passed, 8 ignored, 0 failed; 6 Python parity tests passed
+49088661	final rebased full-IRI corpus validation	3524, 15703, 13503 and 7581 all matched their authoritative full-IRI fingerprints within 240 seconds and 20 GiB

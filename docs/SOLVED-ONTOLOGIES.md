@@ -10,9 +10,49 @@ Konclude fails on it.
 Companion docs: `../CHANGELOG.md` (result tables per change),
 `../engine/src/konclude_ht/STATUS.md` (port state), `PERF-LEDGER.md`.
 
+The complete per-ontology route registry is
+[`../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv).
+Its direct validation records 586 gold-exact rows, two additional adjudicated
+correct results, one completed but incorrect output, and three inputs with no
+complete KM route. See the accompanying
+[`TAIL-EIGHT.md`](../results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md)
+before treating process completion as a solved ontology.
+
 ---
 
 ## Solved via typed source-symbol encoding
+
+### ore_ont_3524, 15703, and 13503: OWL builtin spellings in legal source IRIs (2026-07-18)
+
+- **Symptom**: 3524 and 15703 completed quickly but omitted 123,310 strict
+  told subsumptions to a legal generated class whose IRI ends in `#Thing`.
+  Ontology 13503 omitted the declared class `daml+oil#Nothing` from its UNSAT
+  set. A local-name-only comparison had hidden the 13503 error.
+- **Precise cause**: the frontend first reduced a source IRI to its last
+  fragment and then interpreted bare `Thing` and `Nothing` as OWL top and
+  bottom. It decided builtin semantics from a non-injective local name instead
+  of the complete OWL IRI.
+- **Fix**: recognize only `owl:Thing`, `owl:Nothing`, and their full W3C IRIs as
+  semantic constants. Escape every registry-owned source symbol with a
+  reserved spelling to a collision-safe `km_src_*` internal name and restore
+  its complete IRI at output. The Python reference frontend and output filter
+  use the same identity and ownership rule.
+- **Route**: run the fixed binary with `KM_ROUTE=production_all`, 16 threads,
+  the 240 second timeout and 20 GiB memory limit. The exact binary SHA-256 and
+  copyable per-ontology invocations are in the route registry.
+- **Result**: 3524 completes in 27.7082 seconds at 4600.92 MB and 15703 in
+  24.4224 seconds at 4350.15 MB. Each returns 1,604,386 full-IRI pairs, preserves
+  all 123,310 strict told edges, and matches the shared Konclude/ELK taxonomy
+  hash `090129a7f...`. Ontology 13503 completes in 0.0618 seconds at 7.10 MB,
+  returns 113 pairs plus the one named UNSAT class, and matches Konclude hash
+  `1b8fdf730b...`; a targeted HermiT query independently confirms that class is
+  unsatisfiable.
+- **Regression**: fixed ontology 7581 completes in 19.4446 seconds at 4318.46
+  MB and retains its exact 1,246,911-pair full-IRI taxonomy hash
+  `27a29aab96...`. IBEX job 49088657 passes 1,597 Rust library tests, all 8
+  integration tests, and six Python parity tests. Job 49088661 validates the
+  four full-IRI corpus results. This is frontend symbol encoding, not a
+  CB-calculus rule change, so it needs no Lean re-certification.
 
 ### ore_ont_8864, 12009, and 6817: source names that look generated (2026-07-16)
 
@@ -499,6 +539,7 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
+| 4669 | retained production and HT routes complete, but both are unsound | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
 | 10621 | — | current gold confirmed, KM timeout | Functional-boolean witness agrees with the current corrected Konclude signature, which contains 33,433 unsatisfiable classes including `Zone_of_cell`. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
 | 10860 | — | no authoritative gold | DL-safe-rule ontology; inspect ABox/rules and adjudicate directly because neither raw Konclude nor raw HermiT supplies valid gold. |

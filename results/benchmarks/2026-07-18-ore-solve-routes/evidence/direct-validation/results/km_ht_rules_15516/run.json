@@ -1,0 +1,36 @@
+{
+  "binary": "/ibex/scratch/hohndor/km/routing_20260715/retained-route-rerun-20260718/target/release/km",
+  "binary_sha256": "dce27171c9d9d2753c55672266289ccec3e8ab74f7f47d75b20f8375e0c84aee",
+  "command": [
+    "/ibex/scratch/hohndor/km/routing_20260715/retained-route-rerun-20260718/target/release/km",
+    "classify",
+    "/ibex/scratch/hohndor/km/corpus/ore_ont_15516.owl"
+  ],
+  "cpu_model": "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz",
+  "cpus": 16,
+  "environment": {
+    "KM_HT_RULES": "1"
+  },
+  "host": "gpu510-32",
+  "kind": "km",
+  "label": "km_ht_rules_15516",
+  "memory_limit_mb": 20480,
+  "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_15516.owl",
+  "ontology_sha256": "fe36410fa273546ee38e7a77ae2879f3f95aa1ac93cc021909c680f5fb036d62",
+  "output_format": "json",
+  "peak_mb": 15.94,
+  "primary_output": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_ht_rules_15516/stdout.log",
+  "primary_output_bytes": 77,
+  "primary_output_exists": true,
+  "primary_output_sha256": "c29efaef64e5cad4f587843501fd02366c5597516d2df1f8178386c9e7f29e0f",
+  "return_code": 0,
+  "runtime_sha256": null,
+  "schema_version": 1,
+  "slurm_array_job_id": "49073416",
+  "slurm_array_task_id": "1",
+  "slurm_job_id": "49073417",
+  "status": "ok",
+  "stderr_tail": "",
+  "timeout_s": 240.0,
+  "wall_s": 0.1187
+}

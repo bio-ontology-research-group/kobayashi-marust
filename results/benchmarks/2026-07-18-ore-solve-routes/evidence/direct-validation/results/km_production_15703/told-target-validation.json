@@ -1,0 +1,16 @@
+{
+  "first_missing_axiom": "SubClassOf(<http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/BFO_0000001> <http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing>)",
+  "first_missing_left": "http://phenoscape.org/not_has_part/http://purl.obolibrary.org/obo/BFO_0000001",
+  "km_output": "/ibex/scratch/hohndor/km/routing_20260715/tail-validation-20260718/results/km_production_15703/stdout.log",
+  "km_output_sha256": "0906163c07e9cd3ceb9773e2afcef957d7b1c21a8e8df52f46bf640be6d3b6ef",
+  "km_returned_distinct_lefts": 0,
+  "missing_told_subsumptions": 123310,
+  "ontology": "/ibex/scratch/hohndor/km/corpus/ore_ont_15703.owl",
+  "ontology_sha256": "4b4cfcd05dde8dbf4aee52e361fe1a7b8b05f1693a0f0b588fe72f7f5afd3e03",
+  "schema_version": 1,
+  "target": "http://purl.obolibrary.org/obo/BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing",
+  "told_distinct_lefts": 123310,
+  "told_occurrences": 123310,
+  "unexpected_returned_lefts": 0,
+  "verdict": "incomplete"
+}

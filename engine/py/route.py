@@ -125,7 +125,7 @@ def _filter_engine_out(out):
             continue
         sa = owl_classify.short(a)
         for s in sups:
-            if owl_classify.short(s) in owl_classify.BOTTOM:
+            if owl_classify.is_semantic_bottom(s):
                 if sa not in unsat:
                     unsat.append(sa)
             elif not owl_classify.is_internal(s) and owl_classify.short(s) != sa:
