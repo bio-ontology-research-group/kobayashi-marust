@@ -20,30 +20,43 @@ ibex:/ibex/scratch/hohndor/km/routing_20260715/special-iri-fix-20260718
 Small metadata, hashes and adjudication records are committed under
 [`evidence/direct-validation/`](evidence/direct-validation/).
 
+> **2026-07-21 update:** the source-bound capsule-10 replay closes 10621 through
+> `KM_ROUTE=ht_bridge` in 118.2149 seconds at 1096.54 MiB. The trace selects
+> exactly `ht_bridge`, and KM's full-IRI taxonomy equals fresh source-built
+> Konclude at 70,827 subsumptions and 33,433 unsatisfiable named classes. The
+> earlier 10621 analysis below remains as historical diagnosis.
+
+> **2026-07-22 reproducibility update:** source-bound IBEX replays reproduce all
+> 589 documented correct classifications. The authoritative per-ontology route,
+> command, source/build/runtime identities, limits and fresh oracle evidence are
+> in
+> [`../2026-07-21-route-confirmation/reproduced-route-ledger.tsv`](../2026-07-21-route-confirmation/reproduced-route-ledger.tsv).
+> The ledger retains 4669, 10860 and 1194 as explicit nonclaims.
+
 ## Validated status
 
 | Ontology | KM terminates in limit | Direct validation | Final state | Route or blocker |
 |---|---:|---|---|---|
 | 2669 | yes, 0.1177 s | KM and HermiT core both return the same inconsistent signature | solved correctly | `ht_rules`, `KM_HT_RULES=1` |
 | 15516 | yes, 0.1187 s | KM and HermiT core both return the same inconsistent signature | solved correctly | `ht_rules`, `KM_HT_RULES=1` |
-| 3524 | yes, 27.7082 s | all 123,310 strict told subsumptions are preserved; full-IRI taxonomy equals Konclude and ELK | solved correctly | fixed `production_all` |
-| 15703 | yes, 24.4224 s | all 123,310 told subsumptions are preserved; full-IRI taxonomy equals Konclude and ELK | solved correctly | fixed `production_all` |
+| 3524 | yes, 35.8973 s | all 123,310 strict told subsumptions are preserved; full-IRI taxonomy equals Konclude and ELK | solved correctly | fixed `production_all` |
+| 15703 | yes, 24.4077 s | all 123,310 told subsumptions are preserved; full-IRI taxonomy equals Konclude and ELK | solved correctly | fixed `production_all` |
 | 4669 | yes, 15.3261 s | HermiT refutes sampled production UNSAT results and all 56 additional HT UNSAT results | completed but unsound | both retained KM answers are invalid |
-| 7581 | yes, 19.4446 s | fixed KM and Konclude full-IRI taxonomies match exactly | solved correctly | fixed `production_all` |
-| 10621 | no | fresh Konclude completes and matches current stored gold line for line | no KM completion | global inverse, cardinality and datatype saturation throughput |
+| 7581 | yes, 19.2328 s | fixed KM and Konclude full-IRI taxonomies match exactly | solved correctly | fixed `production_all` |
+| 10621 | yes, 118.2149 s | fresh source-built Konclude full-IRI taxonomy is exactly equal | solved correctly | `ht_bridge`, `KM_ROUTE=ht_bridge` |
 | 10860 | no | production rejects unsupported rules; CB bypass reaches its internal cap | no complete route | SWRL built-ins plus live disjunction |
 | 1194 | no | production and HT exceed 20 GiB; HermiT times out and Konclude exceeds 20 GiB | no complete route | large SRIQ ABox saturation |
-| 13503 | yes, 0.0618 s | KM emits the legal `daml+oil#Nothing` source class as UNSAT; full-IRI taxonomy equals Konclude and HermiT agrees | solved correctly | fixed `production_all` |
+| 13503 | yes, 0.0627 s | KM emits the legal `daml+oil#Nothing` source class as UNSAT; full-IRI taxonomy equals Konclude and HermiT agrees | solved correctly | fixed `production_all` |
 
 The validated accounting for all 592 inputs is therefore:
 
-- 586 gold-exact KM results;
+- 587 gold-exact KM results;
 - 2 independently adjudicated correct results whose stored Konclude files are
   parse-failure artifacts;
 - 1 KM run that terminates but returns an incorrect classification;
-- 3 ontologies with no complete KM run within the benchmark limits.
+- 2 ontologies with no complete KM run within the benchmark limits.
 
-The validated correct coverage represented by this registry is **588 of 592**.
+The validated correct coverage represented by this registry is **589 of 592**.
 Ontology 4669 must not be counted merely because a KM process returned output.
 
 ## Validation method
@@ -134,11 +147,11 @@ recorded in the TSV.
 | Ontology / reasoner | Wall (s) | Peak (MB) | Full-IRI pairs | Taxonomy SHA-256 |
 |---|---:|---:|---:|---|
 | 3524 KM before fix | 22.5233 | 4391.97 | 1,481,076 | `1c78a2a01f8b7ba9868cd59a443a9c9dea9a8acb21eb794f746065d423e9ce47` |
-| 3524 KM fixed | 27.7082 | 4600.92 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
+| 3524 KM fixed | 35.8973 | 4591.72 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 | 3524 Konclude | 19.6109 | 4307.32 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 | 3524 ELK | 7.8041 | 2697.33 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 | 15703 KM before fix | 20.2774 | 4055.16 | 1,481,076 | `1c78a2a01f8b7ba9868cd59a443a9c9dea9a8acb21eb794f746065d423e9ce47` |
-| 15703 KM fixed | 24.4224 | 4350.15 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
+| 15703 KM fixed | 24.4077 | 4347.40 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 | 15703 Konclude | 17.8164 | 3763.18 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 | 15703 ELK | 6.4018 | 2437.21 | 1,604,386 | `090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a` |
 
@@ -185,7 +198,7 @@ The same source scan found two collision-bearing rows that had been recorded as
 
 Ontology 7581 declares the nested class
 `BFO_0000050_some_http://www.w3.org/2002/07/owl#Thing`. Its fresh production
-run with the fix completed in 19.4446 seconds at 4318.46 MB. When KM and Konclude are
+run with the fix completed in 19.2328 seconds at 4654.28 MB. When KM and Konclude are
 fingerprinted over the same source declaration universe, both return exactly
 1,246,911 full-IRI pairs, zero UNSAT classes and taxonomy SHA-256
 `27a29aab966ffea74df4aa09c0520545f5908c9fc8e3fc5d10cd3e027b9118d4`.
@@ -208,7 +221,7 @@ local-name signature had appeared exact only because the canonicalizer
 conflated the legal class name `Nothing` with `owl:Nothing`.
 
 With identity-safe source symbols, KM returns 113 full-IRI pairs and the same
-one named UNSAT class in 0.0618 seconds at 7.10 MB. Its taxonomy SHA-256 is
+one named UNSAT class in 0.0627 seconds at 6.47 MB. Its taxonomy SHA-256 is
 `1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b`,
 exactly Konclude's fingerprint. Ontology 13503 is now `exact_gold`.
 
@@ -239,7 +252,7 @@ is not yet a complete authoritative taxonomy for 4669. Direct class queries do
 settle the reported UNSAT witnesses. No successful existing 4669 route is a
 valid solution.
 
-## 10621: current gold is valid, KM does not finish
+## 10621: historical diagnosis before the final `ht_bridge` closure
 
 The seven-axiom core committed under
 [`results/contested-cores`](../../contested-cores/) correctly proves that
@@ -258,9 +271,31 @@ KM still has no complete route:
 - direct CB reaches its internal cap at 192.1087 seconds and 3660.30 MB;
 - full HermiT classification times out at 240 seconds.
 
-The blocker is shared saturation throughput over the large inverse-role,
-cardinality and functional-datatype closure. The core validates one consequence
-but cannot stand in for a full taxonomy.
+Focused root tests localize the KM timeout. `owl:Thing` and `Zone_of_cell`
+complete together in about 1.18 seconds. In the first 64 independently limited
+roots, all 55 gold-UNSAT roots time out at 30 seconds, while all 9 satisfiable
+roots finish. A 20,000-message trace has 18,739 `Pred` messages, 1,261 `Succ`
+messages, 96 successor contexts and 31,426 worked-off clauses. Clause insertion
+uses 7.143 of 8.382 traced seconds and grows superlinearly. The bottleneck is
+repeated hard bottom-root saturation and clause-set maintenance over the
+inverse-role, cardinality and functional-datatype closure.
+
+A sound global bottom prepass finds 33,248 of the 33,433 gold-UNSAT classes,
+with zero false positives, in 2.30 seconds at 164 MB. Separately, ELK returns
+480,723 pairs and no UNSAT block. Every one of its 409,897 pairs beyond gold has
+a gold-UNSAT subject. Using the authoritative UNSAT set as an audit-only filter
+leaves 70,826 of 70,827 gold pairs, missing only
+`Flagellum ⊑ Organ_part`.
+
+These were validated projections, not a complete KM route. The implementable
+plan is a one-time global bottom prepass, certified EL/Horn bulk classification,
+then complete reasoning for the 185 complex-bottom classes missed by the
+prepass and the tiny non-EL taxonomy residue. Until that composition produces
+and validates all 70,827 pairs and 33,433 UNSAT classes, it cannot close the
+ontology. The seven-axiom core validates one consequence but cannot stand in
+for a full taxonomy. The later capsule-10 `ht_bridge` run does produce and
+validate that complete taxonomy; its source-bound record is documented in
+`../2026-07-21-route-confirmation/TARGETED-VALIDATION.md`.
 
 ## 10860: unsupported rules and live disjunction
 
@@ -307,9 +342,8 @@ No tested route solves 1194 within the benchmark contract.
   [`evidence/direct-validation/results/`](evidence/direct-validation/results/)
 - Pre-fix full-IRI fingerprints for 3524 and 15703: each reasoner's
   `fulliri.json` in that results tree
-- Final post-fix full-IRI fingerprints: `fulliri-source.json` in each
-  `km_special_iri_main_*` result directory; the earlier
-  `km_special_iri_fix_*` evidence remains as an independent first run
+- Post-fix full-IRI fingerprints: `fulliri-source.json` in each
+  `km_special_iri_fix_*` result directory
 - Told-axiom preservation checks: each fixed giant KM result's
   `told-target-validation.json`
 - All 56 HT disagreement queries:
@@ -327,7 +361,5 @@ No tested route solves 1194 within the benchmark contract.
   [`13503-satisfiability/`](evidence/direct-validation/13503-satisfiability/)
 - Fixed-binary build and test log:
   [`special-iri-fix-build-49086702.log`](evidence/direct-validation/special-iri-fix-build-49086702.log)
-- Final rebased build and test log:
-  [`special-iri-main-build-49088657.log`](evidence/direct-validation/special-iri-main-build-49088657.log)
 - Per-ontology route registry:
   [`ontology-solve-routes.tsv`](ontology-solve-routes.tsv)

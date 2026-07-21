@@ -10,11 +10,15 @@ Konclude fails on it.
 Companion docs: `../CHANGELOG.md` (result tables per change),
 `../engine/src/konclude_ht/STATUS.md` (port state), `PERF-LEDGER.md`.
 
-The complete per-ontology route registry is
-[`../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv).
-Its direct validation records 586 gold-exact rows, two additional adjudicated
-correct results, one completed but incorrect output, and three inputs with no
-complete KM route. See the accompanying
+The authoritative per-ontology acceptance ledger is
+[`../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv`](../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv).
+Its source-bound replays reproduce 587 exact full-IRI results and two additional
+adjudicated correct results. It records 4669, 10860 and 1194 as explicit
+nonclaims. The executable
+[`REPRODUCIBILITY-PROOF.md`](../results/benchmarks/2026-07-21-route-confirmation/REPRODUCIBILITY-PROOF.md)
+checks the ledger and external IBEX receipt. The older
+[`ontology-solve-routes.tsv`](../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
+remains historical provenance. See the accompanying
 [`TAIL-EIGHT.md`](../results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md)
 before treating process completion as a solved ontology.
 
@@ -40,19 +44,18 @@ before treating process completion as a solved ontology.
 - **Route**: run the fixed binary with `KM_ROUTE=production_all`, 16 threads,
   the 240 second timeout and 20 GiB memory limit. The exact binary SHA-256 and
   copyable per-ontology invocations are in the route registry.
-- **Result**: 3524 completes in 27.7082 seconds at 4600.92 MB and 15703 in
-  24.4224 seconds at 4350.15 MB. Each returns 1,604,386 full-IRI pairs, preserves
+- **Result**: 3524 completes in 35.8973 seconds at 4591.72 MB and 15703 in
+  24.4077 seconds at 4347.40 MB. Each returns 1,604,386 full-IRI pairs, preserves
   all 123,310 strict told edges, and matches the shared Konclude/ELK taxonomy
-  hash `090129a7f...`. Ontology 13503 completes in 0.0618 seconds at 7.10 MB,
+  hash `090129a7f...`. Ontology 13503 completes in 0.0627 seconds at 6.47 MB,
   returns 113 pairs plus the one named UNSAT class, and matches Konclude hash
   `1b8fdf730b...`; a targeted HermiT query independently confirms that class is
   unsatisfiable.
-- **Regression**: fixed ontology 7581 completes in 19.4446 seconds at 4318.46
+- **Regression**: fixed ontology 7581 completes in 19.2328 seconds at 4654.28
   MB and retains its exact 1,246,911-pair full-IRI taxonomy hash
-  `27a29aab96...`. IBEX job 49088657 passes 1,597 Rust library tests, all 8
-  integration tests, and six Python parity tests. Job 49088661 validates the
-  four full-IRI corpus results. This is frontend symbol encoding, not a
-  CB-calculus rule change, so it needs no Lean re-certification.
+  `27a29aab96...`. IBEX job 49086702 passes 1,524 Rust library tests, the new
+  end-to-end regression, and six Python parity tests. This is frontend symbol
+  encoding, not a CB-calculus rule change, so it needs no Lean re-certification.
 
 ### ore_ont_8864, 12009, and 6817: source names that look generated (2026-07-16)
 
@@ -535,19 +538,20 @@ branch-open-free is.**
 
 ---
 
-## Diagnosed, not yet solved (the current frontier)
+## Current frontier and recently closed target
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
 | 4669 | retained production and HT routes complete, but both are unsound | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
-| 10621 | — | current gold confirmed, KM timeout | Functional-boolean witness agrees with the current corrected Konclude signature, which contains 33,433 unsatisfiable classes including `Zone_of_cell`. |
+| 10621 | `ht_bridge`, `KM_ROUTE=ht_bridge` | full-IRI exact against fresh source-built Konclude | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
 | 10860 | — | no authoritative gold | DL-safe-rule ontology; inspect ABox/rules and adjudicate directly because neither raw Konclude nor raw HermiT supplies valid gold. |
 
-The six-item “hard residual” audit, including the previously lost closures of
-10702, 15672, and 6934, is maintained in
+The hard-residual audit, including the previously lost closures of 10702,
+15672, and 6934 and the later source-bound closure of 10621, is maintained in
 [`HARD-RESIDUAL-AUDIT.md`](HARD-RESIDUAL-AUDIT.md). Do not describe all six as
-unsolved.
+unsolved. The final source-bound ledger reproduces every one of the 589 solve
+claims; only the three rows listed above remain nonclaims.
 
 ## Reusable diagnostics
 

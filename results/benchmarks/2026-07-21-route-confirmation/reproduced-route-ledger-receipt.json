@@ -1,0 +1,43 @@
+{
+  "aggregation_driver_sha256": "c84fcb8670d2c6a7ea4acb2dd153bc5e0fbd463b0ca60d57069b23f05cd9860d",
+  "alternative_summary_sha256": "ef008c82b9fca9b2e6349556ac92bb391c4ab8ad5af619c700a6b4b754c40017",
+  "checks": {
+    "no_unreproduced_claim": true,
+    "nonclaim_count": true,
+    "nonclaim_identity": true,
+    "nonclaim_status": true,
+    "reproduced_claims": true,
+    "reproduced_row_provenance": true,
+    "rows": true,
+    "unique_ontologies": true
+  },
+  "chosen_origins": {
+    "current_alternative_route": 3,
+    "current_selected_route": 578,
+    "exact_source_candidate_route": 3,
+    "exact_source_historical_route": 5,
+    "none": 3
+  },
+  "exact_candidate_summary_sha256": "262e62584fa788c7689d362636d3d6f936337bcc4d53faa54e4b0da4f9833f50",
+  "generator_sha256": "9e8b8580216c2f3388dd12eb4e9365bd9d67c669bff2baddf95464660b1c84b2",
+  "ledger_sha256": "7db5b5b3c645cb2f37e515d215808ef3de499249c7a2d3fd22ec50771e64f354",
+  "nonclaims": [
+    "ore_ont_10860.owl",
+    "ore_ont_1194.owl",
+    "ore_ont_4669.owl"
+  ],
+  "rebuilt_historical_summary_sha256": "ed3e0468847ac065c5e6c074fb923db0bf26faaf7fa208c9ef1c95bc5bc12d14",
+  "reproduced_claims": 589,
+  "rows": 592,
+  "schema_version": 1,
+  "selected_summary_sha256": "82b300115a0cc7ee4d459065b9f3733aa76473444824b91be4948f5472e7e8da",
+  "slurm_job_id": "49272959",
+  "states": {
+    "not_a_documented_solve_claim": 3,
+    "reproduced_adjudicated_inconsistent": 2,
+    "reproduced_exact_full_iri": 579,
+    "reproduced_exact_source_candidate_full_iri": 3,
+    "reproduced_exact_source_historical_full_iri": 5
+  },
+  "status": "verified_complete_reproduced_route_ledger"
+}

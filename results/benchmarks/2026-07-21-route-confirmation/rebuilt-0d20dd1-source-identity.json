@@ -1,0 +1,33 @@
+{
+  "build_receipt_sha256": "9a6eb331df6b86710862eef62878df082f9160f04104a242580d132ef2434ed1",
+  "capsule_source_archive_sha256": "dfbcc6bb7280b4ea433e5dbf0531581394d0e07f59d864c77c505e55d277ee11",
+  "checks": {
+    "archive_and_manifest_bytes": true,
+    "build_receipt_source_archive": true,
+    "build_receipt_source_manifest": true,
+    "build_receipt_verified": true,
+    "git_and_manifest_bytes": true,
+    "git_and_manifest_paths": true
+  },
+  "commit": "0d20dd13312c16dec4ff256852979fb4c927556a",
+  "commit_timestamp": 1783281330,
+  "git_archive_command": [
+    "/usr/bin/git",
+    "archive",
+    "--format=tar",
+    "0d20dd13312c16dec4ff256852979fb4c927556a",
+    "engine",
+    "tests"
+  ],
+  "git_archive_sha256": "fc817c697a808563f66db4b14cacfbc803c210ba2be3b7aae134a93fef3fce37",
+  "git_executable": "/usr/bin/git",
+  "git_executable_sha256": "356db14e102d68a1a37d8a1ac577dfd678d45d46e92f468bef8b7154e7bfdc60",
+  "git_version": "git version 2.47.3",
+  "repository": "git@github.com:bio-ontology-research-group/kobayashi-marust.git",
+  "schema_version": 1,
+  "source_file_count": 256,
+  "source_manifest_sha256": "f6b393cbda6448ccd255f1b109385134eed8b441439826b70b2e1ccd0a169537",
+  "status": "verified_exact_git_source",
+  "tree": "a246d2cbe4c15960189049d7c747efdebe0b148b",
+  "verifier_sha256": "97770f1a314d56beedcb33d9d7437a4d3f036cd7df2242aac2128217bb38d1ab"
+}
