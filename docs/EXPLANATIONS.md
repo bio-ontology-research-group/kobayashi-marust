@@ -27,17 +27,24 @@ km explain --pretty ontology.ofn unsatisfiable http://example.org/A
 km explain ontology.ofn inconsistent
 ```
 
-`--route NAME` uses the same named route contract as `km classify`. The
-default is `auto`. The safety bounds are:
+The explanation oracle always uses `auto`, the normal production policy.
+`--route auto` may be supplied explicitly. `manual` and every named matrix
+procedure are rejected because forcing a procedure bypasses the source-profile
+semantic-fragment gate that establishes where it may answer. An ambient
+`KM_ROUTE` is ignored; only an explicit CLI option can select a route, and the
+only accepted value is `auto`.
+
+The safety bounds are:
 
 - `--max-axioms N`, default 256;
 - `--max-checks N`, default `max-axioms + 1`, including the initial full-source
   check; and
 - `--max-source-bytes N`, default 8 MiB.
 
-The command exits 3 when the input is outside this scope or a bound prevents
-the initial check. It exits 1 if a classification check fails. It never turns
-an error or resource decline into an explanation.
+The command exits 3 when the input is outside this scope, a route is not
+explanation-safe, or a bound prevents the initial check. It exits 1 if a
+classification check fails. It never turns an error or resource decline into
+an explanation.
 
 ## JSON protocol
 
@@ -103,11 +110,23 @@ entailing source set. The report sets `limitReached: true` and
 
 This is an oracle-based justification, not an independently checked proof
 object and not a trace of individual CB, EL, or hypertableau rule applications.
-Its soundness depends on the selected KM classification route. The method does
-not find every justification, a minimum-cardinality justification, or an
+Its soundness depends on KM's automatic production policy; the report does not
+upgrade the project's empirical route evidence into a formal proof. The method
+does not find every justification, a minimum-cardinality justification, or an
 explanation for property and individual inferences. `oracleSubsetMinimal`
-means minimal relative to source axiom occurrences and the selected KM route,
-not minimal under arbitrary OWL axiom rewriting.
+means minimal relative to source axiom occurrences and the automatic KM
+oracle, not minimal under arbitrary OWL axiom rewriting.
+
+Deleting an axiom can change the candidate ontology's profile, so `auto` may
+select different exact mechanisms for different deletion candidates. This
+does not by itself invalidate minimization. Each accepted candidate still goes
+through the semantic-fragment gate; if the chosen production mechanism returns
+an answer, it is intended to decide the same OWL entailment relation. Semantic
+OWL entailment is monotone regardless of which applicable implementation
+computes it. If any candidate declines or errors, extraction stops instead of
+claiming minimality. This argument is relative to the production policy's
+soundness and completeness contract, not an independent verification of every
+mechanism.
 
 The extractor rebuilds each candidate ontology from source functional syntax.
 It therefore explains generated definer and normalized-clause inferences in

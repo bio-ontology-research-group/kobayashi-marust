@@ -216,6 +216,21 @@ impl Route {
                 | Route::SeqOff
         )
     }
+
+    /// Whether callers may use this route as the entailment oracle for source
+    /// justification extraction.
+    ///
+    /// Only `auto` applies the source-profile semantic-fragment gate before it
+    /// selects an exact mechanism. Named procedures are matrix measurements:
+    /// several are sound/complete only on a particular fragment, and an
+    /// explicitly forced procedure bypasses the gate that establishes that
+    /// fragment. `manual` is even less constrained because arbitrary ambient
+    /// `KM_*` settings survive. Explanation extraction therefore fails closed
+    /// unless every candidate ontology passes through the automatic production
+    /// policy.
+    pub fn is_explanation_safe(self) -> bool {
+        self == Route::Auto
+    }
 }
 
 impl std::fmt::Display for Route {
@@ -783,6 +798,18 @@ mod tests {
     fn every_matrix_route_round_trips() {
         for route in Route::NAMED {
             assert_eq!(route.as_str().parse::<Route>().unwrap(), route);
+        }
+    }
+
+    #[test]
+    fn only_automatic_routing_is_an_explanation_oracle() {
+        assert!(Route::Auto.is_explanation_safe());
+        assert!(!Route::Manual.is_explanation_safe());
+        for route in Route::NAMED {
+            assert!(
+                !route.is_explanation_safe(),
+                "matrix route {route} must remain unavailable to explanations"
+            );
         }
     }
 

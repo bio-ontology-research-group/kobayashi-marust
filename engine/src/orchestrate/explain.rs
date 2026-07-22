@@ -4,8 +4,9 @@
 //! explanation request is an opt-in, black-box deletion pass over the original
 //! OWL functional-syntax axioms: classify the full source, remove one source
 //! axiom, and keep the removal only when KM still entails the query.  Every
-//! returned set is therefore revalidated by the same complete-or-defer
-//! classification contract as `km classify`.
+//! returned set is therefore revalidated by the automatic production
+//! classifier. Forced matrix and manual routes are rejected because they
+//! bypass the source-profile semantic-fragment gate.
 //!
 //! A completed pass is subset-minimal with respect to the source axiom
 //! occurrences.  If the caller's check budget stops the pass, the current set
@@ -21,6 +22,7 @@ use serde::Serialize;
 use super::tmpfile::TempPath;
 use super::{Classification, Config, OrchestrateError};
 use crate::frontend::sexpr::{Node, Parser};
+use crate::routing::Route;
 
 pub const DEFAULT_MAX_AXIOMS: usize = 256;
 pub const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
@@ -171,6 +173,7 @@ pub enum ExplainError {
     Io(std::io::Error),
     Parse(String),
     Limit(String),
+    UnsafeRoute(String),
     Classify(OrchestrateError),
 }
 
@@ -180,6 +183,10 @@ impl std::fmt::Display for ExplainError {
             ExplainError::Io(error) => write!(f, "io: {error}"),
             ExplainError::Parse(error) => write!(f, "functional-syntax parse: {error}"),
             ExplainError::Limit(error) => write!(f, "explanation limit: {error}"),
+            ExplainError::UnsafeRoute(route) => write!(
+                f,
+                "route {route:?} is not an explanation-safe production oracle; use auto"
+            ),
             ExplainError::Classify(error) => write!(f, "classification oracle: {error}"),
         }
     }
@@ -388,8 +395,23 @@ pub fn explain(
     ontology: &Path,
     query: Query,
     options: &Options,
-    requested_route: &str,
+    requested_route: Route,
 ) -> Result<Report, ExplainError> {
+    // Check before reading the source or creating any candidate. A library
+    // caller must not be able to bypass the CLI's production-oracle boundary.
+    if !requested_route.is_explanation_safe() {
+        return Err(ExplainError::UnsafeRoute(
+            requested_route.as_str().to_string(),
+        ));
+    }
+
+    // Enforce the typed API contract too. A caller may have constructed `cfg`
+    // while a manual or measurement route was ambient; each candidate must
+    // nevertheless enter `classify` through the automatic semantic gate. The
+    // guard restores the caller's process environment when extraction ends.
+    let _environment_guard = crate::routing::EnvironmentGuard::capture();
+    std::env::set_var("KM_ROUTE", Route::Auto.as_str());
+
     if options.max_axioms == 0 {
         return Err(ExplainError::Limit(
             "--max-axioms must be greater than zero".into(),
@@ -424,7 +446,7 @@ pub fn explain(
 
     let notes = vec![
         "The justification is validated by KM's classification oracle, not by an independent proof checker.",
-        "Subset minimality is relative to source axiom occurrences and the requested KM route.",
+        "Subset minimality is relative to source axiom occurrences and KM's automatic production policy.",
         "Only self-contained OWL functional syntax and named-class subclass, unsatisfiability, or inconsistency queries are supported.",
     ];
     let (status, justifications) = if minimized.entailed {
@@ -450,7 +472,7 @@ pub fn explain(
         status,
         query,
         method: "black-box-source-axiom-deletion",
-        requested_route: requested_route.to_string(),
+        requested_route: requested_route.as_str().to_string(),
         reasoner_version: env!("CARGO_PKG_VERSION"),
         source_axiom_count: document.axioms.len(),
         classification_checks: minimized.checks,
@@ -551,5 +573,19 @@ Ontology(<http://example.org/o>
             super_class: "http://e/B".into(),
         }
         .entailed_by(&classification));
+    }
+
+    #[test]
+    fn api_rejects_a_forced_measurement_route_before_reading_source() {
+        let config = Config::from_env();
+        let error = explain(
+            &config,
+            Path::new("/path-is-never-read.ofn"),
+            Query::Inconsistent,
+            &Options::default(),
+            Route::HtQo,
+        )
+        .unwrap_err();
+        assert!(matches!(error, ExplainError::UnsafeRoute(route) if route == "ht_qo"));
     }
 }

@@ -16,17 +16,19 @@ subsumption, named-class unsatisfiability, or ontology inconsistency. The
 extractor uses black-box source-axiom deletion: it confirms the full entailment
 and keeps a deletion only after the existing KM classifier still entails the
 query. A completed pass is subset-minimal relative to source axiom occurrences
-and the requested route. A check-limited pass remains an entailing source set
-but reports `oracleSubsetMinimal: false` and `limitReached: true`.
+and the automatic production policy. A check-limited pass remains an entailing
+source set but reports `oracleSubsetMinimal: false` and `limitReached: true`.
 
 The versioned JSON response includes canonical functional syntax, stable source
 ordinals, route, check count, and explicit minimality fields for a later OWLAPI
 or Protégé explanation UI. The initial scope is bounded to 256 axioms and 8 MiB
 by default, accepts only self-contained functional syntax, and fails closed on
-classification errors. Normal classification performs no provenance work and
-its output is unchanged. Five unit tests and one end-to-end CLI test pass on
-the workstation build host. This orchestration-only feature changes no CB rule
-and needs no Lean re-certification.
+classification errors. It rejects `manual` and every forced matrix procedure;
+only `auto` applies the semantic-fragment gate for every deletion candidate.
+Normal classification performs no provenance work and its output is unchanged.
+Focused unit and end-to-end CLI tests pass on the workstation build host. This
+orchestration-only feature changes no CB rule and needs no Lean
+re-certification.
 
 ### Defer inverse negative-existential mirrors in the HT bridge (2026-07-22)
 

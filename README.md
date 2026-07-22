@@ -100,7 +100,8 @@ decision-tree validation.
 
 `km explain` accepts a self-contained functional-syntax source and returns one
 source-axiom justification. Explanation checks are bounded and opt-in, so the
-normal classifier carries no provenance overhead. See
+normal classifier carries no provenance overhead. It always uses automatic
+production routing; manual and forced matrix routes are rejected. See
 [`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md) for query syntax, the JSON
 schema, minimality semantics, and the OWLAPI/Protégé integration boundary.
 

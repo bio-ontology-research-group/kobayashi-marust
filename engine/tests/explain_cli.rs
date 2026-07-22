@@ -30,10 +30,10 @@ SubClassOf(<http://example.org/Noise> <http://example.org/C>)
             "http://example.org/A",
             "http://example.org/C",
         ])
+        .env("KM_ROUTE", "ht_qo")
         .env("KM_THREADS", "1")
         .output()
         .unwrap();
-    let _ = std::fs::remove_file(&ontology);
 
     assert!(
         output.status.success(),
@@ -56,4 +56,20 @@ SubClassOf(<http://example.org/Noise> <http://example.org/C>)
     assert!(axioms.contains(&"SubClassOf(<http://example.org/A> <http://example.org/B>)"));
     assert!(axioms.contains(&"SubClassOf(<http://example.org/B> <http://example.org/C>)"));
     assert!(!axioms.iter().any(|axiom| axiom.contains("Noise")));
+
+    let unsafe_route = Command::new(env!("CARGO_BIN_EXE_km"))
+        .args([
+            "explain",
+            "--route",
+            "ht_qo",
+            ontology.to_str().unwrap(),
+            "inconsistent",
+        ])
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&ontology);
+    assert_eq!(unsafe_route.status.code(), Some(3));
+    assert!(unsafe_route.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&unsafe_route.stderr)
+        .contains("not an explanation-safe production oracle"));
 }

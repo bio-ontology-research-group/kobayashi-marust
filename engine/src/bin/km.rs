@@ -144,21 +144,31 @@ fn explain_cmd(rest: &[String]) {
     };
     let ontology = Path::new(positional[0]);
 
-    let requested_route = route
-        .or_else(|| std::env::var("KM_ROUTE").ok())
-        .unwrap_or_else(|| "auto".to_string());
-    if let Err(error) = requested_route.parse::<kobayashi_marust::routing::Route>() {
-        eprintln!("{error}");
-        exit(2);
+    // Unlike `classify`, explanation extraction never inherits an ambient
+    // KM_ROUTE. Its no-option default is unconditionally the production gate.
+    let requested_route_name = route.unwrap_or_else(|| "auto".to_string());
+    let requested_route = match requested_route_name.parse::<kobayashi_marust::routing::Route>() {
+        Ok(route) => route,
+        Err(error) => {
+            eprintln!("{error}");
+            exit(2);
+        }
+    };
+    if !requested_route.is_explanation_safe() {
+        eprintln!(
+            "route {:?} is not an explanation-safe production oracle; use auto",
+            requested_route.as_str()
+        );
+        exit(3);
     }
-    std::env::set_var("KM_ROUTE", &requested_route);
+    std::env::set_var("KM_ROUTE", requested_route.as_str());
     let options = Options {
         max_axioms,
         max_checks: max_checks.unwrap_or_else(|| max_axioms.saturating_add(1)),
         max_source_bytes,
     };
     let cfg = Config::from_env();
-    match explain::explain(&cfg, ontology, query, &options, &requested_route) {
+    match explain::explain(&cfg, ontology, query, &options, requested_route) {
         Ok(report) => {
             use std::io::Write;
             let stdout = std::io::stdout();
@@ -180,6 +190,7 @@ fn explain_cmd(rest: &[String]) {
             match error {
                 ExplainError::Parse(_)
                 | ExplainError::Limit(_)
+                | ExplainError::UnsafeRoute(_)
                 | ExplainError::Classify(OrchestrateError::OutOfFragment(_)) => exit(3),
                 _ => exit(1),
             }
