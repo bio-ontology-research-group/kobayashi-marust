@@ -27,7 +27,7 @@ Three ontologies remain unclosed:
 
 | Ontology | Current state | Blocking evidence |
 |---|---|---|
-| `4669` | completed outputs are unsound | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable; no authoritative full taxonomy is available. |
+| `4669` | known incorrect bridge output now rejected; no complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. The inverse negative-existential mirror gate now makes the bridge defer before search; no authoritative full taxonomy is available. |
 | `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain data-property or SWRL built-in atoms outside KM's sound rule encoding; CB bypass reaches its internal cap. |
 | `1194` | no completion within 240 s / 20 GiB | Production KM, HT, and Konclude exceed 20 GiB; HermiT times out on the 221,086-assertion SRIQ ABox. |
 
@@ -140,8 +140,9 @@ and validating the final 10621 bridge route, five ontologies lie outside the
 - `2669` and `15516` are solved by KM and independently adjudicated
   inconsistent, but cannot enter the exact-Konclude column because their stored
   Konclude signatures are stale parse-failure artifacts.
-- `4669` has completed KM classifications, but targeted HermiT queries disprove
-  both retained answers.
+- `4669` has retained historical KM classifications that targeted HermiT
+  queries disprove. Current source rejects that bridge fragment instead of
+  publishing either retained answer.
 - `10860` and `1194` have neither an authoritative full gold signature nor a
   confirmed retained KM closure.
 

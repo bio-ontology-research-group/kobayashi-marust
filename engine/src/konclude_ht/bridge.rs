@@ -5682,6 +5682,43 @@ fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usi
     closure
 }
 
+/// Does the source terminology contain the inverse-sensitive mirror pattern
+/// that the bridge must currently defer?
+///
+/// Source axioms are stored in negation normal form, so
+/// `N ≡ ObjectComplementOf(ObjectSomeValuesFrom(R F))` arrives as
+/// `N ≡ ObjectAllValuesFrom(R ObjectComplementOf(F))`. The `owl:Thing`
+/// filler is the one special case whose negation normalises to bottom.
+fn has_unhandled_inverse_negative_existential_mirror(tin: &TInput) -> bool {
+    use crate::frontend::syntax::Concept;
+    use crate::json_io::SourceAxiomKind;
+
+    if !tin.inverse {
+        return false;
+    }
+
+    fn named_mirror(left: &Concept, right: &Concept) -> bool {
+        if !matches!(left, Concept::Name(_)) {
+            return false;
+        }
+        matches!(
+            right,
+            Concept::Forall(
+                _,
+                filler
+            ) if matches!(
+                filler.as_ref(),
+                Concept::Not(inner) if matches!(inner.as_ref(), Concept::Name(_))
+            ) || matches!(filler.as_ref(), Concept::Bottom)
+        )
+    }
+
+    tin.source_axioms.iter().any(|axiom| {
+        axiom.kind == SourceAxiomKind::Equivalent
+            && (named_mirror(&axiom.left, &axiom.right) || named_mirror(&axiom.right, &axiom.left))
+    })
+}
+
 /// Production classification of a `TInput` over the konclude_ht bridge.
 ///
 /// Per subject: model read-off when the saturation was deterministic
@@ -5735,6 +5772,19 @@ pub fn bridged_classify_opts(
     use_saturation: bool,
     use_satcache: bool,
 ) -> Option<BridgedClassification> {
+    // A named mirror `N ≡ ¬∃R.F` is represented in source NNF as
+    // `N ≡ ∀R.¬F`. With inverse roles, a root type can constrain the
+    // generated R-successor through R⁻ and thereby entail cross-region
+    // `A ⊑ N` facts. The current bridge neither reconstructs the complete
+    // contravariant mirror hierarchy nor safely verifies every such inverse
+    // feedback consequence. On ORE 4669 this fragment has produced both false
+    // UNSAT classes and, under a different schedule, only the incomplete
+    // positive projection. Neither result satisfies the bridge's complete-or-
+    // defer contract. Keep the trusted CB fallback authoritative until the
+    // exact positive-proxy/disjointness mechanism is part of this input.
+    if has_unhandled_inverse_negative_existential_mirror(tin) {
+        return None;
+    }
     if !tin.nominals.is_empty() {
         return None;
     }
@@ -6577,6 +6627,76 @@ mod tests {
     use super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::process::sat_ref::ExtendedConceptReferenceLinkingData;
     use super::*;
+
+    fn source_equivalence(
+        left: crate::frontend::syntax::Concept,
+        right: crate::frontend::syntax::Concept,
+    ) -> crate::json_io::SourceAxiomMeta {
+        crate::json_io::SourceAxiomMeta {
+            kind: crate::json_io::SourceAxiomKind::Equivalent,
+            left,
+            right,
+        }
+    }
+
+    #[test]
+    fn inverse_negative_existential_mirrors_defer_before_bridge_search() {
+        use crate::frontend::syntax::{Concept, Role};
+
+        let mirror_name = Concept::Name("N".into());
+        let mirror_definition = Concept::Forall(
+            Role::Name("hasPart".into()),
+            Box::new(Concept::Not(Box::new(Concept::Name("F".into())))),
+        );
+        let mut unsafe_input = TInput {
+            inverse: true,
+            source_axioms: vec![source_equivalence(
+                mirror_name.clone(),
+                mirror_definition.clone(),
+            )],
+            ..TInput::default()
+        };
+        assert!(has_unhandled_inverse_negative_existential_mirror(
+            &unsafe_input
+        ));
+        assert!(bridged_classify_opts(&unsafe_input, false, false).is_none());
+
+        // The source equivalence is symmetric, so either serialized operand
+        // order must hit the same fail-closed gate.
+        unsafe_input.source_axioms = vec![source_equivalence(mirror_definition, mirror_name)];
+        assert!(has_unhandled_inverse_negative_existential_mirror(
+            &unsafe_input
+        ));
+
+        // Without inverse-role feedback this particular guard is not needed;
+        // the ordinary bridge fragment remains available.
+        unsafe_input.inverse = false;
+        assert!(!has_unhandled_inverse_negative_existential_mirror(
+            &unsafe_input
+        ));
+
+        // A positive existential definition is not a complemented mirror.
+        unsafe_input.inverse = true;
+        unsafe_input.source_axioms = vec![source_equivalence(
+            Concept::Name("P".into()),
+            Concept::Exists(
+                Role::Name("hasPart".into()),
+                Box::new(Concept::Name("F".into())),
+            ),
+        )];
+        assert!(!has_unhandled_inverse_negative_existential_mirror(
+            &unsafe_input
+        ));
+
+        // N ≡ ¬∃R.⊤ normalises to N ≡ ∀R.⊥ and must also defer.
+        unsafe_input.source_axioms = vec![source_equivalence(
+            Concept::Name("NTop".into()),
+            Concept::Forall(Role::Name("hasPart".into()), Box::new(Concept::Bottom)),
+        )];
+        assert!(has_unhandled_inverse_negative_existential_mirror(
+            &unsafe_input
+        ));
+    }
 
     fn trigger_test_roles(b: &mut Builder) -> (RoleId, RoleId, HashMap<RoleId, RoleId>) {
         let role = b.ctx.ontology_arenas_mut().alloc_role(Role::new());

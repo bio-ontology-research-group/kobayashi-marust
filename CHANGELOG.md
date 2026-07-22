@@ -9,6 +9,32 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Defer inverse negative-existential mirrors in the HT bridge (2026-07-22)
+
+The HT bridge previously returned a completed classification for ORE 4669 even
+though targeted HermiT satisfiability checks refute all 64 sampled named-UNSAT
+claims. A later scheduling change removed those false UNSAT claims but exposed
+only the incomplete positive projection. The ontology contains 36,495 named
+definitions of the form `N ≡ ¬∃R.F`, represented in source NNF as
+`N ≡ ∀R.¬F`, together with inverse-role feedback. The bridge does not yet
+reconstruct the complete contravariant mirror hierarchy or verify every
+cross-region consequence in this fragment.
+
+`bridged_classify_opts` now detects this semantic source pattern and returns
+`None` before bridge search whenever inverse roles are present. Automatic
+routing can continue to a complete fallback; a forced bridge route reports
+unsupported instead of publishing a known false or incomplete taxonomy. The
+guard is based on the source fragment, not the ORE ontology identifier.
+
+IBEX job `49307561` built the release binary and passed the focused regression.
+On ORE 4669, forced `ht_bridge` exits 3, writes no taxonomy to stdout, and emits
+the expected unsupported diagnostic. A source scan found complemented
+existential syntax in 26 ORE inputs, 21 of which also mention inverse roles;
+this is therefore documented as a fragment-level safety fence. The change
+only narrows route eligibility and derives no new calculus consequences, so it
+requires no Lean re-certification. ORE 4669 remains unclosed until KM gains the
+missing exact mirror mechanism or another complete route.
+
 ### Preserve legal source classes named Thing or Nothing (2026-07-18)
 
 ORE 3524 and 15703 each lost 123,310 strict told subsumptions because their

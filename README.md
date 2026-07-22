@@ -165,9 +165,10 @@ aggregate.
 
 ### Remaining nonclaims
 
-Three ontologies remain unclosed. `4669` completes but targeted satisfiability
-checks refute its KM answer, so it is unsound and its completeness remains
-unknown. `10860` contains unsupported DL-safe rule atoms and lacks an
+Three ontologies remain unclosed. The HT bridge no longer publishes the known
+incorrect `4669` taxonomy: it detects the inverse negative-existential mirror
+fragment and defers before search. The missing complete mechanism remains
+open. `10860` contains unsupported DL-safe rule atoms and lacks an
 authoritative complete oracle. `1194` exceeds the 20 GiB limit on every tested
 complete KM route. `10621` is no longer residual: the confirmed `ht_bridge`
 route is an exact full-IRI match.
