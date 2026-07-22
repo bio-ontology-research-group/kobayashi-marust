@@ -1,6 +1,14 @@
 # Hard residual audit and gold-adjudication status
 
-## Current closure status (2026-07-21)
+## Current panel and cross-revision ledger status (2026-07-22)
+
+The fresh uniform panel on 2026-07-22 tests the frozen current revision across
+all 592 ontologies and all 66 procedures. It validates 562 automatic-route
+answers, 575 answers under the routes selected before the panel, and 579 under
+a post hoc fastest-correct current-route selection. The older 589 total below
+is a source-bound cross-revision ledger, not the behavior of one current binary.
+See
+[`../results/benchmarks/2026-07-22-reproduced-route-performance/`](../results/benchmarks/2026-07-22-reproduced-route-performance/).
 
 Direct full-IRI validation supersedes the local-name-only status below for the
 source-collision family. Identity-safe source symbols close 3524, 15703, and
@@ -17,17 +25,20 @@ and
 [`reproduced-route-ledger-receipt.json`](../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger-receipt.json).
 The remaining three rows are explicit nonclaims, not failed provenance checks.
 
-Capsule-10 closes 10621 through `KM_ROUTE=ht_bridge` in 118.2149 seconds at
+The source-bound Capsule-10 revision closes 10621 through `KM_ROUTE=ht_bridge`
+in 118.2149 seconds at
 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and fresh source-built
 Konclude produce the same full-IRI taxonomy with 70,827 subsumptions and 33,433
 unsatisfiable named classes. The taxonomy SHA-256 is
 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`.
+The frozen current revision in the 2026-07-22 panel rejects that route, so this
+remains a source-bound cross-revision result rather than a current-binary one.
 
 Three ontologies remain unclosed:
 
 | Ontology | Current state | Blocking evidence |
 |---|---|---|
-| `4669` | known incorrect bridge output now rejected; no complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
+| `4669` | known incorrect bridge output now rejected; no validated sound-and-complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
 | `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain data-property or SWRL built-in atoms outside KM's sound rule encoding; CB bypass reaches its internal cap. |
 | `1194` | no completion within 240 s / 20 GiB | Production KM, HT, and Konclude exceed 20 GiB; HermiT times out on the 221,086-assertion SRIQ ABox. |
 
@@ -108,7 +119,7 @@ Use these terms consistently:
 | `10702` | **Previously closed exactly** | Commit `f985b97`: production default route, 587/587 subsumptions, byte-exact to corrected Konclude gold; full 584-ontology panel had zero DIFF. Retained 2026-07-10 run: default about 20 s / 786 MB. | Preserve the nominal ABox role-assertion augmentation and restore the production route in the current matrix. |
 | `15672` | **Previously closed exactly** | Fast Ht recognition sweep: 142/142 MATCH, 3.0 s / 14.8 MB. SHOQ production sweep independently matched 142/142; the old fallback presentation waited about 225 s for doomed CB, while Ht itself decided in 0.2–3 s. Retained 2026-07-10 runs also match. | Restore a sound, contract-eligible SHOQ/HT route or equivalent bridge route. |
 | `6934` | **Previously closed exactly by a measurement route** | Retained full-sweep `htforce` row: MATCH in under 1 s at about 40 MB. Retained default rows also matched after waiting for the fallback budget. | Revalidate the closing Ht mechanism under a sound complete-or-defer fence before making it an automatic route. |
-| `10621` | **Closed exactly by current source** | The earlier told-axiom, bottom-prepass and filtered-ELK work localized the missing mechanism. The final source-bound capsule-10 replay selects `ht_bridge` exactly once and matches fresh source-built Konclude on all 70,827 subsumptions and 33,433 unsatisfiable named classes. | Preserve the source-bound record and full-IRI regression. Do not replace it with the earlier partial projections. |
+| `10621` | **Closed exactly by a source-bound candidate; not reproduced by frozen current main** | The earlier told-axiom, bottom-prepass and filtered-ELK work localized the missing mechanism. The final source-bound capsule-10 replay selects `ht_bridge` exactly once and matches fresh source-built Konclude on all 70,827 subsumptions and 33,433 unsatisfiable named classes. The 2026-07-22 frozen current route returns unsupported. | Preserve the source-bound record and full-IRI regression, then restore and revalidate the mechanism on current main. Do not replace it with the earlier partial projections. |
 | `1194` | **No authoritative gold; no confirmed prior KM closure** | No retained Konclude signature. The ontology is a 75 MB SRIQ input with about 1.06 M normalized clauses, 70,231 named classes, and 221,086 class assertions. Historical KM routes time out. Earlier “thread artifact” language was a hypothesis, not a closure. | Establish consistency and taxonomy by decomposition/cross-checking, not by treating `nogold` as success. |
 | `10860` | **No authoritative gold; no confirmed prior KM closure** | No retained Konclude signature. The ontology contains 17 `DLSafeRule` axioms; Konclude's ORE path cannot supply valid gold and HermiT cannot parse the raw input. Historical KM routes time out or exhaust memory. | Inspect the rules and ABox directly, derive or refute an inconsistency witness, then classify the rule-free and rule consequences separately with independently checked results. |
 
@@ -146,9 +157,11 @@ and validating the final 10621 bridge route, five ontologies lie outside the
 - `10860` and `1194` have neither an authoritative full gold signature nor a
   confirmed retained KM closure.
 
-Thus the current counts are 587 exact and 589 demonstrated correct after gold
-adjudication. One additional ontology completes incorrectly, and two have no
-complete validated route within the limits.
+Thus the source-bound cross-revision ledger contains 587 exact and 589
+demonstrated-correct answers after gold adjudication. One additional ontology
+has terminating but unsound KM outputs whose logical completeness is unknown;
+the current guard returns no answer. Two more have no validated
+sound-and-complete route within the limits.
 
 ## Consequences for coverage accounting
 
@@ -158,14 +171,15 @@ complete validated route within the limits.
   `10908`, `11745`, `7499`, `9540`, `9635`, and `3215`. Together with the three
   hard-residual restorations, these nine closures raised the pre-fix exact
   cross-run KM union from the matrix-local 575 to 584. The corrected route
-  registry, source-symbol fix and final 10621 bridge route establish the current
-  documented exact count of 587.
+  registry, source-symbol fix and final 10621 bridge route establish the
+  cross-revision documented exact count of 587.
 - `2669` and `15516` raise the adjudicated demonstrated-correct total to 589,
   but must not be described as matches to their stale Konclude signatures.
-- `10621` is now a complete source-bound `ht_bridge` result against fresh
-  source-built Konclude. Do not use or describe the older zero-unsatisfiable
-  signature, and do not substitute the bottom-prepass or filtered-ELK partial
-  projections for the final full taxonomy.
+- `10621` has a complete source-bound `ht_bridge` result against fresh
+  source-built Konclude, but frozen current main does not reproduce it. Do not
+  use or describe the older zero-unsatisfiable signature, and do not substitute
+  the bottom-prepass or filtered-ELK partial projections for the final full
+  taxonomy.
 - `1194` and `10860` must not count as correct merely because a KM route returns
   `ok` or `nogold`. They need adjudicated gold.
 - Therefore the phrase "six unsolved hard residuals" remains prohibited. The

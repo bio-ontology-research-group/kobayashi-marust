@@ -25,15 +25,18 @@ reported as empirical evidence, not as a proof of the whole executable.
 
 ## Highlights
 
-- **Complete all-route ORE matrix.** The retained benchmark runs 28 procedures
-  over all 592 ORE 2015 ontologies: 16,576 isolated measurements at 240 seconds
-  and 20 GiB per route. It reports successful-row average, median, and p95 wall
-  time and peak memory for every procedure.
+- **Complete all-route ORE matrix.** The fresh source-bound benchmark runs 66
+  procedures over all 592 ORE 2015 ontologies: 39,072 isolated measurements at
+  240 seconds and 20 GiB per procedure. It includes all public KM routes,
+  historically selected environments, optimization stages and ablations, plus
+  Konclude, HermiT, ELK, RustDL, and Sequoia.
 - **Broad but not universal production coverage.** The portfolio handles EL,
   disjunction, quantifiers, role hierarchies and chains, inverses, nominals,
   number restrictions, and selected rule/ABox cases. Some ontologies time out
-  or require a specialized route. Three corpus cases remain explicit
-  nonclaims under the current 240 second and 20 GiB limits.
+  or require a specialized route. Bare automatic routing validates 562 cases;
+  explicit current routes raise the observed union to 579. The older 589-route
+  ledger spans current, historical, and candidate source revisions and is not
+  a single-current-binary claim.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -129,80 +132,82 @@ conversion, safety, and licensing contract.
 
 ## ORE 2015 benchmark status
 
-The current source-bound confirmation covers all 592 ORE 2015 ontologies at a
-240 second timeout and 20 GiB memory cap. KM reproduces 589 sound-and-complete
-classifications: 587 are exact full-IRI matches to a contemporaneous Konclude
-run, and `2669` and `15516` are independently adjudicated inconsistent.
+The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
+ontologies, for 39,072 independently limited measurements. Every procedure
+receives 240 seconds, 20 GiB summed process-tree RSS, and 16 CPU cores on the
+same IBEX CPU model. The frozen KM revision is
+`8c731f43b3c8a277f5fd7a25687e35afb4c4045e`.
+
+| procedure | sound yes | complete yes | both yes | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **KM, preselected current routes** | **575** | **575** | **575** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
+| **KM, automatic route** | **562** | **562** | **562** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
+| Konclude | 587 | 585 | 585 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| HermiT | 549 | 550 | 549 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
+| ELK | 576 | 529 | 529 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
+| RustDL, complete mode | 542 | 525 | 525 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
+| Sequoia, strict mode | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
+
+The `sound` and `complete` columns are separate empirical judgments about the
+named-class taxonomy against the cited full-IRI reference or adjudication.
+They are not global proofs about a reasoner. Averages and medians use only
+`status=ok` rows, so the table also reports that metric population. The result
+package contains all-attempt metrics, including timeouts, memory exits,
+unsupported inputs, and errors. Peak memory is MiB even though the retained
+field name is `peak_mb`.
 
 The
-[commit-pinned ontology route and performance table](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/2c93063c12d2acdfa421cdac9ed0df3a1aa1bb42/results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.tsv)
-records every ontology's KM route, exact command, environment, source revision,
-binary hash, time, memory, taxonomy hash, and evidence. It also contains
-Konclude, HermiT, and ELK measurements plus separate `sound` and `complete`
-fields. The
-[pinned receipt and aggregation code](https://github.com/bio-ontology-research-group/kobayashi-marust/tree/2c93063c12d2acdfa421cdac9ed0df3a1aa1bb42/results/benchmarks/2026-07-22-reproduced-route-performance)
-make the table directly reproducible from the cited evidence.
+[commit-pinned per-ontology route table](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/38a5a106756d5658712eedbb395e7608f0229bd9/results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.tsv)
+records every command, environment, source revision, binary and runtime hash,
+time, memory, taxonomy hash, correctness field, and evidence locator. The
+[pinned result package](https://github.com/bio-ontology-research-group/kobayashi-marust/tree/38a5a106756d5658712eedbb395e7608f0229bd9/results/benchmarks/2026-07-22-reproduced-route-performance)
+also contains the 66-arm contract, raw and normalized measurements, build and
+Slurm receipts, optimization comparisons, and an executable Showboat
+verification record.
 
-### Coverage and empirical correctness
+### Automatic versus explicit KM routes
 
-The correctness fields concern the named-class taxonomy against the cited
-full-IRI reference, frozen local-name oracle, or explicit adjudication. They do
-not claim a formal proof for all OWL inputs. `not_applicable` means no
-classification answer exists to assess, while `unknown` means an answer exists
-but the available oracle cannot decide the property.
+Plain `km classify ONTOLOGY` is equivalent to `--route auto`. It does not
+reproduce every routed result. In this panel it returns 571 parseable answers,
+of which 562 are empirically sound and complete. Seventeen more ontologies have
+a validated explicit current route:
 
-| reasoner | sound yes / no / unknown / N/A | complete yes / no / unknown | sound + complete / 592 |
-|---|---:|---:|---:|
-| **KM** | **589 / 1 / 0 / 2** | **589 / 2 / 1** | **589** |
-| Konclude | 589 / 0 / 0 / 3 | 587 / 5 / 0 | 587 |
-| HermiT | 551 / 5 / 0 / 36 | 552 / 40 / 0 | 551 |
-| ELK | 581 / 6 / 3 / 2 | 531 / 58 / 3 | 531 |
+- `--route production_all` for `1481`, `1579`, `3377`, `3560`, `5107`,
+  `6477`, `6999`, `7914`, `9654`, `10908`, `15803`, and `15846`;
+- the documented `htforce_race` manual environment for `6934`, `7499`,
+  `9635`, `10702`, and `15672`.
 
-### Time and memory
+This post hoc current-route union contains 579 validated answers. The exact
+`htforce_race` environment is in
+[`full-panel-contract.tsv`](results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-contract.tsv),
+and each ontology row embeds all 66 measured alternatives. These are validated
+per-ontology recipes, not evidence that the automatic router selected them.
 
-Averages and medians use only rows whose reasoner status is `ok`; the metric
-population therefore appears in every row. KM and the paired Konclude row use
-the current source-bound full-IRI confirmation. HermiT and ELK use the repaired
-frozen external-baseline matrix on the same Intel Xeon Gold 6248 CPU model and
-limits, but not the same Slurm job.
+The earlier ledger's 589 accepted answers remain source-bound evidence: 587
+exact full-IRI classifications plus two independently adjudicated inconsistent
+ontologies. That total spans current, historical, and candidate source
+revisions. The uniform current-binary panel does not reproduce 589, so 589 must
+not be presented as the behavior of bare `km classify` or one current binary.
 
-| reasoner and measurement set | metric rows | wall mean s | wall median s | peak mean MB | peak median MB |
-|---|---:|---:|---:|---:|---:|
-| **KM, accepted reproduced routes** | **589** | **5.366** | **0.234** | **691** | **38** |
-| Konclude 16, current paired full-IRI references | 587 | 3.376 | 0.235 | 561 | 75 |
-| HermiT, repaired frozen matrix | 556 | 12.953 | 1.759 | 1,369 | 741 |
-| ELK, repaired frozen matrix | 590 | 1.968 | 0.821 | 602 | 347 |
+Thirteen current-panel rows lack a validated answer. Eight (`443`, `3524`,
+`6720`, `7052`, `8941`, `13912`, `15288`, and `15703`) return answers whose
+available full-IRI evidence is inconclusive. Route `9540` times out, and the
+old `10621` `ht_bridge` recipe is rejected by the frozen current revision.
+The remaining three are `1194`, `10860`, and `4669`.
 
-On the strict same-ontology set of 587 current full-IRI pairs, KM has mean and
-median wall times of 5.384 and 0.234 seconds versus Konclude's 3.376 and 0.235
-seconds. KM's mean and median peak RSS are 693 and 38 MB versus Konclude's 561
-and 75 MB. KM therefore has nearly the same median wall time and about half the
-median memory, but higher mean time and memory because several accepted
-specialist routes are expensive.
+For `4669`, old KM executions terminated but their taxonomies are unsound: 64
+named classes claimed unsatisfiable have independent satisfiable witnesses.
+Logical completeness of those old taxonomies is unknown. Current KM defers and
+returns no taxonomy. Source-built Konclude also fails to solve 4669, timing out
+at both 240 seconds and 3,600 seconds without an answer. See the
+[Konclude source trace and runtime verification](docs/ORE-4669-KONCLUDE-VERIFICATION.md).
+`10860` contains unsupported DL-safe rule atoms and lacks authoritative full
+gold; `1194` has no validated route within the standard resource limits.
 
-For reference, the repaired frozen Konclude-16 baseline has 588 successful
-rows, 2.129 and 0.264 second mean and median wall time, and 738 and 245 MB mean
-and median peak RSS. Its ontology population differs from the paired current
-row. The repaired raw matrix also has 590 successful ELK rows and 556
-successful HermiT rows, superseding the pre-repair counts in the July 16
-aggregate.
-
-### Remaining nonclaims
-
-Three ontologies remain unclosed. The HT bridge no longer publishes the known
-incorrect `4669` taxonomy: it detects the inverse negative-existential mirror
-fragment and defers before search. The missing complete mechanism remains
-open. `10860` contains unsupported DL-safe rule atoms and lacks an
-authoritative complete oracle. `1194` exceeds the 20 GiB limit on every tested
-complete KM route. `10621` is no longer residual: the confirmed `ht_bridge`
-route is an exact full-IRI match.
-
-The earlier 28-procedure matrix and historical analysis remain in
-[`results/benchmarks/2026-07-16-routing-complete592/`](results/benchmarks/2026-07-16-routing-complete592/).
-Disputed reference results are documented in
-[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md), and the source-bound route
-confirmation is documented in
-[`results/benchmarks/2026-07-21-route-confirmation/`](results/benchmarks/2026-07-21-route-confirmation/).
+The earlier 28-procedure matrix remains in
+[`results/benchmarks/2026-07-16-routing-complete592/`](results/benchmarks/2026-07-16-routing-complete592/),
+and disputed references are documented in
+[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
 
 ### 2. Build the Lean formalisation
 

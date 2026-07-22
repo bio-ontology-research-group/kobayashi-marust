@@ -22,6 +22,12 @@ remains historical provenance. See the accompanying
 [`TAIL-EIGHT.md`](../results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md)
 before treating process completion as a solved ontology.
 
+The uniform 2026-07-22 panel is the authority for one frozen current binary.
+It validates 562 automatic-route answers, 575 preselected-route answers, and a
+post hoc current-route union of 579. The 589 total above is a cross-revision
+source-bound ledger. In particular, the frozen current revision does not
+reproduce the source-bound 10621 capsule.
+
 ---
 
 ## Solved via typed source-symbol encoding
@@ -542,16 +548,18 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 4669 | retained production and HT routes complete, but both are unsound | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
-| 10621 | `ht_bridge`, `KM_ROUTE=ht_bridge` | full-IRI exact against fresh source-built Konclude | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. |
+| 4669 | retained production and HT executions terminate, but both outputs are unsound; logical completeness unknown | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
+| 10621 | source-bound Capsule-10 `ht_bridge`; frozen current revision returns unsupported | full-IRI exact against fresh source-built Konclude for Capsule-10 | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. Restore and revalidate this mechanism before claiming it for current main. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
 | 10860 | — | no authoritative gold | DL-safe-rule ontology; inspect ABox/rules and adjudicate directly because neither raw Konclude nor raw HermiT supplies valid gold. |
 
 The hard-residual audit, including the previously lost closures of 10702,
 15672, and 6934 and the later source-bound closure of 10621, is maintained in
 [`HARD-RESIDUAL-AUDIT.md`](HARD-RESIDUAL-AUDIT.md). Do not describe all six as
-unsolved. The final source-bound ledger reproduces every one of the 589 solve
-claims; only the three rows listed above remain nonclaims.
+unsolved. The historical source-bound ledger reproduces every one of the 589
+cross-revision solve claims. The uniform current-revision panel reports 575
+validated preselected-route answers and a post hoc current-route union of 579;
+only the three rows listed above remain source-bound-ledger nonclaims.
 
 ## Reusable diagnostics
 

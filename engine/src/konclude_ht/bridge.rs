@@ -5778,10 +5778,11 @@ pub fn bridged_classify_opts(
     // `A ⊑ N` facts. The current bridge neither reconstructs the complete
     // contravariant mirror hierarchy nor safely verifies every such inverse
     // feedback consequence. On ORE 4669 this fragment has produced both false
-    // UNSAT classes and, under a different schedule, only the incomplete
-    // positive projection. Neither result satisfies the bridge's complete-or-
-    // defer contract. Keep the trusted CB fallback authoritative until the
-    // exact positive-proxy/disjointness mechanism is part of this input.
+    // UNSAT classes and, under a different schedule, an unvalidated positive
+    // projection whose logical completeness is unknown. Neither result
+    // satisfies the bridge's complete-or-defer contract. Keep the trusted CB
+    // fallback authoritative until the exact positive-proxy/disjointness
+    // mechanism is part of this input.
     if has_unhandled_inverse_negative_existential_mirror(tin) {
         return None;
     }
