@@ -1,0 +1,30 @@
+{
+  "adjudicated_inconsistent": 2,
+  "aggregation_driver_sha256": "2305f9dce5092c0855b4a3d8a02847d885283900ae6ab4099ed3024109efd2f1",
+  "baseline_evidence_record_count": 592,
+  "baseline_evidence_record_manifest_sha256": "a5dbb1bf436166d9ee4217883a68191dbf8c5694c035d4232d47e0848f186d73",
+  "baseline_result_manifest_sha256": "a3310200ba3ad26b19cddc0173df5be65541ff5246cfea9062325cb1f799b06f",
+  "builder_sha256": "a76d1618dbfe54b567a87ae446317da68e96eb4db8612de8a49564fb8785d07a",
+  "exact_full_iri": 587,
+  "nonclaims": [
+    "ore_ont_10860.owl",
+    "ore_ont_1194.owl",
+    "ore_ont_4669.owl"
+  ],
+  "reproduced": 589,
+  "route_evidence_record_count": 589,
+  "route_evidence_record_manifest_sha256": "bb2ccbc174dc4bc51825a3706c96aebb6e93bd3e43c20759afa8355fd79b07c0",
+  "rows": 592,
+  "schema_version": 2,
+  "slurm_job_id": "49284022",
+  "sound_and_complete": {
+    "elk": 531,
+    "hermit": 551,
+    "km": 589,
+    "konclude": 587
+  },
+  "source_ledger_sha256": "7db5b5b3c645cb2f37e515d215808ef3de499249c7a2d3fd22ec50771e64f354",
+  "status": "verified_route_correctness_performance_receipt",
+  "summary_sha256": "ad9fdfca88ac66eae5d5ef9d764a8c74f349eda60a25f9063297975d8e44bdff",
+  "table_sha256": "ff508acc0d9501344408820284396e0b0d91310c0f9275e16ccb7ccfa6047d94"
+}

@@ -1,0 +1,202 @@
+{
+  "adjudicated_inconsistent": 2,
+  "aggregation_driver_sha256": "2305f9dce5092c0855b4a3d8a02847d885283900ae6ab4099ed3024109efd2f1",
+  "baseline_evidence_record_count": 592,
+  "baseline_evidence_record_manifest_sha256": "a5dbb1bf436166d9ee4217883a68191dbf8c5694c035d4232d47e0848f186d73",
+  "baseline_result_manifest_sha256": "a3310200ba3ad26b19cddc0173df5be65541ff5246cfea9062325cb1f799b06f",
+  "correctness": {
+    "elk": {
+      "complete": {
+        "no": 58,
+        "unknown": 3,
+        "yes": 531
+      },
+      "joint": {
+        "sound=no,complete=no": 6,
+        "sound=not_applicable,complete=no": 2,
+        "sound=unknown,complete=unknown": 3,
+        "sound=yes,complete=no": 50,
+        "sound=yes,complete=yes": 531
+      },
+      "sound": {
+        "no": 6,
+        "not_applicable": 2,
+        "unknown": 3,
+        "yes": 581
+      },
+      "sound_and_complete": 531
+    },
+    "hermit": {
+      "complete": {
+        "no": 40,
+        "yes": 552
+      },
+      "joint": {
+        "sound=no,complete=no": 4,
+        "sound=no,complete=yes": 1,
+        "sound=not_applicable,complete=no": 36,
+        "sound=yes,complete=yes": 551
+      },
+      "sound": {
+        "no": 5,
+        "not_applicable": 36,
+        "yes": 551
+      },
+      "sound_and_complete": 551
+    },
+    "km": {
+      "complete": {
+        "no": 2,
+        "unknown": 1,
+        "yes": 589
+      },
+      "joint": {
+        "sound=no,complete=unknown": 1,
+        "sound=not_applicable,complete=no": 2,
+        "sound=yes,complete=yes": 589
+      },
+      "sound": {
+        "no": 1,
+        "not_applicable": 2,
+        "yes": 589
+      },
+      "sound_and_complete": 589
+    },
+    "konclude": {
+      "complete": {
+        "no": 5,
+        "yes": 587
+      },
+      "joint": {
+        "sound=not_applicable,complete=no": 3,
+        "sound=yes,complete=no": 2,
+        "sound=yes,complete=yes": 587
+      },
+      "sound": {
+        "not_applicable": 3,
+        "yes": 589
+      },
+      "sound_and_complete": 587
+    }
+  },
+  "correctness_definition": {
+    "scope": "empirical named-class taxonomy relative to the cited full-IRI reference, frozen local-name oracle, or explicit adjudication",
+    "timeout_or_failure": "sound=not_applicable and complete=no",
+    "values": {
+      "no": "the evidence refutes the property",
+      "not_applicable": "no classification answer exists to assess for soundness",
+      "unknown": "a result exists but the available evidence does not decide the property",
+      "yes": "the evidence establishes the property"
+    }
+  },
+  "exact_full_iri": 587,
+  "frozen_repaired_external_baselines": {
+    "elk": {
+      "count": 590,
+      "peak_mb": {
+        "mean": 602.2810847457628,
+        "median": 347.225,
+        "p95_nearest_rank": 1500.68
+      },
+      "wall_s": {
+        "mean": 1.9682403389830507,
+        "median": 0.82145,
+        "p95_nearest_rank": 3.9575
+      }
+    },
+    "hermit": {
+      "count": 556,
+      "peak_mb": {
+        "mean": 1369.2545683453238,
+        "median": 741.1600000000001,
+        "p95_nearest_rank": 5026.23
+      },
+      "wall_s": {
+        "mean": 12.952696223021583,
+        "median": 1.75905,
+        "p95_nearest_rank": 74.9041
+      }
+    },
+    "konclude": {
+      "count": 588,
+      "peak_mb": {
+        "mean": 738.2740476190477,
+        "median": 244.825,
+        "p95_nearest_rank": 3346.29
+      },
+      "wall_s": {
+        "mean": 2.129180612244898,
+        "median": 0.2641,
+        "p95_nearest_rank": 10.5414
+      }
+    }
+  },
+  "km_all_reproduced": {
+    "count": 589,
+    "peak_mb": {
+      "mean": 691.0074702886249,
+      "median": 37.91,
+      "p95_nearest_rank": 3785.38
+    },
+    "wall_s": {
+      "mean": 5.3661719864176565,
+      "median": 0.2342,
+      "p95_nearest_rank": 29.4919
+    }
+  },
+  "metric_definition": {
+    "aggregate_population": "rows whose reasoner status is ok",
+    "p95": "nearest-rank percentile",
+    "peak_mb": "maximum sampled process-group RSS in MiB, maxed with GNU time direct-child peak",
+    "wall_s": "process-group elapsed wall clock"
+  },
+  "nonclaims": [
+    "ore_ont_10860.owl",
+    "ore_ont_1194.owl",
+    "ore_ont_4669.owl"
+  ],
+  "notes": [
+    "KM metrics use the one accepted source-bound route per reproduced ontology; they are not per-ontology oracle minima.",
+    "The paired KM/Konclude comparison uses contemporaneous full-IRI runs for the same 587 ontologies.",
+    "HermiT and ELK measurements use the repaired frozen matrix on the same CPU model and limits, but not the same Slurm job as the accepted KM routes.",
+    "The repaired raw matrix manifest supersedes the pre-repair aggregate committed on 2026-07-16."
+  ],
+  "paired_exact_full_iri": {
+    "count": 587,
+    "km": {
+      "count": 587,
+      "peak_mb": {
+        "mean": 693.2870017035775,
+        "median": 37.94,
+        "p95_nearest_rank": 3785.38
+      },
+      "wall_s": {
+        "mean": 5.383951277683134,
+        "median": 0.2343,
+        "p95_nearest_rank": 29.4919
+      }
+    },
+    "konclude": {
+      "count": 587,
+      "peak_mb": {
+        "mean": 561.3423509369677,
+        "median": 74.96,
+        "p95_nearest_rank": 3064.22
+      },
+      "wall_s": {
+        "mean": 3.3764696763202724,
+        "median": 0.2352,
+        "p95_nearest_rank": 16.8137
+      }
+    }
+  },
+  "reproduced": 589,
+  "route_evidence_record_count": 589,
+  "route_evidence_record_manifest_sha256": "bb2ccbc174dc4bc51825a3706c96aebb6e93bd3e43c20759afa8355fd79b07c0",
+  "rows": 592,
+  "schema_version": 2,
+  "slurm_job_id": "49284022",
+  "source_ledger_sha256": "7db5b5b3c645cb2f37e515d215808ef3de499249c7a2d3fd22ec50771e64f354",
+  "status": "verified_route_correctness_performance",
+  "table_sha256": "ff508acc0d9501344408820284396e0b0d91310c0f9275e16ccb7ccfa6047d94"
+}
