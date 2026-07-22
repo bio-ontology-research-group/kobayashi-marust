@@ -75,6 +75,14 @@ only narrows route eligibility and derives no new calculus consequences, so it
 requires no Lean re-certification. ORE 4669 remains unclosed until KM gains the
 missing exact mirror mechanism or another complete route.
 
+IBEX array `49309622` then compared frozen main and the integrated feature
+binary under automatic routing on all 21 inverse-role inputs from that scan.
+All tasks completed at 240 seconds and 20 GiB per run. Twenty ontologies have
+identical terminal status and signature. The sole difference is ORE 4669:
+frozen main emits the retained nonclaim signature
+`dba27c20589ec186e858119dbac18f6e79afb4da001ef16c232feb28231f37dd`,
+while the guarded binary reaches the limit without publishing a taxonomy.
+
 ### Preserve legal source classes named Thing or Nothing (2026-07-18)
 
 ORE 3524 and 15703 each lost 123,310 strict told subsumptions because their
