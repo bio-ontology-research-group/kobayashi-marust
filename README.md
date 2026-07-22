@@ -48,6 +48,10 @@ reported as empirical evidence, not as a proof of the whole executable.
   justification for a named-class subsumption, unsatisfiable class, or
   inconsistency and emits a versioned JSON protocol for later OWLAPI and
   Protégé UI integration.
+- **Addition-only incremental EL++ reasoning.** `km incremental` retains the
+  completed EL++ relation and role graph across JSONL update transactions,
+  rejects non-EL additions atomically, and restarts safely for the one
+  non-monotone Skolem-normalisation corner.
 - **Formal work kept in scope.** Lean files prove results about abstract
   resolution, selected context-calculus fragments, inverse-role encoding,
   nominal rules, and certificate checkers. They are useful specifications and
@@ -88,6 +92,7 @@ For end-to-end OWL classification, use the multi-call binary:
 ./target/release/km classify ontology.ttl
 ./target/release/km profile ontology.ofn
 ./target/release/km routes
+./target/release/km incremental
 ./target/release/km explain ontology.ofn subclass \
   http://example.org/A http://example.org/B
 ```
@@ -104,6 +109,12 @@ normal classifier carries no provenance overhead. It always uses automatic
 production routing; manual and forced matrix routes are rejected. See
 [`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md) for query syntax, the JSON
 schema, minimality semantics, and the OWLAPI/Protégé integration boundary.
+
+`km incremental` serves an addition-only EL++ session over JSONL standard
+input and output. It consumes the same normalised clause representation as
+`km elc`; removals and non-EL updates require a fresh general classification.
+See [`docs/INCREMENTAL-REASONING.md`](docs/INCREMENTAL-REASONING.md) for the
+protocol, Rust API, correctness argument, and current limitations.
 
 KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle. It detects the
 format from content and the filename; use

@@ -9,6 +9,25 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Addition-only incremental EL++ classification (2026-07-22)
+
+Added `IncrementalElClassifier` and the `km incremental` JSONL session. An
+accepted transaction adds normalised EL++ clauses, retains the old completed
+subsumption relation and role graph, rebuilds rule indexes, and replays retained
+facts so newly enabled consequences enter the ordinary completion worklist.
+Unsupported and non-EL updates are rejected atomically.
+
+The compact normal-form translation has one non-monotone corner: adding the
+filler half of a previously one-sided Skolem existential replaces
+`A ⊑ ∃R.⊤` with `A ⊑ ∃R.B`. The session compares direct normal-form sets and
+starts a fresh completion for that transaction instead of retaining the old
+top edge. Eight focused feature tests compare incremental results with fresh
+completion and cover role inclusions, chains, conjunction, bottom propagation,
+reflexivity, inconsistency, transaction rollback, and this restart path. IBEX
+jobs `49307560` and `49308032` also pass the existing EL tests and exact-source
+feature suite. Batch classification and calculus rules are unchanged, so no
+Lean re-certification is required.
+
 ### Bounded source-axiom explanations (2026-07-22)
 
 Added `km explain` for one source-level justification of a named-class
