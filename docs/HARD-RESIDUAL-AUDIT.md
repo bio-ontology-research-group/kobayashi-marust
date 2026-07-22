@@ -27,7 +27,7 @@ Three ontologies remain unclosed:
 
 | Ontology | Current state | Blocking evidence |
 |---|---|---|
-| `4669` | known incorrect bridge output now rejected; no complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. The inverse negative-existential mirror gate now makes the bridge defer before search; no authoritative full taxonomy is available. |
+| `4669` | known incorrect bridge output now rejected; no complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
 | `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain data-property or SWRL built-in atoms outside KM's sound rule encoding; CB bypass reaches its internal cap. |
 | `1194` | no completion within 240 s / 20 GiB | Production KM, HT, and Konclude exceed 20 GiB; HermiT times out on the 221,086-assertion SRIQ ABox. |
 
