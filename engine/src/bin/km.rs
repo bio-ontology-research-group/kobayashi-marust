@@ -2,6 +2,7 @@
 //!
 //!   `km classify [--lines] <ont.ofn>`  the pure-Rust classify orchestrator
 //!                                      (replacement for `owl_classify.py`)
+//!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
 //!   `km incremental`                   stateful addition-only EL++ session
 //!
@@ -21,6 +22,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),
+        Some("explain") => explain_cmd(&args[2..]),
         // worker subcommands: the orchestrator re-invokes `km <sub>` for these.
         Some("ofn") => cli::run_ofn(&args[2..]),
         Some("elc") => cli::run_elc(),
@@ -41,12 +43,146 @@ fn main() {
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
             eprintln!("usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
+            eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
+            eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
             eprintln!("       km features [--format FORMAT] <ontology> ...");
             eprintln!("       km profile [--format FORMAT] <ontology> ...");
             eprintln!("       km routes");
             eprintln!("       km incremental   (JSONL addition-only EL++ session)");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
+        }
+    }
+}
+
+fn explain_cmd(rest: &[String]) {
+    use kobayashi_marust::orchestrate::explain::{self, ExplainError, Options, Query};
+
+    let usage = || {
+        eprintln!("usage: km explain [--pretty] [--route ROUTE] [--max-axioms N] [--max-checks N] [--max-source-bytes N] <ontology.ofn> subclass <SUB> <SUPER>");
+        eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
+        eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
+    };
+    let mut pretty = false;
+    let mut route: Option<String> = None;
+    let mut max_axioms = explain::DEFAULT_MAX_AXIOMS;
+    let mut max_checks: Option<usize> = None;
+    let mut max_source_bytes = explain::DEFAULT_MAX_SOURCE_BYTES;
+    let mut positional: Vec<&str> = Vec::new();
+
+    let parse_usize = |option: &str, value: &str| -> usize {
+        match value.parse::<usize>() {
+            Ok(number) => number,
+            Err(_) => {
+                eprintln!("{option} requires a non-negative integer, got {value:?}");
+                exit(2);
+            }
+        }
+    };
+    let mut index = 0usize;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--pretty" => pretty = true,
+            "--route" | "--max-axioms" | "--max-checks" | "--max-source-bytes" => {
+                let option = rest[index].as_str();
+                index += 1;
+                let Some(value) = rest.get(index) else {
+                    eprintln!("{option} requires a value");
+                    usage();
+                    exit(2);
+                };
+                match option {
+                    "--route" => route = Some(value.clone()),
+                    "--max-axioms" => max_axioms = parse_usize(option, value),
+                    "--max-checks" => max_checks = Some(parse_usize(option, value)),
+                    "--max-source-bytes" => max_source_bytes = parse_usize(option, value) as u64,
+                    _ => unreachable!(),
+                }
+            }
+            value if value.starts_with("--route=") => {
+                route = Some(value.trim_start_matches("--route=").to_string())
+            }
+            value if value.starts_with("--max-axioms=") => {
+                max_axioms = parse_usize("--max-axioms", value.trim_start_matches("--max-axioms="))
+            }
+            value if value.starts_with("--max-checks=") => {
+                max_checks = Some(parse_usize(
+                    "--max-checks",
+                    value.trim_start_matches("--max-checks="),
+                ))
+            }
+            value if value.starts_with("--max-source-bytes=") => {
+                max_source_bytes = parse_usize(
+                    "--max-source-bytes",
+                    value.trim_start_matches("--max-source-bytes="),
+                ) as u64
+            }
+            value if value.starts_with('-') => {
+                eprintln!("unknown explain option: {value}");
+                usage();
+                exit(2);
+            }
+            value => positional.push(value),
+        }
+        index += 1;
+    }
+
+    let query = match positional.as_slice() {
+        [_, "subclass", sub_class, super_class] => Query::SubClass {
+            sub_class: (*sub_class).to_string(),
+            super_class: (*super_class).to_string(),
+        },
+        [_, "unsatisfiable", class_iri] => Query::Unsatisfiable {
+            class_iri: (*class_iri).to_string(),
+        },
+        [_, "inconsistent"] => Query::Inconsistent,
+        _ => {
+            usage();
+            exit(2);
+        }
+    };
+    let ontology = Path::new(positional[0]);
+
+    let requested_route = route
+        .or_else(|| std::env::var("KM_ROUTE").ok())
+        .unwrap_or_else(|| "auto".to_string());
+    if let Err(error) = requested_route.parse::<kobayashi_marust::routing::Route>() {
+        eprintln!("{error}");
+        exit(2);
+    }
+    std::env::set_var("KM_ROUTE", &requested_route);
+    let options = Options {
+        max_axioms,
+        max_checks: max_checks.unwrap_or_else(|| max_axioms.saturating_add(1)),
+        max_source_bytes,
+    };
+    let cfg = Config::from_env();
+    match explain::explain(&cfg, ontology, query, &options, &requested_route) {
+        Ok(report) => {
+            use std::io::Write;
+            let stdout = std::io::stdout();
+            let mut writer = stdout.lock();
+            let result = if pretty {
+                serde_json::to_writer_pretty(&mut writer, &report)
+            } else {
+                serde_json::to_writer(&mut writer, &report)
+            };
+            if let Err(error) = result {
+                eprintln!("explanation serialise error: {error}");
+                exit(1);
+            }
+            let _ = writer.write_all(b"\n");
+            let _ = writer.flush();
+        }
+        Err(error) => {
+            eprintln!("explanation failed: {error}");
+            match error {
+                ExplainError::Parse(_)
+                | ExplainError::Limit(_)
+                | ExplainError::Classify(OrchestrateError::OutOfFragment(_)) => exit(3),
+                _ => exit(1),
+            }
         }
     }
 }

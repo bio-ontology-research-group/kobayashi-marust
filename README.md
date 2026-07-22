@@ -44,6 +44,10 @@ reported as empirical evidence, not as a proof of the whole executable.
 - **Protégé Desktop integration.** The 0.2.0 plugin targets Protégé 5.6,
   flattens loaded imports, invokes the native `km` executable, and exposes the
   inferred named-class hierarchy and unsatisfiable classes.
+- **Bounded source-axiom explanations.** `km explain` extracts one revalidated
+  justification for a named-class subsumption, unsatisfiable class, or
+  inconsistency and emits a versioned JSON protocol for later OWLAPI and
+  Protégé UI integration.
 - **Formal work kept in scope.** Lean files prove results about abstract
   resolution, selected context-calculus fragments, inverse-role encoding,
   nominal rules, and certificate checkers. They are useful specifications and
@@ -84,6 +88,8 @@ For end-to-end OWL classification, use the multi-call binary:
 ./target/release/km classify ontology.ttl
 ./target/release/km profile ontology.ofn
 ./target/release/km routes
+./target/release/km explain ontology.ofn subclass \
+  http://example.org/A http://example.org/B
 ```
 
 `km classify` profiles the ontology and selects its measured procedure by
@@ -91,6 +97,12 @@ default. `--route NAME` selects any named procedure; `--route manual` preserves
 individually supplied `KM_*` options. See [`docs/ROUTING.md`](docs/ROUTING.md)
 for the exact expressivity calculation, statistics schema, option bundles, and
 decision-tree validation.
+
+`km explain` accepts a self-contained functional-syntax source and returns one
+source-axiom justification. Explanation checks are bounded and opt-in, so the
+normal classifier carries no provenance overhead. See
+[`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md) for query syntax, the JSON
+schema, minimality semantics, and the OWLAPI/Protégé integration boundary.
 
 KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle. It detects the
 format from content and the filename; use
@@ -303,7 +315,8 @@ production classifier also uses procedures outside this CB core.
   supports transitivity and the role-chain handling documented in the source
   and benchmark records.
 - The Protégé plugin exposes TBox classification only. Property and individual
-  inference methods return no inferred results.
+  inference methods return no inferred results. The native explanation JSON
+  protocol is available, but the current plugin has no explanation UI.
 
 ## OWL frontend
 

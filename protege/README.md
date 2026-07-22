@@ -7,6 +7,9 @@ consistency.
 
 The plugin is a TBox classifier. Property hierarchy, property assertion, and
 individual realization queries are not currently exposed through the OWL API.
+The native binary also provides a bounded, versioned source-axiom explanation
+protocol. The current plugin does not display it yet; see
+[`docs/EXPLANATIONS.md`](../docs/EXPLANATIONS.md) for the integration contract.
 
 ## Requirements
 
