@@ -44,3 +44,9 @@ correct where.
   of the source-symbol repairs, and retained counterexamples for the four
   unclosed inputs. The adjudicated union is 588/592 correct: 586 gold-exact and
   two correct inconsistent cases with stale stored gold.
+- [`2026-07-22-reproduced-route-performance/`](2026-07-22-reproduced-route-performance/):
+  fresh same-job ORE panel with one Slurm task per ontology, every public KM
+  route, every historically selected KM environment, retained optimization
+  stages and clean ablations, plus Konclude, HermiT, ELK, RustDL, and Sequoia.
+  It retains all per-attempt time, process-tree peak RSS, and empirical
+  soundness/completeness records with hash-pinned build and run provenance.

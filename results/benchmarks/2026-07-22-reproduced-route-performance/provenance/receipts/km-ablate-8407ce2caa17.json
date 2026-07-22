@@ -1,0 +1,9 @@
+{
+  "binary": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-8407ce2caa17",
+  "binary_sha256": "17c7d3fdd1c1f65bd85d37aa6078f530a29c534063ff804b46d03e297e5b85e0",
+  "key": "ablate-8407ce2caa17",
+  "schema_version": 1,
+  "slurm_job_id": "49286975",
+  "source_revision": "8c731f43b3c8a277f5fd7a25687e35afb4c4045e",
+  "variant": "current-main-minus-8407ce2caa17ffcf64d46aed308ede6903de1c80"
+}

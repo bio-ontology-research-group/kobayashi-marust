@@ -1,0 +1,150 @@
+diff --git a/engine/src/engine.rs b/engine/src/engine.rs
+index bb03283..ed1b31d 100644
+--- a/engine/src/engine.rs
++++ b/engine/src/engine.rs
+@@ -1726,13 +1726,7 @@ pub struct Engine {
+     pub sig: Sig,
+     ont: Ontology,
+     contexts: Vec<Context>,
+-    /// Root/split context dedup: content hash of the core -> candidate context
+-    /// ids (collisions resolved by exact `contexts[id].core` comparison, never
+-    /// trusted on their own). Keyed by hash rather than owning a `Vec<Pred>`
+-    /// key so each core is stored once (in `Context.core`) instead of a second
+-    /// full copy here -- the same content-interning discipline as `cc_intern_idx`
+-    /// and `pred_intern_idx`. Dedup semantics and returned ids are unchanged.
+-    core_index: HashMap<u64, Vec<usize>>,
++    core_index: HashMap<Vec<Pred>, usize>,
+     msgs: VecDeque<Msg>,
+     /// The ground (nominal root) context `v_r`: the one context where Hyper
+     /// may ground the central variable. Created lazily on the first r-Succ
+@@ -1774,9 +1768,7 @@ pub struct Engine {
+     /// Kept separate from `core_index`: root contexts use the root ordering,
+     /// so a successor core that happens to equal a root core must NOT be
+     /// deduplicated into the root context.
+-    /// Hash-interned like `core_index` (hash of the core -> candidate ids,
+-    /// exact-compared) so the successor core lives only in `Context.core`.
+-    central_index: HashMap<u64, Vec<usize>>,
++    central_index: HashMap<Vec<Pred>, usize>,
+     /// cached strategy flag: central (default) vs per-`f` pay-as-you-go (KM_NO_CENTRAL)
+     central: bool,
+     /// Portfolio candidate flags (default OFF/inert), cached from env at `new`:
+@@ -2143,18 +2135,13 @@ impl Engine {
+     }
+ 
+     fn get_or_create_context(&mut self, core: Vec<Pred>, root: bool, query: Option<Iri>) -> usize {
+-        let h = content_hash(&core);
+-        if let Some(ids) = self.core_index.get(&h) {
+-            for &cand in ids {
+-                if self.contexts[cand].core == core {
+-                    return cand;
+-                }
+-            }
++        if let Some(&id) = self.core_index.get(&core) {
++            return id;
+         }
+         let id = self.contexts.len();
+-        let ctx = Context::new(id, core, root, query);
++        let ctx = Context::new(id, core.clone(), root, query);
+         self.contexts.push(ctx);
+-        self.core_index.entry(h).or_default().push(id);
++        self.core_index.insert(core, id);
+         // Root contexts share the root-ordering facts+TBox closure: seed it and
+         // add only the core rule (the facts live in the closure).  The empty-core
+         // top context is itself the closure, so seeding it is a no-op-equivalent
+@@ -3792,18 +3779,13 @@ impl Engine {
+     /// with the shared non-root closure (facts+TBox consequences) plus the
+     /// Core rule for its core atoms.
+     fn central_successor_for_core(&mut self, core: Vec<Pred>, seed_from: Option<usize>) -> usize {
+-        let h = content_hash(&core);
+-        if let Some(ids) = self.central_index.get(&h) {
+-            for &cand in ids {
+-                if self.contexts[cand].core == core {
+-                    return cand;
+-                }
+-            }
++        if let Some(&id) = self.central_index.get(&core) {
++            return id;
+         }
+         let id = self.contexts.len();
+-        let ctx = Context::new(id, core, false, None);
++        let ctx = Context::new(id, core.clone(), false, None);
+         self.contexts.push(ctx);
+-        self.central_index.entry(h).or_default().push(id);
++        self.central_index.insert(core, id);
+         if std::env::var_os("KM_NO_SHARE").is_some() {
+             self.init_context(id);
+         } else if let Some(src) = seed_from {
+@@ -5228,12 +5210,10 @@ impl Engine {
+             add(
+                 "core_index(engine)",
+                 self.core_index.len(),
+-                self.core_index.len() * 40
+-                    + self
+-                        .core_index
+-                        .values()
+-                        .map(|v| v.capacity() * 8)
+-                        .sum::<usize>(),
++                self.core_index
++                    .keys()
++                    .map(|k| 24 + k.capacity() * szp + 8)
++                    .sum(),
+             );
+             add(
+                 "pred_interned(engine)",
+@@ -6223,56 +6203,6 @@ mod tests {
+         assert!(!e.inconsistent());
+     }
+ 
+-    /// Interning the context core by content hash (`core_index` / `central_index`
+-    /// keyed by `content_hash(core)` -> candidate ids, exact-compared) must
+-    /// preserve the exact dedup semantics of the old `HashMap<Vec<Pred>, usize>`:
+-    /// an identical core reuses its context (never creating a duplicate), a
+-    /// distinct core gets a distinct id, and the core lives only in
+-    /// `Context.core` (the single interning source of truth). Root and central
+-    /// successor cores stay in separate index domains, so an equal core in each
+-    /// must resolve to two different contexts. This is the memory-reduction
+-    /// invariant: the duplicate `Vec<Pred>` key is gone, dedup is unchanged.
+-    #[test]
+-    fn context_core_interning_dedup() {
+-        let mut sig = Sig::default();
+-        let a = sig.concept("A");
+-        let b = sig.concept("B");
+-        let mut e = Engine::new(sig, vec![], 0);
+-
+-        let core_a = vec![cx(a, X)];
+-        let core_b = vec![cx(b, X)];
+-
+-        // Same core -> same id, and no duplicate context is created.
+-        let id_a = e.get_or_create_context(core_a.clone(), true, Some(a));
+-        let n_after_first = e.contexts.len();
+-        let id_a2 = e.get_or_create_context(core_a.clone(), true, Some(a));
+-        assert_eq!(id_a, id_a2, "identical core must reuse the same context");
+-        assert_eq!(
+-            e.contexts.len(),
+-            n_after_first,
+-            "re-requesting an existing core must not create a context"
+-        );
+-        // The core is stored once, in Context.core.
+-        assert_eq!(e.contexts[id_a].core, core_a);
+-
+-        // Distinct core -> distinct id.
+-        let id_b = e.get_or_create_context(core_b.clone(), true, Some(b));
+-        assert_ne!(id_a, id_b, "distinct cores must get distinct contexts");
+-        assert_eq!(e.contexts[id_b].core, core_b);
+-
+-        // Root and central successor domains are kept separate: an equal core in
+-        // each must NOT be deduplicated together (root vs non-root ordering).
+-        let cid_a = e.central_successor_for_core(core_a.clone(), None);
+-        assert_ne!(
+-            id_a, cid_a,
+-            "a central core equal to a root core must be its own context"
+-        );
+-        assert_eq!(e.contexts[cid_a].core, core_a);
+-        // The central index dedups identical cores just like the root index.
+-        let cid_a2 = e.central_successor_for_core(core_a.clone(), None);
+-        assert_eq!(cid_a, cid_a2, "central index must dedup identical cores");
+-    }
+-
+     /// Negative control for Nom: without the functionality clause the two
+     /// successors need not merge, so A ⊑ C must NOT be derived.
+     #[test]

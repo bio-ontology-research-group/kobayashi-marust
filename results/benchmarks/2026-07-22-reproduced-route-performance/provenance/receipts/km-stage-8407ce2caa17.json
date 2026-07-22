@@ -1,0 +1,9 @@
+{
+  "binary": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-8407ce2caa17",
+  "binary_sha256": "3f8411dfa58f5d94bca03dc071dbf8b0e45f1fe622e955433aaff06fd1490765",
+  "key": "stage-8407ce2caa17",
+  "schema_version": 1,
+  "slurm_job_id": "49286975",
+  "source_revision": "8407ce2caa17ffcf64d46aed308ede6903de1c80",
+  "variant": "chronological-optimization-stage"
+}

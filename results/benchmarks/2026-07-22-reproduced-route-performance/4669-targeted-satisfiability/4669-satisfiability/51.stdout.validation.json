@@ -1,0 +1,14 @@
+{
+  "class": "http://purl.obolibrary.org/obo/GO_1900268",
+  "index": 51,
+  "peak_mb": 2244.63,
+  "return_code": 0,
+  "satisfiable": true,
+  "schema_version": 1,
+  "slurm_array_job_id": "49075584",
+  "slurm_array_task_id": "51",
+  "slurm_job_id": "49075755",
+  "status": "ok",
+  "stderr_tail": "SLF4J: Failed to load class \"org.slf4j.impl.StaticLoggerBinder\".\nSLF4J: Defaulting to no-operation (NOP) logger implementation\nSLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.\n",
+  "stdout_sha256": "4aa21b00d8eca3514ac9de07af58157a306b53af283d3c2215d5e4deef1397bf"
+}

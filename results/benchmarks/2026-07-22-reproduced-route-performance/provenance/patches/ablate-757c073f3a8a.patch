@@ -1,0 +1,284 @@
+diff --git a/engine/src/cli.rs b/engine/src/cli.rs
+index 3320b1d..6bbd810 100644
+--- a/engine/src/cli.rs
++++ b/engine/src/cli.rs
+@@ -344,10 +344,6 @@ pub fn run_engine() {
+             exit(1);
+         }
+     };
+-    // The raw JSON is dead once parsed; free it before saturation so it never
+-    // coexists with the peak context state (on the big CB-routed ontologies it
+-    // is hundreds of MB of dead weight held across the whole run).
+-    drop(buf);
+     let t_parse = t0.elapsed();
+     if prof {
+         eprintln!(
+@@ -359,10 +355,6 @@ pub fn run_engine() {
+ 
+     let t1 = std::time::Instant::now();
+     let mut r = Reasoner::new(&input.clauses);
+-    // Likewise the parsed `JClause` block (String-owning IRIs, several times
+-    // the raw JSON size) is fully interned into the Reasoner; drop it before
+-    // saturation rather than at end of function.
+-    drop(input);
+     let t_build = t1.elapsed();
+     if prof {
+         eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
+@@ -378,43 +370,33 @@ pub fn run_engine() {
+     }
+ 
+     let t3 = std::time::Instant::now();
+-    // The derived-clause echo doubles output volume and is only consumed by the
+-    // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
+-    // the giant ontologies. It reads the reasoner's subsumption map, so it is
+-    // built BEFORE the map is moved out below.
+-    let derived_clauses = if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
+-        r.emit_clauses()
+-    } else {
+-        Vec::new()
+-    };
+-    let inconsistent = r.inconsistent();
+-    let dropped = r.dropped_unsupported();
+-    let subsumptions = r
+-        .take_subsumptions()
++    let subs = r.subsumptions();
++    let subsumptions = subs
+         .into_iter()
+         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
+         .collect();
+-    // The reasoner (contexts, clause arenas, indexes — the saturation peak) is
+-    // dead once the answer is moved out; free it before serialising so the
+-    // output bytes reuse that memory instead of stacking on top of it.
+-    drop(r);
+     let t_extract = t3.elapsed();
+ 
++    // The derived-clause echo doubles output volume and is only consumed by the
++    // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
++    // the giant ontologies.
+     let out = JOutput {
+         subsumptions,
+-        derived_clauses,
+-        inconsistent,
+-        dropped,
++        derived_clauses: if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
++            r.emit_clauses()
++        } else {
++            Vec::new()
++        },
++        inconsistent: r.inconsistent(),
++        dropped: r.dropped_unsupported(),
+     };
+ 
+     let t4 = std::time::Instant::now();
+-    // Stream the serialisation: `to_string` materialised the whole output as
+-    // one extra String (identical bytes either way).
++    let s = serde_json::to_string(&out).expect("serialise output");
+     let stdout = std::io::stdout();
+-    let mut h = std::io::BufWriter::new(stdout.lock());
+-    serde_json::to_writer(&mut h, &out).expect("serialise output");
++    let mut h = stdout.lock();
++    h.write_all(s.as_bytes()).expect("write stdout");
+     h.write_all(b"\n").expect("write newline");
+-    h.flush().expect("flush stdout");
+     if prof {
+         eprintln!(
+             "KM_STATS[phase-ms] parse={:.1} build={:.1} saturate={:.1} extract={:.1} write={:.1}",
+diff --git a/engine/src/elcomplete.rs b/engine/src/elcomplete.rs
+index c5723ea..10dd7e5 100644
+--- a/engine/src/elcomplete.rs
++++ b/engine/src/elcomplete.rs
+@@ -2798,39 +2798,21 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
+ 
+     let unresolved_set: std::collections::BTreeSet<&str> =
+         unresolved.iter().map(|s| s.as_str()).collect();
+-    // Everything below reads only the completed relation (`sub_super`) and the
+-    // interner names. The rule indexes, the normal forms, the residual, the
+-    // compiled residual clauses, and the role graph (`edges` / `in_edges` /
+-    // `prop`) are dead here — free them BEFORE materialising the output
+-    // strings, so the string map reuses their memory instead of stacking on
+-    // top of the full saturation state (process peak RSS on the ORE giants
+-    // sits exactly at this point, the fixpoint). Destructuring `res` drops the
+-    // unbound `State` fields in place.
+-    let State { mut sub_super, .. } = res;
+-    drop(idx);
+-    drop(nfs);
+-    drop(rcs);
+-    drop(residual);
+-    drop(skolem_filler);
+     let mut subsumptions = std::collections::BTreeMap::new();
+-    for c in 0..sub_super.len() {
+-        let cid = c as u32;
++    for (c, sups) in res.sub_super.iter().enumerate() {
++        let c = c as u32;
+         // ⊤/⊥ as a *subject* give trivially-true ⊤⊑X / ⊥⊑X, which no reasoner
+         // reports as a class subsumption — skip them.
+-        if cid == TOP || cid == BOTTOM {
++        if c == TOP || c == BOTTOM {
+             continue;
+         }
+         // unresolved subjects are answered by the context engine instead
+-        if unresolved_set.contains(it.name(cid)) {
++        if unresolved_set.contains(it.name(c)) {
+             continue;
+         }
+-        // Take the subject's super-set so it is freed as soon as it has been
+-        // converted (the set and its string form never coexist in full); the
+-        // element sequence is the set's own iteration, exactly as before.
+-        let sups = std::mem::take(&mut sub_super[c]);
+         let mut out = Vec::new();
+         for &d in sups.iter() {
+-            if d == cid || d == TOP {
++            if d == c || d == TOP {
+                 continue;
+             }
+             out.push(if d == BOTTOM {
+@@ -2840,7 +2822,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
+             });
+         }
+         if !out.is_empty() {
+-            subsumptions.insert(it.name(cid).to_string(), out);
++            subsumptions.insert(it.name(c).to_string(), out);
+         }
+     }
+ 
+@@ -2994,32 +2976,6 @@ mod tests {
+         assert!(classify_inner(split_bottom, CertMode::Off, false).is_none());
+     }
+ 
+-    #[test]
+-    fn output_tail_semantics_preserved() {
+-        // Pins the exact semantics of classify_inner's output loop, which now
+-        // frees the saturation state before (and while) materialising the
+-        // string map: an unsatisfiable subject reports owl:Nothing; ⊤/⊥ never
+-        // appear as subjects; ⊤ and the subject itself are never reported as
+-        // supers; a ⊤ ⊑ G axiom surfaces on the named subjects instead.
+-        let cs = clauses(&format!(
+-            "[{},{},{}]",
+-            cl(&[c("A", "x")], &[c("B", "x")]),
+-            cl(&[c("Z", "x")], &[]),
+-            cl(&[], &[c("G", "x")]),
+-        ));
+-        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL");
+-        assert!(subs_of(&res, "Z").contains(&"owl:Nothing".to_string()));
+-        let a = subs_of(&res, "A");
+-        assert!(a.contains(&"B".to_string()));
+-        assert!(a.contains(&"G".to_string()));
+-        assert!(!a.contains(&"A".to_string()));
+-        for (subject, supers) in &res.subsumptions {
+-            assert!(subject != "\u{22a4}" && subject != "\u{22a5}");
+-            assert!(supers.iter().all(|s| s != "\u{22a4}" && s != subject));
+-        }
+-        assert!(!res.inconsistent);
+-    }
+-
+     #[test]
+     fn reflexive_role_fires_nf4_elimination() {
+         // A ⊑ B, ∃R.B ⊑ C, Reflexive(R) ⟹ A ⊑ C (the reflexive self-edge at A,
+diff --git a/engine/src/orchestrate/mod.rs b/engine/src/orchestrate/mod.rs
+index a762842..ba6999a 100644
+--- a/engine/src/orchestrate/mod.rs
++++ b/engine/src/orchestrate/mod.rs
+@@ -350,9 +350,6 @@ fn try_inproc_engine(
+     use crate::json_io::JInput;
+     let buf = std::fs::read(clauses_path)?;
+     let input: JInput = serde_json::from_slice(&buf)?;
+-    // The raw JSON bytes are dead once parsed; free them now instead of
+-    // holding them across the whole in-process saturation below.
+-    drop(buf);
+     if !input.rules.is_empty() {
+         return Ok(None); // rule ontologies need the HT-rules route
+     }
+@@ -373,19 +370,12 @@ fn try_inproc_engine(
+         .spawn(move || {
+             use crate::reasoner::Reasoner;
+             let mut r = Reasoner::new(&clauses);
+-            // The String-owning `JClause` block is fully interned into the
+-            // Reasoner; free it before saturation rather than holding it (it
+-            // is several times the raw JSON size) across the peak.
+-            drop(clauses);
+             if r.has_internal_definer_disjunction() {
+                 let _ = tx.send(None); // blow-up-prone ⇒ decline, use forked path
+                 return;
+             }
+             r.saturate();
+-            let out = inproc_engine_out(&mut r);
+-            // Contexts, arenas, and indexes are dead once the answer is out.
+-            drop(r);
+-            let _ = tx.send(out);
++            let _ = tx.send(inproc_engine_out(&r));
+         })
+         .map_err(|e| OrchestrateError::Spawn {
+             bin: "inproc-cb".into(),
+@@ -406,13 +396,13 @@ fn try_inproc_engine(
+ /// rather than publish a silently incomplete taxonomy as a complete one.
+ /// A published result carries the reasoner's real `dropped_unsupported()`
+ /// count, keeping it byte-identical to the forked worker's output.
+-fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
++fn inproc_engine_out(r: &crate::reasoner::Reasoner) -> Option<EngineOut> {
+     if r.incomplete() {
+         return None;
+     }
+     Some(EngineOut {
+         subsumptions: r
+-            .take_subsumptions()
++            .subsumptions()
+             .into_iter()
+             .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
+             .collect(),
+@@ -428,9 +418,6 @@ fn try_inproc_elc(
+ ) -> Result<Option<EngineOut>, OrchestrateError> {
+     let buf = std::fs::read(clauses_path)?;
+     let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
+-    // Raw JSON bytes are dead once parsed; `classify` itself drops the parsed
+-    // clause block before its saturation, so free the bytes symmetrically.
+-    drop(buf);
+     match crate::elcomplete::classify(input.clauses) {
+         None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
+         Some(res) => {
+diff --git a/engine/src/reasoner.rs b/engine/src/reasoner.rs
+index b99f7aa..8d28267 100644
+--- a/engine/src/reasoner.rs
++++ b/engine/src/reasoner.rs
+@@ -651,16 +651,6 @@ impl Reasoner {
+         self.subs.clone()
+     }
+ 
+-    /// Move the final classification out instead of cloning it. The map holds
+-    /// one owned `String` per subsumption pair, so on large outputs the clone
+-    /// in `subsumptions()` doubles the answer exactly at peak RSS (the full
+-    /// map, its clone, and the serialised bytes would coexist). End-of-run
+-    /// extraction paths use this; the reasoner's own map is left empty, so it
+-    /// can be taken once per run.
+-    pub fn take_subsumptions(&mut self) -> BTreeMap<String, BTreeSet<String>> {
+-        std::mem::take(&mut self.subs)
+-    }
+-
+     pub fn emit_clauses(&self) -> Vec<JClause> {
+         fn ax(name: &str) -> JAtom {
+             JAtom::Concept {
+@@ -832,25 +822,6 @@ mod tests {
+         );
+     }
+ 
+-    #[test]
+-    fn take_subsumptions_moves_the_final_map_once() {
+-        // The moving accessor must return exactly the map the cloning accessor
+-        // returns (end-of-run extraction paths use it to avoid doubling the
+-        // answer at peak RSS), and it can only be taken once.
+-        let mut rr = run(vec![
+-            cl(vec![c("A", vx())], vec![c("B", vx())]),
+-            cl(vec![c("B", vx())], vec![c("C", vx())]),
+-        ]);
+-        let cloned = rr.subsumptions();
+-        let taken = rr.take_subsumptions();
+-        assert_eq!(cloned, taken);
+-        assert!(taken
+-            .get("A")
+-            .is_some_and(|s| s.contains("B") && s.contains("C")));
+-        assert!(rr.subsumptions().is_empty());
+-        assert!(rr.take_subsumptions().is_empty());
+-    }
+-
+     /// KM_ROOT_ORDERED test driver: select the mode on this thread (the
+     /// gated driver is single-threaded, so the thread-local is authoritative)
+     /// and classify. `saturate` resets the mode before returning.

@@ -1,0 +1,35 @@
+auto	learned source-profile decision tree (classify default)
+manual	preserve individually supplied KM_* options
+default
+default8
+default1
+production_all
+production_all8
+production_all1
+cb_plain16
+cb_plain8
+cb_plain1
+cb_absorb16
+cb_absorb8
+cb_absorb1
+cb_trigger16
+cb_trigger8
+cb_trigger1
+cb_absorb_portfolio16
+elc
+elc_cert
+lean
+ht_general
+ht_qo
+ht_shoq
+ht_card
+ht_bridge
+ht_features
+ht_full
+ht_rules
+tableau
+tab_race
+card_fn
+nominals
+seq_on
+seq_off

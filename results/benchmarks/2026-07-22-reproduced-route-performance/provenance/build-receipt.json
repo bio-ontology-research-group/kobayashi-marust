@@ -1,0 +1,127 @@
+{
+  "binaries": {
+    "FullIriHermitOracle.class": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/FullIriHermitOracle.class",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/FullIriHermitOracle.class",
+      "sha256": "67858c5d94a613f28821dfb19d2170bd270af2ee0db74a1a2b9db1e759591e42"
+    },
+    "km-ablate-3d1926a9f987": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-3d1926a9f987",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-ablate-3d1926a9f987",
+      "sha256": "7490592e78355addc5d47bb2142a5c3bf6f339bc45d2c96d4059dc433c1c5597"
+    },
+    "km-ablate-55222f1704cb": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-55222f1704cb",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-ablate-55222f1704cb",
+      "sha256": "b86919c2c08da1ce72202391cd45293e634feb43aec83f2760136c422ae42000"
+    },
+    "km-ablate-61b35c0f82ed": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-61b35c0f82ed",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-ablate-61b35c0f82ed",
+      "sha256": "43213c431e831080c1bdbcc38d5686ce1b19520572dfdab4199323df98085e60"
+    },
+    "km-ablate-757c073f3a8a": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-757c073f3a8a",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-ablate-757c073f3a8a",
+      "sha256": "f0c517e9edef1882593433a3d2f0fd3d059d4d365fe1b825e75048f10bd5c946"
+    },
+    "km-ablate-8407ce2caa17": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-ablate-8407ce2caa17",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-ablate-8407ce2caa17",
+      "sha256": "17c7d3fdd1c1f65bd85d37aa6078f530a29c534063ff804b46d03e297e5b85e0"
+    },
+    "km-main": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-main",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-main",
+      "sha256": "6dd3a33c62018b177c01967af5784303c7b18f2657f730ec60643d1fb4e227df"
+    },
+    "km-stage-0883fe5b65ce": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-0883fe5b65ce",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-0883fe5b65ce",
+      "sha256": "c1cc86fdec86992fad5e0d3c853b99ad346e4e71df6b3f9d17d982227023eb84"
+    },
+    "km-stage-17c0c7581278": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-17c0c7581278",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-17c0c7581278",
+      "sha256": "97d52330d94753da137868f769b96e98e993fa2cd39109ec99d322228763a619"
+    },
+    "km-stage-3d1926a9f987": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-3d1926a9f987",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-3d1926a9f987",
+      "sha256": "3e7b57896329efa45571a1a2e3d4414bb228f30f3678ab5ae1d1aa0763ef2d7c"
+    },
+    "km-stage-3fd3b77e5270": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-3fd3b77e5270",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-3fd3b77e5270",
+      "sha256": "59eff6efeef7eb9467c4be4796ef755d9bb4b8a2bc6e95d78e064a1c448c79ef"
+    },
+    "km-stage-536ca58b32bf": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-536ca58b32bf",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-536ca58b32bf",
+      "sha256": "31657d2b568a3eb86e7b3ff5b428db56f1736ac85d67a2ee7e785c0dc80bc22e"
+    },
+    "km-stage-55222f1704cb": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-55222f1704cb",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-55222f1704cb",
+      "sha256": "e913a740cc986ca05fb71d61cf570832236ca55d8188f4d8a7845b8a1842df73"
+    },
+    "km-stage-61b35c0f82ed": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-61b35c0f82ed",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-61b35c0f82ed",
+      "sha256": "610a339928f5890e35d964746c384705ae7da9ad5a469de65abc9f428f3c535f"
+    },
+    "km-stage-757c073f3a8a": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-757c073f3a8a",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-757c073f3a8a",
+      "sha256": "5b25c0d467a21d6a717dc926f052655a0f2223d1d65508769809613eaebc3be4"
+    },
+    "km-stage-794f6c21282b": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-794f6c21282b",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-794f6c21282b",
+      "sha256": "1c44d833c419c5944c1d67243aef0eb41137d4ffab3f445766e5abb9355799d8"
+    },
+    "km-stage-8407ce2caa17": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-8407ce2caa17",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-8407ce2caa17",
+      "sha256": "3f8411dfa58f5d94bca03dc071dbf8b0e45f1fe622e955433aaff06fd1490765"
+    },
+    "km-stage-a639ab59bfb2": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-stage-a639ab59bfb2",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/km-stage-a639ab59bfb2",
+      "sha256": "8771789c1afe5e80471caa9f7ed263eab2ab09af48673d1cb3f6b7ec0aa6284d"
+    },
+    "rustdl": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/rustdl",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/bin/rustdl",
+      "sha256": "673c7cf8d85be46213bbd3cae5f2168f03668cbf9fb4240643be5ac63f2892db"
+    },
+    "sequoia": {
+      "path": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/sequoia",
+      "resolved_path": "/ibex/user/hohndor/km/full-panel-20260722/build/sequoia/sequoia-command-line-interface-0.6.1-alpha/bin/sequoia",
+      "sha256": "a84dfc7b30cb46dfd9333ef89ac6c2b1cd3bb27025777cc02f8c84b6df7a7649"
+    }
+  },
+  "build_script": "/ibex/scratch/hohndor/km/full-panel-20260722/build/executed-primary-build.sbatch",
+  "build_script_sha256": "7862108c376f82a909a9844e6c04ae6322e801fe0532c522af2c70bfdd018d30",
+  "km_revision": "8c731f43b3c8a277f5fd7a25687e35afb4c4045e",
+  "rustdl_revision": "8c2bb1bf43d936e56d77ae439c04d2feb3f6ebf5",
+  "schema_version": 1,
+  "sequoia_revision": "c5248ec7be302efc850cf07ab30a0ea651db81b6",
+  "slurm_job_id": "49286975",
+  "supplemental_builds": [
+    {
+      "binary_sha256": "67858c5d94a613f28821dfb19d2170bd270af2ee0db74a1a2b9db1e759591e42",
+      "kind": "full-IRI HermiT oracle",
+      "slurm_job_id": "49289827",
+      "source": "/ibex/user/hohndor/km/full-panel-20260722/drivers/hermit-b1d570ba75f6709435a69eba495104b7ce189e104a39c4b71299392bc0edf15a/FullIriHermitOracle.java",
+      "source_sha256": "554c1afec21054ddce1c686dbfde995255810dffdd1e3e9de395d1f815fceda4"
+    }
+  ],
+  "toolchain": {
+    "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+    "java": "openjdk version \"1.8.0_492\"\nOpenJDK Runtime Environment (Temurin)(build 1.8.0_492-b09)\nOpenJDK 64-Bit Server VM (Temurin)(build 25.492-b09, mixed mode)",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-unknown-linux-gnu\nrelease: 1.96.0\nLLVM version: 22.1.2",
+    "rustdl_cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "rustdl_rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  }
+}

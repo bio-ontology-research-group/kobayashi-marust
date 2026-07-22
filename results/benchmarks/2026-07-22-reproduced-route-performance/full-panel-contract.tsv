@@ -1,0 +1,67 @@
+arm	family	kind	binary_key	source_revision	reverted_revision	route	documented_route	args_json	environment_json	standard_summary
+km_route_auto	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		auto		[]	[]	True
+km_route_manual	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		manual		[]	[]	False
+km_route_default	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		default		[]	[]	False
+km_route_default8	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		default8		[]	[]	False
+km_route_default1	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		default1		[]	[]	False
+km_route_production_all	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		production_all		[]	[]	False
+km_route_production_all8	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		production_all8		[]	[]	False
+km_route_production_all1	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		production_all1		[]	[]	False
+km_route_cb_plain16	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_plain16		[]	[]	False
+km_route_cb_plain8	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_plain8		[]	[]	False
+km_route_cb_plain1	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_plain1		[]	[]	False
+km_route_cb_absorb16	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_absorb16		[]	[]	False
+km_route_cb_absorb8	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_absorb8		[]	[]	False
+km_route_cb_absorb1	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_absorb1		[]	[]	False
+km_route_cb_trigger16	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_trigger16		[]	[]	False
+km_route_cb_trigger8	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_trigger8		[]	[]	False
+km_route_cb_trigger1	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_trigger1		[]	[]	False
+km_route_cb_absorb_portfolio16	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		cb_absorb_portfolio16		[]	[]	False
+km_route_elc	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		elc		[]	[]	False
+km_route_elc_cert	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		elc_cert		[]	[]	False
+km_route_lean	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		lean		[]	[]	False
+km_route_ht_general	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_general		[]	[]	False
+km_route_ht_qo	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_qo		[]	[]	False
+km_route_ht_shoq	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_shoq		[]	[]	False
+km_route_ht_card	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_card		[]	[]	False
+km_route_ht_bridge	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_bridge		[]	[]	False
+km_route_ht_features	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_features		[]	[]	False
+km_route_ht_full	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_full		[]	[]	False
+km_route_ht_rules	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		ht_rules		[]	[]	False
+km_route_tableau	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		tableau		[]	[]	False
+km_route_tab_race	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		tab_race		[]	[]	False
+km_route_card_fn	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		card_fn		[]	[]	False
+km_route_nominals	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		nominals		[]	[]	False
+km_route_seq_on	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		seq_on		[]	[]	False
+km_route_seq_off	km_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e		seq_off		[]	[]	False
+km_opt_stage_pre	km_optimization_stage	km	stage-17c0c7581278	17c0c7581278d4b355efa04e9444e03b87cba9ab		production_all		[]	[]	False
+km_opt_stage_result_extract	km_optimization_stage	km	stage-757c073f3a8a	757c073f3a8a29ffdeb1403f9bbf4f0fe43326f9		production_all		[]	[]	False
+km_opt_stage_inline_subst	km_optimization_stage	km	stage-536ca58b32bf	536ca58b32bf20ae2d24426dae74f6d1b399d2fc		production_all		[]	[]	False
+km_opt_stage_role_reach	km_optimization_stage	km	stage-0883fe5b65ce	0883fe5b65ce8743ea711f76e77ec434ff4b1865		production_all		[]	[]	False
+km_opt_stage_rsucc_edge	km_optimization_stage	km	stage-3fd3b77e5270	3fd3b77e52700b530b3f1ade11b945ffb9afdbfb		production_all		[]	[]	False
+km_opt_stage_rollback	km_optimization_stage	km	stage-794f6c21282b	794f6c21282b38f9e2e28523c66496e7fa7c84a1		production_all		[]	[]	False
+km_opt_stage_oneway_subsume	km_optimization_stage	km	stage-3d1926a9f987	3d1926a9f987ed0939c3282047b753e97afa8b44		production_all		[]	[]	False
+km_opt_stage_crossscan_gate	km_optimization_stage	km	stage-a639ab59bfb2	a639ab59bfb20b04f0131a2b7b7cb727117a936b		production_all		[]	[]	False
+km_opt_stage_clause_hash_reuse	km_optimization_stage	km	stage-55222f1704cb	55222f1704cb48341e91e2571dd039646074fbd4		production_all		[]	[]	False
+km_opt_stage_core_hash_intern	km_optimization_stage	km	stage-61b35c0f82ed	61b35c0f82ed07b29d9c117d492a03154866af69		production_all		[]	[]	False
+km_opt_stage_backsub_unindex	km_optimization_stage	km	stage-8407ce2caa17	8407ce2caa17ffcf64d46aed308ede6903de1c80		production_all		[]	[]	False
+km_opt_ablate_result_extract	km_optimization_ablation	km	ablate-757c073f3a8a	8c731f43b3c8a277f5fd7a25687e35afb4c4045e	757c073f3a8a29ffdeb1403f9bbf4f0fe43326f9	production_all		[]	[]	False
+km_opt_ablate_oneway_subsume	km_optimization_ablation	km	ablate-3d1926a9f987	8c731f43b3c8a277f5fd7a25687e35afb4c4045e	3d1926a9f987ed0939c3282047b753e97afa8b44	production_all		[]	[]	False
+km_opt_ablate_clause_hash_reuse	km_optimization_ablation	km	ablate-55222f1704cb	8c731f43b3c8a277f5fd7a25687e35afb4c4045e	55222f1704cb48341e91e2571dd039646074fbd4	production_all		[]	[]	False
+km_opt_ablate_core_hash_intern	km_optimization_ablation	km	ablate-61b35c0f82ed	8c731f43b3c8a277f5fd7a25687e35afb4c4045e	61b35c0f82ed07b29d9c117d492a03154866af69	production_all		[]	[]	False
+km_opt_ablate_backsub_unindex	km_optimization_ablation	km	ablate-8407ce2caa17	8c731f43b3c8a277f5fd7a25687e35afb4c4045e	8407ce2caa17ffcf64d46aed308ede6903de1c80	production_all		[]	[]	False
+km_solution_card_race	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			card_race	[]	"[""KM_ROUTE=manual"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_HT_MEM_GB=18"",""KM_KEEP_CHAIN_AXIOMS=1"",""KM_HT_MODE=race"",""KM_NO_HT_QO_ROUTER=1"",""KM_NO_HT_SHOQ=1"",""KM_NO_ELC_PORTFOLIO=1"",""KM_NO_ABSORB_PORTFOLIO=1"",""KM_ABSORB=0""]"	False
+km_solution_htforce_race	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			htforce_race	[]	"[""KM_ROUTE=manual"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_HT_MEM_GB=18"",""KM_KEEP_CHAIN_AXIOMS=1"",""KM_ABSORB=1"",""KM_ABSORB_PORTFOLIO=1"",""KM_HT_FORCE=1"",""KM_HT_MODE=race""]"	False
+km_solution_kpset_barrier	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			kpset_barrier	[]	"[""KM_ROUTE=manual"",""KM_TRIGGER_ABSORB=1"",""KM_KEEP_CHAIN_AXIOMS=1"",""KM_BRIDGE_PROBE_BUDGET_S=30"",""KM_BRIDGE_RETRY_ROUNDS=0"",""KM_HT_SATURATION_BUDGET_S=180"",""KM_HT_MEM_GB=18"",""KM_PAR_MEM_GB=18"",""KM_THREADS=16""]"	False
+km_solution_legacy_tab_race	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			legacy_tab_race	[]	"[""KM_ROUTE=manual"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_HT_MEM_GB=18"",""KM_KEEP_CHAIN_AXIOMS=1"",""KM_TAB_RACE=1"",""KM_TAB_FEAT=1"",""KM_TAB_RACE_DELAY=0"",""KM_NO_HT_RACE=1"",""KM_NO_ELC_PORTFOLIO=1"",""KM_NO_ABSORB_PORTFOLIO=1"",""KM_ABSORB=0""]"	False
+km_solution_nomlink_default	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			nomlink_default	[]	"[""KM_ROUTE=manual"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_HT_MEM_GB=18"",""KM_KEEP_CHAIN_AXIOMS=1""]"	False
+km_solution_shoq_race	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			shoq_race	[]	"[""KM_ROUTE=manual"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_HT_MEM_GB=18"",""KM_KEEP_CHAIN_AXIOMS=1"",""KM_HT_MODE=race"",""KM_NO_HT_QO_ROUTER=1"",""KM_NO_HT_CARD=1"",""KM_NO_ELC_PORTFOLIO=1"",""KM_NO_ABSORB_PORTFOLIO=1"",""KM_ABSORB=0""]"	False
+km_solution_ht_rules_manual	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			ht_rules	[]	"[""KM_ROUTE=manual"",""KM_HT_RULES=1""]"	False
+km_solution_production_all_explicit	km_documented_solution_route	km	main	8c731f43b3c8a277f5fd7a25687e35afb4c4045e			production_all	[]	"[""KM_ROUTE=production_all"",""KM_THREADS=16"",""KM_PAR_MEM_GB=18"",""KM_TRIGGER_ABSORB=1"",""KM_BRIDGE_PROBE_BUDGET_S=30"",""KM_BRIDGE_RETRY_ROUNDS=0"",""KM_HT_SATURATION_BUDGET_S=180""]"	False
+konclude	baseline	konclude		0002e80635403960a7df5d93bd0e8f994d4952d0				[]	[]	True
+hermit	baseline	hermit		HermiT-1.4.6.519-SNAPSHOT				[]	[]	True
+elk	baseline	elk		ELK-0.6.0				[]	[]	True
+rustdl_complete	baseline	rustdl		8c2bb1bf43d936e56d77ae439c04d2feb3f6ebf5				"[""--pair-timeout-ms"",""0"",""--global-timeout-ms"",""0""]"	[]	True
+rustdl_default	baseline_variant	rustdl		8c2bb1bf43d936e56d77ae439c04d2feb3f6ebf5				[]	[]	False
+sequoia_strict	baseline	sequoia		c5248ec7be302efc850cf07ab30a0ea651db81b6				[]	[]	True
+sequoia_ignore_unsupported	baseline_variant	sequoia		c5248ec7be302efc850cf07ab30a0ea651db81b6				"[""--ignoreUnsupportedFeatures""]"	[]	False

@@ -1,0 +1,9 @@
+{
+  "binary": "/ibex/scratch/hohndor/km/full-panel-20260722/build/bin/km-main",
+  "binary_sha256": "6dd3a33c62018b177c01967af5784303c7b18f2657f730ec60643d1fb4e227df",
+  "key": "main",
+  "schema_version": 1,
+  "slurm_job_id": "49286975",
+  "source_revision": "8c731f43b3c8a277f5fd7a25687e35afb4c4045e",
+  "variant": "current-main"
+}

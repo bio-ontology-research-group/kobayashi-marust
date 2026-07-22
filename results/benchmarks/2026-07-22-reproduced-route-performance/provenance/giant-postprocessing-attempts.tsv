@@ -1,0 +1,10 @@
+job_id	array_task	ontology	allocation	state	elapsed	batch_max_rss_kib	purpose	contributed_measurements
+49292666	121	ore_ont_3524.owl	48G	OUT_OF_MEMORY	03:37:43	50330948	primary frozen runner; untimed legacy local-name closure exhausted the outer Slurm allocation	no
+49309213	121	ore_ont_3524.owl	120G	COMPLETED	00:00:11	9052	first retry skipped because the failed task's structurally complete but invalid result file still existed	no
+49309386	121	ore_ont_3524.owl	120G	CANCELLED	00:06:03	92119064	legacy local-name scorer diagnostic; stopped after monotonic memory growth	no
+49309218	552	ore_ont_15703.owl	120G	CANCELLED	00:08:20	48522460	legacy local-name scorer diagnostic; stopped before duplicating the 3524 outer-allocation failure	no
+49309785	121	ore_ont_3524.owl	240G	CANCELLED	00:14:36	247108824	legacy local-name scorer diagnostic; stopped near the 240G allocation before its first arm completed	no
+49309786	552	ore_ont_15703.owl	240G	CANCELLED	00:14:36	185452196	legacy local-name scorer diagnostic; stopped after confirming the same pathological growth	no
+49310788		ore_ont_3524.owl	240G	COMPLETED	00:00:08	1153220	exact full-IRI fingerprint probe over the preserved 239 MB taxonomy; 7.3866 s and 902.15 MiB Python peak	no; diagnostic only
+49311003	121	ore_ont_3524.owl	48G	COMPLETED	01:03:48	44505580	final 66-arm supplemental task using collision-safe full-IRI-only post-processing	yes; all 66 ontology rows
+49310988	552	ore_ont_15703.owl	48G	COMPLETED	01:06:26	44359996	final 66-arm supplemental task using collision-safe full-IRI-only post-processing	yes; all 66 ontology rows
