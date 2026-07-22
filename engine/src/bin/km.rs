@@ -3,6 +3,7 @@
 //!   `km classify [--lines] <ont.ofn>`  the pure-Rust classify orchestrator
 //!                                      (replacement for `owl_classify.py`)
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
+//!   `km incremental`                   stateful addition-only EL++ session
 //!
 //! `km classify` spawns the workers by re-invoking ITSELF with the worker
 //! subcommand (`current_exe()` + `ofn`/`elc`/`engine`/`tableau`), unless a
@@ -25,6 +26,7 @@ fn main() {
         Some("elc") => cli::run_elc(),
         Some("engine") => cli::run_engine(),
         Some("tableau") => cli::run_tableau(),
+        Some("incremental") => cli::run_incremental(),
         // Single-pass Konclude-compatible expressivity and structural stats.
         // The same profile is carried by the normal classify frontend meta, so
         // offline training and production routing cannot drift.
@@ -42,6 +44,7 @@ fn main() {
             eprintln!("       km features [--format FORMAT] <ontology> ...");
             eprintln!("       km profile [--format FORMAT] <ontology> ...");
             eprintln!("       km routes");
+            eprintln!("       km incremental   (JSONL addition-only EL++ session)");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
         }

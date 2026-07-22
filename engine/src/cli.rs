@@ -315,6 +315,21 @@ pub fn run_elc() {
 }
 
 // ---------------------------------------------------------------------------
+// incremental -- addition-only EL++ session (JSONL stdin/stdout)
+// ---------------------------------------------------------------------------
+
+pub fn run_incremental() {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let reader = std::io::BufReader::new(stdin.lock());
+    let writer = std::io::BufWriter::new(stdout.lock());
+    if let Err(error) = crate::incremental::run_jsonl_session(reader, writer) {
+        eprintln!("incremental session I/O error: {error}");
+        exit(1);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // engine — the consequence-based disjunctive context saturation reasoner
 // ---------------------------------------------------------------------------
 pub fn run_engine() {

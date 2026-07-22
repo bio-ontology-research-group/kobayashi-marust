@@ -78,6 +78,7 @@ type HashSet<T> = std::collections::HashSet<T, FxBuild>;
 
 /// Maps concept/role/individual names to dense `u32` ids. `⊤` and `⊥` get the
 /// first two ids so the saturation can branch on them by integer compare.
+#[derive(Clone)]
 struct Interner {
     map: HashMap<String, u32>,
     names: Vec<String>,
@@ -169,6 +170,57 @@ struct Nfs {
     reflexive_roles: HashSet<u32>,
     concept_names: HashSet<u32>,
     role_names: HashSet<u32>,
+}
+
+/// Set view of direct normal forms. Most addition transactions extend this set
+/// monotonically. The exception is a Skolem role half that was initially read
+/// as `A ⊑ ∃R.⊤` and later receives its filler half: `to_nf` then replaces
+/// that NF3 with `A ⊑ ∃R.B`. An incremental session detects that rewrite and
+/// falls back to a fresh completion instead of retaining facts from a rule that
+/// is no longer present.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum NormalFormKey {
+    Nf1(u32, u32),
+    Nf2(u32, u32, u32),
+    Nf3(u32, u32, u32),
+    Nf4(u32, u32, u32),
+    Nf5(u32),
+    Nf6(u32, u32),
+    Nf7(u32, u32, u32),
+    Reflexive(u32),
+}
+
+fn normal_form_keys(nfs: &Nfs) -> HashSet<NormalFormKey> {
+    let mut keys = HashSet::default();
+    keys.extend(nfs.nf1.iter().map(|a| NormalFormKey::Nf1(a.sub, a.sup)));
+    keys.extend(
+        nfs.nf2
+            .iter()
+            .map(|a| NormalFormKey::Nf2(a.sub1, a.sub2, a.sup)),
+    );
+    keys.extend(
+        nfs.nf3
+            .iter()
+            .map(|a| NormalFormKey::Nf3(a.sub, a.role, a.filler)),
+    );
+    keys.extend(
+        nfs.nf4
+            .iter()
+            .map(|a| NormalFormKey::Nf4(a.role, a.filler, a.sup)),
+    );
+    keys.extend(nfs.nf5.iter().map(|&sub| NormalFormKey::Nf5(sub)));
+    keys.extend(nfs.nf6.iter().map(|a| NormalFormKey::Nf6(a.sub, a.sup)));
+    keys.extend(
+        nfs.nf7
+            .iter()
+            .map(|a| NormalFormKey::Nf7(a.r1, a.r2, a.sup)),
+    );
+    keys.extend(
+        nfs.reflexive_roles
+            .iter()
+            .map(|&role| NormalFormKey::Reflexive(role)),
+    );
+    keys
 }
 
 // ---------------------------------------------------------------------------
@@ -2434,6 +2486,7 @@ fn repair_certify(
 // ---------------------------------------------------------------------------
 
 /// The engine-shaped classification result (mirrors `el_route.classify`'s dict).
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct ElResult {
     /// named subjects the certificate could NOT determine (nonempty only in
     /// repair mode): the caller must classify exactly these with the context
@@ -2458,6 +2511,345 @@ pub enum CertMode {
     Off,
     Check,
     Repair,
+}
+
+/// Why an ontology or update cannot be handled by the incremental EL++
+/// classifier.
+///
+/// Incremental reasoning deliberately has a narrower contract than
+/// [`classify`]: every accepted clause must map directly to an EL++ normal
+/// form. Certificate-assisted residual clauses are not accepted because a
+/// later addition can invalidate a previously passing model certificate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IncrementalError {
+    /// At least one clause was recognised but lies outside EL++.
+    NonElResidual { clauses: usize },
+    /// The clause set contains a shape that cannot be assembled into an EL++
+    /// normal form, such as an existential filler half with no role half.
+    UnsupportedNormalForm,
+}
+
+impl std::fmt::Display for IncrementalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IncrementalError::NonElResidual { clauses } => write!(
+                f,
+                "incremental EL++ mode rejected {clauses} non-EL clause(s)"
+            ),
+            IncrementalError::UnsupportedNormalForm => write!(
+                f,
+                "incremental EL++ mode could not assemble every clause into a supported normal form"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for IncrementalError {}
+
+/// Statistics for one accepted addition transaction.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct IncrementalUpdate {
+    /// Monotonically increasing transaction revision. The initial snapshot is
+    /// revision 0; each nonempty accepted addition advances it once.
+    pub revision: u64,
+    pub added_clauses: usize,
+    pub total_clauses: usize,
+    /// False only when adding a Skolem filler half rewrites a previously
+    /// assembled existential normal form, forcing a safe fresh completion.
+    pub reused_fixpoint: bool,
+    /// Facts retained from the preceding fixpoint and replayed against the
+    /// enlarged rule indexes.
+    pub reused_subsumptions: usize,
+    pub reused_edges: usize,
+    /// Closure facts derived beyond the retained state. When
+    /// `reused_fixpoint` is false these counts describe the whole fresh state.
+    pub new_subsumptions: usize,
+    pub new_edges: usize,
+}
+
+/// Addition-only incremental EL++ classification.
+///
+/// The classifier keeps the completed relation and role graph across updates.
+/// An update is a transaction containing normalised [`JClause`] values. KM
+/// reparses the union only to rebuild compact rule indexes, then replays the
+/// old fixpoint and saturates newly enabled consequences. Since OWL entailment
+/// and every EL++ completion rule are monotone under axiom addition, all reused
+/// facts remain entailed and the resulting fixpoint equals a fresh completion
+/// of the union. If a new Skolem filler half rewrites a previously assembled
+/// existential normal form, KM detects the non-monotone compact translation and
+/// completes that transaction afresh.
+///
+/// Updates are atomic: an unsupported transaction returns an error without
+/// changing the clauses, revision, or completed state. Retraction is not
+/// exposed. Callers that need removal must build a new classifier from the new
+/// ontology snapshot.
+pub struct IncrementalElClassifier {
+    clauses: Vec<JClause>,
+    interner: Interner,
+    concept_ids: HashSet<u32>,
+    normal_forms: HashSet<NormalFormKey>,
+    state: State,
+    nf4_buf: Vec<u32>,
+    revision: u64,
+}
+
+impl IncrementalElClassifier {
+    /// Complete an initial, pure-EL++ clause snapshot.
+    pub fn new(clauses: Vec<JClause>) -> Result<Self, IncrementalError> {
+        let mut interner = Interner::new();
+        let (nfs, residual, _) =
+            to_nf(&clauses, &mut interner).ok_or(IncrementalError::UnsupportedNormalForm)?;
+        if !residual.is_empty() {
+            return Err(IncrementalError::NonElResidual {
+                clauses: residual.len(),
+            });
+        }
+
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        seed_reflexive_edges(&nfs, &idx, &mut state);
+        let mut nf4_buf = Vec::new();
+        run(&idx, &mut state, &mut nf4_buf, &mut Prof::default());
+        let normal_forms = normal_form_keys(&nfs);
+        let concept_ids = nfs.concept_names;
+
+        Ok(IncrementalElClassifier {
+            clauses,
+            interner,
+            concept_ids,
+            normal_forms,
+            state,
+            nf4_buf,
+            revision: 0,
+        })
+    }
+
+    /// Add a transaction of normalised clauses and complete only the enlarged
+    /// closure. An empty transaction is a no-op and does not advance revision.
+    pub fn add_clauses(
+        &mut self,
+        additions: Vec<JClause>,
+    ) -> Result<IncrementalUpdate, IncrementalError> {
+        let added_clauses = additions.len();
+        let reused_subsumptions = fact_count(&self.state.sub_super);
+        let reused_edges = fact_count(&self.state.edges);
+        if additions.is_empty() {
+            return Ok(IncrementalUpdate {
+                revision: self.revision,
+                added_clauses: 0,
+                total_clauses: self.clauses.len(),
+                reused_fixpoint: true,
+                reused_subsumptions,
+                reused_edges,
+                new_subsumptions: 0,
+                new_edges: 0,
+            });
+        }
+
+        // Parse into a cloned interner so a rejected transaction cannot leak
+        // new symbol ids into the live session. Existing ids remain stable;
+        // `to_nf` only appends ids for symbols introduced by the addition.
+        let old_clause_count = self.clauses.len();
+        self.clauses.extend(additions);
+        let mut next_interner = self.interner.clone();
+        let parsed = to_nf(&self.clauses, &mut next_interner);
+        let (next_nfs, residual, _) = match parsed {
+            Some(parts) => parts,
+            None => {
+                self.clauses.truncate(old_clause_count);
+                return Err(IncrementalError::UnsupportedNormalForm);
+            }
+        };
+        if !residual.is_empty() {
+            let clauses = residual.len();
+            self.clauses.truncate(old_clause_count);
+            return Err(IncrementalError::NonElResidual { clauses });
+        }
+
+        let next_normal_forms = normal_form_keys(&next_nfs);
+        let can_reuse_fixpoint = self.normal_forms.is_subset(&next_normal_forms);
+        if !can_reuse_fixpoint {
+            // Completing a previously one-sided existential can replace
+            // A⊑∃R.⊤ with A⊑∃R.B in the NF view. The source clause union is
+            // monotone, but that compact rule translation is not. Retaining
+            // the old canonical TOP edge could enable spurious role-chain
+            // joins, so restart this rare transaction from Init.
+            let next_idx = build_idx(&next_nfs, next_interner.len());
+            let mut next_state = init_state(&next_nfs, next_interner.len());
+            seed_reflexive_edges(&next_nfs, &next_idx, &mut next_state);
+            run(
+                &next_idx,
+                &mut next_state,
+                &mut self.nf4_buf,
+                &mut Prof::default(),
+            );
+            let new_subsumptions = fact_count(&next_state.sub_super);
+            let new_edges = fact_count(&next_state.edges);
+            self.interner = next_interner;
+            self.concept_ids = next_nfs.concept_names;
+            self.normal_forms = next_normal_forms;
+            self.state = next_state;
+            self.revision += 1;
+            return Ok(IncrementalUpdate {
+                revision: self.revision,
+                added_clauses,
+                total_clauses: self.clauses.len(),
+                reused_fixpoint: false,
+                reused_subsumptions: 0,
+                reused_edges: 0,
+                new_subsumptions,
+                new_edges,
+            });
+        }
+
+        // Preserve every fact from the old fixpoint. Arrays grow only because
+        // additions may introduce symbols; existing dense ids never move.
+        let next_len = next_interner.len();
+        self.state.sub_super.resize_with(next_len, HashSet::default);
+        self.state.edges.resize_with(next_len, HashSet::default);
+        self.state.in_edges.resize_with(next_len, Vec::new);
+
+        // PROP is a derived join index, not an entailment. Rebuild it by
+        // replaying every retained subsumption under the new NF4 index. Replay
+        // all retained edges as well, which activates new role inclusions and
+        // chains. This is seminaive at transaction granularity: old closure
+        // facts are retained, while only newly enabled add_sub/add_edge calls
+        // enter the normal worklist recursively.
+        self.state.prop.clear();
+        let mut replay = VecDeque::new();
+        for (c, supers) in self.state.sub_super.iter().enumerate() {
+            for &d in supers {
+                replay.push_back(Item::Sub(c as u32, d));
+            }
+        }
+        for (c, edges) in self.state.edges.iter().enumerate() {
+            for &(r, d) in edges {
+                replay.push_back(Item::Edge(c as u32, r, d));
+            }
+        }
+        self.state.worklist = replay;
+
+        let next_idx = build_idx(&next_nfs, next_len);
+        // Init and newly reflexive roles can add facts that did not exist in
+        // the retained closure. Duplicate facts are filtered by State.
+        for &c in &next_nfs.concept_names {
+            if c != BOTTOM {
+                self.state.add_sub(c, c);
+                self.state.add_sub(c, TOP);
+            }
+        }
+        seed_reflexive_edges(&next_nfs, &next_idx, &mut self.state);
+        run(
+            &next_idx,
+            &mut self.state,
+            &mut self.nf4_buf,
+            &mut Prof::default(),
+        );
+
+        self.interner = next_interner;
+        self.concept_ids = next_nfs.concept_names;
+        self.normal_forms = next_normal_forms;
+        self.revision += 1;
+
+        let final_subsumptions = fact_count(&self.state.sub_super);
+        let final_edges = fact_count(&self.state.edges);
+        Ok(IncrementalUpdate {
+            revision: self.revision,
+            added_clauses,
+            total_clauses: self.clauses.len(),
+            reused_fixpoint: true,
+            reused_subsumptions,
+            reused_edges,
+            new_subsumptions: final_subsumptions.saturating_sub(reused_subsumptions),
+            new_edges: final_edges.saturating_sub(reused_edges),
+        })
+    }
+
+    /// Materialise the current classification without consuming the session.
+    pub fn result(&self) -> ElResult {
+        let mut subsumptions = std::collections::BTreeMap::new();
+        for c in 0..self.state.sub_super.len() {
+            let cid = c as u32;
+            if cid == TOP || cid == BOTTOM || !self.concept_ids.contains(&cid) {
+                continue;
+            }
+            let mut out: Vec<String> = self.state.sub_super[c]
+                .iter()
+                .filter_map(|&d| {
+                    if d == cid || d == TOP {
+                        None
+                    } else if d == BOTTOM {
+                        Some("owl:Nothing".to_string())
+                    } else {
+                        Some(self.interner.name(d).to_string())
+                    }
+                })
+                .collect();
+            out.sort_unstable();
+            if !out.is_empty() {
+                subsumptions.insert(self.interner.name(cid).to_string(), out);
+            }
+        }
+        ElResult {
+            unresolved: Vec::new(),
+            subsumptions,
+            inconsistent: self.is_inconsistent(),
+        }
+    }
+
+    /// Query a named-class subsumption. `None` means the subject is not in the
+    /// current concept signature; it does not mean false.
+    pub fn is_subsumed_by(&self, sub: &str, sup: &str) -> Option<bool> {
+        let sub_id = self.interner.id(sub)?;
+        if !self.concept_ids.contains(&sub_id) {
+            return None;
+        }
+        if self.is_inconsistent() {
+            return Some(true);
+        }
+        if sub == sup || sup == "owl:Thing" || sup == "\u{22a4}" {
+            return Some(true);
+        }
+        let sup_id = if sup == "owl:Nothing" || sup == "\u{22a5}" {
+            BOTTOM
+        } else {
+            match self.interner.id(sup) {
+                Some(id) if self.concept_ids.contains(&id) => id,
+                _ => return Some(false),
+            }
+        };
+        Some(self.state.sub_super[sub_id as usize].contains(&sup_id))
+    }
+
+    pub fn is_inconsistent(&self) -> bool {
+        self.state.sub_super[TOP as usize].contains(&BOTTOM)
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn clause_count(&self) -> usize {
+        self.clauses.len()
+    }
+}
+
+fn fact_count<T>(sets: &[HashSet<T>]) -> usize {
+    sets.iter().map(HashSet::len).sum()
+}
+
+fn seed_reflexive_edges(nfs: &Nfs, idx: &Idx, state: &mut State) {
+    if idx.reflexive_closed.is_empty() {
+        return;
+    }
+    for &c in &nfs.concept_names {
+        if c == BOTTOM {
+            continue;
+        }
+        for &r in &idx.reflexive_closed {
+            state.add_edge(c, r, c);
+        }
+    }
 }
 
 pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
