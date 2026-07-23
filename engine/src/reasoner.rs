@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::calc::*;
 use crate::clause::OntologyClause;
-use crate::engine::Engine;
+use crate::engine::{Engine, RetainedInsertBoundary, RetainedInsertStats};
 use crate::json_io::{JAtom, JClause, JTerm};
 
 fn short(name: &str) -> &str {
@@ -44,6 +44,7 @@ pub struct Reasoner {
     num_ctx: usize,
 }
 
+#[derive(Clone)]
 struct Builder {
     sig: Sig,
     /// global function-symbol interner (function name -> f index >= 1)
@@ -215,18 +216,139 @@ impl Builder {
         }
         Some(OntologyClause::new(body, head))
     }
+
+    fn clauses(&mut self, input: &[JClause]) -> Vec<OntologyClause> {
+        let mut clauses = Vec::with_capacity(input.len());
+        for clause in input {
+            match self.clause(clause) {
+                Some(clause) => clauses.push(clause),
+                None => self.dropped += 1,
+            }
+        }
+        clauses
+    }
+}
+
+fn has_internal_definer_disjunction(sig: &Sig, clauses: &[OntologyClause]) -> bool {
+    clauses.iter().any(|clause| {
+        let mut concepts = 0usize;
+        let mut internal = false;
+        for literal in &clause.head {
+            if let Lit::P(Pred::Concept { iri, .. }) = literal {
+                concepts += 1;
+                internal |= sig.is_internal(*iri);
+            }
+        }
+        concepts >= 2 && internal
+    })
+}
+
+/// A proof boundary encountered while attempting retained CB insertion.  The
+/// ordinary fresh `Reasoner` remains an exact fallback for every case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RetainedCbBoundary {
+    UnsupportedClauses { dropped: usize },
+    OrderingRouterChanged,
+    Engine(RetainedInsertBoundary),
+    IncompleteFixpoint,
+}
+
+/// A completed sequential CB engine whose context graph survives monotone
+/// ontology insertions.  Updates are evaluated on a deep fork and committed
+/// only after the resumed engine reaches a complete fixpoint, so a rejected or
+/// resource-bounded revision leaves the live classification unchanged.
+pub(crate) struct RetainedCbReasoner {
+    builder: Builder,
+    engine: Engine,
+    internal_definer_disjunction: bool,
+}
+
+impl RetainedCbReasoner {
+    pub(crate) fn available_for_current_route() -> bool {
+        std::env::var_os("KM_SPLIT").is_none()
+            && std::env::var_os("KM_ROOT_ORDERED").is_none()
+            && std::env::var_os("KM_QUERIES").is_none()
+    }
+
+    pub(crate) fn new(input: &[JClause]) -> RetainedCbReasoner {
+        let mut builder = Builder::new();
+        let clauses = builder.clauses(input);
+        let internal_definer_disjunction = has_internal_definer_disjunction(&builder.sig, &clauses);
+        set_seq_order_auto(internal_definer_disjunction);
+        let mut engine = Engine::new(builder.sig.clone(), clauses, builder.dropped);
+        let queries = engine.named_queries();
+        engine.run_for(&queries);
+        RetainedCbReasoner {
+            builder,
+            engine,
+            internal_definer_disjunction,
+        }
+    }
+
+    pub(crate) fn dropped_unsupported(&self) -> usize {
+        self.builder.dropped
+    }
+
+    pub(crate) fn incomplete(&self) -> bool {
+        self.engine.incomplete()
+    }
+
+    pub(crate) fn subsumptions(&self) -> Vec<(String, Vec<String>)> {
+        self.engine.subsumptions()
+    }
+
+    pub(crate) fn inconsistent(&self) -> bool {
+        self.engine.inconsistent()
+    }
+
+    pub(crate) fn add_clauses(
+        &mut self,
+        additions: &[JClause],
+    ) -> Result<RetainedInsertStats, RetainedCbBoundary> {
+        let mut builder = self.builder.clone();
+        let dropped_before = builder.dropped;
+        let clauses = builder.clauses(additions);
+        if builder.dropped != dropped_before {
+            return Err(RetainedCbBoundary::UnsupportedClauses {
+                dropped: builder.dropped - dropped_before,
+            });
+        }
+
+        let next_internal = self.internal_definer_disjunction
+            || has_internal_definer_disjunction(&builder.sig, &clauses);
+        let ordering_forced = std::env::var_os("KM_SEQ_ORDER").is_some()
+            || std::env::var_os("KM_NO_SEQ_ORDER").is_some();
+        if !ordering_forced && next_internal != self.internal_definer_disjunction {
+            return Err(RetainedCbBoundary::OrderingRouterChanged);
+        }
+        if let Some(boundary) = self.engine.retained_insert_boundary(&clauses) {
+            return Err(RetainedCbBoundary::Engine(boundary));
+        }
+
+        set_seq_order_auto(next_internal);
+        let mut candidate = self.engine.clone();
+        let mut stats = candidate.insert_ontology_clauses_retained(builder.sig.clone(), clauses);
+        let queries = candidate.named_queries();
+        candidate.run_for(&queries);
+        if candidate.incomplete() {
+            set_seq_order_auto(self.internal_definer_disjunction);
+            return Err(RetainedCbBoundary::IncompleteFixpoint);
+        }
+        let final_counts = candidate.retained_state_counts();
+        stats.contexts_after = final_counts.contexts_after;
+        stats.context_clauses_after = final_counts.context_clauses_after;
+        stats.edges_after = final_counts.edges_after;
+        self.builder = builder;
+        self.engine = candidate;
+        self.internal_definer_disjunction = next_internal;
+        Ok(stats)
+    }
 }
 
 impl Reasoner {
     pub fn new(input: &[JClause]) -> Reasoner {
         let mut b = Builder::new();
-        let mut clauses: Vec<OntologyClause> = Vec::new();
-        for c in input {
-            match b.clause(c) {
-                Some(oc) => clauses.push(oc),
-                None => b.dropped += 1,
-            }
-        }
+        let clauses = b.clauses(input);
         Reasoner {
             sig0: b.sig,
             clauses0: clauses,
@@ -483,19 +605,7 @@ impl Reasoner {
     /// only such ontologies benefit from the Sequoia definer ordering (see
     /// `calc::set_seq_order_auto`).
     pub fn has_internal_definer_disjunction(&self) -> bool {
-        self.clauses0.iter().any(|c| {
-            let mut nconc = 0usize;
-            let mut has_internal = false;
-            for l in &c.head {
-                if let Lit::P(Pred::Concept { iri, .. }) = l {
-                    nconc += 1;
-                    if self.sig0.is_internal(*iri) {
-                        has_internal = true;
-                    }
-                }
-            }
-            nconc >= 2 && has_internal
-        })
+        has_internal_definer_disjunction(&self.sig0, &self.clauses0)
     }
 
     pub fn saturate(&mut self) {

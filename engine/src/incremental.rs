@@ -2,11 +2,13 @@
 //!
 //! [`IncrementalClassifier`] is the public all-fragment API. It keeps the
 //! existing addition-only EL++ delta implementation when the complete snapshot
-//! remains in EL++. For the general consequence-based fragment it performs an
-//! explicitly reported exact rebuild. Removals always rebuild because the CB
-//! and EL stores do not yet retain dependency sets that could invalidate every
-//! consequence of a deleted clause. No operation exposes a stale or partial
-//! classification.
+//! remains in EL++. For the general consequence-based fragment, ordering-stable
+//! monotone additions fork and resume the completed context graph, replaying
+//! retained premises against the new ontology indexes. Removals always rebuild
+//! because the CB and EL stores do not yet retain dependency sets that could
+//! invalidate every consequence of a deleted clause. Insertions that change a
+//! retained ordering/nominal invariant also rebuild explicitly. No operation
+//! exposes a stale or partial classification.
 //!
 //! [`run_jsonl_session`] supplies the `km incremental` transport. It consumes
 //! the same normalised [`JClause`] values as `km elc` and `km engine`. Every
@@ -19,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::json_io::{JAtom, JClause};
-use crate::reasoner::Reasoner;
+use crate::reasoner::{Reasoner, RetainedCbBoundary, RetainedCbReasoner};
 
 pub use crate::elcomplete::{IncrementalElClassifier, IncrementalError, IncrementalUpdate};
 
@@ -40,6 +42,7 @@ pub enum IncrementalBackend {
 pub enum ChangeStrategy {
     NoOp,
     ElDelta,
+    CbDelta,
     ExactRebuild,
 }
 
@@ -88,10 +91,13 @@ pub struct IncrementalChange {
     pub strategy: ChangeStrategy,
     pub reused_fixpoint: bool,
     pub reused_subsumptions: usize,
+    /// Retained completion-role edges for EL, or retained context successor
+    /// edges for CB.
     pub reused_edges: usize,
     /// Facts added beyond a retained EL state, or the complete fresh answer
     /// size when `strategy == exact_rebuild`.
     pub new_subsumptions: usize,
+    /// New completion-role edges for EL, or new context successor edges for CB.
     pub new_edges: usize,
 }
 
@@ -145,9 +151,48 @@ struct StoredClause {
     clause: JClause,
 }
 
+enum CbBackendState {
+    Retained {
+        reasoner: RetainedCbReasoner,
+        result: IncrementalResult,
+    },
+    Snapshot(IncrementalResult),
+}
+
+impl CbBackendState {
+    fn result(&self) -> IncrementalResult {
+        match self {
+            CbBackendState::Retained { result, .. } => result.clone(),
+            CbBackendState::Snapshot(result) => result.clone(),
+        }
+    }
+
+    fn result_ref(&self) -> &IncrementalResult {
+        match self {
+            CbBackendState::Retained { result, .. } | CbBackendState::Snapshot(result) => result,
+        }
+    }
+
+    fn add_retained(
+        &mut self,
+        additions: &[JClause],
+    ) -> Option<Result<crate::engine::RetainedInsertStats, RetainedCbBoundary>> {
+        match self {
+            CbBackendState::Retained { reasoner, result } => {
+                let update = reasoner.add_clauses(additions);
+                if update.is_ok() {
+                    *result = result_from_retained_cb(reasoner);
+                }
+                Some(update)
+            }
+            CbBackendState::Snapshot(_) => None,
+        }
+    }
+}
+
 enum BackendState {
     El(IncrementalElClassifier),
-    Cb(IncrementalResult),
+    Cb(CbBackendState),
 }
 
 impl BackendState {
@@ -161,7 +206,7 @@ impl BackendState {
     fn result(&self) -> IncrementalResult {
         match self {
             BackendState::El(classifier) => IncrementalResult::from_el(classifier.result()),
-            BackendState::Cb(result) => result.clone(),
+            BackendState::Cb(state) => state.result(),
         }
     }
 
@@ -170,14 +215,14 @@ impl BackendState {
             BackendState::El(classifier) => {
                 IncrementalResult::from_el(classifier.result()).pair_count()
             }
-            BackendState::Cb(result) => result.pair_count(),
+            BackendState::Cb(state) => state.result_ref().pair_count(),
         }
     }
 
     fn inconsistent(&self) -> bool {
         match self {
             BackendState::El(classifier) => classifier.is_inconsistent(),
-            BackendState::Cb(result) => result.inconsistent,
+            BackendState::Cb(state) => state.result_ref().inconsistent,
         }
     }
 }
@@ -185,10 +230,12 @@ impl BackendState {
 /// Exact incremental classifier for every normalised clause set accepted by
 /// KM's EL++ or consequence-based worker.
 ///
-/// Pure-EL additions reuse the existing completion state. A CB addition, an
-/// EL-to-CB transition, and every removal construct a fresh candidate reasoner
-/// and commit it only after a complete fixpoint is available. This fallback is
-/// deliberately visible in [`IncrementalChange::strategy`].
+/// Pure-EL additions reuse the existing completion state. Ordering-stable CB
+/// additions fork and resume the existing context graph. An EL-to-CB
+/// transition, every removal, and CB insertions outside the retained-state
+/// proof boundary construct a fresh candidate reasoner. Every path commits only
+/// after a complete fixpoint is available, and its strategy is visible in
+/// [`IncrementalChange::strategy`].
 pub struct IncrementalClassifier {
     clauses: Vec<StoredClause>,
     next_id: ClauseId,
@@ -222,8 +269,10 @@ impl IncrementalClassifier {
         })
     }
 
-    /// Atomically add normalised clauses. Pure-EL additions use the existing
-    /// delta engine; every other accepted addition records an exact rebuild.
+    /// Atomically add normalised clauses. Pure-EL additions use the completion
+    /// delta engine; CB additions resume a retained context-calculus fixpoint
+    /// whenever its ordering/nominal preflight proves reuse safe. Other cases
+    /// take the visible exact-rebuild path.
     pub fn add_clauses(
         &mut self,
         additions: Vec<JClause>,
@@ -260,6 +309,50 @@ impl IncrementalClassifier {
                     new_edges: update.new_edges,
                 });
             }
+        }
+
+        let old_pairs = self.backend.pair_count();
+        let retained = match &mut self.backend {
+            BackendState::Cb(state) => match state.add_retained(&additions) {
+                Some(update) => match update {
+                    Ok(stats) => Some(stats),
+                    Err(RetainedCbBoundary::UnsupportedClauses { dropped }) => {
+                        return Err(IncrementalReasoningError::UnsupportedClauses { dropped });
+                    }
+                    Err(RetainedCbBoundary::IncompleteFixpoint) => {
+                        // The live engine was not mutated. A fresh engine below
+                        // may still complete under a smaller context graph.
+                        None
+                    }
+                    Err(
+                        RetainedCbBoundary::OrderingRouterChanged | RetainedCbBoundary::Engine(_),
+                    ) => None,
+                },
+                None => None,
+            },
+            BackendState::El(_) => None,
+        };
+        if let Some(stats) = retained {
+            let new_pairs = self.backend.pair_count();
+            self.commit_additions(ids.clone(), additions);
+            self.revision += 1;
+            self.concepts = concept_signature_from_store(&self.clauses);
+            return Ok(IncrementalChange {
+                revision: self.revision,
+                added_clauses: ids.len(),
+                removed_clauses: 0,
+                total_clauses: self.clauses.len(),
+                added_clause_ids: ids,
+                removed_clause_ids: Vec::new(),
+                backend_before,
+                backend_after: IncrementalBackend::Cb,
+                strategy: ChangeStrategy::CbDelta,
+                reused_fixpoint: true,
+                reused_subsumptions: old_pairs.min(new_pairs),
+                reused_edges: stats.edges_before,
+                new_subsumptions: new_pairs.saturating_sub(old_pairs),
+                new_edges: stats.edges_after.saturating_sub(stats.edges_before),
+            });
         }
 
         let mut candidate = self.clause_snapshot();
@@ -351,9 +444,13 @@ impl IncrementalClassifier {
     }
 
     pub fn is_subsumed_by(&self, sub: &str, sup: &str) -> Option<bool> {
-        let result = match &self.backend {
-            BackendState::El(classifier) => return classifier.is_subsumed_by(sub, sup),
-            BackendState::Cb(result) => result,
+        if let BackendState::El(classifier) = &self.backend {
+            return classifier.is_subsumed_by(sub, sup);
+        }
+        let result = if let BackendState::Cb(state) = &self.backend {
+            state.result_ref()
+        } else {
+            unreachable!("EL backend returned above")
         };
         if !self.concepts.contains(sub) {
             return None;
@@ -503,7 +600,33 @@ fn build_backend(clauses: &[JClause]) -> Result<BackendState, IncrementalReasoni
     if let Ok(classifier) = IncrementalElClassifier::new(clauses.to_vec()) {
         return Ok(BackendState::El(classifier));
     }
-    classify_cb_fresh(clauses).map(BackendState::Cb)
+    if RetainedCbReasoner::available_for_current_route() {
+        let reasoner = RetainedCbReasoner::new(clauses);
+        let dropped = reasoner.dropped_unsupported();
+        if dropped != 0 {
+            return Err(IncrementalReasoningError::UnsupportedClauses { dropped });
+        }
+        if reasoner.incomplete() {
+            return Err(IncrementalReasoningError::IncompleteFixpoint);
+        }
+        let result = result_from_retained_cb(&reasoner);
+        return Ok(BackendState::Cb(CbBackendState::Retained {
+            reasoner,
+            result,
+        }));
+    }
+    classify_cb_fresh(clauses)
+        .map(CbBackendState::Snapshot)
+        .map(BackendState::Cb)
+}
+
+fn result_from_retained_cb(reasoner: &RetainedCbReasoner) -> IncrementalResult {
+    IncrementalResult {
+        subsumptions: reasoner.subsumptions().into_iter().collect(),
+        inconsistent: reasoner.inconsistent(),
+        dropped: 0,
+        unresolved: Vec::new(),
+    }
 }
 
 fn concept_signature(clauses: &[JClause]) -> BTreeSet<String> {

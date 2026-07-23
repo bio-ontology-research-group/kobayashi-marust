@@ -9,14 +9,27 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
-### Exact incremental CB snapshots and deletion (2026-07-23)
+### Retained-state incremental CB insertion and exact deletion (2026-07-23)
 
 Extended `km incremental` from its lower-level addition-only EL++ store to an
 exact general `IncrementalClassifier`. Pure-EL additions retain the existing
 completion fixpoint. Disjunctive, equality, nominal, and supported cardinality
-normal forms route to the CB worker. CB changes and every removal build a fresh
-candidate fixpoint and report `strategy: exact_rebuild`; KM does not claim CB
-state reuse before it can invalidate dependencies safely.
+normal forms route to the CB worker. Ordering-stable monotone CB additions now
+deep-fork and resume the completed context graph: they append ontology indexes,
+invalidate shared closures and nominal shortcuts, replay every active old
+Hyper side, and send new consequences through the ordinary Eq, Factor, Join,
+Succ, Pred, and message-fixpoint paths. Successful receipts report
+`strategy: cb_delta` and retained answer/edge counts.
+
+The preflight uses an exact rebuild when an insertion changes an existing
+trigger-sensitive ordering, changes automatic definer-disjunction routing,
+adds an asserted ground equality that changes the deterministic quotient, or
+adds a named-individual fact without the historical demand-seeding record,
+promotes a direct `C -> bottom` signature shortcut, or would collide a later
+input individual with an allocated additional nominal. One-shot
+split/root-ordered/query-subset routes also rebuild. Every deletion or
+replacement still rebuilds because CB does not retain the derivation
+dependencies needed for safe retraction.
 
 Initial clauses and accepted additions receive stable, non-reused ids.
 `remove_clauses` deletes by id, while `apply_change` and the JSONL `change`
@@ -26,21 +39,33 @@ a removal id is rejected without changing the live result or id allocator. The
 JSONL parser also rejects unknown side-channel fields instead of ignoring data
 that this direct clause API cannot classify.
 
-Differential tests compare every accepted CB revision with a new `km engine`
-process and every EL revision with fresh EL classification. They cover
-disjunction, roles and chains, equality-based number restrictions, nominals,
-EL-to-CB and CB-to-EL transitions, additions, removals, atomic replacement, and
-rollback after unsupported input. This change adds orchestration and state
-management around the existing batch engines; it changes no calculus rule and
-needs no Lean re-certification.
+Differential tests compare every accepted retained CB revision with a new
+`km engine` process and every EL revision with fresh EL classification. They
+cover multi-revision disjunction, normalised role-chain recognition, new
+symbols/functions/successor contexts, ontology facts, equality-based number
+restrictions, new and existing nominals, EL-to-CB and CB-to-EL transitions,
+removals, and atomic replacement. After a successful delta, unsupported input
+and a forced message-backstop failure both leave the serialized live answer,
+revision, and ids byte-identical; a later retained delta still matches fresh.
+This changes scheduling/state ownership around the same monotone calculus
+rules, so it needs no Lean re-certification.
 
-IBEX job `49338486` passed the full release test suite: 1,627 tests passed,
-8 ignored, and none failed. A five-repetition single-thread EL microbenchmark
+The original snapshot foundation passed the full release test suite in IBEX
+job `49338486`: 1,627 tests passed, 8 ignored, and none failed. A
+five-repetition single-thread EL microbenchmark
 in job `49338646` retained 50,000 facts while adding one clause to a
 10,000-clause snapshot. Its median update latency was 14.8 ms, versus 72.6 ms
 for a fresh `km elc` union worker. This 4.90× end-to-end synthetic result
 includes fresh-worker startup, parsing, and serialisation and is not a corpus
-performance claim. CB updates still report and perform exact rebuilds.
+performance claim.
+
+The retained-CB revision passed the full release suite in IBEX job `49340558`:
+1,620 tests passed, 8 ignored, and none failed. IBEX job `49340574` measured
+the retained CB path on 1,001 initial clauses: a five-repetition median delta
+took 3.14 ms and retained 1,500 answer pairs, versus 25.67 ms for a fresh
+`km engine` union process (8.18× end-to-end). The
+fresh measurement includes process startup, parsing, and serialization; this
+is a synthetic scale check, not an ORE claim.
 
 ### Addition-only incremental EL++ classification (2026-07-22)
 
