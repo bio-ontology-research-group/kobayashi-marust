@@ -13,6 +13,10 @@
 
 set -euo pipefail
 trap 'rc=$?; /usr/bin/printf "panel build failed: line=%s rc=%s\n" "$LINENO" "$rc" >&2' ERR
+[[ $# -le 3 ]] || {
+    echo "usage: ibex_build_full_panel.sbatch [DEPLOYMENT_ROOT [KM_COMMIT [BUILD_SCRIPT_IDENTITY]]]" >&2
+    exit 2
+}
 
 export PATH=/home/hohndor/.cargo/bin:/usr/bin:/bin
 export LC_ALL=C
@@ -20,12 +24,13 @@ export CARGO_NET_GIT_FETCH_WITH_CLI=true
 export CARGO_TERM_COLOR=never
 export RUST_BACKTRACE=1
 
-root=/ibex/scratch/hohndor/km/full-panel-20260722
+script_dir=$(/usr/bin/readlink -f "${SLURM_SUBMIT_DIR:?missing Slurm submit directory}")
+root=${1:-/ibex/scratch/hohndor/km/full-panel-20260722}
 build_root=$root/build
 tmp_root=${SLURM_TMPDIR:-$root/tmp}/km-panel-build-$SLURM_JOB_ID
-script_dir=$(/usr/bin/readlink -f "${SLURM_SUBMIT_DIR:?missing Slurm submit directory}")
 benchmark_root=/ibex/scratch/hohndor/km/bench
-km_commit=8c731f43b3c8a277f5fd7a25687e35afb4c4045e
+km_commit=${2:-8c731f43b3c8a277f5fd7a25687e35afb4c4045e}
+build_script_identity=${3:-$script_dir/ibex_build_full_panel.sbatch}
 rustdl_commit=8c2bb1bf43d936e56d77ae439c04d2feb3f6ebf5
 sequoia_commit=c5248ec7be302efc850cf07ab30a0ea651db81b6
 sbt_sha256=4a61ffe26046609923c8db6fa4b8931d936b1326142c5c89256dccd5e886d147
@@ -168,7 +173,7 @@ sequoia_bin=$(/usr/bin/find "$build_root/sequoia" -type f -path '*/bin/sequoia' 
 )
 
 /usr/bin/python3 - "$build_root" "$km_commit" "$rustdl_commit" "$sequoia_commit" \
-    "$SLURM_JOB_ID" "$script_dir/ibex_build_full_panel.sbatch" "$sbt_sha256" <<'PY'
+    "$SLURM_JOB_ID" "$build_script_identity" "$sbt_sha256" <<'PY'
 import hashlib
 import json
 from pathlib import Path

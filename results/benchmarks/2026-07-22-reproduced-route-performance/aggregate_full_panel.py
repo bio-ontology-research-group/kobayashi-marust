@@ -671,6 +671,8 @@ def main() -> int:
             "full_panel_run_one.py",
             "full_panel_run_one_fulliri_only.py",
             "ibex_aggregate_full_panel_chunked.sbatch",
+            "ibex_build_full_panel.sbatch",
+            "ibex_build_full_panel_rerun.sbatch",
             "ibex_full_panel_chunked_array.sbatch",
             "run_full_panel_ontology.py",
         }
