@@ -36,6 +36,7 @@ export PYTHONHASHSEED=0
 /usr/bin/python3 "$script_dir/audit_full_panel_route_coverage.py" \
     --ledger "$historical_ledger" \
     --contract "$script_dir/full_panel_contract.py" \
+    --km-binary "$deployment_root/build/bin/km-main" \
     --output "$output_dir/route-coverage-audit.json"
 
 # The aggregator discards all provisional correctness labels and recomputes

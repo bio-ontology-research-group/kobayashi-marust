@@ -10,6 +10,7 @@ import importlib.util
 import json
 from pathlib import Path
 import shlex
+import subprocess
 
 
 def sha256_file(path: Path) -> str:
@@ -41,10 +42,24 @@ def load_contract(path: Path):
     return module
 
 
+def parse_binary_routes(output: str) -> list[str]:
+    routes = [line.split("\t", 1)[0].strip() for line in output.splitlines() if line.strip()]
+    if any(not route or any(character.isspace() for character in route) for route in routes):
+        raise ValueError(f"invalid route name in binary output: {routes!r}")
+    if len(routes) != len(set(routes)):
+        raise ValueError(f"duplicate route name in binary output: {routes!r}")
+    return routes
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
+    parser.add_argument(
+        "--km-binary",
+        type=Path,
+        help="built KM executable whose `routes` output must equal KM_ROUTES",
+    )
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -89,8 +104,31 @@ def main() -> int:
         for exact, ontologies in historical.items()
         if exact not in covered
     }
+    binary_routes = None
+    binary_route_mismatch = False
+    binary_sha256 = None
+    if args.km_binary:
+        if not args.km_binary.is_file():
+            raise SystemExit(f"KM binary is missing: {args.km_binary}")
+        completed = subprocess.run(
+            [str(args.km_binary), "routes"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        )
+        if completed.returncode != 0:
+            raise SystemExit(
+                f"KM routes command failed rc={completed.returncode}: "
+                f"{completed.stderr[-500:]}"
+            )
+        binary_routes = parse_binary_routes(completed.stdout)
+        binary_route_mismatch = binary_routes != list(contract.KM_ROUTES)
+        binary_sha256 = sha256_file(args.km_binary)
+    complete = not missing and not binary_route_mismatch
     report = {
-        "status": "complete" if not missing else "missing_historical_routes",
+        "status": "complete" if complete else "incomplete_panel_contract",
         "ledger": str(args.ledger),
         "ledger_sha256": sha256_file(args.ledger),
         "contract": str(args.contract),
@@ -99,6 +137,11 @@ def main() -> int:
         "accepted_rows": len(accepted),
         "unique_historical_environments": len(historical),
         "public_contract_routes": len(public),
+        "contract_routes": list(contract.KM_ROUTES),
+        "km_binary": str(args.km_binary) if args.km_binary else None,
+        "km_binary_sha256": binary_sha256,
+        "binary_routes": binary_routes,
+        "binary_route_mismatch": binary_route_mismatch,
         "documented_contract_environments": len(documented),
         "missing_environment_count": len(missing),
         "missing": [
@@ -113,7 +156,7 @@ def main() -> int:
     if args.output:
         args.output.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
-    if missing:
+    if not complete:
         raise SystemExit(1)
     return 0
 

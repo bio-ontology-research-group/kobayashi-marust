@@ -462,6 +462,7 @@ def main() -> int:
             "ledger_rows": len(ontologies),
             "accepted_rows": 589,
             "missing_environment_count": 0,
+            "binary_route_mismatch": False,
         }
         for field, expected in expected_audit.items():
             if route_audit.get(field) != expected:
@@ -649,6 +650,12 @@ def main() -> int:
     supplemental_entries = validate_flat_manifest(args.supplemental_driver_manifest)
     binary_entries = validate_flat_manifest(args.binary_manifest, "bin")
     patch_entries = validate_flat_manifest(args.ablation_patches_manifest, "patches")
+    if chunked_driver and route_audit.get("km_binary_sha256") != binary_entries.get(
+        "km-main"
+    ):
+        raise SystemExit(
+            "route-coverage audit did not inspect the frozen current-main binary"
+        )
 
     if chunked_driver:
         if driver_entries != supplemental_entries:
