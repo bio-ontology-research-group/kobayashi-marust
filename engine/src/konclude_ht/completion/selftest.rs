@@ -2739,6 +2739,82 @@ fn unit04_processing_concepts_current_node_no_current_queueing_skips_queue_inser
         .is_none());
 }
 
+#[test]
+fn unit04_processing_concepts_unsorted_nominal_batch_is_live() {
+    let mut env = build_env();
+    let root = env.root;
+    env.ctx
+        .process_context_mut()
+        .node_mut(root)
+        .set_individual_type(IndividualType::Nominal)
+        .set_individual_nominal_level(0);
+    let (_, _, con_pro_des) =
+        operator_concept_process_descriptor(&mut env, 2725, super::super::model::op::CCOR, 3.0);
+    let concept_queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        concept_queue,
+        con_pro_des,
+        env.ctx.process_context_mut(),
+    );
+    env.ctx
+        .processing_data_box_mut()
+        .set_nominal_non_deterministic_processing_nodes_sorted(false);
+
+    assert!(env
+        .algo
+        .add_individual_to_processing_queue_based_on_processing_concepts(root, &mut env.ctx));
+    assert_eq!(
+        env.ctx
+            .processing_data_box()
+            .sorted_nominal_non_deterministic_processing_node_linker(),
+        &[root]
+    );
+    assert_eq!(env.algo.take_next_process_individual(&mut env.ctx), root);
+    assert_eq!(
+        env.algo.indi_node_from_queue_type,
+        IndiNodeQueueType::Inqt_Nominal
+    );
+}
+
+#[test]
+fn unit04_processing_concepts_sorted_nominal_batch_uses_nominal_queue() {
+    let mut env = build_env();
+    let root = env.root;
+    env.ctx
+        .process_context_mut()
+        .node_mut(root)
+        .set_individual_type(IndividualType::Nominal)
+        .set_individual_nominal_level(0);
+    let (_, _, con_pro_des) =
+        operator_concept_process_descriptor(&mut env, 2726, super::super::model::op::CCOR, 3.0);
+    let concept_queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        concept_queue,
+        con_pro_des,
+        env.ctx.process_context_mut(),
+    );
+    env.ctx
+        .processing_data_box_mut()
+        .set_nominal_non_deterministic_processing_nodes_sorted(true);
+
+    assert!(env
+        .algo
+        .add_individual_to_processing_queue_based_on_processing_concepts(root, &mut env.ctx));
+    let nominal_queue = env.ctx.get_nominal_processing_queue(false);
+    assert!(nominal_queue.is_some());
+    assert_eq!(env.algo.take_next_process_individual(&mut env.ctx), root);
+    assert_eq!(
+        env.algo.indi_node_from_queue_type,
+        IndiNodeQueueType::Inqt_Nominal
+    );
+}
+
 fn install_cacheable_test_label(env: &mut SelfTestEnv, node: NodeId, tag: i64) {
     let concept = atom_concept_with_tag(env, tag);
     let descriptor = concept_descriptor_with_dependency(env, concept, false, TrackPointId::NONE);

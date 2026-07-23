@@ -281,7 +281,7 @@ pub struct CardDefJson {
     pub filler: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct TInput {
     pub concepts: Vec<String>,
@@ -324,6 +324,11 @@ pub struct TInput {
     /// matching Konclude's preprocessing boundary.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+    /// Exact source nominal/ABox payload. The legacy fast-tableau `nominals`
+    /// vector and SHOI fence remain unchanged; only the native Konclude bridge
+    /// consumes this independently certified channel.
+    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
+    pub nominal_abox: crate::json_io::NominalAboxMeta,
 }
 
 // ---------------------------------------------------------------------------
@@ -2350,6 +2355,7 @@ pub fn convert(
         role_ranges,
         definers: definers.to_vec(),
         source_axioms: source_axioms.to_vec(),
+        nominal_abox: crate::json_io::NominalAboxMeta::default(),
     }
 }
 

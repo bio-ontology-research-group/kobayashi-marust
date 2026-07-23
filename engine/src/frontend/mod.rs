@@ -7,6 +7,7 @@
 //! `declared` side outputs that drive `owl_classify`'s output mapping.
 
 pub mod abox_consistency;
+pub mod bottom_prepass;
 pub mod clauses;
 pub mod data_abox;
 pub mod data_range;
@@ -20,7 +21,7 @@ pub mod rbox;
 pub mod sexpr;
 pub mod syntax;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use clauses::{clause, clause_to_json, Atom, DLClause, Term};
 use iri::IriRegistry;
@@ -50,6 +51,9 @@ pub struct FrontendResult {
     /// If classification later proves such a class unsatisfiable, the ontology
     /// is inconsistent; `owl_classify` applies that rule after the engine runs.
     pub asserted_classes: Vec<String>,
+    /// Exact nominal/ABox provenance for the native Konclude bridge. Empty on
+    /// nominal-free inputs; `complete=false` makes the bridge fail closed.
+    pub nominal_abox: crate::json_io::NominalAboxMeta,
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
@@ -67,6 +71,144 @@ pub struct FrontendResult {
     /// refined by the exact normalized-clause fragment gate (`manual` for a
     /// standalone frontend invocation).
     pub route: String,
+}
+
+/// Build the exact source ABox carried to the native nominal bridge. The
+/// bridge currently supports class assertions plus explicit inequality. All
+/// other ABox constructs are recorded as a coverage failure, never dropped.
+fn collect_nominal_abox(
+    ontology: &syntax::Ontology,
+    hooks: &normalise::GroundHooks,
+    source_abox_axioms: u64,
+    source_class_assertions: u64,
+    source_role_assertions: u64,
+    source_rule_axioms: u64,
+) -> crate::json_io::NominalAboxMeta {
+    use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
+    use syntax::Axiom;
+
+    if hooks.nominal_to_individual.is_empty() {
+        if source_abox_axioms == 0 {
+            return NominalAboxMeta::default();
+        }
+        // A named individual used only as an assertion subject/object does not
+        // create a clausifier nominal proxy. Preserve that coverage loss in the
+        // side channel so the bridge cannot silently drop the ABox.
+        return NominalAboxMeta {
+            unsupported: vec![format!(
+                "{source_abox_axioms} source ABox axiom(s) have no nominal proxy mapping"
+            )],
+            ..NominalAboxMeta::default()
+        };
+    }
+
+    let mut by_individual: BTreeMap<String, NominalIndividualMeta> = BTreeMap::new();
+    for (proxy, individual) in &hooks.nominal_to_individual {
+        let entry =
+            by_individual
+                .entry(individual.clone())
+                .or_insert_with(|| NominalIndividualMeta {
+                    individual: individual.clone(),
+                    ..NominalIndividualMeta::default()
+                });
+        entry.proxies.push(proxy.clone());
+    }
+    for entry in by_individual.values_mut() {
+        entry.proxies.sort();
+        entry.proxies.dedup();
+    }
+
+    let mut different = BTreeSet::new();
+    let mut unsupported = BTreeSet::new();
+    let mut parsed_class_assertions = 0u64;
+    let mut parsed_different_pairs = 0u64;
+    let mut parsed_same_pairs = 0u64;
+    for axiom in ontology.abox() {
+        match axiom {
+            Axiom::ConceptAssertion(concept, individual) => {
+                parsed_class_assertions += 1;
+                if let Some(entry) = by_individual.get_mut(individual) {
+                    entry.assertions.push(normalise::nnf(concept));
+                } else {
+                    unsupported.insert(format!(
+                        "ClassAssertion individual {individual} has no nominal proxy"
+                    ));
+                }
+            }
+            Axiom::DifferentIndividuals(left, right) => {
+                parsed_different_pairs += 1;
+                if !by_individual.contains_key(left) || !by_individual.contains_key(right) {
+                    unsupported.insert(format!(
+                        "DifferentIndividuals({left},{right}) references an unproxied individual"
+                    ));
+                } else if left != right {
+                    let pair = if left < right {
+                        (left.clone(), right.clone())
+                    } else {
+                        (right.clone(), left.clone())
+                    };
+                    different.insert(pair);
+                } else {
+                    // Preserve DifferentIndividuals(a,a); the bridge's global
+                    // ABox consistency check will turn it into a clash.
+                    different.insert((left.clone(), right.clone()));
+                }
+            }
+            Axiom::RoleAssertion(role, source, target) => {
+                unsupported.insert(format!("ObjectPropertyAssertion({role},{source},{target})"));
+            }
+            Axiom::NegativeRoleAssertion(role, source, target) => {
+                unsupported.insert(format!(
+                    "NegativeObjectPropertyAssertion({role},{source},{target})"
+                ));
+            }
+            Axiom::SameIndividual(left, right) => {
+                parsed_same_pairs += 1;
+                unsupported.insert(format!("SameIndividual({left},{right})"));
+            }
+            _ => {
+                unsupported.insert("unsupported parsed ABox axiom".to_string());
+            }
+        }
+    }
+    if parsed_class_assertions != source_class_assertions {
+        unsupported.insert(format!(
+            "source/parsed ClassAssertion mismatch ({source_class_assertions}/{parsed_class_assertions})"
+        ));
+    }
+    // The profile counts one n-ary DifferentIndividuals source axiom while
+    // the object parser expands it to every semantic pair. The expanded ABox
+    // is the exact payload the bridge needs (10621 has 85 names, 3,570 pairs).
+    if source_role_assertions != 0 {
+        unsupported.insert(format!(
+            "{source_role_assertions} source role/data assertion axiom(s) are unsupported"
+        ));
+    }
+    let identity_source_axioms = source_abox_axioms
+        .saturating_sub(source_class_assertions)
+        .saturating_sub(source_role_assertions);
+    if identity_source_axioms != 0 && parsed_same_pairs == 0 && parsed_different_pairs == 0 {
+        unsupported.insert(format!(
+            "{identity_source_axioms} source identity axiom(s) were not represented by the object-ABox parser"
+        ));
+    }
+    if source_rule_axioms != 0 {
+        unsupported.insert(format!(
+            "{source_rule_axioms} DL-safe rule axiom(s) require a separate ABox contract"
+        ));
+    }
+    for entry in by_individual.values_mut() {
+        entry.assertions.sort();
+        entry.assertions.dedup();
+    }
+
+    let unsupported: Vec<String> = unsupported.into_iter().collect();
+    NominalAboxMeta {
+        complete: unsupported.is_empty(),
+        individuals: by_individual.into_values().collect(),
+        different: different.into_iter().collect(),
+        unsupported,
+    }
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -140,6 +282,11 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
         profile_builder.observe(node);
     })?;
+    let bottom_prepass = if std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none() {
+        Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
+    } else {
+        None
+    };
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
@@ -159,6 +306,14 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     route.apply_environment();
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
+    let nominal_abox = collect_nominal_abox(
+        &ontology,
+        &hooks,
+        profile.source.abox_axioms,
+        profile.source.class_assertions,
+        profile.source.role_assertions,
+        profile.source.rule_axioms,
+    );
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
@@ -222,10 +377,14 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let mut declared_raw: Vec<&str> = Vec::new();
     let mut data_ranges = data_range::DataRanges::default();
     let mut data_abox = data_abox::DataAbox::default();
+    let mut bottom_role_constraints = bottom_prepass::RawRoleConstraints::default();
     parse::for_each_ontology_child(text, |node| {
         rbox::rbox_node(&mut reg, node, &mut rbox);
         data_ranges.observe(node);
         data_abox.observe(node);
+        if bottom_prepass.is_some() {
+            bottom_role_constraints.observe(node);
+        }
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
         }
@@ -300,6 +459,27 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         let s = reg.short(name);
         if s != "owl:Thing" && s != "owl:Nothing" {
             declared.push(s);
+        }
+    }
+    // Resolve complex role constraints only after declarations have claimed
+    // their established internal names. The prepass then materializes proven
+    // bottom classes as ordinary constraints; no calculus rule changes.
+    if let Some(prepass) = bottom_prepass {
+        let role_constraints = bottom_role_constraints.resolve(&mut reg);
+        let certified_bottom = prepass.certify(&role_constraints);
+        tbox.extend(bottom_prepass::constraints(&certified_bottom));
+        if std::env::var_os("KM_BOTTOM_PREPASS_STATS").is_some() {
+            eprintln!(
+                "BOTTOM-PREPASS seeds={} subclass={} exists={} contextual={} total={} forced={} markers={} incompatible={}",
+                certified_bottom.seeds,
+                certified_bottom.via_subclass,
+                certified_bottom.via_existential,
+                certified_bottom.contextual_roots,
+                certified_bottom.classes.len(),
+                certified_bottom.forced_subclasses.len(),
+                certified_bottom.value_markers.len(),
+                certified_bottom.incompatible_pairs.len(),
+            );
         }
     }
     // A data property whose `DataPropertyRange` axioms intersect to the empty
@@ -440,6 +620,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         el_rbox_safe,
         abox_inconsistent,
         asserted_classes: asserted_classes.into_iter().collect(),
+        nominal_abox,
         cardinalities,
         definers,
         source_axioms,
@@ -576,7 +757,11 @@ mod rule_contract_tests {
             "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentIndividualsAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
         let rules = collect_rules(&parsed, 1).expect("Diff rule carried, route not declined");
-        assert_eq!(rules.len(), 1, "the rule is represented (Diff dropped only at firing)");
+        assert_eq!(
+            rules.len(),
+            1,
+            "the rule is represented (Diff dropped only at firing)"
+        );
 
         // A mixed corpus (one fired + one deferred) is still accepted wholesale.
         let mixed = ontology(
@@ -601,5 +786,128 @@ DLSafeRule(Body(BuiltInAtom(<gt> Variable(<x>) \"5\")) Head(ClassAtom(<C> Variab
             collect_rules(&parsed, 2).is_err(),
             "a concrete-domain built-in rule declines the route wholesale"
         );
+    }
+}
+
+#[cfg(test)]
+mod nominal_abox_contract_tests {
+    use super::*;
+
+    const PREFIX: &str = "Prefix(:=<http://example.org/>)\nOntology(";
+
+    #[test]
+    fn nary_different_individuals_is_certified_as_exact_pairs() {
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:A))\
+             Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB)) Declaration(Class(:OnlyC))\
+             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\
+             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
+             EquivalentClasses(:OnlyB ObjectOneOf(:b))\
+             EquivalentClasses(:OnlyC ObjectOneOf(:c))\
+             ClassAssertion(:A :a)\
+             DifferentIndividuals(:a :b :c))"
+        ))
+        .expect("nominal ontology is parsed");
+        let meta = result.nominal_abox;
+        assert!(meta.complete, "coverage reasons: {:?}", meta.unsupported);
+        assert_eq!(meta.individuals.len(), 3);
+        assert_eq!(
+            meta.different.len(),
+            3,
+            "three-way Different expands pairwise"
+        );
+        assert_eq!(
+            meta.individuals
+                .iter()
+                .map(|entry| entry.assertions.len())
+                .sum::<usize>(),
+            1
+        );
+        assert!(meta
+            .individuals
+            .iter()
+            .all(|entry| !entry.proxies.is_empty()));
+    }
+
+    #[test]
+    fn unsupported_abox_shapes_make_the_certificate_fail_closed() {
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
+             Declaration(ObjectProperty(:r))\
+             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\
+             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
+             EquivalentClasses(:OnlyB ObjectOneOf(:b))\
+             ObjectPropertyAssertion(:r :a :b))"
+        ))
+        .expect("nominal ontology is parsed");
+        assert!(!result.nominal_abox.complete);
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("ObjectPropertyAssertion")));
+
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:OnlyA)) Declaration(Class(:A))\
+             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:unproxied))\
+             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
+             ClassAssertion(:A :unproxied))"
+        ))
+        .expect("nominal ontology is parsed");
+        assert!(!result.nominal_abox.complete);
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("has no nominal proxy")));
+
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(NamedIndividual(:unproxied))\
+             ClassAssertion(:A :unproxied))"
+        ))
+        .expect("plain class assertion ontology is parsed");
+        assert!(!result.nominal_abox.complete);
+        assert!(result.nominal_abox.individuals.is_empty());
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("no nominal proxy mapping")));
+    }
+
+    #[test]
+    fn identity_and_negative_property_assertions_fail_nominal_coverage() {
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
+             Declaration(ObjectProperty(:r)) Declaration(DataProperty(:p))\
+             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\
+             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
+             EquivalentClasses(:OnlyB ObjectOneOf(:b))\
+             SameIndividual(:a :b)\
+             NegativeObjectPropertyAssertion(:r :a :b)\
+             NegativeDataPropertyAssertion(:p :a \"x\"))"
+        ))
+        .expect("unsupported ABox constructs are still profiled");
+        assert!(!result.nominal_abox.complete);
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("SameIndividual")));
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("NegativeObjectPropertyAssertion")));
+        assert!(result
+            .nominal_abox
+            .unsupported
+            .iter()
+            .any(|reason| reason.contains("source role/data assertion")));
     }
 }

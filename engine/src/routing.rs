@@ -40,6 +40,10 @@ pub enum Route {
     HtShoq,
     HtCard,
     HtBridge,
+    /// Certified bridge portfolio with the exact nominal-aware CB fallback.
+    /// This is public for route-panel reproducibility; unlike `HtBridge`, it is
+    /// deliberately non-atomic because a bridge defer must retain the ABox.
+    CertifiedNominals,
     HtFeatures,
     HtFull,
     HtRules,
@@ -52,7 +56,7 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 33] = [
+    pub const NAMED: [Route; 34] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -77,6 +81,7 @@ impl Route {
         Route::HtShoq,
         Route::HtCard,
         Route::HtBridge,
+        Route::CertifiedNominals,
         Route::HtFeatures,
         Route::HtFull,
         Route::HtRules,
@@ -116,6 +121,7 @@ impl Route {
             Route::HtShoq => "ht_shoq",
             Route::HtCard => "ht_card",
             Route::HtBridge => "ht_bridge",
+            Route::CertifiedNominals => "certified_nominals",
             Route::HtFeatures => "ht_features",
             Route::HtFull => "ht_full",
             Route::HtRules => "ht_rules",
@@ -157,6 +163,7 @@ impl Route {
             Route::HtShoq => HT_SHOQ,
             Route::HtCard => HT_CARD,
             Route::HtBridge => HT_BRIDGE,
+            Route::CertifiedNominals => CERTIFIED_NOMINALS,
             Route::HtFeatures => HT_FEATURES,
             Route::HtFull => HT_FULL,
             Route::HtRules => HT_RULES,
@@ -270,6 +277,9 @@ impl FromStr for Route {
             "ht_shoq" | "shoq" => Route::HtShoq,
             "ht_card" | "card" => Route::HtCard,
             "ht_bridge" | "bridge" => Route::HtBridge,
+            "certified_nominals" | "bridge_nominals" | "ht_bridge_nominals" => {
+                Route::CertifiedNominals
+            }
             "ht_features" | "ht_feature_pack" => Route::HtFeatures,
             "ht_full" => Route::HtFull,
             "ht_rules" | "rules" => Route::HtRules,
@@ -292,6 +302,14 @@ impl FromStr for Route {
 pub enum SemanticFragment {
     UnsupportedRules,
     Rules,
+    /// A typed class-assertion ABox whose individuals are covered by one
+    /// n-ary `DifferentIndividuals` axiom, combined with the exact atomic
+    /// datatype fragment supported by the native Konclude bridge.  This is
+    /// the source-level gate for the 10621 mechanism. Automatic dispatch uses
+    /// the dedicated `certified_nominals` portfolio: certified HT independently
+    /// rechecks complete ABox and clause/RBox coverage, while an honest bridge
+    /// defer leaves the exact nominal-aware CB fallback authoritative.
+    NativeBridgeAbox,
     /// A positive ABox whose consistency and TBox-separation follow from the
     /// source certificate. It may use the same complete TBox mechanisms as the
     /// nominal-free core; all other ABoxes remain `Nominal`.
@@ -300,11 +318,40 @@ pub enum SemanticFragment {
     SriqCore,
 }
 
+/// Source-only certificate for the combined nominal/datatype bridge fragment.
+///
+/// The certificate deliberately recognizes the narrow all-different layout
+/// for which KM carries every assertion into Konclude's native nominal model:
+/// exactly one class assertion per source individual, plus one n-ary
+/// `DifferentIndividuals` axiom covering that population.  Other ABoxes keep
+/// the established nominal route.  The converted bridge performs the final,
+/// stronger lossless-coverage check, so this gate can authorize a bridge
+/// attempt but cannot authorize a partial answer.
+fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let different = source
+        .axiom_types
+        .get("DifferentIndividuals")
+        .copied()
+        .unwrap_or(0);
+    profile.expressivity.datatype
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.role_assertions == 0
+        && different == 1
+        && source.class_assertions > 0
+        && source.abox_axioms == source.class_assertions.saturating_add(different)
+        && source.distinct_individuals == source.class_assertions
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
     } else if profile.source.rule_axioms > 0 {
         SemanticFragment::Rules
+    } else if native_bridge_abox_eligible(profile) {
+        SemanticFragment::NativeBridgeAbox
     } else if profile.source.abox_axioms > 0 && profile.positive_abox_tbox_separable {
         SemanticFragment::PositiveAbox
     } else if profile.source.abox_axioms > 0 || profile.expressivity.nominal_individual {
@@ -353,6 +400,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // can accidentally ignore those source axioms.
         SemanticFragment::UnsupportedRules => Route::HtRules,
         SemanticFragment::Rules => Route::HtRules,
+        SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
         SemanticFragment::Nominal => Route::Nominals,
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
             let learned = routing_tree_generated::select(profile);
@@ -630,6 +678,33 @@ const HT_BRIDGE: &[(&str, &str)] = &[
     ("KM_HT_ONLY", "bridge"),
     ("KM_HT_NICE", "0"),
 ];
+/// Reproducible automatic route for the exact typed nominal/ABox bridge.
+///
+/// The HT arm is certificate-or-defer.  Its stronger converted-input gate can
+/// reject a source profile, so the companion CB arm must carry the complete
+/// singleton/ABox encoding (`KM_NOMINALS=1`).  `KM_ABSORB=0` preserves the
+/// validated nominal clause semantics.  The isolated `ht_bridge` route above
+/// remains an atomic mechanism measurement with no fallback.
+const CERTIFIED_NOMINALS: &[(&str, &str)] = &[
+    ("KM_MECHANISM", "portfolio"),
+    ("KM_NO_ELC", "1"),
+    ("KM_NO_HT_RULES", "1"),
+    ("KM_NO_ABSORB_PORTFOLIO", "1"),
+    ("KM_ABSORB", "0"),
+    // The typed nominal payload is consumed only by the native completion
+    // bridge.  The legacy QO/SHOQ/card paths do not install its pairwise
+    // inequalities, so none of them may answer after an honest bridge defer.
+    ("KM_NO_HT_QO_ROUTER", "1"),
+    ("KM_NO_HT_SHOQ", "1"),
+    ("KM_NO_HT_CARD", "1"),
+    ("KM_TRIGGER_ABSORB", "1"),
+    ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
+    ("KM_BRIDGE_RETRY_ROUNDS", "0"),
+    ("KM_HT_SATURATION_BUDGET_S", "180"),
+    ("KM_HT_ONLY", "certified"),
+    ("KM_NOMINALS", "1"),
+    ("KM_HT_NICE", "0"),
+];
 const HT_FEATURES: &[(&str, &str)] = &[
     // One worker, one terminating HT classification. The mutually compatible
     // feature modules are all available, while the structural gate selects the
@@ -794,6 +869,16 @@ const ROUTE_KEYS: &[&str] = &[
 mod tests {
     use super::*;
 
+    fn source_profile(text: &str) -> OntologyProfile {
+        let mut builder = crate::frontend::profile::SourceProfileBuilder::new();
+        crate::frontend::parse::for_each_ontology_child(text, |node| {
+            builder.observe(node);
+            Ok(())
+        })
+        .expect("source profile parses");
+        builder.finish(text.len() as u64)
+    }
+
     #[test]
     fn every_matrix_route_round_trips() {
         for route in Route::NAMED {
@@ -870,6 +955,25 @@ mod tests {
             .settings()
             .contains(&("KM_HT_ONLY", "bridge")));
         assert!(Route::HtBridge.settings().contains(&("KM_MECHANISM", "ht")));
+        for required in [
+            ("KM_MECHANISM", "portfolio"),
+            ("KM_HT_ONLY", "certified"),
+            ("KM_TRIGGER_ABSORB", "1"),
+            ("KM_NOMINALS", "1"),
+            ("KM_ABSORB", "0"),
+            ("KM_NO_HT_QO_ROUTER", "1"),
+            ("KM_NO_HT_SHOQ", "1"),
+            ("KM_NO_HT_CARD", "1"),
+        ] {
+            assert!(
+                Route::CertifiedNominals.settings().contains(&required),
+                "certified_nominals must carry {required:?}"
+            );
+        }
+        assert!(!Route::CertifiedNominals
+            .settings()
+            .iter()
+            .any(|(key, _)| *key == "KM_NO_HT_RACE"));
         assert!(Route::HtFeatures
             .settings()
             .contains(&("KM_HT_ONLY", "features")));
@@ -905,10 +1009,11 @@ mod tests {
             Route::ProductionAll,
             Route::ProductionAll8,
             Route::ProductionAll1,
+            Route::CertifiedNominals,
             Route::CbAbsorbPortfolio16,
             Route::TabRace,
         ] {
-            assert!(!route.is_atomic(), "{} must remain manual-only", route);
+            assert!(!route.is_atomic(), "{} must remain a portfolio", route);
         }
         for route in Route::NAMED.into_iter().filter(|route| route.is_atomic()) {
             let mechanisms: Vec<_> = route
@@ -937,6 +1042,42 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
         assert_eq!(select(&profile), Route::ProductionAll);
 
+        // The exact native nominal/datatype source profile takes precedence
+        // over both the generic nominal route and positive-ABox separation.
+        profile.positive_abox_tbox_separable = false;
+        profile.expressivity.datatype = true;
+        profile.source.abox_axioms = 86;
+        profile.source.class_assertions = 85;
+        profile.source.distinct_individuals = 85;
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 1);
+        assert_eq!(
+            semantic_fragment(&profile),
+            SemanticFragment::NativeBridgeAbox
+        );
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+
+        // Every source-side premise is fail-closed.  A second inequality axiom
+        // or the absence of the exact datatype fragment keeps the old nominal
+        // dispatch rather than broadening the bridge based on an ORE id.
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 2);
+        profile.source.abox_axioms = 87;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::Nominals);
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 1);
+        profile.source.abox_axioms = 86;
+        profile.expressivity.datatype = false;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::Nominals);
+
         profile.source.rule_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Rules);
         assert_eq!(select(&profile), Route::HtRules);
@@ -947,6 +1088,73 @@ mod tests {
             SemanticFragment::UnsupportedRules
         );
         assert_eq!(select(&profile), Route::HtRules);
+    }
+
+    #[test]
+    fn explicit_nominal_counterexample_keeps_the_exact_fallback() {
+        // This profile deliberately satisfies the cheap 10621-shaped source
+        // gate but can fail the bridge's stronger converted-input certificate:
+        // A is the singleton {a}, yet A(b) and a != b.  The ontology is
+        // inconsistent.  An ordinary proxy-only CB fallback can lose singleton
+        // meaning and publish "consistent", so both automatic and explicitly
+        // named execution must select the nominal-aware fallback bundle.
+        let profile = source_profile(
+            r#"Ontology(
+                ClassAssertion(<A> <b>)
+                ClassAssertion(<C> <a>)
+                DifferentIndividuals(<a> <b>)
+                EquivalentClasses(<A> ObjectOneOf(<a>))
+                SubClassOf(<D> DataSomeValuesFrom(<p> xsd:string))
+            )"#,
+        );
+        // DataPropertyRange alone intentionally does not set Konclude's `(D)`
+        // expressivity occurrence flag. Use an actual data restriction and
+        // pin every source-only premise of NativeBridgeAbox before asking the
+        // policy to select it. The restriction is on otherwise-unused D, so it
+        // cannot create or hide the nominal inconsistency under test.
+        assert!(profile.expressivity.datatype);
+        assert_eq!(profile.source.imports, 0);
+        assert_eq!(profile.source.rule_axioms, 0);
+        assert_eq!(profile.source.unsupported_rule_axioms, 0);
+        assert_eq!(profile.source.role_assertions, 0);
+        assert_eq!(profile.source.class_assertions, 2);
+        assert_eq!(profile.source.distinct_individuals, 2);
+        assert_eq!(profile.source.abox_axioms, 3);
+        assert_eq!(
+            profile
+                .source
+                .axiom_types
+                .get("DifferentIndividuals")
+                .copied(),
+            Some(1)
+        );
+        assert_eq!(
+            semantic_fragment(&profile),
+            SemanticFragment::NativeBridgeAbox
+        );
+
+        let automatic = select(&profile);
+        let explicit: Route = "certified_nominals".parse().expect("named route parses");
+        assert_eq!(automatic, Route::CertifiedNominals);
+        assert_eq!(explicit, Route::CertifiedNominals);
+        for route in [automatic, explicit] {
+            let env = normalized_environment(route);
+            assert!(env.contains(&("KM_MECHANISM", "portfolio")), "{route}");
+            assert!(env.contains(&("KM_HT_ONLY", "certified")), "{route}");
+            assert!(env.contains(&("KM_TRIGGER_ABSORB", "1")), "{route}");
+            assert!(
+                env.contains(&("KM_NOMINALS", "1")),
+                "{route} must never expose this ABox to ordinary proxy-only CB"
+            );
+            assert!(
+                env.contains(&("KM_ABSORB", "0")),
+                "{route} must preserve the validated nominal clause semantics"
+            );
+            assert!(
+                env.contains(&("KM_NO_HT_CARD", "1")),
+                "{route} must not hand a bridge defer to a path that ignores typed inequalities"
+            );
+        }
     }
 
     /// The exact environment of the proven ORE 3215 closure (IBEX jobs
@@ -1113,6 +1321,7 @@ mod tests {
             Route::HtShoq,
             Route::HtCard,
             Route::HtBridge,
+            Route::CertifiedNominals,
             Route::HtFeatures,
             Route::HtFull,
             Route::CardFn,

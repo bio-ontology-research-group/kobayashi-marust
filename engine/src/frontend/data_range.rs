@@ -9,11 +9,11 @@
 //! cardinality with n >= 1) unsatisfiable, while leaving `DataAllValuesFrom`
 //! and `DataMax` untouched (they impose no value).
 //!
-//! Sound by construction. Literals are compared by their lexical token only, so
-//! two values that share a lexical form but differ in datatype are treated as
-//! equal — that over-counts the intersection, so the analysis can only ever
-//! miss an emptiness (incompleteness), never invent one (which would be
-//! unsound). `DataPropertyRange` axioms are otherwise dropped (the datatype
+//! Sound by construction. Full typed/language literal tokens are retained.
+//! Two finite ranges are declared disjoint only when the exact datatype-value
+//! oracle proves every cross-pair unequal. Any unsupported canonicalisation
+//! (including XML whitespace collapse and IEEE float rounding) blocks the
+//! certificate. `DataPropertyRange` axioms are otherwise dropped (the datatype
 //! over-approximation in `parse`), so collecting them here changes no other
 //! clause. To keep the internal-name assignment order identical to a run
 //! without any empty range, the property IRI is resolved (`reg.short`) only
@@ -49,13 +49,19 @@ impl DataRanges {
             None => return,
         };
         if let Node::List("DataOneOf", lits) = args[1] {
-            let set: HashSet<String> = lits
-                .iter()
-                .filter_map(|n| n.as_atom())
-                .filter(|s| s.starts_with('"'))
-                .map(|s| s.to_string())
-                .collect();
-            if !set.is_empty() {
+            let refs: Vec<&Node> = lits.iter().collect();
+            let mut set = HashSet::new();
+            let mut complete = true;
+            let mut index = 0;
+            while index < refs.len() {
+                let Some((literal, used)) = super::parse::glue_literal(&refs, index) else {
+                    complete = false;
+                    break;
+                };
+                set.insert(literal);
+                index += used;
+            }
+            if complete && !set.is_empty() {
                 self.one_of.entry(prop.to_string()).or_default().push(set);
             }
         }
@@ -72,11 +78,17 @@ impl DataRanges {
             if sets.len() < 2 {
                 continue;
             }
-            let mut inter = sets[0].clone();
-            for s in &sets[1..] {
-                inter.retain(|v| s.contains(v));
-            }
-            if inter.is_empty() {
+            let disjoint_pair = sets.iter().enumerate().any(|(index, left)| {
+                sets.iter().skip(index + 1).any(|right| {
+                    left.iter().all(|left_value| {
+                        right.iter().all(|right_value| {
+                            super::datatypes::exact_literal_value_equal(left_value, right_value)
+                                == Some(false)
+                        })
+                    })
+                })
+            });
+            if disjoint_pair {
                 let name = reg.short(prop);
                 out.push(constraint([Atom::Role(name, var_x(), var_y())]));
             }
@@ -129,6 +141,36 @@ mod tests {
         );
         let mut reg = IriRegistry::new();
         assert!(dr.empty_range_constraints(&mut reg).is_empty());
+    }
+
+    #[test]
+    fn equal_values_with_alternative_lexical_forms_block_emptiness() {
+        for ranges in [
+            [
+                "DataPropertyRange(P DataOneOf(\"1\"^^xsd:boolean))",
+                "DataPropertyRange(P DataOneOf(\"true\"^^xsd:boolean))",
+            ],
+            [
+                "DataPropertyRange(P DataOneOf(\"5\"^^xsd:integer))",
+                "DataPropertyRange(P DataOneOf(\"05\"^^xsd:integer))",
+            ],
+            [
+                "DataPropertyRange(P DataOneOf(\"a  b\"^^xsd:token))",
+                "DataPropertyRange(P DataOneOf(\"a b\"^^xsd:string))",
+            ],
+            [
+                "DataPropertyRange(P DataOneOf(\"1\"^^ex:boolean))",
+                "DataPropertyRange(P DataOneOf(\"true\"^^ex:boolean))",
+            ],
+        ] {
+            let mut dr = DataRanges::default();
+            observe_all(&mut dr, &ranges);
+            let mut reg = IriRegistry::new();
+            assert!(
+                dr.empty_range_constraints(&mut reg).is_empty(),
+                "equal or unknown value intersection was declared empty: {ranges:?}"
+            );
+        }
     }
 
     #[test]

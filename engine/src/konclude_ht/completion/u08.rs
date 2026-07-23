@@ -3703,15 +3703,130 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_dependency_track_point();
-        let _ = (process_indi, negate, indi, dep_track_point);
-        // PORT-PENDING: past the prelude the rule needs the nominal-node
-        // correction/localization helpers (`getCorrectedNominalIndividualNode`,
-        // `getLocalizedForcedBackendInitializedNominalIndividualNode`, units 16/17),
-        // the merge subsystem (`isIndividualNodesMergeable`,
-        // `getMergedIndividualNodes`, units 14/15), the NOMINAL dependency creator +
-        // clash-descriptor factory (units 28–30), the individual-merging-hash and
-        // distinct-hash satellites (W2-DEFER), the `CDistinctEdge` allocation and the
-        // `[exceptions]` clash channel — none ported.
-        todo!("W3-DEFER: applyNOMINALRule — nominal correction / merge subsystem / distinct edges / clash channel unported");
+        if indi.is_none() {
+            // A CCNOMINAL without its ontology individual violates the typed
+            // bridge contract. Unknown is safer than fabricating a singleton.
+            calc_alg_context.raise_stop(false);
+            return;
+        }
+        let nominal_id = -calc_alg_context
+            .ontology_arenas()
+            .individual(indi)
+            .get_individual_id();
+        if !self.is_nominal_individual_node_available(nominal_id, calc_alg_context) {
+            // Native bridge nominals are preallocated in every probe. Keep the
+            // unported temporary/backend materialization path fail closed.
+            calc_alg_context.raise_stop(false);
+            return;
+        }
+        let nominal_node = self.get_corrected_nominal_individual_node(nominal_id, calc_alg_context);
+        if nominal_node.is_none() {
+            calc_alg_context.raise_stop(false);
+            return;
+        }
+
+        // Follow a prior forced merge of the currently processed node. The
+        // nominal target helper already performs the same correction by id.
+        let mut current = calc_alg_context.get_up_to_date_individual(*process_indi);
+        while current.is_some()
+            && calc_alg_context
+                .process_context()
+                .node(current)
+                .has_merged_into_individual_node_id()
+        {
+            let merged_id = calc_alg_context
+                .process_context()
+                .node(current)
+                .merged_into_individual_node_id();
+            current = calc_alg_context.get_up_to_date_individual_by_id(merged_id);
+        }
+        if current.is_none() {
+            calc_alg_context.raise_stop(false);
+            return;
+        }
+        *process_indi = current;
+
+        let raise_nominal_clash =
+            |this: &mut Self, current: &mut NodeId, ctx: &mut CalculationAlgorithmContextBase| {
+                let clash = this.create_clashed_concept_descriptor(
+                    Id::NONE,
+                    current,
+                    con_des,
+                    dep_track_point,
+                    ctx,
+                );
+                ctx.raise_clash(clash);
+            };
+
+        if !negate {
+            if current == nominal_node {
+                return;
+            }
+            if !self.ht_individuals_mergeable(current, nominal_node, calc_alg_context) {
+                raise_nominal_clash(self, &mut current, calc_alg_context);
+                return;
+            }
+            let nominal_dep_track_point = calc_alg_context
+                .process_context()
+                .node(nominal_node)
+                .dependency_track_point();
+            let mut merge_dep_track_point = TrackPointId::NONE;
+            self.create_nominal_dependency(
+                &mut merge_dep_track_point,
+                &mut current,
+                con_des,
+                dep_track_point,
+                nominal_dep_track_point,
+                calc_alg_context,
+            );
+            self.propagate_individual_node_nominal_connection_status_to_ancestors(
+                current,
+                nominal_node,
+                calc_alg_context,
+            );
+            // The named nominal is the canonical merge target. This preserves
+            // its fixed process id and all explicit inequality edges.
+            self.merge_individual_node_into(
+                nominal_node,
+                current,
+                merge_dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            *process_indi = nominal_node;
+            self.add_individual_to_processing_queue(nominal_node, calc_alg_context);
+            return;
+        }
+
+        // ¬{a}: identity is an immediate clash; otherwise install a symmetric
+        // distinct edge. A pre-existing distinct edge or permanent label clash
+        // already witnesses that the two nodes cannot be merged.
+        if current == nominal_node {
+            raise_nominal_clash(self, &mut current, calc_alg_context);
+            return;
+        }
+        if !self.ht_individuals_mergeable(current, nominal_node, calc_alg_context) {
+            return;
+        }
+        let nominal_dep_track_point = calc_alg_context
+            .process_context()
+            .node(nominal_node)
+            .dependency_track_point();
+        let mut distinct_dep_track_point = TrackPointId::NONE;
+        self.create_nominal_dependency(
+            &mut distinct_dep_track_point,
+            &mut current,
+            con_des,
+            dep_track_point,
+            nominal_dep_track_point,
+            calc_alg_context,
+        );
+        self.ht_make_individuals_distinct(
+            &[current, nominal_node],
+            distinct_dep_track_point,
+            calc_alg_context,
+        );
     }
 }

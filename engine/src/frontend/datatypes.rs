@@ -84,8 +84,6 @@ fn gcd(mut a: u128, mut b: u128) -> u128 {
 #[derive(Clone, PartialEq, Debug)]
 enum Val {
     Num(Rat),
-    /// non-finite float/double specials (NaN, +INF, -INF), tagged by name
-    Special(&'static str),
     Bool(bool),
     /// string with optional language tag
     Str(String, Option<String>),
@@ -111,6 +109,10 @@ enum Partition {
 /// A recognised named datatype.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct NamedDt {
+    /// Exact OWL datatype identity. Structural fields alone are lossy:
+    /// `real`/`rational`/`decimal`, the XML name family, and the temporal
+    /// datatypes can share all fields while denoting different value spaces.
+    kind: &'static str,
     part: Partition,
     /// numeric bounds for the integer-derived types (inclusive), if any
     min: Option<i128>,
@@ -126,16 +128,121 @@ struct NamedDt {
     finite_bool: bool,
 }
 
-const TOP_TYPES: &[&str] = &[
-    "rdfs:Literal",
-    "Literal",
-    "rdf:PlainLiteral",
-    "PlainLiteral",
-];
+const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
+const RDF_PLAIN_LITERAL_IRI: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral";
+const RDFS_LITERAL_IRI: &str = "http://www.w3.org/2000/01/rdf-schema#Literal";
+const OWL_REAL_IRI: &str = "http://www.w3.org/2002/07/owl#real";
+const OWL_RATIONAL_IRI: &str = "http://www.w3.org/2002/07/owl#rational";
+
+fn unwrapped_iri(name: &str) -> &str {
+    let raw = name.trim();
+    raw.strip_prefix('<')
+        .and_then(|value| value.strip_suffix('>'))
+        .unwrap_or(raw)
+}
+
+/// Return the canonical key of a datatype only when the complete source IRI
+/// is one of the standard spellings understood by this module.  Matching a
+/// local name is unsound: `ex:boolean` is a legal user datatype and does not
+/// acquire the value space of `xsd:boolean` merely by sharing its suffix.
+fn builtin_datatype_key(name: &str) -> Option<&str> {
+    let raw = unwrapped_iri(name);
+    let xsd_local = raw
+        .strip_prefix("xsd:")
+        .or_else(|| raw.strip_prefix(XSD_NS));
+    if let Some(local) = xsd_local {
+        return matches!(
+            local,
+            "decimal"
+                | "float"
+                | "double"
+                | "integer"
+                | "nonNegativeInteger"
+                | "positiveInteger"
+                | "nonPositiveInteger"
+                | "negativeInteger"
+                | "long"
+                | "int"
+                | "short"
+                | "byte"
+                | "unsignedLong"
+                | "unsignedInt"
+                | "unsignedShort"
+                | "unsignedByte"
+                | "string"
+                | "normalizedString"
+                | "token"
+                | "language"
+                | "Name"
+                | "NCName"
+                | "NMTOKEN"
+                | "boolean"
+                | "anyURI"
+                | "hexBinary"
+                | "base64Binary"
+                | "dateTime"
+                | "dateTimeStamp"
+                | "date"
+                | "time"
+                | "gYear"
+                | "gMonth"
+                | "gDay"
+                | "gYearMonth"
+                | "gMonthDay"
+                | "duration"
+        )
+        .then_some(local);
+    }
+    match raw {
+        "owl:real" | OWL_REAL_IRI => Some("real"),
+        "owl:rational" | OWL_RATIONAL_IRI => Some("rational"),
+        "rdfs:Literal" | RDFS_LITERAL_IRI => Some("rdfs:Literal"),
+        "rdf:PlainLiteral" | RDF_PLAIN_LITERAL_IRI => Some("rdf:PlainLiteral"),
+        _ => None,
+    }
+}
+
+/// Canonical, collision-free key for a named data range in the internal
+/// `__dt__` symbol space.  Known builtins retain the historical compact key;
+/// every other source token is encoded byte-for-byte instead of losing its
+/// namespace through `short_base`.
+pub(crate) fn datatype_concept_key(name: &str) -> String {
+    if let Some(key) = builtin_datatype_key(name) {
+        return match key {
+            "rdfs:Literal" => "Literal".to_string(),
+            "rdf:PlainLiteral" => "PlainLiteral".to_string(),
+            other => other.to_string(),
+        };
+    }
+    let raw = unwrapped_iri(name);
+    let mut encoded = String::with_capacity(raw.len() * 2);
+    for byte in raw.as_bytes() {
+        use std::fmt::Write;
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    format!("iri__{}_{}", raw.len(), encoded)
+}
+
+fn builtin_facet_key(name: &str) -> Option<&str> {
+    let raw = unwrapped_iri(name);
+    let local = raw
+        .strip_prefix("xsd:")
+        .or_else(|| raw.strip_prefix(XSD_NS))?;
+    matches!(
+        local,
+        "minInclusive" | "minExclusive" | "maxInclusive" | "maxExclusive"
+    )
+    .then_some(local)
+}
 
 fn named_dt(name: &str) -> Option<NamedDt> {
-    let local = name.rsplit(':').next().unwrap_or(name);
-    let n = |min: Option<i128>, max: Option<i128>| NamedDt {
+    let local = builtin_datatype_key(name)?;
+    named_dt_kind(local)
+}
+
+fn named_dt_kind(local: &str) -> Option<NamedDt> {
+    let n = |kind: &'static str, min: Option<i128>, max: Option<i128>| NamedDt {
+        kind,
         part: Partition::Numeric,
         min,
         max,
@@ -143,7 +250,8 @@ fn named_dt(name: &str) -> Option<NamedDt> {
         str_level: None,
         finite_bool: false,
     };
-    let s = |lvl: u8| NamedDt {
+    let s = |kind: &'static str, lvl: u8| NamedDt {
+        kind,
         part: Partition::Strings,
         min: None,
         max: None,
@@ -154,6 +262,11 @@ fn named_dt(name: &str) -> Option<NamedDt> {
     Some(match local {
         // owl:real / owl:rational / xsd:decimal: unbounded, non-integral
         "real" | "rational" | "decimal" => NamedDt {
+            kind: match local {
+                "real" => "real",
+                "rational" => "rational",
+                _ => "decimal",
+            },
             part: Partition::Numeric,
             min: None,
             max: None,
@@ -165,6 +278,7 @@ fn named_dt(name: &str) -> Option<NamedDt> {
         // Modelled as the numeric partition without bounds or integrality;
         // see `dt_subsumed` for the (non-)relations with decimal.
         "float" | "double" => NamedDt {
+            kind: if local == "float" { "float" } else { "double" },
             part: Partition::Numeric,
             min: None,
             max: None,
@@ -172,24 +286,28 @@ fn named_dt(name: &str) -> Option<NamedDt> {
             str_level: None,
             finite_bool: false,
         },
-        "integer" => n(None, None),
-        "nonNegativeInteger" => n(Some(0), None),
-        "positiveInteger" => n(Some(1), None),
-        "nonPositiveInteger" => n(None, Some(0)),
-        "negativeInteger" => n(None, Some(-1)),
-        "long" => n(Some(i64::MIN as i128), Some(i64::MAX as i128)),
-        "int" => n(Some(i32::MIN as i128), Some(i32::MAX as i128)),
-        "short" => n(Some(i16::MIN as i128), Some(i16::MAX as i128)),
-        "byte" => n(Some(i8::MIN as i128), Some(i8::MAX as i128)),
-        "unsignedLong" => n(Some(0), Some(u64::MAX as i128)),
-        "unsignedInt" => n(Some(0), Some(u32::MAX as i128)),
-        "unsignedShort" => n(Some(0), Some(u16::MAX as i128)),
-        "unsignedByte" => n(Some(0), Some(u8::MAX as i128)),
-        "string" => s(3),
-        "normalizedString" => s(2),
-        "token" => s(1),
-        "language" | "Name" | "NCName" | "NMTOKEN" => s(0),
+        "integer" => n("integer", None, None),
+        "nonNegativeInteger" => n("nonNegativeInteger", Some(0), None),
+        "positiveInteger" => n("positiveInteger", Some(1), None),
+        "nonPositiveInteger" => n("nonPositiveInteger", None, Some(0)),
+        "negativeInteger" => n("negativeInteger", None, Some(-1)),
+        "long" => n("long", Some(i64::MIN as i128), Some(i64::MAX as i128)),
+        "int" => n("int", Some(i32::MIN as i128), Some(i32::MAX as i128)),
+        "short" => n("short", Some(i16::MIN as i128), Some(i16::MAX as i128)),
+        "byte" => n("byte", Some(i8::MIN as i128), Some(i8::MAX as i128)),
+        "unsignedLong" => n("unsignedLong", Some(0), Some(u64::MAX as i128)),
+        "unsignedInt" => n("unsignedInt", Some(0), Some(u32::MAX as i128)),
+        "unsignedShort" => n("unsignedShort", Some(0), Some(u16::MAX as i128)),
+        "unsignedByte" => n("unsignedByte", Some(0), Some(u8::MAX as i128)),
+        "string" => s("string", 3),
+        "normalizedString" => s("normalizedString", 2),
+        "token" => s("token", 1),
+        "language" => s("language", 0),
+        "Name" => s("Name", 0),
+        "NCName" => s("NCName", 0),
+        "NMTOKEN" => s("NMTOKEN", 0),
         "boolean" => NamedDt {
+            kind: "boolean",
             part: Partition::Boolean,
             min: None,
             max: None,
@@ -198,6 +316,7 @@ fn named_dt(name: &str) -> Option<NamedDt> {
             finite_bool: true,
         },
         "anyURI" => NamedDt {
+            kind: "anyURI",
             part: Partition::Uri,
             min: None,
             max: None,
@@ -206,6 +325,11 @@ fn named_dt(name: &str) -> Option<NamedDt> {
             finite_bool: false,
         },
         "hexBinary" | "base64Binary" => NamedDt {
+            kind: if local == "hexBinary" {
+                "hexBinary"
+            } else {
+                "base64Binary"
+            },
             part: Partition::Binary,
             min: None,
             max: None,
@@ -215,6 +339,18 @@ fn named_dt(name: &str) -> Option<NamedDt> {
         },
         "dateTime" | "dateTimeStamp" | "date" | "time" | "gYear" | "gMonth" | "gDay"
         | "gYearMonth" | "gMonthDay" | "duration" => NamedDt {
+            kind: match local {
+                "dateTime" => "dateTime",
+                "dateTimeStamp" => "dateTimeStamp",
+                "date" => "date",
+                "time" => "time",
+                "gYear" => "gYear",
+                "gMonth" => "gMonth",
+                "gDay" => "gDay",
+                "gYearMonth" => "gYearMonth",
+                "gMonthDay" => "gMonthDay",
+                _ => "duration",
+            },
             part: Partition::Time,
             min: None,
             max: None,
@@ -249,29 +385,27 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         ));
     }
     let dt = rest.strip_prefix("^^")?.to_string();
-    let local = dt.rsplit(':').next().unwrap_or(&dt).to_string();
-    let val = match local.as_str() {
-        "boolean" => match lex.trim() {
+    let builtin = builtin_datatype_key(&dt);
+    let val = match builtin {
+        Some("boolean") => match lex.trim() {
             "true" | "1" => Val::Bool(true),
             "false" | "0" => Val::Bool(false),
             _ => return Some((Val::Opaque(tok.to_string()), Some(dt))),
         },
-        "string" | "normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN" => {
-            Val::Str(lex.to_string(), None)
+        Some("string") => Val::Str(lex.to_string(), None),
+        // XML Schema's derived string types apply whitespace replacement or
+        // collapse before entering the value space.  Until that canonical
+        // mapping is represented exactly, preserve the token opaquely: raw
+        // lexical inequality is not a proof of value inequality.
+        Some("normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN") => {
+            Val::Opaque(tok.to_string())
         }
-        "float" | "double" => match lex.trim() {
-            "NaN" => Val::Special("NaN"),
-            "INF" | "+INF" => Val::Special("+INF"),
-            "-INF" => Val::Special("-INF"),
-            t => match parse_decimal(t) {
-                Some(r) => Val::Num(r),
-                None => match t.parse::<f64>().ok().and_then(f64_to_rat) {
-                    Some(r) => Val::Num(r),
-                    None => Val::Opaque(tok.to_string()),
-                },
-            },
-        },
-        _ if named_dt(&local).map_or(false, |d| d.part == Partition::Numeric) => {
+        // OWL uses IEEE binary32/binary64 value spaces.  Parsing a decimal
+        // lexical form as an exact rational (or directly as f64 for xsd:float)
+        // can distinguish two spellings that round to the same value.  Keep
+        // both widths opaque until their exact value canonicalisation exists.
+        Some("float" | "double") => Val::Opaque(tok.to_string()),
+        Some(kind) if named_dt_kind(kind).is_some_and(|d| d.part == Partition::Numeric) => {
             match parse_decimal(lex.trim()) {
                 Some(r) => Val::Num(r),
                 None => Val::Opaque(tok.to_string()),
@@ -327,38 +461,13 @@ fn parse_decimal(s: &str) -> Option<Rat> {
     Rat::new(num, den)
 }
 
-/// Exact conversion of a finite f64 (dyadic rational) when it fits i128.
-fn f64_to_rat(f: f64) -> Option<Rat> {
-    if !f.is_finite() {
-        return None;
-    }
-    let bits = f.to_bits();
-    let sign = if bits >> 63 == 1 { -1i128 } else { 1 };
-    let exp = ((bits >> 52) & 0x7ff) as i64;
-    let frac = (bits & ((1u64 << 52) - 1)) as i128;
-    let (mant, e2) = if exp == 0 {
-        (frac, -1074i64)
-    } else {
-        (frac + (1i128 << 52), exp - 1075)
-    };
-    if e2 >= 0 {
-        if e2 > 70 {
-            return None; // would overflow; treat as unknown
-        }
-        Rat::new(sign * mant.checked_shl(e2 as u32)?, 1)
-    } else {
-        let s = -e2;
-        if s > 120 {
-            return None;
-        }
-        Rat::new(sign * mant, 1i128.checked_shl(s as u32)?)
-    }
-}
-
 /// A facet-restricted numeric interval (the decidable core of
 /// `DatatypeRestriction` over numeric base types).
 #[derive(Clone, Debug)]
 struct NumRange {
+    /// Base datatype of the restriction. Bounds alone cannot distinguish a
+    /// decimal interval from a rational/real interval with the same endpoints.
+    base_kind: &'static str,
     integral: bool,
     min: Option<(Rat, bool)>, // (bound, inclusive)
     max: Option<(Rat, bool)>,
@@ -380,12 +489,30 @@ enum DRange {
 }
 
 fn range_of_named(name: &str) -> DRange {
-    if TOP_TYPES.iter().any(|t| name.ends_with(t) || *t == name) {
+    if builtin_datatype_key(name) == Some("rdfs:Literal") {
         return DRange::Top;
     }
     match named_dt(name) {
         Some(d) => DRange::Named(d),
         None => DRange::Unknown,
+    }
+}
+
+/// Interpret a key that has already passed through `datatype_concept_key`.
+/// Exact standard source spellings are also accepted for compatibility with
+/// clause streams produced by older frontends.  Arbitrary prefixed names are
+/// never reduced to their local suffix.
+fn range_of_internal_name(name: &str) -> DRange {
+    if matches!(name, "Literal" | "rdfs:Literal") {
+        return DRange::Top;
+    }
+    if matches!(name, "PlainLiteral" | "rdf:PlainLiteral") || name.starts_with("iri__") {
+        return DRange::Unknown;
+    }
+    if let Some(datatype) = named_dt_kind(name).or_else(|| named_dt(name)) {
+        DRange::Named(datatype)
+    } else {
+        DRange::Unknown
     }
 }
 
@@ -446,19 +573,28 @@ fn range_from_node(node: &Node) -> DRange {
                     None => return DRange::Unknown,
                 };
                 let bd = match named_dt(base) {
-                    Some(d) if d.part == Partition::Numeric => d,
+                    // Facet restrictions over IEEE float/double need a
+                    // representability-aware interval domain; `NumRange` is a
+                    // mathematical-rational interval and cannot encode them.
+                    Some(d)
+                        if d.part == Partition::Numeric
+                            && !matches!(d.kind, "float" | "double") =>
+                    {
+                        d
+                    }
                     _ => return DRange::Unknown,
                 };
                 let mut r = NumRange {
+                    base_kind: bd.kind,
                     integral: bd.integral,
                     min: bd.min.map(|m| (Rat::from_int(m), true)),
                     max: bd.max.map(|m| (Rat::from_int(m), true)),
                 };
                 let mut i = 1;
                 while i < toks.len() {
-                    let facet = {
-                        let f = &toks[i];
-                        f.rsplit(':').next().unwrap_or(f).to_string()
+                    let facet = match builtin_facet_key(&toks[i]) {
+                        Some(facet) => facet,
+                        None => return DRange::Unknown,
                     };
                     let lit = match toks.get(i + 1) {
                         Some(l) => l.as_str(),
@@ -488,7 +624,7 @@ fn range_from_node(node: &Node) -> DRange {
                             }
                         }
                     };
-                    match facet.as_str() {
+                    match facet {
                         "minInclusive" => r.min = tighter_min(&r.min, (v, true)),
                         "minExclusive" => r.min = tighter_min(&r.min, (v, false)),
                         "maxInclusive" => r.max = tighter_max(&r.max, (v, true)),
@@ -510,12 +646,10 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
         (Val::Num(a), Val::Num(b)) => Some(a == b),
         (Val::Bool(a), Val::Bool(b)) => Some(a == b),
         (Val::Str(a, la), Val::Str(b, lb)) => Some(a == b && la == lb),
-        (Val::Special(a), Val::Special(b)) => Some(a == b),
         // cross-partition values are always distinct
         (Val::Num(_), Val::Bool(_) | Val::Str(..))
         | (Val::Bool(_), Val::Num(_) | Val::Str(..))
         | (Val::Str(..), Val::Num(_) | Val::Bool(_)) => Some(false),
-        (Val::Special(_), Val::Num(_)) | (Val::Num(_), Val::Special(_)) => Some(false),
         (Val::Opaque(a), Val::Opaque(b)) if a == b => Some(true),
         _ => None,
     }
@@ -523,11 +657,32 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
 
 fn val_partition(v: &Val) -> Option<Partition> {
     match v {
-        Val::Num(_) | Val::Special(_) => Some(Partition::Numeric),
+        Val::Num(_) => Some(Partition::Numeric),
         Val::Bool(_) => Some(Partition::Boolean),
         Val::Str(..) => Some(Partition::Strings),
         Val::Opaque(_) => None,
     }
+}
+
+fn numeric_base_subsumed(
+    sub_kind: &str,
+    sub_integral: bool,
+    super_kind: &str,
+    super_integral: bool,
+) -> bool {
+    if sub_kind == super_kind {
+        return true;
+    }
+    if matches!(sub_kind, "float" | "double") || matches!(super_kind, "float" | "double") {
+        return false;
+    }
+    if sub_integral {
+        return super_integral || matches!(super_kind, "decimal" | "rational" | "real");
+    }
+    matches!(
+        (sub_kind, super_kind),
+        ("decimal", "rational" | "real") | ("rational", "real")
+    )
 }
 
 fn in_num_range(v: &Rat, r: &NumRange) -> Option<bool> {
@@ -571,13 +726,19 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
         }
         DRange::Num(r) => match v {
             Val::Num(rv) => in_num_range(rv, r),
-            Val::Special(_) => Some(false),
-            _ => Some(false),
+            Val::Bool(_) | Val::Str(..) => Some(false),
+            Val::Opaque(_) => None,
         },
         DRange::Named(nd) => match v {
             Val::Num(rv) => {
                 if nd.part != Partition::Numeric {
                     return Some(false);
+                }
+                // `Val::Num` records the exact mathematical value but not a
+                // proof that it is representable by IEEE binary32/binary64.
+                // Treat float/double membership as unknown.
+                if matches!(nd.kind, "float" | "double") {
+                    return None;
                 }
                 if nd.integral && !rv.is_integer() {
                     return Some(false);
@@ -598,7 +759,6 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
                 // and sound: report membership only for the decimal tower.
                 Some(true)
             }
-            Val::Special(_) => Some(false), // specials only via float/double, handled as unknown
             Val::Bool(_) => Some(nd.part == Partition::Boolean),
             Val::Str(_, lang) => {
                 if nd.part != Partition::Strings {
@@ -654,46 +814,59 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
             }
             match a.part {
                 Partition::Numeric => {
-                    // sound within the decimal/integer tower; float/double
-                    // are modelled without bounds and without integrality, so
-                    // the bound/integrality checks below are only conclusive
-                    // for the tower — report unknown otherwise
-                    let lo_ok = match (a.min, b.min) {
-                        (_, None) => true,
-                        (Some(am), Some(bm)) => am >= bm,
-                        (None, Some(_)) => false,
-                    };
-                    let hi_ok = match (a.max, b.max) {
-                        (_, None) => true,
-                        (Some(am), Some(bm)) => am <= bm,
-                        (None, Some(_)) => false,
-                    };
-                    let int_ok = b.integral <= a.integral; // b integral ⇒ a integral
-                    if a.integral && lo_ok && hi_ok && int_ok {
-                        Some(true)
-                    } else if !int_ok || !lo_ok || !hi_ok {
-                        Some(false)
-                    } else {
-                        // non-integral pairs (decimal vs float etc.): the
-                        // only safe positive is reflexivity
-                        if a == b {
-                            Some(true)
-                        } else {
-                            None
-                        }
+                    if a.kind == b.kind {
+                        return Some(true);
+                    }
+                    // IEEE float/double are not the unbounded mathematical
+                    // real/decimal value space. Except for reflexivity above,
+                    // leave cross-type inclusions unknown.
+                    if matches!(a.kind, "float" | "double") || matches!(b.kind, "float" | "double")
+                    {
+                        return None;
+                    }
+                    if a.integral && b.integral {
+                        let lo_ok = match (a.min, b.min) {
+                            (_, None) => true,
+                            (Some(am), Some(bm)) => am >= bm,
+                            (None, Some(_)) => false,
+                        };
+                        let hi_ok = match (a.max, b.max) {
+                            (_, None) => true,
+                            (Some(am), Some(bm)) => am <= bm,
+                            (None, Some(_)) => false,
+                        };
+                        return (lo_ok && hi_ok).then_some(true);
+                    }
+                    // OWL 2 numeric tower: every integer is a decimal, every
+                    // decimal is rational, and every rational is real.
+                    if a.integral && matches!(b.kind, "decimal" | "rational" | "real") {
+                        return Some(true);
+                    }
+                    match (a.kind, b.kind) {
+                        ("decimal", "rational" | "real") | ("rational", "real") => Some(true),
+                        _ => None,
                     }
                 }
-                Partition::Strings => match (a.str_level, b.str_level) {
-                    (Some(x), Some(y)) if x == y => Some(x != 0 || a == b),
-                    (Some(x), Some(y)) => Some(x < y && (x != 0)),
+                Partition::Strings => match (a.kind, b.kind) {
+                    (x, y) if x == y => Some(true),
+                    ("normalizedString", "string")
+                    | ("token", "normalizedString" | "string")
+                    | ("language" | "Name" | "NMTOKEN", "token" | "normalizedString" | "string")
+                    | ("NCName", "Name" | "token" | "normalizedString" | "string") => Some(true),
                     _ => None,
                 },
-                _ => Some(a == b),
+                _ => (a.kind == b.kind).then_some(true),
             }
         }
         (DRange::Num(r), DRange::Named(b)) => {
             if b.part != Partition::Numeric {
                 return Some(false);
+            }
+            if matches!(b.kind, "float" | "double") {
+                return None;
+            }
+            if !numeric_base_subsumed(r.base_kind, r.integral, b.kind, b.integral) {
+                return None;
             }
             if b.integral && !r.integral {
                 return None; // interval may still contain non-integers — and bounds unknown side
@@ -721,6 +894,12 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
         (DRange::Named(a), DRange::Num(r)) => {
             if a.part != Partition::Numeric {
                 return Some(false);
+            }
+            if matches!(a.kind, "float" | "double") {
+                return None;
+            }
+            if !numeric_base_subsumed(a.kind, a.integral, r.base_kind, r.integral) {
+                return None;
             }
             // named ⊑ interval: need the named type's bounds inside r
             let lo_ok = match &r.min {
@@ -759,6 +938,9 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
             }
         }
         (DRange::Num(a), DRange::Num(b)) => {
+            if !numeric_base_subsumed(a.base_kind, a.integral, b.base_kind, b.integral) {
+                return None;
+            }
             let lo_ok = match &b.min {
                 None => true,
                 Some((bm, bincl)) => match &a.min {
@@ -961,7 +1143,79 @@ fn classify_name(name: &str) -> Option<DtEntry> {
     if rest == "opaque" || rest == "val" {
         return None;
     }
-    Some(DtEntry::Range(name.to_string(), range_of_named(rest)))
+    Some(DtEntry::Range(
+        name.to_string(),
+        range_of_internal_name(rest),
+    ))
+}
+
+/// Atomic datatype symbols for which the native completion bridge has a
+/// complete model in its deliberately narrow `Exists`/`Forall` data fragment.
+/// This is not a claim that the whole datatype module is complete. The bridge
+/// separately checks source-axiom shape, role-local ranges, cardinalities, and
+/// that every generated relation clause is encoded.
+pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
+    let Some(rest) = name.strip_prefix("__dt__") else {
+        return None;
+    };
+    if let Some(literal) = rest.strip_prefix("val__") {
+        let Some((value, datatype)) = parse_literal(literal) else {
+            return None;
+        };
+        let builtin = datatype.as_deref().and_then(builtin_datatype_key);
+        return match (value, builtin) {
+            (Val::Bool(_), Some("boolean")) => Some("boolean"),
+            (Val::Num(value), Some("integer")) if value.is_integer() => Some("integer"),
+            (Val::Str(_, None), Some("string")) => Some("string"),
+            _ => None,
+        };
+    }
+    if rest.starts_with("c__") || matches!(rest, "opaque" | "val") {
+        return None;
+    }
+    match range_of_internal_name(rest) {
+        DRange::Named(datatype)
+            if matches!(datatype.kind, "boolean" | "integer" | "string" | "float") =>
+        {
+            Some(datatype.kind)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
+    bridge_exact_atomic_family(name).is_some()
+}
+
+/// Equality in the deliberately narrow literal value fragment used by exact
+/// certificates.  `None` means that lexical-to-value canonicalisation is not
+/// fully represented and callers must not infer either equality or
+/// disjointness.  In particular this excludes XML whitespace-derived strings
+/// and IEEE float/double values.
+pub(crate) fn exact_literal_value_equal(left: &str, right: &str) -> Option<bool> {
+    fn exact_value(literal: &str) -> Option<Val> {
+        let (value, datatype) = parse_literal(literal)?;
+        let builtin = datatype.as_deref().and_then(builtin_datatype_key);
+        match (&value, builtin) {
+            (Val::Bool(_), Some("boolean")) => Some(value),
+            (Val::Num(number), Some("integer")) if number.is_integer() => Some(value),
+            (Val::Str(_, None), Some("string")) => Some(value),
+            _ => None,
+        }
+    }
+
+    let left = exact_value(left)?;
+    let right = exact_value(right)?;
+    val_eq(&left, &right)
+}
+
+pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> {
+    if !bridge_exact_atomic_name(left) || !bridge_exact_atomic_name(right) {
+        return None;
+    }
+    let left = left.strip_prefix("__dt__val__")?;
+    let right = right.strip_prefix("__dt__val__")?;
+    exact_literal_value_equal(left, right)
 }
 
 fn cx(name: &str) -> Atom {
@@ -1144,6 +1398,23 @@ mod tests {
         v.iter().map(|s| s.to_string()).collect()
     }
 
+    fn has_pair_clash(clauses: &[DLClause], left: &str, right: &str) -> bool {
+        clauses.iter().any(|clause| {
+            if !clause.head.is_empty() || clause.body.len() != 2 {
+                return false;
+            }
+            let names: BTreeSet<&str> = clause
+                .body
+                .iter()
+                .filter_map(|atom| match atom {
+                    Atom::Concept(name, _) => Some(name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            names.contains(left) && names.contains(right)
+        })
+    }
+
     #[test]
     fn value_membership_and_tower() {
         let ns = names(&[
@@ -1197,6 +1468,184 @@ mod tests {
         assert!(
             cls.iter().any(|c| c.head.is_empty() && c.body.len() == 2),
             "missing distinct-value clash"
+        );
+    }
+
+    #[test]
+    fn lossy_lexical_families_do_not_emit_false_value_disjointness() {
+        // xsd:token collapses runs of whitespace, so these denote the same
+        // string value despite different lexical forms.
+        let token = "__dt__val__\"a  b\"^^xsd:token";
+        let string = "__dt__val__\"a b\"^^xsd:string";
+        let clauses = datatype_relation_clauses(&names(&[token, string]), 8);
+        assert!(
+            !has_pair_clash(&clauses, token, string),
+            "whitespace collapse must not become value disjointness: {clauses:#?}"
+        );
+
+        // Both lexical forms round to 2^24 in the IEEE binary32 value space.
+        let float_left = "__dt__val__\"16777216\"^^xsd:float";
+        let float_right = "__dt__val__\"16777217\"^^xsd:float";
+        let clauses = datatype_relation_clauses(&names(&[float_left, float_right]), 8);
+        assert!(
+            !has_pair_clash(&clauses, float_left, float_right),
+            "binary32 rounding must not become value disjointness: {clauses:#?}"
+        );
+    }
+
+    #[test]
+    fn exact_bridge_value_oracle_keeps_only_proven_equalities() {
+        let value = |literal: &str| format!("__dt__val__{literal}");
+        assert_eq!(
+            bridge_exact_value_equal(
+                &value("\"true\"^^xsd:boolean"),
+                &value("\"1\"^^xsd:boolean")
+            ),
+            Some(true)
+        );
+        assert_eq!(
+            bridge_exact_value_equal(
+                &value("\"true\"^^xsd:boolean"),
+                &value("\"false\"^^xsd:boolean")
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            bridge_exact_value_equal(&value("\"01\"^^xsd:integer"), &value("\"1\"^^xsd:integer")),
+            Some(true)
+        );
+        assert_eq!(
+            bridge_exact_value_equal(&value("\"1\"^^xsd:integer"), &value("\"2\"^^xsd:integer")),
+            Some(false)
+        );
+        assert_eq!(
+            bridge_exact_value_equal(
+                &value("\"alpha\"^^xsd:string"),
+                &value("\"beta\"^^xsd:string")
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            bridge_exact_value_equal(&value("\"a  b\"^^xsd:token"), &value("\"a b\"^^xsd:string")),
+            None
+        );
+        assert_eq!(
+            bridge_exact_value_equal(
+                &value("\"16777216\"^^xsd:float"),
+                &value("\"16777217\"^^xsd:float")
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn builtin_datatypes_require_the_exact_standard_namespace() {
+        const XSD_BOOLEAN: &str = "<http://www.w3.org/2001/XMLSchema#boolean>";
+        const CUSTOM_BOOLEAN: &str = "<http://example.org/types#boolean>";
+        const RDFS_LITERAL: &str = "<http://www.w3.org/2000/01/rdf-schema#Literal>";
+
+        assert_eq!(datatype_concept_key("xsd:boolean"), "boolean");
+        assert_eq!(datatype_concept_key(XSD_BOOLEAN), "boolean");
+        assert_eq!(datatype_concept_key("rdfs:Literal"), "Literal");
+        assert_eq!(datatype_concept_key(RDFS_LITERAL), "Literal");
+
+        let prefixed_custom = datatype_concept_key("ex:boolean");
+        let full_custom = datatype_concept_key(CUSTOM_BOOLEAN);
+        assert!(prefixed_custom.starts_with("iri__"));
+        assert!(full_custom.starts_with("iri__"));
+        assert_ne!(prefixed_custom, "boolean");
+        assert_ne!(full_custom, "boolean");
+        assert_ne!(prefixed_custom, full_custom);
+
+        // A custom datatype whose local name is Literal is not data top.
+        let custom_top_collision = datatype_concept_key("ex:Literal");
+        assert!(matches!(
+            range_of_internal_name(&custom_top_collision),
+            DRange::Unknown
+        ));
+        assert!(matches!(range_of_named("ex:Literal"), DRange::Unknown));
+    }
+
+    #[test]
+    fn plain_literal_is_not_data_top() {
+        assert!(matches!(range_of_named("rdfs:Literal"), DRange::Top));
+        assert!(matches!(
+            range_of_named("rdf:PlainLiteral"),
+            DRange::Unknown
+        ));
+        assert!(matches!(
+            range_of_internal_name("PlainLiteral"),
+            DRange::Unknown
+        ));
+
+        let integer = "__dt__integer";
+        let plain = "__dt__PlainLiteral";
+        let clauses = datatype_relation_clauses(&names(&[integer, plain]), 8);
+        assert!(
+            !clauses.iter().any(|clause| {
+                clause.body.len() == 1
+                    && clause.head.len() == 1
+                    && format!("{:?}", clause.body[0]).contains(integer)
+                    && format!("{:?}", clause.head[0]).contains(plain)
+            }),
+            "integer must not be subsumed by rdf:PlainLiteral: {clauses:#?}"
+        );
+    }
+
+    #[test]
+    fn custom_builtin_suffixes_never_enter_the_exact_value_or_bridge_oracle() {
+        assert_eq!(
+            exact_literal_value_equal("\"1\"^^ex:boolean", "\"true\"^^ex:boolean"),
+            None
+        );
+        assert_eq!(
+            exact_literal_value_equal("\"5\"^^ex:integer", "\"05\"^^ex:integer"),
+            None
+        );
+        assert_eq!(
+            exact_literal_value_equal(
+                "\"1\"^^xsd:boolean",
+                "\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>"
+            ),
+            Some(true)
+        );
+
+        let left = "__dt__val__\"1\"^^ex:boolean";
+        let right = "__dt__val__\"true\"^^ex:boolean";
+        let clauses = datatype_relation_clauses(&names(&[left, right]), 8);
+        assert!(
+            !has_pair_clash(&clauses, left, right),
+            "custom boolean lexical forms must not be declared distinct: {clauses:#?}"
+        );
+
+        let custom = format!("__dt__{}", datatype_concept_key("ex:boolean"));
+        assert!(!bridge_exact_atomic_name(&custom));
+        assert!(!bridge_exact_atomic_name("__dt__ex:boolean"));
+    }
+
+    #[test]
+    fn opaque_values_are_not_declared_outside_numeric_restrictions() {
+        let numeric =
+            "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"0\"^^xsd:integer)";
+        for value in [
+            "__dt__val__\"5\"^^ex:integer",
+            "__dt__val__\"16777217\"^^xsd:float",
+        ] {
+            let clauses = datatype_relation_clauses(&names(&[value, numeric]), 8);
+            assert!(
+                !has_pair_clash(&clauses, value, numeric),
+                "opaque value was falsely excluded from a numeric range: {clauses:#?}"
+            );
+        }
+
+        let custom_facet =
+            "__dt__c__DatatypeRestriction(xsd:integer ex:minInclusive \"0\"^^xsd:integer)";
+        let clauses = datatype_relation_clauses(&names(&[custom_facet, "__dt__integer"]), 8);
+        assert!(
+            !clauses
+                .iter()
+                .any(|clause| clause.body.len() == 1 && clause.head.len() == 1),
+            "a custom facet IRI must keep the restriction opaque: {clauses:#?}"
         );
     }
 
@@ -1256,5 +1705,94 @@ mod tests {
             "opaque range must emit nothing, got {}",
             cls.len()
         );
+    }
+
+    #[test]
+    fn integer_and_ieee_float_do_not_get_false_inclusions() {
+        let ns = names(&[
+            "__dt__integer",
+            "__dt__float",
+            "__dt__val__\"23\"^^xsd:integer",
+        ]);
+        let cls = datatype_relation_clauses(&ns, 8);
+        assert!(
+            !cls.iter().any(|clause| {
+                clause.body.len() == 1
+                    && clause.head.len() == 1
+                    && format!("{:?}", clause.body[0]).contains("integer")
+                    && format!("{:?}", clause.head[0]).contains("float")
+            }),
+            "integer must not be declared a subtype of IEEE float: {cls:#?}"
+        );
+        assert!(
+            !cls.iter().any(|clause| {
+                clause.body.len() == 1
+                    && clause.head.len() == 1
+                    && format!("{:?}", clause.body[0]).contains("val__\\\"23")
+                    && format!("{:?}", clause.head[0]).contains("float")
+            }),
+            "integer literal membership in IEEE float needs a representability proof: {cls:#?}"
+        );
+    }
+
+    #[test]
+    fn lossy_named_datatype_shapes_do_not_imply_identity() {
+        for pair in [
+            ["__dt__date", "__dt__time"],
+            ["__dt__language", "__dt__Name"],
+            ["__dt__hexBinary", "__dt__base64Binary"],
+        ] {
+            let cls = datatype_relation_clauses(&names(&pair), 8);
+            assert!(
+                !cls.iter()
+                    .any(|clause| clause.body.len() == 1 && clause.head.len() == 1),
+                "distinct datatype identities were conflated for {pair:?}: {cls:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rational_interval_is_not_mistaken_for_decimal_interval() {
+        let restricted = "__dt__c__DatatypeRestriction(owl:rational xsd:minInclusive \"0\"^^xsd:integer xsd:maxInclusive \"1\"^^xsd:integer)";
+        let cls = datatype_relation_clauses(&names(&[restricted, "__dt__decimal"]), 8);
+        assert!(
+            !cls.iter().any(|clause| {
+                clause.body.len() == 1
+                    && clause.head.len() == 1
+                    && format!("{:?}", clause.body[0]).contains("DatatypeRestriction")
+                    && format!("{:?}", clause.head[0]).contains("decimal")
+            }),
+            "a rational interval contains non-decimal rationals: {cls:#?}"
+        );
+    }
+
+    #[test]
+    fn bridge_atomic_gate_matches_the_exact_10621_fragment() {
+        for supported in [
+            "__dt__boolean",
+            "__dt__float",
+            "__dt__integer",
+            "__dt__string",
+            "__dt__val__\"true\"^^xsd:boolean",
+            "__dt__val__\"23\"^^xsd:integer",
+            "__dt__val__\"McNeal\"^^xsd:string",
+        ] {
+            assert!(
+                bridge_exact_atomic_name(supported),
+                "expected exact bridge datatype: {supported}"
+            );
+        }
+        for unsupported in [
+            "__dt__opaque",
+            "__dt__val__opaque",
+            "__dt__val__\"1.5\"^^xsd:float",
+            "__dt__c__DataUnionOf(xsd:string xsd:boolean)",
+            "__dt__dateTime",
+        ] {
+            assert!(
+                !bridge_exact_atomic_name(unsupported),
+                "unexpected exact bridge datatype: {unsupported}"
+            );
+        }
     }
 }

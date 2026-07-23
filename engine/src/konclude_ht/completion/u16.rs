@@ -337,13 +337,13 @@ impl CompletionTaskHandleAlgorithm {
         indi_id: Cint64,
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // CIndividualProcessNodeVector* indiProcNodeVec =
-        //     calcAlgContext->getProcessingDataBox()->getIndividualProcessNodeVector();
-        let _indi_proc_node_vec = ctx.processing_data_box().individual_process_node_vector();
-        // W6-DEFER[api]: CIndividualProcessNodeVector::hasData(indiID) is unported.
-        // Faithful: return indiProcNodeVec.has_data(indi_id);
-        let _ = indi_id;
-        false
+        // `hasData(indiID)` is exactly the typed-vector lookup: NONE denotes
+        // an absent local/base entry. Native bridge nominals are preallocated,
+        // so the missing-node materialization branch is never needed there.
+        ctx.processing_data_box()
+            .individual_process_node_vector()
+            .get_data(indi_id)
+            .is_some()
     }
 
     /// Port of `getCorrectedNominalIndividualNode`. `.cpp` 16280–16294.

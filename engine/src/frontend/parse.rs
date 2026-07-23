@@ -7,7 +7,7 @@
 //! (it used to be built in full AND deep-cloned for the rbox/declared scans,
 //! which dominated peak memory on 500 MB ontologies).
 
-use super::iri::{short_base, IriRegistry};
+use super::iri::IriRegistry;
 use super::sexpr::{Node, Parser};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm};
 
@@ -95,7 +95,10 @@ fn serialize_node(n: &Node) -> String {
 /// never invent a subsumption.
 fn dt_concept(node: &Node) -> Concept {
     match node {
-        Node::Atom(s) => Concept::Name(format!("__dt__{}", short_base(s))),
+        Node::Atom(s) => Concept::Name(format!(
+            "__dt__{}",
+            super::datatypes::datatype_concept_key(s)
+        )),
         _ => Concept::Name(format!("__dt__c__{}", serialize_node(node))),
     }
 }
@@ -825,6 +828,35 @@ SubClassOf(<http://example.org#A> <http://www.w3.org/2002/07/owl#Nothing>))",
         assert!(axs.contains(&Axiom::SubClassOf(
             Concept::Name("A".into()),
             Concept::Bottom
+        )));
+    }
+
+    #[test]
+    fn named_datatypes_keep_namespace_identity() {
+        let axs = axioms(
+            "Ontology(\
+DatatypeDefinition(ex:boolean xsd:string) \
+DatatypeDefinition(<http://example.org/types#boolean> \
+<http://www.w3.org/2001/XMLSchema#boolean>))",
+        );
+        let prefixed_custom = format!(
+            "__dt__{}",
+            crate::frontend::datatypes::datatype_concept_key("ex:boolean")
+        );
+        let full_custom = format!(
+            "__dt__{}",
+            crate::frontend::datatypes::datatype_concept_key("<http://example.org/types#boolean>")
+        );
+        assert_ne!(prefixed_custom, "__dt__boolean");
+        assert_ne!(full_custom, "__dt__boolean");
+        assert_ne!(prefixed_custom, full_custom);
+        assert!(axs.contains(&Axiom::EquivalentClasses(
+            Concept::Name(prefixed_custom),
+            Concept::Name("__dt__string".into())
+        )));
+        assert!(axs.contains(&Axiom::EquivalentClasses(
+            Concept::Name(full_custom),
+            Concept::Name("__dt__boolean".into())
         )));
     }
 }

@@ -8,6 +8,7 @@
 //! grace delay; the first sound+complete finisher wins and the loser is killed
 //! (`cancel_and_kill_engines` SIGKILLs the engine children and blocks any retry).
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, Write};
@@ -70,12 +71,13 @@ fn spawn_tableau(
         return None;
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, rbox, cards, definers, source_axioms): (
+    let (cl, rbox, cards, definers, source_axioms, nominal_abox): (
         Vec<JClause>,
         Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
         Vec<crate::json_io::DefinerMeta>,
         Vec<crate::json_io::SourceAxiomMeta>,
+        crate::json_io::NominalAboxMeta,
     ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
@@ -87,6 +89,7 @@ fn spawn_tableau(
             v.cardinalities,
             v.definers,
             v.source_axioms,
+            v.nominal_abox,
         )
     };
     // giants: the engine path owns them
@@ -97,7 +100,7 @@ fn spawn_tableau(
     if !cl.iter().any(|c| c.head.len() >= 2) {
         return None;
     }
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &cl,
         Some(&rbox),
         named,
@@ -108,6 +111,7 @@ fn spawn_tableau(
         &[],
         false,
     );
+    tin.nominal_abox = nominal_abox;
     // Diagnostic parity with the HT racer: preserve the exact converted input
     // before any legacy-tableau fragment fence is applied.  This is inert unless
     // explicitly requested and makes a declined race distinguishable from a
@@ -555,6 +559,9 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
             fence.reason.as_str(),
             "inverse+number(SHIQ)" | "inverse-functional"
         ) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
+            || (source_tbox
+                && tin.nominal_abox.complete
+                && fence.reason == "nominal+inverse(SHOI/SHOIQ)")
     })
 }
 
@@ -630,6 +637,17 @@ fn bridge_only_worker(
         || (!ht_routable && no_other_arm)
 }
 
+/// Whether this worker is the exact native-nominal bridge and has no legacy
+/// HT arm that can answer after the bridge defers. The metadata still faces
+/// the bridge's independent name/id/coverage validation before any result can
+/// be published; this predicate controls scheduling only.
+fn typed_nominal_bridge_exclusive(tin: &cb_to_ht::TInput, bridge_exclusive: bool) -> bool {
+    bridge_exclusive
+        && tin.nominal_abox.complete
+        && tin.nominal_abox.unsupported.is_empty()
+        && !tin.nominal_abox.individuals.is_empty()
+}
+
 /// The first-class number route (`KM_HT_CARD`): a faithful,
 /// datatype/inverse/nominal-safe TInput carrying first-class `≥n`/`≤n`
 /// restrictions (`card_defs`). Extracted so the exact gate the production
@@ -651,6 +669,15 @@ fn card_candidate_from(
         && tin.fenced.is_empty()
         && (!tin.inverse || card_recog)
         && !has_datatype
+}
+
+/// Exact outer gate for the native completion bridge.  The bridge repeats a
+/// stronger, input-level certificate check before it may return an answer.
+fn bridge_candidate_from(tin: &cb_to_ht::TInput, bridge_enabled: bool, source_tbox: bool) -> bool {
+    bridge_enabled
+        && tin.dropped == 0
+        && bridge_fences_supported(tin, source_tbox)
+        && (tin.nominals.is_empty() || tin.nominal_abox.complete)
 }
 
 /// Does the clause set contain an inverse/symmetric BRIDGE clause
@@ -709,20 +736,159 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
     })
 }
 
+fn native_nominal_clause_represented(
+    clause: &JClause,
+    nominal_abox: &crate::json_io::NominalAboxMeta,
+    definers: &[crate::json_io::DefinerMeta],
+) -> bool {
+    use crate::frontend::syntax::Concept;
+    use crate::json_io::DefinerKind;
+    use crate::json_io::{JAtom, JTerm};
+
+    let entry = |individual: &str| {
+        nominal_abox
+            .individuals
+            .iter()
+            .find(|entry| entry.individual == individual)
+    };
+    let proxy_maps_to = |proxy: &str, individual: &str| {
+        entry(individual).is_some_and(|entry| entry.proxies.iter().any(|name| name == proxy))
+    };
+    let exact_top_definer = |marker: &str| {
+        let mut definitions = definers.iter().filter(|definer| definer.marker == marker);
+        definitions.next().is_some_and(|definer| {
+            definer.kind == DefinerKind::Top
+                && definer.operands.is_empty()
+                && definer.role.is_none()
+                && definer.n.is_none()
+        }) && definitions.next().is_none()
+    };
+
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        // Ground named-class assertion. The native bridge seeds the exact
+        // structural assertion stored on this individual.
+        (
+            [],
+            [JAtom::Concept {
+                concept,
+                term: JTerm::Ind { name },
+            }],
+        ) => {
+            proxy_maps_to(concept, name)
+                || entry(name).is_some_and(|entry| {
+                    entry
+                        .assertions
+                        .iter()
+                        .any(|assertion| assertion == &Concept::Name(concept.clone()))
+                        // The normalizer reifies ClassAssertion(owl:Thing, i)
+                        // as `[] -> Q_top(i)`. The typed payload retains the
+                        // source `Top`, and trigger provenance independently
+                        // proves that this exact marker denotes Top. Both
+                        // sides are required; an arbitrary Q_* ground fact is
+                        // never projected merely because it looks internal.
+                        || (exact_top_definer(concept)
+                            && entry
+                                .assertions
+                                .iter()
+                                .any(|assertion| matches!(assertion, Concept::Top)))
+                })
+        }
+        // Pairwise expansion of a source DifferentIndividuals axiom.
+        (
+            [JAtom::Eq {
+                left: JTerm::Ind { name: left },
+                right: JTerm::Ind { name: right },
+            }],
+            [],
+        ) => nominal_abox
+            .different
+            .iter()
+            .any(|(a, b)| (a == left && b == right) || (a == right && b == left)),
+        // DL8: proxy(x) -> x = individual. DL7 (top -> proxy(ind)) is
+        // recognized by the first arm through the same exact proxy mapping.
+        (
+            [JAtom::Concept {
+                concept: proxy,
+                term: JTerm::Var { name: body_var },
+            }],
+            [JAtom::Eq { left, right }],
+        ) => {
+            let mapped = match (left, right) {
+                (JTerm::Var { name: eq_var }, JTerm::Ind { name: individual })
+                | (JTerm::Ind { name: individual }, JTerm::Var { name: eq_var })
+                    if eq_var == body_var =>
+                {
+                    Some(individual.as_str())
+                }
+                _ => None,
+            };
+            mapped.is_some_and(|individual| proxy_maps_to(proxy, individual))
+        }
+        // Any other individual-bearing clause stays in the HT conversion. The
+        // converter will count unsupported ground/mixed terms and the bridge
+        // candidate will defer instead of trusting an unproved projection.
+        _ => false,
+    }
+}
+
+/// Clause view for the certified bridge arm of `certified_nominals`.
+///
+/// `KM_NOMINALS` deliberately adds ground ABox and singleton-defining clauses
+/// for the exact CB fallback. `cb_to_ht` cannot translate ground terms and
+/// would count those clauses as dropped before the native bridge sees the
+/// typed `nominal_abox` channel. When that channel carries the frontend's
+/// complete certificate, remove only exact clause shapes independently
+/// represented by that payload. Any other individual-bearing clause remains,
+/// making `cb_to_ht` count the unsupported construct and forcing a bridge
+/// defer. The original clause file is untouched and remains the input of the
+/// nominal-aware CB arm.
+fn native_nominal_bridge_clauses<'a>(
+    clauses: &'a [JClause],
+    nominal_abox: &crate::json_io::NominalAboxMeta,
+    definers: &[crate::json_io::DefinerMeta],
+    enabled: bool,
+    has_rules: bool,
+) -> Cow<'a, [JClause]> {
+    if !enabled
+        || has_rules
+        || !nominal_abox.complete
+        || !nominal_abox.unsupported.is_empty()
+        || nominal_abox.individuals.is_empty()
+    {
+        return Cow::Borrowed(clauses);
+    }
+    Cow::Owned(
+        clauses
+            .iter()
+            .filter(|clause| !native_nominal_clause_represented(clause, nominal_abox, definers))
+            .cloned()
+            .collect(),
+    )
+}
+
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(
     cfg: &Config,
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
-) -> Option<(Child, super::tmpfile::TempPath, bool, Option<usize>, bool)> {
+) -> Option<(
+    Child,
+    super::tmpfile::TempPath,
+    bool,
+    Option<usize>,
+    bool,
+    bool,
+)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, rbox, cards, definers, source_axioms): (
+    let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules): (
         Vec<JClause>,
         Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
         Vec<crate::json_io::DefinerMeta>,
         Vec<crate::json_io::SourceAxiomMeta>,
+        crate::json_io::NominalAboxMeta,
+        Vec<crate::json_io::JRule>,
     ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
@@ -734,11 +900,21 @@ fn spawn_ht(
             v.cardinalities,
             v.definers,
             v.source_axioms,
+            v.nominal_abox,
+            v.rules,
         )
     };
     let _tconv = Instant::now();
-    let tin = cb_to_ht::convert(
+    let nominal_bridge_view = native_nominal_bridge_clauses(
         &cl,
+        &nominal_abox,
+        &definers,
+        std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+        !rules.is_empty(),
+    );
+    let mut tin = cb_to_ht::convert(
+        &nominal_bridge_view,
         Some(&rbox),
         named,
         &cards,
@@ -748,6 +924,7 @@ fn spawn_ht(
         &[],
         false,
     );
+    tin.nominal_abox = nominal_abox;
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
             "KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s",
@@ -843,15 +1020,17 @@ fn spawn_ht(
     // in Rust) answers sound+complete-or-DEFER by construction (deterministic
     // read-off / pairwise-verified candidates; declines anything it cannot
     // encode losslessly). Nominal-free faithful TInputs only; the worker's
-    // bridge arm re-checks coverage per clause. Opt-in while under validation.
+    // bridge arm re-checks coverage per clause. Nominal inputs require the
+    // typed source/ABox certificate; the worker independently re-checks it.
     let trigger_bridge = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
     let source_tbox = trigger_bridge
         && !tin.source_axioms.is_empty()
         && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
-    let bridge_candidate = (std::env::var_os("KM_HT_BRIDGE").is_some() || trigger_bridge)
-        && tin.dropped == 0
-        && bridge_fences_supported(&tin, source_tbox)
-        && tin.nominals.is_empty();
+    let bridge_candidate = bridge_candidate_from(
+        &tin,
+        std::env::var_os("KM_HT_BRIDGE").is_some() || trigger_bridge,
+        source_tbox,
+    );
     let specialist_only = std::env::var("KM_HT_ONLY").ok();
     if !specialist_route_allows(
         specialist_only.as_deref(),
@@ -1061,6 +1240,7 @@ fn spawn_ht(
         let mut w = stdin;
         let _ = w.write_all(&bytes);
     });
+    let typed_nominal_exclusive = typed_nominal_bridge_exclusive(&tin, bridge_exclusive);
     // The third element gates the SHORT race budget: true for the fast certify-or-
     // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
     // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
@@ -1084,6 +1264,11 @@ fn spawn_ht(
         // other worker can answer from a non-bridge arm without the bridge's
         // complete-answer-or-defer guarantee.
         bridge_exclusive,
+        // Only the native bridge consumes this exact typed ABox channel.  The
+        // scheduler uses the conjunction with bridge exclusivity to prevent a
+        // speculative multi-threaded CB fallback from starving that serial,
+        // certified worker without ever making the bridge authoritative.
+        typed_nominal_exclusive,
     ))
 }
 
@@ -1095,7 +1280,7 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, out_path, _, _, _)) = spawn_ht(cfg, clauses_path, named) else {
+    let Some((mut child, out_path, _, _, _, _)) = spawn_ht(cfg, clauses_path, named) else {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the selected HT mechanism's structural gate".into(),
         ));
@@ -1163,17 +1348,26 @@ fn ht_reserved_threads(cfg: &Config) -> Option<usize> {
 /// classes finish in 137 s with one CB competitor thread but exceed 240 s with
 /// fifteen, while producing the same gold-exact result.
 ///
-/// Keep the ordinary CB reservation below this structural threshold. Above it,
-/// give the speculative CB fallback one thread until the bridge either answers
-/// or defers. This changes only concurrent scheduling; both reasoners and the
-/// fallback/winner rules remain unchanged.
+/// A typed-nominal bridge has the same contention pattern below that generic
+/// threshold: ORE 10621 has 41,647 active classes, but its exact nominal-aware
+/// CB fallback with fifteen threads pushes the shared race to 16.8 GiB and both
+/// arms miss the standard limit. Give that fallback one thread only when the
+/// typed channel is complete and the worker is bridge-exclusive. A bridge
+/// defer still leaves the exact CB computation running; no answer is accepted
+/// without one of the unchanged reasoner certificates.
+///
+/// This changes only concurrent scheduling. Both reasoners and the fallback/
+/// winner rules remain unchanged.
 const LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT: usize = 50_000;
 
-fn limit_large_synchronous_bridge_competitor(
+fn limit_synchronous_bridge_competitor(
     reserved: Option<usize>,
     bridge_class_count: Option<usize>,
+    typed_nominal_bridge_exclusive: bool,
 ) -> Option<usize> {
-    if bridge_class_count.is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT) {
+    if typed_nominal_bridge_exclusive
+        || bridge_class_count.is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT)
+    {
         Some(1)
     } else {
         reserved
@@ -1230,19 +1424,31 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, fast_certify, bridge_class_count, bridge_exclusive) =
-        match spawn_ht(cfg, clauses_path, named) {
-            Some(x) => x,
-            None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
-        };
-    let reserved =
-        limit_large_synchronous_bridge_competitor(ht_reserved_threads(cfg), bridge_class_count);
+    let (
+        mut ht,
+        ht_out,
+        fast_certify,
+        bridge_class_count,
+        bridge_exclusive,
+        typed_nominal_exclusive,
+    ) = match spawn_ht(cfg, clauses_path, named) {
+        Some(x) => x,
+        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
+    };
+    let reserved = limit_synchronous_bridge_competitor(
+        ht_reserved_threads(cfg),
+        bridge_class_count,
+        typed_nominal_exclusive,
+    );
     if std::env::var_os("KM_TIMING").is_some()
-        && bridge_class_count.is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT)
+        && (typed_nominal_exclusive
+            || bridge_class_count
+                .is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT))
     {
         eprintln!(
-            "KM_TIMING race: large synchronous bridge classes={} cb_threads={}",
+            "KM_TIMING race: synchronous bridge classes={} typed_nominal={} cb_threads={}",
             bridge_class_count.unwrap_or_default(),
+            typed_nominal_exclusive,
             reserved.unwrap_or(1),
         );
     }
@@ -1408,6 +1614,448 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_nominal_bridge_view_preserves_the_exact_cb_clause_file() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta};
+
+        let var = || JTerm::Var { name: "x".into() };
+        let ind = |name: &str| JTerm::Ind { name: name.into() };
+        let clauses = vec![
+            // Ground class assertion retained for the nominal-aware CB arm.
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: ind("b"),
+                }],
+            },
+            // DL7 is removed only because the typed payload maps this exact
+            // proxy spelling to this exact individual.
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: ind("a"),
+                }],
+            },
+            // Singleton defining equality retained for CB and reconstructed
+            // natively by the bridge from the typed proxy mapping.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var(),
+                    right: ind("a"),
+                }],
+            },
+            // Pairwise expansion of DifferentIndividuals(a,b).
+            JClause {
+                body: vec![JAtom::Eq {
+                    left: ind("a"),
+                    right: ind("b"),
+                }],
+                head: vec![],
+            },
+            // Ordinary TBox clause remains in both arms.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "C".into(),
+                    term: var(),
+                }],
+            },
+            // An unsupported mixed-individual clause is not inferred from the
+            // presence of the same individual in the payload. It must remain
+            // so cb_to_ht records the coverage loss and the bridge defers.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: ind("a"),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "C".into(),
+                    term: var(),
+                }],
+            },
+            // Likewise, a DL8-looking clause for a proxy not mapped by the
+            // typed ObjectOneOf/ObjectHasValue coverage must remain.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "__nom__uncovered".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var(),
+                    right: ind("a"),
+                }],
+            },
+        ];
+        let exact = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                NominalIndividualMeta {
+                    individual: "a".into(),
+                    proxies: vec!["__nom__a".into()],
+                    assertions: vec![],
+                },
+                NominalIndividualMeta {
+                    individual: "b".into(),
+                    proxies: vec!["__nom__b".into()],
+                    assertions: vec![Concept::Name("A".into())],
+                },
+            ],
+            different: vec![("a".into(), "b".into())],
+            unsupported: vec![],
+        };
+
+        let bridge = native_nominal_bridge_clauses(&clauses, &exact, &[], true, false);
+        assert_eq!(
+            bridge.len(),
+            3,
+            "ordinary and unsupported/mismatched clauses remain in the HT coverage check"
+        );
+        assert_eq!(
+            clauses.len(),
+            7,
+            "the exact CB fallback retains its ground ABox/singleton clauses"
+        );
+        let named = ["A".to_string(), "C".to_string()].into_iter().collect();
+        let converted = cb_to_ht::convert(&bridge, None, &named, &[], &[], &[], false, &[], false);
+        assert!(
+            converted.dropped > 0,
+            "the unsupported mixed-individual and uncovered proxy clauses force bridge defer"
+        );
+
+        let disabled = native_nominal_bridge_clauses(&clauses, &exact, &[], false, false);
+        assert!(matches!(disabled, Cow::Borrowed(_)));
+        assert_eq!(disabled.len(), clauses.len());
+
+        let rules_present = native_nominal_bridge_clauses(&clauses, &exact, &[], true, true);
+        assert!(
+            matches!(rules_present, Cow::Borrowed(_)),
+            "DL-safe rules disable every nominal-clause projection"
+        );
+        assert_eq!(rules_present.len(), clauses.len());
+
+        let mut incomplete = exact;
+        incomplete.complete = false;
+        incomplete.unsupported.push("coverage gap".into());
+        let fail_closed = native_nominal_bridge_clauses(&clauses, &incomplete, &[], true, false);
+        assert!(matches!(fail_closed, Cow::Borrowed(_)));
+        assert_eq!(fail_closed.len(), clauses.len());
+    }
+
+    #[test]
+    fn production_top_assertions_require_typed_definer_provenance() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{
+            DefinerKind, DefinerMeta, JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta,
+        };
+
+        // ORE 10621's complete ABox has exactly 85
+        // ClassAssertion(owl:Thing, individual) axioms. Normalisation reifies
+        // Top once and emits 85 ground copies of this exact shape.
+        let individuals: Vec<NominalIndividualMeta> = (0..85)
+            .map(|index| NominalIndividualMeta {
+                individual: format!("individual_{index}"),
+                proxies: vec![format!("__nom__individual_{index}")],
+                assertions: vec![Concept::Top],
+            })
+            .collect();
+        let clauses: Vec<JClause> = individuals
+            .iter()
+            .map(|entry| JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "Q_top".into(),
+                    term: JTerm::Ind {
+                        name: entry.individual.clone(),
+                    },
+                }],
+            })
+            .collect();
+        let nominal_abox = NominalAboxMeta {
+            complete: true,
+            individuals,
+            different: vec![],
+            unsupported: vec![],
+        };
+        let top_definer = DefinerMeta {
+            marker: "Q_top".into(),
+            kind: DefinerKind::Top,
+            operands: vec![],
+            role: None,
+            n: None,
+        };
+        let definers = vec![top_definer.clone()];
+
+        let projected =
+            native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, true, false);
+        assert!(projected.is_empty(), "all 85 exact Top copies are typed");
+        assert_eq!(
+            clauses.len(),
+            85,
+            "the nominal-aware CB input remains untouched"
+        );
+        let named = std::collections::HashSet::new();
+        let converted = cb_to_ht::convert(
+            &projected,
+            None,
+            &named,
+            &[],
+            &definers,
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert_eq!(converted.dropped, 0);
+
+        // Marker spelling is never evidence. Without the exact Top definer,
+        // the same 85 ground clauses remain and force an honest bridge defer.
+        let no_provenance =
+            native_nominal_bridge_clauses(&clauses, &nominal_abox, &[], true, false);
+        assert_eq!(no_provenance.len(), 85);
+        let unprojected = cb_to_ht::convert(
+            &no_provenance,
+            None,
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert_eq!(
+            unprojected.dropped, 85,
+            "the regression reproduces the production gate failure exactly"
+        );
+        let wrong_definer = DefinerMeta {
+            marker: "Q_top".into(),
+            kind: DefinerKind::And,
+            operands: vec!["A".into()],
+            role: None,
+            n: None,
+        };
+        let wrong =
+            native_nominal_bridge_clauses(&clauses, &nominal_abox, &[wrong_definer], true, false);
+        assert_eq!(wrong.len(), 85);
+
+        // Even beside a valid Q_top definition, an arbitrary Q_* ground fact
+        // is retained and counted as unsupported by cb_to_ht.
+        let mut adversarial = clauses.clone();
+        adversarial.push(JClause {
+            body: vec![],
+            head: vec![JAtom::Concept {
+                concept: "Q_unproven".into(),
+                term: JTerm::Ind {
+                    name: "individual_0".into(),
+                },
+            }],
+        });
+        let fail_closed =
+            native_nominal_bridge_clauses(&adversarial, &nominal_abox, &definers, true, false);
+        assert_eq!(fail_closed.len(), 1);
+        let converted = cb_to_ht::convert(
+            &fail_closed,
+            None,
+            &named,
+            &[],
+            &definers,
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert!(
+            converted.dropped > 0,
+            "an unproved Q_* ground assertion must reject the bridge candidate"
+        );
+
+        // Definer provenance alone is also insufficient: the individual's
+        // typed source assertion must independently say Top.
+        let mut source_mismatch = nominal_abox;
+        source_mismatch.individuals[0].assertions = vec![Concept::Name("A".into())];
+        let mismatch =
+            native_nominal_bridge_clauses(&clauses, &source_mismatch, &definers, true, false);
+        assert_eq!(mismatch.len(), 1);
+    }
+
+    #[test]
+    fn certified_nominal_object_one_of_and_has_value_convert_losslessly() {
+        use crate::frontend::syntax::{Concept, Role};
+        use crate::json_io::{
+            JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta, SourceAxiomKind, SourceAxiomMeta,
+        };
+
+        let var = || JTerm::Var { name: "x".into() };
+        let ind = |name: &str| JTerm::Ind { name: name.into() };
+        let fun = || JTerm::Fun {
+            function: "f_has_value".into(),
+            arg: Box::new(var()),
+        };
+        let clauses = vec![
+            // Exact ABox and DL7/DL8 copies, all independently carried by the
+            // typed nominal payload.
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: ind("b"),
+                }],
+            },
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: ind("a"),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var(),
+                    right: ind("a"),
+                }],
+            },
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__b".into(),
+                    term: ind("b"),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "__nom__b".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var(),
+                    right: ind("b"),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Eq {
+                    left: ind("a"),
+                    right: ind("b"),
+                }],
+                head: vec![],
+            },
+            // Variable proxy definitions keep the ObjectOneOf proxy in the
+            // converted concept vocabulary after its ground DL7/DL8 copies
+            // are projected away.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "OnlyA".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: var(),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "OnlyB".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__b".into(),
+                    term: var(),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "HasA".into(),
+                    term: var(),
+                }],
+                head: vec![
+                    JAtom::Role {
+                        role: "r".into(),
+                        source: var(),
+                        target: fun(),
+                    },
+                    JAtom::Concept {
+                        concept: "__nom__a".into(),
+                        term: fun(),
+                    },
+                ],
+            },
+        ];
+        let nominal_abox = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                NominalIndividualMeta {
+                    individual: "a".into(),
+                    proxies: vec!["__nom__a".into()],
+                    assertions: vec![],
+                },
+                NominalIndividualMeta {
+                    individual: "b".into(),
+                    proxies: vec!["__nom__b".into()],
+                    assertions: vec![Concept::Name("A".into())],
+                },
+            ],
+            different: vec![("a".into(), "b".into())],
+            unsupported: vec![],
+        };
+        let source_axioms = vec![
+            SourceAxiomMeta {
+                kind: SourceAxiomKind::Equivalent,
+                left: Concept::Name("OnlyA".into()),
+                right: Concept::Nominal("a".into()),
+            },
+            SourceAxiomMeta {
+                kind: SourceAxiomKind::SubClass,
+                left: Concept::Name("HasA".into()),
+                right: Concept::Exists(
+                    Role::Name("r".into()),
+                    Box::new(Concept::Nominal("a".into())),
+                ),
+            },
+            SourceAxiomMeta {
+                kind: SourceAxiomKind::Equivalent,
+                left: Concept::Name("OnlyB".into()),
+                right: Concept::Nominal("b".into()),
+            },
+        ];
+        let bridge = native_nominal_bridge_clauses(&clauses, &nominal_abox, &[], true, false);
+        let named = ["A", "OnlyA", "OnlyB", "HasA"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let mut tin = cb_to_ht::convert(
+            &bridge,
+            None,
+            &named,
+            &[],
+            &[],
+            &source_axioms,
+            false,
+            &[],
+            false,
+        );
+        tin.nominal_abox = nominal_abox;
+        assert_eq!(tin.dropped, 0, "the certified bridge view is lossless");
+        assert!(tin.concepts.iter().any(|name| name == "__nom__a"));
+        assert!(tin.concepts.iter().any(|name| name == "__nom__b"));
+        assert!(
+            bridge_candidate_from(&tin, true, true),
+            "the exact ObjectOneOf/ObjectHasValue input reaches the native bridge"
+        );
+    }
+
+    #[test]
     fn konclude_bridge_accepts_only_legacy_fast_tableau_fences() {
         let mut tin = cb_to_ht::TInput::default();
         assert!(bridge_fences_supported(&tin, false));
@@ -1431,6 +2079,16 @@ mod tests {
             reason: "complex-range".into(),
             detail: "R -> (C or D)".into(),
         });
+        assert!(bridge_fences_supported(&tin, true));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "nominal+inverse(SHOI/SHOIQ)".into(),
+            detail: "typed nominal source".into(),
+        });
+        assert!(
+            !bridge_fences_supported(&tin, true),
+            "legacy nominal+inverse fence stays closed without exact ABox coverage"
+        );
+        tin.nominal_abox.complete = true;
         assert!(bridge_fences_supported(&tin, true));
         tin.fenced.push(cb_to_ht::Fenced {
             reason: "irreflexivity".into(),
@@ -1721,16 +2379,59 @@ mod tests {
     #[test]
     fn large_synchronous_bridge_limits_speculative_cb_to_one_thread() {
         assert_eq!(
-            limit_large_synchronous_bridge_competitor(Some(15), Some(54_974)),
+            limit_synchronous_bridge_competitor(Some(15), Some(54_974), false),
             Some(1)
         );
         assert_eq!(
-            limit_large_synchronous_bridge_competitor(Some(15), Some(49_999)),
+            limit_synchronous_bridge_competitor(Some(15), Some(49_999), false),
             Some(15)
         );
         assert_eq!(
-            limit_large_synchronous_bridge_competitor(Some(15), None),
+            limit_synchronous_bridge_competitor(Some(15), None, false),
             Some(15)
+        );
+    }
+
+    #[test]
+    fn typed_nominal_bridge_limits_speculative_cb_below_large_threshold() {
+        // ORE 10621 has 41,647 active classes, below the legacy 50k cutoff,
+        // but its typed nominal bridge is serial and exact. One speculative CB
+        // thread preserves the honest fallback while avoiding the measured
+        // 15-thread 16.8-GiB contention that makes both arms time out.
+        assert_eq!(
+            limit_synchronous_bridge_competitor(Some(15), Some(41_647), true),
+            Some(1)
+        );
+        // Neither class count nor a generic bridge is enough below 50k. This
+        // keeps ordinary production portfolios and manual HT combinations on
+        // their existing reservation policy.
+        assert_eq!(
+            limit_synchronous_bridge_competitor(Some(15), Some(41_647), false),
+            Some(15)
+        );
+    }
+
+    #[test]
+    fn typed_nominal_competitor_gate_requires_complete_exclusive_payload() {
+        use crate::json_io::NominalIndividualMeta;
+
+        let mut tin = cb_to_ht::TInput::default();
+        assert!(!typed_nominal_bridge_exclusive(&tin, true));
+        tin.nominal_abox.complete = true;
+        tin.nominal_abox.individuals.push(NominalIndividualMeta {
+            individual: "a".into(),
+            proxies: vec!["__nom__a".into()],
+            assertions: vec![],
+        });
+        assert!(typed_nominal_bridge_exclusive(&tin, true));
+        assert!(
+            !typed_nominal_bridge_exclusive(&tin, false),
+            "a worker with any other answer arm keeps the ordinary reservation"
+        );
+        tin.nominal_abox.unsupported.push("coverage gap".into());
+        assert!(
+            !typed_nominal_bridge_exclusive(&tin, true),
+            "incomplete typed coverage must never alter scheduling"
         );
     }
 }

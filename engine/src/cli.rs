@@ -87,6 +87,8 @@ struct OfnOutput {
     el_rbox_safe: bool,
     abox_inconsistent: bool,
     asserted_classes: Vec<String>,
+    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
+    nominal_abox: crate::json_io::NominalAboxMeta,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -120,6 +122,8 @@ struct OfnClausesOnly {
     definers: Vec<crate::json_io::DefinerMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
+    nominal_abox: crate::json_io::NominalAboxMeta,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
 }
@@ -197,6 +201,7 @@ pub fn run_ofn(args: &[String]) {
             cardinalities: result.cardinalities,
             definers: result.definers,
             source_axioms: result.source_axioms,
+            nominal_abox: result.nominal_abox,
             rules: result.rules,
         };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
@@ -213,6 +218,7 @@ pub fn run_ofn(args: &[String]) {
             el_rbox_safe: result.el_rbox_safe,
             abox_inconsistent: result.abox_inconsistent,
             asserted_classes: result.asserted_classes,
+            nominal_abox: result.nominal_abox,
             cardinalities: result.cardinalities,
             definers: result.definers,
             source_axioms: result.source_axioms,

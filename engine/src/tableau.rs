@@ -5029,7 +5029,7 @@ pub fn run_json(input: &str) -> Result<String, String> {
                     .unwrap_or_else(|| format!("C{c}"))
             };
             let out = TOutput {
-                consistent: true,
+                consistent: r.consistent,
                 unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };

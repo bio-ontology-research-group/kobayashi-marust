@@ -4116,9 +4116,12 @@ impl SynchronousKPSetClassState {
             .is_some_and(|item| item.has_subsumer_concept_item(subsumer_item))
     }
 
-    /// Synchronous use of Konclude's fast pseudo-model precheck. It can decide
-    /// only non-subsumption; `true` therefore means the expensive pair probe is
-    /// unnecessary.
+    /// Synchronous evaluation of Konclude's fast pseudo-model precheck.
+    ///
+    /// The returned negative is advisory for the Rust bridge. Konclude uses
+    /// the precheck under invariants maintained by its asynchronous message
+    /// lifecycle; the synchronous port does not yet preserve all of them.
+    /// Callers must confirm a returned refutation with the complete pair probe.
     pub fn pseudo_model_refutes(&self, subsumed: usize, subsumer: usize) -> bool {
         let Some(&subsumed_item) = self.item_ids.get(subsumed) else {
             return false;

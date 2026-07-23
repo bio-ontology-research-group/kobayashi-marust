@@ -172,6 +172,49 @@ pub struct JRule {
     pub head: Vec<JRuleAtom>,
 }
 
+/// Exact source-level nominal/ABox payload for the native Konclude completion
+/// bridge. The ordinary DL-clause path deliberately drops ground ABox facts;
+/// this typed channel lets the bridge reconstruct the corresponding ontology
+/// individuals without inferring semantics from generated `__nom__` names.
+///
+/// `complete` is a certificate produced by the frontend, not a best-effort
+/// flag. It is true only when every source ABox axiom is represented here and
+/// every individual is backed by at least one clausifier nominal proxy. The
+/// bridge independently validates ids/names and otherwise defers.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct NominalAboxMeta {
+    pub complete: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub individuals: Vec<NominalIndividualMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub different: Vec<(String, String)>,
+    /// Fail-closed diagnostics explaining why `complete` is false.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unsupported: Vec<String>,
+}
+
+impl NominalAboxMeta {
+    pub fn is_empty(&self) -> bool {
+        !self.complete
+            && self.individuals.is_empty()
+            && self.different.is_empty()
+            && self.unsupported.is_empty()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct NominalIndividualMeta {
+    pub individual: String,
+    /// One individual normally has one proxy; a vector preserves exactness if
+    /// two source spellings normalize to aliases of the same singleton.
+    pub proxies: Vec<String>,
+    /// Source class assertions, retained structurally so assertions of complex
+    /// expressions do not depend on clausifier-definer reconstruction.
+    pub assertions: Vec<crate::frontend::syntax::Concept>,
+}
+
 #[derive(Deserialize)]
 pub struct JInput {
     pub clauses: Vec<JClause>,
@@ -185,6 +228,8 @@ pub struct JInput {
     pub definers: Vec<DefinerMeta>,
     #[serde(default)]
     pub source_axioms: Vec<SourceAxiomMeta>,
+    #[serde(default)]
+    pub nominal_abox: NominalAboxMeta,
 }
 
 #[derive(Serialize)]

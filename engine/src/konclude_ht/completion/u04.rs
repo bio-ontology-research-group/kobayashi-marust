@@ -1209,13 +1209,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .processing_data_box_mut()
                                     .has_nominal_non_deterministic_processing_nodes_sorted()
                                 {
-                                    // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-                                    // W3-DEFER[api]: linker = allocateAndConstruct(taskMemMan); linker->initLinker(individual);
-                                    //                processingDataBox->addSortedNominalNonDeterministicProcessingNodeLinker(linker);
+                                    // The C++ linker is an owning one-element list. The
+                                    // databox port stores that list directly as `Vec<NodeId>`;
+                                    // keeping the `sorted=false` marker makes Probe 17 sort
+                                    // the complete nominal batch before Probe 24 drains it.
+                                    calc_alg_context
+                                        .processing_data_box_mut()
+                                        .add_sorted_nominal_non_deterministic_processing_node_linker(
+                                            vec![individual],
+                                        );
                                 } else {
-                                    let _nominal_pro_queue =
+                                    // Once the pending nominal batch has been sorted, C++
+                                    // inserts later work into the ordinary nominal queue.
+                                    // `IndividualDepthProcessingQueue` is the live port of
+                                    // that queue and Probe 21 drains it in the same order.
+                                    let nominal_pro_queue =
                                         calc_alg_context.get_nominal_processing_queue(true);
-                                    // W3-DEFER[api]: nominalProQueue->insertProcessIndiviudal(individual);
+                                    calc_alg_context
+                                        .process_context_mut()
+                                        .indi_depth_queue_insert(nominal_pro_queue, individual);
                                 }
                             } else {
                                 let in_depth_pro_queue =
