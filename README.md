@@ -53,12 +53,13 @@ reported as empirical evidence, not as a proof of the whole executable.
   subset-minimal justifications for a named-class subsumption, unsatisfiable
   class, or inconsistency. Schema 2 exposes source OWL axioms, explicit bounds,
   and enumeration status to CLI and OWLAPI clients.
-- **Exact incremental EL++ and CB reasoning.** `km incremental` retains the
-  completed EL++ relation and role graph for safe additions, accepts the full
-  normalised clause fragment completed by the CB worker, and supports atomic
-  addition, removal, and replacement transactions. Ordering-stable CB
-  additions resume the retained context graph; ordering/nominal boundary cases
-  and every removal use an explicitly reported exact rebuild.
+- **Exact incremental EL++, CB, and direct-HT reasoning.** `km incremental`
+  retains the completed EL++ relation and role graph for safe additions,
+  accepts the full normalised clause fragment completed by the CB worker, and
+  offers an explicit hypertableau backend for its validated direct-clause
+  fragment. HT additions can resume compatible completion graphs; removals and
+  replacements reuse monotonic and dependency-independent probes. Every
+  uncertain probe runs fresh before the transaction commits.
 - **Formal work kept in scope.** Lean files prove results about abstract
   resolution, selected context-calculus fragments, inverse-role encoding,
   nominal rules, and certificate checkers. They are useful specifications and
@@ -120,10 +121,12 @@ Explanation API. See
 schema, minimality semantics, Java configuration, and the exact supported
 OWLAPI/Protégé entailment surface.
 
-`km incremental` serves an exact EL++/CB session over JSONL standard input and
-output. It consumes normalised clauses, assigns stable ids, and supports
-addition, removal, and combined replacement. Unsupported or incomplete CB
-snapshots are rejected atomically instead of exposing a partial answer.
+`km incremental` serves an exact EL++/CB/direct-HT session over JSONL standard
+input and output. It consumes normalised clauses, assigns stable ids, and
+supports addition, removal, and combined replacement. The default policy
+remains EL-first with exact CB fallback; set `"backend":"ht"` on `init` to
+select the validated direct HT fragment. Unsupported or incomplete snapshots
+are rejected atomically instead of exposing a partial answer.
 See [`docs/INCREMENTAL-REASONING.md`](docs/INCREMENTAL-REASONING.md) for the
 protocol, Rust API, correctness argument, and current limitations.
 

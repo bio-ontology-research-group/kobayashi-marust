@@ -1,14 +1,17 @@
-//! Stateful incremental reasoning over KM's exact EL++ and CB fragments.
+//! Stateful incremental reasoning over KM's exact EL++, CB, and direct HT
+//! fragments.
 //!
 //! [`IncrementalClassifier`] is the public all-fragment API. It keeps the
 //! existing addition-only EL++ delta implementation when the complete snapshot
 //! remains in EL++. For the general consequence-based fragment, ordering-stable
 //! monotone additions fork and resume the completed context graph, replaying
-//! retained premises against the new ontology indexes. Removals always rebuild
-//! because the CB and EL stores do not yet retain dependency sets that could
-//! invalidate every consequence of a deleted clause. Insertions that change a
-//! retained ordering/nominal invariant also rebuild explicitly. No operation
-//! exposes a stale or partial classification.
+//! retained premises against the new ontology indexes. An explicitly selected
+//! direct-clause hypertableau backend reuses monotone SAT/UNSAT verdicts,
+//! dependency-independent probes, and stable-layout completion graphs. CB/EL
+//! removals rebuild because those stores do not retain deletion dependencies;
+//! HT removals and replacements recheck affected probes and retain only
+//! monotonic or dependency-independent evidence. No operation exposes a stale
+//! or partial classification.
 //!
 //! [`run_jsonl_session`] supplies the `km incremental` transport. It consumes
 //! the same normalised [`JClause`] values as `km elc` and `km engine`. Every
@@ -20,6 +23,7 @@ use std::io::{BufRead, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::incremental_ht::{HtChangeKind, IncrementalHtClassifier};
 use crate::json_io::{JAtom, JClause};
 use crate::reasoner::{Reasoner, RetainedCbBoundary, RetainedCbReasoner};
 
@@ -34,6 +38,7 @@ pub type ClauseId = u64;
 pub enum IncrementalBackend {
     El,
     Cb,
+    Ht,
 }
 
 /// How an accepted change produced its new fixpoint.
@@ -43,6 +48,7 @@ pub enum ChangeStrategy {
     NoOp,
     ElDelta,
     CbDelta,
+    HtDelta,
     ExactRebuild,
 }
 
@@ -91,13 +97,14 @@ pub struct IncrementalChange {
     pub strategy: ChangeStrategy,
     pub reused_fixpoint: bool,
     pub reused_subsumptions: usize,
-    /// Retained completion-role edges for EL, or retained context successor
-    /// edges for CB.
+    /// Retained completion-role edges for EL, context successor edges for CB,
+    /// or completion-graph edges for HT.
     pub reused_edges: usize,
     /// Facts added beyond a retained EL state, or the complete fresh answer
     /// size when `strategy == exact_rebuild`.
     pub new_subsumptions: usize,
-    /// New completion-role edges for EL, or new context successor edges for CB.
+    /// New completion-role edges for EL, context successor edges for CB, or
+    /// completion-graph edges for HT.
     pub new_edges: usize,
 }
 
@@ -116,6 +123,13 @@ pub enum IncrementalReasoningError {
     },
     DuplicateClauseIds {
         ids: Vec<ClauseId>,
+    },
+    RequestedBackendUnsupported {
+        backend: IncrementalBackend,
+        detail: String,
+    },
+    HtDeferred {
+        detail: String,
     },
     ClauseIdExhausted,
 }
@@ -136,6 +150,18 @@ impl std::fmt::Display for IncrementalReasoningError {
             }
             IncrementalReasoningError::DuplicateClauseIds { ids } => {
                 write!(f, "duplicate clause id(s): {ids:?}")
+            }
+            IncrementalReasoningError::RequestedBackendUnsupported { backend, detail } => {
+                write!(
+                    f,
+                    "requested incremental backend {backend:?} is unavailable: {detail}"
+                )
+            }
+            IncrementalReasoningError::HtDeferred { detail } => {
+                write!(
+                    f,
+                    "incremental HT deferred without publishing a result: {detail}"
+                )
             }
             IncrementalReasoningError::ClauseIdExhausted => {
                 write!(f, "incremental clause id space exhausted")
@@ -193,6 +219,7 @@ impl CbBackendState {
 enum BackendState {
     El(IncrementalElClassifier),
     Cb(CbBackendState),
+    Ht(IncrementalHtClassifier),
 }
 
 impl BackendState {
@@ -200,6 +227,7 @@ impl BackendState {
         match self {
             BackendState::El(_) => IncrementalBackend::El,
             BackendState::Cb(_) => IncrementalBackend::Cb,
+            BackendState::Ht(_) => IncrementalBackend::Ht,
         }
     }
 
@@ -207,6 +235,7 @@ impl BackendState {
         match self {
             BackendState::El(classifier) => IncrementalResult::from_el(classifier.result()),
             BackendState::Cb(state) => state.result(),
+            BackendState::Ht(state) => state.result(),
         }
     }
 
@@ -216,6 +245,7 @@ impl BackendState {
                 IncrementalResult::from_el(classifier.result()).pair_count()
             }
             BackendState::Cb(state) => state.result_ref().pair_count(),
+            BackendState::Ht(state) => state.pair_count(),
         }
     }
 
@@ -223,34 +253,48 @@ impl BackendState {
         match self {
             BackendState::El(classifier) => classifier.is_inconsistent(),
             BackendState::Cb(state) => state.result_ref().inconsistent,
+            BackendState::Ht(state) => state.result().inconsistent,
         }
     }
 }
 
 /// Exact incremental classifier for every normalised clause set accepted by
-/// KM's EL++ or consequence-based worker.
+/// KM's EL++ or consequence-based worker, plus the explicitly selected direct
+/// hypertableau fragment.
 ///
 /// Pure-EL additions reuse the existing completion state. Ordering-stable CB
 /// additions fork and resume the existing context graph. An EL-to-CB
-/// transition, every removal, and CB insertions outside the retained-state
-/// proof boundary construct a fresh candidate reasoner. Every path commits only
-/// after a complete fixpoint is available, and its strategy is visible in
-/// [`IncrementalChange::strategy`].
+/// transition, every EL/CB removal, and CB insertions outside the retained-state
+/// proof boundary construct a fresh candidate reasoner. The HT backend reuses
+/// only monotonic or dependency-independent probes; every uncertain probe runs
+/// fresh. Every path commits only after a complete result is available, and its
+/// strategy is visible in [`IncrementalChange::strategy`].
 pub struct IncrementalClassifier {
     clauses: Vec<StoredClause>,
     next_id: ClauseId,
     revision: u64,
     backend: BackendState,
+    requested_backend: Option<IncrementalBackend>,
     concepts: BTreeSet<String>,
 }
 
 impl IncrementalClassifier {
     pub fn new(clauses: Vec<JClause>) -> Result<Self, IncrementalReasoningError> {
+        Self::new_with_backend(clauses, None)
+    }
+
+    /// Open a session on a selected exact backend. `None` preserves the
+    /// EL-first/CB-fallback policy; `Some(Ht)` selects the validated direct-clause
+    /// hypertableau arm and rejects any update that leaves that fragment.
+    pub fn new_with_backend(
+        clauses: Vec<JClause>,
+        requested_backend: Option<IncrementalBackend>,
+    ) -> Result<Self, IncrementalReasoningError> {
         let next_id = ClauseId::try_from(clauses.len())
             .ok()
             .and_then(|n| n.checked_add(1))
             .ok_or(IncrementalReasoningError::ClauseIdExhausted)?;
-        let backend = build_backend(&clauses)?;
+        let backend = build_backend(&clauses, requested_backend)?;
         let concepts = concept_signature(&clauses);
         let clauses = clauses
             .into_iter()
@@ -265,14 +309,16 @@ impl IncrementalClassifier {
             next_id,
             revision: 0,
             backend,
+            requested_backend,
             concepts,
         })
     }
 
     /// Atomically add normalised clauses. Pure-EL additions use the completion
     /// delta engine; CB additions resume a retained context-calculus fixpoint
-    /// whenever its ordering/nominal preflight proves reuse safe. Other cases
-    /// take the visible exact-rebuild path.
+    /// whenever its ordering/nominal preflight proves reuse safe. Explicit HT
+    /// sessions also reuse compatible completion graphs and monotonic probe
+    /// verdicts. Other cases take the visible exact-rebuild path.
     pub fn add_clauses(
         &mut self,
         additions: Vec<JClause>,
@@ -282,6 +328,36 @@ impl IncrementalClassifier {
             return Ok(self.no_op_change(backend_before));
         }
         let ids = self.allocate_ids(additions.len())?;
+
+        if let BackendState::Ht(state) = &self.backend {
+            let mut candidate = self.clause_snapshot();
+            candidate.extend(additions.iter().cloned());
+            let (next, stats) = state.updated(&candidate, &additions, HtChangeKind::Addition)?;
+            self.commit_additions(ids.clone(), additions);
+            self.backend = BackendState::Ht(next);
+            self.revision += 1;
+            self.concepts = concept_signature(&candidate);
+            return Ok(IncrementalChange {
+                revision: self.revision,
+                added_clauses: ids.len(),
+                removed_clauses: 0,
+                total_clauses: self.clauses.len(),
+                added_clause_ids: ids,
+                removed_clause_ids: Vec::new(),
+                backend_before,
+                backend_after: IncrementalBackend::Ht,
+                strategy: if stats.reused_probes != 0 {
+                    ChangeStrategy::HtDelta
+                } else {
+                    ChangeStrategy::ExactRebuild
+                },
+                reused_fixpoint: stats.resumed_models != 0,
+                reused_subsumptions: stats.reused_subsumptions,
+                reused_edges: stats.reused_edges,
+                new_subsumptions: stats.new_subsumptions,
+                new_edges: stats.new_edges,
+            });
+        }
 
         if let BackendState::El(classifier) = &mut self.backend {
             if let Ok(update) = classifier.add_clauses(additions.clone()) {
@@ -330,7 +406,7 @@ impl IncrementalClassifier {
                 },
                 None => None,
             },
-            BackendState::El(_) => None,
+            BackendState::El(_) | BackendState::Ht(_) => None,
         };
         if let Some(stats) = retained {
             let new_pairs = self.backend.pair_count();
@@ -357,7 +433,7 @@ impl IncrementalClassifier {
 
         let mut candidate = self.clause_snapshot();
         candidate.extend(additions.iter().cloned());
-        let next_backend = build_backend(&candidate)?;
+        let next_backend = build_backend(&candidate, self.requested_backend)?;
         let new_subsumptions = next_backend.pair_count();
         let backend_after = next_backend.kind();
         self.commit_additions(ids.clone(), additions);
@@ -382,8 +458,9 @@ impl IncrementalClassifier {
         })
     }
 
-    /// Atomically remove clauses by stable id. All removals rebuild exactly;
-    /// removed ids are never reused by later additions.
+    /// Atomically remove clauses by stable id. EL/CB removals rebuild exactly;
+    /// explicit HT sessions retain safe SAT and independent-probe evidence and
+    /// freshly recheck everything else. Removed ids are never reused.
     pub fn remove_clauses(
         &mut self,
         requested: &[ClauseId],
@@ -413,7 +490,48 @@ impl IncrementalClassifier {
             .map(|stored| stored.clause.clone())
             .collect();
         candidate.extend(additions.iter().cloned());
-        let next_backend = build_backend(&candidate)?;
+        if let BackendState::Ht(state) = &self.backend {
+            let mut changed: Vec<JClause> = self
+                .clauses
+                .iter()
+                .filter(|stored| seen.contains(&stored.id))
+                .map(|stored| stored.clause.clone())
+                .collect();
+            changed.extend(additions.iter().cloned());
+            let kind = if additions.is_empty() {
+                HtChangeKind::Removal
+            } else {
+                HtChangeKind::Replacement
+            };
+            let (next, stats) = state.updated(&candidate, &changed, kind)?;
+            self.clauses.retain(|stored| !seen.contains(&stored.id));
+            self.commit_additions(added_ids.clone(), additions);
+            self.backend = BackendState::Ht(next);
+            self.concepts = concept_signature(&candidate);
+            self.revision += 1;
+            return Ok(IncrementalChange {
+                revision: self.revision,
+                added_clauses: added_ids.len(),
+                removed_clauses: seen.len(),
+                total_clauses: self.clauses.len(),
+                added_clause_ids: added_ids,
+                removed_clause_ids: seen.into_iter().collect(),
+                backend_before,
+                backend_after: IncrementalBackend::Ht,
+                strategy: if stats.reused_probes != 0 {
+                    ChangeStrategy::HtDelta
+                } else {
+                    ChangeStrategy::ExactRebuild
+                },
+                reused_fixpoint: stats.resumed_models != 0,
+                reused_subsumptions: stats.reused_subsumptions,
+                reused_edges: stats.reused_edges,
+                new_subsumptions: stats.new_subsumptions,
+                new_edges: stats.new_edges,
+            });
+        }
+
+        let next_backend = build_backend(&candidate, self.requested_backend)?;
         let new_subsumptions = next_backend.pair_count();
         let backend_after = next_backend.kind();
         self.clauses.retain(|stored| !seen.contains(&stored.id));
@@ -447,11 +565,8 @@ impl IncrementalClassifier {
         if let BackendState::El(classifier) = &self.backend {
             return classifier.is_subsumed_by(sub, sup);
         }
-        let result = if let BackendState::Cb(state) = &self.backend {
-            state.result_ref()
-        } else {
-            unreachable!("EL backend returned above")
-        };
+        let result_owned = self.backend.result();
+        let result = &result_owned;
         if !self.concepts.contains(sub) {
             return None;
         }
@@ -564,8 +679,15 @@ impl IncrementalClassifier {
 pub fn classify_fresh(
     clauses: &[JClause],
 ) -> Result<(IncrementalBackend, IncrementalResult), IncrementalReasoningError> {
-    let backend = build_backend(clauses)?;
+    let backend = build_backend(clauses, None)?;
     Ok((backend.kind(), backend.result()))
+}
+
+/// Run a fresh classification through the exact direct-clause HT backend.
+pub fn classify_ht_fresh(
+    clauses: &[JClause],
+) -> Result<IncrementalResult, IncrementalReasoningError> {
+    IncrementalHtClassifier::new(clauses).map(|classifier| classifier.result())
 }
 
 /// Run a fresh consequence-based classification and reject every incomplete
@@ -596,10 +718,29 @@ pub fn classify_cb_fresh(
     })
 }
 
-fn build_backend(clauses: &[JClause]) -> Result<BackendState, IncrementalReasoningError> {
-    if let Ok(classifier) = IncrementalElClassifier::new(clauses.to_vec()) {
-        return Ok(BackendState::El(classifier));
+fn build_backend(
+    clauses: &[JClause],
+    requested: Option<IncrementalBackend>,
+) -> Result<BackendState, IncrementalReasoningError> {
+    if requested == Some(IncrementalBackend::Ht) {
+        return IncrementalHtClassifier::new(clauses).map(BackendState::Ht);
     }
+    if requested == Some(IncrementalBackend::El) {
+        return IncrementalElClassifier::new(clauses.to_vec())
+            .map(BackendState::El)
+            .map_err(
+                |error| IncrementalReasoningError::RequestedBackendUnsupported {
+                    backend: IncrementalBackend::El,
+                    detail: error.to_string(),
+                },
+            );
+    }
+    if let Ok(classifier) = IncrementalElClassifier::new(clauses.to_vec()) {
+        if requested.is_none() {
+            return Ok(BackendState::El(classifier));
+        }
+    }
+    debug_assert!(requested.is_none() || requested == Some(IncrementalBackend::Cb));
     if RetainedCbReasoner::available_for_current_route() {
         let reasoner = RetainedCbReasoner::new(clauses);
         let dropped = reasoner.dropped_unsupported();
@@ -665,6 +806,8 @@ enum Command {
     /// Start or replace the current session at revision 0.
     Init {
         clauses: Vec<JClause>,
+        #[serde(default)]
+        backend: Option<IncrementalBackend>,
     },
     /// Atomically add normalised clauses to the current session.
     Add {
@@ -715,22 +858,24 @@ pub fn run_jsonl_session<R: BufRead, W: Write>(reader: R, mut writer: W) -> std:
 
 fn handle(command: Command, session: &mut Option<IncrementalClassifier>) -> Value {
     match command {
-        Command::Init { clauses } => match IncrementalClassifier::new(clauses) {
-            Ok(classifier) => {
-                let response = json!({
-                    "status": "ok",
-                    "op": "init",
-                    "revision": classifier.revision(),
-                    "total_clauses": classifier.clause_count(),
-                    "clause_ids": classifier.clause_ids(),
-                    "backend": classifier.backend(),
-                    "inconsistent": classifier.is_inconsistent(),
-                });
-                *session = Some(classifier);
-                response
+        Command::Init { clauses, backend } => {
+            match IncrementalClassifier::new_with_backend(clauses, backend) {
+                Ok(classifier) => {
+                    let response = json!({
+                        "status": "ok",
+                        "op": "init",
+                        "revision": classifier.revision(),
+                        "total_clauses": classifier.clause_count(),
+                        "clause_ids": classifier.clause_ids(),
+                        "backend": classifier.backend(),
+                        "inconsistent": classifier.is_inconsistent(),
+                    });
+                    *session = Some(classifier);
+                    response
+                }
+                Err(error) => error_response("init", error.to_string()),
             }
-            Err(error) => error_response("init", error.to_string()),
-        },
+        }
         Command::Add { clauses } => match session.as_mut() {
             Some(classifier) => match classifier.add_clauses(clauses) {
                 Ok(update) => json!({

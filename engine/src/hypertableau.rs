@@ -371,6 +371,7 @@ pub fn dep_remove(d: &DepSet, level: Level) -> DepSet {
 
 // ============================== Ext ========================================
 
+#[derive(Clone)]
 enum Trail {
     Concept(Node, CLit),
     Edge(R, Node, Node),
@@ -403,6 +404,7 @@ enum Event {
 /// A ground disjunction recorded when its clause body fully matched: the head's
 /// concept disjuncts (all of them — liveness is recomputed on use) plus the body
 /// DepSet and the trail length at recording (so backtracking drops it).
+#[derive(Clone)]
 struct PendingDisj {
     disjuncts: Vec<(Node, CLit)>,
     bdep: DepSet,
@@ -423,6 +425,7 @@ struct PendingDisj {
 /// A branch option is thus "assert a live concept" or "merge a live pair";
 /// liveness (concept present/dead, pair already merged) is recomputed at branch
 /// time, so the stored sets are the full original disjuncts.
+#[derive(Clone)]
 struct MergeDisj {
     concepts: Vec<(Node, CLit)>,
     pairs: Vec<(Node, Node)>,
@@ -452,6 +455,7 @@ struct CardDef {
 }
 
 /// A deferred ∃-obligation `node ⊑ ∃r.fil` recorded when its clause body matched.
+#[derive(Clone)]
 struct Oblig {
     n: Node,
     r: R,
@@ -466,6 +470,7 @@ struct Oblig {
 /// `role.filler` successors; for `≤bound` (`applyATMOSTRule`) the `Scan::Sat`
 /// step qualifies (choose) and merges excess `role.filler` successors. Like
 /// `Oblig`, dropped as a trail-ordered suffix on backtrack (`at`).
+#[derive(Clone)]
 struct CardReq {
     n: Node,
     role: R,
@@ -475,6 +480,7 @@ struct CardReq {
     at: usize,
 }
 
+#[derive(Clone)]
 pub struct Ext {
     concepts: Vec<HashMap<CLit, DepSet>>,
     out_edges: Vec<Vec<(R, Node, DepSet)>>,
@@ -1443,6 +1449,114 @@ impl Default for Ext {
     }
 }
 
+impl Ext {
+    /// Turn a completed clash-free branch into a fixed model that can be checked
+    /// against an enlarged clause set.
+    ///
+    /// The old branch choices are witnesses, not consequences of the new
+    /// ontology.  They are therefore retained as ordinary facts with empty
+    /// dependency sets.  Old pending work and branch journals are discarded,
+    /// then every retained node, concept, and edge is replayed through the new
+    /// trigger indexes.  If that fixed witness cannot be extended, the caller
+    /// must run a fresh search; a replay clash is never an UNSAT certificate.
+    fn prepare_addition_replay(&mut self) {
+        for label in &mut self.concepts {
+            for dependency in label.values_mut() {
+                *dependency = dep_empty();
+            }
+        }
+        for edges in &mut self.out_edges {
+            for (_, _, dependency) in edges {
+                *dependency = dep_empty();
+            }
+        }
+        for edges in &mut self.in_edges {
+            for (_, _, dependency) in edges {
+                *dependency = dep_empty();
+            }
+        }
+        for distinct in &mut self.distinct {
+            for (_, dependency) in distinct {
+                *dependency = dep_empty();
+            }
+        }
+
+        self.trail.clear();
+        self.clash = None;
+        self.clash_node = None;
+        self.queue.clear();
+        self.pending.clear();
+        self.pending_merge.clear();
+        self.obligations.clear();
+        self.card_min.clear();
+        self.card_max.clear();
+        self.unsupported = false;
+
+        self.lit_disj.clear();
+        self.dirty.clear();
+        self.dirty_in.clear();
+        self.open.clear();
+        self.open_in.clear();
+
+        self.block_index.clear();
+        self.i2_blocked.clear();
+        self.i2_lists.clear();
+        self.i2_touched.clear();
+        self.i2_in_touched.clear();
+        self.i2_lo = 0;
+        self.i2_last_lo = 0;
+        self.i3_sig.clear();
+        self.i3_node_sig.clear();
+        self.node_obligs.clear();
+        self.node_obligs.resize_with(self.concepts.len(), Vec::new);
+        self.oblig_sat.clear();
+        self.globals_fired.fill(false);
+        self.blocked.fill(false);
+        self.nom_carriers.clear();
+
+        // `block_index` and nominal carriers are normally maintained only by
+        // fresh `add_concept` calls. Replay queues existing facts directly, so
+        // reconstruct those auxiliary indexes from the retained labels.
+        for (node, label) in self.concepts.iter().enumerate() {
+            for &literal in label.keys() {
+                if self.incr_block {
+                    let encoded = Ext::enc_lit(literal);
+                    if encoded >= self.block_index.len() {
+                        self.block_index.resize_with(encoded + 1, Vec::new);
+                    }
+                    self.block_index[encoded].push(node);
+                }
+                if !literal.neg && self.nominals.contains(&literal.c) {
+                    self.nom_carriers.entry(literal.c).or_default().push(node);
+                }
+            }
+        }
+
+        // Replaying the complete fact base is deliberately redundant.  Duplicate
+        // insertions are ignored by Ext, while every newly installed trigger sees
+        // every old premise at least once.
+        for node in 0..self.concepts.len() {
+            self.queue.push(Event::NodeNew(node));
+            let concepts: Vec<CLit> = self.concepts[node].keys().copied().collect();
+            self.queue
+                .extend(concepts.into_iter().map(|lit| Event::Concept(node, lit)));
+            let edges: Vec<(R, Node)> = self.out_edges[node]
+                .iter()
+                .map(|(role, target, _)| (*role, *target))
+                .collect();
+            self.queue.extend(
+                edges
+                    .into_iter()
+                    .map(|(role, target)| Event::Edge(role, node, target)),
+            );
+        }
+    }
+
+    fn edge_count(&self) -> usize {
+        self.out_edges.iter().map(Vec::len).sum()
+    }
+}
+
 fn edge_dep(ext: &Ext, r: R, s: Node, t: Node) -> Option<DepSet> {
     ext.out_edges[s]
         .iter()
@@ -2120,6 +2234,40 @@ struct NativeAboxState {
     different: Vec<(usize, usize)>,
     /// `(role, source index, target index)`.
     role_assertions: Vec<(R, usize, usize)>,
+}
+
+/// Opaque clash-free completion graph retained by the incremental HT adapter.
+///
+/// A snapshot is only a SAT witness for the exact clause/id layout that created
+/// it.  [`Ht::resume_satisfiable_model`] accepts it for an enlarged layout only
+/// after the adapter has proved that all old concept ids, role ids, and compiled
+/// clauses are stable prefixes.  The snapshot is never used as an UNSAT proof.
+#[derive(Clone)]
+pub struct HtModelSnapshot {
+    ext: Ext,
+}
+
+impl HtModelSnapshot {
+    pub fn root_positive_label(&self) -> Vec<C> {
+        self.ext
+            .concepts
+            .first()
+            .map(|label| {
+                let mut concepts: Vec<C> = label
+                    .keys()
+                    .filter(|literal| !literal.neg)
+                    .map(|literal| literal.c)
+                    .collect();
+                concepts.sort_unstable();
+                concepts.dedup();
+                concepts
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn edge_count(&self) -> usize {
+        self.ext.edge_count()
+    }
 }
 
 pub struct Ht {
@@ -9752,6 +9900,73 @@ impl Ht {
                     return Out::Conflict(dep_remove(&fail, level));
                 }
             }
+        }
+    }
+
+    /// Run one ordinary consistency probe and retain its completed model when it
+    /// is satisfiable.  UNSAT probes deliberately have no model snapshot.
+    pub fn consistent_with_snapshot(
+        &mut self,
+        seed: &[CLit],
+    ) -> Option<(bool, Option<HtModelSnapshot>)> {
+        let satisfiable = self.consistent(seed)?;
+        let snapshot = satisfiable.then(|| HtModelSnapshot {
+            ext: self.ext.clone(),
+        });
+        Some((satisfiable, snapshot))
+    }
+
+    /// Check whether a previously completed model can be extended after
+    /// monotone clause addition.
+    ///
+    /// `Some(snapshot)` is a new complete clash-free model and therefore a valid
+    /// SAT witness. `None` means only that this particular old branch could not be
+    /// extended (or the replay reached an unsupported/restart boundary); callers
+    /// must perform a fresh exhaustive probe. In particular, `None` is never an
+    /// UNSAT answer.
+    pub fn resume_satisfiable_model(
+        &mut self,
+        snapshot: &HtModelSnapshot,
+    ) -> Option<HtModelSnapshot> {
+        self.ext = snapshot.ext.clone();
+        self.ext.prepare_addition_replay();
+        self.ext.watch = self.watch;
+        if self.force_fast {
+            self.ext.incr2 = true;
+            self.ext.incroblig = true;
+        }
+        if self.force_qmerge {
+            self.ext.qmerge = true;
+        }
+        if self.force_number {
+            self.ext.number = true;
+        }
+        self.ext.block3 = self.block_mode == 3;
+        if !self.nom_set.is_empty() {
+            self.ext.nominals = self.nom_set.iter().copied().collect();
+        }
+
+        self.cache.clear();
+        self.decisions.clear();
+        self.learned.clear();
+        self.lwatch.clear();
+        self.cur_choices.clear();
+        self.dec_sig.clear();
+        self.dec_choice.clear();
+        self.lng.clear();
+        self.lng_watch.clear();
+        self.lng_fires = 0;
+        self.luby_idx = 1;
+        // A replay is a witness-validation fast path. If search requests a
+        // restart, fall back to the ordinary fresh probe rather than rebuilding
+        // this fixed witness with different historical branch assumptions.
+        self.restart_limit = u64::MAX;
+
+        match self.dfs(0) {
+            Out::Sat if !self.ext.unsupported => Some(HtModelSnapshot {
+                ext: self.ext.clone(),
+            }),
+            Out::Conflict(_) | Out::Restart | Out::Sat => None,
         }
     }
 

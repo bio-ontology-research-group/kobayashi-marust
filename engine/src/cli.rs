@@ -321,7 +321,7 @@ pub fn run_elc() {
 }
 
 // ---------------------------------------------------------------------------
-// incremental -- exact EL++/CB session (JSONL stdin/stdout)
+// incremental -- exact EL++/CB/direct-HT session (JSONL stdin/stdout)
 // ---------------------------------------------------------------------------
 
 pub fn run_incremental() {

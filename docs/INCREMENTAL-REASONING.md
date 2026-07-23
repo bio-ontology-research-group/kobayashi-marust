@@ -1,10 +1,10 @@
 # Incremental reasoning
 
-KM provides an exact stateful classifier over its EL++ fast path and the
+KM provides an exact stateful classifier over its EL++ fast path, the
 normalised clause fragment accepted completely by the consequence-based (CB)
-worker. The general API supports additions, removals, and atomic replacements.
-It never returns a stale classification or the partial result of a declined CB
-run.
+worker, and an explicitly selected direct-clause hypertableau (HT) fragment.
+The general API supports additions, removals, and atomic replacements. It never
+returns a stale classification or the partial result of a declined worker run.
 
 ## Exactness contract
 
@@ -17,8 +17,15 @@ as `km elc` and `km engine`. It chooses a backend for every committed snapshot:
   additions retain its completed context graph and resume saturation. This
   includes disjunction, roles, equality and supported cardinality forms, plus
   nominal clauses when `KM_NOMINALS=1`.
-- Every transaction containing a removal uses an exact rebuild. It may route
-  from CB back to EL when the remaining clause set is pure EL++.
+- A caller can explicitly select `IncrementalBackend::Ht`, or set
+  `"backend":"ht"` on a JSONL `init`. This direct HT arm admits only clause
+  state carried completely by `JClause`. It caches global, class
+  satisfiability, and pair-countermodel probes.
+- EL and CB transactions containing a removal use an exact rebuild. They may
+  route from CB back to EL when the remaining clause set is pure EL++.
+- HT removals and replacements use dependency-directed probe invalidation.
+  Monotonic verdicts and probes in disconnected signature components remain
+  reusable; every other probe runs fresh before commit.
 
 The retained CB path deep-forks the completed engine, extends its ontology
 indexes, replays every active worked-off premise through Hyper, then sends all
@@ -53,6 +60,16 @@ Some insertions deliberately cross a proof boundary and report
 These cases remain supported exactly. They construct and validate a fresh
 candidate and expose that choice in the receipt instead of claiming reuse.
 
+The direct HT backend has a narrower fail-closed input gate because the
+incremental transport currently carries clauses, not the typed side state used
+by production OWL routing. It rejects ground individuals and auxiliary
+constants, inverse and builtin universal roles, datatype concepts, role chains,
+transitivity, nominals/ABox state, route fences, dropped clauses, and
+side-cardinality descriptors. Ordinary disjunctive clauses, simple roles,
+Skolem existentials, universals represented directly in clauses, and direct
+equality forms remain eligible. A rejected initial snapshot or update returns
+`RequestedBackendUnsupported` without changing a live revision.
+
 The CB worker can soundly drop an unsupported clause and can stop at a resource
 backstop with a sound but incomplete result. Those outcomes are not valid
 incremental snapshots. The general API rejects them as `UnsupportedClauses` or
@@ -60,12 +77,11 @@ incremental snapshots. The general API rejects them as `UnsupportedClauses` or
 Every accepted result consequently has `dropped == 0` and an empty
 `unresolved` list.
 
-This contract covers the direct normalised-clause inputs of the exact CB
-worker. It does not accept orchestration side channels such as `rbox`,
-`cardinalities`, rules, definers, or source-axiom metadata. The JSONL command
-parser rejects unknown fields so that side data cannot be ignored silently.
-Normalise the complete source ontology with stable generated names before
-opening a session.
+This contract covers direct normalised-clause inputs. It does not accept
+orchestration side channels such as `rbox`, `cardinalities`, rules, definers,
+or source-axiom metadata. The JSONL command parser rejects unknown fields so
+that side data cannot be ignored silently. Normalise the complete source
+ontology with stable generated names before opening a session.
 
 ## Clause identity and transactions
 
@@ -132,10 +148,46 @@ The exact-rebuild fallback invokes the existing batch `Reasoner` on the
 complete candidate clause union. Both paths publish only after saturation
 reaches a fixpoint and only when no clause was dropped.
 
+## Why HT reuse is correct
+
+HT classification consists of one global consistency probe, one
+satisfiability probe per named class, and confirmation probes of
+`A ∧ ¬B`. The incremental adapter retains the Boolean verdict and, for a
+satisfiable global or per-class probe, an opaque completed graph. Pair probes
+retain their verdict but not another full graph, avoiding quadratic graph
+retention. The adapter applies only the following reuse laws:
+
+- Under addition, an old UNSAT probe stays UNSAT.
+- Under removal, an old SAT model remains a model.
+- A probe in a signature component disconnected from every changed clause has
+  the same verdict.
+- A replacement gets no monotonic shortcut; affected probes run fresh.
+
+The dependency graph connects every concept, role, and Skolem-function symbol
+that co-occurs in one clause, then closes through both the old and candidate
+clause sets. A changed empty-body or top-body clause marks every query affected.
+This makes deletion and replacement conservative: an imprecise component
+merely causes extra fresh probes.
+
+For monotone additions, the adapter can do more than reuse a Boolean verdict.
+If the new concept table, role table, and compiled clause vector retain the old
+ones as exact prefixes, it clones the old clash-free graph, erases historical
+branch dependencies and worklists, and replays every retained node, concept,
+and role edge through the new trigger indexes. A completed replay is a new SAT
+witness. A replay clash, restart, unsupported boundary, or incompatible layout
+proves nothing: the adapter discards that attempt and runs the ordinary fresh
+exhaustive HT probe. It never converts a failed model extension into UNSAT.
+
+The complete candidate backend and taxonomy are built before the session
+mutates its clause store, revision, or id allocator. If any required fresh
+probe defers, the entire transaction fails and the prior revision remains
+usable. This changes scheduling and evidence reuse, not an HT inference rule,
+so it does not require Lean re-certification.
+
 ## Rust API
 
 ```rust
-use kobayashi_marust::incremental::IncrementalClassifier;
+use kobayashi_marust::incremental::{IncrementalBackend, IncrementalClassifier};
 
 let mut reasoner = IncrementalClassifier::new(initial_clauses)?;
 let addition = reasoner.add_clauses(new_clauses)?;
@@ -144,11 +196,18 @@ let added_ids = addition.added_clause_ids;
 let replacement = reasoner.apply_change(&added_ids, replacement_clauses)?;
 let entailed = reasoner.is_subsumed_by("urn:example:A", "urn:example:B");
 let classification = reasoner.result();
+
+let mut ht_reasoner = IncrementalClassifier::new_with_backend(
+    direct_ht_clauses,
+    Some(IncrementalBackend::Ht),
+)?;
+let ht_change = ht_reasoner.apply_change(&obsolete_ids, replacement_clauses)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 `IncrementalElClassifier` remains available as the lower-level,
 addition-only EL++ API. Its existing method and error contracts are unchanged.
+`classify_ht_fresh` is the direct HT differential oracle.
 
 ## JSONL session
 
@@ -157,6 +216,7 @@ one compact JSON object per line:
 
 ```json
 {"op":"init","clauses":[...]}
+{"op":"init","backend":"ht","clauses":[...]}
 {"op":"add","clauses":[...]}
 {"op":"remove","clause_ids":[2,3]}
 {"op":"change","remove_clause_ids":[4],"add_clauses":[...]}
@@ -166,25 +226,30 @@ one compact JSON object per line:
 ```
 
 `init` starts or replaces the session at revision 0 and returns every assigned
-clause id. `add`, `remove`, and `change` return an `IncrementalChange`. A failed
-command emits an error record and leaves the preceding revision active.
+clause id. Omit `backend` for EL-first/CB-fallback routing; use `ht` to require
+the direct hypertableau fragment. `add`, `remove`, and `change` return an
+`IncrementalChange`. A failed command emits an error record and leaves the
+preceding revision active.
 `classify` returns the exact current result. `is_subsumed_by` returns `null`
 when the subject is absent from the current concept signature, which
 distinguishes an unknown name from a known, non-entailed subsumption.
 
-The `backend` field is `el` or `cb`. The `strategy` field is `el_delta`,
-`cb_delta`, `exact_rebuild`, or `no_op`. Applications can therefore measure
-retained-state use without inferring it from latency.
+The `backend` field is `el`, `cb`, or `ht`. The `strategy` field is
+`el_delta`, `cb_delta`, `ht_delta`, `exact_rebuild`, or `no_op`. HT receipts
+report reused subsumption pairs and completion-graph edges; `reused_fixpoint`
+is true only when at least one SAT graph completed replay. Applications can
+therefore measure retained-state use without inferring it from latency.
 
 ## Current performance boundary
 
 Addition-only EL++ transactions reuse the completion closure. Ordering-stable
 CB additions reuse the completed context graph and report retained answer and
-context-edge counts. The implementation currently deep-clones that graph to
+context-edge counts. Explicit HT sessions retain probe evidence across all
+three transaction kinds, and stable-layout additions can replay completed
+graphs. The CB and HT implementations currently deep-clone retained state to
 provide failure atomicity; this trades memory and copy time for a simple,
-auditable commit boundary. Dependency-aware copy-on-write and deletion remain
-future work. All removals and mixed replacements still have batch CB or batch
-EL cost.
+auditable commit boundary. Dependency-aware copy-on-write remains future work.
+EL/CB removals and mixed replacements still have batch CB or batch EL cost.
 
 A targeted single-thread IBEX microbenchmark gives a scale check for the EL
 path, not an ORE or corpus claim. The initial snapshot contained 10,000
@@ -228,3 +293,12 @@ tested against a fresh `km engine` process across disjunction, role propagation,
 equality/cardinality, and nominal cases. Further optimisations must preserve
 that oracle and fall back to an exact rebuild whenever their invalidation proof
 is insufficient.
+
+The HT regression suite independently covers monotone model replay,
+dependency-local deletion and replacement, a replay clash that must fall back
+to a fresh probe, existential completion-edge reuse, global
+inconsistent-to-consistent deletion, JSONL selection, and rollback after an
+unsupported update. Every committed revision is compared with both a fresh HT
+classification and a fresh CB classification, modulo the standard convention
+that `A -> owl:Nothing` replaces redundant superclass pairs for an
+unsatisfiable class.

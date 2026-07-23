@@ -256,7 +256,7 @@ pub enum HAtom {
     },
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct HtClause {
     pub body: Vec<HAtom>,
     pub head: Vec<HAtom>,

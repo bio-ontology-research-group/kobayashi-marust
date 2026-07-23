@@ -9,6 +9,47 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Exact incremental direct-HT classification (2026-07-23)
+
+Extended `IncrementalClassifier` with an explicitly selected hypertableau
+backend for the validated direct-clause fragment. The Rust API accepts
+`Some(IncrementalBackend::Ht)`, and JSONL `init` accepts `"backend":"ht"`.
+The default EL-first/CB-fallback policy remains unchanged. The direct HT gate
+rejects every normalized clause set whose complete semantics would require
+orchestration side state, including ground/ABox individuals, inverse roles,
+datatypes, chains, transitivity, nominals, route fences, and side-cardinality
+descriptors.
+
+The backend retains global consistency, per-class satisfiability, and
+subsumption-countermodel probes. Addition reuses monotonic UNSAT verdicts.
+Removal reuses monotonic SAT verdicts. A concept/role/Skolem-function component
+graph preserves probes disconnected from a changed clause, while replacements
+freshly check every affected probe. Empty-body and top-body changes invalidate
+all components. Full completion graphs are retained only for global and class
+probes; pair probes retain Boolean evidence without quadratically duplicating
+the graph. The complete candidate state is built before the clause store,
+revision, or id allocator changes, so a declined probe leaves the live session
+byte-stable.
+
+Stable-layout additions can also replay opaque clash-free completion graphs.
+The adapter keeps old branch choices as witness facts, clears historical
+dependencies and worklists, and replays every node, concept, and edge through
+the enlarged trigger indexes. A completed replay is a SAT certificate for that
+probe. A clash or any uncertain replay result falls back to the ordinary fresh
+HT search and is never interpreted as UNSAT. The change reuses completed
+evidence around the existing HT procedure and does not alter its rules, so it
+needs no Lean re-certification.
+
+Six focused release tests compare every committed HT revision with fresh HT
+and CB classification. They cover successful model and existential-edge
+replay, deletion and replacement invalidation, a replay clash that requires a
+fresh probe, global inconsistent-to-consistent deletion, JSONL backend
+selection, and atomic rejection of unsupported updates.
+
+The exact staged source passed all 21 EL/CB/HT incremental integration tests
+and the full release library gate on `ws`: 1,681 passed, 8 ignored, and 0
+failed.
+
 ### Retained-state incremental CB insertion and exact deletion (2026-07-23)
 
 Extended `km incremental` from its lower-level addition-only EL++ store to an

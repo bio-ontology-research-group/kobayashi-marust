@@ -13,6 +13,7 @@ pub mod elcomplete;
 pub mod engine;
 pub mod frontend;
 pub mod incremental;
+mod incremental_ht;
 pub mod json_io;
 pub mod konclude_ht;
 pub mod orchestrate;
