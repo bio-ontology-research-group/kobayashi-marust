@@ -25,10 +25,18 @@ base_builder=$script_dir/ibex_build_full_panel.sbatch
 for required in \
     "$contract" "$historical_ledger" "$base_builder" \
     "$script_dir/audit_full_panel_route_coverage.py" \
+    "$script_dir/full_panel_correctness.py" \
+    "$script_dir/test_audit_full_panel_route_coverage.py" \
+    "$script_dir/test_full_panel_chunks.py" \
+    "$script_dir/test_full_panel_correctness.py" \
     "$script_dir/FullIriHermitOracle.java"
 do
     [[ -s $required ]] || { echo "missing build input: $required" >&2; exit 2; }
 done
+
+/usr/bin/python3 "$script_dir/test_audit_full_panel_route_coverage.py"
+/usr/bin/python3 "$script_dir/test_full_panel_chunks.py"
+/usr/bin/python3 "$script_dir/test_full_panel_correctness.py"
 
 km_commit=$(/usr/bin/python3 - "$contract" <<'PY'
 import importlib.util

@@ -666,6 +666,7 @@ def main() -> int:
         required_chunked_entries = {
             "aggregate_full_panel.py",
             "audit_full_panel_route_coverage.py",
+            "driver-source.json",
             "full_panel_chunks.py",
             "full_panel_correctness.py",
             "full_panel_run_one.py",
@@ -675,6 +676,9 @@ def main() -> int:
             "ibex_build_full_panel_rerun.sbatch",
             "ibex_full_panel_chunked_array.sbatch",
             "run_full_panel_ontology.py",
+            "test_audit_full_panel_route_coverage.py",
+            "test_full_panel_chunks.py",
+            "test_full_panel_correctness.py",
         }
         missing_chunked_entries = required_chunked_entries - set(driver_entries)
         if missing_chunked_entries:
