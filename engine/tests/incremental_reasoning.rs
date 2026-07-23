@@ -342,6 +342,41 @@ fn jsonl_protocol_transitions_to_cb_and_removes_by_stable_id() {
 }
 
 #[test]
+fn jsonl_protocol_reports_retained_cb_delta() {
+    std::env::set_var("KM_THREADS", "1");
+    let initial = clauses(&format!(
+        "[{disjunction},{trigger}]",
+        disjunction = clause(
+            &[concept("A", "x")],
+            &[concept("B", "x"), concept("C", "x")]
+        ),
+        trigger = clause(&[concept("B", "x")], &[concept("SeenB", "x")]),
+    ));
+    let addition = clauses(&format!(
+        "[{}]",
+        clause(&[concept("B", "x")], &[concept("D", "x")])
+    ));
+    let commands = [
+        serde_json::json!({"op": "init", "clauses": initial}),
+        serde_json::json!({"op": "add", "clauses": addition}),
+    ]
+    .into_iter()
+    .map(|value| serde_json::to_string(&value).unwrap())
+    .collect::<Vec<_>>()
+    .join("\n");
+    let mut output = Vec::new();
+    run_jsonl_session(Cursor::new(commands), &mut output).expect("JSONL session");
+    let rows: Vec<serde_json::Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows[0]["backend"], "cb");
+    assert_eq!(rows[1]["update"]["strategy"], "cb_delta");
+    assert_eq!(rows[1]["update"]["reused_fixpoint"], true);
+}
+
+#[test]
 fn jsonl_protocol_rejects_unconsumed_side_channels() {
     let commands = [
         r#"{"op":"init","clauses":[],"rbox":[]}"#,

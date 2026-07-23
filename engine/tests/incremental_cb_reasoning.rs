@@ -292,6 +292,8 @@ fn roles_chains_and_cardinality_equalities_match_fresh_batches() {
         .add_clauses(vec![at_most.clone()])
         .expect("at-most equality addition");
     cardinality_snapshot.push(at_most);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert!(update.reused_fixpoint);
     assert_eq!(
         cardinality_session.is_subsumed_by("Q", "owl:Nothing"),
         Some(true)
@@ -321,8 +323,12 @@ fn nominal_updates_match_fresh_nominal_cb() {
         vec![concept("A", var("x"))],
         vec![equality(var("x"), ind("a"))],
     );
+    // Establish B as an existing CB trigger before the delta. This makes the
+    // later B -> C insertion ordering-stable while still exercising ground
+    // nominal replay and equality/Join propagation.
+    let b_to_d = clause(vec![concept("B", var("x"))], vec![concept("D", var("x"))]);
     let b_to_c = clause(vec![concept("B", var("x"))], vec![concept("C", var("x"))]);
-    let mut snapshot = vec![nominal_fact, nominal_link];
+    let mut snapshot = vec![nominal_fact, nominal_link, b_to_d];
     let mut session = IncrementalClassifier::new(snapshot.clone()).expect("nominal CB snapshot");
     assert_eq!(session.backend(), IncrementalBackend::Cb);
     assert_fresh_cb(&session, &snapshot, true);
@@ -330,11 +336,229 @@ fn nominal_updates_match_fresh_nominal_cb() {
         .add_clauses(vec![b_to_c.clone()])
         .expect("nominal CB addition");
     snapshot.push(b_to_c);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert!(update.reused_fixpoint);
     assert_fresh_cb(&session, &snapshot, true);
     session
         .remove_clauses(&update.added_clause_ids)
         .expect("nominal CB removal");
     snapshot.pop();
     assert_fresh_cb(&session, &snapshot, true);
+
+    let new_individual_fact = clause(Vec::new(), vec![concept("B", ind("b"))]);
+    let update = session
+        .add_clauses(vec![new_individual_fact.clone()])
+        .expect("new-individual fact exact fallback");
+    snapshot.push(new_individual_fact);
+    assert_eq!(update.strategy, ChangeStrategy::ExactRebuild);
+    assert!(!update.reused_fixpoint);
+    assert_fresh_cb(&session, &snapshot, true);
+
+    let asserted_same = clause(Vec::new(), vec![equality(ind("a"), ind("b"))]);
+    let update = session
+        .add_clauses(vec![asserted_same.clone()])
+        .expect("asserted same-individual exact fallback");
+    snapshot.push(asserted_same);
+    assert_eq!(update.strategy, ChangeStrategy::ExactRebuild);
+    assert!(!update.reused_fixpoint);
+    assert_fresh_cb(&session, &snapshot, true);
     std::env::remove_var("KM_NOMINALS");
+}
+
+#[test]
+fn retained_cb_disjunction_and_role_updates_match_each_fresh_worker_revision() {
+    let _env = ENV_LOCK.lock().unwrap();
+    std::env::set_var("KM_THREADS", "1");
+    std::env::remove_var("KM_ELC_CERT");
+    std::env::remove_var("KM_MSG_CAP");
+    std::env::remove_var("KM_NOM_BUDGET");
+    std::env::remove_var("KM_NOMINALS");
+
+    // The named disjunction selects CB. The harmless consumers establish all
+    // existing-symbol trigger bits used by the later insertions, so cached
+    // literal ordering remains valid and the context graph can be retained.
+    let mut snapshot = vec![
+        clause(
+            vec![concept("Choice", var("x"))],
+            vec![concept("Left", var("x")), concept("Right", var("x"))],
+        ),
+        clause(
+            vec![concept("Left", var("x"))],
+            vec![concept("LeftSeen", var("x"))],
+        ),
+        clause(
+            vec![concept("Right", var("x"))],
+            vec![concept("RightSeen", var("x"))],
+        ),
+        clause(
+            vec![role("R", var("x"), var("y"))],
+            vec![concept("HasR", var("x"))],
+        ),
+        clause(
+            vec![concept("Source", var("x"))],
+            vec![role("R", var("x"), fun("f"))],
+        ),
+        clause(
+            vec![concept("Source", var("x"))],
+            vec![concept("Left", fun("f"))],
+        ),
+    ];
+    let mut session = IncrementalClassifier::new(snapshot.clone()).expect("initial CB state");
+    assert_eq!(session.backend(), IncrementalBackend::Cb);
+    assert_fresh_cb(&session, &snapshot, false);
+
+    let force_common = vec![
+        clause(
+            vec![concept("Left", var("x"))],
+            vec![concept("Common", var("x"))],
+        ),
+        clause(
+            vec![concept("Right", var("x"))],
+            vec![concept("Common", var("x"))],
+        ),
+    ];
+    let update = session
+        .add_clauses(force_common.clone())
+        .expect("retained disjunctive insertion");
+    snapshot.extend(force_common);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert!(update.reused_fixpoint);
+    assert!(update.reused_subsumptions > 0);
+    assert_eq!(session.is_subsumed_by("Choice", "Common"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+
+    // A rejected revision after a real CB delta must not perturb the retained
+    // engine, its public answer, revision, or id allocator. Compare serialized
+    // bytes (not only map equality), then continue with another old-symbol
+    // delta to prove the same live graph remains usable.
+    let before_bytes = serde_json::to_vec(&session.result()).unwrap();
+    let before_revision = session.revision();
+    let before_ids = session.clause_ids();
+    let unsupported = clause(
+        Vec::new(),
+        vec![concept(
+            "UnsupportedAfterDelta",
+            JTerm::Aux {
+                root: "r".to_string(),
+                label: Vec::new(),
+            },
+        )],
+    );
+    assert_eq!(
+        session.add_clauses(vec![unsupported]),
+        Err(IncrementalReasoningError::UnsupportedClauses { dropped: 1 })
+    );
+    assert_eq!(session.revision(), before_revision);
+    assert_eq!(session.clause_ids(), before_ids);
+    assert_eq!(serde_json::to_vec(&session.result()).unwrap(), before_bytes);
+    assert_fresh_cb(&session, &snapshot, false);
+
+    // Force a resumed candidate to hit the inter-context message backstop.
+    // The retained fork and the subsequent fresh fallback both decline; the
+    // original engine must remain byte-identical and continue working after
+    // the cap is removed.
+    let bounded_delta = vec![
+        clause(
+            vec![concept("Source", var("x"))],
+            vec![concept("BoundedFiller", fun("f"))],
+        ),
+        clause(
+            vec![concept("BoundedFiller", var("x"))],
+            vec![concept("BoundedSeen", var("x"))],
+        ),
+    ];
+    std::env::set_var("KM_MSG_CAP", "0");
+    assert_eq!(
+        session.add_clauses(bounded_delta),
+        Err(IncrementalReasoningError::IncompleteFixpoint)
+    );
+    std::env::remove_var("KM_MSG_CAP");
+    assert_eq!(session.revision(), before_revision);
+    assert_eq!(session.clause_ids(), before_ids);
+    assert_eq!(serde_json::to_vec(&session.result()).unwrap(), before_bytes);
+    assert_fresh_cb(&session, &snapshot, false);
+
+    let role_delta = vec![
+        clause(
+            vec![concept("Left", var("x"))],
+            vec![concept("Filler", var("x"))],
+        ),
+        clause(
+            vec![role("R", var("x"), var("y")), concept("Filler", var("y"))],
+            vec![concept("Reached", var("x"))],
+        ),
+    ];
+    let update = session
+        .add_clauses(role_delta.clone())
+        .expect("retained Succ/Pred insertion");
+    snapshot.extend(role_delta);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert!(update.reused_fixpoint);
+    assert_eq!(session.is_subsumed_by("Source", "Reached"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+
+    // This is the normalised recognition/consumer shape emitted for a chain
+    // R o S <= T: recognise an S edge at the neighbour, then consume that
+    // internal reachability concept across the existing R edge.
+    let role_chain_delta = vec![
+        clause(
+            vec![concept("Left", var("x"))],
+            vec![role("S", var("x"), fun("g"))],
+        ),
+        clause(
+            vec![role("S", var("x"), var("y"))],
+            vec![concept("__chain__S__", var("x"))],
+        ),
+        clause(
+            vec![
+                role("R", var("x"), var("y")),
+                concept("__chain__S__", var("y")),
+            ],
+            vec![concept("ChainReached", var("x"))],
+        ),
+    ];
+    let update = session
+        .add_clauses(role_chain_delta.clone())
+        .expect("retained normalised role-chain insertion");
+    snapshot.extend(role_chain_delta);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert_eq!(
+        session.is_subsumed_by("Source", "ChainReached"),
+        Some(true)
+    );
+    assert_fresh_cb(&session, &snapshot, false);
+
+    let fresh_successor = vec![
+        clause(
+            vec![concept("Source", var("x"))],
+            vec![role("R2", var("x"), fun("h"))],
+        ),
+        clause(
+            vec![concept("Source", var("x"))],
+            vec![concept("Filler2", fun("h"))],
+        ),
+        clause(
+            vec![
+                role("R2", var("x"), var("y")),
+                concept("Filler2", var("y")),
+            ],
+            vec![concept("Reached2", var("x"))],
+        ),
+    ];
+    let update = session
+        .add_clauses(fresh_successor.clone())
+        .expect("retained new-symbol/new-successor insertion");
+    snapshot.extend(fresh_successor);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert_eq!(session.is_subsumed_by("Source", "Reached2"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+
+    let global_fact = clause(Vec::new(), vec![concept("Global", var("x"))]);
+    let update = session
+        .add_clauses(vec![global_fact.clone()])
+        .expect("retained ontology-fact insertion");
+    snapshot.push(global_fact);
+    assert_eq!(update.strategy, ChangeStrategy::CbDelta);
+    assert_eq!(session.is_subsumed_by("Source", "Global"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
 }

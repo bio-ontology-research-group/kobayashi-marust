@@ -54,8 +54,9 @@ reported as empirical evidence, not as a proof of the whole executable.
 - **Exact incremental EL++ and CB reasoning.** `km incremental` retains the
   completed EL++ relation and role graph for safe additions, accepts the full
   normalised clause fragment completed by the CB worker, and supports atomic
-  addition, removal, and replacement transactions. CB changes and every
-  removal currently use an explicitly reported exact rebuild.
+  addition, removal, and replacement transactions. Ordering-stable CB
+  additions resume the retained context graph; ordering/nominal boundary cases
+  and every removal use an explicitly reported exact rebuild.
 - **Formal work kept in scope.** Lean files prove results about abstract
   resolution, selected context-calculus fragments, inverse-role encoding,
   nominal rules, and certificate checkers. They are useful specifications and

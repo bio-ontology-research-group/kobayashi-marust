@@ -720,7 +720,7 @@ fn unify(sigma: &mut CentralSubst, body: &Pred, head: &Pred) -> bool {
 
 // -------------------------------- ontology ---------------------------------
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Ontology {
     clauses: Vec<OntologyClause>,
     facts: Vec<usize>, // indices of empty-body clauses (x-form only)
@@ -739,6 +739,78 @@ struct Ontology {
 }
 
 impl Ontology {
+    /// Append one normal-form clause and extend every immutable-looking lookup
+    /// table used by Hyper and context initialisation.  `mark_nothing` enables
+    /// the one-shot direct-bottom optimisation used while constructing a fresh
+    /// engine.  Retained insertion leaves that optimisation unchanged: making
+    /// an already ordered concept a static `nothing` symbol would change the
+    /// cached maximal-literal masks, while replaying the new `C -> bottom`
+    /// clause derives the same contradiction without changing the ordering.
+    fn push_clause(&mut self, sig: &mut Sig, c: OntologyClause, mark_nothing: bool) -> usize {
+        let idx = self.clauses.len();
+        if c.body.is_empty() {
+            // Ground facts (heads mentioning an individual) seed the ground
+            // context fully and other contexts on demand.
+            let mut inds: Vec<Term> = Vec::new();
+            for l in &c.head {
+                lit_inds(l, &mut inds);
+            }
+            if inds.is_empty() {
+                self.facts.push(idx);
+            } else {
+                for o in inds {
+                    self.ground_facts.entry(o).or_default().push(idx);
+                }
+            }
+        } else {
+            if mark_nothing && c.body.len() == 1 && c.head.is_empty() {
+                if let Pred::Concept { iri, .. } = c.body[0] {
+                    if (iri as usize) < sig.nothing.len() {
+                        sig.nothing[iri as usize] = true;
+                    }
+                }
+            }
+            for b in &c.body {
+                match *b {
+                    Pred::Concept { iri, t } => {
+                        self.concept_body_any.entry(iri).or_default().push(idx);
+                        if is_central(t) {
+                            sig.concept_succ_trigger[iri as usize] = true;
+                            self.concept_clauses.entry(iri).or_default().push(idx);
+                        }
+                    }
+                    Pred::Role { iri, s, t } => {
+                        self.role_body_any.entry(iri).or_default().push(idx);
+                        if is_central(s) {
+                            sig.forward_role_succ_trigger[iri as usize] = true;
+                            self.forward_role_clauses.entry(iri).or_default().push(idx);
+                        }
+                        if is_central(t) {
+                            sig.backward_role_succ_trigger[iri as usize] = true;
+                            self.backward_role_clauses.entry(iri).or_default().push(idx);
+                        }
+                    }
+                }
+            }
+        }
+        self.clauses.push(c);
+        idx
+    }
+
+    /// Candidate lists are append-only by ontology-clause id.  A clause can
+    /// mention the same predicate more than once, so canonicalise after a
+    /// batch of appends just as fresh construction does.
+    fn canonicalise_candidates(&mut self) {
+        for v in self.concept_body_any.values_mut() {
+            v.sort_unstable();
+            v.dedup();
+        }
+        for v in self.role_body_any.values_mut() {
+            v.sort_unstable();
+            v.dedup();
+        }
+    }
+
     /// Candidate ontology clauses that may resolve with a context-clause head
     /// predicate `max` (i.e. have a body atom that can unify with `max`).
     /// Over-approximates by predicate iri; `can_unify` filters precisely.
@@ -1048,6 +1120,7 @@ fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap
 
 // ------------------------------- contexts ----------------------------------
 
+#[derive(Clone)]
 struct Context {
     id: usize,
     core: Vec<Pred>,
@@ -1701,6 +1774,7 @@ fn content_hash<T: std::hash::Hash>(t: &T) -> u64 {
 
 // ------------------------------- messages ----------------------------------
 
+#[derive(Clone)]
 enum Msg {
     Succ {
         from: usize,
@@ -1722,6 +1796,44 @@ enum Msg {
 
 // -------------------------------- engine -----------------------------------
 
+/// Why a monotone ontology insertion cannot safely reuse the retained context
+/// graph.  The caller must run the ordinary fresh exact engine instead; these
+/// are proof boundaries, not best-effort fallbacks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RetainedInsertBoundary {
+    /// A newly used body predicate would change the trigger-sensitive literal
+    /// ordering of clauses already stored in the context arenas.
+    ExistingTriggerOrdering,
+    /// Fresh construction quotients unconditional named-individual equalities
+    /// before saturation.  The retained graph has already been built over the
+    /// unquotiented term ids and cannot be rewritten in place.
+    AssertedGroundEquality,
+    /// Fresh engines demand-seed named-individual facts when a context first
+    /// mentions that individual. Contexts completed before the fact existed do
+    /// not retain the complete historical mention set needed to reproduce that
+    /// schedule exactly.
+    GroundFactInsertion,
+    /// Fresh construction promotes `C -> bottom` into static signature data
+    /// before maximal-head masks and context clauses are built.
+    DirectNothingPromotion,
+    /// Nom introduced fresh individual ids in the range a later input
+    /// individual would occupy.
+    AdditionalNominalCollision,
+}
+
+/// Work retained across one exact insertion, used for truthful incremental
+/// receipts and microbenchmarks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct RetainedInsertStats {
+    pub contexts_before: usize,
+    pub context_clauses_before: usize,
+    pub edges_before: usize,
+    pub contexts_after: usize,
+    pub context_clauses_after: usize,
+    pub edges_after: usize,
+}
+
+#[derive(Clone)]
 pub struct Engine {
     pub sig: Sig,
     ont: Ontology,
@@ -1929,54 +2041,7 @@ impl Engine {
         }
         let mut ont = Ontology::default();
         for c in ont_clauses {
-            let idx = ont.clauses.len();
-            if c.body.is_empty() {
-                // Ground facts (heads mentioning an individual) seed the
-                // ground context fully and other contexts on demand.
-                let mut inds: Vec<Term> = Vec::new();
-                for l in &c.head {
-                    lit_inds(l, &mut inds);
-                }
-                if inds.is_empty() {
-                    ont.facts.push(idx);
-                } else {
-                    for o in inds {
-                        ont.ground_facts.entry(o).or_default().push(idx);
-                    }
-                }
-            } else {
-                // unsatisfiable predicate: single body pred, empty head
-                if c.body.len() == 1 && c.head.is_empty() {
-                    if let Pred::Concept { iri, .. } = c.body[0] {
-                        if (iri as usize) < sig.nothing.len() {
-                            sig.nothing[iri as usize] = true;
-                        }
-                    }
-                }
-                for b in &c.body {
-                    match *b {
-                        Pred::Concept { iri, t } => {
-                            ont.concept_body_any.entry(iri).or_default().push(idx);
-                            if is_central(t) {
-                                sig.concept_succ_trigger[iri as usize] = true;
-                                ont.concept_clauses.entry(iri).or_default().push(idx);
-                            }
-                        }
-                        Pred::Role { iri, s, t } => {
-                            ont.role_body_any.entry(iri).or_default().push(idx);
-                            if is_central(s) {
-                                sig.forward_role_succ_trigger[iri as usize] = true;
-                                ont.forward_role_clauses.entry(iri).or_default().push(idx);
-                            }
-                            if is_central(t) {
-                                sig.backward_role_succ_trigger[iri as usize] = true;
-                                ont.backward_role_clauses.entry(iri).or_default().push(idx);
-                            }
-                        }
-                    }
-                }
-            }
-            ont.clauses.push(c);
+            ont.push_clause(&mut sig, c, true);
         }
         // Sort+dedup the body-predicate candidate lists ONCE: the ontology is
         // immutable, so `clauses_cand` returns an already-canonical borrowed
@@ -1984,14 +2049,7 @@ impl Engine {
         // Output-identical (same candidate set, same order); just not rebuilt
         // per call.  (`concept_body_any` can list a clause twice when its body
         // mentions the same concept iri on two terms, e.g. `C(x) ∧ C(y)`.)
-        for v in ont.concept_body_any.values_mut() {
-            v.sort_unstable();
-            v.dedup();
-        }
-        for v in ont.role_body_any.values_mut() {
-            v.sort_unstable();
-            v.dedup();
-        }
+        ont.canonicalise_candidates();
         // Nom-rule parameters: K + 1 = the largest z_i index over the ontology,
         // and fresh additional nominals are allocated above every input
         // individual id (so the term/label order extends allocation order).
@@ -2089,6 +2147,235 @@ impl Engine {
             stat_saturate: 0,
             branch_decisions: HashMap::new(),
         }
+    }
+
+    /// Check whether appending `additions` can preserve the existing context
+    /// graph and its cached ordering/index invariants.  A rejected insertion is
+    /// still supported exactly by the caller's fresh-engine fallback.
+    pub(crate) fn retained_insert_boundary(
+        &self,
+        additions: &[OntologyClause],
+    ) -> Option<RetainedInsertBoundary> {
+        for clause in additions {
+            // Fresh engines quotient precisely these asserted equalities before
+            // building any context.  Replaying an equality conclusion cannot
+            // retroactively change the term ids used as context/index keys.
+            if clause.body.is_empty()
+                && clause.head.len() == 1
+                && matches!(clause.head[0], Lit::Eq { s, t } if is_individual(s) && is_individual(t))
+            {
+                return Some(RetainedInsertBoundary::AssertedGroundEquality);
+            }
+            if clause.body.is_empty() {
+                let mut individuals = Vec::new();
+                for literal in &clause.head {
+                    lit_inds(literal, &mut individuals);
+                }
+                if !individuals.is_empty() {
+                    return Some(RetainedInsertBoundary::GroundFactInsertion);
+                }
+            }
+            if clause.body.len() == 1
+                && clause.head.is_empty()
+                && matches!(clause.body[0], Pred::Concept { .. })
+            {
+                return Some(RetainedInsertBoundary::DirectNothingPromotion);
+            }
+            // Su/Pr trigger membership participates in literal ordering.  New
+            // symbols have no old arena occurrences, but changing a bit for an
+            // existing symbol would invalidate every cached max-head mask that
+            // mentions it.
+            for body in &clause.body {
+                match *body {
+                    Pred::Concept { iri, t }
+                        if is_central(t)
+                            && (iri as usize) < self.sig.concept_succ_trigger.len()
+                            && !self.sig.concept_succ_trigger[iri as usize] =>
+                    {
+                        return Some(RetainedInsertBoundary::ExistingTriggerOrdering);
+                    }
+                    Pred::Role { iri, s, t }
+                        if (iri as usize) < self.sig.role_names.len()
+                            && ((is_central(s)
+                                && !self.sig.forward_role_succ_trigger[iri as usize])
+                                || (is_central(t)
+                                    && !self.sig.backward_role_succ_trigger[iri as usize])) =>
+                    {
+                        return Some(RetainedInsertBoundary::ExistingTriggerOrdering);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let max_added_individual = input_max_individual(additions);
+        if max_added_individual >= ind_id(self.nom_base) && !self.nom_table.borrow().is_empty() {
+            return Some(RetainedInsertBoundary::AdditionalNominalCollision);
+        }
+        None
+    }
+
+    fn retained_edge_count(&self) -> usize {
+        self.contexts.iter().map(|ctx| ctx.successors.len()).sum()
+    }
+
+    fn retained_clause_count(&self) -> usize {
+        self.contexts.iter().map(|ctx| ctx.worked_off.len()).sum()
+    }
+
+    pub(crate) fn retained_state_counts(&self) -> RetainedInsertStats {
+        let contexts = self.contexts.len();
+        let clauses = self.retained_clause_count();
+        let edges = self.retained_edge_count();
+        RetainedInsertStats {
+            contexts_before: contexts,
+            context_clauses_before: clauses,
+            edges_before: edges,
+            contexts_after: contexts,
+            context_clauses_after: clauses,
+            edges_after: edges,
+        }
+    }
+
+    /// Append clauses to a completed engine and resume its monotone saturation
+    /// from the retained context graph.  The caller must first pass
+    /// `retained_insert_boundary`; this method changes only schedule and
+    /// enumeration, not the calculus rules:
+    ///
+    /// * new ontology facts enter every existing context;
+    /// * every active worked-off side clause is replayed through Hyper against
+    ///   the extended ontology indexes;
+    /// * newly derived clauses follow the ordinary todo, equality, Succ, Pred,
+    ///   Join, and message-fixpoint paths;
+    /// * future contexts use freshly computed shared closures.
+    ///
+    /// Since additions cannot invalidate an old consequence and KM's
+    /// saturation is monotone/confluent, the resumed fixpoint equals a fresh
+    /// run over the union.  No calculus rule changes, so Lean re-certification
+    /// is not required.
+    pub(crate) fn insert_ontology_clauses_retained(
+        &mut self,
+        mut next_sig: Sig,
+        additions: Vec<OntologyClause>,
+    ) -> RetainedInsertStats {
+        debug_assert!(self.retained_insert_boundary(&additions).is_none());
+        debug_assert_eq!(
+            &next_sig.concept_names[..self.sig.concept_names.len()],
+            self.sig.concept_names.as_slice()
+        );
+        debug_assert_eq!(
+            &next_sig.role_names[..self.sig.role_names.len()],
+            self.sig.role_names.as_slice()
+        );
+
+        let mut stats = self.retained_state_counts();
+        // Builder signature vectors contain symbol identity but not ontology
+        // trigger analysis. Preserve the old prefix, then let push_clause add
+        // the delta bits for newly introduced symbols/clauses.
+        for i in 0..self.sig.concept_names.len() {
+            next_sig.concept_succ_trigger[i] |= self.sig.concept_succ_trigger[i];
+            next_sig.nothing[i] |= self.sig.nothing[i];
+        }
+        for i in 0..self.sig.role_names.len() {
+            next_sig.forward_role_succ_trigger[i] |= self.sig.forward_role_succ_trigger[i];
+            next_sig.backward_role_succ_trigger[i] |= self.sig.backward_role_succ_trigger[i];
+        }
+        next_sig.rsucc = self.sig.rsucc;
+        self.sig = next_sig;
+
+        let first_new = self.ont.clauses.len();
+        let max_added_individual = input_max_individual(&additions);
+        let mut max_z = self.nom_k as i32 + 1;
+        let mut see_z = |term: Term| {
+            if is_neighbour(term) && term != Y {
+                max_z = max_z.max((Y - term) as i32);
+            }
+        };
+        for clause in &additions {
+            for pred in &clause.body {
+                match *pred {
+                    Pred::Concept { t, .. } => see_z(t),
+                    Pred::Role { s, t, .. } => {
+                        see_z(s);
+                        see_z(t);
+                    }
+                }
+            }
+            for literal in &clause.head {
+                match *literal {
+                    Lit::P(Pred::Concept { t, .. }) => see_z(t),
+                    Lit::P(Pred::Role { s, t, .. }) => {
+                        see_z(s);
+                        see_z(t);
+                    }
+                    Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                        see_z(s);
+                        see_z(t);
+                    }
+                }
+            }
+        }
+        self.nom_k = self.nom_k.max((max_z - 1).max(0) as usize);
+        if max_added_individual >= ind_id(self.nom_base) {
+            debug_assert!(self.nom_table.borrow().is_empty());
+            self.nom_base = ind_term(max_added_individual + 1);
+            self.nom_next.set(max_added_individual + 1);
+        }
+        for clause in additions {
+            // Do not promote direct-bottom clauses into Sig::nothing here: see
+            // Ontology::push_clause. Hyper replay derives the exact same bottom
+            // consequences without invalidating retained ordering caches.
+            self.ont.push_clause(&mut self.sig, clause, false);
+        }
+        self.ont.canonicalise_candidates();
+
+        // Any cached context-independent closure reflects the old ontology.
+        // Existing contexts are replayed below; future contexts recompute the
+        // closure lazily from the extended indexes.
+        self.shared_closure = None;
+        self.shared_root_closure = None;
+        self.nominal_enumerations = detect_nominal_enumerations(&self.sig, &self.ont.clauses);
+        self.nominal_shortcuts.clear();
+
+        let old_contexts = self.contexts.len();
+        let new_facts: Vec<usize> = (first_new..self.ont.clauses.len())
+            .filter(|&index| self.ont.clauses[index].body.is_empty())
+            .collect();
+        for id in 0..old_contexts {
+            // The preflight excludes named-individual facts, whose historical
+            // demand-seeding schedule requires a rebuild. Every remaining
+            // empty-body x/function fact belongs to every context, exactly as
+            // in ordinary `add_facts` initialisation.
+            for &fact in &new_facts {
+                self.seed_fact(id, fact);
+            }
+
+            // The active old side clauses were already worked off before the
+            // new ontology clauses existed. Replaying only their Hyper role is
+            // sufficient: all local Eq/Factor/Join/Pred relationships among old
+            // context clauses already reached a fixpoint, while every new
+            // resolvent enters the ordinary full saturation loop below.
+            let root = self.contexts[id].root;
+            let sides = self.contexts[id].worked_off.clone();
+            for cid in sides {
+                if !self.contexts[id].clause_keys.contains(&cid) {
+                    continue;
+                }
+                let side = self.cc_arena[root as usize][cid as usize].clone();
+                let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
+                for max in maxima {
+                    for result in self.hyper(id, &side, max, root) {
+                        self.add_clause(id, result);
+                    }
+                }
+            }
+            self.saturate(id);
+            self.propagate(id);
+        }
+
+        stats.contexts_after = self.contexts.len();
+        stats.context_clauses_after = self.retained_clause_count();
+        stats.edges_after = self.retained_edge_count();
+        stats
     }
 
     /// Install the Direction-B per-core assumed-disjunct decisions (see
