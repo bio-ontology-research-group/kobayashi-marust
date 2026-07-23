@@ -51,10 +51,11 @@ reported as empirical evidence, not as a proof of the whole executable.
   justification for a named-class subsumption, unsatisfiable class, or
   inconsistency and emits a versioned JSON protocol for later OWLAPI and
   Protégé UI integration.
-- **Addition-only incremental EL++ reasoning.** `km incremental` retains the
-  completed EL++ relation and role graph across JSONL update transactions,
-  rejects non-EL additions atomically, and restarts safely for the one
-  non-monotone Skolem-normalisation corner.
+- **Exact incremental EL++ and CB reasoning.** `km incremental` retains the
+  completed EL++ relation and role graph for safe additions, accepts the full
+  normalised clause fragment completed by the CB worker, and supports atomic
+  addition, removal, and replacement transactions. CB changes and every
+  removal currently use an explicitly reported exact rebuild.
 - **Formal work kept in scope.** Lean files prove results about abstract
   resolution, selected context-calculus fragments, inverse-role encoding,
   nominal rules, and certificate checkers. They are useful specifications and
@@ -113,9 +114,10 @@ production routing; manual and forced matrix routes are rejected. See
 [`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md) for query syntax, the JSON
 schema, minimality semantics, and the OWLAPI/Protégé integration boundary.
 
-`km incremental` serves an addition-only EL++ session over JSONL standard
-input and output. It consumes the same normalised clause representation as
-`km elc`; removals and non-EL updates require a fresh general classification.
+`km incremental` serves an exact EL++/CB session over JSONL standard input and
+output. It consumes normalised clauses, assigns stable ids, and supports
+addition, removal, and combined replacement. Unsupported or incomplete CB
+snapshots are rejected atomically instead of exposing a partial answer.
 See [`docs/INCREMENTAL-REASONING.md`](docs/INCREMENTAL-REASONING.md) for the
 protocol, Rust API, correctness argument, and current limitations.
 
