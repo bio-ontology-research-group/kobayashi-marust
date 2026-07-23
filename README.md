@@ -33,8 +33,8 @@ reported as empirical evidence, not as a proof of the whole executable.
 - **Broad but not universal production coverage.** The portfolio handles EL,
   disjunction, quantifiers, role hierarchies and chains, inverses, nominals,
   number restrictions, and selected rule/ABox cases. Some ontologies time out
-  or require a specialized route. Bare automatic routing validates 562 cases;
-  explicit current routes raise the observed union to 579. The older 589-route
+  or require a specialized route. Bare automatic routing validates 570 cases;
+  explicit current routes raise the observed union to 587. The older 589-route
   ledger spans current, historical, and candidate source revisions and is not
   a single-current-binary claim.
 - **Measured routing rather than one universal algorithm.** `km classify`
@@ -140,12 +140,13 @@ same IBEX CPU model. The frozen KM revision is
 
 | procedure | sound yes | complete yes | both yes | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **KM, preselected current routes** | **575** | **575** | **575** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
-| **KM, automatic route** | **562** | **562** | **562** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
-| Konclude | 587 | 585 | 585 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
-| HermiT | 549 | 550 | 549 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
-| ELK | 576 | 529 | 529 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
-| RustDL, complete mode | 542 | 525 | 525 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
+| **KM, preselected current routes** | **583** | **583** | **583** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
+| KM, oracle-selected current route | 587 | 587 | 587 | 587 | 3.4696 | 0.1883 | 393.83 | 29.03 |
+| **KM, automatic route** | **570** | **570** | **570** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
+| Konclude | 589 | 587 | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| HermiT | 557 | 558 | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
+| ELK | 578 | 531 | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
+| RustDL, complete mode | 547 | 530 | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
 | Sequoia, strict mode | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
 
 The `sound` and `complete` columns are separate empirical judgments about the
@@ -157,19 +158,28 @@ unsupported inputs, and errors. Peak memory is MiB even though the retained
 field name is `peak_mb`.
 
 The
-[commit-pinned per-ontology route table](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/38a5a106756d5658712eedbb395e7608f0229bd9/results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.tsv)
+[main-branch per-ontology route table](https://github.com/bio-ontology-research-group/kobayashi-marust/blob/main/results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.scoring-v2.tsv)
 records every command, environment, source revision, binary and runtime hash,
 time, memory, taxonomy hash, correctness field, and evidence locator. The
-[pinned result package](https://github.com/bio-ontology-research-group/kobayashi-marust/tree/38a5a106756d5658712eedbb395e7608f0229bd9/results/benchmarks/2026-07-22-reproduced-route-performance)
+[main-branch result package](https://github.com/bio-ontology-research-group/kobayashi-marust/tree/main/results/benchmarks/2026-07-22-reproduced-route-performance)
 also contains the 66-arm contract, raw and normalized measurements, build and
 Slurm receipts, optimization comparisons, and an executable Showboat
 verification record.
+
+The authoritative correctness labels are scoring schema v2 in
+[`full-panel-results.scoring-v2.tsv.gz`](results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-results.scoring-v2.tsv.gz).
+The reasoner measurements are unchanged. Schema v2 repairs two post-processing
+errors: shared inconsistency was compared as if two different taxonomy
+serializations denoted different answers, and exact same-job full-IRI identity
+was ignored for the two ontologies whose local-name projection is
+non-injective. The frozen v1 table remains available for provenance, but its
+correctness totals are superseded.
 
 ### Automatic versus explicit KM routes
 
 Plain `km classify ONTOLOGY` is equivalent to `--route auto`. It does not
 reproduce every routed result. In this panel it returns 571 parseable answers,
-of which 562 are empirically sound and complete. Seventeen more ontologies have
+of which 570 are empirically sound and complete. Seventeen more ontologies have
 a validated explicit current route:
 
 - `--route production_all` for `1481`, `1579`, `3377`, `3560`, `5107`,
@@ -177,7 +187,7 @@ a validated explicit current route:
 - the documented `htforce_race` manual environment for `6934`, `7499`,
   `9635`, `10702`, and `15672`.
 
-This post hoc current-route union contains 579 validated answers. The exact
+This post hoc current-route union contains 587 validated answers. The exact
 `htforce_race` environment is in
 [`full-panel-contract.tsv`](results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-contract.tsv),
 and each ontology row embeds all 66 measured alternatives. These are validated
@@ -189,11 +199,13 @@ ontologies. That total spans current, historical, and candidate source
 revisions. The uniform current-binary panel does not reproduce 589, so 589 must
 not be presented as the behavior of bare `km classify` or one current binary.
 
-Thirteen current-panel rows lack a validated answer. Eight (`443`, `3524`,
-`6720`, `7052`, `8941`, `13912`, `15288`, and `15703`) return answers whose
-available full-IRI evidence is inconclusive. Route `9540` times out, and the
-old `10621` `ht_bridge` recipe is rejected by the frozen current revision.
-The remaining three are `1194`, `10860`, and `4669`.
+Five ontologies lack a validated answer from any current route: `1194`, `4669`,
+`9540`, `10621`, and `10860`. The eight rows previously reported as unknown
+(`443`, `3524`, `6720`, `7052`, `8941`, `13912`, `15288`, and `15703`) are
+validated by schema v2 without rerunning a reasoner. Route `9540` times out,
+and the old `10621` `ht_bridge` recipe is rejected by the frozen current
+revision. These are the two accepted historical mechanisms that still need to
+be restored in the current binary.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
 named classes claimed unsatisfiable have independent satisfiable witnesses.

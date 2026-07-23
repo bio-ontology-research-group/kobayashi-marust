@@ -1,0 +1,9 @@
+procedure	rows	sound_yes	complete_yes	sound_and_complete_yes	status_ok	status_timeout	status_memout	status_error	status_unsupported	wall_mean_s_status_ok	wall_median_s_status_ok	peak_mean_mib_status_ok	peak_median_mib_status_ok
+km_documented_selected	592	583	583	583	583	5	0	0	1	5.0168	0.2336	643.158	37.12
+km_best_current_route	592	587	587	587	587	0	0	0	0	3.4696	0.1883	393.8334	29.03
+km_auto	592	570	570	570	571	0	0	20	1	5.3	0.2807	789.9226	44.43
+konclude	592	589	587	587	589	1	1	1	0	3.2657	0.2813	558.0915	76.53
+hermit	592	557	558	557	558	33	0	0	1	13.1261	1.8868	1330.5641	714.005
+elk	592	578	531	531	592	0	0	0	0	1.7449	0.7466	505.8606	234.11
+rustdl	592	547	530	530	551	35	5	1	0	4.9596	0.1928	299.4854	49.8
+sequoia	592	340	339	339	341	11	0	0	240	7.3405	2.5371	2197.3128	536.15

@@ -1,0 +1,17 @@
+comparison_kind	optimized_arm	reference_arm	optimized_sound_complete	reference_sound_complete	sound_complete_delta	paired_sound_complete	wall_mean_delta_s	wall_median_delta_s	wall_faster	wall_equal	wall_slower	peak_mean_delta_mb	peak_median_delta_mb	peak_lower	peak_equal	peak_higher
+chronological_stage	km_opt_stage_result_extract	km_opt_stage_pre	576	576	0	576	-0.0168	-0.0002	322	23	231	-13.0551	-0.31	340	55	181
+chronological_stage	km_opt_stage_inline_subst	km_opt_stage_result_extract	576	576	0	576	-0.1482	0.0002	233	18	325	9.0782	0.0	252	81	243
+chronological_stage	km_opt_stage_role_reach	km_opt_stage_inline_subst	575	576	-1	575	-0.0247	0.0001	269	16	290	-1.8422	0.0	248	76	251
+chronological_stage	km_opt_stage_rsucc_edge	km_opt_stage_role_reach	576	575	1	575	0.0118	-0.0001	288	27	260	1.8279	0.0	242	63	270
+chronological_stage	km_opt_stage_rollback	km_opt_stage_rsucc_edge	576	576	0	576	0.0263	0.0001	262	19	295	-2.9161	0.0	271	72	233
+chronological_stage	km_opt_stage_oneway_subsume	km_opt_stage_rollback	579	576	3	576	-0.0187	-0.0002	306	16	254	1.2141	0.0	256	66	254
+chronological_stage	km_opt_stage_crossscan_gate	km_opt_stage_oneway_subsume	581	579	2	579	0.014	-0.0001	310	19	250	-3.8065	0.0	274	57	248
+chronological_stage	km_opt_stage_clause_hash_reuse	km_opt_stage_crossscan_gate	581	581	0	581	0.0658	0.0	280	15	286	0.5165	0.0	241	84	256
+chronological_stage	km_opt_stage_core_hash_intern	km_opt_stage_clause_hash_reuse	581	581	0	581	-0.0439	0.0	281	22	278	1.3297	0.0	277	61	243
+chronological_stage	km_opt_stage_backsub_unindex	km_opt_stage_core_hash_intern	581	581	0	581	-0.0433	-0.0001	299	13	269	-1.4096	0.0	263	61	257
+chronological_last_stage_to_frozen_main	km_route_production_all	km_opt_stage_backsub_unindex	582	581	1	581	-0.0373	0.0002	254	18	309	2.2274	0.0	228	70	283
+clean_current_main_ablation	km_route_production_all	km_opt_ablate_result_extract	582	582	0	582	-0.0406	-0.0001	299	7	276	-7.2658	-0.31	324	54	204
+clean_current_main_ablation	km_route_production_all	km_opt_ablate_oneway_subsume	582	582	0	582	-0.0495	0.0	285	13	284	2.0351	0.0	256	68	258
+clean_current_main_ablation	km_route_production_all	km_opt_ablate_clause_hash_reuse	582	582	0	582	-0.0588	0.0	282	13	287	2.3762	0.0	239	64	279
+clean_current_main_ablation	km_route_production_all	km_opt_ablate_core_hash_intern	582	582	0	582	-0.0556	0.0002	260	11	311	1.2987	0.0	259	71	252
+clean_current_main_ablation	km_route_production_all	km_opt_ablate_backsub_unindex	582	582	0	582	-0.0757	0.0	277	17	288	2.5553	0.0	238	77	267

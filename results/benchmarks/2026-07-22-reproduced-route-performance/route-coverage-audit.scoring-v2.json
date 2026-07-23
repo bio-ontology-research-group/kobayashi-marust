@@ -1,0 +1,14 @@
+{
+  "accepted_rows": 589,
+  "contract": "results/benchmarks/2026-07-22-reproduced-route-performance/full_panel_contract.py",
+  "contract_sha256": "1b7ac4292fdcd3c5f6dd9477a6327d901a3cb586d0327bbb3a9537b8f7605e0e",
+  "documented_contract_environments": 8,
+  "ledger": "results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.pre-panel.tsv",
+  "ledger_rows": 592,
+  "ledger_sha256": "ff508acc0d9501344408820284396e0b0d91310c0f9275e16ccb7ccfa6047d94",
+  "missing": [],
+  "missing_environment_count": 0,
+  "public_contract_routes": 35,
+  "status": "complete",
+  "unique_historical_environments": 12
+}

@@ -6,23 +6,27 @@ the 66 procedures sequentially under the same limits. The run therefore
 contains 39,072 independently limited reasoner measurements, with no reuse of
 an unreproducible historical binary.
 
-The prominent repository table and the table below are generated from
-[`headline-summary.tsv`](headline-summary.tsv). The complete 66-procedure
-summary is [`full-panel-summary.tsv`](full-panel-summary.tsv), and the full
-39,072-row data set is
-[`full-panel-results.tsv.gz`](full-panel-results.tsv.gz).
+The prominent repository table and the table below use correctness scoring
+schema v2 from [`headline-summary.scoring-v2.tsv`](headline-summary.scoring-v2.tsv).
+The complete 66-procedure summary is
+[`full-panel-summary.scoring-v2.tsv`](full-panel-summary.scoring-v2.tsv), and
+the full 39,072-row data set is
+[`full-panel-results.scoring-v2.tsv.gz`](full-panel-results.scoring-v2.tsv.gz).
+The original measurements and v1 labels remain byte-for-byte in
+[`full-panel-results.tsv.gz`](full-panel-results.tsv.gz); v2 changes only the
+correctness adjudication fields.
 
 ## Headline comparison
 
 | procedure | `sound=yes` | `complete=yes` | both yes | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **KM, preselected current routes** | **575** | **575** | **575** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
-| KM, oracle-selected current route | 579 | 579 | 579 | 579 | 3.4477 | 0.1893 | 385.43 | 29.72 |
-| **KM, `--route auto`** | **562** | **562** | **562** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
-| Konclude | 587 | 585 | 585 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
-| HermiT | 549 | 550 | 549 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
-| ELK | 576 | 529 | 529 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
-| RustDL, complete mode | 542 | 525 | 525 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
+| **KM, preselected current routes** | **583** | **583** | **583** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
+| KM, oracle-selected current route | 587 | 587 | 587 | 587 | 3.4696 | 0.1883 | 393.83 | 29.03 |
+| **KM, `--route auto`** | **570** | **570** | **570** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
+| Konclude | 589 | 587 | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| HermiT | 557 | 558 | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
+| ELK | 578 | 531 | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
+| RustDL, complete mode | 547 | 530 | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
 | Sequoia, strict mode | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
 
 `ok metrics` are calculated only over `status=ok` rows. This historical
@@ -39,18 +43,20 @@ correct current route after seeing all results and is not a deployable router.
 
 The earlier source-bound ledger records 589 accepted answers, but that total
 spans the current, historical, and candidate source revisions named in its
-rows. This fresh current-revision run does not reproduce 589. Of the
+rows. This fresh current-revision run reproduces 587 of them. Of the
 preselected routes, five time out (`7499`, `9540`, `9635`, `10702`, and
-`15672`), `10621` is rejected as unsupported, eight successful answers have
-unresolved full-IRI correctness, and the three unclosed ontologies have no
-selected route. The prior ledger remains in the first 50 columns of
-[`ontology-route-performance.tsv`](ontology-route-performance.tsv), while the
-fresh `panel_*` columns record what the frozen current binary actually did.
+`15672`), `10621` is rejected as unsupported, and the three unclosed
+ontologies have no selected route. Other current routes recover four of the
+five selected-route timeouts. The prior ledger remains in the first 50 columns
+of
+[`ontology-route-performance.scoring-v2.tsv`](ontology-route-performance.scoring-v2.tsv),
+while the fresh `panel_*` columns record what the frozen current binary
+actually did.
 
 ### Does plain `km classify` reproduce the routed coverage?
 
 No. Plain `km classify ONTOLOGY` is `--route auto`; it returns 571 parseable
-answers and 562 empirically sound-and-complete answers. Seventeen additional
+answers and 570 empirically sound-and-complete answers. Seventeen additional
 ontologies have a validated current explicit route in this panel:
 
 | ontology | validated current invocation |
@@ -58,15 +64,14 @@ ontologies have a validated current explicit route in this panel:
 | 1481, 1579, 3377, 3560, 5107, 6477, 6999, 7914, 9654, 10908, 15803, 15846 | `km classify --route production_all ONTOLOGY` |
 | 6934, 7499, 9635, 10702, 15672 | the `htforce_race` environment from `full-panel-contract.tsv`, with `km classify --route manual ONTOLOGY` |
 
-Those recipes raise the validated current-revision union to 579. They were
+Those recipes raise the validated current-revision union to 587. They were
 selected after observing the panel, so they are reproducible per-ontology
 recipes, not evidence that the automatic router would have chosen them. The
 faster validated arm for every ontology is in `panel_best_km_arm`; its exact
 command environment and all alternatives are in `panel_all_procedures_json`.
-The 13 rows without a validated current answer are `443`, `1194`, `3524`,
-`4669`, `6720`, `7052`, `8941`, `9540`, `10621`, `10860`, `13912`, `15288`,
-and `15703`. Eight of these returned answers whose full-IRI correctness is
-unknown; that is different from a demonstrated wrong answer.
+The five rows without a validated current answer are `1194`, `4669`, `9540`,
+`10621`, and `10860`. The eight answers previously reported as unknown were
+post-processing errors corrected by scoring schema v2.
 
 ## What ran
 
@@ -181,8 +186,24 @@ OWL input.
 The normal oracle set contains 587 frozen Konclude signatures. The scorer also
 applies the documented correction for ontology 13503 and independent
 inconsistency adjudications for 2669 and 15516. A same-job full-IRI Konclude
-fingerprint is used only where the frozen signature establishes a trusted
-reference.
+fingerprint is trusted when that row reproduces the frozen reference. For 3524
+and 15703, the frozen local-name projection is non-injective, so an allowlisted
+full-IRI-only wrapper verdict plus exact same-job full-IRI identity is used
+instead.
+
+Scoring schema v1 made two semantic mistakes after all procedures had run.
+First, it compared taxonomy serializations for six ontologies where both
+reasoners reported inconsistency. In classical OWL semantics, both answers
+entail every axiom even if one reasoner materializes every class below bottom
+and another emits no taxonomy. Second, it rejected exact full-IRI identity for
+3524 and 15703 because their deliberately skipped local-name oracle had
+`gold_kind=none`. Schema v2 repairs all eight KM auto rows and applies the same
+rule uniformly to every procedure. The executable scorer, unit tests, complete
+change ledger, and hash-bound receipt are
+[`../full_panel_correctness.py`](../full_panel_correctness.py),
+[`../test_full_panel_correctness.py`](../test_full_panel_correctness.py),
+[`scoring-v2-corrections.tsv`](scoring-v2-corrections.tsv), and
+[`scoring-v2-receipt.json`](scoring-v2-receipt.json).
 
 Ontology 4669 has no authoritative complete taxonomy. Its overlay checks every
 successful arm against 64 independently satisfiable named classes from 67
@@ -201,13 +222,14 @@ an improvement from retaining the optimization.
 
 | optimization retained in current main | both-yes delta | paired rows | wall mean delta s | wall median delta s | peak mean delta MiB | peak median delta MiB |
 |---|---:|---:|---:|---:|---:|---:|
-| result extraction | 0 | 574 | -0.0350 | -0.0001 | -7.39 | -0.31 |
-| one-way subsumption | 0 | 574 | -0.0404 | 0.0000 | +2.05 | 0.00 |
-| context-clause hash reuse | 0 | 574 | -0.0551 | 0.0000 | +2.39 | 0.00 |
-| context-core hash interning | 0 | 574 | -0.0516 | +0.0002 | +1.28 | 0.00 |
-| incremental back-subsumption removal | 0 | 574 | -0.0710 | 0.0000 | +2.55 | 0.00 |
+| result extraction | 0 | 582 | -0.0406 | -0.0001 | -7.27 | -0.31 |
+| one-way subsumption | 0 | 582 | -0.0495 | 0.0000 | +2.04 | 0.00 |
+| context-clause hash reuse | 0 | 582 | -0.0588 | 0.0000 | +2.38 | 0.00 |
+| context-core hash interning | 0 | 582 | -0.0556 | +0.0002 | +1.30 | 0.00 |
+| incremental back-subsumption removal | 0 | 582 | -0.0757 | 0.0000 | +2.56 | 0.00 |
 
-[`optimization-effects.tsv`](optimization-effects.tsv) separates two kinds of
+[`optimization-effects.scoring-v2.tsv`](optimization-effects.scoring-v2.tsv)
+separates two kinds of
 comparison. Chronological source stages include all changes between adjacent
 revisions and are therefore descriptive, not causal. A clean ablation compares
 frozen current main against current main with exactly one optimization commit
@@ -216,19 +238,27 @@ return an empirically sound-and-complete answer.
 
 ## Main artifacts
 
-- [`ontology-route-performance.tsv`](ontology-route-performance.tsv): the
+- [`ontology-route-performance.scoring-v2.tsv`](ontology-route-performance.scoring-v2.tsv): the
   592-row ontology ledger requested by the project. It retains the prior route
   evidence, adds fresh headline and documented-route columns, and embeds a
   compact 66-procedure JSON record in every ontology row.
-- [`full-panel-results.tsv.gz`](full-panel-results.tsv.gz): all 39,072
+- [`full-panel-results.scoring-v2.tsv.gz`](full-panel-results.scoring-v2.tsv.gz): all 39,072
   normalized measurements, including command, environment, hashes, limits,
   resource metrics, correctness fields, and Slurm identity.
 - [`full-panel-raw-results.jsonl.gz`](full-panel-raw-results.jsonl.gz): the
   exact pre-aggregation JSON rows concatenated in ontology-list order.
-- [`full-panel-summary.tsv`](full-panel-summary.tsv): all-arm status,
+- [`full-panel-summary.scoring-v2.tsv`](full-panel-summary.scoring-v2.tsv): all-arm status,
   correctness, successful-run metrics, and all-attempt metrics.
-- [`headline-summary.tsv`](headline-summary.tsv): documented KM selection,
+- [`headline-summary.scoring-v2.tsv`](headline-summary.scoring-v2.tsv): documented KM selection,
   oracle-best current KM route, KM auto, and the primary baselines.
+- [`scoring-v2-corrections.tsv`](scoring-v2-corrections.tsv) and
+  [`scoring-v2-receipt.json`](scoring-v2-receipt.json): every changed
+  correctness field plus input, program, and output hashes.
+- [`SCORING-V2.md`](SCORING-V2.md): executable rescore and route-audit
+  instructions with hard invariants and expected totals.
+- [`route-coverage-audit.scoring-v2.json`](route-coverage-audit.scoring-v2.json):
+  fail-closed proof that all 589 accepted historical route environments occur
+  in the 66-procedure contract.
 - [`procedure-runtime-identities.tsv`](procedure-runtime-identities.tsv): one
   binary/runtime identity row per procedure.
 - [`full-panel-receipt.json`](full-panel-receipt.json): hashes and invariants
