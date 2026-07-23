@@ -4,7 +4,7 @@
 //!                                      (replacement for `owl_classify.py`)
 //!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
-//!   `km incremental`                   stateful addition-only EL++ session
+//!   `km incremental`                   stateful exact EL++/CB session
 //!
 //! `km classify` spawns the workers by re-invoking ITSELF with the worker
 //! subcommand (`current_exe()` + `ofn`/`elc`/`engine`/`tableau`), unless a
@@ -49,7 +49,7 @@ fn main() {
             eprintln!("       km features [--format FORMAT] <ontology> ...");
             eprintln!("       km profile [--format FORMAT] <ontology> ...");
             eprintln!("       km routes");
-            eprintln!("       km incremental   (JSONL addition-only EL++ session)");
+            eprintln!("       km incremental   (JSONL exact EL++/CB session)");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
         }

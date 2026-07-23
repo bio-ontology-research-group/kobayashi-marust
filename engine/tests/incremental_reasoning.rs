@@ -243,20 +243,16 @@ fn jsonl_protocol_keeps_session_after_rejected_transaction() {
         "[{}]",
         clause(&[concept("A", "x")], &[concept("B", "x")])
     ));
-    let non_el = clauses(&format!(
-        "[{}]",
-        clause(
-            &[concept("A", "x")],
-            &[concept("X", "x"), concept("Y", "x")]
-        )
-    ));
+    let unsupported = clauses(
+        r#"[{"body":[],"head":[{"kind":"concept","concept":"X","term":{"kind":"aux","root":"r","label":[]}}]}]"#,
+    );
     let addition = clauses(&format!(
         "[{}]",
         clause(&[concept("B", "x")], &[concept("C", "x")])
     ));
     let commands = [
         serde_json::json!({"op": "init", "clauses": initial}),
-        serde_json::json!({"op": "add", "clauses": non_el}),
+        serde_json::json!({"op": "add", "clauses": unsupported}),
         serde_json::json!({"op": "add", "clauses": addition}),
         serde_json::json!({"op": "is_subsumed_by", "sub": "A", "sup": "C"}),
     ]
@@ -275,4 +271,93 @@ fn jsonl_protocol_keeps_session_after_rejected_transaction() {
     assert_eq!(rows[1]["status"], "error");
     assert_eq!(rows[2]["update"]["revision"], 1);
     assert_eq!(rows[3]["entailed"], true);
+}
+
+#[test]
+fn jsonl_protocol_transitions_to_cb_and_removes_by_stable_id() {
+    std::env::set_var("KM_THREADS", "1");
+    let initial = clauses(&format!(
+        "[{}]",
+        clause(&[concept("A", "x")], &[concept("B", "x")])
+    ));
+    let disjunction = clauses(&format!(
+        "[{}]",
+        clause(
+            &[concept("A", "x")],
+            &[concept("X", "x"), concept("Y", "x")]
+        )
+    ));
+    let replacement = clauses(&format!(
+        "[{}]",
+        clause(&[concept("B", "x")], &[concept("C", "x")])
+    ));
+    let commands = [
+        serde_json::json!({"op": "init", "clauses": initial}),
+        serde_json::json!({"op": "add", "clauses": disjunction}),
+        serde_json::json!({"op": "remove", "clause_ids": [2]}),
+        serde_json::json!({
+            "op": "change",
+            "remove_clause_ids": [1],
+            "add_clauses": replacement,
+        }),
+        serde_json::json!({"op": "stats"}),
+    ]
+    .into_iter()
+    .map(|value| serde_json::to_string(&value).unwrap())
+    .collect::<Vec<_>>()
+    .join("\n");
+    let mut output = Vec::new();
+    run_jsonl_session(Cursor::new(commands), &mut output).expect("JSONL session");
+    let rows: Vec<serde_json::Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 5);
+    assert_eq!(rows[0]["backend"], "el");
+    assert_eq!(rows[0]["clause_ids"], serde_json::json!([1]));
+    assert_eq!(rows[1]["update"]["backend_after"], "cb");
+    assert_eq!(rows[1]["update"]["strategy"], "exact_rebuild");
+    assert_eq!(
+        rows[1]["update"]["added_clause_ids"],
+        serde_json::json!([2])
+    );
+    assert_eq!(rows[2]["update"]["backend_after"], "el");
+    assert_eq!(
+        rows[2]["update"]["removed_clause_ids"],
+        serde_json::json!([2])
+    );
+    assert_eq!(rows[3]["op"], "change");
+    assert_eq!(rows[3]["update"]["revision"], 3);
+    assert_eq!(
+        rows[3]["update"]["removed_clause_ids"],
+        serde_json::json!([1])
+    );
+    assert_eq!(
+        rows[3]["update"]["added_clause_ids"],
+        serde_json::json!([3])
+    );
+    assert_eq!(rows[4]["revision"], 3);
+    assert_eq!(rows[4]["clause_ids"], serde_json::json!([3]));
+}
+
+#[test]
+fn jsonl_protocol_rejects_unconsumed_side_channels() {
+    let commands = [
+        r#"{"op":"init","clauses":[],"rbox":[]}"#,
+        r#"{"op":"stats"}"#,
+    ]
+    .join("\n");
+    let mut output = Vec::new();
+    run_jsonl_session(Cursor::new(commands), &mut output).expect("JSONL session");
+    let rows: Vec<serde_json::Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["status"], "error");
+    assert_eq!(rows[0]["op"], "parse");
+    assert_eq!(rows[1]["status"], "error");
+    assert_eq!(rows[1]["op"], "stats");
 }
