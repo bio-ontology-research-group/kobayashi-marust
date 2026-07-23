@@ -1,11 +1,6 @@
 package org.bioontology.kobayashimarust.protege;
 
-import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat;
 import org.semanticweb.owlapi.model.OWLOntology;
-import org.semanticweb.owlapi.model.OWLImportsDeclaration;
-import org.semanticweb.owlapi.model.OWLOntologyManager;
-import org.semanticweb.owlapi.model.parameters.Imports;
-import org.semanticweb.owlapi.apibinding.OWLManager;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,21 +62,7 @@ public final class Classifier {
         Path tmp = Files.createTempFile("kmarust-", ".ofn");
         Path log = Files.createTempFile("kmarust-", ".log");
         try {
-            OWLOntologyManager sourceManager = ontology.getOWLOntologyManager();
-            for (OWLOntology member : ontology.getImportsClosure()) {
-                for (OWLImportsDeclaration declaration : member.getImportsDeclarations()) {
-                    if (sourceManager.getImportedOntology(declaration) == null) {
-                        throw new IllegalStateException(
-                                "Protégé has not loaded ontology import "
-                                + declaration.getIRI());
-                    }
-                }
-            }
-            OWLOntologyManager mgr = OWLManager.createOWLOntologyManager();
-            OWLOntology flattened = mgr.createOntology(
-                    ontology.getAxioms(Imports.INCLUDED));
-            mgr.saveOntology(flattened, new FunctionalSyntaxDocumentFormat(),
-                    org.semanticweb.owlapi.model.IRI.create(tmp.toUri()));
+            FlattenedOntology.save(ontology, tmp);
 
             ProcessBuilder pb = new ProcessBuilder(
                     kmBin, "classify", "--lines", "--format", "functional",

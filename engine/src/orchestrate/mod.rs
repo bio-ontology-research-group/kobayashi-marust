@@ -115,6 +115,14 @@ pub struct Classification {
     pub dropped: usize,
 }
 
+/// Internal oracle provenance kept out of the stable classification shape.
+pub(crate) struct ClassificationEvidence {
+    pub classification: Classification,
+    /// An exact consistency mechanism covered the complete source even when a
+    /// later taxonomy-only fall-through could not retain every clause.
+    pub consistency_certified: bool,
+}
+
 pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
     Ok(serde_json::from_reader(BufReader::new(File::open(
         res.stdout.path(),
@@ -454,6 +462,13 @@ fn try_inproc_elc(
 // the conductor
 // ---------------------------------------------------------------------------
 pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+    classify_with_evidence(initial_cfg, ont).map(|evidence| evidence.classification)
+}
+
+pub(crate) fn classify_with_evidence(
+    initial_cfg: &Config,
+    ont: &Path,
+) -> Result<ClassificationEvidence, OrchestrateError> {
     // Route selection changes process-wide KM_* keys because the frontend and
     // worker subprocesses share the established environment contract. Restore
     // them on every return path so repeated library calls route independently.
@@ -491,11 +506,14 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     // The frontend proved the ABox forces an individual into disjoint named
     // classes: inconsistent. The CB engine drops the ABox, so short-circuit.
     if meta.abox_inconsistent {
-        return Ok(Classification {
-            consistent: false,
-            subsumptions: vec![],
-            unsatisfiable: vec![],
-            dropped: 0,
+        return Ok(ClassificationEvidence {
+            classification: Classification {
+                consistent: false,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: 0,
+            },
+            consistency_certified: true,
         });
     }
 
@@ -511,20 +529,28 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     // class subsumption, making the fall-through sound and complete. Inert when
     // the ontology has no rule (`rules_consistency` returns None). Opt out with
     // KM_NO_HT_RULES.
+    let mut consistency_certified = false;
     if cfg.ht_rules {
-        if let Some(false) = rules_consistency(cfg, clauses_path.path(), &meta)? {
-            if timing {
-                eprintln!(
-                    "KM_TIMING rules-consistency done @ {:.2}s consistent=false",
-                    t_start.elapsed().as_secs_f64(),
-                );
+        match rules_consistency(cfg, clauses_path.path(), &meta)? {
+            Some(false) => {
+                if timing {
+                    eprintln!(
+                        "KM_TIMING rules-consistency done @ {:.2}s consistent=false",
+                        t_start.elapsed().as_secs_f64(),
+                    );
+                }
+                return Ok(ClassificationEvidence {
+                    classification: Classification {
+                        consistent: false,
+                        subsumptions: vec![],
+                        unsatisfiable: vec![],
+                        dropped: 0,
+                    },
+                    consistency_certified: true,
+                });
             }
-            return Ok(Classification {
-                consistent: false,
-                subsumptions: vec![],
-                unsatisfiable: vec![],
-                dropped: 0,
-            });
+            Some(true) => consistency_certified = true,
+            None => {}
         }
     }
 
@@ -755,20 +781,26 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
         }
     }
     if unsat_names.iter().any(|n| asserted.contains(*n)) {
-        return Ok(Classification {
-            consistent: false,
-            subsumptions: vec![],
-            unsatisfiable: vec![],
-            dropped: out.dropped,
+        return Ok(ClassificationEvidence {
+            classification: Classification {
+                consistent: false,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: out.dropped,
+            },
+            consistency_certified: consistency_certified || out.dropped == 0,
         });
     }
     subs.sort();
     unsat.sort();
-    Ok(Classification {
-        consistent: !out.inconsistent,
-        subsumptions: subs,
-        unsatisfiable: unsat,
-        dropped: out.dropped,
+    Ok(ClassificationEvidence {
+        classification: Classification {
+            consistent: !out.inconsistent,
+            subsumptions: subs,
+            unsatisfiable: unsat,
+            dropped: out.dropped,
+        },
+        consistency_certified: consistency_certified || out.dropped == 0,
     })
 }
 

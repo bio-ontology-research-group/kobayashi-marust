@@ -44,13 +44,15 @@ reported as empirical evidence, not as a proof of the whole executable.
 - **Standard OWL input.** The CLI accepts OWL functional syntax, OWL/XML,
   RDF/XML, and Turtle. Conversion and imports fail closed instead of silently
   classifying a partial ontology.
-- **Protégé Desktop integration.** The 0.2.0 plugin targets Protégé 5.6,
+- **Protégé Desktop integration.** The 0.3.0 plugin targets Protégé 5.6,
   flattens loaded imports, invokes the native `km` executable, and exposes the
-  inferred named-class hierarchy and unsatisfiable classes.
-- **Bounded source-axiom explanations.** `km explain` extracts one revalidated
-  justification for a named-class subsumption, unsatisfiable class, or
-  inconsistency and emits a versioned JSON protocol for later OWLAPI and
-  Protégé UI integration.
+  inferred named-class hierarchy and unsatisfiable classes. The bundle also
+  provides an OWL Explanation API 2.0.1 generator/factory and a cancellable
+  source-justification panel for Protégé's standard Explain action.
+- **Bounded source-axiom explanations.** `km explain` enumerates verified,
+  subset-minimal justifications for a named-class subsumption, unsatisfiable
+  class, or inconsistency. Schema 2 exposes source OWL axioms, explicit bounds,
+  and enumeration status to CLI and OWLAPI clients.
 - **Exact incremental EL++ and CB reasoning.** `km incremental` retains the
   completed EL++ relation and role graph for safe additions, accepts the full
   normalised clause fragment completed by the CB worker, and supports atomic
@@ -109,11 +111,14 @@ for the exact expressivity calculation, statistics schema, option bundles, and
 decision-tree validation.
 
 `km explain` accepts a self-contained functional-syntax source and returns one
-source-axiom justification. Explanation checks are bounded and opt-in, so the
-normal classifier carries no provenance overhead. It always uses automatic
-production routing; manual and forced matrix routes are rejected. See
+or more source-axiom justifications. Explanation checks are bounded and opt-in,
+so the normal classifier carries no provenance overhead. It always uses
+automatic production routing; manual and forced matrix routes are rejected.
+The Protégé module exposes the same contract through the standard OWL
+Explanation API. See
 [`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md) for query syntax, the JSON
-schema, minimality semantics, and the OWLAPI/Protégé integration boundary.
+schema, minimality semantics, Java configuration, and the exact supported
+OWLAPI/Protégé entailment surface.
 
 `km incremental` serves an exact EL++/CB session over JSONL standard input and
 output. It consumes normalised clauses, assigns stable ids, and supports
@@ -293,7 +298,7 @@ maps the named-class subsumptions back into Protégé.
 ```sh
 cd protege
 mvn test
-mvn package   # -> target/kobayashi-marust-protege-0.2.0.jar
+mvn package   # -> target/kobayashi-marust-protege-0.3.0.jar
 ```
 
 The plugin does not require Python. Copy the JAR into Protégé's `plugins/`

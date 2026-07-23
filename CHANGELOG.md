@@ -86,25 +86,43 @@ jobs `49307560` and `49308032` also pass the existing EL tests and exact-source
 feature suite. Batch classification and calculus rules are unchanged, so no
 Lean re-certification is required.
 
-### Bounded source-axiom explanations (2026-07-22)
+### Verified multiple explanations and OWLAPI adapter (2026-07-23)
 
-Added `km explain` for one source-level justification of a named-class
-subsumption, named-class unsatisfiability, or ontology inconsistency. The
-extractor uses black-box source-axiom deletion: it confirms the full entailment
-and keeps a deletion only after the existing KM classifier still entails the
-query. A completed pass is subset-minimal relative to source axiom occurrences
-and the automatic production policy. A check-limited pass remains an entailing
-source set but reports `oracleSubsetMinimal: false` and `limitReached: true`.
+Extended `km explain` from one deletion result to deterministic hitting-set
+enumeration of source-level justifications for named-class subsumption,
+named-class unsatisfiability, and ontology inconsistency. Every published
+support completes minimisation and is then reclassified as the exact final
+source subset. Check-limited unfinished candidates are discarded. Schema 2
+reports per-support verification/minimality, separate check and justification
+limits, enumeration completeness, and the source prefix declarations needed
+to parse abbreviated functional syntax.
 
-The versioned JSON response includes canonical functional syntax, stable source
-ordinals, route, check count, and explicit minimality fields for a later OWLAPI
-or Protégé explanation UI. The initial scope is bounded to 256 axioms and 8 MiB
-by default, accepts only self-contained functional syntax, and fails closed on
-classification errors. It rejects `manual` and every forced matrix procedure;
-only `auto` applies the semantic-fragment gate for every deletion candidate.
-Normal classification performs no provenance work and its output is unchanged.
-Focused unit and end-to-end CLI tests pass on the workstation build host. This
-orchestration-only feature changes no CB rule and needs no Lean
+Every candidate enters `auto`; manual and forced matrix procedures are rejected.
+Route declines, relevant dropped clauses, and worker errors stop extraction.
+The oracle was exercised end to end over exact EL completion, the admitted CB
+fragment, and the validated DL-safe-rules HT consistency stage. An internal
+consistency certificate lets an inconsistency query retain the exact rules-HT
+verdict even when the later taxonomy-only fall-through drops an ABox clause;
+it does not relax dropped-clause checks for taxonomy queries.
+
+The Protégé 0.3.0 module now implements OWL Explanation API 2.0.1
+`ExplanationGenerator` and `ExplanationGeneratorFactory`, with Java
+`ServiceLoader` metadata. It flattens loaded imports, invokes schema 2, parses
+each returned source node into an `OWLAxiom`, verifies membership in the
+flattened source, and fails closed on native errors and bounds. Dependencies
+are pinned to OWLAPI 4.5.29, OWL Explanation 2.0.1 with its telemetry 2.0.0
+runtime, Protégé 5.6.6, and Gson 2.11.0. The bundle registers a native provider
+for Protégé 5.6's core Explain action. Its asynchronous panel exposes
+cancellation, the justification bound, source axioms, verification/minimality
+status, and complete-versus-bounded enumeration status. The separate
+Explanation Workbench has no custom-factory
+extension point, so KM does not claim a Workbench registration. Headless Java
+tests cover EL alternatives, named UNSAT, CB inverse reasoning, rules/HT
+inconsistency, exact unsupported-query rejection, bounds, service discovery,
+controller cancellation, and plugin registration/package contents.
+
+Normal classification performs no explanation work. The change alters
+orchestration and adapters, not CB rule applicability, so it needs no Lean
 re-certification.
 
 ### Defer inverse negative-existential mirrors in the HT bridge (2026-07-22)

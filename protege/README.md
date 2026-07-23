@@ -7,9 +7,12 @@ consistency.
 
 The plugin is a TBox classifier. Property hierarchy, property assertion, and
 individual realization queries are not currently exposed through the OWL API.
-The native binary also provides a bounded, versioned source-axiom explanation
-protocol. The current plugin does not display it yet; see
-[`docs/EXPLANATIONS.md`](../docs/EXPLANATIONS.md) for the integration contract.
+The 0.3.0 bundle also contains an OWL Explanation API 2.0.1
+`ExplanationGenerator` and `ExplanationGeneratorFactory`. It returns verified,
+source-axiom justifications for named-class entailments through KM's native
+schema-2 protocol. See
+[`docs/EXPLANATIONS.md`](../docs/EXPLANATIONS.md) for supported entailments,
+bounds, and the Protégé explanation panel.
 
 ## Requirements
 
@@ -18,6 +21,13 @@ protocol. The current plugin does not display it yet; see
 - Java 11 or newer.
 - The native `km` executable for the user's operating system and architecture.
   Python and `moose` are not required.
+
+The build pins OWLAPI 4.5.29, OWL Explanation 2.0.1, its telemetry 2.0.0
+runtime, Protégé 5.6.6, and Gson 2.11.0. Protégé and OWLAPI packages are
+provided by the host application; the bundle embeds the explanation runtime
+dependencies and Gson.
+The embedded OWL Explanation and telemetry JARs remain intact with their
+upstream LGPL 3 license metadata; KM's own code remains BSD-3-Clause.
 
 ## Build KM and the plugin
 
@@ -39,7 +49,7 @@ mvn package
 The OSGi plugin bundle is:
 
 ```text
-protege/target/kobayashi-marust-protege-0.2.0.jar
+protege/target/kobayashi-marust-protege-0.3.0.jar
 ```
 
 Set `KM_BIN` while testing if `km` is not on `PATH`:
@@ -52,13 +62,16 @@ KM_BIN=/absolute/path/to/km mvn test
 
 1. Download and unpack Protégé Desktop 5.6.x from the
    [Protégé website](https://protege.stanford.edu/software/).
-2. Copy `kobayashi-marust-protege-0.2.0.jar` into the `plugins` directory
+2. Copy `kobayashi-marust-protege-0.3.0.jar` into the `plugins` directory
    inside the Protégé installation.
 3. Put the `km` executable on the process `PATH`, or configure its absolute
    path as described below.
 4. Restart Protégé.
 5. Open an ontology and choose **Reasoner → Kobayashi-MaRust → Start
    reasoner**.
+6. On a supported inferred named-class `SubClassOf` row, click the purple
+   **Explain inference** (`?`) button. If a service chooser appears, select
+   **Kobayashi-MaRust native source justifications**.
 
 The `plugins` directory is beside the Protégé launcher in the platform
 independent distribution. Typical locations are:
@@ -96,6 +109,42 @@ Use an absolute path. On Windows, point it to `km.exe`.
 Classification defaults to a 600 second subprocess timeout. Override it with
 `KM_TIMEOUT_SECONDS` or the JVM property `km.timeout.seconds`.
 
+### Use the OWLAPI explanation adapter
+
+Java clients can construct the factory directly or discover it with
+`ServiceLoader`:
+
+```java
+ExplanationGenerator<OWLAxiom> generator =
+    new KMExplanationGeneratorFactory()
+        .createExplanationGenerator(ontology);
+Set<Explanation<OWLAxiom>> explanations =
+    generator.getExplanations(entailment, 2);
+```
+
+The adapter reads the same `km.bin` and timeout settings. Explanation-specific
+bounds use `km.explain.max.axioms`, `km.explain.max.checks`,
+`km.explain.max.source.bytes`, and `km.explain.all.justifications.cap`, with
+corresponding upper-case environment variables documented in
+[`docs/EXPLANATIONS.md`](../docs/EXPLANATIONS.md).
+
+The bundle registers a service for Protégé 5.6's standard core Explain action.
+Its panel lets the user select the maximum number of source justifications,
+generate them asynchronously, cancel a native run, and see whether the result
+is a complete enumeration or a bounded prefix. Every displayed support has
+passed KM's final-subset reclassification and subset-minimality checks.
+
+The supported OWLAPI and GUI surface is deliberately exact: a query must be an
+`OWLSubClassOfAxiom` with a named subclass and named superclass. Named-class
+unsatisfiability and ontology inconsistency use `owl:Nothing` as documented.
+Property entailments, individual assertions, and anonymous class expressions
+throw `UnsupportedEntailmentException`; they do not return an empty set.
+
+The separate upstream Explanation Workbench has no custom-factory extension
+point and may still use its own generic reasoner-backed generator. KM's native
+panel integrates with Protégé's core Explain action instead of claiming a
+Workbench registration.
+
 ## Runtime behavior
 
 The plugin:
@@ -124,5 +173,13 @@ The headless OWL API tests cover:
 - rejection of unresolved imports;
 - distinct classes that share the same local-name fragment.
 
-The Maven bundle build also checks that the plugin classes and `plugin.xml` are
-packaged into a valid OSGi JAR.
+The explanation tests cover exhaustive and bounded multiple EL
+justifications, named unsatisfiability, CB inverse-role inference, rules/HT
+inconsistency, explicit rejection of anonymous/property/individual queries,
+fail-closed source bounds, and `ServiceLoader` discovery. Headless controller
+tests cover completion metadata and cancellation. Native CLI tests separately
+assert EL, CB, and HT mechanism provenance and rejection of a forced route.
+
+The Maven `verify` phase also unpacks the OSGi JAR and fails unless the native
+explanation service, result panel, `plugin.xml`, Java service metadata, and
+pinned embedded dependencies are present.

@@ -6,19 +6,21 @@
 
   <groupId>org.bioontology</groupId>
   <artifactId>kobayashi-marust-protege</artifactId>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <packaging>bundle</packaging>
 
   <name>Kobayashi-MaRust Protege plugin</name>
-  <description>A Protege reasoner plugin that classifies the active ontology with
-    the Kobayashi-MaRust SROIQ / OWL 2 DL context reasoner.</description>
+  <description>A Protege reasoner and OWL Explanation API adapter backed by the
+    Kobayashi-MaRust SROIQ / OWL 2 DL context reasoner.</description>
 
   <properties>
-    <maven.compiler.source>11</maven.compiler.source>
-    <maven.compiler.target>11</maven.compiler.target>
+    <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <owlapi.version>4.5.29</owlapi.version>
+    <owlexplanation.version>2.0.1</owlexplanation.version>
+    <telemetry.version>2.0.0</telemetry.version>
     <protege.version>5.6.6</protege.version>
+    <gson.version>2.11.0</gson.version>
   </properties>
 
   <dependencies>
@@ -34,6 +36,49 @@
       <artifactId>protege-editor-owl</artifactId>
       <version>${protege.version}</version>
       <scope>provided</scope>
+    </dependency>
+
+    <!-- Standard OWL Explanation API surface exposed to Java clients. -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>owlexplanation</artifactId>
+      <version>${owlexplanation.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-osgidistribution</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>telemetry</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>${gson.version}</version>
+    </dependency>
+    <!-- Required by the complete OWL Explanation API package. Embed it so the
+         KM bundle resolves in a stock Protégé installation. -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>telemetry</artifactId>
+      <version>${telemetry.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-osgidistribution</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-distribution</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
 
     <!-- Test only: drive the reasoner headlessly via the OWL API. -->
@@ -75,17 +120,79 @@
             <Bundle-Category>protege</Bundle-Category>
             <Bundle-ContactAddress>https://github.com/bio-ontology-research-group/kobayashi-marust</Bundle-ContactAddress>
             <Bundle-Vendor>Bio-Ontology Research Group, KAUST</Bundle-Vendor>
+            <Bundle-RequiredExecutionEnvironment>JavaSE-11</Bundle-RequiredExecutionEnvironment>
+            <Bundle-License>BSD-3-Clause,LGPL-3.0-only</Bundle-License>
             <Bundle-Activator>org.protege.editor.core.plugin.DefaultPluginActivator</Bundle-Activator>
+            <Export-Package>
+              org.bioontology.kobayashimarust.protege;version="${project.version}",
+              org.semanticweb.owl.explanation.api;version="${owlexplanation.version}",
+              org.semanticweb.owl.explanation.telemetry;version="${telemetry.version}"
+            </Export-Package>
             <Import-Package>
+              !org.semanticweb.owl.explanation.telemetry,
               org.protege.editor.core.*,
               org.protege.editor.owl.*,
               org.semanticweb.owlapi.*,
               org.osgi.framework,
               *
             </Import-Package>
+            <Embed-Dependency>
+              owlexplanation|telemetry|gson;scope=compile;inline=false
+            </Embed-Dependency>
+            <Embed-Transitive>false</Embed-Transitive>
             <Include-Resource>{maven-resources}, plugin.xml=src/main/resources/plugin.xml</Include-Resource>
           </instructions>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>3.1.0</version>
+        <executions>
+          <execution>
+            <id>verify-protege-bundle-entries</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target>
+                <delete dir="${project.build.directory}/bundle-verification"/>
+                <unzip
+                    src="${project.build.directory}/${project.build.finalName}.jar"
+                    dest="${project.build.directory}/bundle-verification"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/plugin.xml"
+                    property="km.bundle.plugin.xml"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/META-INF/services/org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory"
+                    property="km.bundle.explanation.factory"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/org/bioontology/kobayashimarust/protege/KMNativeExplanationService.class"
+                    property="km.bundle.explanation.service"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/org/bioontology/kobayashimarust/protege/KMNativeExplanationResult.class"
+                    property="km.bundle.explanation.result"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/owlexplanation-${owlexplanation.version}.jar"
+                    property="km.bundle.explanation.api"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/telemetry-${telemetry.version}.jar"
+                    property="km.bundle.telemetry"/>
+                <available
+                    file="${project.build.directory}/bundle-verification/gson-${gson.version}.jar"
+                    property="km.bundle.gson"/>
+                <fail unless="km.bundle.plugin.xml">plugin.xml missing from bundle</fail>
+                <fail unless="km.bundle.explanation.factory">explanation factory metadata missing from bundle</fail>
+                <fail unless="km.bundle.explanation.service">native explanation service missing from bundle</fail>
+                <fail unless="km.bundle.explanation.result">native explanation result panel missing from bundle</fail>
+                <fail unless="km.bundle.explanation.api">OWL Explanation API missing from bundle</fail>
+                <fail unless="km.bundle.telemetry">OWL Explanation telemetry dependency missing from bundle</fail>
+                <fail unless="km.bundle.gson">Gson missing from bundle</fail>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

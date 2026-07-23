@@ -1,86 +1,135 @@
 # Source-axiom explanations
 
-KM has an opt-in, bounded command for extracting one source-level
-justification for a named-class inference. It is intended as the protocol
-boundary for command-line tools and a later OWLAPI or Protégé explanation UI.
-The current Protégé plugin does not yet display explanations.
+KM can extract bounded, source-level justifications for named-class
+entailments. The native command has a versioned JSON contract, and the
+Protégé module implements the standard OWL Explanation API
+`ExplanationGenerator<OWLAxiom>` and `ExplanationGeneratorFactory<OWLAxiom>`.
+Explanation work is opt-in and adds no provenance state to normal
+classification.
 
-## Supported queries
+## Supported entailments
 
-The input must be a self-contained OWL functional-syntax document. Imports
-must already be flattened, as they are for normal Protégé classification.
-The first release supports:
+`km explain` accepts a self-contained OWL functional-syntax document and one
+of these queries:
 
-- a named-class subsumption `A ⊑ B`;
-- named-class unsatisfiability `A ⊑ owl:Nothing`; and
+- named-class subsumption `A SubClassOf B`;
+- named-class unsatisfiability `A SubClassOf owl:Nothing`; or
 - ontology inconsistency.
 
-Use complete IRIs so an OWLAPI caller can map every result without local-name
-collisions:
+Use complete IRIs. Prefix declarations in the source are resolved by exact
+IRI expansion, never by local-name matching.
 
 ```sh
 km explain ontology.ofn subclass \
   http://example.org/A http://example.org/C
 
-km explain --pretty ontology.ofn unsatisfiable http://example.org/A
+km explain --pretty ontology.ofn \
+  unsatisfiable http://example.org/A
 
 km explain ontology.ofn inconsistent
 ```
 
-The explanation oracle always uses `auto`, the normal production policy.
-`--route auto` may be supplied explicitly. `manual` and every named matrix
-procedure are rejected because forcing a procedure bypasses the source-profile
-semantic-fragment gate that establishes where it may answer. An ambient
-`KM_ROUTE` is ignored; only an explicit CLI option can select a route, and the
-only accepted value is `auto`.
+Property entailments, assertions about individuals, anonymous class
+expressions, and general OWL axioms are not yet explanation queries. Imports
+must already be loaded and flattened. The OWLAPI adapter does this flattening
+and rejects unresolved imports.
 
-The safety bounds are:
+## Safety boundary and mechanisms
+
+Every oracle call uses `--route auto`, including every axiom-deletion
+candidate. `manual`, all named matrix procedures, and ambient `KM_ROUTE`
+settings are rejected or overridden. A forced mechanism cannot escape the
+source-profile gate.
+
+The contract is mechanism-independent. Depending on the candidate source,
+the production gate may use:
+
+- exact EL++ completion for an EL-safe candidate;
+- the sound-and-complete CB procedure on its admitted SRIQ core fragment; or
+- a validated complete-answer-or-defer HT mechanism admitted by the gate.
+
+The regression suite explicitly exercises EL completion, CB inverse-role
+reasoning, and the validated DL-safe-rules HT consistency mechanism. A source
+deletion may change the profile and therefore the selected implementation.
+That is safe because minimisation asks the same monotonic OWL entailment of
+each source subset and each subset re-enters the production gate.
+
+The rules HT stage can certify complete-source consistency even when its
+subsequent taxonomy-only fall-through reports dropped clauses. That internal
+certificate is accepted only for an inconsistency query. Subsumption and
+named-unsatisfiability queries still reject any dropped clause. All other
+route declines, dropped clauses, worker errors, and malformed results stop the
+extraction instead of being interpreted as non-entailment.
+
+## Multiple justifications and bounds
+
+KM first checks the full source, greedily minimises one entailing subset, and
+reclassifies that exact final subset before publishing it. A deterministic
+hitting-set tree then excludes each axiom of a found support to search for
+alternatives. Every returned support has both `verified: true` and
+`subsetMinimal: true`.
+
+The bounds are:
 
 - `--max-axioms N`, default 256;
-- `--max-checks N`, default `max-axioms + 1`, including the initial full-source
-  check; and
-- `--max-source-bytes N`, default 8 MiB.
+- `--max-source-bytes N`, default 8 MiB;
+- `--max-justifications N`, default 1; and
+- `--max-checks N`, counting every complete classification. When omitted,
+  the CLI uses `(max-axioms + 2) * max-justifications`.
 
-The command exits 3 when the input is outside this scope, a route is not
-explanation-safe, or a bound prevents the initial check. It exits 1 if a
-classification check fails. It never turns an error or resource decline into
-an explanation.
+If the check budget expires during minimisation, that unfinished candidate is
+discarded. Previously completed and independently revalidated supports remain
+valid, but the report marks the enumeration incomplete. The OWLAPI adapter is
+stricter and throws `ExplanationException` on check-budget exhaustion.
 
-## JSON protocol
+`enumerationComplete: true` means the hitting-set queue was exhausted and all
+source-occurrence-minimal supports were found. `justificationLimitReached:
+true` means the requested count was reached without proving that no further
+support exists. These are subset-minimal explanations, not necessarily
+minimum-cardinality explanations.
 
-Standard output is one compact JSON object. `--pretty` changes whitespace
-only. The versioned fields are designed to be consumed without a Rust-specific
-library:
+## JSON protocol, schema 2
+
+Standard output contains one JSON object. `--pretty` changes whitespace only.
+A representative response is:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "entailed",
   "query": {
     "type": "sub-class",
     "subClass": "http://example.org/A",
     "superClass": "http://example.org/C"
   },
-  "method": "black-box-source-axiom-deletion",
+  "method": "black-box-hitting-set-source-axiom-deletion",
   "requestedRoute": "auto",
   "reasonerVersion": "0.1.0",
   "sourceAxiomCount": 3,
-  "classificationChecks": 4,
+  "classificationChecks": 5,
+  "classificationCheckLimit": 32,
+  "justificationLimit": 1,
   "oracleSubsetMinimal": true,
-  "limitReached": false,
+  "enumerationComplete": false,
+  "limitReached": true,
+  "checkLimitReached": false,
+  "justificationLimitReached": true,
+  "prefixDeclarations": ["Prefix(:=<http://example.org/>)"],
   "justifications": [
     {
       "axiomCount": 2,
+      "verified": true,
+      "subsetMinimal": true,
       "axioms": [
         {
           "id": "ax000001",
           "ordinal": 1,
-          "functionalSyntax": "SubClassOf(<http://example.org/A> <http://example.org/B>)"
+          "functionalSyntax": "SubClassOf(:A :B)"
         },
         {
           "id": "ax000002",
           "ordinal": 2,
-          "functionalSyntax": "SubClassOf(<http://example.org/B> <http://example.org/C>)"
+          "functionalSyntax": "SubClassOf(:B :C)"
         }
       ]
     }
@@ -90,74 +139,97 @@ library:
 ```
 
 `status` is `not-entailed` and `justifications` is empty when the full source
-does not produce the requested entailment. A source axiom ID is its one-based
-position among children of `Ontology(...)`, zero-padded for lexical sorting.
-`functionalSyntax` is a canonical spelling of that source node, including its
-axiom annotations. An OWLAPI bridge can parse this spelling or use `ordinal` to
-map the result back to the exact axiom in the flattened document.
+does not entail the query. An axiom ID is based on its one-based position
+among children of `Ontology(...)`. `functionalSyntax` retains the complete
+source axiom, including axiom annotations. `prefixDeclarations` makes every
+returned spelling independently parseable.
 
-## Method and guarantees
+The verifier is KM's automatically gated classifier, not an independent proof
+checker. The report therefore makes an oracle-relative claim. It does not
+turn the portfolio's validation evidence into a proof of the full executable.
 
-The extractor first confirms the query against the complete source. It then
-deletes one source axiom at a time and retains the deletion only after KM still
-entails the query. OWL entailment is monotone, so one completed deletion pass
-is subset-minimal: removing any one remaining source axiom makes the KM oracle
-stop reporting the query.
+## OWLAPI adapter
 
-If `--max-checks` ends the pass early, the last revalidated set is still an
-entailing source set. The report sets `limitReached: true` and
-`oracleSubsetMinimal: false`; it does not claim minimality.
+The `protege` Maven module pins:
 
-This is an oracle-based justification, not an independently checked proof
-object and not a trace of individual CB, EL, or hypertableau rule applications.
-Its soundness depends on KM's automatic production policy; the report does not
-upgrade the project's empirical route evidence into a formal proof. The method
-does not find every justification, a minimum-cardinality justification, or an
-explanation for property and individual inferences. `oracleSubsetMinimal`
-means minimal relative to source axiom occurrences and the automatic KM
-oracle, not minimal under arbitrary OWL axiom rewriting.
+- OWLAPI 4.5.29;
+- OWL Explanation API 2.0.1;
+- its required telemetry runtime 2.0.0;
+- Protégé 5.6.6; and
+- Gson 2.11.0.
 
-Deleting an axiom can change the candidate ontology's profile, so `auto` may
-select different exact mechanisms for different deletion candidates. This
-does not by itself invalidate minimization. Each accepted candidate still goes
-through the semantic-fragment gate; if the chosen production mechanism returns
-an answer, it is intended to decide the same OWL entailment relation. Semantic
-OWL entailment is monotone regardless of which applicable implementation
-computes it. If any candidate declines or errors, extraction stops instead of
-claiming minimality. This argument is relative to the production policy's
-soundness and completeness contract, not an independent verification of every
-mechanism.
+Use the factory directly:
 
-The extractor rebuilds each candidate ontology from source functional syntax.
-It therefore explains generated definer and normalized-clause inferences in
-terms of their source OWL axioms rather than exposing internal `Q_*`, `f_*`, or
-bridge symbols.
+```java
+ExplanationGenerator<OWLAxiom> generator =
+    new KMExplanationGeneratorFactory()
+        .createExplanationGenerator(ontology);
 
-## Performance and calculus certification
+Set<Explanation<OWLAxiom>> firstTwo =
+    generator.getExplanations(entailment, 2);
+```
 
-Explanation mode can require `N + 1` complete classifications for `N` source
-axioms. It is intentionally bounded and disabled during normal classification.
-When `km explain` is not invoked, the implementation allocates no provenance
-map, adds no clause fields, and performs no explanation checks.
+The unbounded API overload, `getExplanations(entailment)`, must satisfy the
+OWL Explanation API's all-explanations contract. KM searches only up to the
+configured safety cap and throws if enumeration is still incomplete. Use the
+bounded overload when a finite prefix is acceptable.
 
-This feature does not change what the CB calculus derives. It only invokes the
-existing classifier on source subsets, so it introduces no Lean
-re-certification obligation. A future inference-level proof trace inside the
-CB engine would need a separate review of proof reconstruction, and any change
-to rule applicability would still require the normal calculus re-certification.
+The adapter supports named `OWLSubClassOfAxiom` objects. It maps
+`A SubClassOf owl:Nothing` to named unsatisfiability and
+`owl:Thing SubClassOf owl:Nothing` to ontology inconsistency. Returned
+functional-syntax nodes are parsed back into `OWLAxiom` objects and checked
+against the flattened source ontology before an `Explanation` is exposed.
 
-## OWLAPI and Protégé integration path
+`META-INF/services/org.semanticweb.owl.explanation.api.ExplanationGeneratorFactory`
+registers `KMExplanationGeneratorFactory` for ordinary Java `ServiceLoader`
+clients. Configuration uses a Java property first, then an environment
+variable:
 
-An OWLAPI caller can use the same flow as the existing KM classifier bridge:
+| purpose | Java property | environment | default |
+|---|---|---|---:|
+| native executable | `km.bin` | `KM_BIN` | `km` |
+| process timeout | `km.timeout.seconds` | `KM_TIMEOUT_SECONDS` | 600 s |
+| source axioms | `km.explain.max.axioms` | `KM_EXPLAIN_MAX_AXIOMS` | 256 |
+| checks | `km.explain.max.checks` | `KM_EXPLAIN_MAX_CHECKS` | 4096 |
+| source bytes | `km.explain.max.source.bytes` | `KM_EXPLAIN_MAX_SOURCE_BYTES` | 8 MiB |
+| all-overload cap | `km.explain.all.justifications.cap` | `KM_EXPLAIN_ALL_JUSTIFICATIONS_CAP` | 8 |
 
-1. flatten the loaded imports closure;
-2. save it as OWL functional syntax;
-3. execute `km explain` with complete class IRIs;
-4. parse schema version 1; and
-5. parse each returned `functionalSyntax` axiom or map its source ordinal back
-   to the flattened ontology.
+## Protégé GUI
 
-Keeping extraction in the native process avoids coupling the JSON contract to
-a particular OWLAPI or Protégé release. A GUI integration should show the
-`oracleSubsetMinimal` and `limitReached` fields rather than labeling every
-bounded result as minimal.
+The KM 0.3.0 OSGi bundle contains both the OWLAPI adapter and a native service
+for Protégé 5.6's core `org.protege.editor.owl.explanation` extension point.
+On an inferred named `SubClassOf` row, click Protégé's purple **Explain
+inference** (`?`) button. If Protégé offers several explanation services,
+select **Kobayashi-MaRust native source justifications**. The KM panel shows
+the selected entailment, lets the user bound the number of justifications,
+runs outside Swing's event thread, and offers cancellation. It labels every
+displayed support as verified and subset-minimal and distinguishes a complete
+enumeration from a bounded prefix for which more supports may exist.
+
+The upstream
+[OWL Explanation library](https://github.com/matthewhorridge/owlexplanation)
+defines the programmatic interfaces implemented here. The separate upstream
+[Protégé Explanation Workbench](https://github.com/protegeproject/explanation-workbench)
+does not expose an extension point for registering a custom
+`ExplanationGeneratorFactory`; it may still run its generic reasoner-backed
+algorithm. KM therefore integrates with Protégé's standard core Explain
+action directly, without modifying or pretending to register a provider in
+the Workbench.
+
+The advertised surface is exact: only `OWLSubClassOfAxiom` queries whose
+subclass and superclass are named classes are accepted. This includes the
+`A SubClassOf owl:Nothing` and `owl:Thing SubClassOf owl:Nothing` conventions
+above. Property entailments, individual assertions, and subclass axioms with
+anonymous class expressions throw `UnsupportedEntailmentException`; neither
+the API nor the GUI presents an empty result for these unsupported forms.
+
+## Performance and certification scope
+
+Explanation search may run many complete classifications and is deliberately
+bounded. It rebuilds each candidate from source functional syntax so users see
+source OWL axioms rather than internal definers, Skolem symbols, or bridge
+clauses.
+
+This feature changes orchestration and proof reconstruction only. It does not
+change CB rule applicability or the saturation fixpoint, so it creates no new
+Lean re-certification obligation.

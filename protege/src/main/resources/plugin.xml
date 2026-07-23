@@ -9,4 +9,12 @@
                        factoryClass="org.bioontology.kobayashimarust.protege.KMReasonerInfo"/>
    </extension>
 
+   <!-- Protégé's standard Explain action opens this native KM result panel
+        for the named SubClassOf entailments advertised by hasExplanation. -->
+   <extension id="KobayashiMarustNativeExplanation"
+              point="org.protege.editor.owl.explanation">
+      <name value="Kobayashi-MaRust native source justifications"/>
+      <class value="org.bioontology.kobayashimarust.protege.KMNativeExplanationService"/>
+   </extension>
+
 </plugin>

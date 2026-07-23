@@ -8,13 +8,17 @@
 //! classifier. Forced matrix and manual routes are rejected because they
 //! bypass the source-profile semantic-fragment gate.
 //!
-//! A completed pass is subset-minimal with respect to the source axiom
-//! occurrences.  If the caller's check budget stops the pass, the current set
-//! is still a valid (revalidated) justification, but is explicitly marked as
-//! not subset-minimal.  This is the same black-box minimisation pattern used by
-//! OWL explanation tooling, with deliberately small default bounds because one
-//! explanation can require one complete classification per source axiom.
+//! Each returned support is subset-minimal with respect to source axiom
+//! occurrences and is reclassified once after minimization. A hitting-set tree
+//! enumerates alternatives. If a check budget stops a branch, that unfinished
+//! support is discarded; already verified justifications remain explicitly
+//! marked as a bounded, incomplete enumeration. This is the same black-box
+//! minimisation pattern used by OWL explanation tooling, with deliberately
+//! small default bounds because one explanation can require one complete
+//! classification per source axiom.
 
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 use serde::Serialize;
@@ -26,6 +30,7 @@ use crate::routing::Route;
 
 pub const DEFAULT_MAX_AXIOMS: usize = 256;
 pub const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
+pub const DEFAULT_MAX_JUSTIFICATIONS: usize = 1;
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
@@ -44,7 +49,7 @@ pub enum Query {
 }
 
 impl Query {
-    fn entailed_by(&self, classification: &Classification) -> bool {
+    fn entailed_by(&self, classification: &Classification, iris: &IriResolver) -> bool {
         if !classification.consistent {
             // Classical OWL semantics: an inconsistent ontology entails every
             // axiom and makes every class unsatisfiable.
@@ -53,25 +58,25 @@ impl Query {
         match self {
             Query::Inconsistent => false,
             Query::Unsatisfiable { class_iri } => {
-                is_bottom(class_iri)
+                is_bottom(class_iri, iris)
                     || classification
                         .unsatisfiable
                         .iter()
-                        .any(|candidate| same_iri(candidate, class_iri))
+                        .any(|candidate| same_iri(candidate, class_iri, iris))
             }
             Query::SubClass {
                 sub_class,
                 super_class,
             } => {
-                same_iri(sub_class, super_class)
-                    || is_bottom(sub_class)
-                    || is_top(super_class)
+                same_iri(sub_class, super_class, iris)
+                    || is_bottom(sub_class, iris)
+                    || is_top(super_class, iris)
                     || classification
                         .unsatisfiable
                         .iter()
-                        .any(|candidate| same_iri(candidate, sub_class))
+                        .any(|candidate| same_iri(candidate, sub_class, iris))
                     || classification.subsumptions.iter().any(|pair| {
-                        same_iri(&pair[0], sub_class) && same_iri(&pair[1], super_class)
+                        same_iri(&pair[0], sub_class, iris) && same_iri(&pair[1], super_class, iris)
                     })
             }
         }
@@ -85,20 +90,57 @@ fn unbracketed(iri: &str) -> &str {
         .unwrap_or(iri)
 }
 
-fn same_iri(left: &str, right: &str) -> bool {
-    unbracketed(left) == unbracketed(right)
+#[derive(Default)]
+struct IriResolver {
+    prefixes: HashMap<String, String>,
 }
 
-fn is_top(iri: &str) -> bool {
+impl IriResolver {
+    fn from_preamble(items: &[String]) -> Self {
+        let mut prefixes = HashMap::new();
+        for item in items {
+            let Some(body) = item
+                .strip_prefix("Prefix(")
+                .and_then(|body| body.strip_suffix(')'))
+            else {
+                continue;
+            };
+            let Some((prefix, iri)) = body.split_once("=<") else {
+                continue;
+            };
+            if let Some(base) = iri.strip_suffix('>') {
+                prefixes.insert(prefix.to_string(), base.to_string());
+            }
+        }
+        IriResolver { prefixes }
+    }
+
+    fn resolve<'a>(&self, iri: &'a str) -> Cow<'a, str> {
+        let iri = unbracketed(iri);
+        if let Some(colon) = iri.find(':') {
+            let (prefix, local) = iri.split_at(colon + 1);
+            if let Some(base) = self.prefixes.get(prefix) {
+                return Cow::Owned(format!("{base}{local}"));
+            }
+        }
+        Cow::Borrowed(iri)
+    }
+}
+
+fn same_iri(left: &str, right: &str, iris: &IriResolver) -> bool {
+    iris.resolve(left) == iris.resolve(right)
+}
+
+fn is_top(iri: &str, iris: &IriResolver) -> bool {
     matches!(
-        unbracketed(iri),
+        iris.resolve(iri).as_ref(),
         "owl:Thing" | "http://www.w3.org/2002/07/owl#Thing"
     )
 }
 
-fn is_bottom(iri: &str) -> bool {
+fn is_bottom(iri: &str, iris: &IriResolver) -> bool {
     matches!(
-        unbracketed(iri),
+        iris.resolve(iri).as_ref(),
         "owl:Nothing" | "http://www.w3.org/2002/07/owl#Nothing" | "⊥"
     )
 }
@@ -109,14 +151,18 @@ pub struct Options {
     /// Includes the initial full-source entailment check.
     pub max_checks: usize,
     pub max_source_bytes: u64,
+    pub max_justifications: usize,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             max_axioms: DEFAULT_MAX_AXIOMS,
-            max_checks: DEFAULT_MAX_AXIOMS + 1,
+            // One full-source check, one deletion check per source axiom, and
+            // one independent verification of the minimized support.
+            max_checks: DEFAULT_MAX_AXIOMS + 2,
             max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
+            max_justifications: DEFAULT_MAX_JUSTIFICATIONS,
         }
     }
 }
@@ -141,6 +187,9 @@ pub enum Status {
 pub struct Justification {
     #[serde(rename = "axiomCount")]
     pub axiom_count: usize,
+    pub verified: bool,
+    #[serde(rename = "subsetMinimal")]
+    pub subset_minimal: bool,
     pub axioms: Vec<SourceAxiom>,
 }
 
@@ -160,10 +209,22 @@ pub struct Report {
     pub source_axiom_count: usize,
     #[serde(rename = "classificationChecks")]
     pub classification_checks: usize,
+    #[serde(rename = "classificationCheckLimit")]
+    pub classification_check_limit: usize,
+    #[serde(rename = "justificationLimit")]
+    pub justification_limit: usize,
     #[serde(rename = "oracleSubsetMinimal")]
     pub oracle_subset_minimal: bool,
+    #[serde(rename = "enumerationComplete")]
+    pub enumeration_complete: bool,
     #[serde(rename = "limitReached")]
     pub limit_reached: bool,
+    #[serde(rename = "checkLimitReached")]
+    pub check_limit_reached: bool,
+    #[serde(rename = "justificationLimitReached")]
+    pub justification_limit_reached: bool,
+    #[serde(rename = "prefixDeclarations")]
+    pub prefix_declarations: Vec<String>,
     pub justifications: Vec<Justification>,
     pub notes: Vec<&'static str>,
 }
@@ -174,6 +235,7 @@ pub enum ExplainError {
     Parse(String),
     Limit(String),
     UnsafeRoute(String),
+    Verification(String),
     Classify(OrchestrateError),
 }
 
@@ -187,6 +249,9 @@ impl std::fmt::Display for ExplainError {
                 f,
                 "route {route:?} is not an explanation-safe production oracle; use auto"
             ),
+            ExplainError::Verification(error) => {
+                write!(f, "explanation verification: {error}")
+            }
             ExplainError::Classify(error) => write!(f, "classification oracle: {error}"),
         }
     }
@@ -346,47 +411,141 @@ fn render_node(node: &Node<'_>) -> String {
     }
 }
 
-struct Minimized {
+struct Enumeration {
     entailed: bool,
-    active: Vec<bool>,
+    justifications: Vec<Vec<bool>>,
     checks: usize,
-    limit_reached: bool,
+    enumeration_complete: bool,
+    check_limit_reached: bool,
+    justification_limit_reached: bool,
 }
 
-/// Greedy deletion is one-pass subset minimisation because OWL entailment is
-/// monotone: if removing axiom `a` from a superset loses the entailment, no
-/// later subset without `a` can regain it merely by deleting more axioms.
-fn minimize<F, E>(axiom_count: usize, max_checks: usize, mut oracle: F) -> Result<Minimized, E>
+fn checked<F>(
+    active: &[bool],
+    checks: &mut usize,
+    max_checks: usize,
+    oracle: &mut F,
+) -> Result<Option<bool>, ExplainError>
 where
-    F: FnMut(&[bool]) -> Result<bool, E>,
+    F: FnMut(&[bool]) -> Result<bool, ExplainError>,
 {
-    let mut active = vec![true; axiom_count];
-    let mut checks = 1usize;
-    if !oracle(&active)? {
-        return Ok(Minimized {
+    if *checks >= max_checks {
+        return Ok(None);
+    }
+    *checks += 1;
+    oracle(active).map(Some)
+}
+
+/// Enumerate subset-minimal supports with a deterministic hitting-set tree.
+///
+/// Each entailing branch is minimized by greedy deletion. Greedy deletion is
+/// one-pass subset minimisation because OWL entailment is monotone: if removing
+/// axiom `a` from a superset loses the entailment, no later subset without `a`
+/// can regain it merely by deleting more axioms. To find alternatives, branch
+/// from the pre-minimization candidate once for every axiom in the resulting
+/// support. Every support is classified once more after minimization; a support
+/// is never published when that verification or the minimization budget cannot
+/// complete.
+fn enumerate<F>(
+    axiom_count: usize,
+    max_checks: usize,
+    max_justifications: usize,
+    mut oracle: F,
+) -> Result<Enumeration, ExplainError>
+where
+    F: FnMut(&[bool]) -> Result<bool, ExplainError>,
+{
+    let full = vec![true; axiom_count];
+    let mut checks = 0usize;
+    let initially_entailed = checked(&full, &mut checks, max_checks, &mut oracle)?
+        .expect("max_checks is validated before enumeration");
+    if !initially_entailed {
+        return Ok(Enumeration {
             entailed: false,
-            active,
+            justifications: Vec::new(),
             checks,
-            limit_reached: false,
+            enumeration_complete: true,
+            check_limit_reached: false,
+            justification_limit_reached: false,
         });
     }
-    let mut limit_reached = false;
-    for index in 0..axiom_count {
-        if checks >= max_checks {
-            limit_reached = true;
+
+    let mut queue = VecDeque::from([(full.clone(), true)]);
+    let mut seen_candidates = HashSet::from([full]);
+    let mut seen_justifications = HashSet::new();
+    let mut justifications = Vec::new();
+    let mut check_limit_reached = false;
+    let mut justification_limit_reached = false;
+
+    'search: while let Some((candidate, known_entailed)) = queue.pop_front() {
+        if justifications.len() >= max_justifications {
+            justification_limit_reached = true;
             break;
         }
-        active[index] = false;
-        checks += 1;
-        if !oracle(&active)? {
-            active[index] = true;
+        if !known_entailed {
+            let Some(entailed) = checked(&candidate, &mut checks, max_checks, &mut oracle)? else {
+                check_limit_reached = true;
+                break;
+            };
+            if !entailed {
+                continue;
+            }
+        }
+
+        let mut active = candidate.clone();
+        for index in 0..axiom_count {
+            if !active[index] {
+                continue;
+            }
+            active[index] = false;
+            let Some(entailed) = checked(&active, &mut checks, max_checks, &mut oracle)? else {
+                check_limit_reached = true;
+                break 'search;
+            };
+            if !entailed {
+                active[index] = true;
+            }
+        }
+
+        // Deliberately bypass any cached branch verdict. This exact final set
+        // must be reclassified before it is exposed as a justification.
+        let Some(verified) = checked(&active, &mut checks, max_checks, &mut oracle)? else {
+            check_limit_reached = true;
+            break;
+        };
+        if !verified {
+            return Err(ExplainError::Verification(
+                "the minimized source set did not reproduce its entailment".into(),
+            ));
+        }
+
+        if seen_justifications.insert(active.clone()) {
+            justifications.push(active.clone());
+        }
+
+        // A different minimal support must omit at least one axiom from this
+        // support. Accumulated omissions in `candidate` form the hitting-set
+        // tree path; duplicate candidates are discarded deterministically.
+        for (index, present) in active.iter().enumerate() {
+            if *present {
+                let mut child = candidate.clone();
+                child[index] = false;
+                if seen_candidates.insert(child.clone()) {
+                    queue.push_back((child, false));
+                }
+            }
         }
     }
-    Ok(Minimized {
+
+    let enumeration_complete =
+        queue.is_empty() && !check_limit_reached && !justification_limit_reached;
+    Ok(Enumeration {
         entailed: true,
-        active,
+        justifications,
         checks,
-        limit_reached,
+        enumeration_complete,
+        check_limit_reached,
+        justification_limit_reached,
     })
 }
 
@@ -422,6 +581,11 @@ pub fn explain(
             "--max-checks must be greater than zero".into(),
         ));
     }
+    if options.max_justifications == 0 {
+        return Err(ExplainError::Limit(
+            "--max-justifications must be greater than zero".into(),
+        ));
+    }
     let source_size = std::fs::metadata(ontology)?.len();
     if source_size > options.max_source_bytes {
         return Err(ExplainError::Limit(format!(
@@ -432,52 +596,90 @@ pub fn explain(
     let source = std::fs::read_to_string(ontology)?;
     let document = SourceDocument::parse(&source, options.max_axioms)?;
     drop(source);
+    let iri_resolver = IriResolver::from_preamble(&document.top_level);
 
     let candidate = TempPath::new(".explain.ofn");
-    let minimized = minimize(
+    let enumeration = enumerate(
         document.axioms.len(),
         options.max_checks,
+        options.max_justifications,
         |active| -> Result<bool, ExplainError> {
             std::fs::write(candidate.path(), document.render(active))?;
-            let classification = super::classify(cfg, candidate.path())?;
-            Ok(query.entailed_by(&classification))
+            let evidence = super::classify_with_evidence(cfg, candidate.path())?;
+            let classification = evidence.classification;
+            let consistency_only_certificate =
+                matches!(query, Query::Inconsistent) && evidence.consistency_certified;
+            if classification.dropped != 0 && !consistency_only_certificate {
+                return Err(ExplainError::Classify(OrchestrateError::OutOfFragment(
+                    format!(
+                        "classification dropped {} clause(s) for an explanation candidate",
+                        classification.dropped
+                    ),
+                )));
+            }
+            Ok(query.entailed_by(&classification, &iri_resolver))
         },
     )?;
 
     let notes = vec![
         "The justification is validated by KM's classification oracle, not by an independent proof checker.",
-        "Subset minimality is relative to source axiom occurrences and KM's automatic production policy.",
+        "Every returned support was minimized and then reclassified as an exact source subset.",
+        "Subset minimality and enumeration are relative to source axiom occurrences and KM's automatic production policy.",
         "Only self-contained OWL functional syntax and named-class subclass, unsatisfiability, or inconsistency queries are supported.",
     ];
-    let (status, justifications) = if minimized.entailed {
-        let axioms: Vec<SourceAxiom> = minimized
-            .active
-            .iter()
-            .zip(&document.axioms)
-            .filter_map(|(active, axiom)| active.then_some(axiom.clone()))
-            .collect();
+    let (status, justifications) = if enumeration.entailed {
         (
             Status::Entailed,
-            vec![Justification {
-                axiom_count: axioms.len(),
-                axioms,
-            }],
+            enumeration
+                .justifications
+                .iter()
+                .map(|active| {
+                    let axioms: Vec<SourceAxiom> = active
+                        .iter()
+                        .zip(&document.axioms)
+                        .filter_map(|(active, axiom)| active.then_some(axiom.clone()))
+                        .collect();
+                    Justification {
+                        axiom_count: axioms.len(),
+                        verified: true,
+                        subset_minimal: true,
+                        axioms,
+                    }
+                })
+                .collect(),
         )
     } else {
         (Status::NotEntailed, Vec::new())
     };
+    let oracle_subset_minimal = !justifications.is_empty()
+        && justifications
+            .iter()
+            .all(|justification| justification.verified && justification.subset_minimal);
+    let limit_reached = enumeration.check_limit_reached || enumeration.justification_limit_reached;
+    let prefix_declarations = document
+        .top_level
+        .iter()
+        .filter(|item| item.starts_with("Prefix("))
+        .cloned()
+        .collect();
 
     Ok(Report {
-        schema_version: 1,
+        schema_version: 2,
         status,
         query,
-        method: "black-box-source-axiom-deletion",
+        method: "black-box-hitting-set-source-axiom-deletion",
         requested_route: requested_route.as_str().to_string(),
         reasoner_version: env!("CARGO_PKG_VERSION"),
         source_axiom_count: document.axioms.len(),
-        classification_checks: minimized.checks,
-        oracle_subset_minimal: minimized.entailed && !minimized.limit_reached,
-        limit_reached: minimized.limit_reached,
+        classification_checks: enumeration.checks,
+        classification_check_limit: options.max_checks,
+        justification_limit: options.max_justifications,
+        oracle_subset_minimal,
+        enumeration_complete: enumeration.enumeration_complete,
+        limit_reached,
+        check_limit_reached: enumeration.check_limit_reached,
+        justification_limit_reached: enumeration.justification_limit_reached,
+        prefix_declarations,
         justifications,
         notes,
     })
@@ -507,30 +709,59 @@ Ontology(<http://example.org/o>
     }
 
     #[test]
-    fn deletion_returns_one_subset_minimal_support() {
+    fn deletion_returns_one_verified_subset_minimal_support() {
         // Query follows from (0 and 1); axiom 2 is noise.  The monotone oracle
         // models an entailment check without running a reasoner in this unit.
-        let result = minimize(3, 4, |active| -> Result<bool, ()> {
-            Ok(active[0] && active[1])
-        })
-        .unwrap();
+        let result = enumerate(3, 8, 1, |active| Ok(active[0] && active[1])).unwrap();
         assert!(result.entailed);
-        assert_eq!(result.active, vec![true, true, false]);
-        assert_eq!(result.checks, 4);
-        assert!(!result.limit_reached);
+        assert_eq!(result.justifications, vec![vec![true, true, false]]);
+        assert_eq!(result.checks, 5);
+        assert!(!result.check_limit_reached);
+        assert!(result.justification_limit_reached);
+        assert!(!result.enumeration_complete);
     }
 
     #[test]
-    fn budgeted_result_stays_entailed_but_is_not_minimal() {
-        let result = minimize(3, 1, |_active| -> Result<bool, ()> { Ok(true) }).unwrap();
+    fn hitting_set_tree_finds_two_distinct_minimal_supports() {
+        let result = enumerate(5, 64, 2, |active| {
+            Ok((active[0] && active[1]) || (active[2] && active[3]))
+        })
+        .unwrap();
         assert!(result.entailed);
-        assert_eq!(result.active, vec![true, true, true]);
-        assert_eq!(result.checks, 1);
-        assert!(result.limit_reached);
+        assert_eq!(result.justifications.len(), 2);
+        assert!(result
+            .justifications
+            .contains(&vec![true, true, false, false, false]));
+        assert!(result
+            .justifications
+            .contains(&vec![false, false, true, true, false]));
+        assert!(result.justification_limit_reached);
+        assert!(!result.enumeration_complete);
+    }
+
+    #[test]
+    fn unfinished_minimization_is_not_returned_when_check_budget_ends() {
+        let result = enumerate(3, 2, 1, |_active| Ok(true)).unwrap();
+        assert!(result.entailed);
+        assert!(result.justifications.is_empty());
+        assert_eq!(result.checks, 2);
+        assert!(result.check_limit_reached);
+        assert!(!result.enumeration_complete);
+    }
+
+    #[test]
+    fn tautology_has_one_verified_empty_justification() {
+        let result = enumerate(2, 8, 1, |_active| Ok(true)).unwrap();
+        assert!(result.entailed);
+        assert_eq!(result.justifications, vec![vec![false, false]]);
+        assert!(result.enumeration_complete);
+        assert!(!result.check_limit_reached);
+        assert!(!result.justification_limit_reached);
     }
 
     #[test]
     fn query_recognises_taxonomy_unsat_and_owl_tautologies() {
+        let iris = IriResolver::default();
         let classification = Classification {
             consistent: true,
             subsumptions: vec![["http://e/A".into(), "http://e/B".into()]],
@@ -541,38 +772,63 @@ Ontology(<http://example.org/o>
             sub_class: "<http://e/A>".into(),
             super_class: "http://e/B".into(),
         }
-        .entailed_by(&classification));
+        .entailed_by(&classification, &iris));
         assert!(Query::SubClass {
             sub_class: "http://e/U".into(),
             super_class: "http://e/Anything".into(),
         }
-        .entailed_by(&classification));
+        .entailed_by(&classification, &iris));
         assert!(Query::Unsatisfiable {
             class_iri: "http://e/U".into(),
         }
-        .entailed_by(&classification));
+        .entailed_by(&classification, &iris));
         assert!(Query::SubClass {
             sub_class: "http://e/Fresh".into(),
             super_class: "owl:Thing".into(),
         }
-        .entailed_by(&classification));
-        assert!(!Query::Inconsistent.entailed_by(&classification));
+        .entailed_by(&classification, &iris));
+        assert!(!Query::Inconsistent.entailed_by(&classification, &iris));
+    }
+
+    #[test]
+    fn query_resolves_source_prefixes_without_local_name_matching() {
+        let iris = IriResolver::from_preamble(&[
+            "Prefix(:=<http://example.org/>)".into(),
+            "Prefix(other:=<http://other.example/>)".into(),
+        ]);
+        let classification = Classification {
+            consistent: true,
+            subsumptions: vec![[":A".into(), ":B".into()]],
+            unsatisfiable: Vec::new(),
+            dropped: 0,
+        };
+        assert!(Query::SubClass {
+            sub_class: "http://example.org/A".into(),
+            super_class: "http://example.org/B".into(),
+        }
+        .entailed_by(&classification, &iris));
+        assert!(!Query::SubClass {
+            sub_class: "http://other.example/A".into(),
+            super_class: "http://example.org/B".into(),
+        }
+        .entailed_by(&classification, &iris));
     }
 
     #[test]
     fn inconsistent_ontology_entails_every_supported_query() {
+        let iris = IriResolver::default();
         let classification = Classification {
             consistent: false,
             subsumptions: Vec::new(),
             unsatisfiable: Vec::new(),
             dropped: 0,
         };
-        assert!(Query::Inconsistent.entailed_by(&classification));
+        assert!(Query::Inconsistent.entailed_by(&classification, &iris));
         assert!(Query::SubClass {
             sub_class: "http://e/A".into(),
             super_class: "http://e/B".into(),
         }
-        .entailed_by(&classification));
+        .entailed_by(&classification, &iris));
     }
 
     #[test]

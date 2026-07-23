@@ -60,7 +60,7 @@ fn explain_cmd(rest: &[String]) {
     use kobayashi_marust::orchestrate::explain::{self, ExplainError, Options, Query};
 
     let usage = || {
-        eprintln!("usage: km explain [--pretty] [--route ROUTE] [--max-axioms N] [--max-checks N] [--max-source-bytes N] <ontology.ofn> subclass <SUB> <SUPER>");
+        eprintln!("usage: km explain [--pretty] [--route auto] [--max-axioms N] [--max-checks N] [--max-justifications N] [--max-source-bytes N] <ontology.ofn> subclass <SUB> <SUPER>");
         eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
         eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
     };
@@ -68,6 +68,7 @@ fn explain_cmd(rest: &[String]) {
     let mut route: Option<String> = None;
     let mut max_axioms = explain::DEFAULT_MAX_AXIOMS;
     let mut max_checks: Option<usize> = None;
+    let mut max_justifications = explain::DEFAULT_MAX_JUSTIFICATIONS;
     let mut max_source_bytes = explain::DEFAULT_MAX_SOURCE_BYTES;
     let mut positional: Vec<&str> = Vec::new();
 
@@ -84,7 +85,11 @@ fn explain_cmd(rest: &[String]) {
     while index < rest.len() {
         match rest[index].as_str() {
             "--pretty" => pretty = true,
-            "--route" | "--max-axioms" | "--max-checks" | "--max-source-bytes" => {
+            "--route"
+            | "--max-axioms"
+            | "--max-checks"
+            | "--max-justifications"
+            | "--max-source-bytes" => {
                 let option = rest[index].as_str();
                 index += 1;
                 let Some(value) = rest.get(index) else {
@@ -96,6 +101,7 @@ fn explain_cmd(rest: &[String]) {
                     "--route" => route = Some(value.clone()),
                     "--max-axioms" => max_axioms = parse_usize(option, value),
                     "--max-checks" => max_checks = Some(parse_usize(option, value)),
+                    "--max-justifications" => max_justifications = parse_usize(option, value),
                     "--max-source-bytes" => max_source_bytes = parse_usize(option, value) as u64,
                     _ => unreachable!(),
                 }
@@ -111,6 +117,12 @@ fn explain_cmd(rest: &[String]) {
                     "--max-checks",
                     value.trim_start_matches("--max-checks="),
                 ))
+            }
+            value if value.starts_with("--max-justifications=") => {
+                max_justifications = parse_usize(
+                    "--max-justifications",
+                    value.trim_start_matches("--max-justifications="),
+                )
             }
             value if value.starts_with("--max-source-bytes=") => {
                 max_source_bytes = parse_usize(
@@ -164,8 +176,13 @@ fn explain_cmd(rest: &[String]) {
     std::env::set_var("KM_ROUTE", requested_route.as_str());
     let options = Options {
         max_axioms,
-        max_checks: max_checks.unwrap_or_else(|| max_axioms.saturating_add(1)),
+        max_checks: max_checks.unwrap_or_else(|| {
+            max_axioms
+                .saturating_add(2)
+                .saturating_mul(max_justifications)
+        }),
         max_source_bytes,
+        max_justifications,
     };
     let cfg = Config::from_env();
     match explain::explain(&cfg, ontology, query, &options, requested_route) {

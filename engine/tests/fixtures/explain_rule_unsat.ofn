@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/explain-rules#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(NamedIndividual(:a))
+DisjointClasses(:A :B)
+ClassAssertion(:A :a)
+DLSafeRule(
+  Body(ClassAtom(:A Variable(:x)))
+  Head(ClassAtom(:B Variable(:x))))
+)
