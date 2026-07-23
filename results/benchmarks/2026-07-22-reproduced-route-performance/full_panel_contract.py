@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Frozen procedure contract for the 2026-07-22 all-options ORE sweep.
 
-Every Slurm array task owns one ontology and executes this ordered panel.  KM
+Every ontology executes this ordered panel inside its assigned Slurm chunk.  KM
 "configuration option" means every public value printed by ``km routes``.  It
 does not mean the unbounded Cartesian product of numeric budgets, internal
 worker controls, diagnostics, profilers, or output-format settings.
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 
-KM_REVISION = "8c731f43b3c8a277f5fd7a25687e35afb4c4045e"
+KM_REVISION = "efbcbbc57193bd5a50b0ee8f07c25114414fc01d"
 KONCLUDE_REVISION = "0002e80635403960a7df5d93bd0e8f994d4952d0"
 RUSTDL_REVISION = "8c2bb1bf43d936e56d77ae439c04d2feb3f6ebf5"
 SEQUOIA_REVISION = "c5248ec7be302efc850cf07ab30a0ea651db81b6"
@@ -27,6 +27,7 @@ KM_ROUTES = (
     "production_all",
     "production_all8",
     "production_all1",
+    "certified_card_nominals",
     "cb_plain16",
     "cb_plain8",
     "cb_plain1",
@@ -45,6 +46,7 @@ KM_ROUTES = (
     "ht_shoq",
     "ht_card",
     "ht_bridge",
+    "certified_nominals",
     "ht_features",
     "ht_full",
     "ht_rules",
@@ -315,7 +317,7 @@ def panel() -> list[dict]:
             }
         )
     rows.extend(dict(row) for row in BASELINES)
-    assert len(rows) == 66
+    assert len(rows) == 68
     assert len({row["arm"] for row in rows}) == len(rows)
     return rows
 

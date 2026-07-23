@@ -140,6 +140,15 @@ conversion, safety, and licensing contract.
 
 ## ORE 2015 benchmark status
 
+> **2026-07-23 rerun status:** the merged engine revision
+> [`efbcbbc`](https://github.com/bio-ontology-research-group/kobayashi-marust/commit/efbcbbc57193bd5a50b0ee8f07c25114414fc01d)
+> restores the two source-bound mechanisms for 9540 and 10621. The frozen
+> rerun contract now contains 37 public KM routes and 68 total procedures
+> (40,256 limited measurements) in exactly 30 Slurm chunks. The published
+> table below remains the completed 66-procedure run until the new IBEX results
+> pass exact full-IRI scoring and aggregation; this note is not a 589-coverage
+> claim.
+
 The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
 ontologies, for 39,072 independently limited measurements. Every procedure
 receives 240 seconds, 20 GiB summed process-tree RSS, and 16 CPU cores on the

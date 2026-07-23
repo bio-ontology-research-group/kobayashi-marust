@@ -143,20 +143,41 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--wide", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--contract",
+        type=Path,
+        help="procedure TSV (default: OUTPUT_DIR/full-panel-contract.tsv)",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    contract_path = args.contract or args.output_dir / "full-panel-contract.tsv"
+    with contract_path.open(newline="", encoding="utf-8") as handle:
+        contract_reader = csv.DictReader(handle, delimiter="\t")
+        contract_rows = list(contract_reader)
+    expected_arms = [row.get("arm", "") for row in contract_rows]
+    if not expected_arms or any(not arm for arm in expected_arms):
+        raise SystemExit(f"invalid or empty procedure contract: {contract_path}")
+    if len(expected_arms) != len(set(expected_arms)):
+        raise SystemExit(f"duplicate procedure arm in contract: {contract_path}")
+    if "konclude" not in expected_arms:
+        raise SystemExit("procedure contract lacks the Konclude reference arm")
+
     with gzip.open(args.input, "rt", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         fields = list(reader.fieldnames or [])
         rows = list(reader)
-    if len(rows) != 592 * 66:
-        raise SystemExit(f"expected 39,072 rows, found {len(rows)}")
     if not fields or "ontology" not in fields or "arm" not in fields:
         raise SystemExit("input is not a full-panel long table")
+    expected_row_count = 592 * len(expected_arms)
+    if len(rows) != expected_row_count:
+        raise SystemExit(
+            f"expected {expected_row_count:,} rows from the "
+            f"{len(expected_arms)}-procedure contract, found {len(rows):,}"
+        )
 
     by_ontology: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -166,14 +187,15 @@ def main() -> int:
         by_ontology[row["ontology"]].append(row)
     if len(by_ontology) != 592:
         raise SystemExit(f"expected 592 ontologies, found {len(by_ontology)}")
-    expected_arms = {row["arm"] for row in rows}
-    if len(expected_arms) != 66:
-        raise SystemExit(f"expected 66 procedures, found {len(expected_arms)}")
+    expected_arm_set = set(expected_arms)
 
     corrections: list[dict] = []
     for ontology, ontology_rows in sorted(by_ontology.items()):
+        observed_arms = [row["arm"] for row in ontology_rows]
+        if observed_arms != expected_arms:
+            raise SystemExit(f"ordered procedure-contract mismatch for {ontology}")
         indexed = {row["arm"]: row for row in ontology_rows}
-        if set(indexed) != expected_arms:
+        if set(indexed) != expected_arm_set:
             raise SystemExit(f"procedure-set mismatch for {ontology}")
         reference = indexed["konclude"]
         for row in ontology_rows:
@@ -288,7 +310,7 @@ def main() -> int:
         )
     per_arm = [
         summarize(arm, [indexed_all[o][arm] for o in sorted(indexed_all)])
-        for arm in sorted(expected_arms)
+        for arm in expected_arms
     ]
 
     # Publish a corrected 592-row table as a new artifact.  The frozen v1 wide
@@ -462,6 +484,9 @@ def main() -> int:
         "input_sha256": sha256_file(args.input),
         "wide_input": str(args.wide),
         "wide_input_sha256": sha256_file(args.wide),
+        "contract": str(contract_path),
+        "contract_sha256": sha256_file(contract_path),
+        "procedure_count": len(expected_arms),
         "scorer": scorer_display,
         "scorer_sha256": sha256_file(scorer_path),
         "driver_sha256": sha256_file(Path(__file__)),

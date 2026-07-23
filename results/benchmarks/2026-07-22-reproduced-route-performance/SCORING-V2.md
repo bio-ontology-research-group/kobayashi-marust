@@ -17,17 +17,19 @@ python3 results/benchmarks/audit_full_panel_route_coverage.py \
 python3 results/benchmarks/rescore_full_panel.py \
   --input results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-results.tsv.gz \
   --wide results/benchmarks/2026-07-22-reproduced-route-performance/ontology-route-performance.tsv \
+  --contract results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-contract.tsv \
   --output-dir results/benchmarks/2026-07-22-reproduced-route-performance
 ```
 
 The route audit fails unless the ledger has 592 rows, exactly 589 sound and
 complete historical claims, and every distinct accepted environment is present
 as either a public route or an exact documented environment in the panel
-contract. The retained contract passes with 35 public routes, eight documented
+contract. The rerun contract passes with 37 public routes, eight documented
 environments, and no missing historical environment.
 
-The rescorer fails unless it reads exactly 592 ontologies and 66 procedures and
-repairs the eight original KM-auto regression cases. It treats two trusted
+The rescorer fails unless it reads exactly 592 ontologies and the exact ordered
+procedure set in `full-panel-contract.tsv`; it also repairs the eight original
+KM-auto regression cases. It treats two trusted
 answers that both report inconsistency as the same complete classical OWL
 answer. It also permits exact same-job full-IRI comparison for the allowlisted
 3524 and 15703 wrappers, whose local-name projection is known to be

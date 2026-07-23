@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and aggregate the 592 x 66 reproduced ORE procedure panel."""
+"""Validate and aggregate the 592 x 68 reproduced ORE procedure panel."""
 
 from __future__ import annotations
 

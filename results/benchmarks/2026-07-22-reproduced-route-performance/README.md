@@ -1,5 +1,12 @@
 # Fresh ORE all-route and all-reasoner panel
 
+> **Rerun boundary (2026-07-23):** the executable contract and 30-chunk driver
+> are updated for KM revision `efbcbbc57193bd5a50b0ee8f07c25114414fc01d`.
+> They contain 37 public KM routes and 68 total procedures, or 40,256 expected
+> measurements. The committed result tables described below still belong to
+> the completed 66-procedure run. They remain authoritative until the rerun is
+> semantically aggregated and the generated artifacts are replaced together.
+
 This directory contains a fresh, source-bound run over all 592 ORE 2015
 ontologies. One IBEX Slurm array task owns one ontology and runs every one of
 the 66 procedures sequentially under the same limits. The run therefore

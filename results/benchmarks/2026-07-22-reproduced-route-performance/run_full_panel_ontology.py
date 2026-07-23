@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the frozen 66-procedure panel for one ORE ontology."""
+"""Run the frozen 68-procedure panel for one ORE ontology."""
 
 from __future__ import annotations
 
