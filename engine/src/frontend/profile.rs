@@ -220,6 +220,16 @@ pub struct OntologyProfile {
     /// `positive_abox_tbox_separable` for the fail-closed contract.
     #[serde(default)]
     pub positive_abox_tbox_separable: bool,
+    /// Source-only certificate for the inverse-aware cardinality route. Every
+    /// object role used by a number restriction (including functionality) is
+    /// in a role-hierarchy component disjoint from inverse/symmetric and
+    /// non-simple (chain/transitive) roles. `ObjectInverseOf` role expressions
+    /// and inverse functionality fail closed, and at least one explicit object
+    /// cardinality must supply first-class CardMeta. The inverse axioms are
+    /// still processed exactly; this certificate only establishes that
+    /// Konclude's NN/NI nominal-predecessor rule has no number-role premise.
+    #[serde(default)]
+    pub inverse_cardinality_role_separable: bool,
     pub expressivity: ExpressivityProfile,
     pub source: SourceStatistics,
     pub clauses: ClauseStatistics,
@@ -244,6 +254,17 @@ pub struct SourceProfileBuilder<'a> {
     subclass_lhs: HashSet<&'a str>,
     existential_definition_lhs: HashSet<&'a str>,
     inverse_partners: HashMap<&'a str, HashSet<&'a str>>,
+    number_roles: HashSet<&'a str>,
+    positive_assertion_roles: HashSet<&'a str>,
+    negative_assertion_roles: HashSet<&'a str>,
+    inverse_roles: HashSet<&'a str>,
+    non_simple_roles: HashSet<&'a str>,
+    chain_roles: HashSet<&'a str>,
+    role_dependencies: HashMap<&'a str, HashSet<&'a str>>,
+    number_role_seen: bool,
+    object_cardinality_seen: bool,
+    inverse_role_seen: bool,
+    inverse_cardinality_certificate_invalid: bool,
     explicit_inverse_relation: bool,
     object_role_hierarchy: bool,
     nominal_unconditional: bool,
@@ -273,6 +294,17 @@ impl<'a> Default for SourceProfileBuilder<'a> {
             subclass_lhs: HashSet::new(),
             existential_definition_lhs: HashSet::new(),
             inverse_partners: HashMap::new(),
+            number_roles: HashSet::new(),
+            positive_assertion_roles: HashSet::new(),
+            negative_assertion_roles: HashSet::new(),
+            inverse_roles: HashSet::new(),
+            non_simple_roles: HashSet::new(),
+            chain_roles: HashSet::new(),
+            role_dependencies: HashMap::new(),
+            number_role_seen: false,
+            object_cardinality_seen: false,
+            inverse_role_seen: false,
+            inverse_cardinality_certificate_invalid: false,
             explicit_inverse_relation: false,
             object_role_hierarchy: false,
             nominal_unconditional: false,
@@ -392,6 +424,12 @@ impl<'a> SourceProfileBuilder<'a> {
                         self.stats.role_chain_axioms += 1;
                         self.stats.max_role_chain_length =
                             self.stats.max_role_chain_length.max(rs.len() as u64);
+                        // The normalized RBox channel represents only binary
+                        // chains. Longer/shorter chains are fenced by rbox.rs,
+                        // so the source-side route certificate must decline too.
+                        if rs.len() != 2 {
+                            self.inverse_cardinality_certificate_invalid = true;
+                        }
                         let super_role = args.get(1).and_then(|n| n.as_atom());
                         let all_transitive = super_role.is_some()
                             && !rs.is_empty()
@@ -404,6 +442,24 @@ impl<'a> SourceProfileBuilder<'a> {
                         } else {
                             self.expr.complex_subrole = true;
                         }
+                        let mut dependency_roles: Vec<&'a str> = Vec::new();
+                        for role in rs {
+                            if let Some(role) = self.atomic_certificate_role(role) {
+                                dependency_roles.push(role);
+                                self.non_simple_roles.insert(role);
+                            }
+                        }
+                        if let Some(role) = args
+                            .get(1)
+                            .and_then(|role| self.atomic_certificate_role(role))
+                        {
+                            dependency_roles.push(role);
+                            self.non_simple_roles.insert(role);
+                        }
+                        if !all_transitive {
+                            self.chain_roles.extend(dependency_roles.iter().copied());
+                        }
+                        self.connect_role_component(&dependency_roles);
                         for r in rs {
                             self.object_role(r);
                         }
@@ -423,6 +479,15 @@ impl<'a> SourceProfileBuilder<'a> {
                     self.expr.role_hierarchy = true;
                     self.object_role_hierarchy = true;
                 }
+                let dependency_sub = args
+                    .first()
+                    .and_then(|role| self.atomic_certificate_role(role));
+                let dependency_sup = args
+                    .get(1)
+                    .and_then(|role| self.atomic_certificate_role(role));
+                if let (Some(sub), Some(sup)) = (dependency_sub, dependency_sup) {
+                    self.connect_roles(sub, sup);
+                }
                 for r in &args {
                     self.object_role(r);
                 }
@@ -431,6 +496,11 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.logical_rbox(head);
                 self.expr.role_hierarchy = true;
                 self.object_role_hierarchy = true;
+                let dependency_roles: Vec<&'a str> = args
+                    .iter()
+                    .filter_map(|role| self.atomic_certificate_role(role))
+                    .collect();
+                self.connect_role_component(&dependency_roles);
                 for r in &args {
                     self.object_role(r);
                 }
@@ -445,6 +515,12 @@ impl<'a> SourceProfileBuilder<'a> {
                 ) {
                     self.inverse_partners.entry(left).or_default().insert(right);
                     self.inverse_partners.entry(right).or_default().insert(left);
+                    self.inverse_roles.insert(left);
+                    self.inverse_roles.insert(right);
+                    self.inverse_role_seen = true;
+                    self.connect_roles(left, right);
+                } else {
+                    self.inverse_cardinality_certificate_invalid = true;
                 }
                 for r in &args {
                     self.object_role(r);
@@ -452,6 +528,10 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "DisjointObjectProperties" => {
                 self.logical_rbox(head);
+                // cb_to_ht keeps this as a role-constraint fence. A source
+                // certificate that admitted it could select the nominal card
+                // portfolio before the normalized worker correctly declined.
+                self.inverse_cardinality_certificate_invalid = true;
                 for r in &args {
                     self.object_role(r);
                 }
@@ -462,6 +542,9 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.expr.transitivity = true;
                 if let Some(r) = args.first().and_then(|n| n.as_atom()) {
                     self.transitive_roles.insert(r);
+                    self.non_simple_roles.insert(r);
+                } else {
+                    self.inverse_cardinality_certificate_invalid = true;
                 }
                 self.object_roles(&args);
             }
@@ -470,6 +553,13 @@ impl<'a> SourceProfileBuilder<'a> {
                 // Konclude represents symmetry through an inverse-equivalent
                 // role link, which sets the I occurrence flag.
                 self.expr.inverse = true;
+                if let Some(role) = args
+                    .first()
+                    .and_then(|role| self.atomic_certificate_role(role))
+                {
+                    self.inverse_roles.insert(role);
+                    self.inverse_role_seen = true;
+                }
                 self.object_roles(&args);
             }
             "FunctionalObjectProperty" => {
@@ -480,6 +570,13 @@ impl<'a> SourceProfileBuilder<'a> {
                 // negated at-most concept (official probe: SIF), unlike a
                 // source ObjectMaxCardinality(1 ...) expression (ALIF+).
                 self.expr.negation_disjunction = true;
+                self.number_role_seen = true;
+                if let Some(role) = args
+                    .first()
+                    .and_then(|role| self.atomic_certificate_role(role))
+                {
+                    self.number_roles.insert(role);
+                }
                 self.object_roles(&args);
             }
             "InverseFunctionalObjectProperty" => {
@@ -487,20 +584,39 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.stats.inverse_functional_role_axioms += 1;
                 self.expr.functionality = true;
                 self.expr.inverse = true;
+                self.number_role_seen = true;
+                self.inverse_role_seen = true;
+                self.inverse_cardinality_certificate_invalid = true;
+                if let Some(role) = args
+                    .first()
+                    .and_then(|role| self.atomic_certificate_role(role))
+                {
+                    self.number_roles.insert(role);
+                    self.inverse_roles.insert(role);
+                }
                 self.object_roles(&args);
             }
             "AsymmetricObjectProperty" | "ReflexiveObjectProperty" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.object_roles(&args);
             }
             "IrreflexiveObjectProperty" => {
                 self.logical_rbox(head);
                 self.expr.negation_disjunction = true;
+                self.inverse_cardinality_certificate_invalid = true;
                 self.object_roles(&args);
             }
             "ObjectPropertyDomain" => {
                 self.logical_rbox(head);
                 self.stats.domain_axioms += 1;
+                if !args.first().is_some_and(|role| role.as_atom().is_some())
+                    || !args
+                        .get(1)
+                        .is_some_and(|class| class.as_atom().is_some_and(|name| !is_bottom(name)))
+                {
+                    self.inverse_cardinality_certificate_invalid = true;
+                }
                 let domain_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -515,6 +631,13 @@ impl<'a> SourceProfileBuilder<'a> {
             "ObjectPropertyRange" => {
                 self.logical_rbox(head);
                 self.stats.range_axioms += 1;
+                if !args.first().is_some_and(|role| role.as_atom().is_some())
+                    || !args
+                        .get(1)
+                        .is_some_and(|class| class.as_atom().is_some_and(|name| !is_bottom(name)))
+                {
+                    self.inverse_cardinality_certificate_invalid = true;
+                }
                 let range_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -529,16 +652,19 @@ impl<'a> SourceProfileBuilder<'a> {
 
             "SubDataPropertyOf" | "EquivalentDataProperties" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.role_inclusion_axioms += 1;
                 self.expr.role_hierarchy = true;
                 self.data_roles(&args);
             }
             "DisjointDataProperties" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.data_roles(&args);
             }
             "FunctionalDataProperty" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.functional_role_axioms += 1;
                 self.expr.functionality = true;
                 self.expr.datatype = true;
@@ -546,6 +672,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "DataPropertyDomain" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.domain_axioms += 1;
                 if let Some(r) = args.first().and_then(|n| n.as_atom()) {
                     self.data_properties.insert(r);
@@ -556,6 +683,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "DataPropertyRange" => {
                 self.logical_rbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.range_axioms += 1;
                 if let Some(r) = args.first().and_then(|n| n.as_atom()) {
                     self.data_properties.insert(r);
@@ -563,6 +691,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "DatatypeDefinition" => {
                 self.logical_tbox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 // A standalone datatype definition is internalized as a
                 // nondeterministic concept but does not attach a data role, so
                 // Konclude reports SI rather than a `(D)` suffix.
@@ -570,6 +699,9 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "HasKey" => {
                 self.logical_tbox(head);
+                // Key equalities are not first-class number restrictions and
+                // are outside the scoped NN/NI absence proof.
+                self.inverse_cardinality_certificate_invalid = true;
                 if let Some(c) = args.first() {
                     self.concept(c, 1);
                 }
@@ -592,6 +724,12 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.logical_abox(head);
                 self.stats.role_assertions += 1;
                 if let Some(r) = args.first() {
+                    match self.atomic_certificate_role(r) {
+                        Some(role) if !is_universal_role(role) && !is_bottom_role(role) => {
+                            self.positive_assertion_roles.insert(role);
+                        }
+                        _ => self.inverse_cardinality_certificate_invalid = true,
+                    }
                     self.object_role(r);
                 }
                 self.individual_arg(args.get(1).copied());
@@ -606,6 +744,12 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.nominal_unconditional = true;
                 self.nominal_from_abox = true;
                 if let Some(r) = args.first() {
+                    match self.atomic_certificate_role(r) {
+                        Some(role) if !is_universal_role(role) && !is_bottom_role(role) => {
+                            self.negative_assertion_roles.insert(role);
+                        }
+                        _ => self.inverse_cardinality_certificate_invalid = true,
+                    }
                     self.object_role(r);
                 }
                 self.individual_arg(args.get(1).copied());
@@ -613,6 +757,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "DataPropertyAssertion" => {
                 self.logical_abox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.role_assertions += 1;
                 if let Some(r) = args.first().and_then(|n| n.as_atom()) {
                     self.data_properties.insert(r);
@@ -621,6 +766,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             "NegativeDataPropertyAssertion" => {
                 self.logical_abox(head);
+                self.inverse_cardinality_certificate_invalid = true;
                 self.stats.role_assertions += 1;
                 self.expr.datatype = true;
                 self.expr.negation_disjunction = true;
@@ -629,7 +775,20 @@ impl<'a> SourceProfileBuilder<'a> {
                 }
                 self.individual_arg(args.get(1).copied());
             }
-            "SameIndividual" | "DifferentIndividuals" => {
+            "SameIndividual" => {
+                self.logical_abox(head);
+                // A ground equality has an Eq head without a counted role; the
+                // independent normalized certificate rejects that shape.
+                self.inverse_cardinality_certificate_invalid = true;
+                self.expr.nominal_individual = true;
+                self.nominal_unconditional = true;
+                self.nominal_from_abox = true;
+                self.expr.negation_disjunction = true;
+                for n in &args {
+                    self.individual_arg(Some(*n));
+                }
+            }
+            "DifferentIndividuals" => {
                 self.logical_abox(head);
                 self.expr.nominal_individual = true;
                 self.nominal_unconditional = true;
@@ -649,11 +808,17 @@ impl<'a> SourceProfileBuilder<'a> {
                     self.stats.unsupported_rule_axioms += 1;
                 }
             }
-            _ => {}
+            // Unknown top-level logical constructors are outside every exact
+            // source certificate.  Ordinary parsing may conservatively ignore
+            // them, but they must never help admit the native card route.
+            _ => self.inverse_cardinality_certificate_invalid = true,
         }
     }
 
     pub fn finish(mut self, file_bytes: u64) -> OntologyProfile {
+        // Compute borrowed-set certificates before moving the raw axiom-type
+        // map and entity sets into their owned statistics representation.
+        let inverse_cardinality_role_separable = self.inverse_cardinality_role_separable();
         self.stats.file_bytes = file_bytes;
         self.stats.declared_classes = self.declared_classes.len() as u64;
         self.stats.declared_object_properties = self.declared_object_properties.len() as u64;
@@ -747,6 +912,7 @@ impl<'a> SourceProfileBuilder<'a> {
         OntologyProfile {
             schema_version: 2,
             positive_abox_tbox_separable,
+            inverse_cardinality_role_separable,
             expressivity: self.expr,
             source: self.stats,
             clauses: ClauseStatistics::default(),
@@ -969,6 +1135,21 @@ impl<'a> SourceProfileBuilder<'a> {
         }
         if data {
             self.expr.datatype = true;
+            // The fast cardinality worker has no concrete-domain oracle. Keep
+            // the inverse/cardinality certificate source-object-only.
+            self.inverse_cardinality_certificate_invalid = true;
+        } else {
+            self.number_role_seen = true;
+            self.object_cardinality_seen = true;
+            match args
+                .get(1)
+                .and_then(|role| self.atomic_certificate_role(role))
+            {
+                Some(role) if !is_universal_role(role) && !is_bottom_role(role) => {
+                    self.number_roles.insert(role);
+                }
+                _ => self.inverse_cardinality_certificate_invalid = true,
+            }
         }
         let n = args
             .first()
@@ -1066,12 +1247,129 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             Node::List(h, args) if *h == "ObjectInverseOf" => {
                 self.expr.inverse = true;
+                // Concept-position/in-line inverse roles use generated
+                // `__inv__` bridges and are intentionally outside the scoped
+                // named-RBox certificate.
+                self.inverse_cardinality_certificate_invalid = true;
                 if let Some(r) = args.first().and_then(Node::as_atom) {
                     self.object_properties.insert(r);
                 }
             }
             _ => {}
         }
+    }
+
+    fn atomic_certificate_role(&mut self, node: &Node<'a>) -> Option<&'a str> {
+        match node {
+            Node::Atom(role) => Some(*role),
+            _ => {
+                self.inverse_cardinality_certificate_invalid = true;
+                None
+            }
+        }
+    }
+
+    fn connect_roles(&mut self, left: &'a str, right: &'a str) {
+        self.role_dependencies
+            .entry(left)
+            .or_default()
+            .insert(right);
+        self.role_dependencies
+            .entry(right)
+            .or_default()
+            .insert(left);
+    }
+
+    fn connect_role_component(&mut self, roles: &[&'a str]) {
+        let Some((&first, rest)) = roles.split_first() else {
+            self.inverse_cardinality_certificate_invalid = true;
+            return;
+        };
+        for &role in rest {
+            self.connect_roles(first, role);
+        }
+    }
+
+    fn inverse_cardinality_role_separable(&self) -> bool {
+        if !self.number_role_seen
+            || !self.object_cardinality_seen
+            || !self.inverse_role_seen
+            || self.inverse_cardinality_certificate_invalid
+            || self.number_roles.is_empty()
+            || self.inverse_roles.is_empty()
+            || self.stats.imports != 0
+            || self.stats.rule_axioms != 0
+            || self.expr.datatype
+            || self.expr.universal_role
+            || self.stats.bottom_role_occurrences != 0
+        {
+            return false;
+        }
+
+        let mut seen: HashSet<&'a str> = HashSet::new();
+        let mut pending: Vec<&'a str> = self.number_roles.iter().copied().collect();
+        while let Some(role) = pending.pop() {
+            if !seen.insert(role) {
+                continue;
+            }
+            if self.inverse_roles.contains(role)
+                || self.non_simple_roles.contains(role)
+                || is_universal_role(role)
+                || is_bottom_role(role)
+            {
+                return false;
+            }
+            if let Some(neighbours) = self.role_dependencies.get(role) {
+                pending.extend(neighbours.iter().copied());
+            }
+        }
+
+        // A negative ground assertion ¬R(a,b) is checked by a guarded clash
+        // clause in the native Ht. The production Ht keeps role hierarchies and
+        // inverse bridges as ordinary clauses, but role-chain/transitive edges
+        // are side data used primarily for universal propagation. Until native
+        // ABox edge materialization through those automata is a default-certified
+        // mechanism, require every negative-assertion component to be disjoint
+        // from every non-simple role. This retains 9540: its has_point/is_front/
+        // is_back negative roles are disconnected from its two transitive roles.
+        let mut seen_negative: HashSet<&'a str> = HashSet::new();
+        let mut pending_negative: Vec<&'a str> =
+            self.negative_assertion_roles.iter().copied().collect();
+        while let Some(role) = pending_negative.pop() {
+            if !seen_negative.insert(role) {
+                continue;
+            }
+            if self.non_simple_roles.contains(role) {
+                return false;
+            }
+            if let Some(neighbours) = self.role_dependencies.get(role) {
+                pending_negative.extend(neighbours.iter().copied());
+            }
+        }
+
+        // Positive named-individual edges also need exact materialization when
+        // they participate in a proper role chain: R(a,b), S(b,c), R∘S⊑T can
+        // trigger T's domain/range and ground constraints. The current side-data
+        // chain path handles universal propagation but does not generally emit
+        // every T(a,c), so reject any positive-ABox role component connected to
+        // a non-transitive role-chain component. Explicit TransitiveObjectProperty
+        // alone is safe here; its direct edges already trigger domain/range and
+        // transitive universal propagation is implemented separately.
+        let mut seen_positive: HashSet<&'a str> = HashSet::new();
+        let mut pending_positive: Vec<&'a str> =
+            self.positive_assertion_roles.iter().copied().collect();
+        while let Some(role) = pending_positive.pop() {
+            if !seen_positive.insert(role) {
+                continue;
+            }
+            if self.chain_roles.contains(role) {
+                return false;
+            }
+            if let Some(neighbours) = self.role_dependencies.get(role) {
+                pending_positive.extend(neighbours.iter().copied());
+            }
+        }
+        true
     }
     fn data_roles(&mut self, args: &[&Node<'a>]) {
         for r in args {
@@ -1559,6 +1857,86 @@ mod tests {
         assert_eq!(zero.expressivity.code, "SI");
         let exact_one = source("Ontology(SubClassOf(<A> ObjectExactCardinality(1 <r> <B>)))");
         assert_eq!(exact_one.expressivity.code, "SIF");
+    }
+
+    #[test]
+    fn inverse_cardinality_role_separation_is_source_certified() {
+        // The inverse role remains semantically active (domain/range and a
+        // restriction share class A with the cardinality axiom), but its role
+        // component is disjoint from the simple number role p. Exact inverse
+        // processing therefore composes with the SHOQ number rule without an
+        // NN/NI number-role premise.
+        let separated = source(
+            r#"Ontology(
+              InverseObjectProperties(<i> <j>)
+              SubObjectPropertyOf(<i> <k>)
+              TransitiveObjectProperty(<k>)
+              ObjectPropertyDomain(<i> <A>)
+              ObjectPropertyRange(<j> <B>)
+              FunctionalObjectProperty(<f>)
+              SubClassOf(<A> ObjectExactCardinality(2 <p> <C>))
+              SubClassOf(<A> ObjectSomeValuesFrom(<i> ObjectOneOf(<a>)))
+            )"#,
+        );
+        assert!(separated.inverse_cardinality_role_separable);
+
+        let separated_negative_abox = source(
+            r#"Ontology(
+              InverseObjectProperties(<is_front> <is_back>)
+              TransitiveObjectProperty(<is_completely_inside>)
+              SubClassOf(<Shape> ObjectExactCardinality(2 <has_point> <Point>))
+              ObjectPropertyAssertion(<has_point> <shape> <p2>)
+              NegativeObjectPropertyAssertion(<has_point> <shape> <p>)
+              NegativeObjectPropertyAssertion(<is_front> <shape> <other>)
+            )"#,
+        );
+        assert!(
+            separated_negative_abox.inverse_cardinality_role_separable,
+            "9540-shaped negative/cardinality and inverse components are separate from transitivity"
+        );
+
+        for unsafe_source in [
+            // Functionality has no CardMeta under the production default, so
+            // it cannot by itself select a first-class-cardinality portfolio.
+            "Ontology(InverseObjectProperties(<i> <j>) FunctionalObjectProperty(<f>))",
+            // direct use of an inverse role by a number restriction
+            "Ontology(InverseObjectProperties(<p> <q>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // role-inclusion / equivalence paths into an inverse component
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<p> <i>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) EquivalentObjectProperties(<p> <i>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<f> <i>) FunctionalObjectProperty(<f>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // chain and transitive number roles are non-simple
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<p> <r>) <s>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<a> <b> <c>) <s>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) TransitiveObjectProperty(<p>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // A native negative edge may not depend on role-chain or
+            // transitivity materialization (directly or through hierarchy).
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) NegativeObjectPropertyAssertion(<t> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<n> <t>) TransitiveObjectProperty(<t>) NegativeObjectPropertyAssertion(<n> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) ObjectPropertyAssertion(<r> <a> <b>) ObjectPropertyAssertion(<s> <b> <c>) ObjectPropertyRange(<t> <C>) DisjointClasses(<C> <D>) ClassAssertion(<D> <c>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // inverse functionality combines the two mechanisms directly
+            "Ontology(InverseObjectProperties(<i> <j>) InverseFunctionalObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // inline inverse expressions retain the hard fail-closed fence
+            "Ontology(InverseObjectProperties(<i> <j>) SubClassOf(<A> ObjectMaxCardinality(1 ObjectInverseOf(<p>) <C>)))",
+            // Every normalized RBox / equality fence must also fail at source,
+            // before a nominal ontology can be sent away from its exact CB path.
+            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyDomain(<i> ObjectUnionOf(<A> <B>)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) ReflexiveObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SameIndividual(<a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) HasKey(<A> <r> <d>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // no concrete-domain oracle in the card worker
+            "Ontology(InverseObjectProperties(<i> <j>) SubClassOf(<A> DataMaxCardinality(1 <d> xsd:string)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // top/bottom roles anywhere, and unknown logical constructors,
+            // invalidate the global semantic certificate.
+            "Ontology(InverseObjectProperties(<i> <j>) SubClassOf(<X> ObjectSomeValuesFrom(owl:topObjectProperty <Y>)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyAssertion(owl:bottomObjectProperty <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) UnsupportedLogicalAxiom(<X> <Y>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+        ] {
+            assert!(
+                !source(unsafe_source).inverse_cardinality_role_separable,
+                "unsafe inverse/cardinality source was certified: {unsafe_source}"
+            );
+        }
     }
 
     #[test]

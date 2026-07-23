@@ -189,6 +189,10 @@ pub struct NominalAboxMeta {
     pub individuals: Vec<NominalIndividualMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub different: Vec<(String, String)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub role_assertions: Vec<NominalRoleAssertionMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub negative_role_assertions: Vec<NominalRoleAssertionMeta>,
     /// Fail-closed diagnostics explaining why `complete` is false.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unsupported: Vec<String>,
@@ -199,6 +203,8 @@ impl NominalAboxMeta {
         !self.complete
             && self.individuals.is_empty()
             && self.different.is_empty()
+            && self.role_assertions.is_empty()
+            && self.negative_role_assertions.is_empty()
             && self.unsupported.is_empty()
     }
 }
@@ -213,6 +219,17 @@ pub struct NominalIndividualMeta {
     /// Source class assertions, retained structurally so assertions of complex
     /// expressions do not depend on clausifier-definer reconstruction.
     pub assertions: Vec<crate::frontend::syntax::Concept>,
+    /// One normalized concept marker for every entry in `assertions`, in the
+    /// same order.  A count/name mismatch invalidates the certificate.
+    pub assertion_markers: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(default)]
+pub struct NominalRoleAssertionMeta {
+    pub role: String,
+    pub source: String,
+    pub target: String,
 }
 
 #[derive(Deserialize)]

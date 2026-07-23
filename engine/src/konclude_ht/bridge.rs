@@ -7566,6 +7566,15 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
+    // Consumer-specific capability fence.  The fast Ht installs typed object
+    // ABox edges and negative-edge constraints; this Konclude bridge currently
+    // does not.  A globally complete frontend payload must not be mistaken for
+    // bridge support for every field, especially on 9540 (1,862 role facts).
+    if !tin.nominal_abox.role_assertions.is_empty()
+        || !tin.nominal_abox.negative_role_assertions.is_empty()
+    {
+        return None;
+    }
     // A named mirror `N ≡ ¬∃R.F` is represented in source NNF as
     // `N ≡ ∀R.¬F`. With inverse roles, a root type can constrain the
     // generated R-successor through R⁻ and thereby entail cross-region
@@ -8528,6 +8537,7 @@ mod tests {
                         individual: individual.into(),
                         proxies: vec![proxy.into()],
                         assertions,
+                        assertion_markers: Vec::new(),
                     },
                 )
                 .collect(),
@@ -8535,6 +8545,8 @@ mod tests {
                 .into_iter()
                 .map(|(left, right)| (left.into(), right.into()))
                 .collect(),
+            role_assertions: Vec::new(),
+            negative_role_assertions: Vec::new(),
             unsupported: Vec::new(),
         }
     }
@@ -9411,6 +9423,36 @@ mod tests {
             result.subsumptions.contains(&(0, 1)),
             "the complete pair probe must prove S ⊑ B"
         );
+    }
+
+    #[test]
+    fn bridge_defers_before_search_when_typed_role_arrays_are_present() {
+        use crate::json_io::{NominalAboxMeta, NominalRoleAssertionMeta};
+
+        for negative in [false, true] {
+            let assertion = NominalRoleAssertionMeta {
+                role: "r".into(),
+                source: "a".into(),
+                target: "b".into(),
+            };
+            let mut meta = NominalAboxMeta {
+                complete: true,
+                ..NominalAboxMeta::default()
+            };
+            if negative {
+                meta.negative_role_assertions.push(assertion);
+            } else {
+                meta.role_assertions.push(assertion);
+            }
+            let tin = TInput {
+                nominal_abox: meta,
+                ..TInput::default()
+            };
+            assert!(
+                bridged_classify_opts(&tin, false, false).is_none(),
+                "the bridge must not preempt the native-ABox HT when role arrays are present"
+            );
+        }
     }
 
     #[test]

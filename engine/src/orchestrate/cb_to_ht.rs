@@ -9,7 +9,7 @@
 //! here: concept/role ids are assigned in FIRST-SEEN (insertion) order, and the
 //! HT-clauses are emitted in exactly the same pass order.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::json_io::{JAtom, JClause, JRule, JRuleAtom, JRuleTerm, JTerm};
 
@@ -281,6 +281,42 @@ pub struct CardDefJson {
     pub filler: usize,
 }
 
+/// Numeric, independently validated named-individual state consumed by the
+/// fast hypertableau.  Indices in `different`/role assertions refer to
+/// `individuals`; concept and role values use this TInput's id tables.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct NativeAboxJson {
+    pub complete: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub individuals: Vec<NativeIndividualJson>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub different: Vec<(usize, usize)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub role_assertions: Vec<(usize, usize, usize)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub negative_role_assertions: Vec<(usize, usize, usize)>,
+}
+
+impl NativeAboxJson {
+    pub fn is_empty(&self) -> bool {
+        !self.complete
+            && self.individuals.is_empty()
+            && self.different.is_empty()
+            && self.role_assertions.is_empty()
+            && self.negative_role_assertions.is_empty()
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct NativeIndividualJson {
+    /// Every proxy denotes this same singleton and is seeded on one root.
+    pub proxies: Vec<usize>,
+    /// Positive normalized concept markers for source ClassAssertions.
+    pub assertions: Vec<usize>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct TInput {
@@ -292,7 +328,24 @@ pub struct TInput {
     pub fenced: Vec<Fenced>,
     pub inverse: bool,
     pub number: bool,
+    /// A normalized-RBox recheck that every first-class number role is in a
+    /// component disjoint from inverse/symmetric and non-simple roles. This
+    /// does not remove inverse semantics: their two swapped role clauses stay
+    /// in `clauses`. It only proves that the missing SHOIQ NN/NI rule has no
+    /// number-role premise for this input.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub inverse_cardinality_role_separable: bool,
     pub nominals: Vec<usize>,
+    /// Auditable source payload retained for the native Konclude bridge.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty"
+    )]
+    pub nominal_abox: crate::json_io::NominalAboxMeta,
+    /// Numeric exact payload for the fast Ht.  Produced only after independent
+    /// name/id/coverage validation of `nominal_abox`.
+    #[serde(default, skip_serializing_if = "NativeAboxJson::is_empty")]
+    pub native_abox: NativeAboxJson,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub card_defs: Vec<CardDefJson>,
     /// Detected role chains `(R1, R2, R)` for `R1∘R2⊑R` (KM_KEEP_CHAIN_AXIOMS).
@@ -324,11 +377,263 @@ pub struct TInput {
     /// matching Konclude's preprocessing boundary.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
-    /// Exact source nominal/ABox payload. The legacy fast-tableau `nominals`
-    /// vector and SHOI fence remain unchanged; only the native Konclude bridge
-    /// consumes this independently certified channel.
-    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
-    pub nominal_abox: crate::json_io::NominalAboxMeta,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// Resolve and validate the frontend's typed ABox against a converted TInput.
+/// The function is intentionally fail closed: it installs no partial native
+/// state, and a nominal-bearing incomplete payload adds a route fence.
+pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAboxMeta) -> bool {
+    use std::collections::{HashMap, HashSet};
+
+    tin.nominal_abox = meta.clone();
+    let has_nominal_input = !meta.individuals.is_empty()
+        || !meta.different.is_empty()
+        || !meta.role_assertions.is_empty()
+        || !meta.negative_role_assertions.is_empty()
+        || !tin.nominals.is_empty();
+
+    // Resolve against scratch vectors.  Nothing semantic is installed until
+    // every name, index, and coverage invariant has passed.
+    let resolved = (|| -> Result<
+        (
+            NativeAboxJson,
+            Vec<String>,
+            Vec<String>,
+            Vec<HtClause>,
+            Vec<usize>,
+        ),
+        String,
+    > {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return Err(if meta.unsupported.is_empty() {
+                "frontend ABox coverage certificate is false".into()
+            } else {
+                meta.unsupported.join("; ")
+            });
+        }
+
+        let mut concepts = tin.concepts.clone();
+        let mut roles = tin.roles.clone();
+        let mut concept_ids: HashMap<String, usize> = concepts
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(id, name)| (name, id))
+            .collect();
+        let mut role_ids: HashMap<String, usize> = roles
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(id, name)| (name, id))
+            .collect();
+        let mut individual_ids = HashMap::new();
+        let mut proxy_owner = HashMap::new();
+        let mut native = NativeAboxJson::default();
+
+        for entry in &meta.individuals {
+            if entry.individual.is_empty() {
+                return Err("empty individual name".into());
+            }
+            if entry.proxies.is_empty() {
+                return Err(format!("individual {} has no proxy", entry.individual));
+            }
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return Err(format!(
+                    "individual {} has {} assertion(s) but {} marker(s)",
+                    entry.individual,
+                    entry.assertions.len(),
+                    entry.assertion_markers.len()
+                ));
+            }
+            if individual_ids.contains_key(entry.individual.as_str()) {
+                return Err(format!("duplicate individual {}", entry.individual));
+            }
+            let index = native.individuals.len();
+            individual_ids.insert(entry.individual.as_str(), index);
+
+            let mut proxies = Vec::new();
+            for proxy in &entry.proxies {
+                if proxy.is_empty() {
+                    return Err(format!("individual {} has an empty proxy", entry.individual));
+                }
+                if proxy_owner
+                    .insert(proxy.as_str(), entry.individual.as_str())
+                    .is_some_and(|owner| owner != entry.individual.as_str())
+                {
+                    return Err(format!("proxy {proxy} belongs to multiple individuals"));
+                }
+                let id = match concept_ids.get(proxy) {
+                    Some(&id) => id,
+                    None => {
+                        let id = concepts.len();
+                        concepts.push(proxy.clone());
+                        concept_ids.insert(proxy.clone(), id);
+                        id
+                    }
+                };
+                proxies.push(id);
+            }
+            proxies.sort_unstable();
+            proxies.dedup();
+
+            let mut assertions = Vec::new();
+            for marker in &entry.assertion_markers {
+                // Assertion markers come from normalized clauses/definers;
+                // unlike a proxy, an absent marker cannot be manufactured.
+                let Some(&id) = concept_ids.get(marker) else {
+                    return Err(format!(
+                        "ClassAssertion marker {marker} for {} is unresolved",
+                        entry.individual
+                    ));
+                };
+                assertions.push(id);
+            }
+            assertions.sort_unstable();
+            assertions.dedup();
+            native
+                .individuals
+                .push(NativeIndividualJson { proxies, assertions });
+        }
+
+        for (left, right) in &meta.different {
+            let pair = (
+                *individual_ids
+                    .get(left.as_str())
+                    .ok_or_else(|| format!("DifferentIndividuals left {left} is unresolved"))?,
+                *individual_ids
+                    .get(right.as_str())
+                    .ok_or_else(|| format!("DifferentIndividuals right {right} is unresolved"))?,
+            );
+            native.different.push(pair);
+        }
+
+        fn resolve_roles(
+            assertions: &[crate::json_io::NominalRoleAssertionMeta],
+            individual_ids: &HashMap<&str, usize>,
+            role_ids: &mut HashMap<String, usize>,
+            roles: &mut Vec<String>,
+        ) -> Result<Vec<(usize, usize, usize)>, String> {
+            let mut out = Vec::with_capacity(assertions.len());
+            for assertion in assertions {
+                if is_universal_object_role(&assertion.role) {
+                    return Err(format!(
+                        "builtin object role {} is outside native ABox",
+                        assertion.role
+                    ));
+                }
+                let source = *individual_ids.get(assertion.source.as_str()).ok_or_else(|| {
+                    format!("role assertion source {} is unresolved", assertion.source)
+                })?;
+                let target = *individual_ids.get(assertion.target.as_str()).ok_or_else(|| {
+                    format!("role assertion target {} is unresolved", assertion.target)
+                })?;
+                let role = match role_ids.get(&assertion.role) {
+                    Some(&role) => role,
+                    None => {
+                        // A role occurring only negatively has no clause
+                        // occurrence.  The typed source name authorizes this
+                        // otherwise empty role id.
+                        let role = roles.len();
+                        roles.push(assertion.role.clone());
+                        role_ids.insert(assertion.role.clone(), role);
+                        role
+                    }
+                };
+                out.push((role, source, target));
+            }
+            Ok(out)
+        }
+        native.role_assertions = resolve_roles(
+            &meta.role_assertions,
+            &individual_ids,
+            &mut role_ids,
+            &mut roles,
+        )?;
+        native.negative_role_assertions = resolve_roles(
+            &meta.negative_role_assertions,
+            &individual_ids,
+            &mut role_ids,
+            &mut roles,
+        )?;
+
+        // A negative ground role assertion is exactly the guarded clash clause
+        // {a}(x) ∧ R(x,y) ∧ {b}(y) -> ⊥.  Ordinary subrole/inverse/chain edge
+        // propagation therefore makes the constraint apply to derived edges too.
+        let mut negative_clauses = Vec::new();
+        for &(role, source, target) in &native.negative_role_assertions {
+            let source_proxy = *native.individuals[source]
+                .proxies
+                .first()
+                .ok_or_else(|| "negative assertion source has no proxy".to_string())?;
+            let target_proxy = *native.individuals[target]
+                .proxies
+                .first()
+                .ok_or_else(|| "negative assertion target has no proxy".to_string())?;
+            negative_clauses.push(HtClause {
+                body: vec![
+                    HAtom::Concept {
+                        neg: false,
+                        c: source_proxy,
+                        t: 0,
+                    },
+                    HAtom::Role {
+                        r: role,
+                        s: 0,
+                        t: 1,
+                    },
+                    HAtom::Concept {
+                        neg: false,
+                        c: target_proxy,
+                        t: 1,
+                    },
+                ],
+                head: Vec::new(),
+            });
+        }
+
+        let mut nominals = tin.nominals.clone();
+        let mut seen_nominals: HashSet<usize> = nominals.iter().copied().collect();
+        for individual in &native.individuals {
+            for &proxy in &individual.proxies {
+                if seen_nominals.insert(proxy) {
+                    nominals.push(proxy);
+                }
+            }
+        }
+        nominals.sort_unstable();
+        nominals.dedup();
+        native.complete = true;
+        Ok((native, concepts, roles, negative_clauses, nominals))
+    })();
+
+    match resolved {
+        Ok((native, concepts, roles, negative_clauses, nominals)) => {
+            tin.concepts = concepts;
+            tin.roles = roles;
+            tin.clauses.extend(negative_clauses);
+            tin.nominals = nominals;
+            tin.native_abox = native;
+            true
+        }
+        Err(detail) => {
+            if has_nominal_input
+                && !tin
+                    .fenced
+                    .iter()
+                    .any(|fence| fence.reason == "incomplete-nominal-abox")
+            {
+                tin.fenced.push(Fenced {
+                    reason: "incomplete-nominal-abox".into(),
+                    detail,
+                });
+            }
+            false
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +675,178 @@ fn is_reserved_vocabulary_curie(s: &str) -> bool {
         s.split_once(':'),
         Some(("owl" | "rdf" | "rdfs" | "xsd" | "xml", _))
     )
+}
+
+fn is_universal_object_role(role: &str) -> bool {
+    matches!(
+        short(role),
+        "topObjectProperty"
+            | "owl:topObjectProperty"
+            | "bottomObjectProperty"
+            | "owl:bottomObjectProperty"
+    )
+}
+
+/// Recheck the source-profile certificate against the exact normalized inputs
+/// handed to the HT converter. The check is deliberately conservative:
+/// subroles and equivalences are treated as undirected dependencies, every
+/// role in a chain component is rejected for cardinality, and any inline
+/// `ObjectInverseOf` (`__inv__`) or malformed RBox row declines.
+///
+/// This is not an "inert inverse" test. Every accepted inverse pair is still
+/// compiled below into both swapped-orientation role clauses. The certificate
+/// only establishes that a number restriction cannot apply to an inverse,
+/// inverse-connected, chained, or transitive role. Under that condition the
+/// SHOQ o/number rules and the inverse-aware SHIQ blocking compose without the
+/// otherwise-required Konclude NN/NI nominal-predecessor rule.
+fn normalized_inverse_cardinality_role_separable(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    cardinalities: &[crate::json_io::CardMeta],
+) -> bool {
+    if cardinalities.is_empty()
+        || cardinalities
+            .iter()
+            .any(|cardinality| is_universal_object_role(&cardinality.role))
+        || clauses.iter().any(|clause| {
+            clause.body.iter().chain(clause.head.iter()).any(|atom| {
+                matches!(atom, JAtom::Role { role, .. }
+                if short(role).starts_with("__inv__") || is_universal_object_role(role))
+            })
+        })
+    {
+        return false;
+    }
+
+    // CardMeta is deliberately optional for source FunctionalObjectProperty
+    // (normalise.rs emits it only under KM_HT_CARD_FN). Recover every clausal
+    // number role as well: a functional / inverse-functional / ≤n clause has
+    // an Eq head and its counted roles in the body. An Eq-head without a role
+    // is outside this certificate (e.g. ground equality) and fails closed.
+    let mut number_roles: HashSet<&str> = cardinalities
+        .iter()
+        .map(|cardinality| cardinality.role.as_str())
+        .collect();
+    for clause in clauses {
+        if clause
+            .head
+            .iter()
+            .any(|atom| matches!(atom, JAtom::Eq { .. }))
+        {
+            let mut saw_role = false;
+            for role in clause.body.iter().filter_map(|atom| match atom {
+                JAtom::Role { role, .. } => Some(role.as_str()),
+                _ => None,
+            }) {
+                saw_role = true;
+                number_roles.insert(role);
+            }
+            if !saw_role {
+                return false;
+            }
+        }
+    }
+
+    let Some(rbox) = rbox else {
+        return false;
+    };
+    let mut dependencies: HashMap<&str, HashSet<&str>> = HashMap::new();
+    let mut inverse_roles: HashSet<&str> = HashSet::new();
+    let mut non_simple_roles: HashSet<&str> = HashSet::new();
+    let mut saw_inverse = false;
+    let mut invalid = false;
+
+    fn connect<'a>(
+        left: &'a str,
+        right: &'a str,
+        dependencies: &mut HashMap<&'a str, HashSet<&'a str>>,
+    ) {
+        dependencies.entry(left).or_default().insert(right);
+        dependencies.entry(right).or_default().insert(left);
+    }
+    for axiom in rbox {
+        match axiom.first().map(String::as_str) {
+            Some("inverse") if axiom.len() == 3 => {
+                let left = axiom[1].as_str();
+                let right = axiom[2].as_str();
+                if is_universal_object_role(left) || is_universal_object_role(right) {
+                    invalid = true;
+                    continue;
+                }
+                inverse_roles.insert(left);
+                inverse_roles.insert(right);
+                connect(left, right, &mut dependencies);
+                saw_inverse = true;
+            }
+            Some("subrole") if axiom.len() == 3 => {
+                if is_universal_object_role(&axiom[1]) || is_universal_object_role(&axiom[2]) {
+                    invalid = true;
+                    continue;
+                }
+                connect(&axiom[1], &axiom[2], &mut dependencies);
+            }
+            Some("chain") if axiom.len() == 4 => {
+                let roles = [axiom[1].as_str(), axiom[2].as_str(), axiom[3].as_str()];
+                if roles.iter().any(|role| is_universal_object_role(role)) {
+                    invalid = true;
+                    continue;
+                }
+                for role in roles {
+                    non_simple_roles.insert(role);
+                    connect(roles[0], role, &mut dependencies);
+                }
+            }
+            Some("transitive") if axiom.len() == 2 => {
+                if is_universal_object_role(&axiom[1]) {
+                    invalid = true;
+                    continue;
+                }
+                non_simple_roles.insert(axiom[1].as_str());
+            }
+            Some("domain" | "range") if axiom.len() == 3 => {
+                if is_universal_object_role(&axiom[1]) {
+                    invalid = true;
+                }
+                // These clauses are emitted exactly below. They connect a role
+                // to a class label, not two role components, so they do not
+                // create an NN/NI number-role premise.
+            }
+            Some("fenced") if axiom.len() >= 3 && axiom[1].as_str() == "symmetric-role" => {
+                let role = axiom[2].as_str();
+                if is_universal_object_role(role) {
+                    invalid = true;
+                    continue;
+                }
+                inverse_roles.insert(role);
+                saw_inverse = true;
+            }
+            // These shapes either combine inverse and number directly or are
+            // not represented by the exact first-class RBox machinery.
+            Some("fenced") | Some(_) | None => invalid = true,
+        }
+    }
+    if invalid || !saw_inverse {
+        return false;
+    }
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut pending: Vec<&str> = number_roles.into_iter().collect();
+    while let Some(role) = pending.pop() {
+        if !seen.insert(role) {
+            continue;
+        }
+        if short(role).starts_with("__inv__")
+            || is_universal_object_role(role)
+            || inverse_roles.contains(role)
+            || non_simple_roles.contains(role)
+        {
+            return false;
+        }
+        if let Some(neighbours) = dependencies.get(role) {
+            pending.extend(neighbours.iter().copied());
+        }
+    }
+    true
 }
 
 // ===========================================================================
@@ -1261,12 +1738,12 @@ pub fn convert(
         })
     });
     // The card transform must fire ONLY when the ont will actually take the card
-    // route (race::card_candidate: no datatype, no inverse — nominals OK). An
-    // inverse ont that dropped its clausal pigeonhole + emitted `card_defs` would
-    // route to QO/CB instead (card_candidate rejects inverse); neither consumes
-    // `card_defs`, silently LOSING the cardinality → unsound (ore_ont_10702, a
-    // nominal+inverse ont that my `card_routable` __nom__ relaxation would otherwise
-    // mis-transform). So exclude inverse here too, matching the route guard exactly.
+    // route. Inverse-free inputs use the established SHOQ path. A named-RBox
+    // inverse input is admitted only after the normalized role-separation check
+    // below proves that no number role is inverse-connected or non-simple; all
+    // inverse clauses remain present and the worker uses inverse-aware blocking.
+    // Every other inverse+number input keeps its clausal pigeonhole and emits no
+    // `card_defs`, so QO/CB cannot silently lose the cardinality.
     let has_inverse_rbox = rbox
         .map(|rb| {
             rb.iter()
@@ -1296,7 +1773,13 @@ pub fn convert(
             .any(|a| matches!(a, JAtom::Role { role, .. } if short(role).starts_with("__inv__")))
     });
     let has_inverse = has_inverse_rbox || has_concept_inverse;
-    let card_active = !cardinalities.is_empty() && card_enabled && card_routable && !has_inverse;
+    let inverse_cardinality_role_separable = has_inverse_rbox
+        && !has_concept_inverse
+        && normalized_inverse_cardinality_role_separable(clauses, rbox, cardinalities);
+    let card_active = !cardinalities.is_empty()
+        && card_enabled
+        && card_routable
+        && (!has_inverse || inverse_cardinality_role_separable);
     let mut min_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut max_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     if card_active {
@@ -2121,7 +2604,11 @@ pub fn convert(
     // Clearing the seeds here leaves the tableau rootless and turns a real
     // rule-induced inconsistency into a silent fall-through (the 2669/15516
     // regression).
-    if !nominal_ids.is_empty() && !inverse_pairs.is_empty() && !rules_active {
+    if !nominal_ids.is_empty()
+        && !inverse_pairs.is_empty()
+        && !rules_active
+        && !(card_active && inverse_cardinality_role_separable)
+    {
         fenced.push(Fenced {
             reason: "nominal+inverse(SHOI/SHOIQ)".into(),
             detail: format!(
@@ -2138,7 +2625,10 @@ pub fn convert(
     // still has `inverse_pairs` empty, so it would fall through to the
     // inverse-blind `ht_routable` fast Ht (which ignores `tin.inverse` bridges)
     // instead of the Konclude bridge / CB that handle inverse+number soundly.
-    if (!inverse_pairs.is_empty() || has_concept_inverse) && number {
+    if (!inverse_pairs.is_empty() || has_concept_inverse)
+        && number
+        && !(card_active && inverse_cardinality_role_separable)
+    {
         fenced.push(Fenced {
             reason: "inverse+number(SHIQ)".into(),
             detail: "inverse roles together with number restrictions".into(),
@@ -2347,7 +2837,10 @@ pub fn convert(
         fenced,
         inverse: !inverse_pairs.is_empty(),
         number,
+        inverse_cardinality_role_separable,
         nominals: nominal_ids,
+        nominal_abox: crate::json_io::NominalAboxMeta::default(),
+        native_abox: NativeAboxJson::default(),
         card_defs,
         chains: detected_chains,
         transitive: detected_transitive,
@@ -2355,7 +2848,6 @@ pub fn convert(
         role_ranges,
         definers: definers.to_vec(),
         source_axioms: source_axioms.to_vec(),
-        nominal_abox: crate::json_io::NominalAboxMeta::default(),
     }
 }
 
@@ -2407,6 +2899,147 @@ fn hatom_sort_key(a: &HAtom) -> (u8, usize, usize, usize, bool) {
         HAtom::Role { r, s, t } => (1, *r, *s, *t, false),
         HAtom::Eq { s, t } => (2, *s, *t, 0, false),
         HAtom::Exist { r, neg, c, t } => (3, *r, *c, *t, *neg),
+    }
+}
+
+#[cfg(test)]
+mod native_abox_install_tests {
+    use super::*;
+    use crate::frontend::syntax::Concept;
+    use crate::json_io::{NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta};
+
+    fn individual(name: &str, proxy: &str, marker: Option<&str>) -> NominalIndividualMeta {
+        NominalIndividualMeta {
+            individual: name.into(),
+            proxies: vec![proxy.into()],
+            assertions: marker
+                .map(|name| vec![Concept::Name(name.into())])
+                .unwrap_or_default(),
+            assertion_markers: marker.map(|name| vec![name.into()]).unwrap_or_default(),
+        }
+    }
+
+    #[test]
+    fn complete_typed_abox_installs_numeric_roots_edges_and_negative_guard() {
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            roles: Vec::new(),
+            clauses: vec![HtClause {
+                body: vec![HAtom::Concept {
+                    neg: false,
+                    c: 0,
+                    t: 0,
+                }],
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: 1,
+                    t: 0,
+                }],
+            }],
+            ..TInput::default()
+        };
+        let role = NominalRoleAssertionMeta {
+            role: "r".into(),
+            source: "a".into(),
+            target: "b".into(),
+        };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("b", "__nom__b", Some("B")),
+            ],
+            different: vec![("a".into(), "b".into())],
+            role_assertions: vec![role.clone()],
+            negative_role_assertions: vec![role],
+            unsupported: Vec::new(),
+        };
+
+        assert!(install_nominal_abox(&mut tin, &meta));
+        assert!(tin.native_abox.complete);
+        assert_eq!(tin.native_abox.individuals.len(), 2);
+        assert_eq!(tin.native_abox.different, vec![(0, 1)]);
+        assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1)]);
+        assert_eq!(tin.native_abox.negative_role_assertions, vec![(0, 0, 1)]);
+        assert_eq!(tin.nominals.len(), 2);
+        assert_eq!(tin.roles, vec!["r"]);
+        assert!(matches!(
+            tin.clauses.last(),
+            Some(HtClause { body, head })
+                if head.is_empty()
+                    && matches!(
+                        body.as_slice(),
+                        [
+                            HAtom::Concept { neg: false, c: 2, t: 0 },
+                            HAtom::Role { r: 0, s: 0, t: 1 },
+                            HAtom::Concept { neg: false, c: 3, t: 1 }
+                        ]
+                    )
+        ));
+    }
+
+    #[test]
+    fn failed_install_rolls_back_every_semantic_vector_and_adds_only_a_fence() {
+        let sentinel = HtClause {
+            body: Vec::new(),
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 0,
+                t: 0,
+            }],
+        };
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "__nom__existing".into()],
+            roles: vec!["r".into()],
+            clauses: vec![sentinel],
+            nominals: vec![1],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![NativeIndividualJson {
+                    proxies: vec![1],
+                    assertions: Vec::new(),
+                }],
+                ..NativeAboxJson::default()
+            },
+            ..TInput::default()
+        };
+        let before_concepts = tin.concepts.clone();
+        let before_roles = tin.roles.clone();
+        let before_nominals = tin.nominals.clone();
+        let before_clause_count = tin.clauses.len();
+        let before_native = tin.native_abox.clone();
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![individual("a", "__nom__new", Some("missing-marker"))],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(!install_nominal_abox(&mut tin, &meta));
+        assert_eq!(tin.concepts, before_concepts);
+        assert_eq!(tin.roles, before_roles);
+        assert_eq!(tin.nominals, before_nominals);
+        assert_eq!(tin.clauses.len(), before_clause_count);
+        assert_eq!(tin.native_abox, before_native);
+        assert_eq!(tin.fenced.len(), 1);
+        assert_eq!(tin.fenced[0].reason, "incomplete-nominal-abox");
+    }
+
+    #[test]
+    fn duplicate_proxy_ownership_fails_closed_without_partial_install() {
+        let mut tin = TInput::default();
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__shared", None),
+                individual("b", "__nom__shared", None),
+            ],
+            ..NominalAboxMeta::default()
+        };
+        assert!(!install_nominal_abox(&mut tin, &meta));
+        assert!(tin.concepts.is_empty());
+        assert!(tin.nominals.is_empty());
+        assert!(tin.native_abox.is_empty());
+        assert_eq!(tin.fenced[0].reason, "incomplete-nominal-abox");
     }
 }
 
@@ -2594,7 +3227,13 @@ mod trigger_absorb_tests {
             assert!(is_internal(marker), "{marker} should be internal");
         }
         // Builtin OWL/RDF/RDFS/XSD/XML vocabulary in CURIE form stays internal.
-        for builtin in ["owl:Thing", "rdfs:Literal", "rdf:type", "xsd:integer", "xml:lang"] {
+        for builtin in [
+            "owl:Thing",
+            "rdfs:Literal",
+            "rdf:type",
+            "xsd:integer",
+            "xml:lang",
+        ] {
             assert!(is_internal(builtin), "{builtin} should be internal");
         }
         // Bottom is handled by `is_bottom`, not `is_internal` — behaviour
@@ -2772,6 +3411,152 @@ mod trigger_absorb_tests {
             .fenced
             .iter()
             .any(|f| f.reason == "nominal+inverse(SHOI/SHOIQ)"));
+    }
+
+    #[test]
+    fn separated_inverse_cardinality_keeps_exact_rbox_and_card_defs() {
+        use crate::json_io::{CardMeta, JAtom, JClause, JTerm};
+        let variable = || JTerm::Var { name: "x".into() };
+        let clauses = vec![JClause {
+            body: vec![JAtom::Concept {
+                concept: "__nom__a".into(),
+                term: variable(),
+            }],
+            head: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: variable(),
+            }],
+        }];
+        let rbox = vec![
+            vec!["inverse".into(), "i".into(), "j".into()],
+            vec!["subrole".into(), "i".into(), "k".into()],
+            vec!["transitive".into(), "k".into()],
+            vec!["domain".into(), "i".into(), "D".into()],
+            vec!["range".into(), "j".into(), "E".into()],
+        ];
+        let cards = vec![CardMeta {
+            marker: "Q_card".into(),
+            min: false,
+            n: 2,
+            role: "p".into(),
+            filler: "C".into(),
+        }];
+        let named = std::collections::HashSet::from([
+            "A".to_string(),
+            "C".to_string(),
+            "D".to_string(),
+            "E".to_string(),
+        ]);
+        let tin = convert(
+            &clauses,
+            Some(&rbox),
+            &named,
+            &cards,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
+
+        assert!(tin.inverse_cardinality_role_separable);
+        assert!(tin.inverse, "the inverse flag must remain live");
+        assert_eq!(tin.card_defs.len(), 1);
+        assert!(!tin.nominals.is_empty(), "the SHOQ o-rule must remain live");
+        assert!(
+            tin.fenced.is_empty(),
+            "certified composition must be routable"
+        );
+
+        let i = tin.roles.iter().position(|role| role == "i").unwrap();
+        let j = tin.roles.iter().position(|role| role == "j").unwrap();
+        let has_inverse_clause = |from: usize, to: usize| {
+            tin.clauses.iter().any(|clause| {
+                matches!(
+                    (clause.body.as_slice(), clause.head.as_slice()),
+                    (
+                        [HAtom::Role { r, s: 0, t: 1 }],
+                        [HAtom::Role { r: head_r, s: 1, t: 0 }]
+                    ) if *r == from && *head_r == to
+                )
+            })
+        };
+        assert!(has_inverse_clause(i, j));
+        assert!(has_inverse_clause(j, i));
+        assert_eq!(tin.role_domains.len(), 1, "domain provenance remains exact");
+        assert_eq!(tin.role_ranges.len(), 1, "range provenance remains exact");
+    }
+
+    #[test]
+    fn normalized_inverse_cardinality_certificate_fails_closed() {
+        use crate::json_io::CardMeta;
+        let cards = vec![CardMeta {
+            marker: "Q_card".into(),
+            min: false,
+            n: 1,
+            role: "p".into(),
+            filler: "C".into(),
+        }];
+        let cases = vec![
+            vec![vec!["inverse".into(), "p".into(), "j".into()]],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["subrole".into(), "p".into(), "i".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                // EquivalentObjectProperties(p,i) is serialized as both
+                // subrole directions; one dependency edge already suffices.
+                vec!["subrole".into(), "p".into(), "i".into()],
+                vec!["subrole".into(), "i".into(), "p".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["chain".into(), "p".into(), "r".into(), "s".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["transitive".into(), "p".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["fenced".into(), "inverse-functional".into(), "r".into()],
+            ],
+        ];
+        for rbox in cases {
+            assert!(
+                !normalized_inverse_cardinality_role_separable(&[], Some(&rbox), &cards),
+                "unsafe normalized RBox was certified: {rbox:?}"
+            );
+        }
+        let separated = vec![
+            vec!["inverse".into(), "i".into(), "j".into()],
+            vec!["domain".into(), "i".into(), "D".into()],
+            vec!["range".into(), "j".into(), "E".into()],
+        ];
+        assert!(normalized_inverse_cardinality_role_separable(
+            &[],
+            Some(&separated),
+            &cards
+        ));
+        assert!(normalized_inverse_cardinality_role_separable(
+            &[le1_over("functional_but_separate")],
+            Some(&separated),
+            &cards
+        ));
+        assert!(
+            !normalized_inverse_cardinality_role_separable(
+                &[le1_over("i")],
+                Some(&separated),
+                &cards
+            ),
+            "Eq-head functionality on an inverse role must be detected even without CardMeta"
+        );
+        assert!(!normalized_inverse_cardinality_role_separable(
+            &[inv_bridge()],
+            Some(&separated),
+            &cards
+        ));
     }
 
     /// A synthetic DL-safe rule KB mirroring the 2669/15516 core: an asserted
@@ -3052,16 +3837,27 @@ mod rule_clause_tests {
     use super::*;
 
     fn var(n: &str) -> JRuleTerm {
-        JRuleTerm::Var { name: n.to_string() }
+        JRuleTerm::Var {
+            name: n.to_string(),
+        }
     }
     fn ind(n: &str) -> JRuleTerm {
-        JRuleTerm::Ind { name: n.to_string() }
+        JRuleTerm::Ind {
+            name: n.to_string(),
+        }
     }
     fn class(c: &str, t: JRuleTerm) -> JRuleAtom {
-        JRuleAtom::Class { concept: c.to_string(), term: t }
+        JRuleAtom::Class {
+            concept: c.to_string(),
+            term: t,
+        }
     }
     fn role(r: &str, s: JRuleTerm, t: JRuleTerm) -> JRuleAtom {
-        JRuleAtom::Role { role: r.to_string(), source: s, target: t }
+        JRuleAtom::Role {
+            role: r.to_string(),
+            source: s,
+            target: t,
+        }
     }
     fn build(rule: &JRule) -> Option<(HtClause, Vec<String>)> {
         let mut ids = Ids::new();
@@ -3074,7 +3870,13 @@ mod rule_clause_tests {
         // Body: r(x,y) ∧ SameAs(x,y); Head: D(x). The guard forces x = y, so the
         // role edge must land on ONE variable (s == t).
         let rule = JRule {
-            body: vec![role("r", var("x"), var("y")), JRuleAtom::Same { left: var("x"), right: var("y") }],
+            body: vec![
+                role("r", var("x"), var("y")),
+                JRuleAtom::Same {
+                    left: var("x"),
+                    right: var("y"),
+                },
+            ],
             head: vec![class("D", var("x"))],
         };
         let (cl, _) = build(&rule).expect("SameAs body rule fires");
@@ -3086,7 +3888,10 @@ mod rule_clause_tests {
                 _ => None,
             })
             .expect("role edge present");
-        assert_eq!(edge.0, edge.1, "SameAs(x,y) must unify the two terms onto one variable");
+        assert_eq!(
+            edge.0, edge.1,
+            "SameAs(x,y) must unify the two terms onto one variable"
+        );
         // No stray Eq atom in a body-guard-only rule.
         assert!(!cl.body.iter().any(|a| matches!(a, HAtom::Eq { .. })));
         assert!(!cl.head.iter().any(|a| matches!(a, HAtom::Eq { .. })));
@@ -3098,7 +3903,10 @@ mod rule_clause_tests {
         // (no body guard); the head concludes the equality as an Eq atom.
         let rule = JRule {
             body: vec![class("C", var("x")), class("C", var("y"))],
-            head: vec![JRuleAtom::Same { left: var("x"), right: var("y") }],
+            head: vec![JRuleAtom::Same {
+                left: var("x"),
+                right: var("y"),
+            }],
         };
         let (cl, _) = build(&rule).expect("SameAs head rule fires");
         let eq = cl
@@ -3109,7 +3917,10 @@ mod rule_clause_tests {
                 _ => None,
             })
             .expect("head equality present");
-        assert_ne!(eq.0, eq.1, "distinct body variables remain distinct in the derived equality");
+        assert_ne!(
+            eq.0, eq.1,
+            "distinct body variables remain distinct in the derived equality"
+        );
     }
 
     #[test]
@@ -3117,16 +3928,31 @@ mod rule_clause_tests {
         // A Diff guard has no sound fast-Ht encoding, so the whole rule is
         // deferred (dropped, counted). Body and head positions both defer.
         let body_diff = JRule {
-            body: vec![role("r", var("x"), var("y")), JRuleAtom::Diff { left: var("x"), right: var("y") }],
+            body: vec![
+                role("r", var("x"), var("y")),
+                JRuleAtom::Diff {
+                    left: var("x"),
+                    right: var("y"),
+                },
+            ],
             head: vec![class("D", var("x"))],
         };
-        assert!(build(&body_diff).is_none(), "body DifferentIndividuals defers the rule");
+        assert!(
+            build(&body_diff).is_none(),
+            "body DifferentIndividuals defers the rule"
+        );
 
         let head_diff = JRule {
             body: vec![class("C", var("x")), class("C", var("y"))],
-            head: vec![JRuleAtom::Diff { left: var("x"), right: var("y") }],
+            head: vec![JRuleAtom::Diff {
+                left: var("x"),
+                right: var("y"),
+            }],
         };
-        assert!(build(&head_diff).is_none(), "head DifferentIndividuals defers the rule");
+        assert!(
+            build(&head_diff).is_none(),
+            "head DifferentIndividuals defers the rule"
+        );
     }
 
     #[test]
@@ -3134,11 +3960,20 @@ mod rule_clause_tests {
         // Body: SameAs(x, a) ∧ C(x); Head: D(x). x is pinned to individual a, so
         // `a` is registered and the shared variable carries the `__nom__a` guard.
         let rule = JRule {
-            body: vec![JRuleAtom::Same { left: var("x"), right: ind("a") }, class("C", var("x"))],
+            body: vec![
+                JRuleAtom::Same {
+                    left: var("x"),
+                    right: ind("a"),
+                },
+                class("C", var("x")),
+            ],
             head: vec![class("D", var("x"))],
         };
         let (cl, inds) = build(&rule).expect("SameAs(x,a) rule fires");
-        assert!(inds.contains(&"a".to_string()), "individual a is registered as a nominal node");
+        assert!(
+            inds.contains(&"a".to_string()),
+            "individual a is registered as a nominal node"
+        );
         // the C(x), D(x), __nom__a, and __O__ all sit on the same single variable.
         let vars: std::collections::HashSet<usize> = cl
             .body
@@ -3170,6 +4005,9 @@ mod rule_clause_tests {
                 _ => None,
             })
             .expect("role edge present");
-        assert_ne!(edge.0, edge.1, "distinct terms x,y stay distinct without a SameAs guard");
+        assert_ne!(
+            edge.0, edge.1,
+            "distinct terms x,y stay distinct without a SameAs guard"
+        );
     }
 }

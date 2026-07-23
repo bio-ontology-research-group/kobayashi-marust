@@ -111,7 +111,7 @@ fn spawn_tableau(
         &[],
         false,
     );
-    tin.nominal_abox = nominal_abox;
+    cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
     // Diagnostic parity with the HT racer: preserve the exact converted input
     // before any legacy-tableau fragment fence is applied.  This is inert unless
     // explicitly requested and makes a declined race distinguishable from a
@@ -586,12 +586,13 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
 /// distinct question from policy-LEAF eligibility (`sriq_policy_eligible`, which
 /// still excludes `HtCard`): the fence keeps the ISOLATED `ht_card` specialist —
 /// where CB never runs — out of the learned tree, and this admittance only adds
-/// the CB-guarded fallback arm. The inverse+nominal onts on which the isolated
-/// card route is incomplete (ore_ont_10702) never become `card_candidate`
-/// because `cb_to_ht::convert` refuses the card transform under inverse, so this
-/// does not expose that incompleteness. SHOQ and QO stay bridge-only under
-/// certified (their incomplete onts, e.g. 10702/15098, could otherwise surface a
-/// wrong taxonomy on a CB timeout).
+/// the CB-guarded fallback arm. An inverse+nominal ontology becomes a card
+/// candidate only when BOTH the source profile and the normalized HT input
+/// certify that every number-role component is disjoint from inverse and
+/// non-simple roles. Inputs such as ore_ont_10702 fail closed; recognition alone
+/// does not expose their incomplete isolated-card result. SHOQ and QO stay
+/// bridge-only under certified (their incomplete onts, e.g. 10702/15098, could
+/// otherwise surface a wrong taxonomy on a CB timeout).
 fn specialist_route_allows(
     requested: Option<&str>,
     qo_candidate: bool,
@@ -652,11 +653,10 @@ fn typed_nominal_bridge_exclusive(tin: &cb_to_ht::TInput, bridge_exclusive: bool
 /// datatype/inverse/nominal-safe TInput carrying first-class `≥n`/`≤n`
 /// restrictions (`card_defs`). Extracted so the exact gate the production
 /// portfolio uses can be exercised on a reduced cardinality probe. `card_recog`
-/// (propagation-based `≤n` recognition, default on) relaxes the inverse
-/// exclusion; datatype onts are always excluded (no concrete-domain oracle in
-/// the fast Ht). `convert` only emits `card_defs` on a card-routable,
-/// inverse-free TInput, so an inverse+nominal ont (ore_ont_10702) has no
-/// `card_defs` and is never a candidate regardless of `card_recog`.
+/// (propagation-based `≤n` recognition, default on) admits inverse only together
+/// with the normalized role-separation certificate; datatype onts are always
+/// excluded (no concrete-domain oracle in the fast Ht). Thus an arbitrary
+/// inverse+nominal input cannot become a candidate merely by carrying card data.
 fn card_candidate_from(
     tin: &cb_to_ht::TInput,
     ht_card: bool,
@@ -667,7 +667,9 @@ fn card_candidate_from(
         && !tin.card_defs.is_empty()
         && tin.dropped == 0
         && tin.fenced.is_empty()
-        && (!tin.inverse || card_recog)
+        && (!tin.inverse || (card_recog && tin.inverse_cardinality_role_separable))
+        && (tin.nominals.is_empty() || tin.native_abox.complete)
+        && native_abox_role_automata_separable(tin)
         && !has_datatype
 }
 
@@ -678,6 +680,99 @@ fn bridge_candidate_from(tin: &cb_to_ht::TInput, bridge_enabled: bool, source_tb
         && tin.dropped == 0
         && bridge_fences_supported(tin, source_tbox)
         && (tin.nominals.is_empty() || tin.nominal_abox.complete)
+}
+
+/// Independent normalized-side fence for native role assertions.
+/// The Ht consumes ordinary subrole/inverse role clauses exactly, but raw
+/// chain/transitivity axioms are represented as side data whose default use is
+/// universal propagation, not materializing every named-individual edge. A
+/// negative assertion is therefore admitted only when its entire role-clause
+/// component is disjoint from all chain/transitive roles; a positive assertion
+/// must be disjoint from every proper chain component. This repeats the source
+/// proof after name resolution and cb_to_ht conversion.
+fn native_abox_role_automata_separable(tin: &cb_to_ht::TInput) -> bool {
+    use std::collections::HashSet;
+
+    if tin.native_abox.negative_role_assertions.is_empty()
+        && tin.native_abox.role_assertions.is_empty()
+    {
+        return true;
+    }
+    let mut adjacency: Vec<HashSet<usize>> = vec![HashSet::new(); tin.roles.len()];
+    let mut connect = |roles: &[usize]| {
+        for &left in roles {
+            for &right in roles {
+                if left < adjacency.len() && right < adjacency.len() && left != right {
+                    adjacency[left].insert(right);
+                }
+            }
+        }
+    };
+    for clause in &tin.clauses {
+        let mut roles: Vec<usize> = clause
+            .body
+            .iter()
+            .chain(clause.head.iter())
+            .filter_map(|atom| match atom {
+                cb_to_ht::HAtom::Role { r, .. } => Some(*r),
+                _ => None,
+            })
+            .collect();
+        roles.sort_unstable();
+        roles.dedup();
+        connect(&roles);
+    }
+    let mut non_simple = HashSet::new();
+    let mut proper_chain_roles = HashSet::new();
+    for &(left, right, target) in &tin.chains {
+        connect(&[left, right, target]);
+        non_simple.extend([left, right, target]);
+        if !(left == right && right == target && tin.transitive.contains(&left)) {
+            proper_chain_roles.extend([left, right, target]);
+        }
+    }
+    non_simple.extend(tin.transitive.iter().copied());
+
+    let mut seen = HashSet::new();
+    let mut pending: Vec<usize> = tin
+        .native_abox
+        .negative_role_assertions
+        .iter()
+        .map(|&(role, _, _)| role)
+        .collect();
+    while let Some(role) = pending.pop() {
+        if role >= adjacency.len() {
+            return false;
+        }
+        if !seen.insert(role) {
+            continue;
+        }
+        if non_simple.contains(&role) {
+            return false;
+        }
+        pending.extend(adjacency[role].iter().copied());
+    }
+
+    let mut seen_positive = HashSet::new();
+    let mut pending_positive: Vec<usize> = tin
+        .native_abox
+        .role_assertions
+        .iter()
+        .map(|&(role, _, _)| role)
+        .collect();
+    while let Some(role) = pending_positive.pop() {
+        if role >= adjacency.len() {
+            return false;
+        }
+        if !seen_positive.insert(role) {
+            continue;
+        }
+        if proper_chain_roles.contains(&role) {
+            return false;
+        }
+        pending_positive.extend(adjacency[role].iter().copied());
+    }
+    true
 }
 
 /// Does the clause set contain an inverse/symmetric BRIDGE clause
@@ -736,6 +831,9 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
     })
 }
 
+/// True only for a ground/singleton clause represented independently by the
+/// complete typed ABox. This is an exact pattern filter, not a generic
+/// individual-term projection: unknown shapes remain for conversion to reject.
 fn native_nominal_clause_represented(
     clause: &JClause,
     nominal_abox: &crate::json_io::NominalAboxMeta,
@@ -763,10 +861,36 @@ fn native_nominal_clause_represented(
                 && definer.n.is_none()
         }) && definitions.next().is_none()
     };
+    let role_matches = |assertions: &[crate::json_io::NominalRoleAssertionMeta],
+                        role: &str,
+                        source: &str,
+                        target: &str| {
+        assertions.iter().any(|assertion| {
+            assertion.role == role && assertion.source == source && assertion.target == target
+        })
+    };
+    let assertion_marker_maps_to = |marker: &str, individual: &str| {
+        entry(individual).is_some_and(|entry| {
+            entry
+                .assertion_markers
+                .iter()
+                .enumerate()
+                .any(|(index, name)| {
+                    name == marker
+                        && entry
+                            .assertions
+                            .get(index)
+                            .is_some_and(|assertion| match assertion {
+                                Concept::Top => exact_top_definer(marker),
+                                Concept::Name(name) => name == marker,
+                                _ => true,
+                            })
+                })
+        })
+    };
 
     match (clause.body.as_slice(), clause.head.as_slice()) {
-        // Ground named-class assertion. The native bridge seeds the exact
-        // structural assertion stored on this individual.
+        // Source ClassAssertion marker, or DL7 `top -> proxy(individual)`.
         (
             [],
             [JAtom::Concept {
@@ -792,8 +916,27 @@ fn native_nominal_clause_represented(
                                 .iter()
                                 .any(|assertion| matches!(assertion, Concept::Top)))
                 })
+                || assertion_marker_maps_to(concept, name)
         }
-        // Pairwise expansion of a source DifferentIndividuals axiom.
+        // Source ObjectPropertyAssertion.
+        (
+            [],
+            [JAtom::Role {
+                role,
+                source: JTerm::Ind { name: source },
+                target: JTerm::Ind { name: target },
+            }],
+        ) => role_matches(&nominal_abox.role_assertions, role, source, target),
+        // Source NegativeObjectPropertyAssertion.
+        (
+            [JAtom::Role {
+                role,
+                source: JTerm::Ind { name: source },
+                target: JTerm::Ind { name: target },
+            }],
+            [],
+        ) => role_matches(&nominal_abox.negative_role_assertions, role, source, target),
+        // Pairwise parser expansion of DifferentIndividuals.
         (
             [JAtom::Eq {
                 left: JTerm::Ind { name: left },
@@ -866,6 +1009,18 @@ fn native_nominal_bridge_clauses<'a>(
     )
 }
 
+/// Exact clause view for the native nominal fast-Ht tests and callers that do
+/// not have definer provenance. In particular, a reified Top assertion remains
+/// unprojected here and therefore forces an honest defer.
+fn native_nominal_ht_view<'a>(
+    clauses: &'a [JClause],
+    nominal_abox: &crate::json_io::NominalAboxMeta,
+    enabled: bool,
+    has_rules: bool,
+) -> Cow<'a, [JClause]> {
+    native_nominal_bridge_clauses(clauses, nominal_abox, &[], enabled, has_rules)
+}
+
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(
@@ -924,7 +1079,7 @@ fn spawn_ht(
         &[],
         false,
     );
-    tin.nominal_abox = nominal_abox;
+    cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
             "KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s",
@@ -970,9 +1125,10 @@ fn spawn_ht(
     // TInput that HAS first-class number restrictions (`card_defs`). `ht_routable`
     // rejects `number`, so these would otherwise never reach the fast Ht. The
     // first-class `≥n`/`≤n` rules fold the cardinality model the legacy Eq-merge
-    // cannot (the disjunction-family cardinality wall). Inverse stays fenced
-    // (SHIQ needs double blocking), nominals stay on the shoq route, datatype onts
-    // are excluded (no concrete-domain oracle in the Ht). Computed FIRST so it
+    // cannot (the disjunction-family cardinality wall). Inverse is admitted only
+    // under the dual source/normalized number-role separation certificate;
+    // uncertified SHIQ stays fenced. Datatype onts are excluded (no concrete-domain
+    // oracle in the Ht). Computed FIRST so it
     // takes precedence over the QO route: a card ont may also carry inert inverse
     // bridges (so `has_inverse_bridge` is true), but the QO certify path's
     // `apply_head` does not handle the kept cardinality recognition Eq-heads — the
@@ -984,15 +1140,14 @@ fn spawn_ht(
     // `merge_into` (Konclude `mergeIndividual`), so a SHOQ number ont folds under
     // the card arm instead of the non-folding QMERGE shoq arm (ore_ont_9540:
     // 46252→64 nodes, 66/66 gold-exact). The card branch already forces
-    // KM_HT_PAR=1, which the nominal o-rule requires (parallel merges race). Inverse
-    // and datatype stay excluded (no NN-rule / no concrete-domain oracle in the Ht).
+    // KM_HT_PAR=1, which the nominal o-rule requires (parallel merges race).
     // KM_HT_CARD_RECOG (propagation-based ≤n recognition, see the card env block
-    // below) makes the card route sound under inverse: the SHIQ non-shared ∀ +
-    // mode-5 blocking it activates handle the inverse soundly, and the
-    // deterministic counting recognition converges where the clausal excluded
-    // middle did not. So when recognition is requested, drop the `!tin.inverse`
-    // exclusion and let inverse+cardinality onts (the SRIQ number giants) onto the
-    // card route. Default OFF -> production routing is unchanged.
+    // below) is necessary but not sufficient for inverse inputs. The route also
+    // requires `inverse_cardinality_role_separable`, independently reconstructed
+    // from normalized clauses/RBox data. That certificate rules out the NN/NI
+    // nominal-predecessor premise missing from the fast HT while inverse axioms
+    // themselves remain exact. Uncertified inverse+cardinality inputs stay out;
+    // datatype inputs always stay out (no concrete-domain oracle in the Ht).
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     let card_candidate = card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let qo_candidate = cfg.qo_router
@@ -1015,6 +1170,7 @@ fn spawn_ht(
         && tin.dropped == 0
         && tin.fenced.is_empty()
         && !tin.nominals.is_empty()
+        && tin.native_abox.complete
         && !has_datatype(&cl);
     // KM_HT_BRIDGE route: the konclude_ht bridge (Konclude's completion kernel
     // in Rust) answers sound+complete-or-DEFER by construction (deterministic
@@ -1161,7 +1317,7 @@ fn spawn_ht(
         // per-concept card+nominal classify is heavy (ore_ont_9540: 86 nominals, 50
         // tests, ~18 GB, times out even all-cores) and all-cores here would
         // oversubscribe a concurrent sweep, so leave it serial; set KM_HT_PAR to opt
-        // into the (sound) parallel card classify.
+        // into the parallel card classify.
         for (k, v) in [
             ("KM_HT_FORCE", "1"),
             ("KM_HT_CARD", "1"),
@@ -1177,9 +1333,11 @@ fn spawn_ht(
         // deterministic count at saturation (card_recog_step + filler_impossible).
         // When enabled, also activate the SHIQ non-shared-successor ∀ handling
         // (KM_HT_QO_SHIQ) and Konclude optimized blocking (mode 5) that keep the
-        // recognition sound and convergent under inverse roles. Closes the small
-        // SHIQ cardinality giants (10019 162/162, 12107 116/116, gold-exact vs the
-        // HermiT transitive closure). Scoped to the card route only.
+        // recognition convergent and preserve inverse semantics for the separately
+        // certified number-role fragment. Closes the small SHIQ cardinality giants
+        // (10019 162/162, 12107 116/116, gold-exact vs the HermiT transitive
+        // closure). Scoped to the card route only; recognition itself is never
+        // treated as an inverse/cardinality soundness certificate.
         if card_recog {
             for (k, v) in [("KM_HT_QO_SHIQ", "1"), ("KM_HT_BLOCK", "5")] {
                 if std::env::var_os(k).is_none() {
@@ -1613,6 +1771,222 @@ where
 mod tests {
     use super::*;
 
+    fn ind(name: &str) -> crate::json_io::JTerm {
+        crate::json_io::JTerm::Ind { name: name.into() }
+    }
+
+    fn var(name: &str) -> crate::json_io::JTerm {
+        crate::json_io::JTerm::Var { name: name.into() }
+    }
+
+    #[test]
+    fn native_nominal_view_filters_only_exact_typed_shapes_and_preserves_cb_input() {
+        use crate::json_io::{
+            JAtom, JClause, NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta,
+        };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                NominalIndividualMeta {
+                    individual: "a".into(),
+                    proxies: vec!["NA".into()],
+                    assertions: vec![crate::frontend::syntax::Concept::Name("A".into())],
+                    assertion_markers: vec!["A".into()],
+                },
+                NominalIndividualMeta {
+                    individual: "b".into(),
+                    proxies: vec!["NB".into()],
+                    assertions: Vec::new(),
+                    assertion_markers: Vec::new(),
+                },
+            ],
+            different: vec![("a".into(), "b".into())],
+            role_assertions: vec![NominalRoleAssertionMeta {
+                role: "r".into(),
+                source: "a".into(),
+                target: "b".into(),
+            }],
+            negative_role_assertions: vec![NominalRoleAssertionMeta {
+                role: "s".into(),
+                source: "b".into(),
+                target: "a".into(),
+            }],
+            unsupported: Vec::new(),
+        };
+        let clauses = vec![
+            JClause {
+                body: Vec::new(),
+                head: vec![JAtom::Concept {
+                    concept: "NA".into(),
+                    term: ind("a"),
+                }],
+            },
+            JClause {
+                body: Vec::new(),
+                head: vec![JAtom::Concept {
+                    concept: "A".into(),
+                    term: ind("a"),
+                }],
+            },
+            JClause {
+                body: Vec::new(),
+                head: vec![JAtom::Role {
+                    role: "r".into(),
+                    source: ind("a"),
+                    target: ind("b"),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Role {
+                    role: "s".into(),
+                    source: ind("b"),
+                    target: ind("a"),
+                }],
+                head: Vec::new(),
+            },
+            JClause {
+                body: vec![JAtom::Eq {
+                    left: ind("a"),
+                    right: ind("b"),
+                }],
+                head: Vec::new(),
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "NA".into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var("x"),
+                    right: ind("a"),
+                }],
+            },
+            // Unknown ground clause: contains an individual but is not in the
+            // typed payload, so it must remain for cb_to_ht to reject/fence.
+            JClause {
+                body: Vec::new(),
+                head: vec![JAtom::Concept {
+                    concept: "UNKNOWN".into(),
+                    term: ind("a"),
+                }],
+            },
+            // Near-DL8 with a mismatched equality variable must also remain.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "NA".into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Eq {
+                    left: var("y"),
+                    right: ind("a"),
+                }],
+            },
+        ];
+        let original_bytes = serde_json::to_vec(&clauses).unwrap();
+        let view = native_nominal_ht_view(&clauses, &meta, true, false);
+        assert_eq!(view.len(), 2, "only the two unknown shapes remain");
+        assert_eq!(
+            serde_json::to_vec(&clauses).unwrap(),
+            original_bytes,
+            "the complete CB clause vector must be byte-identical after making the HT view"
+        );
+        assert!(matches!(view, Cow::Owned(_)));
+
+        let disabled = native_nominal_ht_view(&clauses, &meta, false, false);
+        assert!(matches!(disabled, Cow::Borrowed(_)));
+        assert_eq!(serde_json::to_vec(&*disabled).unwrap(), original_bytes);
+    }
+
+    #[test]
+    fn source_auto_route_serializes_and_consumes_the_complete_native_card_abox() {
+        // Reduced 9540 shape: first-class has_point cardinality plus a direct
+        // positive/negative has_point clash on named roots; a separate active
+        // inverse role pair; and DifferentIndividuals. The test crosses every
+        // production boundary: source OFN -> auto route -> exact HT clause view
+        // -> cb_to_ht numeric install -> serialized worker input -> run_json.
+        let source = r#"
+            Prefix(:=<http://example.org/>)
+            Ontology(
+              Declaration(Class(:Shape))
+              Declaration(Class(:Point))
+              Declaration(Class(:Other))
+              Declaration(ObjectProperty(:has_point))
+              Declaration(ObjectProperty(:is_front))
+              Declaration(ObjectProperty(:is_back))
+              Declaration(NamedIndividual(:a))
+              Declaration(NamedIndividual(:b))
+              InverseObjectProperties(:is_front :is_back)
+              ObjectPropertyRange(:is_back :Other)
+              SubClassOf(:Shape ObjectSomeValuesFrom(:is_front :Other))
+              SubClassOf(:Shape ObjectExactCardinality(1 :has_point :Point))
+              ClassAssertion(:Shape :a)
+              ObjectPropertyAssertion(:has_point :a :b)
+              NegativeObjectPropertyAssertion(:has_point :a :b)
+              DifferentIndividuals(:a :b)
+            )
+        "#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            source,
+            crate::routing::Route::Auto,
+            |frontend| {
+                assert_eq!(
+                    frontend.route,
+                    crate::routing::Route::CertifiedCardNominals.as_str()
+                );
+                assert!(frontend.profile.inverse_cardinality_role_separable);
+                assert_eq!(
+                    crate::routing::select(&frontend.profile),
+                    crate::routing::Route::CertifiedCardNominals,
+                    "the automatic source-profile policy selects the certified native-card route"
+                );
+                assert!(frontend.nominal_abox.complete);
+                assert_eq!(frontend.nominal_abox.individuals.len(), 2);
+                assert_eq!(frontend.nominal_abox.role_assertions.len(), 1);
+                assert_eq!(frontend.nominal_abox.negative_role_assertions.len(), 1);
+                assert_eq!(frontend.nominal_abox.different.len(), 1);
+                assert!(!frontend.cardinalities.is_empty());
+
+                let original_cb = serde_json::to_vec(&frontend.clauses).unwrap();
+                let ht_view =
+                    native_nominal_ht_view(&frontend.clauses, &frontend.nominal_abox, true, false);
+                let named: std::collections::HashSet<String> =
+                    frontend.named.iter().cloned().collect();
+                let mut tin = cb_to_ht::convert(
+                    &ht_view,
+                    Some(&frontend.rbox),
+                    &named,
+                    &frontend.cardinalities,
+                    &frontend.definers,
+                    &frontend.source_axioms,
+                    true,
+                    &[],
+                    false,
+                );
+                assert!(cb_to_ht::install_nominal_abox(
+                    &mut tin,
+                    &frontend.nominal_abox
+                ));
+                assert_eq!(
+                    serde_json::to_vec(&frontend.clauses).unwrap(),
+                    original_cb,
+                    "constructing the HT view must not mutate the exact CB source vector"
+                );
+                assert!(tin.inverse_cardinality_role_separable);
+                assert!(card_candidate_from(&tin, true, true, false));
+
+                let wire = serde_json::to_string(&tin).unwrap();
+                let output = crate::tableau::run_json_for_native_ht_test(&wire)
+                    .expect("native card Ht consumes its complete wire payload");
+                let output: serde_json::Value = serde_json::from_str(&output).unwrap();
+                assert_eq!(
+                    output["consistent"], false,
+                    "the typed role clash must fire"
+                );
+            },
+        )
+        .expect("source fixture parses through automatic production routing");
+    }
+
     #[test]
     fn native_nominal_bridge_view_preserves_the_exact_cb_clause_file() {
         use crate::frontend::syntax::Concept;
@@ -1702,14 +2076,18 @@ mod tests {
                     individual: "a".into(),
                     proxies: vec!["__nom__a".into()],
                     assertions: vec![],
+                    assertion_markers: vec![],
                 },
                 NominalIndividualMeta {
                     individual: "b".into(),
                     proxies: vec!["__nom__b".into()],
                     assertions: vec![Concept::Name("A".into())],
+                    assertion_markers: vec!["A".into()],
                 },
             ],
             different: vec![("a".into(), "b".into())],
+            role_assertions: vec![],
+            negative_role_assertions: vec![],
             unsupported: vec![],
         };
 
@@ -1765,6 +2143,7 @@ mod tests {
                 individual: format!("individual_{index}"),
                 proxies: vec![format!("__nom__individual_{index}")],
                 assertions: vec![Concept::Top],
+                assertion_markers: vec!["Q_top".into()],
             })
             .collect();
         let clauses: Vec<JClause> = individuals
@@ -1783,6 +2162,8 @@ mod tests {
             complete: true,
             individuals,
             different: vec![],
+            role_assertions: vec![],
+            negative_role_assertions: vec![],
             unsupported: vec![],
         };
         let top_definer = DefinerMeta {
@@ -1999,14 +2380,18 @@ mod tests {
                     individual: "a".into(),
                     proxies: vec!["__nom__a".into()],
                     assertions: vec![],
+                    assertion_markers: vec![],
                 },
                 NominalIndividualMeta {
                     individual: "b".into(),
                     proxies: vec!["__nom__b".into()],
                     assertions: vec![Concept::Name("A".into())],
+                    assertion_markers: vec!["A".into()],
                 },
             ],
             different: vec![("a".into(), "b".into())],
+            role_assertions: vec![],
+            negative_role_assertions: vec![],
             unsupported: vec![],
         };
         let source_axioms = vec![
@@ -2260,16 +2645,85 @@ mod tests {
             detail: "x".into(),
         });
         assert!(!card_candidate_from(&fenced, true, true, false));
-        // Inverse is excluded only when recognition is off; with recognition on
-        // (production default) the SHIQ number giants stay on the card route.
+        // Inverse requires BOTH recognition and the normalized role-separation
+        // certificate. Recognition alone must never globally weaken the fence.
         let mut inverse = card_def_tin();
         inverse.inverse = true;
         assert!(!card_candidate_from(&inverse, true, false, false));
+        assert!(!card_candidate_from(&inverse, true, true, false));
+        inverse.inverse_cardinality_role_separable = true;
         assert!(card_candidate_from(&inverse, true, true, false));
         // No card_defs (e.g. the inverse+nominal ore_ont_10702, whose convert
         // refuses the card transform) is never a card candidate.
         let empty = cb_to_ht::TInput::default();
         assert!(!card_candidate_from(&empty, true, true, false));
+
+        // A nominal-bearing card input is admitted only after the typed ABox
+        // installer has produced its complete numeric certificate.
+        let mut nominal = card_def_tin();
+        nominal.nominals.push(7);
+        assert!(!card_candidate_from(&nominal, true, true, false));
+        nominal.native_abox.complete = true;
+        assert!(card_candidate_from(&nominal, true, true, false));
+    }
+
+    #[test]
+    fn negative_native_roles_must_be_separate_from_chain_and_transitive_components() {
+        let mut chained = card_def_tin();
+        chained.roles = vec!["left".into(), "right".into(), "target".into()];
+        chained.native_abox.complete = true;
+        chained.native_abox.negative_role_assertions.push((2, 0, 1));
+        chained.chains.push((0, 1, 2));
+        assert!(!native_abox_role_automata_separable(&chained));
+        assert!(!card_candidate_from(&chained, true, true, false));
+
+        let mut transitive_super = card_def_tin();
+        transitive_super.roles = vec!["negative-sub".into(), "transitive-super".into()];
+        transitive_super.native_abox.complete = true;
+        transitive_super
+            .native_abox
+            .negative_role_assertions
+            .push((0, 0, 1));
+        transitive_super.transitive.push(1);
+        transitive_super.clauses.push(cb_to_ht::HtClause {
+            body: vec![cb_to_ht::HAtom::Role { r: 0, s: 0, t: 1 }],
+            head: vec![cb_to_ht::HAtom::Role { r: 1, s: 0, t: 1 }],
+        });
+        assert!(!native_abox_role_automata_separable(&transitive_super));
+
+        let mut positive_chain = card_def_tin();
+        positive_chain.roles = vec!["left".into(), "right".into(), "target".into()];
+        positive_chain.native_abox.complete = true;
+        positive_chain.native_abox.role_assertions = vec![(0, 0, 1), (1, 1, 2)];
+        positive_chain.chains.push((0, 1, 2));
+        assert!(!native_abox_role_automata_separable(&positive_chain));
+        assert!(!card_candidate_from(&positive_chain, true, true, false));
+
+        // 9540's relevant shape: has_point carries cardinalities/negative facts;
+        // is_front and is_back are an inverse pair; unrelated spatial roles are
+        // transitive. None of the three negative-role components is non-simple.
+        let mut separated = card_def_tin();
+        separated.roles = vec![
+            "has_point".into(),
+            "is_front".into(),
+            "is_back".into(),
+            "is_completely_inside".into(),
+        ];
+        separated.native_abox.complete = true;
+        separated.native_abox.negative_role_assertions = vec![(0, 0, 1), (1, 0, 1), (2, 1, 0)];
+        separated.transitive.push(3);
+        separated.clauses.extend([
+            cb_to_ht::HtClause {
+                body: vec![cb_to_ht::HAtom::Role { r: 1, s: 0, t: 1 }],
+                head: vec![cb_to_ht::HAtom::Role { r: 2, s: 1, t: 0 }],
+            },
+            cb_to_ht::HtClause {
+                body: vec![cb_to_ht::HAtom::Role { r: 2, s: 0, t: 1 }],
+                head: vec![cb_to_ht::HAtom::Role { r: 1, s: 1, t: 0 }],
+            },
+        ]);
+        assert!(native_abox_role_automata_separable(&separated));
+        assert!(card_candidate_from(&separated, true, true, false));
     }
 
     #[test]
@@ -2422,6 +2876,7 @@ mod tests {
             individual: "a".into(),
             proxies: vec!["__nom__a".into()],
             assertions: vec![],
+            assertion_markers: vec![],
         });
         assert!(typed_nominal_bridge_exclusive(&tin, true));
         assert!(

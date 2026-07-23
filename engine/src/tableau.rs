@@ -4875,6 +4875,11 @@ pub struct TInput {
     /// seeding. Empty for nominal-free KBs (no behaviour change).
     #[serde(default)]
     pub nominals: Vec<C>,
+    /// Complete numeric named-individual ABox produced by cb_to_ht.  Unknown
+    /// fields used to be silently ignored here; retaining this typed field is
+    /// what makes class/role assertions and DifferentIndividuals reach Ht.
+    #[serde(default)]
+    pub native_abox: crate::orchestrate::cb_to_ht::NativeAboxJson,
     /// KM_HT_CARD: first-class qualified number restrictions (marker → `≥n`/`≤n`).
     /// Empty for the clausal-pigeonhole path (no behaviour change).
     #[serde(default)]
@@ -4960,10 +4965,160 @@ pub fn clauses_of_tinput(inp: &TInput) -> Vec<Clause> {
         .collect()
 }
 
+#[derive(Debug, Default)]
+struct ValidatedNativeAbox {
+    active: bool,
+    individuals: Vec<(Vec<C>, Vec<C>)>,
+    different: Vec<(usize, usize)>,
+    role_assertions: Vec<(R, usize, usize)>,
+    /// Exact negative-edge constraints reconstructed from the typed wire data
+    /// when the producer-side guarded clause is absent. This makes the worker
+    /// semantics independent of a redundant serialized clause.
+    missing_negative_clauses: Vec<Clause>,
+}
+
+fn has_negative_edge_clash(inp: &TInput, role: R, source_proxy: C, target_proxy: C) -> bool {
+    inp.clauses.iter().any(|clause| {
+        matches!(
+            (clause.body.as_slice(), clause.head.as_slice()),
+            (
+                [
+                    JAtom::Concept { neg: false, c: source, t: 0 },
+                    JAtom::Role { r, s: 0, t: 1 },
+                    JAtom::Concept { neg: false, c: target, t: 1 },
+                ],
+                []
+            ) if *source == source_proxy && *r == role && *target == target_proxy
+        )
+    })
+}
+
+/// Validate the complete producer-side native-ABox contract and convert its
+/// usize wire ids to the compact worker ids. Every proxy has exactly one owner,
+/// is in range, and is present in the nominal singleton set. Negative role
+/// assertions are reconstructed as guarded clash clauses if the redundant
+/// producer clause is missing, so this consumer never silently drops them.
+fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
+    use std::collections::HashSet;
+
+    if inp.native_abox.is_empty() {
+        return Ok(ValidatedNativeAbox::default());
+    }
+    if !inp.native_abox.complete {
+        return Err("incomplete native ABox payload".to_string());
+    }
+
+    let nominal_set: HashSet<usize> = inp.nominals.iter().map(|&id| id as usize).collect();
+    let mut proxy_owners = HashSet::new();
+    let mut individuals = Vec::with_capacity(inp.native_abox.individuals.len());
+    for individual in &inp.native_abox.individuals {
+        if individual.proxies.is_empty() {
+            return Err("native ABox individual has no singleton proxy".to_string());
+        }
+        let mut proxies = Vec::with_capacity(individual.proxies.len());
+        for &id in &individual.proxies {
+            if id >= inp.concepts.len() {
+                return Err("native ABox concept id out of range".to_string());
+            }
+            if !nominal_set.contains(&id) {
+                return Err("native ABox proxy is absent from nominals".to_string());
+            }
+            if !proxy_owners.insert(id) {
+                return Err("native ABox proxy has duplicate ownership".to_string());
+            }
+            proxies
+                .push(C::try_from(id).map_err(|_| "native ABox concept id overflow".to_string())?);
+        }
+        let mut assertions = Vec::with_capacity(individual.assertions.len());
+        for &id in &individual.assertions {
+            if id >= inp.concepts.len() {
+                return Err("native ABox assertion id out of range".to_string());
+            }
+            assertions.push(
+                C::try_from(id).map_err(|_| "native ABox assertion id overflow".to_string())?,
+            );
+        }
+        individuals.push((proxies, assertions));
+    }
+
+    let in_individual_range =
+        |left: usize, right: usize| left < individuals.len() && right < individuals.len();
+    if inp
+        .native_abox
+        .different
+        .iter()
+        .any(|&(left, right)| !in_individual_range(left, right))
+    {
+        return Err("native ABox individual index out of range".to_string());
+    }
+
+    let resolve_role = |role: usize, source: usize, target: usize| -> Result<R, String> {
+        if role >= inp.roles.len() || !in_individual_range(source, target) {
+            return Err("native ABox role/individual index out of range".to_string());
+        }
+        R::try_from(role).map_err(|_| "native ABox role id overflow".to_string())
+    };
+    let mut role_assertions = Vec::with_capacity(inp.native_abox.role_assertions.len());
+    for &(role, source, target) in &inp.native_abox.role_assertions {
+        role_assertions.push((resolve_role(role, source, target)?, source, target));
+    }
+
+    let mut missing_negative_clauses = Vec::new();
+    for &(role, source, target) in &inp.native_abox.negative_role_assertions {
+        let role = resolve_role(role, source, target)?;
+        let source_proxy = individuals[source].0[0];
+        let target_proxy = individuals[target].0[0];
+        if !has_negative_edge_clash(inp, role, source_proxy, target_proxy) {
+            missing_negative_clauses.push(Clause::new(
+                vec![
+                    Atom::Concept {
+                        lit: CLit::pos(source_proxy),
+                        t: 0,
+                    },
+                    Atom::Role {
+                        r: role,
+                        s: 0,
+                        t: 1,
+                    },
+                    Atom::Concept {
+                        lit: CLit::pos(target_proxy),
+                        t: 1,
+                    },
+                ],
+                Vec::new(),
+            ));
+        }
+    }
+
+    Ok(ValidatedNativeAbox {
+        active: !individuals.is_empty(),
+        individuals,
+        different: inp.native_abox.different.clone(),
+        role_assertions,
+        missing_negative_clauses,
+    })
+}
+
 /// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
 pub fn run_json(input: &str) -> Result<String, String> {
+    run_json_inner(input, None)
+}
+
+/// `forced_ht` is used only by the wire-contract regression tests. Production
+/// always passes `None` and reads the selected mechanism from the environment.
+fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
     let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
-    let clauses: Vec<Clause> = clauses_of_tinput(&inp);
+    let native_abox = validate_native_abox(&inp)?;
+    let native_abox_active = native_abox.active;
+    let ht_enabled = forced_ht.unwrap_or_else(|| std::env::var_os("KM_HT").is_some());
+    if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
+        return Err("native ABox requires the hypertableau mechanism".to_string());
+    }
+    let native_individuals = native_abox.individuals;
+    let native_different = native_abox.different;
+    let native_roles = native_abox.role_assertions;
+    let mut clauses: Vec<Clause> = clauses_of_tinput(&inp);
+    clauses.extend(native_abox.missing_negative_clauses);
     let queries: Vec<C> = if inp.queries.is_empty() {
         (0..inp.concepts.len() as C).collect()
     } else {
@@ -5045,13 +5200,13 @@ pub fn run_json(input: &str) -> Result<String, String> {
         }
     }
 
-    let ht_force = std::env::var_os("KM_HT_FORCE").is_some();
+    let ht_force = forced_ht == Some(true) || std::env::var_os("KM_HT_FORCE").is_some();
     // KM_HT_NOMINALS: route nominal (but inverse-free) KBs — SHOQ / SHON — to the
     // fast Ht, which now carries the nominal o-rule (`set_nominals`) composed with
     // the ≤n merge (qmerge) and pairwise blocking. Inverse stays fenced (SHOIQ
     // needs the NN-rule, not yet ported).
-    let ht_nom = std::env::var_os("KM_HT_NOMINALS").is_some();
-    if std::env::var_os("KM_HT").is_some()
+    let ht_nom = forced_ht == Some(true) || std::env::var_os("KM_HT_NOMINALS").is_some();
+    if ht_enabled
         && (ht_force
             || (!inp.number && !inp.inverse && inp.nominals.is_empty())
             || (ht_nom && !inp.inverse))
@@ -5059,6 +5214,9 @@ pub fn run_json(input: &str) -> Result<String, String> {
         let ht_clauses = clauses.clone();
         let q = queries.clone();
         let noms = inp.nominals.clone();
+        let abox_individuals = native_individuals.clone();
+        let abox_different = native_different.clone();
+        let abox_roles = native_roles.clone();
         let ht_number = inp.number;
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
         let card_raw: Vec<(C, bool, u32, R, C)> = inp
@@ -5075,6 +5233,7 @@ pub fn run_json(input: &str) -> Result<String, String> {
             .spawn(move || {
                 let mut ht = hypertableau::Ht::new(ht_clauses);
                 ht.set_nominals(noms);
+                ht.set_native_abox(abox_individuals, abox_different, abox_roles);
                 // KM_KEEP_CHAIN_AXIOMS: install the detected role chains for the
                 // Ht chain-unfolding (faithful Konclude generateRoleChainAutomat
                 // Concept).  The chains are side data in the TInput (the raw
@@ -5151,6 +5310,12 @@ pub fn run_json(input: &str) -> Result<String, String> {
         if std::env::var_os("KM_HT_QO_CERTIFY_ONLY").is_some() {
             return Err("QO router defer (not certified)".to_string());
         }
+        // The legacy Tableau does not consume the typed native-ABox state.  A
+        // fast-Ht defer must therefore propagate as a route defer rather than
+        // silently answering from a partial ABox.
+        if native_abox_active {
+            return Err("native ABox hypertableau defer".to_string());
+        }
         // otherwise fall through to the legacy tableau.
     }
 
@@ -5175,6 +5340,11 @@ pub fn run_json(input: &str) -> Result<String, String> {
         subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
     };
     serde_json::to_string(&out).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+pub(crate) fn run_json_for_native_ht_test(input: &str) -> Result<String, String> {
+    run_json_inner(input, Some(true))
 }
 
 #[cfg(test)]
@@ -5203,6 +5373,98 @@ mod tests {
     const B: C = 1;
     const D: C = 3;
     const R0: R = 0;
+
+    fn native_wire_input() -> crate::orchestrate::cb_to_ht::TInput {
+        use crate::orchestrate::cb_to_ht::{NativeAboxJson, NativeIndividualJson};
+        crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["NA".into(), "NB".into(), "A".into()],
+            roles: vec!["r".into()],
+            nominals: vec![0, 1],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![
+                    NativeIndividualJson {
+                        proxies: vec![0],
+                        assertions: vec![2],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![1],
+                        assertions: Vec::new(),
+                    },
+                ],
+                different: vec![(0, 1)],
+                role_assertions: vec![(0, 0, 1)],
+                negative_role_assertions: Vec::new(),
+            },
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        }
+    }
+
+    fn consumer_input(producer: &crate::orchestrate::cb_to_ht::TInput) -> TInput {
+        serde_json::from_slice(&serde_json::to_vec(producer).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn native_abox_wire_contract_rejects_empty_duplicate_and_non_nominal_proxies() {
+        let mut empty = native_wire_input();
+        empty.native_abox.individuals[0].proxies.clear();
+        assert!(validate_native_abox(&consumer_input(&empty))
+            .unwrap_err()
+            .contains("no singleton proxy"));
+
+        let mut duplicate = native_wire_input();
+        duplicate.native_abox.individuals[1].proxies = vec![0];
+        assert!(validate_native_abox(&consumer_input(&duplicate))
+            .unwrap_err()
+            .contains("duplicate ownership"));
+
+        let mut absent = native_wire_input();
+        absent.nominals.retain(|&id| id != 1);
+        assert!(validate_native_abox(&consumer_input(&absent))
+            .unwrap_err()
+            .contains("absent from nominals"));
+    }
+
+    #[test]
+    fn native_negative_role_wire_fact_reconstructs_a_missing_exact_clash_clause() {
+        let mut producer = native_wire_input();
+        producer
+            .native_abox
+            .negative_role_assertions
+            .push((0, 0, 1));
+        let parsed = consumer_input(&producer);
+        let validated = validate_native_abox(&parsed).expect("complete native ABox validates");
+        assert_eq!(validated.missing_negative_clauses.len(), 1);
+
+        producer
+            .clauses
+            .push(crate::orchestrate::cb_to_ht::HtClause {
+                body: vec![
+                    crate::orchestrate::cb_to_ht::HAtom::Concept {
+                        neg: false,
+                        c: 0,
+                        t: 0,
+                    },
+                    crate::orchestrate::cb_to_ht::HAtom::Role { r: 0, s: 0, t: 1 },
+                    crate::orchestrate::cb_to_ht::HAtom::Concept {
+                        neg: false,
+                        c: 1,
+                        t: 1,
+                    },
+                ],
+                head: Vec::new(),
+            });
+        let validated =
+            validate_native_abox(&consumer_input(&producer)).expect("exact guard validates");
+        assert!(validated.missing_negative_clauses.is_empty());
+    }
+
+    #[test]
+    fn native_abox_never_falls_through_to_legacy_tableau_without_ht() {
+        let input = serde_json::to_string(&native_wire_input()).unwrap();
+        let error = run_json_inner(&input, Some(false)).unwrap_err();
+        assert!(error.contains("requires the hypertableau mechanism"));
+    }
 
     #[test]
     fn clash_a_and_not_a() {

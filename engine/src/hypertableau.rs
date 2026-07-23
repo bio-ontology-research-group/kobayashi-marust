@@ -2110,6 +2110,18 @@ struct BlockBuf {
     touched: Vec<usize>,
 }
 
+/// Persistent named-individual state.  `consistent` rebuilds `Ext` for every
+/// taxonomy probe/restart, so source ABox roots cannot live only in one model.
+#[derive(Clone, Default)]
+struct NativeAboxState {
+    /// `(singleton proxy concepts, asserted normalized concept markers)`.
+    individuals: Vec<(Vec<C>, Vec<C>)>,
+    /// Pairs of indices into `individuals`.
+    different: Vec<(usize, usize)>,
+    /// `(role, source index, target index)`.
+    role_assertions: Vec<(R, usize, usize)>,
+}
+
 pub struct Ht {
     clauses: Vec<ClauseRec>,
     /// Concepts whose last per-concept QoSat saturation had a shared filler
@@ -2331,6 +2343,10 @@ pub struct Ht {
     /// `ext.nominals` after each per-query `Ext::new` (which resets it). Empty ⇒
     /// the o-rule is inert.
     nom_set: Vec<C>,
+    /// Exact source ABox roots/edges/inequalities, recreated for every query and
+    /// restart.  Negative role assertions are exact guarded clash clauses in the
+    /// immutable clause template and therefore do not need mutable side state.
+    native_abox: NativeAboxState,
     /// Role chains `R1∘R2⊑R` (incl. transitive `R∘R⊑R`) received via `set_chains`
     /// side-data, passed to each QoSat worker via `install_edge_compose` for the
     /// faithful Konclude role-automaton edge composition (KM_QO_EDGE_COMPOSE).
@@ -7529,6 +7545,7 @@ impl Ht {
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
             nom_set: Vec::new(),
+            native_abox: NativeAboxState::default(),
             qo_edge_chains: Vec::new(),
             ht_chain_fwd: HashMap::new(),
             ht_chain_bwd: HashMap::new(),
@@ -7757,6 +7774,22 @@ impl Ht {
     /// the per-query `Ext` in `consistent`; empty ⇒ inert.
     pub fn set_nominals(&mut self, noms: Vec<C>) {
         self.nom_set = noms;
+    }
+
+    /// Install a complete, already-id-validated named-individual ABox.  This is
+    /// inert when all vectors are empty.  The caller must withhold this setter
+    /// for a partial payload; the route gate enforces that contract.
+    pub fn set_native_abox(
+        &mut self,
+        individuals: Vec<(Vec<C>, Vec<C>)>,
+        different: Vec<(usize, usize)>,
+        role_assertions: Vec<(R, usize, usize)>,
+    ) {
+        self.native_abox = NativeAboxState {
+            individuals,
+            different,
+            role_assertions,
+        };
     }
 
     #[inline]
@@ -9773,9 +9806,38 @@ impl Ht {
             self.cur_choices.clear();
             self.dec_sig.clear();
             self.dec_choice.clear();
+            // Keep the taxonomy/query root at node 0: model-label extraction and
+            // candidate generation are intentionally keyed to that node.  Named
+            // individuals are separate non-blockable roots in the same global
+            // completion graph, exactly as in an ABox model.
             let root = self.ext.new_root();
             for &lit in seed {
                 self.ext.add_concept(root, lit, &dep_empty());
+            }
+            let mut named_roots = Vec::with_capacity(self.native_abox.individuals.len());
+            for (proxies, assertions) in &self.native_abox.individuals {
+                let node = self.ext.new_root();
+                named_roots.push(node);
+                for &concept in proxies.iter().chain(assertions.iter()) {
+                    self.ext.add_concept(node, CLit::pos(concept), &dep_empty());
+                }
+            }
+            for &(left, right) in &self.native_abox.different {
+                let (Some(&left), Some(&right)) = (named_roots.get(left), named_roots.get(right))
+                else {
+                    self.ext.unsupported = true;
+                    continue;
+                };
+                self.ext.add_distinct(left, right, &dep_empty());
+            }
+            for &(role, source, target) in &self.native_abox.role_assertions {
+                let (Some(&source), Some(&target)) =
+                    (named_roots.get(source), named_roots.get(target))
+                else {
+                    self.ext.unsupported = true;
+                    continue;
+                };
+                self.ext.add_edge(role, source, target, &dep_empty());
             }
             match self.dfs(0) {
                 Out::Restart => {
@@ -10853,6 +10915,7 @@ impl Ht {
         // re-installed state is per-thread -> sound. Re-applied below in both phases.
         let p_card_defs = self.card_defs.clone();
         let p_nom_set = self.nom_set.clone();
+        let p_native_abox = self.native_abox.clone();
         let p_force_number = self.force_number;
         let p_force_qmerge = self.force_qmerge;
         let nq = queries.len();
@@ -10879,6 +10942,7 @@ impl Ht {
                     let tmpl = template.clone();
                     let card_defs = p_card_defs.clone();
                     let nom_set = p_nom_set.clone();
+                    let native_abox = p_native_abox.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
@@ -10892,6 +10956,7 @@ impl Ht {
                             if !nom_set.is_empty() {
                                 w.set_nominals(nom_set);
                             }
+                            w.native_abox = native_abox;
                             let mut out = Vec::new();
                             loop {
                                 let i = next1.fetch_add(1, Ordering::Relaxed);
@@ -10952,6 +11017,7 @@ impl Ht {
                     let tmpl = template.clone();
                     let card_defs = p_card_defs.clone();
                     let nom_set = p_nom_set.clone();
+                    let native_abox = p_native_abox.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
@@ -10965,6 +11031,7 @@ impl Ht {
                             if !nom_set.is_empty() {
                                 w.set_nominals(nom_set);
                             }
+                            w.native_abox = native_abox;
                             let mut subs = Vec::new();
                             loop {
                                 let li = next2.fetch_add(1, Ordering::Relaxed);
@@ -15417,5 +15484,148 @@ mod tests {
             "B forced in A's model (A⊑B) ⇒ NOT refutable"
         );
         assert!(!m.contains(&CC), "CC absent in A's model ⇒ refutes A⊑CC");
+    }
+
+    #[test]
+    fn native_abox_class_assertion_changes_global_consistency() {
+        const NOM: C = 20;
+        const ASSERTED: C = 21;
+        let clauses = vec![Clause::new(vec![con(false, ASSERTED, X)], Vec::new())];
+
+        let mut without = ht(clauses.clone());
+        assert_eq!(without.consistent(&[]), Some(true));
+
+        let mut with = ht(clauses);
+        with.set_nominals(vec![NOM]);
+        with.set_native_abox(vec![(vec![NOM], vec![ASSERTED])], Vec::new(), Vec::new());
+        assert_eq!(with.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn native_abox_different_blocks_required_atmost_merge() {
+        const SUBJECT: C = 20;
+        const LEFT: C = 21;
+        const RIGHT: C = 22;
+        const MARKER: C = 23;
+        const FILLER: C = 24;
+        let seeds = vec![
+            (vec![SUBJECT], vec![MARKER]),
+            (vec![LEFT], vec![FILLER]),
+            (vec![RIGHT], vec![FILLER]),
+        ];
+        let edges = vec![(R0, 0, 1), (R0, 0, 2)];
+
+        let mut mergeable = ht(Vec::new());
+        mergeable.set_nominals(vec![SUBJECT, LEFT, RIGHT]);
+        mergeable.set_native_abox(seeds.clone(), Vec::new(), edges.clone());
+        mergeable.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER)]);
+        mergeable.set_number(true);
+        assert_eq!(mergeable.consistent(&[]), Some(true));
+
+        let mut distinct = ht(Vec::new());
+        distinct.set_nominals(vec![SUBJECT, LEFT, RIGHT]);
+        distinct.set_native_abox(seeds, vec![(1, 2)], edges);
+        distinct.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER)]);
+        distinct.set_number(true);
+        assert_eq!(distinct.consistent(&[]), Some(false));
+    }
+
+    fn negative_edge_clash(role_id: R, source_nominal: C, target_nominal: C) -> Clause {
+        Clause::new(
+            vec![
+                con(false, source_nominal, X),
+                role(role_id, X, 1),
+                con(false, target_nominal, 1),
+            ],
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn native_abox_positive_and_negative_role_assertion_clash() {
+        const NA: C = 20;
+        const NB: C = 21;
+        let mut t = ht(vec![negative_edge_clash(R0, NA, NB)]);
+        t.set_nominals(vec![NA, NB]);
+        t.set_native_abox(
+            vec![(vec![NA], Vec::new()), (vec![NB], Vec::new())],
+            Vec::new(),
+            vec![(R0, 0, 1)],
+        );
+        assert_eq!(t.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn negative_role_assertion_sees_subrole_inverse_and_chain_edges() {
+        const NA: C = 20;
+        const NB: C = 21;
+        const NC: C = 22;
+        const SUB: R = 1;
+        const TARGET: R = 2;
+        const SECOND: R = 3;
+
+        // SUB(a,b), SUB⊑TARGET, and ¬TARGET(a,b).
+        let mut subrole = ht(vec![
+            Clause::new(vec![role(SUB, X, 1)], vec![role(TARGET, X, 1)]),
+            negative_edge_clash(TARGET, NA, NB),
+        ]);
+        subrole.set_nominals(vec![NA, NB]);
+        subrole.set_native_abox(
+            vec![(vec![NA], Vec::new()), (vec![NB], Vec::new())],
+            Vec::new(),
+            vec![(SUB, 0, 1)],
+        );
+        assert_eq!(subrole.consistent(&[]), Some(false));
+
+        // SUB(a,b), inverse bridge SUB(x,y)->TARGET(y,x), and ¬TARGET(b,a).
+        let mut inverse = ht(vec![
+            Clause::new(vec![role(SUB, X, 1)], vec![role(TARGET, 1, X)]),
+            negative_edge_clash(TARGET, NB, NA),
+        ]);
+        inverse.set_nominals(vec![NA, NB]);
+        inverse.set_native_abox(
+            vec![(vec![NA], Vec::new()), (vec![NB], Vec::new())],
+            Vec::new(),
+            vec![(SUB, 0, 1)],
+        );
+        assert_eq!(inverse.consistent(&[]), Some(false));
+
+        // SUB(a,b), SECOND(b,c), SUB∘SECOND⊑TARGET, and ¬TARGET(a,c).
+        let mut chain = ht(vec![
+            Clause::new(
+                vec![role(SUB, X, 1), role(SECOND, 1, 2)],
+                vec![role(TARGET, X, 2)],
+            ),
+            negative_edge_clash(TARGET, NA, NC),
+        ]);
+        chain.set_nominals(vec![NA, NB, NC]);
+        chain.set_native_abox(
+            vec![
+                (vec![NA], Vec::new()),
+                (vec![NB], Vec::new()),
+                (vec![NC], Vec::new()),
+            ],
+            Vec::new(),
+            vec![(SUB, 0, 1), (SECOND, 1, 2)],
+        );
+        assert_eq!(chain.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn parallel_workers_retain_native_abox() {
+        const NOM: C = 20;
+        const ASSERTED: C = 21;
+        let clauses = vec![Clause::new(vec![con(false, ASSERTED, X)], Vec::new())];
+        let mut t = ht(clauses);
+        t.set_nominals(vec![NOM]);
+        t.set_native_abox(vec![(vec![NOM], vec![ASSERTED])], Vec::new(), Vec::new());
+        let (_, unsat, _) = t
+            .classify_parallel(&[A, B], 2)
+            .expect("tiny native-ABox workers terminate");
+        assert_eq!(
+            unsat.len(),
+            2,
+            "both workers must see the global ABox clash"
+        );
     }
 }

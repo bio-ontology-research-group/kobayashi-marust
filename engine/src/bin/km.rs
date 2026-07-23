@@ -354,6 +354,8 @@ fn cb_to_ht_cmd() {
         #[serde(default)]
         source_axioms: Vec<kobayashi_marust::json_io::SourceAxiomMeta>,
         #[serde(default)]
+        nominal_abox: kobayashi_marust::json_io::NominalAboxMeta,
+        #[serde(default)]
         rules: Vec<kobayashi_marust::json_io::JRule>,
         /// declared class names (frontend meta `named`): a declared class is
         /// always a query even when its local name looks internal (contains
@@ -374,7 +376,7 @@ fn cb_to_ht_cmd() {
         }
     };
     let named: std::collections::HashSet<String> = input.named.iter().cloned().collect();
-    let tin = orchestrate::cb_to_ht::convert(
+    let mut tin = orchestrate::cb_to_ht::convert(
         &input.clauses,
         input.rbox.as_deref(),
         &named,
@@ -387,6 +389,7 @@ fn cb_to_ht_cmd() {
         // actually carries DL-safe rules (opt out with KM_NO_HT_RULES).
         std::env::var_os("KM_NO_HT_RULES").is_none(),
     );
+    orchestrate::cb_to_ht::install_nominal_abox(&mut tin, &input.nominal_abox);
     let stdout = std::io::stdout();
     if let Err(e) = serde_json::to_writer(stdout.lock(), &tin) {
         eprintln!("serialise error: {e}");

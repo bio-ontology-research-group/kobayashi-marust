@@ -21,7 +21,7 @@ pub mod rbox;
 pub mod sexpr;
 pub mod syntax;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use clauses::{clause, clause_to_json, Atom, DLClause, Term};
 use iri::IriRegistry;
@@ -73,94 +73,201 @@ pub struct FrontendResult {
     pub route: String,
 }
 
-/// Build the exact source ABox carried to the native nominal bridge. The
-/// bridge currently supports class assertions plus explicit inequality. All
-/// other ABox constructs are recorded as a coverage failure, never dropped.
+/// Preserve every parsed object ABox assertion together with the exact nominal
+/// proxies and class markers allocated by normalization.  This is deliberately
+/// redundant: source expressions make the payload auditable, while normalized
+/// marker names let the fast hypertableau seed the same class expressions
+/// without reverse-engineering generated symbols.  Any mismatch fails closed.
 fn collect_nominal_abox(
     ontology: &syntax::Ontology,
+    abox: &[DLClause],
     hooks: &normalise::GroundHooks,
-    source_abox_axioms: u64,
-    source_class_assertions: u64,
-    source_role_assertions: u64,
-    source_rule_axioms: u64,
+    source: &profile::SourceStatistics,
 ) -> crate::json_io::NominalAboxMeta {
-    use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
+    use crate::json_io::{NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta};
     use syntax::Axiom;
 
-    if hooks.nominal_to_individual.is_empty() {
-        if source_abox_axioms == 0 {
-            return NominalAboxMeta::default();
-        }
-        // A named individual used only as an assertion subject/object does not
-        // create a clausifier nominal proxy. Preserve that coverage loss in the
-        // side channel so the bridge cannot silently drop the ABox.
-        return NominalAboxMeta {
-            unsupported: vec![format!(
-                "{source_abox_axioms} source ABox axiom(s) have no nominal proxy mapping"
-            )],
-            ..NominalAboxMeta::default()
-        };
+    if source.abox_axioms == 0
+        && hooks.nominal_to_individual.is_empty()
+        && hooks.abox_nominal_to_individual.is_empty()
+    {
+        return NominalAboxMeta::default();
     }
 
     let mut by_individual: BTreeMap<String, NominalIndividualMeta> = BTreeMap::new();
-    for (proxy, individual) in &hooks.nominal_to_individual {
-        let entry =
-            by_individual
-                .entry(individual.clone())
-                .or_insert_with(|| NominalIndividualMeta {
-                    individual: individual.clone(),
-                    ..NominalIndividualMeta::default()
-                });
-        entry.proxies.push(proxy.clone());
+    for (proxy, individual) in hooks
+        .nominal_to_individual
+        .iter()
+        .chain(hooks.abox_nominal_to_individual.iter())
+    {
+        by_individual
+            .entry(individual.clone())
+            .or_insert_with(|| NominalIndividualMeta {
+                individual: individual.clone(),
+                ..NominalIndividualMeta::default()
+            })
+            .proxies
+            .push(proxy.clone());
     }
     for entry in by_individual.values_mut() {
         entry.proxies.sort();
         entry.proxies.dedup();
     }
 
+    // Normalization emits exactly one ground concept fact per source
+    // ClassAssertion.  Keep its generated marker in per-individual source order.
+    let mut marker_queue: BTreeMap<String, VecDeque<String>> = BTreeMap::new();
+    for clause in abox {
+        if !clause.body.is_empty() || clause.head.len() != 1 {
+            continue;
+        }
+        if let Atom::Concept(marker, Term::Ind(individual)) = &clause.head[0] {
+            marker_queue
+                .entry(individual.clone())
+                .or_default()
+                .push_back(marker.clone());
+        }
+    }
+
     let mut different = BTreeSet::new();
+    let mut role_assertions = BTreeSet::new();
+    let mut negative_role_assertions = BTreeSet::new();
     let mut unsupported = BTreeSet::new();
-    let mut parsed_class_assertions = 0u64;
+    let mut parsed_class = 0u64;
+    let mut parsed_role = 0u64;
+    let mut parsed_negative_role = 0u64;
     let mut parsed_different_pairs = 0u64;
     let mut parsed_same_pairs = 0u64;
+
+    fn require_individual(
+        by_individual: &BTreeMap<String, NominalIndividualMeta>,
+        unsupported: &mut BTreeSet<String>,
+        individual: &str,
+        context: &str,
+    ) -> bool {
+        if by_individual.contains_key(individual) {
+            true
+        } else {
+            unsupported.insert(format!(
+                "{context} individual {individual} has no normalizer nominal proxy"
+            ));
+            false
+        }
+    }
+
     for axiom in ontology.abox() {
         match axiom {
             Axiom::ConceptAssertion(concept, individual) => {
-                parsed_class_assertions += 1;
-                if let Some(entry) = by_individual.get_mut(individual) {
-                    entry.assertions.push(normalise::nnf(concept));
-                } else {
+                parsed_class += 1;
+                if !require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    individual,
+                    "ClassAssertion",
+                ) {
+                    continue;
+                }
+                let marker = marker_queue
+                    .get_mut(individual)
+                    .and_then(VecDeque::pop_front);
+                match marker {
+                    Some(marker) => {
+                        let entry = by_individual.get_mut(individual).unwrap();
+                        entry.assertions.push(normalise::nnf(concept));
+                        entry.assertion_markers.push(marker);
+                    }
+                    None => {
+                        unsupported.insert(format!(
+                            "ClassAssertion({individual}) has no normalized marker"
+                        ));
+                    }
+                }
+            }
+            Axiom::RoleAssertion(role, source, target) => {
+                parsed_role += 1;
+                if matches!(
+                    role.as_str(),
+                    "owl:topObjectProperty"
+                        | "topObjectProperty"
+                        | "owl:bottomObjectProperty"
+                        | "bottomObjectProperty"
+                ) {
+                    unsupported.insert(format!("ObjectPropertyAssertion uses builtin role {role}"));
+                    continue;
+                }
+                let covered = require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    source,
+                    "ObjectPropertyAssertion",
+                ) & require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    target,
+                    "ObjectPropertyAssertion",
+                );
+                if covered {
+                    role_assertions.insert(NominalRoleAssertionMeta {
+                        role: role.clone(),
+                        source: source.clone(),
+                        target: target.clone(),
+                    });
+                }
+            }
+            Axiom::NegativeRoleAssertion(role, source, target) => {
+                parsed_negative_role += 1;
+                if matches!(
+                    role.as_str(),
+                    "owl:topObjectProperty"
+                        | "topObjectProperty"
+                        | "owl:bottomObjectProperty"
+                        | "bottomObjectProperty"
+                ) {
                     unsupported.insert(format!(
-                        "ClassAssertion individual {individual} has no nominal proxy"
+                        "NegativeObjectPropertyAssertion uses builtin role {role}"
                     ));
+                    continue;
+                }
+                let covered = require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    source,
+                    "NegativeObjectPropertyAssertion",
+                ) & require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    target,
+                    "NegativeObjectPropertyAssertion",
+                );
+                if covered {
+                    negative_role_assertions.insert(NominalRoleAssertionMeta {
+                        role: role.clone(),
+                        source: source.clone(),
+                        target: target.clone(),
+                    });
                 }
             }
             Axiom::DifferentIndividuals(left, right) => {
                 parsed_different_pairs += 1;
-                if !by_individual.contains_key(left) || !by_individual.contains_key(right) {
-                    unsupported.insert(format!(
-                        "DifferentIndividuals({left},{right}) references an unproxied individual"
-                    ));
-                } else if left != right {
-                    let pair = if left < right {
+                let covered = require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    left,
+                    "DifferentIndividuals",
+                ) & require_individual(
+                    &by_individual,
+                    &mut unsupported,
+                    right,
+                    "DifferentIndividuals",
+                );
+                if covered {
+                    let pair = if left <= right {
                         (left.clone(), right.clone())
                     } else {
                         (right.clone(), left.clone())
                     };
                     different.insert(pair);
-                } else {
-                    // Preserve DifferentIndividuals(a,a); the bridge's global
-                    // ABox consistency check will turn it into a clash.
-                    different.insert((left.clone(), right.clone()));
                 }
-            }
-            Axiom::RoleAssertion(role, source, target) => {
-                unsupported.insert(format!("ObjectPropertyAssertion({role},{source},{target})"));
-            }
-            Axiom::NegativeRoleAssertion(role, source, target) => {
-                unsupported.insert(format!(
-                    "NegativeObjectPropertyAssertion({role},{source},{target})"
-                ));
             }
             Axiom::SameIndividual(left, right) => {
                 parsed_same_pairs += 1;
@@ -171,35 +278,83 @@ fn collect_nominal_abox(
             }
         }
     }
-    if parsed_class_assertions != source_class_assertions {
+    for (individual, markers) in marker_queue {
+        if !markers.is_empty() {
+            unsupported.insert(format!(
+                "{individual} has {} unmatched normalized ClassAssertion marker(s)",
+                markers.len()
+            ));
+        }
+    }
+
+    let source_count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
+    let source_object_role = source_count("ObjectPropertyAssertion");
+    let source_negative_object_role = source_count("NegativeObjectPropertyAssertion");
+    let source_data_role =
+        source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion");
+    let source_same = source_count("SameIndividual");
+    let source_different = source_count("DifferentIndividuals");
+    let recognized_source_abox = source_count("ClassAssertion")
+        + source_object_role
+        + source_negative_object_role
+        + source_data_role
+        + source_same
+        + source_different;
+
+    if parsed_class != source.class_assertions {
         unsupported.insert(format!(
-            "source/parsed ClassAssertion mismatch ({source_class_assertions}/{parsed_class_assertions})"
+            "source/parsed ClassAssertion mismatch ({}/{parsed_class})",
+            source.class_assertions
         ));
     }
-    // The profile counts one n-ary DifferentIndividuals source axiom while
-    // the object parser expands it to every semantic pair. The expanded ABox
-    // is the exact payload the bridge needs (10621 has 85 names, 3,570 pairs).
-    if source_role_assertions != 0 {
+    if parsed_role != source_object_role {
         unsupported.insert(format!(
-            "{source_role_assertions} source role/data assertion axiom(s) are unsupported"
+            "source/parsed ObjectPropertyAssertion mismatch ({source_object_role}/{parsed_role})"
         ));
     }
-    let identity_source_axioms = source_abox_axioms
-        .saturating_sub(source_class_assertions)
-        .saturating_sub(source_role_assertions);
-    if identity_source_axioms != 0 && parsed_same_pairs == 0 && parsed_different_pairs == 0 {
+    if parsed_negative_role != source_negative_object_role {
         unsupported.insert(format!(
-            "{identity_source_axioms} source identity axiom(s) were not represented by the object-ABox parser"
+            "source/parsed NegativeObjectPropertyAssertion mismatch ({source_negative_object_role}/{parsed_negative_role})"
         ));
     }
-    if source_rule_axioms != 0 {
+    if source_data_role != 0 {
         unsupported.insert(format!(
-            "{source_rule_axioms} DL-safe rule axiom(s) require a separate ABox contract"
+            "{source_data_role} data-property assertion axiom(s) are unsupported"
         ));
     }
-    for entry in by_individual.values_mut() {
-        entry.assertions.sort();
-        entry.assertions.dedup();
+    if source_same != 0 || parsed_same_pairs != 0 {
+        unsupported.insert(format!(
+            "SameIndividual is unsupported ({source_same} source axiom(s), {parsed_same_pairs} normalized pair(s))"
+        ));
+    }
+    // The parser expands n-ary DifferentIndividuals into every semantic pair.
+    // Every well-formed source axiom contributes at least one pair.
+    if (source_different == 0) != (parsed_different_pairs == 0)
+        || parsed_different_pairs < source_different
+    {
+        unsupported.insert(format!(
+            "source/parsed DifferentIndividuals mismatch ({source_different}/{parsed_different_pairs})"
+        ));
+    }
+    if recognized_source_abox != source.abox_axioms {
+        unsupported.insert(format!(
+            "{} source ABox axiom(s) have an unsupported constructor",
+            source.abox_axioms.saturating_sub(recognized_source_abox)
+        ));
+    }
+    if source.rule_axioms != 0 {
+        unsupported.insert(format!(
+            "{} DL-safe rule axiom(s) require a separate ABox contract",
+            source.rule_axioms
+        ));
+    }
+    for entry in by_individual.values() {
+        if entry.proxies.is_empty() || entry.assertions.len() != entry.assertion_markers.len() {
+            unsupported.insert(format!(
+                "individual {} has incomplete proxy/assertion-marker coverage",
+                entry.individual
+            ));
+        }
     }
 
     let unsupported: Vec<String> = unsupported.into_iter().collect();
@@ -207,6 +362,8 @@ fn collect_nominal_abox(
         complete: unsupported.is_empty(),
         individuals: by_individual.into_values().collect(),
         different: different.into_iter().collect(),
+        role_assertions: role_assertions.into_iter().collect(),
+        negative_role_assertions: negative_role_assertions.into_iter().collect(),
         unsupported,
     }
 }
@@ -272,6 +429,20 @@ fn read_status_mb(field: &str) -> u64 {
 
 /// Port of `frontend.ofn_to_clauses` + the `iri_map`/`named`/`declared` outputs.
 pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
+    let requested = std::env::var("KM_ROUTE")
+        .unwrap_or_else(|_| "manual".to_string())
+        .parse::<crate::routing::Route>()
+        .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
+    ofn_to_clauses_requested(text, requested)
+}
+
+/// Route-explicit frontend core. Production selects `requested` from KM_ROUTE;
+/// tests use the wrapper below so they can exercise automatic routing without
+/// relying on a pre-existing KM_ROUTE value.
+fn ofn_to_clauses_requested(
+    text: &str,
+    requested: crate::routing::Route,
+) -> Result<FrontendResult, parse::OutOfFragment> {
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
@@ -291,10 +462,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let mut profile = profile_builder.finish(text.len() as u64);
-    let requested = std::env::var("KM_ROUTE")
-        .unwrap_or_else(|_| "manual".to_string())
-        .parse::<crate::routing::Route>()
-        .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
     let automatic = requested == crate::routing::Route::Auto;
     let mut route = if automatic {
         crate::routing::select(&profile)
@@ -306,14 +473,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     route.apply_environment();
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
-    let nominal_abox = collect_nominal_abox(
-        &ontology,
-        &hooks,
-        profile.source.abox_axioms,
-        profile.source.class_assertions,
-        profile.source.role_assertions,
-        profile.source.rule_axioms,
-    );
+    let nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
@@ -630,6 +790,16 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     })
 }
 
+#[cfg(test)]
+pub(crate) fn with_ofn_to_clauses_requested_route<T>(
+    text: &str,
+    requested: crate::routing::Route,
+    consume: impl FnOnce(FrontendResult) -> T,
+) -> Result<T, parse::OutOfFragment> {
+    let _guard = crate::routing::EnvironmentGuard::capture();
+    ofn_to_clauses_requested(text, requested).map(consume)
+}
+
 /// Convert the ontology's parsed `DLSafeRule` axioms into the JSON rule channel
 /// (`JRule`). The rule fragment has three tiers:
 ///
@@ -831,56 +1001,43 @@ mod nominal_abox_contract_tests {
     }
 
     #[test]
-    fn unsupported_abox_shapes_make_the_certificate_fail_closed() {
+    fn object_abox_and_assertion_only_individuals_are_certified() {
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
-             Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
              Declaration(ObjectProperty(:r))\
              Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\
-             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
-             EquivalentClasses(:OnlyB ObjectOneOf(:b))\
              ObjectPropertyAssertion(:r :a :b))"
         ))
-        .expect("nominal ontology is parsed");
-        assert!(!result.nominal_abox.complete);
-        assert!(result
-            .nominal_abox
-            .unsupported
-            .iter()
-            .any(|reason| reason.contains("ObjectPropertyAssertion")));
+        .expect("object ABox is parsed");
+        assert!(
+            result.nominal_abox.complete,
+            "coverage reasons: {:?}",
+            result.nominal_abox.unsupported
+        );
+        assert_eq!(result.nominal_abox.role_assertions.len(), 1);
 
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
-             Declaration(Class(:OnlyA)) Declaration(Class(:A))\
-             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:unproxied))\
-             EquivalentClasses(:OnlyA ObjectOneOf(:a))\
-             ClassAssertion(:A :unproxied))"
-        ))
-        .expect("nominal ontology is parsed");
-        assert!(!result.nominal_abox.complete);
-        assert!(result
-            .nominal_abox
-            .unsupported
-            .iter()
-            .any(|reason| reason.contains("has no nominal proxy")));
-
-        let result = ofn_to_clauses(&format!(
-            "{PREFIX}\
-             Declaration(Class(:A)) Declaration(NamedIndividual(:unproxied))\
-             ClassAssertion(:A :unproxied))"
+             Declaration(Class(:A)) Declaration(NamedIndividual(:a))\
+             ClassAssertion(:A :a))"
         ))
         .expect("plain class assertion ontology is parsed");
-        assert!(!result.nominal_abox.complete);
-        assert!(result.nominal_abox.individuals.is_empty());
-        assert!(result
-            .nominal_abox
-            .unsupported
-            .iter()
-            .any(|reason| reason.contains("no nominal proxy mapping")));
+        assert!(
+            result.nominal_abox.complete,
+            "coverage reasons: {:?}",
+            result.nominal_abox.unsupported
+        );
+        assert_eq!(result.nominal_abox.individuals.len(), 1);
+        assert_eq!(result.nominal_abox.individuals[0].assertions.len(), 1);
+        assert_eq!(
+            result.nominal_abox.individuals[0].assertion_markers.len(),
+            1
+        );
+        assert!(!result.nominal_abox.individuals[0].proxies.is_empty());
     }
 
     #[test]
-    fn identity_and_negative_property_assertions_fail_nominal_coverage() {
+    fn identity_and_data_fail_while_negative_object_roles_are_retained() {
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
@@ -903,11 +1060,102 @@ mod nominal_abox_contract_tests {
             .nominal_abox
             .unsupported
             .iter()
-            .any(|reason| reason.contains("NegativeObjectPropertyAssertion")));
-        assert!(result
-            .nominal_abox
-            .unsupported
+            .any(|reason| reason.contains("data-property assertion")));
+        assert_eq!(result.nominal_abox.negative_role_assertions.len(), 1);
+    }
+
+    #[test]
+    fn typed_abox_preserves_class_roles_negatives_and_different() {
+        let result = ofn_to_clauses(&format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B))\
+             Declaration(ObjectProperty(:r))\
+             Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\
+             ClassAssertion(ObjectIntersectionOf(:A :B) :a)\
+             ObjectPropertyAssertion(:r :a :b)\
+             NegativeObjectPropertyAssertion(:r :b :a)\
+             DifferentIndividuals(:a :b))"
+        ))
+        .expect("typed object ABox parses");
+        let meta = result.nominal_abox;
+        assert!(meta.complete, "coverage reasons: {:?}", meta.unsupported);
+        assert_eq!(meta.individuals.len(), 2);
+        assert_eq!(meta.different.len(), 1);
+        assert_eq!(meta.role_assertions.len(), 1);
+        assert_eq!(meta.negative_role_assertions.len(), 1);
+        let a = meta
+            .individuals
             .iter()
-            .any(|reason| reason.contains("source role/data assertion")));
+            .find(|entry| entry.individual == "a")
+            .unwrap();
+        assert_eq!(a.assertions.len(), 1);
+        assert_eq!(a.assertion_markers.len(), 1);
+        assert!(!a.proxies.is_empty());
+    }
+
+    #[test]
+    fn assertion_only_proxy_uses_normalizer_mapping_without_default_clause_injection() {
+        let mut registry = IriRegistry::new();
+        let ontology = parse::parse_axioms(
+            &mut registry,
+            &format!(
+                "{PREFIX}\
+                 Declaration(Class(:A)) Declaration(Class(:__nom__a))\
+                 Declaration(NamedIndividual(:a)) SubClassOf(:__nom__a :A)\
+                 ClassAssertion(:A :a))"
+            ),
+        )
+        .expect("collision probe parses");
+        let (_tbox, _abox, hooks) = normalise::normalise(&ontology);
+        assert!(
+            hooks.nominal_to_individual.is_empty(),
+            "assertion-only individuals must not change ordinary nominal preprocessing"
+        );
+        assert_eq!(
+            hooks.abox_nominal_to_individual.get("__nom__a"),
+            Some(&"a".to_string())
+        );
+        let generated = "__nom__a";
+        let source_class = registry
+            .owned_names()
+            .into_iter()
+            .find(|name| registry.full_iri(name) == ":__nom__a")
+            .expect("source generated-looking class retained");
+        assert_ne!(generated, source_class);
+        assert!(source_class.starts_with("km_src_"));
+    }
+
+    #[test]
+    fn unsupported_identity_data_and_builtin_roles_fail_closed() {
+        for (source, expected) in [
+            (
+                format!(
+                    "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
+                ),
+                "SameIndividual",
+            ),
+            (
+                format!(
+                    "{PREFIX} Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) DataPropertyAssertion(:p :a \"x\"))"
+                ),
+                "data-property assertion",
+            ),
+            (
+                format!(
+                    "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) ObjectPropertyAssertion(owl:bottomObjectProperty :a :b))"
+                ),
+                "builtin role",
+            ),
+        ] {
+            let meta = ofn_to_clauses(&source)
+                .expect("unsupported ABox still parses for fail-closed metadata")
+                .nominal_abox;
+            assert!(!meta.complete, "unsupported ABox was certified: {source}");
+            assert!(
+                meta.unsupported.iter().any(|reason| reason.contains(expected)),
+                "{expected}: {:?}",
+                meta.unsupported
+            );
+        }
     }
 }

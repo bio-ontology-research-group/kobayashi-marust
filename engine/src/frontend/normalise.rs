@@ -24,6 +24,11 @@ use crate::json_io::DefinerKind;
 pub struct GroundHooks {
     /// Map `__nom__a -> a`. Order-insensitive; consumed by nominal preprocessing.
     pub nominal_to_individual: HashMap<String, String>,
+    /// Exact proxy mapping for named individuals seen only in source ABox
+    /// axioms.  Kept separate from `nominal_to_individual`: ordinary nominal
+    /// preprocessing must remain byte-identical, while the typed native-ABox
+    /// channel still needs an authoritative collision-safe proxy name.
+    pub abox_nominal_to_individual: HashMap<String, String>,
     /// `(R, __inv__R)` / `(R, S)` inverse pairs. Each registered pair also gets
     /// the bridging clauses `R(x,y) -> S(y,x)` and `S(x,y) -> R(y,x)` emitted
     /// (see `link_inverse`), which carry the inverse-role semantics to the
@@ -449,6 +454,18 @@ impl Clausifier {
 
     fn nominal_name(individual: &str) -> String {
         format!("__nom__{}", individual)
+    }
+
+    /// Record the normalizer's nominal spelling for an ABox endpoint without
+    /// adding it to ordinary nominal preprocessing.  The input `individual`
+    /// is an `IriRegistry`-owned collision-safe internal name; source symbols
+    /// with generated-looking prefixes have already been escaped.
+    fn register_abox_individual(&mut self, individual: &str) -> String {
+        let proxy = Self::nominal_name(individual);
+        self.hooks
+            .abox_nominal_to_individual
+            .insert(proxy.clone(), individual.to_string());
+        proxy
     }
 
     /// Emit the clauses carrying `InverseObjectProperties(r, s)` semantics:
@@ -1429,22 +1446,43 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
     for ax in ontology.abox() {
         match ax {
             Axiom::ConceptAssertion(concept, individual) => {
+                clausifier.register_abox_individual(individual);
                 let ind = Term::Ind(individual.clone());
                 let nc = nnf(concept);
                 let q = clausifier.q(&nc);
                 abox_clauses.push(fact([Atom::Concept(q, ind)]));
             }
             Axiom::RoleAssertion(role, source, target) => {
+                clausifier.register_abox_individual(source);
+                clausifier.register_abox_individual(target);
                 abox_clauses.push(fact([Atom::Role(
                     role.clone(),
                     Term::Ind(source.clone()),
                     Term::Ind(target.clone()),
                 )]));
             }
+            Axiom::NegativeRoleAssertion(role, source, target) => {
+                // Exact ground constraint ¬R(a,b).  It enters the ordinary
+                // clause set only under KM_NOMINALS (augment keeps ABox clauses
+                // in that mode), so the default TBox stream stays unchanged.
+                // The typed HT view removes this exact shape only after matching
+                // it to the independently certified source payload.
+                clausifier.register_abox_individual(source);
+                clausifier.register_abox_individual(target);
+                abox_clauses.push(constraint([Atom::Role(
+                    role.clone(),
+                    Term::Ind(source.clone()),
+                    Term::Ind(target.clone()),
+                )]));
+            }
             Axiom::SameIndividual(l, r) => {
+                clausifier.register_abox_individual(l);
+                clausifier.register_abox_individual(r);
                 abox_clauses.push(fact([Atom::Eq(Term::Ind(l.clone()), Term::Ind(r.clone()))]));
             }
             Axiom::DifferentIndividuals(l, r) => {
+                clausifier.register_abox_individual(l);
+                clausifier.register_abox_individual(r);
                 abox_clauses.push(constraint([Atom::Eq(
                     Term::Ind(l.clone()),
                     Term::Ind(r.clone()),

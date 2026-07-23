@@ -22,6 +22,7 @@ pub enum Route {
     ProductionAll,
     ProductionAll8,
     ProductionAll1,
+    CertifiedCardNominals,
     CbPlain16,
     CbPlain8,
     CbPlain1,
@@ -56,13 +57,14 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 34] = [
+    pub const NAMED: [Route; 35] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
         Route::ProductionAll,
         Route::ProductionAll8,
         Route::ProductionAll1,
+        Route::CertifiedCardNominals,
         Route::CbPlain16,
         Route::CbPlain8,
         Route::CbPlain1,
@@ -103,6 +105,7 @@ impl Route {
             Route::ProductionAll => "production_all",
             Route::ProductionAll8 => "production_all8",
             Route::ProductionAll1 => "production_all1",
+            Route::CertifiedCardNominals => "certified_card_nominals",
             Route::CbPlain16 => "cb_plain16",
             Route::CbPlain8 => "cb_plain8",
             Route::CbPlain1 => "cb_plain1",
@@ -145,6 +148,7 @@ impl Route {
             Route::ProductionAll => PRODUCTION_ALL,
             Route::ProductionAll8 => PRODUCTION_ALL_8,
             Route::ProductionAll1 => PRODUCTION_ALL_1,
+            Route::CertifiedCardNominals => CERTIFIED_CARD_NOMINALS,
             Route::CbPlain16 => CB_PLAIN,
             Route::CbPlain8 => CB_PLAIN_8,
             Route::CbPlain1 => CB_PLAIN_1,
@@ -196,7 +200,8 @@ impl Route {
     pub fn is_atomic(self) -> bool {
         matches!(
             self,
-            Route::CbPlain16
+            Route::CertifiedCardNominals
+                | Route::CbPlain16
                 | Route::CbPlain8
                 | Route::CbPlain1
                 | Route::CbAbsorb16
@@ -259,6 +264,7 @@ impl FromStr for Route {
             "production_all" | "production" => Route::ProductionAll,
             "production_all8" | "production8" => Route::ProductionAll8,
             "production_all1" | "production1" => Route::ProductionAll1,
+            "certified_card_nominals" | "card_nominals" => Route::CertifiedCardNominals,
             "cb_plain16" | "cb" => Route::CbPlain16,
             "cb_plain8" => Route::CbPlain8,
             "cb_plain1" => Route::CbPlain1,
@@ -401,7 +407,21 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::UnsupportedRules => Route::HtRules,
         SemanticFragment::Rules => Route::HtRules,
         SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
+        SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
+            Route::CertifiedCardNominals
+        }
         SemanticFragment::Nominal => Route::Nominals,
+        // A scoped inverse+cardinality ontology whose number-role component is
+        // source-certified disjoint from inverse/non-simple roles must retain a
+        // production route carrying the card arm. The worker independently
+        // rechecks the normalized RBox before admitting that arm; all inverse
+        // axioms remain live. Nominal inputs stay on the exact nominal fallback
+        // here until the combined certified-nominals portfolio is installed.
+        SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
+            if profile.inverse_cardinality_role_separable =>
+        {
+            Route::ProductionAll
+        }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
             let learned = routing_tree_generated::select(profile);
             if sriq_policy_eligible(learned) {
@@ -494,6 +514,32 @@ const PRODUCTION_ALL_1: &[(&str, &str)] = &[
     ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
     ("KM_BRIDGE_RETRY_ROUNDS", "0"),
     ("KM_HT_SATURATION_BUDGET_S", "180"),
+];
+/// Exact HT mechanism for the narrow native-ABox + inverse/cardinality fragment.
+/// The source certificate proves number-role separation; the HT arm repeats
+/// that proof over normalized clauses and additionally requires a complete
+/// typed ABox. There is deliberately no CB competitor: CB's role-chain
+/// recognizers are built before the ground ABox constraints are appended. Both
+/// the source and normalized certificates also reject native role assertions
+/// whose semantics would require materializing a proper role chain (and reject
+/// negative assertions connected to transitivity). The isolated HT worker
+/// either returns its complete result or defers honestly.
+const CERTIFIED_CARD_NOMINALS: &[(&str, &str)] = &[
+    ("KM_MECHANISM", "ht"),
+    ("KM_NO_ELC", "1"),
+    ("KM_NO_HT_RULES", "1"),
+    ("KM_NO_ABSORB_PORTFOLIO", "1"),
+    ("KM_ABSORB", "0"),
+    ("KM_NO_HT_QO_ROUTER", "1"),
+    ("KM_NO_HT_SHOQ", "1"),
+    ("KM_TRIGGER_ABSORB", "1"),
+    ("KM_HT_CARD", "1"),
+    ("KM_HT_ONLY", "certified"),
+    ("KM_NOMINALS", "1"),
+    ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
+    ("KM_BRIDGE_RETRY_ROUNDS", "0"),
+    ("KM_HT_SATURATION_BUDGET_S", "180"),
+    ("KM_HT_NICE", "0"),
 ];
 const CB_PLAIN: &[(&str, &str)] = &[
     ("KM_MECHANISM", "cb"),
@@ -996,6 +1042,18 @@ mod tests {
         assert!(Route::TabRace.settings().contains(&("KM_NO_HT_RACE", "1")));
         assert!(Route::CardFn.settings().contains(&("KM_HT_CARD_FN", "1")));
         assert!(Route::Nominals.settings().contains(&("KM_NOMINALS", "1")));
+        for required in [
+            ("KM_MECHANISM", "ht"),
+            ("KM_HT_ONLY", "certified"),
+            ("KM_NOMINALS", "1"),
+            ("KM_HT_CARD", "1"),
+        ] {
+            assert!(Route::CertifiedCardNominals.settings().contains(&required));
+        }
+        assert!(!Route::CertifiedCardNominals
+            .settings()
+            .iter()
+            .any(|(key, _)| *key == "KM_NO_HT_CARD"));
         assert!(Route::SeqOn.settings().contains(&("KM_SEQ_ORDER", "1")));
         assert!(Route::SeqOff.settings().contains(&("KM_NO_SEQ_ORDER", "1")));
     }
@@ -1025,6 +1083,7 @@ mod tests {
             assert_eq!(mechanisms.len(), 1, "{} mechanism declaration", route);
             assert_ne!(mechanisms[0], "portfolio", "{} must be isolated", route);
         }
+        assert!(Route::CertifiedCardNominals.is_atomic());
     }
 
     #[test]
@@ -1036,6 +1095,14 @@ mod tests {
         profile.source.abox_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert_eq!(select(&profile), Route::Nominals);
+
+        profile.inverse_cardinality_role_separable = true;
+        assert_eq!(
+            select(&profile),
+            Route::CertifiedCardNominals,
+            "the scoped source certificate must select the exact card+nominal portfolio"
+        );
+        profile.inverse_cardinality_role_separable = false;
 
         profile.schema_version = 2;
         profile.positive_abox_tbox_separable = true;
