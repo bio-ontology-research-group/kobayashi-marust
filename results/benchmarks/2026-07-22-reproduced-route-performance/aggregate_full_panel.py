@@ -14,6 +14,15 @@ import os
 from pathlib import Path
 import shutil
 import statistics
+import sys
+
+try:
+    import full_panel_correctness as _correctness
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import full_panel_correctness as _correctness
+
+from full_panel_chunks import chunk_bounds, chunk_for_index
 
 from full_panel_contract import (
     KM_REVISION,
@@ -94,13 +103,16 @@ LONG_FIELDS = (
     "cpu_model",
     "cpus",
     "slurm_job_id",
+    "slurm_array_job_id",
     "slurm_array_task_id",
+    "ontology_index",
     "order_index",
     "runner_sha256",
     "runner_base_sha256",
     "canonicalizer_sha256",
     "watchdog_sha256",
     "benchmark_driver_sha256",
+    "correctness_scorer_sha256",
     "fingerprint_driver_sha256",
     "contract_sha256",
     "build_receipt_sha256",
@@ -410,6 +422,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--binary-manifest", type=Path, required=True)
     parser.add_argument("--ablation-patches-manifest", type=Path, required=True)
     parser.add_argument("--adjudication-4669-manifest", type=Path, required=True)
+    parser.add_argument(
+        "--route-audit",
+        type=Path,
+        help="completed historical-route coverage audit to bind into the receipt",
+    )
+    parser.add_argument(
+        "--chunk-count",
+        type=int,
+        default=592,
+        help="number of Slurm array tasks used for the ontology sweep",
+    )
     return parser.parse_args()
 
 
@@ -420,6 +443,34 @@ def main() -> int:
     ontologies = [line.strip() for line in args.ontology_list.read_text().splitlines() if line.strip()]
     if len(ontologies) != 592:
         raise SystemExit(f"expected 592 ontologies, found {len(ontologies)}")
+    if not 1 <= args.chunk_count <= len(ontologies):
+        raise SystemExit(
+            f"chunk count must be in [1, {len(ontologies)}], got {args.chunk_count}"
+        )
+    chunked_driver = args.chunk_count < len(ontologies)
+    route_audit = None
+    if args.route_audit:
+        if not args.route_audit.is_file():
+            raise SystemExit(f"missing route-coverage audit: {args.route_audit}")
+        route_audit = json.loads(args.route_audit.read_text(encoding="utf-8"))
+        expected_audit = {
+            "status": "complete",
+            "ledger_sha256": sha256_file(args.existing_wide),
+            "contract_sha256": sha256_file(
+                Path(__file__).with_name("full_panel_contract.py")
+            ),
+            "ledger_rows": len(ontologies),
+            "accepted_rows": 589,
+            "missing_environment_count": 0,
+        }
+        for field, expected in expected_audit.items():
+            if route_audit.get(field) != expected:
+                raise SystemExit(
+                    f"route-coverage audit mismatch for {field}: "
+                    f"{route_audit.get(field)!r} != {expected!r}"
+                )
+    if chunked_driver and route_audit is None:
+        raise SystemExit("a chunked rerun requires a completed route-coverage audit")
 
     rows: list[dict] = []
     by_ontology: dict[str, dict[str, dict]] = {}
@@ -462,19 +513,52 @@ def main() -> int:
             "successful classifications without full-IRI fingerprints: "
             f"{missing_fingerprints[:10]}"
         )
-    slurm_job_ids = set()
+    slurm_job_ids: set[str] = set()
+    slurm_array_job_ids: set[str] = set()
+    chunk_job_ids: dict[int, set[str]] = {
+        chunk: set() for chunk in range(args.chunk_count)
+    }
+    chunk_ontology_indices: dict[int, set[int]] = {
+        chunk: set() for chunk in range(args.chunk_count)
+    }
     for task_index, ontology in enumerate(ontologies):
         ontology_rows = by_ontology[ontology]
-        if {str(row.get("slurm_array_task_id")) for row in ontology_rows.values()} != {
+        if {
+            str(row.get("ontology_index", row.get("slurm_array_task_id")))
+            for row in ontology_rows.values()
+        } != {
             str(task_index)
         }:
-            raise SystemExit(f"Slurm task index mismatch for {ontology}")
+            raise SystemExit(f"ontology index mismatch for {ontology}")
+        expected_chunk = chunk_for_index(
+            len(ontologies), args.chunk_count, task_index
+        )
+        ontology_chunk_ids = {
+            str(row.get("slurm_array_task_id")) for row in ontology_rows.values()
+        }
+        if ontology_chunk_ids != {str(expected_chunk)}:
+            raise SystemExit(
+                f"Slurm chunk index mismatch for {ontology}: "
+                f"{ontology_chunk_ids} != {{{expected_chunk!r}}}"
+            )
         ontology_job_ids = {
             str(row.get("slurm_job_id")) for row in ontology_rows.values()
         }
         if len(ontology_job_ids) != 1 or "None" in ontology_job_ids:
             raise SystemExit(f"mixed Slurm job IDs for {ontology}: {ontology_job_ids}")
         slurm_job_ids.update(ontology_job_ids)
+        chunk_job_ids[expected_chunk].update(ontology_job_ids)
+        chunk_ontology_indices[expected_chunk].add(task_index)
+        ontology_array_job_ids = {
+            str(row.get("slurm_array_job_id")) for row in ontology_rows.values()
+        }
+        if args.chunk_count < len(ontologies):
+            if len(ontology_array_job_ids) != 1 or "None" in ontology_array_job_ids:
+                raise SystemExit(
+                    f"mixed Slurm array job IDs for {ontology}: "
+                    f"{ontology_array_job_ids}"
+                )
+            slurm_array_job_ids.update(ontology_array_job_ids)
         if {int(row.get("order_index", -1)) for row in ontology_rows.values()} != set(
             range(len(arms))
         ):
@@ -494,9 +578,28 @@ def main() -> int:
         }
         if len(gold_identities) != 1:
             raise SystemExit(f"mixed gold identities for {ontology}: {gold_identities}")
-    if len(slurm_job_ids) != len(ontologies):
+    if len(slurm_job_ids) != args.chunk_count:
         raise SystemExit(
-            f"expected one distinct Slurm job per ontology, found {len(slurm_job_ids)}"
+            f"expected {args.chunk_count} distinct Slurm jobs, "
+            f"found {len(slurm_job_ids)}"
+        )
+    for chunk in range(args.chunk_count):
+        if len(chunk_job_ids[chunk]) != 1:
+            raise SystemExit(
+                f"chunk {chunk} spans {len(chunk_job_ids[chunk])} Slurm jobs: "
+                f"{sorted(chunk_job_ids[chunk])}"
+            )
+        start, stop = chunk_bounds(len(ontologies), args.chunk_count, chunk)
+        expected_indices = set(range(start, stop))
+        if chunk_ontology_indices[chunk] != expected_indices:
+            raise SystemExit(
+                f"chunk {chunk} ontology coverage mismatch: "
+                f"{sorted(chunk_ontology_indices[chunk] ^ expected_indices)}"
+            )
+    if args.chunk_count < len(ontologies) and len(slurm_array_job_ids) != 1:
+        raise SystemExit(
+            "the chunked sweep must come from one Slurm array, found array IDs "
+            f"{sorted(slurm_array_job_ids)}"
         )
     for procedure in contract:
         arm_rows = [row for row in rows if row["arm"] == procedure["arm"]]
@@ -517,6 +620,8 @@ def main() -> int:
         "canonicalizer_sha256",
         "watchdog_sha256",
     )
+    if chunked_driver:
+        invariant_files += ("correctness_scorer_sha256",)
     for field in invariant_files:
         observed = {row.get(field) for row in rows}
         if len(observed) != 1 or None in observed or "" in observed:
@@ -545,18 +650,45 @@ def main() -> int:
     binary_entries = validate_flat_manifest(args.binary_manifest, "bin")
     patch_entries = validate_flat_manifest(args.ablation_patches_manifest, "patches")
 
-    supplemental_extras = {
-        "full_panel_run_one_fulliri_only.py",
-        "ibex_full_panel_giant_array.sbatch",
-    }
-    if set(supplemental_entries) != set(driver_entries) | supplemental_extras:
-        raise SystemExit(
-            "supplemental driver manifest differs from the primary driver plus "
-            f"the two declared files: {sorted(set(supplemental_entries) ^ (set(driver_entries) | supplemental_extras))}"
-        )
-    for name, digest in driver_entries.items():
-        if supplemental_entries.get(name) != digest:
-            raise SystemExit(f"supplemental driver changed frozen primary input: {name}")
+    if chunked_driver:
+        if driver_entries != supplemental_entries:
+            raise SystemExit(
+                "a chunked sweep must use one identical manifest for ordinary "
+                "and full-IRI-only ontology runs"
+            )
+        required_chunked_entries = {
+            "aggregate_full_panel.py",
+            "audit_full_panel_route_coverage.py",
+            "full_panel_chunks.py",
+            "full_panel_correctness.py",
+            "full_panel_run_one.py",
+            "full_panel_run_one_fulliri_only.py",
+            "ibex_aggregate_full_panel_chunked.sbatch",
+            "ibex_full_panel_chunked_array.sbatch",
+            "run_full_panel_ontology.py",
+        }
+        missing_chunked_entries = required_chunked_entries - set(driver_entries)
+        if missing_chunked_entries:
+            raise SystemExit(
+                "chunked driver manifest is incomplete: "
+                f"{sorted(missing_chunked_entries)}"
+            )
+    else:
+        supplemental_extras = {
+            "full_panel_run_one_fulliri_only.py",
+            "ibex_full_panel_giant_array.sbatch",
+        }
+        if set(supplemental_entries) != set(driver_entries) | supplemental_extras:
+            raise SystemExit(
+                "supplemental driver manifest differs from the primary driver plus "
+                "the two declared files: "
+                f"{sorted(set(supplemental_entries) ^ (set(driver_entries) | supplemental_extras))}"
+            )
+        for name, digest in driver_entries.items():
+            if supplemental_entries.get(name) != digest:
+                raise SystemExit(
+                    f"supplemental driver changed frozen primary input: {name}"
+                )
 
     primary_runner_sha = driver_entries["full_panel_run_one.py"]
     supplemental_runner_sha = supplemental_entries[
@@ -677,6 +809,10 @@ def main() -> int:
         "ore_canon.py": rows[0]["canonicalizer_sha256"],
         "tree_watchdog.py": rows[0]["watchdog_sha256"],
     }
+    if chunked_driver:
+        expected_driver_entries["full_panel_correctness.py"] = rows[0][
+            "correctness_scorer_sha256"
+        ]
     for name, digest in expected_driver_entries.items():
         if driver_entries.get(name) != digest:
             raise SystemExit(f"array-driver manifest mismatch for {name}")
@@ -727,6 +863,14 @@ def main() -> int:
                 driver_entries["sequoia_json_adapter.py"]
             }:
                 raise SystemExit(f"Sequoia adapter mismatch for {procedure['arm']}")
+
+    # Per-ontology labels are provisional.  Recompute every correctness field
+    # from retained measurements here, through the same reusable semantic
+    # scorer whose hash is bound into every row and the driver manifest.
+    for ontology in ontologies:
+        reference = by_ontology[ontology].get("konclude")
+        for row in by_ontology[ontology].values():
+            _correctness.classify_correctness(row, reference)
 
     adjudication_rows = apply_4669_targeted_adjudication(
         by_ontology, args.run_root, args.adjudication_4669_manifest
@@ -924,13 +1068,20 @@ def main() -> int:
                     "cpu_model": row.get("cpu_model"),
                     "cpus": row.get("cpus"),
                     "slurm_job_id": row.get("slurm_job_id"),
+                    "slurm_array_job_id": row.get("slurm_array_job_id"),
                     "slurm_array_task_id": row.get("slurm_array_task_id"),
+                    "ontology_index": row.get(
+                        "ontology_index", row.get("slurm_array_task_id")
+                    ),
                     "order_index": row.get("order_index"),
                     "runner_sha256": row.get("runner_sha256"),
                     "runner_base_sha256": row.get("runner_base_sha256"),
                     "canonicalizer_sha256": row.get("canonicalizer_sha256"),
                     "watchdog_sha256": row.get("watchdog_sha256"),
                     "benchmark_driver_sha256": row.get("benchmark_driver_sha256"),
+                    "correctness_scorer_sha256": row.get(
+                        "correctness_scorer_sha256"
+                    ),
                     "fingerprint_driver_sha256": row.get("fingerprint_driver_sha256"),
                     "contract_sha256": row.get("contract_sha256"),
                     "build_receipt_sha256": row.get("build_receipt_sha256"),
@@ -981,10 +1132,18 @@ def main() -> int:
         json.dumps(
             {
                 "schema_version": 1,
+                "correctness_schema_version": 2,
                 "ontology_count": len(ontologies),
                 "procedure_count": len(contract),
                 "measurement_count": len(rows),
                 "distinct_slurm_task_job_ids": len(slurm_job_ids),
+                "slurm_chunk_count": args.chunk_count,
+                "slurm_chunk_sizes": [
+                    chunk_bounds(len(ontologies), args.chunk_count, chunk)[1]
+                    - chunk_bounds(len(ontologies), args.chunk_count, chunk)[0]
+                    for chunk in range(args.chunk_count)
+                ],
+                "distinct_slurm_array_job_ids": len(slurm_array_job_ids),
                 "aggregation_slurm_job_id": os.environ.get("SLURM_JOB_ID"),
                 "run_invariants": {field: rows[0][field] for field in invariant_files},
                 "run_root": str(args.run_root),
@@ -1153,6 +1312,7 @@ def main() -> int:
         json.dumps(
             {
                 "schema_version": 1,
+                "correctness_schema_version": 2,
                 "successful_metric_population": "status=ok rows only",
                 "attempt_metric_population": "all rows with wall_s and peak_mb",
                 "rows": headline_rows,
@@ -1197,6 +1357,9 @@ def main() -> int:
             "panel_documented_route_command_json",
             "panel_documented_route_explicit_environment_json",
             "panel_documented_route_slurm_job_id",
+            "panel_documented_route_slurm_array_job_id",
+            "panel_documented_route_slurm_array_task_id",
+            "panel_documented_route_ontology_index",
             "panel_documented_route_order_index",
             "panel_result_file",
             "panel_result_key",
@@ -1248,6 +1411,9 @@ def main() -> int:
             "binary_sha256",
             "runtime_sha256",
             "slurm_job_id",
+            "slurm_array_job_id",
+            "slurm_array_task_id",
+            "ontology_index",
             "order_index",
         ):
             old[f"panel_documented_route_{suffix}"] = documented.get(suffix, "") if documented else ""
@@ -1287,6 +1453,9 @@ def main() -> int:
                         "binary_sha256",
                         "runtime_sha256",
                         "slurm_job_id",
+                        "slurm_array_job_id",
+                        "slurm_array_task_id",
+                        "ontology_index",
                         "order_index",
                     )
                 }
@@ -1348,6 +1517,7 @@ def main() -> int:
         json.dumps(
             {
                 "schema_version": 1,
+                "correctness_schema_version": 2,
                 "run_root": str(args.run_root),
                 "array_job_id": args.run_root.name,
                 "existing_wide_input": str(args.existing_wide),
@@ -1358,6 +1528,13 @@ def main() -> int:
                 "procedure_count": len(contract),
                 "measurement_count": len(rows),
                 "distinct_slurm_task_job_ids": len(slurm_job_ids),
+                "slurm_chunk_count": args.chunk_count,
+                "slurm_chunk_sizes": [
+                    chunk_bounds(len(ontologies), args.chunk_count, chunk)[1]
+                    - chunk_bounds(len(ontologies), args.chunk_count, chunk)[0]
+                    for chunk in range(args.chunk_count)
+                ],
+                "slurm_array_job_ids": sorted(slurm_array_job_ids),
                 "aggregation_slurm_job_id": os.environ.get("SLURM_JOB_ID"),
                 "run_invariants": {field: rows[0][field] for field in invariant_files},
                 "array_driver_manifest": str(args.array_driver_manifest),
@@ -1389,6 +1566,12 @@ def main() -> int:
                 ),
                 "ablation_patch_entries_verified": len(patch_entries),
                 "array_driver_entries_verified": len(driver_entries),
+                "route_coverage_audit": (
+                    str(args.route_audit) if args.route_audit else None
+                ),
+                "route_coverage_audit_sha256": (
+                    sha256_file(args.route_audit) if args.route_audit else None
+                ),
                 "adjudication_4669_manifest": str(args.adjudication_4669_manifest),
                 "adjudication_4669_manifest_sha256": sha256_file(
                     args.adjudication_4669_manifest
@@ -1418,6 +1601,9 @@ def main() -> int:
                 "optimization_effects_tsv_sha256": sha256_file(optimization_path),
                 "ontology_route_performance_sha256": sha256_file(wide_path),
                 "aggregator_sha256": sha256_file(Path(__file__)),
+                "correctness_scorer_sha256": sha256_file(
+                    Path(_correctness.__file__)
+                ),
                 "contract_sha256": sha256_file(Path(__file__).with_name("full_panel_contract.py")),
             },
             indent=2,
@@ -1426,7 +1612,7 @@ def main() -> int:
         + "\n",
     )
     generated_manifest = args.output_dir / "full-panel-generated-files.sha256"
-    generated_files = (
+    generated_files = [
         contract_path,
         identity_path,
         long_gzip_path,
@@ -1440,7 +1626,9 @@ def main() -> int:
         raw_manifest_path,
         raw_gzip_path,
         receipt_path,
-    )
+    ]
+    if args.route_audit:
+        generated_files.append(args.route_audit)
     atomic_text(
         generated_manifest,
         "".join(f"{sha256_file(path)}  {path.name}\n" for path in generated_files),

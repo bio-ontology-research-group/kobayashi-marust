@@ -312,7 +312,11 @@ def run(args):
         "cpu_model": first_cpu_model(),
         "cpus": int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_array_job_id": os.environ.get("SLURM_ARRAY_JOB_ID"),
         "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
+        "ontology_index": os.environ.get(
+            "PANEL_ONTOLOGY_INDEX", os.environ.get("SLURM_ARRAY_TASK_ID")
+        ),
         "binary_sha256": args.binary_sha or sha256_file(args.binary),
         "binary_path": os.path.abspath(args.binary),
         "runtime_sha256": args.runtime_sha or None,

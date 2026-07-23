@@ -14,8 +14,17 @@ import sys
 
 from full_panel_contract import panel
 
+try:
+    import full_panel_correctness as _correctness
+except ModuleNotFoundError:
+    # The repository keeps the reusable scorer one directory above this dated
+    # benchmark.  Frozen IBEX deployments place the same hash-pinned module
+    # beside the driver.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import full_panel_correctness as _correctness
 
-INCONSISTENT_ADJUDICATIONS = {"ore_ont_2669.owl", "ore_ont_15516.owl"}
+classify_correctness = _correctness.classify_correctness
+CORRECTNESS_SCORER_PATH = Path(_correctness.__file__).resolve()
 
 
 def sha256_file(path: Path) -> str:
@@ -59,112 +68,6 @@ def validate_existing(path: Path, expected_ontology: str, expected_arms: list[st
         and [row.get("arm") for row in rows] == expected_arms
         and all(row.get("ont") == expected_ontology for row in rows)
     )
-
-
-def classify_correctness(row: dict, reference: dict | None) -> None:
-    ontology = row["ont"]
-    status = row.get("status")
-    fingerprint_ok = row.get("fulliri_fingerprint_status") == "ok"
-    if not row.get("fulliri_identity_capable", True):
-        row["fulliri_verdict"] = "not_comparable"
-    elif reference and fingerprint_ok and reference.get("fulliri_fingerprint_status") == "ok":
-        if row.get("fulliri_taxonomy_sha256") == reference.get("fulliri_taxonomy_sha256"):
-            row["fulliri_verdict"] = "match"
-        else:
-            row["fulliri_verdict"] = "different"
-    elif not fingerprint_ok:
-        row["fulliri_verdict"] = "no_answer"
-    else:
-        row["fulliri_verdict"] = "no_reference"
-
-    if status != "ok" or not fingerprint_ok:
-        row["sound"] = "not_applicable"
-        row["complete"] = "no"
-        row["correctness_basis"] = "no_parseable_classification_answer"
-        row["solved"] = False
-        return
-
-    if ontology in INCONSISTENT_ADJUDICATIONS:
-        if row.get("consistent") is False:
-            row["sound"] = "yes"
-            row["complete"] = "yes"
-            row["correctness_basis"] = "independently_adjudicated_inconsistency"
-        else:
-            row["sound"] = "yes"
-            row["complete"] = "no"
-            row["correctness_basis"] = "consistent_answer_on_adjudicated_inconsistent_input"
-        row["solved"] = row["sound"] == row["complete"] == "yes"
-        return
-
-    # A full-IRI identity to the same-job Konclude reference is stronger than
-    # the local-name gold projection, but only where a retained gold signature
-    # establishes that this ontology belongs to the trusted reference set.
-    reference_trusted = bool(
-        reference
-        and reference.get("status") == "ok"
-        and reference.get("gold_kind") == "konclude"
-        and (
-            reference.get("verdict") == "match"
-            or (
-                ontology == "ore_ont_13503.owl"
-                and reference.get("verdict") == "unsound"
-                and reference.get("extra") == 0
-                and reference.get("missing") == 0
-                and reference.get("extra_unsat") == 1
-                and reference.get("missing_unsat") == 0
-            )
-        )
-    )
-    if (
-        row.get("arm") != "konclude"
-        and reference_trusted
-        and row.get("gold_kind") == "konclude"
-        and row["fulliri_verdict"] == "match"
-    ):
-        row["sound"] = "yes"
-        row["complete"] = "yes"
-        row["correctness_basis"] = "same_job_fulliri_identity_to_konclude"
-        row["solved"] = True
-        return
-
-    verdict = row.get("verdict")
-    if ontology == "ore_ont_13503.owl" and verdict == "unsound":
-        if (
-            row.get("extra") == 0
-            and row.get("missing") == 0
-            and row.get("extra_unsat") == 1
-            and row.get("missing_unsat") == 0
-        ):
-            row["sound"] = "yes"
-            row["complete"] = "yes"
-            row["correctness_basis"] = "adjudicated_missing_unsat_in_frozen_gold"
-            row["solved"] = True
-            return
-
-    mapping = {
-        "match": ("yes", "yes", "frozen_konclude_signature"),
-        "incomplete": ("yes", "no", "strict_subset_of_frozen_signature"),
-        "unsound": ("no", "yes", "strict_superset_of_frozen_signature"),
-        "both": ("no", "no", "incomparable_with_frozen_signature"),
-        "consistency_mismatch": ("no", "no", "consistency_disagrees_with_frozen_signature"),
-        "nogold": ("unknown", "unknown", "no_authoritative_reference"),
-        "noparse": ("not_applicable", "no", "canonicalization_failed"),
-    }
-    sound, complete, basis = mapping.get(
-        verdict, ("unknown", "unknown", "unclassified_correctness_evidence")
-    )
-    # A local-name match that is demonstrably different at full IRI is not an
-    # exact result.  The projection cannot determine the direction of error.
-    if verdict == "match" and row["fulliri_verdict"] == "different":
-        sound, complete, basis = (
-            "unknown",
-            "unknown",
-            "localname_match_but_fulliri_difference",
-        )
-    row["sound"] = sound
-    row["complete"] = complete
-    row["correctness_basis"] = basis
-    row["solved"] = sound == complete == "yes"
 
 
 def parse_args() -> argparse.Namespace:
@@ -422,6 +325,7 @@ def main() -> int:
             source_ontology_sha256=source_sha,
             build_receipt_sha256=build_receipt_sha,
             benchmark_driver_sha256=sha256_file(Path(__file__)),
+            correctness_scorer_sha256=sha256_file(CORRECTNESS_SCORER_PATH),
             fingerprint_driver_sha256=sha(args.fingerprint),
             contract_sha256=sha256_file(Path(__file__).with_name("full_panel_contract.py")),
             fulliri_identity_capable=True,
