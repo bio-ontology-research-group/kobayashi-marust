@@ -1037,6 +1037,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // STATINC(SATCACHEDABSORBEDDISJUNCTIONCONCEPTSCOUNT). The
                     // descriptor is replayed by u10 if u21 later abolishes the
                     // satisfiable/completion-graph cache flag.
+                    self.saturation_cached_absorbed_disjunction_count += 1;
                     self.add_satisfiable_cached_absorbed_disjunction_concept(
                         con_des,
                         *process_indi,

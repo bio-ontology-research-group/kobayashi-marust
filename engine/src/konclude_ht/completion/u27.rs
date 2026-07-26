@@ -55,20 +55,31 @@
 //!     walkers — all later units / W6.
 //!
 //! Following the porting convention (see u24/u09), the genuinely substrate-portable
-//! methods and sub-structures are ported in full against the ported concept model:
-//!   * `expandDirectlyInfluencedNeighboursWithPropagation` — the
-//!     specialized-automat operand RECURSION and the operator-flag dispatch guard
-//!     (`CConceptOperator::hasPartialOperatorCodeFlag`) that decide the return
-//!     value; only the inner role-keyed backend visitation side effect is deferred;
-//!   * `isNeighbourExpansionWithPropagationAllowed` — the config + variable gate
-//!     (the answering steering refinement is W6-deferred ⇒ allow, the no-adapter
-//!     default);
+//! methods and sub-structures are ported in full against the ported concept model.
+//! The four methods of the SELECTIVE influenced-neighbour expansion chain are LIVE
+//! against the typed native-ABox association that the bridge installs
+//! (`NativeNominalBackendReplay`, reached through the `native_*` backend-cache
+//! accessors in u36 — the association handle is the nominal individual tag):
+//!   * `expandDirectlyInfluencedNeighboursWithPropagation` — the specialized-automat
+//!     operand RECURSION, the operator-flag dispatch guard
+//!     (`CConceptOperator::hasPartialOperatorCodeFlag`), the
+//!     `hasRoleInAssociatedCombinedNeigbourRoleSetLabel` criticality gate and the
+//!     role-keyed visitation;
+//!   * `initializeNeighbourExpansionWithPropagation` — the per-neighbour influence
+//!     gates, `isNeighbourPossiblyInfluenced` re-visit suppression and the cached
+//!     edge installation (only the direct-expansion LIMIT policy + its
+//!     `CBackendNeighbourExpansionQueue` remainder stay deferred, so the influenced
+//!     set is expanded at once rather than in batches);
+//!   * `ensureBaseLinkExpansion` — both directions of the base backend-cache link;
 //!   * `canExpansionPotentiallyInfluenceNeighbourWithPotentialPropagation` /
 //!     `canExpandDirectlyInfluencedNeighbourWithPropagation` — the operator-flag
-//!     influence test, with the backend association-data lookup deferred to the
-//!     genuine null-cache path (`!neighbourAssData ⇒ conservatively influenced`),
-//!     and the deeper label-membership operand scan transcribed faithfully (it is
-//!     reached only once the backend association data is ported).
+//!     influence test AND the label-membership operand scan; a neighbour with no
+//!     association keeps the C++ `!neighbourAssData ⇒ conservatively influenced`
+//!     branch.
+//! Also portable and live:
+//!   * `isNeighbourExpansionWithPropagationAllowed` — the config + variable gate
+//!     (the answering steering refinement is W6-deferred ⇒ allow, the no-adapter
+//!     default).
 //! The remaining backend-driven methods keep their faithful signature and a
 //! structural transcription of the C++ as `// PORT-PENDING` so a later wave fills
 //! them without re-reading the source. Logic is documented, never silently dropped.
@@ -86,7 +97,7 @@
 
 use super::super::model::op::{
     CCAQAND, CCBRANCHAQAND, CCFS_ALL_AQALL_TYPE, CCFS_SOME_TYPE, CCF_ATLEAST, CCF_ATMOST,
-    CCIMPLAQAND,
+    CCF_VALUE, CCIMPLAQAND,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, RoleId};
@@ -267,10 +278,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// operator (the contract used by `ensurePropagationCutLinksToExpandedIndividual`
     /// et al.).
     ///
-    /// The specialized-automat operand RECURSION and the operator-flag return-value
-    /// guard are ported in full against the concept model; only the inner
-    /// role-keyed backend visitation that drives `initializeNeighbourExpansionWithPropagation`
-    /// per neighbour array id is W6-deferred (the side effect, not the return value).
+    /// LIVE. The specialized-automat operand RECURSION, the operator-flag
+    /// return-value guard, the `hasRoleInAssociatedCombinedNeigbourRoleSetLabel`
+    /// criticality gate and the role-keyed visitation that drives
+    /// `initializeNeighbourExpansionWithPropagation` all run against the typed
+    /// native-ABox association (`assoc_data` is its opaque handle — the nominal
+    /// individual tag; see the `native_*` backend-cache accessors in u36).
     pub fn expand_directly_influenced_neighbours_with_propagation(
         &mut self,
         concept: ConceptId,
@@ -327,32 +340,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             // TODO (Konclude): verify cardinality is indeed critical
             //
-            // W6-DEFER[api] (cpp 25520–25534): the neighbour visitation that drives
-            // the side effect is backend-cache (W6). Faithful outline:
-            //   if conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST)
-            //      || mBackendCacheHandler->hasRoleInAssociatedCombinedNeigbourRoleSetLabel(
-            //             assocData, DETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false)
-            //      || mBackendCacheHandler->hasRoleInAssociatedCombinedNeigbourRoleSetLabel(
-            //             assocData, NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false):
-            //        if role:
-            //           mBackendCacheHandler->visitNeighbourArrayIdsForRole(assocData, role,
-            //              |arrayId, neighbourRoleSetLabel, nondet| {
-            //                 self.initialize_neighbour_expansion_with_propagation(
-            //                     indiNode, locBackendSyncDataIndiNode, locBackendSyncData,
-            //                     backSyncDepTrackPoint, arrayId, concept, conNegation, nondet,
-            //                     role, true, false, false, ctx);
-            //              }, false, ctx);
-            // The return contract (true for a neighbour-influencing operator) holds
-            // regardless of whether the (deferred) visitation fires.
-            let _ = (
-                role,
-                assoc_data,
-                loc_backend_sync_data,
-                loc_backend_sync_data_indi_node,
-                back_sync_dep_track_point,
-                nondeterministic,
-                indi_node,
-            );
+            // if conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST)
+            //    || mBackendCacheHandler->hasRoleInAssociatedCombinedNeigbourRoleSetLabel(
+            //           assocData, DETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false)
+            //    || mBackendCacheHandler->hasRoleInAssociatedCombinedNeigbourRoleSetLabel(
+            //           assocData, NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false):
+            if con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                || self.native_has_role_in_combined_neighbour_role_set_label(
+                    assoc_data, role, true, false,
+                )
+                || self.native_has_role_in_combined_neighbour_role_set_label(
+                    assoc_data, role, false, false,
+                )
+            {
+                if role.is_some() {
+                    // mBackendCacheHandler->visitNeighbourArrayIdsForRole(assocData, role, …)
+                    // The typed association holds ONE neighbour-role-set label per
+                    // neighbour, so a role has exactly one neighbour array and the
+                    // array id IS the role. The per-array `nondeterministic` flag the
+                    // C++ visitor supplies is resolved per neighbour value inside
+                    // `initialize_neighbour_expansion_with_propagation`.
+                    self.initialize_neighbour_expansion_with_propagation(
+                        indi_node,
+                        loc_backend_sync_data_indi_node,
+                        loc_backend_sync_data,
+                        back_sync_dep_track_point,
+                        role.raw,
+                        concept,
+                        con_negation,
+                        nondeterministic,
+                        role,
+                        true,
+                        false,
+                        false,
+                        calc_alg_context,
+                    );
+                }
+            }
             return true;
         }
 
@@ -370,7 +394,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// identified by `neighbourNodeId`, choosing the forward or reverse direction by
     /// whether a neighbour role-set label exists. Returns whether anything expanded.
     ///
-    /// PORT-PENDING (cpp 25547–25573). End-to-end backend cache. Faithful outline:
+    /// LIVE against the typed native-ABox association. C++ outline for reference:
     ///   baseDepTrackPoint = ctx->getBaseDependencyNode()->getContinueDependencyTrackPoint();
     ///   indiNodeBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ctx);
     ///   indiNodeAssocData = indiNodeBackendSyncData->getAssocitaionData();
@@ -392,9 +416,91 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         neighbour_node_id: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W6-DEFER[api]: backend cache association data + expand sibling unported;
-        // faithful default (nothing expanded).
-        false
+        // baseDepTrackPoint = ctx->getBaseDependencyNode()->getContinueDependencyTrackPoint();
+        let base_dep_track_point = calc_alg_context.get_or_create_base_dependency_track_point();
+        // indiNodeAssocData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ctx)
+        //                        ->getAssocitaionData();
+        let Some(indi_assoc_tag) = self.native_association_tag(indi_node, calc_alg_context) else {
+            return false;
+        };
+        // neighbourLabel = indiNodeAssocData->getNeighbourRoleSetHash()
+        //                     ->getNeighbourRoleSetLabel(neighbourNodeId);
+        let forward_roles =
+            self.native_neighbour_role_set_label_roles(indi_assoc_tag, neighbour_node_id);
+        if !forward_roles.is_empty() {
+            // expanded = expandIndividualNeighbourNodeFromBackendCache(indiNode,
+            //     indiNodeAssocData, neighbourNodeId, tmp, true, false, nullptr, baseDepTrackPoint, ctx);
+            let mut expanded = false;
+            for (role, deterministic) in forward_roles {
+                if !deterministic
+                    && !self.native_cached_role_value_installable(
+                        indi_node,
+                        role,
+                        neighbour_node_id,
+                        calc_alg_context,
+                    )
+                {
+                    if !self.conf_native_selective_neighbour_per_value_decline {
+                        self.native_selective_neighbour_expansion_declined = true;
+                    }
+                    continue;
+                }
+                expanded |= self.install_native_role_assertion_edge(
+                    indi_node,
+                    role,
+                    neighbour_node_id,
+                    base_dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+            }
+            return expanded;
+        }
+        // else: expand the REVERSE direction from the neighbour's own association.
+        let neighbour_node =
+            self.get_up_to_date_individual_by_id(-neighbour_node_id, calc_alg_context);
+        if neighbour_node.is_none() {
+            return false;
+        }
+        let Some(exp_tag) = self.native_nominal_tag_for_node(exp_indi_node, calc_alg_context) else {
+            return false;
+        };
+        let Some(neighbour_assoc_tag) =
+            self.native_association_tag(neighbour_node, calc_alg_context)
+        else {
+            return false;
+        };
+        let mut expanded = false;
+        let reverse_roles =
+            self.native_neighbour_role_set_label_roles(neighbour_assoc_tag, exp_tag);
+        for (role, deterministic) in reverse_roles {
+            if !deterministic
+                && !self.native_cached_role_value_installable(
+                    neighbour_node,
+                    role,
+                    exp_tag,
+                    calc_alg_context,
+                )
+            {
+                if !self.conf_native_selective_neighbour_per_value_decline {
+                    self.native_selective_neighbour_expansion_declined = true;
+                }
+                continue;
+            }
+            expanded |= self.install_native_role_assertion_edge(
+                neighbour_node,
+                role,
+                exp_tag,
+                base_dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                break;
+            }
+        }
+        expanded
     }
 
     // =======================================================================
@@ -410,8 +516,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// count limit / critical-reduction policy), queuing the remainder into the
     /// node's backend neighbour-expansion queue. Always returns true.
     ///
-    /// PORT-PENDING (cpp 25577–25702). The substrate-portable head is noted; the
-    /// body is driven by the backend cache neighbour-array iterator. Faithful outline:
+    /// LIVE against the typed native-ABox association: the per-neighbour influence
+    /// gates, the `isNeighbourPossiblyInfluenced` re-visit suppression and the
+    /// cached-edge installation all run. Only the direct-expansion LIMIT policy and
+    /// the `CBackendNeighbourExpansionQueue` that carries its deferred remainder stay
+    /// W6-DEFER, so the whole influenced set of the role is expanded immediately
+    /// instead of in batches (never less work). C++ outline for reference:
     ///   markIndividualNodeBackendNonConceptSetRelatedAndNeighbourLabelRelatedProcessing(indiNode, ctx); // unit 24
     ///   assocData = locBackendSyncData->getAssocitaionData();
     ///   // [PORTABLE config head]
@@ -464,9 +574,175 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         non_deterministic_consequences_missing_expansion: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W6-DEFER[api]: backend cache neighbour-array iterator + expansion queue
-        // unported; the C++ always returns true after driving the (deferred) side
-        // effects — faithfully reproduced.
+        // markIndividualNodeBackendNonConceptSetRelatedAndNeighbourLabelRelatedProcessing(indiNode, ctx);
+        self.mark_individual_node_backend_non_concept_set_related_and_neighbour_label_related_processing(
+            indi_node,
+            calc_alg_context,
+        );
+        // assocData = locBackendSyncData->getAssocitaionData();
+        let Some(assoc_tag) =
+            self.native_association_tag(loc_backend_sync_data_indi_node, calc_alg_context)
+        else {
+            // No typed association to expand from: report the cache-backed route as
+            // declined so the caller replays the raw assertion linkers instead.
+            self.native_selective_neighbour_expansion_declined = true;
+            return true;
+        };
+
+        // [config head] `forceAllDirectExpansion` and the direct-expansion LIMIT
+        // policy (`mOptLimitBackendNeighbourExpansion`,
+        // `mOptMinBackendNeighbourDirectExpansionCount`,
+        // `mOptCriticalBackendNeighbourTotalExpansionCount` and the
+        // `mOptMinDirectNeighbourExpansionOverCriticalReductionSize` reduction) only
+        // decide how much of one role's influenced-neighbour set is expanded NOW and
+        // how much is deferred onto the (W6-DEFER) `CBackendNeighbourExpansionQueue`.
+        // With that queue unported this route expands the whole influenced set of the
+        // role immediately, which never skips work — it only forgoes the batching.
+        let dependency_track_point = if back_sync_dep_track_point.is_some() {
+            back_sync_dep_track_point
+        } else {
+            calc_alg_context.get_or_create_base_dependency_track_point()
+        };
+
+        // mBackendCacheHandler->visitNeighbourIndividualIdsForNeighbourArrayIdFromCursor(
+        //     assocData, arrayId, |neighbourIndiId, neighbourRoleSetLabel, nondeterministic, …|
+        let role_neighbours = self.native_neighbour_ids_for_role(assoc_tag, role);
+        for (neighbour_indi_id, value_deterministic) in role_neighbours {
+            if calc_alg_context.has_pending_signal() {
+                break;
+            }
+            // The C++ visitor's per-array `nondeterministic` flag and the caller's
+            // concept-descriptor non-determinism are both sources of the same
+            // property; take their union per cached neighbour value.
+            let neighbour_nondeterministic = nondeterministic || !value_deterministic;
+
+            // if canExpansionPotentiallyInfluenceNeighbourWithPotentialPropagation(
+            //        indiNode, concept, conNegation, nondeterministic, assocData, neighbourIndiId, ctx)
+            if !self.can_expansion_potentially_influence_neighbour_with_potential_propagation(
+                indi_node,
+                concept,
+                con_negation,
+                neighbour_nondeterministic,
+                assoc_tag,
+                neighbour_indi_id,
+                calc_alg_context,
+            ) {
+                // deterministicFoundSkippedNeighbourNodeCount++ (statistics only)
+                continue;
+            }
+
+            // neighbourExpansionData = (*neighbourExpansionDataHash)[neighbourIndiId];
+            // if (!neighbourExpansionData.isNeighbourPossiblyInfluenced())
+            let loc_sync_data = self
+                .get_localized_individual_backend_cache_snychronisation_data(
+                    loc_backend_sync_data_indi_node,
+                    calc_alg_context,
+                );
+            if calc_alg_context
+                .process_context()
+                .backend_sync_data(loc_sync_data)
+                .is_neighbour_possibly_influenced(neighbour_indi_id)
+            {
+                continue;
+            }
+
+            // neighbourAssData = mBackendCacheHandler->getIndividualAssociationData(neighbourIndiId, ctx);
+            let neighbour_ass_data = self.native_association_handle_for_individual(neighbour_indi_id);
+            // expandable = concept ? canExpandDirectlyInfluencedNeighbourWithPropagation(…) : true;
+            let mut expandable = true;
+            if concept.is_some() {
+                expandable = self.can_expand_directly_influenced_neighbour_with_propagation(
+                    indi_node,
+                    loc_backend_sync_data,
+                    back_sync_dep_track_point,
+                    concept,
+                    con_negation,
+                    neighbour_nondeterministic,
+                    assoc_tag,
+                    INVALID,
+                    neighbour_indi_id,
+                    neighbour_ass_data,
+                    calc_alg_context,
+                );
+            }
+            // if (nonDeterministicConsequencesMissingExpansion) { expandable =
+            //     cardExtData || neighbourConSetLabel->hasNondeterministicElements(); }
+            if non_deterministic_consequences_missing_expansion {
+                expandable =
+                    self.native_label_has_nondeterministic_consequences(neighbour_indi_id);
+            }
+            if !expandable {
+                continue;
+            }
+
+            // A NON-deterministic cached role value has no branch dependency in a
+            // fresh task, so it cannot be installed on the base dependency without
+            // strengthening one model's choice into an entailment. Konclude does not
+            // lose the node's cache for it — see
+            // `conf_native_selective_neighbour_per_value_decline`. Skip only THIS
+            // neighbour value (and do NOT mark it possibly-influenced, so a later
+            // descriptor may retry it), unless the edge is an ABox assertion, which
+            // is entailed in every model and installable on the base dependency.
+            if !value_deterministic
+                && !self.native_cached_role_value_installable(
+                    indi_node,
+                    role,
+                    neighbour_indi_id,
+                    calc_alg_context,
+                )
+            {
+                if !self.conf_native_selective_neighbour_per_value_decline {
+                    // Pre-fix per-NODE latch (A/B leg, off in production).
+                    self.native_selective_neighbour_expansion_declined = true;
+                    return true;
+                }
+                continue;
+            }
+
+            // neighbourExpansionData.setNeighbourPossiblyInfluenced(true) — set by
+            // `expandIndividualNeighbourNodeFromBackendCache` in the C++ (cpp 23840).
+            calc_alg_context
+                .process_context_mut()
+                .backend_sync_data_mut(loc_sync_data)
+                .set_neighbour_possibly_influenced(neighbour_indi_id, true);
+
+            // if (indiNode != locBackendSyncDataIndiNode
+            //     && (!backSyncDepTrackPoint || hasNondeterministicDependency(backSyncDepTrackPoint, ctx)))
+            //   expanded |= ensureBaseLinkExpansion(indiNode, indiNode, neighbourIndiId, ctx);
+            if indi_node != loc_backend_sync_data_indi_node
+                && (back_sync_dep_track_point.is_none()
+                    || self.has_nondeterministic_dependency(
+                        back_sync_dep_track_point,
+                        calc_alg_context,
+                    ))
+            {
+                self.ensure_base_link_expansion(
+                    indi_node,
+                    indi_node,
+                    neighbour_indi_id,
+                    calc_alg_context,
+                );
+            }
+
+            // expanded |= expandIndividualNeighbourNodeFromBackendCache(indiNode, assocData,
+            //     neighbourIndiId, neighbourExpansionData, forceExpansion, forceExpansion,
+            //     nullptr, backSyncDepTrackPoint, ctx);
+            //
+            // The typed counterpart materializes the neighbour nominal node and
+            // installs exactly the cached ABox edge. Only a genuine install failure
+            // (a malformed typed payload) still declines the whole node — the
+            // fail-closed direction, which sends the caller to the raw replay.
+            if !self.install_native_role_assertion_edge(
+                indi_node,
+                role,
+                neighbour_indi_id,
+                dependency_track_point,
+                calc_alg_context,
+            ) {
+                self.native_selective_neighbour_expansion_declined = true;
+                return true;
+            }
+        }
         true
     }
 
@@ -529,13 +805,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// influence; qualified `∀`/`≤`/`∃` influence only if an operand is not already
     /// in the neighbour's cached full-concept-set label).
     ///
-    /// The concept-model operator-flag dispatch is ported in full. The backend
-    /// association-data lookup (`mBackendCacheHandler->getIndividualAssociationData`)
-    /// is W6-deferred to the genuine null-cache path: with no association data the
-    /// neighbour is conservatively assumed potentially influenced (sound
-    /// over-approximation, the C++ `!neighbourAssData` branch). The deeper
-    /// label-membership operand scan (reached only with association data present) is
-    /// transcribed faithfully for the reconcile wave.
+    /// LIVE. The concept-model operator-flag dispatch and the label-membership
+    /// operand scan both run; the association-data lookup
+    /// (`mBackendCacheHandler->getIndividualAssociationData`) resolves the typed
+    /// native-ABox association handle of the neighbour. A neighbour with no
+    /// association keeps the C++ `!neighbourAssData ⇒ conservatively influenced`
+    /// branch.
     pub fn can_expansion_potentially_influence_neighbour_with_potential_propagation(
         &mut self,
         indi_node: NodeId,
@@ -564,33 +839,88 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         ) {
             let mut neighbour_potentially_influenced = false;
 
-            // W6-DEFER[api]: mBackendCacheHandler->getIndividualAssociationData(
-            //   neighbourIndiId, false, ctx) is backend cache (W6); deferred → null.
-            let neighbour_ass_data: Cint64 = INVALID;
+            // neighbourAssData = mBackendCacheHandler->getIndividualAssociationData(
+            //     neighbourIndiId, false, ctx);
+            let neighbour_ass_data: Cint64 =
+                self.native_association_handle_for_individual(neighbour_indi_id);
             if neighbour_ass_data == INVALID {
                 neighbour_potentially_influenced = true;
 
                 // mConfExpandDeterministicMergedHandledNeighbours must be true,
                 // otherwise the cache may be incomplete (Konclude comment).
-            } else if self.conf_expand_deterministic_merged_handled_neighbours
-            /* W6-DEFER[api]: || !neighbourAssData->hasDeterministicSameIndividualMerging() */
-            {
-                // PORT-PENDING (cpp 25762–25787): the operand scan needs the backend
-                // label predicate `mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel`.
-                // Faithful transcription:
-                //   opConLinker = concept->getOperandList();
-                //   if conNegation && conOperator.hasFlag(CCF_VALUE): influenced = true;
-                //   if !influenced && !opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): influenced = true;
-                //   if !influenced && opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST|CCFS_ALL_AQALL_TYPE|CCFS_SOME_TYPE):
-                //     for opLink in opConLinker (until influenced):
-                //       opConceptTestingNegation = opLink.negated;
-                //       if conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): testNeg = !testNeg;
-                //       if conNegation && conOperator.hasFlag(CCFS_ALL_AQALL_TYPE|CCFS_SOME_TYPE): testNeg = !testNeg;
-                //       if !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
-                //              neighbourAssData, FULL_CONCEPT_SET_LABEL, opLink.target, testNeg, true, ctx):
-                //         influenced = true;
-                //   if !influenced && !opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): influenced = true;
-                let _ = (con_operator, con_negation, nondeterministic, ass_data);
+            } else {
+                // C++: `if (mConfExpandDeterministicMergedHandledNeighbours
+                //          || !neighbourAssData->hasDeterministicSameIndividualMerging())`.
+                // The bridge rejects source `SameIndividual`, so a typed
+                // association never carries a deterministic same-individual
+                // merging: the SECOND disjunct is always true and the branch is
+                // unconditional. Gating it on the config flag alone would make a
+                // cleared flag silently report EVERY neighbour as uninfluenced —
+                // skipping expansion Konclude performs — rather than degrading
+                // towards more work.
+                let _ = self.conf_expand_deterministic_merged_handled_neighbours;
+                let op_con_linker = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operand_list()
+                    .to_vec();
+                // if (conNegation && conOperator->hasPartialOperatorCodeFlag(CCF_VALUE))
+                //   neighbourPotentiallyInfluenced = true;
+                if con_negation && con_operator.has_partial_operator_code_flag(CCF_VALUE) {
+                    neighbour_potentially_influenced = true;
+                }
+                // if (!influenced && !opConLinker && hasFlag(CCF_ATMOST|CCF_ATLEAST))
+                //   influenced = true;
+                if !neighbour_potentially_influenced
+                    && op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                {
+                    neighbour_potentially_influenced = true;
+                }
+                // if (!influenced && opConLinker
+                //     && hasFlag(CCF_ATMOST|CCF_ATLEAST|CCFS_ALL_AQALL_TYPE|CCFS_SOME_TYPE))
+                if !neighbour_potentially_influenced
+                    && !op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(
+                        CCF_ATMOST | CCF_ATLEAST | CCFS_ALL_AQALL_TYPE | CCFS_SOME_TYPE,
+                    )
+                {
+                    for op_link in &op_con_linker {
+                        if neighbour_potentially_influenced {
+                            break;
+                        }
+                        let mut op_concept_testing_negation = op_link.negated;
+                        if con_operator
+                            .has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                        {
+                            op_concept_testing_negation = !op_concept_testing_negation;
+                        }
+                        if con_negation
+                            && con_operator.has_partial_operator_code_flag(
+                                CCFS_ALL_AQALL_TYPE | CCFS_SOME_TYPE,
+                            )
+                        {
+                            op_concept_testing_negation = !op_concept_testing_negation;
+                        }
+                        if !self.native_has_concept_in_full_concept_set_label(
+                            neighbour_ass_data,
+                            op_link.target,
+                            op_concept_testing_negation,
+                            true,
+                        ) {
+                            neighbour_potentially_influenced = true;
+                        }
+                    }
+                }
+                // The C++ repeats the unqualified-cardinality test verbatim after the
+                // operand loop; ported as-is (idempotent).
+                if !neighbour_potentially_influenced
+                    && op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                {
+                    neighbour_potentially_influenced = true;
+                }
+                let _ = (nondeterministic, ass_data);
             }
 
             if neighbour_potentially_influenced {
@@ -609,12 +939,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// cpp 25801–25845.
     ///
     /// As `canExpansionPotentiallyInfluence…` but for an already-located neighbour
-    /// (`neighbourAssData` passed in), additionally requiring the operand to be
-    /// missing under non-deterministic membership when `nondeterministic`. The
-    /// operator-flag dispatch is ported; `neighbour_ass_data` arrives W6-deferred
-    /// (null) from the callers in this port state, so the conservative
-    /// `!neighbourAssData ⇒ influenced` path is taken; the deeper label scan is
-    /// transcribed faithfully.
+    /// (`neighbourAssData` passed in as the typed association handle), additionally
+    /// requiring the operand to be missing under NON-deterministic membership when
+    /// `nondeterministic`. LIVE: the operator-flag dispatch and both label-partition
+    /// membership tests run; `INVALID` keeps the conservative
+    /// `!neighbourAssData ⇒ influenced` path.
     pub fn can_expand_directly_influenced_neighbour_with_propagation(
         &mut self,
         indi_node: NodeId,
@@ -643,30 +972,77 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         ) {
             let mut neighbour_potentially_influenced = false;
 
-            // `neighbour_ass_data` is the backend association data (Cint64); W6-deferred
-            // to null by the callers in this port state ⇒ conservative influence.
+            // `neighbour_ass_data` is the typed association handle of the neighbour
+            // (its individual tag, or `INVALID` for the C++ `nullptr`).
             if neighbour_ass_data == INVALID {
                 neighbour_potentially_influenced = true;
             } else {
-                // PORT-PENDING (cpp 25810–25838): operand scan needs the backend label
-                // predicate `mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel`.
-                // Faithful transcription:
-                //   opConLinker = concept->getOperandList();
-                //   if conNegation && conOperator.hasFlag(CCF_VALUE): influenced = true;
-                //   if !influenced && !opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): influenced = true;
-                //   if !influenced && opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST|CCFS_ALL_AQALL_TYPE|CCFS_SOME_TYPE):
-                //     for opLink (until influenced):
-                //       testNeg = opLink.negated;
-                //       if conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): testNeg = !testNeg;
-                //       if conNegation && conOperator.hasFlag(CCFS_ALL_AQALL_TYPE|CCFS_SOME_TYPE): testNeg = !testNeg;
-                //       if !backend.hasConceptInAssociatedFullConceptSetLabel(neighbourAssData, FULL_CONCEPT_SET_LABEL, opLink.target, testNeg, true, ctx)
-                //          || (nondeterministic && !backend.hasConceptInAssociatedFullConceptSetLabel(..., testNeg, false, ctx)):
-                //         influenced = true;
-                //   if !influenced && !opConLinker && conOperator.hasFlag(CCF_ATMOST|CCF_ATLEAST): influenced = true;
+                let op_con_linker = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operand_list()
+                    .to_vec();
+                if con_negation && con_operator.has_partial_operator_code_flag(CCF_VALUE) {
+                    neighbour_potentially_influenced = true;
+                }
+                if !neighbour_potentially_influenced
+                    && op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                {
+                    neighbour_potentially_influenced = true;
+                }
+                if !neighbour_potentially_influenced
+                    && !op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(
+                        CCF_ATMOST | CCF_ATLEAST | CCFS_ALL_AQALL_TYPE | CCFS_SOME_TYPE,
+                    )
+                {
+                    for op_link in &op_con_linker {
+                        if neighbour_potentially_influenced {
+                            break;
+                        }
+                        let mut op_concept_testing_negation = op_link.negated;
+                        if con_operator
+                            .has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                        {
+                            op_concept_testing_negation = !op_concept_testing_negation;
+                        }
+                        if con_negation
+                            && con_operator.has_partial_operator_code_flag(
+                                CCFS_ALL_AQALL_TYPE | CCFS_SOME_TYPE,
+                            )
+                        {
+                            op_concept_testing_negation = !op_concept_testing_negation;
+                        }
+                        // The two membership tests address the DETERMINISTIC and the
+                        // NON-deterministic partition of the neighbour's
+                        // FULL_CONCEPT_SET label respectively; a non-deterministic
+                        // expansion needs the operand in BOTH to be skippable.
+                        if !self.native_has_concept_in_full_concept_set_label(
+                            neighbour_ass_data,
+                            op_link.target,
+                            op_concept_testing_negation,
+                            true,
+                        )
+                            || nondeterministic
+                                && !self.native_has_concept_in_full_concept_set_label(
+                                    neighbour_ass_data,
+                                    op_link.target,
+                                    op_concept_testing_negation,
+                                    false,
+                                )
+                        {
+                            neighbour_potentially_influenced = true;
+                        }
+                    }
+                }
+                if !neighbour_potentially_influenced
+                    && op_con_linker.is_empty()
+                    && con_operator.has_partial_operator_code_flag(CCF_ATMOST | CCF_ATLEAST)
+                {
+                    neighbour_potentially_influenced = true;
+                }
                 let _ = (
-                    con_operator,
-                    con_negation,
-                    nondeterministic,
                     ass_data,
                     loc_backend_sync_data,
                     back_sync_dep_track_point,

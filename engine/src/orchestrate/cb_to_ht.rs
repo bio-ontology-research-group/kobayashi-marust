@@ -2285,7 +2285,11 @@ pub fn convert(
     }
 
     // ---- eq clauses (≤n / functional / inverse-functional) ----
-    let mut number = false;
+    // Semantic feature bit, independent of whether the optional first-class
+    // `card_defs` encoding is selected. The equality scan below additionally
+    // covers source functional/inverse-functional properties for which the
+    // frontend does not necessarily emit CardMeta.
+    let mut number = !cardinalities.is_empty();
     for c in &eq_clauses {
         let mut vm = mk_varmap();
         let mut bod: Vec<HAtom> = Vec::new();
@@ -3773,6 +3777,10 @@ mod trigger_absorb_tests {
         assert!(
             !tin.card_defs.is_empty(),
             "inverse-free cardinality must keep the first-class card_defs route"
+        );
+        assert!(
+            tin.number,
+            "CardMeta must set the semantic number feature independently of Eq-clause retention"
         );
     }
 

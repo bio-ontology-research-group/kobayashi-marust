@@ -2483,6 +2483,29 @@ mod tests {
     }
 
     #[test]
+    fn number_feature_does_not_bypass_bridge_lossless_input_gate() {
+        let mut tin = cb_to_ht::TInput {
+            number: true,
+            dropped: 1,
+            ..Default::default()
+        };
+        assert!(
+            !bridge_candidate_from(&tin, true, true),
+            "a dropped number construct must remain outside the bridge"
+        );
+
+        tin.dropped = 0;
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "unsupported-number-shape".into(),
+            detail: "synthetic regression".into(),
+        });
+        assert!(
+            !bridge_candidate_from(&tin, true, true),
+            "an unsupported number fence must remain outside the bridge"
+        );
+    }
+
+    #[test]
     fn named_ht_specialists_never_fall_through_to_general_ht() {
         assert!(specialist_route_allows(None, false, false, false, false));
         assert!(specialist_route_allows(

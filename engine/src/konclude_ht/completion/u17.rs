@@ -1057,6 +1057,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
         let nominal_connection_flag = flags & SatF::INDSATFLAGNOMINALCONNECTION != 0;
+        // FAIL-CLOSED (bridge, native nominals): see
+        // `conf_saturation_coupling_declines_nominal_connected`. Declining here
+        // both suppresses the label replay AND suppresses the clash the CLASHED
+        // arm below would raise, so the coupling can only ever derive FEWER
+        // consequences than the uncoupled path on a nominal-connected node. The
+        // successor is then built exactly as it is today, and
+        // `try_establish_saturation_caching` independently declines the same
+        // node through `conf_saturation_caching_with_nominals = false`.
+        if nominal_connection_flag && self.conf_saturation_coupling_declines_nominal_connected {
+            self.saturation_nominal_connected_decline_count += 1;
+            return false;
+        }
         if flags & SatF::INDSATFLAGCLASHED != 0 {
             if !nominal_connection_flag || !self.opt_incremental_expansion {
                 // KONCLUDE-PORT-NOTE[exceptions]: C++ throws

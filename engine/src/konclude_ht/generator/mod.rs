@@ -562,6 +562,7 @@ mod tests {
             })
             .add_reverse_assertion_role_linker(ReverseRoleAssertion {
                 individual: super::super::model::IndividualId::new(23),
+                role: asserted_role,
                 role_assertion: 29,
             });
         let individual_a = ontology.alloc_individual(individual);

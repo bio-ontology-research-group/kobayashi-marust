@@ -56,17 +56,26 @@
 //!     (the `marked |=` fan-out over two sibling mark helpers),
 //!   * the three `*ForDisjointRoles` guards (the `getIndirectSuperRoleList()` scan
 //!     for a super-role with `hasDisjointRoles()`, then the sibling mark call).
-//! The remaining four bodies are driven start-to-finish by the deferred
-//! backend-cache subsystem; they are kept `// PORT-PENDING` with the faithful
-//! signature and a structural transcription of the C++ so a later wave fills them
-//! without re-reading the source. Logic is documented, never silently dropped.
+//! `expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache` is LIVE for
+//! its decisive step (5) — the `!hasAllNeighbourExpansionScheduled()` /
+//! `cardBlockCrit || testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical`
+//! gate driving `expandDirectlyInfluencedNeighboursWithPropagation` over only the
+//! concept descriptors newer than the two incremental cursors — against the typed
+//! native-ABox association (the `native_*` backend-cache accessors in u36). Its
+//! merge-driven steps (1)-(4)/(6) iterate the merged-individual-node linker, which
+//! is empty on that route, and stay documented in place.
+//!
+//! The other three bodies are driven start-to-finish by the deferred backend-cache
+//! subsystem; they are kept `// PORT-PENDING` with the faithful signature and a
+//! structural transcription of the C++ so a later wave fills them without
+//! re-reading the source. Logic is documented, never silently dropped.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
 use super::super::model::substrate::{Cint64, Id};
 use super::super::model::RoleId;
-use super::super::process::{NodeId, TrackPointId};
+use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -94,158 +103,205 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // The one substrate-portable guard at the head of the method:
-        //   bool lazyNeighboursExpansionSucceded = true;
-        //   if (indiNode->hasPurgedBlockedProcessingRestrictionFlags()) return false;
-        // KONCLUDE-PORT-NOTE[api]: `hasPurgedBlockedProcessingRestrictionFlags()` is
-        // a `CIndividualProcessNode` processing-restriction-flag predicate. It is
-        // part of the node, but the surrounding body cannot proceed without the
-        // backend-cache subsystem, so the whole method is held PORT-PENDING (rather
-        // than porting only the guard and stubbing the 440-line remainder).
-        //
-        // PORT-PENDING: faithful transcription of cpp 23995–24438. Outline:
-        //
-        //   lazyNeighboursExpansionSucceded = true;
-        //   if indiNode->hasPurgedBlockedProcessingRestrictionFlags(): return false;
-        //
-        //   backendSyncData    = indiNode->getIndividualBackendCacheSynchronisationData(false);
-        //   locBackendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(true);
-        //
-        //   testIndividualNodeBackendCacheNewMergings(indiNode, ctx);            // merge unit
-        //   backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
-        //
-        //   // (1) merge all deterministic same-individuals of every newly merged node:
-        //   visitNewlyMergedIndividualsBackendSynchronisationData(indiNode, mergedLinker,
-        //       lastDirectExpansionHandledMergedLinker, !hasDeterministicSameIndividualMerged,
-        //       |base, locNode, depTP| {
-        //         assocData = locSyncData->getAssocitaionData();
-        //         if !hasDeterministicSameIndividualMerged && assocData:
-        //           locNode = getLocalizedIndividual(locNode, true, ctx);
-        //           detSameIndiLabel = assocData->getLabelCacheEntry(DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL);
-        //           if detSameIndiLabel:
-        //             mergingIntoId = min(assocData->getRepresentativeSameIndividualId(),
-        //                                 getCorrectedMergedIntoIndividualNode(indiNode,ctx)->...getIndividualID());
-        //             mBackendCacheHandler->visitIndividualIdsOfAssociatedIndividualSetLabel(
-        //                 assocData, detSameIndiLabel, |sameIndiId| {
-        //                   if sameIndiId != mergingIntoId:
-        //                     locMergingIntoIndiNode = getLocalizedForcedBackendInitializedNominalIndividualNode(mergingIntoId, ctx);
-        //                     if not already merged:
-        //                       locMergingSameIndiNode = getLocalizedForcedBackendInitializedNominalIndividualNode(sameIndiId, ctx);
-        //                       if isIndividualNodesMergeable(into, same, clashDes, ctx):     // merge unit
-        //                         create SAMEINDIVIDUALMERGE dependency; getMergedIndividualNodes(into, same, depTP, ctx);
-        //                       else:
-        //                         build clashDescriptors and throw CCalculationClashProcessingException;  // [exceptions]
-        //                   true }, ctx);
-        //             locSyncData->setDeterministicSameIndividualMerged(true);
-        //         true }, ctx);
-        //
-        //   if indiNode->hasPurgedBlockedProcessingRestrictionFlags():
-        //     locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ctx);  // u17
-        //     locBackendSyncData->setLastDirectExpansionHandledMergedNodeLinker(backendSyncData->getMergedIndividualNodeLinker());
-        //     return false;
-        //
-        //   // (2) inferring- vs all-neighbour expansion of newly merged representatives:
-        //   newMergingsHandled = false; nonDeterministicMerged = backendSyncData->hasNonDeterministicallyMergedIndividuals();
-        //   if mConfAllowBackendNeighbourExpansionBlocking && mConfNewMergingsOnlyInferringExpansion && !nonDeterministicMerged:
-        //     checkingMergingsLinker = backendSyncData->getLastInferringExpansionHandledMergedNodeLinker(); newMergingsHandled = true;
-        //     if mergedLinker != lastInferringExpansionHandledLinker:
-        //       markIndividualNodeBackendNonConceptSetRelatedAndNeighbourLabelRelatedProcessing(indiNode, ctx);   // this unit
-        //       visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(..., |..| {
-        //           mergedNode = getLocalizedIndividual(mergedNode, false, ctx);
-        //           expandIndividualInferringNeighboursFromBackendCache(indiNode, mergedNode, true, depTP, ctx);   // u23
-        //           true }, ctx);
-        //       locSyncData->setNewlyMergedInferringNeighbourExpansion(true); setNewlyMergedIndividuals(true);
-        //   if !newMergingsHandled && (!mConfAllowBackendNeighbourExpansionBlocking
-        //                              || mergedLinker != lastDirectExpansionHandledLinker):
-        //     checkingMergingsLinker = backendSyncData->getLastDirectExpansionHandledMergedNodeLinker(); newMergingsHandled = true;
-        //     markIndividualNodeBackendNonConceptSetRelatedAndNeighbourLabelRelatedProcessing(indiNode, ctx);   // this unit
-        //     visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(..., |..| {
-        //         mergedNode = getLocalizedIndividual(mergedNode, false, ctx);
-        //         expandIndividualAllNeighboursFromBackendCache(indiNode, mergedNode, true, false, depTP, ctx);   // u23
-        //         true }, ctx);
-        //     locSyncData->setNewlyMergedAllNeighbourExpansion(true); setMergedIndividualsAllNeighbourExpanded(true);
-        //     setAllNeighbourExpansionScheduled(true); setAllNeighbourForcedExpansionScheduled(true); setNewlyMergedIndividuals(true);
-        //
-        //   // (3) differentiate deterministic different-individuals (distinct links / clash):
-        //   visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(indiNode, mergedLinker,
-        //       checkingMergingsLinker, !hasDeterministicDifferentIndividualDifferentiated, |base, locNode, depTP| {
-        //         assocData = locSyncData->getAssocitaionData();
-        //         if !hasDeterministicDifferentIndividualDifferentiated && assocData:
-        //           detDiffIndiLabel = assocData->getLabelCacheEntry(DETERMINISTIC_DIFFRENT_INDIVIDUAL_SET_LABEL);
-        //           detSameIndiLabel = assocData->getLabelCacheEntry(DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL);
-        //           if detDiffIndiLabel:
-        //             mBackendCacheHandler->visitIndividualIdsOfAssociatedIndividualSetLabel(assocData, detDiffIndiLabel, |diffIndiId| {
-        //               if diffIndiId != locId && !inSameLabel:
-        //                 if indiNode merged-with diffIndiId: build clashDescriptors, throw CCalculationClashProcessingException;  // [exceptions]
-        //                 else: locDiff = getLocalizedForcedBackendInitializedNominalIndividualNode(diffIndiId, ctx);
-        //                       createIndividualsDistinct(indiNode, locDiff, depTP, ctx);
-        //               true }, ctx);
-        //           locSyncData->setDeterministicDifferentIndividualDifferentiated(true);
-        //         true }, ctx);
-        //
-        //   // (4) establish prioritised propagation-cut links:
-        //   visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(indiNode, mergedLinker,
-        //       checkingMergingsLinker, !hasPrioritziedPropagationLinksEstablished, |base, locNode, depTP| {
-        //         assocData = locSyncData->getAssocitaionData();
-        //         if !hasPrioritziedPropagationLinksEstablished && assocData:
-        //           neighRoleSetCompIndiLabel = assocData->getLabelCacheEntry(NEIGHBOUR_INSTANTIATED_ROLE_SET_COMBINATION_LABEL);
-        //           if neighRoleSetCompIndiLabel:
-        //             topRole = ctx->getProcessingDataBox()->getOntology()->getRBox()->getTopObjectRole();
-        //             mBackendCacheHandler->visitNeighbourArrayIdsForRole(assocData, topRole, |arrayId, label, nondet| {
-        //               if nondet && label->getCacheValueCount() == 1:
-        //                 initializeNeighbourExpansionWithPropagation(indiNode, locNode, locSyncData, depTP, arrayId,
-        //                     nullptr, false, true, nullptr, true, true, false, ctx);                                 // u27
-        //               true }, false, ctx);
-        //           locSyncData->setPrioritziedPropagationLinksEstablished(true);
-        //         true }, ctx);
-        //
-        //   // (5) directly-influenced neighbour expansion per newly added concept descriptor:
-        //   if !backendSyncData->hasAllNeighbourExpansionScheduled():
-        //     visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(..., true, |base, locNode, depTP| {
-        //         locSyncData = getLocalizedIndividualBackendCacheSnychronisationData(locNode, ctx);                   // u17
-        //         if backendSyncData && mBackendCacheHandler && locSyncData->getAssocitaionData():
-        //           cardBlockCrit = testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality(indiNode, ctx);  // u19/u20
-        //           if cardBlockCrit || testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical(indiNode, ctx):
-        //             lastTestedConDes        = locSyncData->getLastNeighbourInfluenceTestedConceptDescriptor();
-        //             lastNeighbourCriticalConDes = locSyncData->getLastCriticalNeighbourExpansionTestedConceptDescriptor();
-        //             if cardBlockCrit && !locSyncData->hasNeighbourInfluenceTestingCriticalCardinalityReset(): reset both to null;
-        //             if indiNode->getIndividualNodeID() != locNode->getIndividualNodeID()
-        //                && indiNode->getIndividualNodeID() != locSyncData->getLastMergedIntoIndividualTestingCriticalCardinalityReset():
-        //                 reset both to null;
-        //             conSet = indiNode->getReapplyConceptLabelSet(false);
-        //             if conSet:
-        //               conDesLinker = conSet->getAddingSortedConceptDescriptionLinker();
-        //               if conDesLinker != lastTestedConDes:
-        //                 for conDesIt = conDesLinker; conDesIt && conDesIt != lastTestedConDes
-        //                                 && conDesIt != lastNeighbourCriticalConDes; conDesIt = conDesIt->getNext():
-        //                   concept = conDesIt->getConcept(); conNegation = conDesIt->getNegation();
-        //                   nondeterministic = hasNondeterministicDependency(conDesIt->getDependencyTrackPoint(), ctx)
-        //                                      || hasNondeterministicDependency(backSyncDepTrackPoint, ctx);          // dep unit
-        //                   expandDirectlyInfluencedNeighboursWithPropagation(concept, conNegation, nondeterministic,
-        //                       baseIndiNode, assocData, locNode, locSyncData, depTP, ctx);                           // u22
-        //                 locSyncData->setLastNeighbourInfluenceTestedConceptDescriptor(conDesLinker);
-        //                 locSyncData->hasNeighbourInfluenceTestingCriticalCardinalityReset(cardBlockCrit);
-        //                 locSyncData->setLastMergedIntoIndividualTestingCriticalCardinalityReset(indiNode->getIndividualNodeID());
-        //         true }, ctx);
-        //
-        //   // (6) advance the handled-merged-node cursor:
-        //   if backendSyncData->getMergedIndividualNodeLinker() != checkingMergingsLinker:
-        //     locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ctx);              // u17
-        //     if lastDirectExpansionHandledLinker == checkingMergingsLinker:
-        //          locBackendSyncData->setLastDirectExpansionHandledMergedNodeLinker(mergedLinker);
-        //     else: locBackendSyncData->setLastInferringExpansionHandledMergedNodeLinker(mergedLinker);
-        //
-        //   expandIndirectlyConnectedIndividuals(indiNode, true, ctx);                                                // u23/u26
-        //   return lazyNeighboursExpansionSucceded;
-        //
-        // Held PORT-PENDING: every typed local is a not-yet-ported backend-cache
-        // class (sync data, association data, label cache items, merged-node
-        // linkers) and the visitors are the merge-unit
-        // `visitNewlyMerged*BackendSynchronisationData` helpers; the concept-set scan
-        // and the two `markIndividualNodeBackendNonConceptSetRelatedAndNeighbourLabelRelatedProcessing`
-        // calls (ported in THIS unit) become live on the reconcile pass.
-        let _ = (indi_node, calc_alg_context);
-        true
+        // bool lazyNeighboursExpansionSucceded = true;
+        // if (indiNode->hasPurgedBlockedProcessingRestrictionFlags()) return false;
+        if indi_node.is_none()
+            || indi_node.index() >= calc_alg_context.process_context().node_count()
+        {
+            return false;
+        }
+        if calc_alg_context
+            .process_context()
+            .node(indi_node)
+            .has_purged_blocked_processing_restriction_flags()
+        {
+            return false;
+        }
+        // backendSyncData / locBackendSyncData + assocData. The generic
+        // representative-memory association is not ported; the typed native-ABox
+        // association handle is the node's nominal individual tag (see the
+        // `native_*` accessors in u36). Without an association there is nothing
+        // cache-backed to expand and the caller must fall back to the raw
+        // assertion replay, exactly as the C++ `!backendSyncData ||` disjunct at
+        // cpp 8938 does.
+        let Some(assoc_tag) = self.native_association_tag(indi_node, calc_alg_context) else {
+            return false;
+        };
+        let loc_backend_sync_data =
+            self.get_localized_individual_backend_cache_snychronisation_data(
+                indi_node,
+                calc_alg_context,
+            );
+
+        // W6-DEFER[api]: steps (1)-(4) and (6) of the C++ body are driven by the
+        // newly-merged backend-representative visitors
+        // (`visitNewlyMerged{,OnlyDeterministicRepresentative}IndividualsBackendSynchronisationData`,
+        // merge unit) over the generic association's same/different-individual and
+        // neighbour-role-set-combination labels:
+        //   (1) cpp 24000–24072 merge all deterministic same-individuals of every
+        //       newly merged node (DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL, then
+        //       `getMergedIndividualNodes` or a clash);
+        //   (2) cpp 24093–24151 inferring- vs all-neighbour expansion of the newly
+        //       merged representatives (`expandIndividualInferringNeighboursFromBackendCache`
+        //       / `expandIndividualAllNeighboursFromBackendCache`, u23);
+        //   (3) cpp 24157–24215 differentiate deterministic different-individuals
+        //       (DETERMINISTIC_DIFFRENT_INDIVIDUAL_SET_LABEL → `createIndividualsDistinct`
+        //       or a clash);
+        //   (4) cpp 24221–24270 establish prioritised propagation-cut links
+        //       (NEIGHBOUR_INSTANTIATED_ROLE_SET_COMBINATION_LABEL over the top role →
+        //       `initializeNeighbourExpansionWithPropagation`, u27);
+        //   (6) cpp 24380–24398 advance the handled-merged-node cursor
+        //       (`setLastDirectExpansionHandledMergedNodeLinker` /
+        //       `setLastInferringExpansionHandledMergedNodeLinker`).
+        // All five iterate the merged-individual-node linker, which stays EMPTY on
+        // the typed native route: the bridge rejects source `SameIndividual`, so a
+        // typed association never carries a deterministic same-individual merging.
+        // The trace corroborates the same shape upstream — 0 of 198 roots merged
+        // deterministically and DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL empty on all
+        // 198 — so step (5) is the whole of this method on this route.
+
+        // ---- (5) directly-influenced neighbour expansion, per newly added concept
+        //          descriptor, bounded by the two incremental cursors.
+        self.native_selective_neighbour_expansion_declined = false;
+        // if (!backendSyncData->hasAllNeighbourExpansionScheduled())
+        if calc_alg_context
+            .process_context()
+            .backend_sync_data(loc_backend_sync_data)
+            .has_all_neighbour_expansion_scheduled()
+        {
+            return true;
+        }
+        // cardBlockCrit = testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality(...)
+        // if (cardBlockCrit || testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical(...))
+        let card_block_crit = self
+            .test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
+                indi_node,
+                calc_alg_context,
+            );
+        if !card_block_crit
+            && !self.test_individual_node_backend_cache_neighbour_expansion_blocking_critical(
+                indi_node,
+                calc_alg_context,
+            )
+        {
+            return true;
+        }
+
+        let mut last_tested_con_des: ConDescId = calc_alg_context
+            .process_context()
+            .backend_sync_data(loc_backend_sync_data)
+            .get_last_neighbour_influence_tested_concept_descriptor();
+        let mut last_neighbour_critical_con_des: ConDescId = calc_alg_context
+            .process_context()
+            .backend_sync_data(loc_backend_sync_data)
+            .get_last_critical_neighbour_expansion_tested_concept_descriptor();
+        // if (cardBlockCrit && !locSyncData->hasNeighbourInfluenceTestingCriticalCardinalityReset())
+        //   reset both cursors — a newly critical cardinality invalidates every
+        //   earlier "already influenced" decision.
+        if card_block_crit
+            && !calc_alg_context
+                .process_context()
+                .backend_sync_data(loc_backend_sync_data)
+                .has_neighbour_influence_testing_critical_cardinality_reset()
+        {
+            last_tested_con_des = Id::NONE;
+            last_neighbour_critical_con_des = Id::NONE;
+        }
+        // The second C++ reset —
+        //   if (indiNode->getIndividualNodeID() != locNode->getIndividualNodeID()
+        //       && indiNode->getIndividualNodeID()
+        //          != locSyncData->getLastMergedIntoIndividualTestingCriticalCardinalityReset())
+        // — distinguishes the node from the merged-into representative whose sync
+        // data is being read. They coincide on the typed route (no deterministic
+        // same-individual merging), so it never fires.
+
+        // conSet = indiNode->getReapplyConceptLabelSet(false);
+        let con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_mut(indi_node)
+            .get_reapply_concept_label_set(false);
+        if con_set.is_none() {
+            return !self.native_selective_neighbour_expansion_declined;
+        }
+        let con_des_linker: ConDescId = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_adding_sorted_concept_description_linker();
+        if con_des_linker == last_tested_con_des {
+            return !self.native_selective_neighbour_expansion_declined;
+        }
+        let mut con_des_it = con_des_linker;
+        let mut walked = 0usize;
+        while con_des_it.is_some()
+            && con_des_it != last_tested_con_des
+            && con_des_it != last_neighbour_critical_con_des
+        {
+            if con_des_it.index() >= calc_alg_context.process_context().con_desc_count()
+                || walked > calc_alg_context.process_context().con_desc_count()
+            {
+                // Malformed descriptor chain: decline the cache-backed route rather
+                // than expanding a partial neighbour set.
+                self.native_selective_neighbour_expansion_declined = true;
+                break;
+            }
+            let (concept, con_negation, dep_track_point, next) = {
+                let descriptor = calc_alg_context.process_context().con_desc(con_des_it);
+                (
+                    descriptor.get_concept(),
+                    descriptor.is_negated(),
+                    descriptor.get_dependency_track_point(),
+                    descriptor.get_next_concept_descriptor(),
+                )
+            };
+            // nondeterministic = hasNondeterministicDependency(conDes->getDependencyTrackPoint(), ctx)
+            //                    || hasNondeterministicDependency(backSyncDepTrackPoint, ctx);
+            // The typed association is consumed on the task's base dependency, so
+            // `backSyncDepTrackPoint` is deterministic by construction.
+            let nondeterministic =
+                self.has_nondeterministic_dependency(dep_track_point, calc_alg_context);
+            if concept.is_some() {
+                self.expand_directly_influenced_neighbours_with_propagation(
+                    concept,
+                    con_negation,
+                    nondeterministic,
+                    indi_node,
+                    assoc_tag,
+                    indi_node,
+                    loc_backend_sync_data.raw,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+            }
+            if calc_alg_context.has_pending_signal() {
+                break;
+            }
+            con_des_it = next;
+            walked += 1;
+        }
+        // locSyncData->setLastNeighbourInfluenceTestedConceptDescriptor(conDesLinker);
+        // locSyncData->hasNeighbourInfluenceTestingCriticalCardinalityReset(cardBlockCrit);
+        if !self.native_selective_neighbour_expansion_declined
+            && !calc_alg_context.has_pending_signal()
+        {
+            let loc_backend_sync_data =
+                self.get_localized_individual_backend_cache_snychronisation_data(
+                    indi_node,
+                    calc_alg_context,
+                );
+            calc_alg_context
+                .process_context_mut()
+                .backend_sync_data_mut(loc_backend_sync_data)
+                .set_last_neighbour_influence_tested_concept_descriptor(con_des_linker)
+                .set_neighbour_influence_testing_critical_cardinality_reset(card_block_crit);
+        }
+
+        // expandIndirectlyConnectedIndividuals(indiNode, true, ctx);
+        // W6-DEFER[api]: u27's sibling is still PORT-PENDING; the typed route keeps
+        // `PRFSYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED` set instead, which
+        // never skips work.
+
+        // return lazyNeighboursExpansionSucceded;
+        !self.native_selective_neighbour_expansion_declined
     }
 
     // =======================================================================

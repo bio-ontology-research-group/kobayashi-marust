@@ -859,6 +859,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         // W6-DEFER[api]: STATINC(INDINODEBLOCKINGTESTCOUNT,calcAlgContext);
         // TODO (Konclude): check config, first test concept set sizes
+        if test_indi.is_none() || blocking_indi.is_none() {
+            return false;
+        }
 
         let test_con_set = calc_alg_context
             .process_context_mut()
@@ -1143,7 +1146,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             block_alt_data = Id::NONE;
             blocking_indi = Id::NONE;
 
-            if self.conf_saturation_caching_testing_during_blocking_tests {
+            // Konclude's blocking walk can call the cache detector
+            // unconditionally because its detector first reconfirms an unchanged
+            // label. KM's reconfirmation is intentionally behind the explicit
+            // retest/invalidation flags in u21; calling it without either flag
+            // falls through to the cache-loss arm and replays every parked
+            // generating concept. Only consume a cache retest when one was
+            // actually requested.
+            if self.conf_saturation_caching_testing_during_blocking_tests
+                && calc_alg_context
+                    .process_context()
+                    .node(loc_anc_test_indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHEDRETESTDUETOMODIFICATION
+                            | IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHEDINVALIDATED,
+                    )
+            {
                 self.detect_individual_node_saturation_cached(loc_anc_test_indi, calc_alg_context);
             }
 
@@ -1352,6 +1370,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // W6-DEFER[api]: STATINC(CONTINUEBLOCKINGTESTCOUNT,calcAlgContext);
                 blocking_indi_node =
                     self.get_up_to_date_individual(blocking_indi_node, calc_alg_context);
+                if blocking_indi_node.is_none() {
+                    calc_alg_context.raise_stop(false);
+                    return false;
+                }
                 if calc_alg_context
                     .process_context()
                     .node(blocking_indi_node)
@@ -1449,6 +1471,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if !blocking_indi_node.is_none() {
                     blocking_indi_node =
                         self.get_up_to_date_individual(blocking_indi_node, calc_alg_context);
+                    if blocking_indi_node.is_none() {
+                        calc_alg_context.raise_stop(false);
+                        return false;
+                    }
                     if calc_alg_context
                         .process_context()
                         .node(blocking_indi_node)

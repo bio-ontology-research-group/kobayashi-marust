@@ -50,6 +50,153 @@ The exact staged source passed all 21 EL/CB/HT incremental integration tests
 and the full release library gate on `ws`: 1,681 passed, 8 ignored, and 0
 failed.
 
+### Exact definition-containment closure: the last ORE 9540 completeness miss (2026-07-26)
+
+v51 (exact job `49443541`) finishes 9540 in 0.97 s / 117 MB and matches 65 of the
+66 gold pairs with no extras. The one miss is `UJI_Wall ⊑ Possible_UJI_Wall`.
+
+Diagnosis. Only **4** of the 66 gold pairs are outside the told (asserted-name)
+closure, and all four have the same shape: one class's definition conjunct set is
+a strict subset of another's —
+
+```
+Possible_UJI_Wall ≡ Object_type ⊓ (4 colour hasValues) ⊓ ∃is_completely_inside.Image_type
+UJI_Wall          ≡ Object_type ⊓ (the SAME 4 hasValues) ⊓ ∃has_shape.Quadrilateral
+                                                         ⊓ ∃is_completely_inside.Image_type
+```
+
+Three of them are reached by the completion, because the trigger chain of the
+absorbed reverse implication is deterministic. The fourth runs through the
+shared colour DISJUNCTION, so the subsumer is carried only by the branch the one
+completion model committed to. The logs show the consequence exactly: the
+`UJI_Wall` subject arrives at the verification phase already
+`result_satisfiable_derivated` (`BRIDGE-KPSET-DERIVED subject 292: 2 candidates`)
+with its told subsumer plus one non-absorbable equivalence, so
+`Possible_UJI_Wall` was never a candidate, never tested, never emitted — no pair
+probe can recover a candidate that was never generated. This is a
+CANDIDATE-GENERATION hole, not a search or reuse defect: the prepare/verify
+driver and the derived-candidate path are byte-identical to the pre-reuse commit,
+so the v45–v51 reuse work changed nothing here. It only made the whole 66-pair
+panel finish, which is what exposed the hole.
+
+Fix. `source_named_subsumer_closure` now computes the EXACT, search-free part of
+the subsumption relation instead of only the told part. Two rules, both decided
+by set containment on the source axioms, applied to a fixpoint so each feeds the
+other and the result is transitively closed:
+
+* TOLD — `N ⊑ … ⊓ M ⊓ …` with `M` named ⇒ `N ⊑ M` (the previous behaviour).
+* DEFINITION — whenever the source proves `D ⊑ M` (an equivalence side, or an
+  inclusion whose right side is the named class `M`) and every top-level conjunct
+  of `D` is already known for `N`, then `N ⊑ ⨅conj(D) ⊑ M`.
+
+`And` is a `BTreeSet` in the source syntax, so equal conjunctions are
+syntactically equal — the same identity the terminology builder's `concept_cache`
+relies on to share one `ConceptId` between the two definitions. No name, tag, or
+ontology-specific test is involved. The rule is directional by construction:
+`conj(D_M) ⊆ conj(D_N)` justifies `N ⊑ M` only, and the converse needs both the
+opposite containment and a definition for `N`.
+
+The pairs enter through the existing seed point, so they are emitted AND land in
+the known-subsumer set — they remove pair probes rather than adding any, which
+keeps the v51 performance path intact. Nothing in the DDB/discard configuration
+changes; unsafe DDB discard stays default off. Structural conjuncts are interned
+only where a definition body tests them, and each sweep starts from the smallest
+witness set of a single conjunct, so a large source TBox pays for definitions
+that can actually match instead of for every conjunct.
+
+Replaying the two rules over `ore_ont_9540.owl` reproduces the gold taxonomy
+exactly: 66 of 66 pairs, no extras, including all four non-told pairs.
+Regressions: `source_closure_derives_definition_containment_transitively_without_the_converse`
+pins the exact derived set on a minimized fixture (definition containment with a
+shared disjunction, a told superclass on the subsumee, and a told subclass
+underneath it) and `definition_containment_subsumers_reach_the_classification_output`
+carries the same fixture through `bridged_classify` on both the plain and the
+saturation route.
+
+### Konclude backend-expansion reuse: wire the missing activation site (2026-07-26)
+
+v50 (exact job `49443083`) is behaviourally identical to v49 — 309 910 branch
+points on retained nodes, 697 628 on fresh ones, timeout — so the Stage-9 reuse
+replay never activates. Cause, from the upstream lifecycle: Konclude activates
+the mechanism from **two** places, both funnelling into the activation tail of
+`initializeIndividualNodeWithBackendCache` (cpp 22736-22771) —
+`getUpToDateIndividual(cint64)`'s CREATE path (cpp 22524-22527) and
+`initialNodeInitialize` (cpp 8713-8730), which runs for every node actually
+taken off a processing queue. Stage 9 wired only the first. A retained class job
+COW-inherits the whole ABox individual-node vector
+(`CProcessingDataBox.cpp:451-453` for the queues, jobgen `clearIndiProcessingQueue`
+for the clears), so it never materializes an individual and never reaches that
+site.
+
+`u25::activate_backend_individual_expansion_reuse` is now the shared activation,
+called from both sites; `u03::individual_node_initializing` is the one a retained
+job reaches. It stays strictly lazy — nothing walks the association set, so the
+198 retained roots are not scheduled up front, and a node is decided only when a
+rule actually reached it. A mere id RESOLUTION (`u16::is_nominal_individual_node_available`,
+merge/link resolvers) deliberately does not activate; the lazy-lookup HIT path
+only counts undecided associations.
+
+Konclude's per-node one-shot (`isNominalIndividualRepresentativeBackendDataLoaded`
++ `isBackendConceptSetInitialized`) cannot be reused verbatim: both bits are
+COW-inherited (`CIndividualProcessNode.cpp:272/426`) and are still false on a
+Konclude class job only because its base is `statCalcTask->getRootTask()`
+(`CSatisfiableTaskConsistencyPreyingAnalyser.cpp:55-56`) — the consistency task
+at the FIRST fork, where most ABox nodes were never initialized. KM initializes
+every ABox individual eagerly before any fork, so on a KM retained base both
+bits are already set. The port therefore keeps the one-shot per calculation job
+(`native_reuse_activated_individuals`, cleared with the algorithm and on every
+replay re-install), which has the same "at most one reuse decision per
+individual per job" semantics.
+
+A RETAINED node with a PENDING reuse decision defers its round instead of
+draining its inherited concept-processing queue, so the recorded model is adopted
+(or explicitly discarded) before the individual opens its first disjunction. The
+deferral is scoped to nodes below the retained watermark — a node this job
+materialized has no inherited queue and keeps Konclude's exact fall-through
+timing. Nothing is lost: the concept queue is untouched,
+`take_next_process_individual` Probes 19/34 drain the reuse queue (Probe 18
+always selects prioritized mode, so `take_next` cannot return NONE while that
+queue is non-empty — no starvation, no premature fixpoint), and
+`individual_node_conclusion` re-queues the node afterwards. The two-way branch
+and the fail-closed representability gate are unchanged; the unsafe DDB refuted
+discard stays default-off and env-gated.
+
+Exact activation counters on `CompletionTaskHandleAlgorithm` split "never
+reached" from "reached and declined" per gate — reached / queued / drains /
+forks / replays / defers / lazy-hits, and repeat / no-record / no-elements /
+unrepresentable / state / check-pass / check-decline. They are asserted by the
+selftests; nothing prints them.
+
+Source-only change: seven new selftests, no build, benchmark, or run numbers.
+
+### Konclude backend-expansion reuse: replay the retained ABox model (2026-07-26)
+
+Ported Konclude's `checkIndividualBackendExpansionReuseable` (cpp 25010-25086)
+and `reuseIndividualBackendExpansion` (cpp 25092-25373) plus the prioritized
+reuse branching (cpp 24916-25003) into `konclude_ht::completion::u25`, live
+against the typed native-ABox association.
+
+A derived task (a class job) starts from the DETERMINISTIC consistency root, so
+the consistency model's non-deterministic ABox state is not in the inherited
+graph — it lives only in the published backend associations. Without this
+replay every class job re-derives it disjunct by disjunct; the v49 search-site
+read-off on `ore_ont_9540` measured 312 052 branch points opened on retained
+ABox nodes against a 326-node retained base, where Konclude opens none.
+
+The replay adopts the recorded merges, chosen disjuncts, neighbour-role links
+and distinctions in ONE step, under a single NON-deterministic dependency track
+point installed as alternative 0 of a two-way branch whose alternative 1
+discards the reuse and keeps the ordinary expansion. It never writes at the base
+dependency and never touches the deterministic label replay, so a clash under
+the adopted model backtracks into normal search instead of being reported as an
+entailment. A typed record that is not fully representable is discarded rather
+than partially replayed. Konclude's label-size late-dynamic activation
+thresholds are deliberately not ported.
+
+Type-checked only; no build, benchmark, or coverage numbers yet. Full rationale,
+soundness invariants and the pending measurement are in
+`diagnostics/9540-konclude-trace/ANALYSIS.md` "Stage 9".
+
 ### Retained-state incremental CB insertion and exact deletion (2026-07-23)
 
 Extended `km incremental` from its lower-level addition-only EL++ store to an

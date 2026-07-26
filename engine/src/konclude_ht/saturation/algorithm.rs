@@ -19,10 +19,13 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+
 use super::super::completion::stubs::{
     CalculationConfigurationExtension, SatisfiableCalculationTask,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::ConceptId;
 use super::super::process::node_resolution::IndividualProcessNodeVector;
 use super::stubs::{
     SatisfiableTaskSaturationIndividualsAnalyser,
@@ -117,6 +120,12 @@ pub struct SaturationTaskHandleAlgorithm {
     pub det_consistency_cg: bool,
     pub representative_data_loaded: bool,
     pub representative_data_available: bool,
+    /// Immutable bridge-local equivalent of the non-deterministic prefix of
+    /// the cached consistency completion graph's nominal labels. The generic
+    /// consistency-task handles above remain fail-closed; the native ABox
+    /// orchestrator installs this plain snapshot before saturation.
+    pub native_consistency_nominal_nondeterministic_prefix:
+        Option<HashMap<Cint64, Vec<(ConceptId, bool)>>>,
 
     // --- applied-rule counters (debugging, .h 545–551) ---
     pub applied_all_rule_count: Cint64,
@@ -248,6 +257,7 @@ impl SaturationTaskHandleAlgorithm {
             det_consistency_cg: false,
             representative_data_loaded: false,
             representative_data_available: false,
+            native_consistency_nominal_nondeterministic_prefix: None,
 
             applied_all_rule_count: 0,
             applied_some_rule_count: 0,

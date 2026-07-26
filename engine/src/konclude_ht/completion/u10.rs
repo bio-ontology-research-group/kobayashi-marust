@@ -355,6 +355,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .satisfiable_cached_absorbed_generating_linker();
         while absorbed_reapply_con_des.is_some() {
             concepts_reapplyed = true;
+            // KM-BRIDGE read-off: every flushed descriptor re-runs the ∃/≥ rule
+            // that the cache had parked. Large next to
+            // `saturation_cache_lose_count` ⇒ the coupling is establishing
+            // blocks it then throws away (the replay loop).
+            self.saturation_cached_reapplied_generating_count += 1;
 
             let (con_des, dep_track_point, next) = {
                 let reapply = calc_alg_context

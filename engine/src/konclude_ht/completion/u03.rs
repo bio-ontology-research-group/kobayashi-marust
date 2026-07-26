@@ -237,12 +237,87 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_mut(indi_proc_node)
                     .set_blocked_reactivation_processing_queued(false);
             }
+            IndiNodeQueueType::Inqt_BackendSyncRetest => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_backend_synchron_retest_processing_queued(false);
+            }
+            IndiNodeQueueType::Inqt_BackendDirectInfluenceExpansion => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_backend_direct_influence_expansion_queued(false);
+            }
             // W8-DEFER[api]: the remaining INQT_* arms (DELAYEDBACKENDINIT /
             //   DELAYEDNOMINAL / BACKENDSYNCRETEST / BACKENDDIRECTINFLUENCEEXPANSION /
             //   BACKENDINDIRECTCOMPATIBILITYEXPANSION) flip queue-specific flags whose
             //   setters / backend-sync data are still W*-DEFER; inert on the trivial
             //   driver path.
             _ => {}
+        }
+
+        // `initialNodeInitialize`'s FIRST block (cpp 8713-8730): the per-node
+        // backend-cache initialization, whose activation tail (cpp 22736-22771)
+        // is what puts a nominal on the reuse-expansion queue. This is the
+        // second of Konclude's two activation sites and the ONLY one a retained
+        // class job can take — the other (`u36::get_up_to_date_individual_by_id`,
+        // cpp 22524-22527) fires only when the individual is materialized for
+        // the first time, and a retained job inherits the ABox node vector via
+        // COW, so it never materializes one. Reaching this line means a rule
+        // actually scheduled the node, which is exactly Konclude's
+        // "reached/influenced" condition: nothing here walks the association
+        // set, so the retained roots are never scheduled up front.
+        //
+        // KM-DEVIATION[timing], scoped to RETAINED nodes only: Konclude lets the
+        // freshly initialized node continue its round, because the concepts its
+        // initialization just added went in with
+        // `addConceptToIndividualSkipANDProcessing(..., false)` — unprocessed —
+        // so the node's concept-processing queue is effectively empty and the
+        // reuse round comes first anyway. A node inherited from the retained
+        // deterministic consistency base is different: it arrives with THAT
+        // base's concept-processing queue, which still holds precisely the
+        // disjunctions the base could not decide. Draining those before the
+        // reuse round would open the individual's own branch points first and
+        // defeat the mechanism, so a retained node with a PENDING reuse decision
+        // defers its round instead. Nothing is lost: the concept queue is
+        // untouched, `take_next_process_individual` (Probes 19/34) drains the
+        // reuse queue — Probe 18 always selects the prioritized mode
+        // (`u24::prepare_backend_expansion_reuse_branching`), so `take_next`
+        // cannot return NONE while that queue is non-empty and no node can
+        // starve — and `individual_node_conclusion` re-queues the node for
+        // ordinary processing afterwards.
+        //
+        // `retained_base_node_count` is 0 on every route that does not run on a
+        // retained base, so a freshly materialized node keeps Konclude's exact
+        // timing there.
+        if self.indi_node_from_queue_type != IndiNodeQueueType::Inqt_BackendExpansionReuse
+            && !calc_alg_context
+                .process_context()
+                .node(indi_proc_node)
+                .has_purged_blocked_processing_restriction_flags()
+        {
+            self.activate_backend_individual_expansion_reuse(indi_proc_node, calc_alg_context);
+            if indi_proc_node.index() < self.retained_base_node_count
+                && self.has_pending_backend_expansion_reuse(indi_proc_node, calc_alg_context)
+            {
+                self.native_reuse_pending_defer_count += 1;
+                return false;
+            }
+        }
+
+        // Native representative associations use the same queue discipline as
+        // Konclude's backend cache, but their typed labels live on the bridge
+        // replay record rather than the generic backend-sync stub. Retest
+        // before ordinary concept processing so an incomplete association can
+        // keep its raw role linkers blocked or selectively materialize only
+        // concept/cardinality-influenced neighbours.
+        if !self.process_native_nominal_backend_retest(indi_proc_node, calc_alg_context) {
+            calc_alg_context.raise_stop(false);
+            return false;
+        }
+        if calc_alg_context.has_pending_signal() {
+            return false;
         }
 
         // indiProcNode->resetLastProcessingPriority();
@@ -259,7 +334,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             // W8-DEFER[api]: initialNodeInitialize(indiProcNode, true, ctx) — the per-node
             //   cache/signature/backend setup (still a `todo!`); the INQT_CACHETEST /
-            //   INQT_VST* / INQT_BACKENDEXPANSIONREUSE dispatch arms.
+            //   INQT_VST* dispatch arms.
+
+            // INQT_BACKENDEXPANSIONREUSE (cpp 9119-9138). QUEUE TIMING: this runs
+            // BEFORE the node's concept processing queue is drained, so the recorded
+            // ABox model is adopted (or explicitly discarded) before any of the
+            // individual's own disjunctions is opened — which is the whole point of
+            // the mechanism. `take_next_process_individual` (u02, Probes 19/34)
+            // likewise drains the reuse queue ahead of the individual-processing
+            // queue, so a queued retained-ABox node never reaches ordinary
+            // processing first.
+            //
+            //   indiProcNode->setBackendReuseExpansionQueued(false);
+            //   if !purgedBlocked:
+            //     if !PRFDISCARDED && !backendSyncData->getBackendExpansionReuseDependencyTrackPoint()
+            //         && checkIndividualBackendExpansionReuseable(indiProcNode, ctx):
+            //       if expContData->isFixedReuseExpansionMode():       prepareBackendIndividualFixedReuseExpansion(...)
+            //       if expContData->isPrioritizedReuseExpansionMode(): prepareBackendIndividualPrioritizedReuseExpansion(...)
+            //     if !PRFDISCARDED: reuseIndividualBackendExpansion(indiProcNode, ctx);
+            if self.indi_node_from_queue_type == IndiNodeQueueType::Inqt_BackendExpansionReuse
+                && !self.handle_backend_expansion_reuse_queue_node(indi_proc_node, calc_alg_context)
+            {
+                // The prioritized preparation opened the two-way reuse branch and
+                // re-queued the individual under alternative 0's track point;
+                // Konclude's `throw CCalculationStopProcessingException(true)` ends
+                // this individual's processing here.
+                return false;
+            }
+            if calc_alg_context.has_pending_signal() {
+                return false;
+            }
+
             if self.is_individual_node_processing_blocked(indi_proc_node, calc_alg_context) {
                 self.eliminiate_blocked_individuals(indi_proc_node, calc_alg_context);
                 return false;
@@ -882,13 +987,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // through.
             return false;
         }
-        // conf_or_reverse: explore alternatives in reversed order (a pure
-        // search-order change on a complete search; see the flag doc). The
-        // reversal happens at COLLECTION so the alternative track points,
-        // snapshots and advance indices all see one consistent order.
-        if self.conf_or_reverse {
-            operands.reverse();
-        }
+        // Konclude keeps the semantic partition in sorted operand order and
+        // schedules the child tasks separately by ontology-local learned
+        // priority. Do not reorder `operands`: branch i must always mean
+        // O_i together with the negations of O_0..O_{i-1}.
+        let original_operand_count = usize::try_from(
+            calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_count(),
+        )
+        .unwrap_or(0)
+        .max(operands.len());
+        let alternative_order =
+            self.ht_or_branch_alternative_order(concept, &operands, negate, original_operand_count);
+        let first_alt = alternative_order[0];
+        let first_sem_branch: Vec<NegLink<ConceptId>> =
+            if self.conf_semantic_branching || self.conf_atomic_semantic_branching {
+                operands[..first_alt]
+                    .iter()
+                    .map(|link| NegLink {
+                        target: link.target,
+                        negated: !(link.negated ^ negate),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
         // --- createBranchingTreeNode / createORDependency (the ported records). ---
         // The parent / root branch nodes chain chronologically (the topmost open
@@ -992,12 +1117,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // Push the open branch point; the FIRST alternative is added now, so the
         // next unexplored alternative is index 1.
-        let first: NegLink<ConceptId> = operands[0];
-        let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
-        self.or_branch_open_count += 1;
+        let first: NegLink<ConceptId> = operands[first_alt];
+        let first_alt_tp = alt_track_points.get(first_alt).copied().unwrap_or(Id::NONE);
+        self.record_or_branch_open(process_indi, calc_alg_context);
         self.or_branch_stack.push(OrBranchPoint {
             node: process_indi,
             disjuncts: operands,
+            alternative_order,
+            current_alt: first_alt,
+            branching_concept: concept,
             negate,
             next_alt: 1,
             dep_track_point,
@@ -1039,6 +1167,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             true,
             calc_alg_context,
         );
+        // Atomic semantic branching belongs to the semantic child partition,
+        // not to chronological exploration order. A learned child can be
+        // scheduled first while still carrying the negations of all earlier
+        // sorted atomic operands.
+        if !calc_alg_context.has_pending_signal() {
+            for link in first_sem_branch {
+                if self.conf_semantic_branching
+                    || self.is_concept_addition_atomaric(
+                        link.target,
+                        link.negated,
+                        calc_alg_context,
+                    )
+                {
+                    let mut node = process_indi_m;
+                    self.add_concept_to_individual(
+                        link.target,
+                        link.negated,
+                        &mut node,
+                        add_tp,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        break;
+                    }
+                }
+            }
+        }
 
         // Unsat-cache probe after the branched disjunct lands (cpp 16908:
         // `testUnsatisfiableCacheForBranchedDisjuncts` is constant-true in the
@@ -1051,6 +1208,76 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         true
+    }
+
+    /// Cache-oriented disjunct scheduling from
+    /// `CEqualDepthCacheOrientatedProcessingPriorityStrategy`. Parent depth and
+    /// the ordinary (non-completion-graph-cached) `0.2` sub-offset are equal
+    /// for siblings, so this reproduces the remaining branch-number and
+    /// learned-statistics terms exactly.
+    fn ht_or_branch_alternative_order(
+        &self,
+        concept: ConceptId,
+        operands: &[NegLink<ConceptId>],
+        negate: bool,
+        original_operand_count: usize,
+    ) -> Vec<usize> {
+        let alternative_count = operands.len();
+        let mut order: Vec<usize> = (0..alternative_count).collect();
+        if !self.conf_cache_oriented_or_ordering {
+            if self.conf_or_reverse {
+                order.reverse();
+            }
+            return order;
+        }
+        let score = |alternative: usize| {
+            let operand = operands[alternative];
+            let statistics = self
+                .or_branch_learning_stats
+                .get(&(concept, operand.target, operand.negated ^ negate))
+                .copied()
+                .unwrap_or_default();
+            // Konclude's priority strategy normalizes against the original
+            // OR operand count, not this task's independently filtered
+            // survivor count.
+            let max_branch_count = original_operand_count.max(1) as f64;
+            let branch_number = (alternative + 1) as f64;
+            if statistics.expanded == 0 && statistics.clashed == 0 && statistics.satisfiable == 0 {
+                return -branch_number / (10.0 * max_branch_count);
+            }
+
+            let expanded = statistics.expanded as f64;
+            let clash_factor = if statistics.expanded > 0 {
+                (statistics.clashed as f64 / expanded).clamp(0.0, 1.0)
+            } else if statistics.clashed > 0 {
+                1.0 / (statistics.clashed as f64 * 10.0)
+            } else {
+                0.0
+            };
+            let satisfiable_factor = if statistics.expanded > 0 {
+                (statistics.satisfiable as f64 / expanded).clamp(0.0, 1.0)
+            } else if statistics.satisfiable > 0 {
+                1.0 / (statistics.satisfiable as f64 * 10.0)
+            } else {
+                0.0
+            };
+            let expansion_bonus = if statistics.expanded > 0 {
+                1.0 / (expanded * 10_000.0)
+            } else {
+                0.0
+            };
+            (satisfiable_factor - clash_factor) / 10.0 + expansion_bonus
+                - branch_number / (100_000.0 * max_branch_count)
+        };
+        order.sort_by(|left, right| {
+            score(*right)
+                .total_cmp(&score(*left))
+                .then_with(|| left.cmp(right))
+        });
+        if self.conf_or_reverse {
+            order.reverse();
+        }
+        order
     }
 
     /// DDB: mint ONE non-deterministic track point PER ALTERNATIVE of a branch
@@ -1646,5 +1873,102 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod branch_learning_tests {
+    use super::*;
+    use crate::konclude_ht::completion::algorithm::{
+        CompletionTaskHandleAlgorithm, OrBranchLearningStats,
+    };
+
+    #[test]
+    fn cache_oriented_order_is_cold_stable_then_prefers_satisfiable_operand() {
+        let mut algorithm = CompletionTaskHandleAlgorithm::new();
+        algorithm.conf_cache_oriented_or_ordering = true;
+        let disjunction = ConceptId::new(7);
+        let operands = vec![
+            NegLink {
+                target: ConceptId::new(70),
+                negated: false,
+            },
+            NegLink {
+                target: ConceptId::new(71),
+                negated: false,
+            },
+            NegLink {
+                target: ConceptId::new(72),
+                negated: false,
+            },
+        ];
+        assert_eq!(
+            algorithm.ht_or_branch_alternative_order(disjunction, &operands, false, 3),
+            vec![0, 1, 2]
+        );
+
+        algorithm.or_branch_learning_stats.insert(
+            (disjunction, operands[0].target, false),
+            OrBranchLearningStats {
+                expanded: 1,
+                clashed: 1,
+                satisfiable: 0,
+            },
+        );
+        algorithm.or_branch_learning_stats.insert(
+            (disjunction, operands[2].target, false),
+            OrBranchLearningStats {
+                expanded: 1,
+                clashed: 0,
+                satisfiable: 1,
+            },
+        );
+        assert_eq!(
+            algorithm.ht_or_branch_alternative_order(disjunction, &operands, false, 3),
+            vec![2, 1, 0],
+            "learned SAT-minus-clash rate must dominate the stable cold tie"
+        );
+    }
+
+    #[test]
+    fn cache_oriented_order_uses_equal_depth_expansion_bonus() {
+        let mut algorithm = CompletionTaskHandleAlgorithm::new();
+        algorithm.conf_cache_oriented_or_ordering = true;
+        let disjunction = ConceptId::new(9);
+        let operands = vec![
+            NegLink {
+                target: ConceptId::new(90),
+                negated: false,
+            },
+            NegLink {
+                target: ConceptId::new(91),
+                negated: false,
+            },
+            NegLink {
+                target: ConceptId::new(92),
+                negated: false,
+            },
+        ];
+        algorithm.or_branch_learning_stats.insert(
+            (disjunction, operands[0].target, false),
+            OrBranchLearningStats {
+                expanded: 2,
+                clashed: 0,
+                satisfiable: 0,
+            },
+        );
+        algorithm.or_branch_learning_stats.insert(
+            (disjunction, operands[1].target, false),
+            OrBranchLearningStats {
+                expanded: 1,
+                clashed: 0,
+                satisfiable: 0,
+            },
+        );
+        assert_eq!(
+            algorithm.ht_or_branch_alternative_order(disjunction, &operands, false, 3),
+            vec![1, 0, 2],
+            "Konclude's 1/(expanded*10000) bonus must break equal-rate ties"
+        );
     }
 }

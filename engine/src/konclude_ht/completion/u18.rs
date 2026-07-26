@@ -211,6 +211,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_node: NodeId,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> bool {
+        if individual_node.is_none() {
+            return false;
+        }
         if calc_alg_context
             .process_context()
             .node(individual_node)
@@ -1222,8 +1225,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .sig_block_con_exp_data(sig_blocking_data)
                 .get_blocker_individual_node();
+            if blocker_individual_node.is_none() {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
             let mut blocker_individual_node =
                 self.get_up_to_date_individual(blocker_individual_node, calc_alg_context);
+            if blocker_individual_node.is_none() {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
             if !self.is_individual_node_valid_blocker(blocker_individual_node, calc_alg_context) {
                 return false;
             }
@@ -1456,7 +1467,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .sig_block_con_exp_data(sig_blocking_data)
                 .get_blocker_individual_node();
+            if blocker_node.is_none() {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
             let blocker_node = self.get_up_to_date_individual(blocker_node, calc_alg_context);
+            if blocker_node.is_none() {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
             let blocker_con_set =
                 self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
             let blocking_con_set =

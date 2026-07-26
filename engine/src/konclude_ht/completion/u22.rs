@@ -1053,12 +1053,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.propagate_indirect_successor_saturation_blocked(succ_indi, calc_alg_context);
 
                 if flags & SatF::INDSATFLAGCARDINALITYPROPLEMATIC == 0 {
+                    // KM-BRIDGE read-off: this — not the establish above — is what
+                    // the ∃/≥ absorption (cpp 14390 / 16138, u08) actually reads.
+                    // An establish WITHOUT this flag installs a leaf-only block:
+                    // the successor's own generating concepts still create nodes.
+                    self.saturation_cache_establish_succ_block_count += 1;
                     calc_alg_context
                         .process_context_mut()
                         .node_mut(succ_indi)
                         .add_processing_restriction_flags(
                             IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
                         );
+                } else {
+                    self.saturation_cache_establish_cardinality_problematic_count += 1;
                 }
                 if trace {
                     eprintln!(

@@ -52,6 +52,11 @@ pub struct DataAssertion {
 pub struct ReverseRoleAssertion {
     /// `CReverseRoleAssertionLinker::getIndividual()` (`mIndividual`).
     pub individual: IndividualId,
+    /// Role carried by the pointed-to forward assertion. Konclude recovers
+    /// this through `getRoleAssertion()->getRole()`; the Rust value-backed
+    /// representation keeps it directly so a lazily loaded incoming assertion
+    /// does not depend on an unstable pointer/index into another `Vec`.
+    pub role: RoleId,
     // KONCLUDE-PORT-NOTE[ownership]: `CRoleAssertionLinker*` into another
     // individual's role-linker list — no stable arena id; stored opaque.
     /// `CReverseRoleAssertionLinker::getRoleAssertion()` (the linker `data`).

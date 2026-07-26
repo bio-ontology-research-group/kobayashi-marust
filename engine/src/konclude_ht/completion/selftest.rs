@@ -55,7 +55,7 @@ use super::super::model::concept_process::{
     ConceptProcessData, ConceptSaturationReferenceLinkingData, SaturationConceptReferenceLinking,
 };
 use super::super::model::individual::Individual;
-use super::super::model::substrate::{Id, NegLink, INVALID};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::analized_concept_expansion::{
     AnalizedConceptExpansionLinker, IndividualNodeAnalizedConceptExpansionData,
@@ -1258,6 +1258,213 @@ fn create_clashed_individual_distinct_descriptor_prepends_payload() {
     let first_desc = env.ctx.process_context().clash_desc(first);
     assert_eq!(first_desc.get_next(), Id::NONE);
     assert_eq!(first_desc.get_concept_descriptor(), con_des);
+}
+
+#[test]
+fn mergeability_clash_retains_distinct_edge_dependency() {
+    let mut env = build_env();
+    let root = env.root;
+    let other = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(other)
+        .set_individual_node_id(71);
+    let distinct_tp = deterministic_track_point(&mut env);
+    env.algo
+        .ht_make_individuals_distinct(&[root, other], distinct_tp, &mut env.ctx);
+
+    let mut clashes = ClashDescId::NONE;
+    assert!(!env.algo.ht_individuals_mergeable_with_clashes(
+        root,
+        other,
+        &mut clashes,
+        &mut env.ctx,
+    ));
+
+    let clash = env.ctx.process_context().clash_desc(clashes);
+    assert!(matches!(
+        clash.kind,
+        ClashDescriptorKind::IndividualDistinct { .. }
+    ));
+    assert_eq!(clash.get_dependency_track_point(), distinct_tp);
+    assert_eq!(clash.get_next(), ClashDescId::NONE);
+}
+
+#[test]
+fn mergeability_clash_retains_both_opposite_label_dependencies() {
+    let mut env = build_env();
+    let root = env.root;
+    let other = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(other)
+        .set_individual_node_id(72);
+    let atom = atom_concept_with_tag(&mut env, 1172);
+    let positive_tp = deterministic_track_point(&mut env);
+    let negative_tp = deterministic_track_point(&mut env);
+    let positive = concept_descriptor_with_dependency(&mut env, atom, false, positive_tp);
+    let negative = concept_descriptor_with_dependency(&mut env, atom, true, negative_tp);
+    let root_set = label_set_from_descriptors(&mut env, &[positive]);
+    let other_set = label_set_from_descriptors(&mut env, &[negative]);
+    env.ctx
+        .process_context_mut()
+        .node_mut(root)
+        .set_reapply_concept_label_set(root_set);
+    env.ctx
+        .process_context_mut()
+        .node_mut(other)
+        .set_reapply_concept_label_set(other_set);
+
+    let mut clashes = ClashDescId::NONE;
+    assert!(!env.algo.ht_individuals_mergeable_with_clashes(
+        root,
+        other,
+        &mut clashes,
+        &mut env.ctx,
+    ));
+
+    let first = env.ctx.process_context().clash_desc(clashes);
+    assert_eq!(first.get_appropriated_individual(), other);
+    assert_eq!(first.get_concept_descriptor(), negative);
+    assert_eq!(first.get_dependency_track_point(), negative_tp);
+    let second = env.ctx.process_context().clash_desc(first.get_next());
+    assert_eq!(second.get_appropriated_individual(), root);
+    assert_eq!(second.get_concept_descriptor(), positive);
+    assert_eq!(second.get_dependency_track_point(), positive_tp);
+    assert_eq!(second.get_next(), ClashDescId::NONE);
+}
+
+#[test]
+fn positive_nominal_merge_clash_keeps_branch_cause_for_ddb() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    env.algo.conf_dependency_backtracking = true;
+    env.algo.conf_dependency_backjumping = true;
+    let root = env.root;
+
+    let individual = env
+        .ctx
+        .ontology_arenas_mut()
+        .alloc_individual(Individual::new(42));
+    let nominal = {
+        let mut concept = Concept::new();
+        concept
+            .set_concept_tag(1173)
+            .set_operator_code(op::CCNOMINAL)
+            .set_nominal_individual(individual);
+        env.ctx.ontology_arenas_mut().alloc_concept(concept)
+    };
+    env.ctx
+        .ontology_arenas_mut()
+        .individual_mut(individual)
+        .set_individual_nominal_concept(nominal);
+    let target = env.algo.get_up_to_date_individual_by_id(-42, &mut env.ctx);
+    assert!(target.is_some());
+
+    let mut nominal_con_des = ConceptDescriptor::new();
+    nominal_con_des.concept = nominal;
+    let nominal_con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(nominal_con_des);
+    let base_tp = real_dependency_track_point(
+        &mut env,
+        root,
+        nominal_con_des,
+        DepKind::IndependentBase,
+        1173,
+        0,
+    );
+    env.ctx
+        .process_context_mut()
+        .con_desc_mut(nominal_con_des)
+        .set_dependency_track_point(base_tp);
+    let branch_tp = dependency_track_point_with_previous(
+        &mut env,
+        root,
+        nominal_con_des,
+        DepKind::Or,
+        1174,
+        7,
+        base_tp,
+        &[],
+    );
+    let branch_dep = env
+        .ctx
+        .process_context()
+        .track_point(branch_tp)
+        .dependency_node();
+    let mut sibling_tp = DependencyTrackPoint::new(branch_dep);
+    sibling_tp.process_tag = 1175;
+    let sibling_tp = env.ctx.process_context_mut().alloc_track_point(sibling_tp);
+    env.ctx
+        .process_context_mut()
+        .track_point_mut(branch_tp)
+        .next = sibling_tp;
+    if let DependencyNode::NonDeterministic { nd, .. } =
+        env.ctx.process_context_mut().dep_node_mut(branch_dep)
+    {
+        nd.branch_track_points = branch_tp;
+    } else {
+        panic!("expected OR dependency");
+    }
+    env.algo
+        .ht_make_individuals_distinct(&[root, target], branch_tp, &mut env.ctx);
+
+    let mut con_pro_des = ConceptProcessDescriptor::new();
+    con_pro_des.concept_des = nominal_con_des;
+    con_pro_des.dep_track_point = base_tp;
+    let mut con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(con_pro_des);
+    let mut current = root;
+    env.algo
+        .apply_nominal_rule(&mut current, &mut con_pro_des, false, &mut env.ctx);
+
+    let clash = match env.ctx.pending_signal() {
+        CalcSignal::Clash(clash) => clash,
+        other => panic!("expected nominal merge clash, got {other:?}"),
+    };
+    let nominal_clash = env.ctx.process_context().clash_desc(clash);
+    assert_eq!(nominal_clash.get_concept_descriptor(), nominal_con_des);
+    assert_eq!(nominal_clash.get_dependency_track_point(), base_tp);
+    let distinct_clash = env
+        .ctx
+        .process_context()
+        .clash_desc(nominal_clash.get_next());
+    assert!(matches!(
+        distinct_clash.kind,
+        ClashDescriptorKind::IndividualDistinct { .. }
+    ));
+    assert_eq!(distinct_clash.get_dependency_track_point(), branch_tp);
+    assert_eq!(distinct_clash.get_next(), ClashDescId::NONE);
+
+    env.algo.clashed_backtracking(clash, &mut env.ctx);
+    assert!(
+        env.ctx
+            .process_context()
+            .track_point(branch_tp)
+            .is_clashed_or_irelevant_branch(),
+        "the failed nominal merge must retain the OR branch that caused its distinct edge"
+    );
+    assert!(!env
+        .ctx
+        .process_context()
+        .track_point(sibling_tp)
+        .is_clashed_or_irelevant_branch());
+    assert!(
+        !env.algo.ddb_root_cancelled,
+        "a branch-dependent nominal merge clash must not cancel the root"
+    );
 }
 
 #[test]
@@ -6794,6 +7001,12 @@ fn prepare_backend_individual_prioritized_reuse_expansion_without_reuse_modes_de
         .is_none());
 }
 
+/// Both alternatives of `prepareBackendIndividualPrioritizedReuseExpansion`
+/// (cpp 24916-25003) are wired, but — as in Konclude, where they are two forked
+/// TASKS and the current one dies on `CCalculationStopProcessingException` —
+/// only alternative 0 is applied in this task. Alternative 1 is reached by
+/// backtracking (`advance_topmost_or_branch`: pop the branch epoch, push a fresh
+/// one, enter the sibling), which is what the second half drives.
 #[test]
 fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternatives() {
     let mut env = build_env();
@@ -6826,13 +7039,28 @@ fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternati
         .prepare_backend_individual_prioritized_reuse_expansion(&mut root, &mut env.ctx));
 
     assert_eq!(root, env.root);
+
+    // ONE branch point carrying BOTH alternatives, alternative 0 already entered.
+    assert_eq!(env.algo.or_branch_stack.len(), 1);
+    let branch = env.algo.or_branch_stack.last().expect("branch pushed");
+    assert!(matches!(
+        branch.kind,
+        super::algorithm::BranchKind::BackendExpansionReuse(_)
+    ));
+    assert_eq!(branch.alternatives_len(), 2, "reuse and discard");
+    assert_eq!(branch.next_alt, 1, "alternative 0 is already entered");
+
+    // --- alternative 0, the fixed-reusing one (cpp 24950-24975) ---
     let node = env.ctx.process_context().node(root);
     assert!(node.has_partial_processing_restriction_flags(
         IndividualProcessNode::PRF_BACKENDEXPANSIONREUSINGINDIVIDUAL
     ));
-    assert!(node.has_partial_processing_restriction_flags(
-        IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
-    ));
+    assert!(
+        !node.has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
+        ),
+        "the discarding alternative is the SIBLING task, not this one"
+    );
 
     let sync = node.individual_backend_cache_synchronisation_data(false);
     assert!(sync.is_some());
@@ -6852,6 +7080,28 @@ fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternati
         .take_next_process_individual_node();
     assert_eq!(queued_reuse, root);
 
+    assert!(
+        env.ctx
+            .get_backend_indirect_compatibility_expansion_queue(false)
+            .is_none(),
+        "the indirect-compatibility queue belongs to alternative 1 only"
+    );
+
+    // --- alternative 1, reached by backtracking (cpp 24977-24990) ---
+    env.ctx.pop_branch_epoch();
+    env.ctx.push_branch_epoch();
+    let discarded = env
+        .algo
+        .enter_backend_expansion_reuse_discard_alternative(root, &mut env.ctx);
+
+    assert!(env
+        .ctx
+        .process_context()
+        .node(discarded)
+        .has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
+        ));
+
     let indirect_queue = env
         .ctx
         .get_backend_indirect_compatibility_expansion_queue(false);
@@ -6861,7 +7111,7 @@ fn prepare_backend_individual_prioritized_reuse_expansion_wires_branch_alternati
         .process_context_mut()
         .indi_unsorted_proc_queue_mut(indirect_queue)
         .take_next_process_individual_node();
-    assert_eq!(queued_indirect, root);
+    assert_eq!(queued_indirect, discarded);
 }
 
 #[test]
@@ -11593,6 +11843,19 @@ fn backtrack_non_deterministic_branching_clashed_descriptor_reinitializes_when_l
     assert!(line.has_more_tracked_clashed_list());
     let reinitialized = line.take_next_tracked_clashed_list();
     assert_ne!(reinitialized, Id::NONE);
+    // The all-siblings-refuted propagation keeps Konclude's root cancellation
+    // (cpp 7318–7321), but only on a JUSTIFIED closure: every sibling
+    // alternative must have a stored clash set, else the collected union is not
+    // a refutation of the decision and its branching level is meaningless (KM's
+    // lossy port of cpp 7587–7644 / 7669–7764 — ore_ont_12653: 12 spurious
+    // `PathOfLength3 ⊑ X`). This decision's single branch track point DID get
+    // its refutation installed (asserted above), so nothing may be withheld
+    // here — a non-zero counter would mean the storage regressed.
+    assert_eq!(
+        env.algo.ddb_root_cancel_withheld_count, 0,
+        "the closed decision stored its refutation, so no level-0 reading of \
+         the collected closure may be unjustified"
+    );
 }
 
 #[test]
@@ -17904,6 +18167,148 @@ fn condensed_iterator_reapply_queues_matching_descriptors() {
 }
 
 #[test]
+fn restricted_reapply_preserves_processing_restriction_priority_offset() {
+    use super::super::model::op;
+    use super::super::process::satellites::BranchingMergingProcessingRestrictionSpecification;
+
+    let mut env = build_env();
+    let root = env.root;
+    let delayed_or = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1750);
+        c.set_operator_code(op::CCOR);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    {
+        let d = env.ctx.process_context_mut().con_desc_mut(con_des);
+        d.concept = delayed_or;
+        d.dep_track_point = TrackPointId::NONE;
+    }
+    let mut restriction = BranchingMergingProcessingRestrictionSpecification::new(INVALID);
+    restriction
+        .init_branching_or_processing_restriction(None)
+        .set_priority_offset(-9.0);
+    let restriction = env
+        .ctx
+        .process_context_mut()
+        .alloc_restriction_spec(restriction);
+    let default_priority = env
+        .algo
+        .priority_for_concept(con_des, root, &mut env.ctx)
+        .get_priority();
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+
+    env.algo.add_concept_restricted_to_processing_queue(
+        con_des,
+        TrackPointId::NONE,
+        queue,
+        root,
+        true,
+        restriction.raw,
+        &mut env.ctx,
+    );
+
+    let queued = ConceptProcessingQueue::take_next_concept_descriptor_process(
+        queue,
+        env.ctx.process_context_mut(),
+    );
+    let descriptor = env.ctx.process_context().con_proc_desc(queued);
+    assert_eq!(
+        descriptor.get_process_priority().get_priority(),
+        default_priority - 9.0,
+        "the restriction's delayed priority must survive static reapply"
+    );
+    assert_eq!(
+        descriptor.get_processing_restriction_specification(),
+        restriction,
+        "the planned OR restriction must survive static reapply"
+    );
+}
+
+#[test]
+fn direct_rule_preprocessing_lowers_or_before_queue_snapshot() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+    env.algo.conf_direct_rule_preprocessing = true;
+    let root = env.root;
+    let left = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1751);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let right = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1752);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let disjunction = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1753);
+        c.set_operator_code(op::CCOR);
+        c.add_operand_linker(left, false);
+        c.add_operand_linker(right, false);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let mut root_mut = root;
+    env.algo.add_concept_to_individual(
+        disjunction,
+        false,
+        &mut root_mut,
+        TrackPointId::NONE,
+        true,
+        true,
+        &mut env.ctx,
+    );
+
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, false);
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .concept_proc_queue(queue)
+            .get_descriptor_count(),
+        1,
+        "eager preprocessing must leave only the delayed OR descriptor queued"
+    );
+    let queued = ConceptProcessingQueue::take_next_concept_descriptor_process(
+        queue,
+        env.ctx.process_context_mut(),
+    );
+    let descriptor = env.ctx.process_context().con_proc_desc(queued);
+    let concept_descriptor = descriptor.get_concept_descriptor();
+    let queued_priority = descriptor.get_process_priority().get_priority();
+    let default_priority = env
+        .algo
+        .priority_for_concept(concept_descriptor, root, &mut env.ctx)
+        .get_priority();
+    let delay_offset = env
+        .ctx
+        .base
+        .used_concept_priority_strategy()
+        .expect("test priority strategy")
+        .get_priority_offset_for_disjunction_delayed_considering(concept_descriptor, root);
+    assert_eq!(queued_priority, default_priority + delay_offset);
+    assert!(
+        queued_priority < default_priority,
+        "the OR must be lowered before a branch snapshot can capture it"
+    );
+    assert_eq!(env.algo.or_branch_open_count, 0);
+}
+
+#[test]
 fn add_concept_to_individual_drains_condensed_reapply_iterator() {
     use super::super::model::op;
 
@@ -24190,6 +24595,573 @@ fn at_least_replays_saturation_label_to_every_created_successor() {
     assert_eq!(env.algo.saturation_expansion_concept_count, 2);
 }
 
+// ---------------------------------------------------------------------------
+// `conf_saturation_coupling_declines_nominal_connected` — the bridge's
+// fail-closed leg of the completion↔saturation coupling on native-nominal
+// ontologies. See `bridge::configure_native_nominal_completion_saturation_coupling`.
+// ---------------------------------------------------------------------------
+
+/// `∃R.C` with a saturation node for `C` carrying `flags`, driven to a fixpoint.
+/// Returns (consistent, successors, env) so each test can read its own outcome.
+fn run_some_rule_over_saturation_node(
+    nominal_connected: bool,
+    clashed: bool,
+    decline_nominal_connected: bool,
+) -> (bool, usize, SelfTestEnv, RoleId, i64) {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+    use super::super::model::substrate::NegLink;
+
+    let mut env = build_env();
+    env.algo.conf_expand_created_successors_from_saturation = true;
+    env.algo.conf_saturation_coupling_declines_nominal_connected = decline_nominal_connected;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    env.ctx
+        .ontology_arenas_mut()
+        .role_mut(role_r)
+        .add_indirect_super_role_linker(NegLink {
+            target: role_r,
+            negated: false,
+        });
+    let qualifier = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1360);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let saturation_only = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1361);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_r_qualifier = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1362);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(qualifier, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let saturation_node = attach_saturation_unsat_reference(&mut env, qualifier, false, clashed);
+    add_saturation_label_concept(&mut env, saturation_node, saturation_only, false);
+    if nominal_connected {
+        env.ctx
+            .process_context_mut()
+            .sat_node_mut(saturation_node)
+            .indirect_status_flags
+            .add_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
+            );
+    }
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, some_r_qualifier);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    let successor_count = role_successors(&env, root, role_r).len();
+    (consistent, successor_count, env, role_r, 1361)
+}
+
+/// Konclude's own behaviour (cpp 22081–22140, `mOptIncrementalExpansion` off):
+/// a nominal-CONNECTED saturation node is still replayed onto the fresh
+/// successor. This is the leg the bridge deliberately turns off on native
+/// nominals; pin it so the default stays the faithful port.
+#[test]
+fn saturation_expansion_replays_a_nominal_connected_label_by_default() {
+    let (consistent, successors, mut env, role_r, saturation_tag) =
+        run_some_rule_over_saturation_node(true, false, false);
+    let root = env.root;
+    assert!(consistent);
+    assert_eq!(successors, 1);
+    let successor = role_successors(&env, root, role_r)[0];
+    assert!(
+        label_set_has_tag(&mut env, successor, saturation_tag),
+        "the default (Konclude) coupling replays a nominal-connected saturation label"
+    );
+    assert_eq!(env.algo.saturation_expansion_concept_count, 1);
+    assert_eq!(env.algo.saturation_nominal_connected_decline_count, 0);
+}
+
+/// With the bridge's native-nominal leg armed, the SAME node is declined: no
+/// concept of its label reaches the successor and the decline is counted. The
+/// successor is built exactly as it is on the uncoupled path, so this can only
+/// derive FEWER consequences, never more.
+#[test]
+fn saturation_expansion_declines_a_nominal_connected_label_when_fail_closed() {
+    let (consistent, successors, mut env, role_r, saturation_tag) =
+        run_some_rule_over_saturation_node(true, false, true);
+    let root = env.root;
+    assert!(consistent);
+    assert_eq!(successors, 1, "the successor is still created");
+    let successor = role_successors(&env, root, role_r)[0];
+    assert!(
+        label_set_has_tag(&mut env, successor, 1360),
+        "the ∃ qualifier itself is unaffected by the saturation decline"
+    );
+    assert!(
+        !label_set_has_tag(&mut env, successor, saturation_tag),
+        "a nominal-connected saturation label must not be replayed under the fail-closed leg"
+    );
+    assert_eq!(env.algo.saturation_expansion_concept_count, 0);
+    assert_eq!(env.algo.saturation_nominal_connected_decline_count, 1);
+}
+
+/// A nominal-FREE saturation node keeps the whole coupling with the fail-closed
+/// leg armed — the flag must not disable the coupling wholesale.
+#[test]
+fn saturation_expansion_keeps_a_nominal_free_label_under_the_fail_closed_leg() {
+    let (consistent, successors, mut env, role_r, saturation_tag) =
+        run_some_rule_over_saturation_node(false, false, true);
+    let root = env.root;
+    assert!(consistent);
+    assert_eq!(successors, 1);
+    let successor = role_successors(&env, root, role_r)[0];
+    assert!(label_set_has_tag(&mut env, successor, saturation_tag));
+    assert_eq!(env.algo.saturation_expansion_concept_count, 1);
+    assert_eq!(env.algo.saturation_nominal_connected_decline_count, 0);
+}
+
+/// The decline also withholds the CLASH that the pristine port raises from a
+/// clashed saturation node (u17's `INDSATFLAGCLASHED` arm). Withholding a clash
+/// can only lose pruning; taking one that the bridge cannot attribute to a
+/// nominal would be an unsound UNSAT. A nominal-FREE clashed node still clashes.
+#[test]
+fn saturation_expansion_withholds_a_nominal_connected_clash_when_fail_closed() {
+    let (consistent_default, _, env_default, _, _) =
+        run_some_rule_over_saturation_node(true, true, false);
+    assert!(
+        !consistent_default,
+        "the pristine port raises the saturation node's clash"
+    );
+    assert_eq!(
+        env_default.algo.saturation_nominal_connected_decline_count,
+        0
+    );
+
+    let (consistent_fail_closed, successors, env_fail_closed, _, _) =
+        run_some_rule_over_saturation_node(true, true, true);
+    assert!(
+        consistent_fail_closed,
+        "the fail-closed leg withholds a nominal-connected saturation clash"
+    );
+    assert_eq!(successors, 1);
+    assert_eq!(
+        env_fail_closed
+            .algo
+            .saturation_nominal_connected_decline_count,
+        1
+    );
+
+    let (consistent_nominal_free, _, _, _, _) =
+        run_some_rule_over_saturation_node(false, true, true);
+    assert!(
+        !consistent_nominal_free,
+        "a nominal-FREE clashed saturation node must still clash under the fail-closed leg"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Saturation-blocking RETEST idempotence (cpp 4742–4812 +
+// `CSaturationNodeExpansionCacheHandler::isNodeSatisfiableCached` 94–140).
+//
+// A node that is saturation-blocked keeps the block across a modification that
+// did not grow its label. Konclude gets that from `isNodeSatisfiableCached`'s
+// cache-INDEPENDENT first branch (`lastConfirmedConceptDescriptor ==
+// addingSortedConceptDescriptionLinker`), which `detectIndividualNodeSaturationCached`
+// can only reach when a saturation-node expansion cache HANDLER is installed.
+// Without the handler every modification is an unconditional cache LOSS that
+// also replays every absorbed generating concept.
+// ---------------------------------------------------------------------------
+
+/// Build a node whose label is exactly `tags`, back it by a completed
+/// saturation node carrying the same concepts, and establish saturation
+/// blocking on it. Returns (env, node, saturation node).
+fn saturation_blocked_node(with_expansion_cache_handler: bool) -> (SelfTestEnv, NodeId, SatNodeId) {
+    saturation_blocked_node_with(with_expansion_cache_handler, false)
+}
+
+/// As `saturation_blocked_node`, but the backing saturation node can be marked
+/// `INDSATFLAGCARDINALITYPROPLEMATIC` — the flag that decides, at cpp 21772 /
+/// `u22.rs`, whether an ESTABLISHED block also becomes successor-creation
+/// blocking. Every ontology whose saturation wave hits an at-most restriction
+/// with a possibly-insufficient ancestor (`saturation/s08.rs:1507`,
+/// `s09.rs:600`) produces such nodes.
+fn saturation_blocked_node_with(
+    with_expansion_cache_handler: bool,
+    cardinality_problematic: bool,
+) -> (SelfTestEnv, NodeId, SatNodeId) {
+    use super::super::model::op;
+
+    let mut env = build_env();
+    env.algo.conf_caching_blocking_from_saturation = true;
+    env.algo.conf_expand_created_successors_from_saturation = true;
+    env.algo.conf_sat_exp_cached_succ_absorp = true;
+    // cpp ctor line 237 (`configure_production_completion_saturation_coupling`).
+    env.algo.conf_saturation_expansion_cache_reading = true;
+    // The bridge's native-nominal leg: nominal-connected saturation nodes can
+    // never cache. This node is nominal-FREE, so the leg is inert here.
+    env.algo.conf_saturation_caching_with_nominals = false;
+
+    if with_expansion_cache_handler {
+        let (cache_context, handler) = build_saturation_node_expansion_cache_handler();
+        env.ctx
+            .install_used_saturation_node_expansion_cache_handler(handler, cache_context);
+    }
+
+    let carried = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1460);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // The saturation node the blocking data will point at, holding exactly the
+    // label the node carries (so `validate_saturation_caching_possible` passes).
+    let sat_node = attach_saturation_unsat_reference(&mut env, carried, false, false);
+    add_saturation_label_concept(&mut env, sat_node, carried, false);
+    if cardinality_problematic {
+        env.ctx
+            .process_context_mut()
+            .sat_node_mut(sat_node)
+            .indirect_status_flags
+            .add_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYPROPLEMATIC,
+            );
+    }
+
+    let node = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(node)
+        .set_individual_node_id(41);
+    env.ctx
+        .processing_data_box_mut()
+        .individual_process_node_vector_mut()
+        .set_local_data(41, node);
+
+    let dep = deterministic_track_point(&mut env);
+    env.algo.add_concept_to_individual_skip_and_processing(
+        carried,
+        false,
+        node,
+        dep,
+        false,
+        true,
+        false,
+        &mut env.ctx,
+    );
+
+    let mut parent = env.root;
+    let mut sat_caching_possible = true;
+    let mut last_sat_cach_possible_con_des = ConDescId::NONE;
+    assert!(
+        env.algo.try_establish_saturation_caching(
+            &mut parent,
+            node,
+            sat_node,
+            &mut sat_caching_possible,
+            &mut last_sat_cach_possible_con_des,
+            &mut env.ctx,
+        ),
+        "the fixture must start from an ESTABLISHED saturation block"
+    );
+    assert_eq!(env.algo.saturation_cache_establish_count, 1);
+    // `has_partial_...` is ANY-of, so assert each flag separately.
+    assert!(node_has_flags(
+        &env,
+        node,
+        IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+    ));
+    // The SUCCESSOR-CREATION flag — the one the ∃/≥ absorption reads — is set
+    // only when the saturation node is not cardinality-problematic (cpp 21772).
+    assert_eq!(
+        node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
+        ),
+        !cardinality_problematic,
+    );
+    assert_eq!(
+        env.algo.saturation_cache_establish_succ_block_count,
+        if cardinality_problematic { 0 } else { 1 },
+    );
+    assert_eq!(
+        env.algo
+            .saturation_cache_establish_cardinality_problematic_count,
+        if cardinality_problematic { 1 } else { 0 },
+    );
+    (env, node, sat_node)
+}
+
+fn node_has_flags(env: &SelfTestEnv, node: NodeId, flags: i64) -> bool {
+    env.ctx
+        .process_context()
+        .node(node)
+        .has_partial_processing_restriction_flags(flags)
+}
+
+/// The Konclude behaviour: a modification that did NOT grow the label
+/// (`setIndividualNodeAncestorConnectionModified`, the functional-successor
+/// reuse at u35, a merge) marks the node for retest, and the retest RE-CONFIRMS
+/// it from the saturation blocking data alone. Both blocking flags survive, so
+/// the node stays a parked leaf.
+#[test]
+fn saturation_block_survives_a_modification_that_did_not_grow_the_label() {
+    let (mut env, node, _sat_node) = saturation_blocked_node(true);
+    let mut modified = node;
+    env.algo
+        .propagate_individual_node_modified(&mut modified, &mut env.ctx);
+    assert!(
+        node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_RETESTSATURATIONBLOCKINGCACHEDDUEDIRECTMODIFIED,
+        ),
+        "the modification must arm the retest (cpp 19646)"
+    );
+
+    assert!(
+        env.algo
+            .detect_individual_node_saturation_cached(node, &mut env.ctx),
+        "an unchanged label must re-confirm the saturation block"
+    );
+    assert_eq!(env.algo.saturation_cache_reconfirm_count, 1);
+    assert_eq!(env.algo.saturation_cache_lose_count, 0);
+    assert!(
+        node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+        ) && node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
+        ),
+        "both blocking flags must survive the retest"
+    );
+    assert_eq!(env.algo.saturation_cached_reapplied_generating_count, 0);
+}
+
+/// The defect this pins: with NO saturation-node expansion cache handler
+/// installed, `detect_individual_node_saturation_cached` cannot reach the
+/// re-confirmation at all, so the SAME label-preserving modification destroys
+/// the block and reapplies every absorbed generating concept. Konclude never
+/// runs in this state — `CReasonerManagerThread::createTaskHandleAlgorithm`
+/// constructs the handler for every completion task, empty cache or not.
+#[test]
+fn saturation_block_is_lost_without_the_expansion_cache_handler() {
+    let (mut env, node, _sat_node) = saturation_blocked_node(false);
+    let mut modified = node;
+    env.algo
+        .propagate_individual_node_modified(&mut modified, &mut env.ctx);
+
+    assert!(
+        !env.algo
+            .detect_individual_node_saturation_cached(node, &mut env.ctx),
+        "without the handler the retest cannot re-confirm"
+    );
+    assert_eq!(env.algo.saturation_cache_reconfirm_count, 0);
+    assert_eq!(env.algo.saturation_cache_lose_count, 1);
+    assert!(
+        !node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+        ),
+        "the saturation block is cleared"
+    );
+    assert!(
+        !node_has_flags(
+            &env,
+            node,
+            IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
+        ),
+        "successor-creation blocking is cleared with it, so the node generates again"
+    );
+}
+
+/// The re-confirmation must NOT over-retain: a modification that genuinely grew
+/// the label moves `getAddingSortedConceptDescriptionLinker()` past the stored
+/// `lastConfirmedConceptDescriptior`, so the block is lost exactly as in
+/// Konclude (the empty cache has no entry to fall back on).
+#[test]
+fn saturation_block_is_lost_when_the_label_grows() {
+    use super::super::model::op;
+
+    let (mut env, node, _sat_node) = saturation_blocked_node(true);
+    let extra = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1461);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let dep = deterministic_track_point(&mut env);
+    // `mark_modification = true` is the path `addConceptToIndividual` takes:
+    // it runs `setIndividualNodeConceptLabelSetModified` → `propagateIndividualNodeModified`.
+    env.algo.add_concept_to_individual_skip_and_processing(
+        extra,
+        false,
+        node,
+        dep,
+        false,
+        true,
+        true,
+        &mut env.ctx,
+    );
+
+    assert!(
+        !env.algo
+            .detect_individual_node_saturation_cached(node, &mut env.ctx),
+        "a grown label is not covered by the stored confirmation"
+    );
+    assert_eq!(env.algo.saturation_cache_reconfirm_count, 0);
+    assert_eq!(env.algo.saturation_cache_lose_count, 1);
+}
+
+/// The parking itself: on a node carrying
+/// `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED` the ∃-rule absorbs its
+/// generating concept (cpp 14330–14334) instead of creating a successor, and
+/// the absorbed descriptor is the one `reapplySatisfiableCachedAbsorbedGeneratingConcepts`
+/// would replay on cache loss.
+#[test]
+fn generating_concept_is_parked_on_a_successor_creation_blocked_node() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let (mut env, node, _sat_node) = saturation_blocked_node(true);
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let filler = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1462);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_r_filler = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1463);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(filler, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let dep = deterministic_track_point(&mut env);
+    let mut con_des = ConceptDescriptor::new();
+    con_des.concept = some_r_filler;
+    con_des.dep_track_point = dep;
+    let con_des = env.ctx.process_context_mut().alloc_con_desc(con_des);
+    let mut con_pro_des = ConceptProcessDescriptor::new();
+    con_pro_des.concept_des = con_des;
+    con_pro_des.dep_track_point = dep;
+    let mut con_pro_des = env.ctx.process_context_mut().alloc_con_proc_desc(con_pro_des);
+
+    let nodes_before = env.ctx.process_context().node_count();
+    let mut process_indi = node;
+    env.algo
+        .apply_some_rule(&mut process_indi, &mut con_pro_des, false, &mut env.ctx);
+
+    assert_eq!(
+        env.ctx.process_context().node_count(),
+        nodes_before,
+        "a parked ∃ must not create a successor"
+    );
+    assert_eq!(env.algo.applied_some_rule_count, 0);
+    assert_eq!(env.algo.saturation_cached_absorbed_generating_count, 1);
+    assert!(env
+        .ctx
+        .process_context()
+        .node(node)
+        .satisfiable_cached_absorbed_generating_linker()
+        .is_some());
+    assert_eq!(env.algo.some_rule_on_saturation_blocked_count, 1);
+    assert_eq!(env.algo.some_rule_succ_block_not_absorbable_count, 0);
+}
+
+/// The production counterpart of the test above, and the reason its green bar
+/// says nothing about a run whose `absorbed` counter is zero.
+///
+/// `try_establish_saturation_caching` ESTABLISHES on any saturation node that is
+/// initialised, completed, and neither insufficient nor clashed — that is what
+/// `saturation_cache_establish_count` counts. It attaches
+/// `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED` only when the node is ALSO
+/// not `INDSATFLAGCARDINALITYPROPLEMATIC` (cpp 21772), and the ∃/≥ absorption
+/// (cpp 14390 / 16138) reads exactly that second flag, never the first.
+///
+/// So an establish on a cardinality-problematic node is a LEAF-ONLY block: the
+/// successor still blocks its own descendants (`PRF_ANCESTORSATURATIONBLOCKING-
+/// CACHED` propagates at `u35.rs:1665`), but its own generating concepts run the
+/// ordinary rule. `establishes` in the millions with `absorbed = 0`, `loses = 0`
+/// and `reconfirms = 0` — the v47 shape — is produced here with no cache loss
+/// anywhere, which is why `saturation_cache_establish_succ_block_count` /
+/// `..._cardinality_problematic_count` separate this from a lost block.
+#[test]
+fn generating_concept_is_not_parked_when_the_saturation_node_is_cardinality_problematic() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let (mut env, node, _sat_node) = saturation_blocked_node_with(true, true);
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let filler = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1462);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_r_filler = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1463);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(filler, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let dep = deterministic_track_point(&mut env);
+    let mut con_des = ConceptDescriptor::new();
+    con_des.concept = some_r_filler;
+    con_des.dep_track_point = dep;
+    let con_des = env.ctx.process_context_mut().alloc_con_desc(con_des);
+    let mut con_pro_des = ConceptProcessDescriptor::new();
+    con_pro_des.concept_des = con_des;
+    con_pro_des.dep_track_point = dep;
+    let mut con_pro_des = env.ctx.process_context_mut().alloc_con_proc_desc(con_pro_des);
+
+    let nodes_before = env.ctx.process_context().node_count();
+    let mut process_indi = node;
+    env.algo
+        .apply_some_rule(&mut process_indi, &mut con_pro_des, false, &mut env.ctx);
+
+    assert!(
+        env.ctx.process_context().node_count() > nodes_before,
+        "a leaf-only block must NOT park the generating concept"
+    );
+    assert_eq!(env.algo.applied_some_rule_count, 1);
+    assert_eq!(env.algo.saturation_cached_absorbed_generating_count, 0);
+    // The block was established and never lost — the v47 counter shape.
+    assert_eq!(env.algo.saturation_cache_establish_count, 1);
+    assert_eq!(env.algo.saturation_cache_lose_count, 0);
+    assert_eq!(env.algo.saturation_cache_reconfirm_count, 0);
+    // ...and the use-site counters name why nothing was absorbed: the ∃ DID
+    // reach the gate on a saturation-blocked node, the successor-creation flag
+    // was simply never attached.
+    assert_eq!(env.algo.some_rule_on_saturation_blocked_count, 1);
+    assert_eq!(env.algo.saturation_cache_establish_succ_block_count, 0);
+    assert_eq!(
+        env.algo
+            .saturation_cache_establish_cardinality_problematic_count,
+        1
+    );
+    assert_eq!(env.algo.some_rule_succ_block_not_absorbable_count, 0);
+}
+
 /// `≥2 R.C ⊓ ≤1 R.⊤` over the drive loop. ≥2 forces two DISTINCT R-successors;
 /// the unqualified ≤1 (functional) then sees two distinct R-successors over the
 /// bound and they cannot merge ⇒ CLASH. (The faithful Konclude outcome: forced
@@ -24965,5 +25937,1339 @@ fn transitive_forall() {
     assert!(
         label_set_has_tag(&mut env, n, 164),
         "the R-R-successor n must carry C (tag 164) via the transitivity ∀-rule"
+    );
+}
+
+// ===========================================================================
+// DDB stack walk — refuted-and-exhausted decisions (u02
+// `try_backtrack_or_branch_ddb`: the sound default fallback plus the shape of the
+// default-OFF `conf_ddb_refuted_discard` diagnostic).
+// ===========================================================================
+
+/// Mint one non-deterministic dependency node plus `count` branch track points
+/// for it — the synthetic equivalent of one `executeORBranching` alternative
+/// fan-out, so the stack walk can be driven without running a real search.
+fn synthetic_branch_track_points(
+    env: &mut SelfTestEnv,
+    node: NodeId,
+    process_tag: Cint64,
+    count: usize,
+) -> Vec<TrackPointId> {
+    let base = DepNodeBase {
+        process_tag,
+        concept_descriptor: ConDescId::NONE,
+        individual_node: node,
+        kind: DepKind::Or,
+        dep_track_point: TrackPointId::NONE,
+        additional_after: Id::NONE,
+        selected_var_bind_path: VarBindingPathId::NONE,
+        resolve_var_bind_path_map: None,
+        resolve_rep_prop_map: None,
+        base_assertion_role: Id::NONE,
+        base_assertion_individual: Id::NONE,
+    };
+    let dep = env
+        .ctx
+        .process_context_mut()
+        .alloc_dep_node(DependencyNode::NonDeterministic {
+            base,
+            nd: NonDetData {
+                branch_track_points: TrackPointId::NONE,
+                clash_track_point: TrackPointId::NONE,
+                dependency_clashes: ClashDescId::NONE,
+                branch_node: BranchNodeId::NONE,
+                branch_tag: process_tag,
+                closing_track_point: TrackPointId::NONE,
+                closed_track_point: TrackPointId::NONE,
+            },
+        });
+    (0..count)
+        .map(|_| {
+            let mut tp = DependencyTrackPoint::new(dep);
+            tp.process_tag = process_tag;
+            env.ctx.process_context_mut().alloc_track_point(tp)
+        })
+        .collect()
+}
+
+/// Push a synthetic disjunction branch point on the in-process search stack.
+/// `next_alt == disjuncts.len()` models a branch point sitting on its LAST
+/// alternative (Konclude: a branch whose sibling tasks are all done).
+fn push_synthetic_or_branch(
+    env: &mut SelfTestEnv,
+    node: NodeId,
+    disjuncts: Vec<ConceptId>,
+    current_alt: usize,
+    next_alt: usize,
+    alt_track_points: Vec<TrackPointId>,
+) {
+    let node_label_snapshot = {
+        let ls = env
+            .ctx
+            .process_context_mut()
+            .node_reapply_concept_label_set(node);
+        env.ctx.process_context().label_set(ls).clone()
+    };
+    let node_queue_snapshot = {
+        let q = env
+            .ctx
+            .process_context_mut()
+            .node_concept_processing_queue(node, true);
+        env.ctx.process_context().concept_proc_queue(q).clone()
+    };
+    let node_count_at_push = env.ctx.process_context().node_count();
+    let alternative_order = (0..disjuncts.len()).collect();
+    env.algo.or_branch_stack.push(super::algorithm::OrBranchPoint {
+        node,
+        disjuncts: disjuncts
+            .into_iter()
+            .map(|target| NegLink {
+                target,
+                negated: false,
+            })
+            .collect(),
+        alternative_order,
+        current_alt,
+        branching_concept: ConceptId::NONE,
+        negate: false,
+        next_alt,
+        dep_track_point: alt_track_points
+            .first()
+            .copied()
+            .unwrap_or(TrackPointId::NONE),
+        branch_node: BranchNodeId::NONE,
+        or_dependency_node: DependencyId::NONE,
+        alt_track_points,
+        parent_used_branch_node: BranchNodeId::NONE,
+        node_label_snapshot,
+        node_queue_snapshot,
+        node_count_at_push,
+        kind: super::algorithm::BranchKind::Disjunction,
+        // No branch epoch: the walk must not pop an epoch this test never pushed.
+        own_epoch: false,
+    });
+}
+
+/// The 9540 / 12653 thrash escape, DIAGNOSTIC PATH ONLY: this pins the shape of
+/// `conf_ddb_refuted_discard` (`KM_HT_DDB_REFUTED_DISCARD`), which is DEFAULT OFF
+/// because a positionally-exhausted decision is not a refuted one in KM (the
+/// chronological fallback advances alternatives for clashes that do not depend on
+/// them). The test therefore sets the flag EXPLICITLY on its own algorithm
+/// instance — it neither reads nor mutates process env, so it cannot make the
+/// escape reachable in production. `ddb_walk_still_advances_a_refuted_target_…`
+/// below covers the DEFAULT walk.
+#[test]
+fn ddb_walk_discards_refuted_exhausted_decision_with_the_live_subtree_above_it() {
+    let mut env = build_env();
+    env.algo.conf_dependency_backjumping = true;
+    // Opt in locally: without this the walk takes the sound chronological
+    // fallback (asserted by `ddb_walk_refuted_exhausted_decision_default_falls_back`).
+    env.algo.conf_ddb_refuted_discard = true;
+    let node = env.root;
+
+    let outer_a = atom_concept_with_tag(&mut env, 401);
+    let outer_b = atom_concept_with_tag(&mut env, 402);
+    let inner_p = atom_concept_with_tag(&mut env, 411);
+    let inner_q = atom_concept_with_tag(&mut env, 412);
+    let inner_r = atom_concept_with_tag(&mut env, 413);
+
+    // bp0: two alternatives, both explored, the CURRENT (last) one refuted.
+    let outer_tps = synthetic_branch_track_points(&mut env, node, 1, 2);
+    env.ctx
+        .process_context_mut()
+        .track_point_mut(outer_tps[1])
+        .set_clashed_or_irelevant_branch(true);
+    push_synthetic_or_branch(&mut env, node, vec![outer_a, outer_b], 1, 2, outer_tps);
+
+    // bp1: three alternatives, on its first, NOT in the clash's closure.
+    let inner_tps = synthetic_branch_track_points(&mut env, node, 2, 3);
+    push_synthetic_or_branch(
+        &mut env,
+        node,
+        vec![inner_p, inner_q, inner_r],
+        0,
+        1,
+        inner_tps,
+    );
+
+    let advanced = env
+        .algo
+        .try_backtrack_or_branch_ddb(ClashDescId::NONE, &mut env.ctx);
+
+    assert!(
+        !advanced,
+        "the whole stack is refuted: no alternative may be advanced"
+    );
+    assert!(
+        env.algo.or_branch_stack.is_empty(),
+        "the refuted decision AND the subtree stacked above it are discarded"
+    );
+    assert_eq!(
+        env.algo.ddb_refuted_discard_count, 1,
+        "the escape must fire once, not fall back to chronological search"
+    );
+    assert_eq!(
+        env.algo.ddb_fallback_count, 0,
+        "no chronological fallback: falling back here is what re-enters the \
+         refuted subtree (ore_ont_9540 / ore_ont_12653 thrash)"
+    );
+    assert_eq!(
+        env.algo.ddb_closed_decision_discard_count, 0,
+        "this decision is only POSITIONALLY exhausted — its first alternative \
+         was never refuted, so the safe closed-decision leg must not claim it"
+    );
+}
+
+/// THE SAFE ESCAPE: a CLOSED decision — every alternative's track point marked
+/// clashed, i.e. every alternative carries its own stored refutation (Konclude's
+/// `hasOtherOpenedDependencyTrackingPoints() == false`,
+/// CNonDeterministicDependencyNode.cpp 186–196). The decision is refuted under
+/// the current outer context, so it and the subtree stacked above it are
+/// discarded with NO positional assumption and NO opt-in.
+#[test]
+fn ddb_walk_discards_a_closed_decision_and_its_subtree_by_default() {
+    let mut env = build_env();
+    env.algo.conf_dependency_backjumping = true;
+    assert!(!env.algo.conf_ddb_refuted_discard);
+    let node = env.root;
+
+    let outer_a = atom_concept_with_tag(&mut env, 461);
+    let outer_b = atom_concept_with_tag(&mut env, 462);
+    let inner_p = atom_concept_with_tag(&mut env, 471);
+    let inner_q = atom_concept_with_tag(&mut env, 472);
+
+    // bp0: BOTH alternatives refuted on their own track points ⇒ closed.
+    let outer_tps = synthetic_branch_track_points(&mut env, node, 1, 2);
+    for tp in [outer_tps[0], outer_tps[1]] {
+        env.ctx
+            .process_context_mut()
+            .track_point_mut(tp)
+            .set_clashed_or_irelevant_branch(true);
+    }
+    push_synthetic_or_branch(&mut env, node, vec![outer_a, outer_b], 1, 2, outer_tps);
+
+    // bp1: live subtree above the closed decision.
+    let inner_tps = synthetic_branch_track_points(&mut env, node, 2, 2);
+    push_synthetic_or_branch(&mut env, node, vec![inner_p, inner_q], 0, 1, inner_tps);
+
+    let advanced = env
+        .algo
+        .try_backtrack_or_branch_ddb(ClashDescId::NONE, &mut env.ctx);
+
+    assert!(
+        !advanced,
+        "every alternative of the outermost decision is refuted: nothing left \
+         to advance"
+    );
+    assert!(
+        env.algo.or_branch_stack.is_empty(),
+        "the closed decision AND the subtree stacked above it are discarded"
+    );
+    assert_eq!(
+        env.algo.ddb_closed_decision_discard_count, 1,
+        "the closed-decision leg must fire once, without an opt-in"
+    );
+    assert_eq!(
+        env.algo.ddb_refuted_discard_count, 0,
+        "the unsafe positional escape must stay untouched"
+    );
+    assert_eq!(env.algo.ddb_fallback_count, 0);
+}
+
+/// THE DEFAULT-OFF GUARD for the positional escape: the identical stack, with nothing
+/// opted in, must take the SOUND chronological fallback — no positional discard,
+/// no verdict. This is the regression that fails if `conf_ddb_refuted_discard`
+/// ever acquires a default-on path (or an inverse switch).
+#[test]
+fn ddb_walk_refuted_exhausted_decision_default_falls_back_without_discarding() {
+    let mut env = build_env();
+    env.algo.conf_dependency_backjumping = true;
+    assert!(
+        !env.algo.conf_ddb_refuted_discard,
+        "KM_HT_DDB_REFUTED_DISCARD must be OFF on a fresh algorithm"
+    );
+    let node = env.root;
+
+    let outer_a = atom_concept_with_tag(&mut env, 441);
+    let outer_b = atom_concept_with_tag(&mut env, 442);
+    let inner_p = atom_concept_with_tag(&mut env, 451);
+    let inner_q = atom_concept_with_tag(&mut env, 452);
+    let inner_r = atom_concept_with_tag(&mut env, 453);
+
+    // bp0: both alternatives explored, the CURRENT (last) one refuted.
+    let outer_tps = synthetic_branch_track_points(&mut env, node, 1, 2);
+    env.ctx
+        .process_context_mut()
+        .track_point_mut(outer_tps[1])
+        .set_clashed_or_irelevant_branch(true);
+    push_synthetic_or_branch(&mut env, node, vec![outer_a, outer_b], 1, 2, outer_tps);
+
+    // bp1: three alternatives, on its first, NOT in the clash's closure.
+    let inner_tps = synthetic_branch_track_points(&mut env, node, 2, 3);
+    push_synthetic_or_branch(
+        &mut env,
+        node,
+        vec![inner_p, inner_q, inner_r],
+        0,
+        1,
+        inner_tps,
+    );
+
+    let advanced = env
+        .algo
+        .try_backtrack_or_branch_ddb(ClashDescId::NONE, &mut env.ctx);
+
+    assert!(
+        advanced,
+        "the default walk keeps searching: the live subtree above a \
+         positionally-exhausted decision may still hold a model"
+    );
+    assert_eq!(
+        env.algo.ddb_refuted_discard_count, 0,
+        "the unsafe escape must not fire without an explicit opt-in"
+    );
+    assert_eq!(
+        env.algo.ddb_closed_decision_discard_count, 0,
+        "the decision is NOT closed (alternative 0 was advanced past without \
+         ever being refuted), so the safe leg must not fire either"
+    );
+    assert_eq!(
+        env.algo.ddb_fallback_count, 1,
+        "the sound chronological fallback owns this case by default"
+    );
+    assert_eq!(
+        env.algo.or_branch_stack.len(),
+        2,
+        "nothing is discarded: the topmost open branch point is advanced"
+    );
+    assert_eq!(
+        env.algo.or_branch_stack[1].next_alt, 2,
+        "the topmost branch point advanced to its second alternative"
+    );
+}
+
+/// Non-regression for the ORDINARY backjump: a refuted target that still has an
+/// unexplored alternative is ADVANCED, and only the (live) subtree above it is
+/// discarded. The escape above must not have changed this leg.
+#[test]
+fn ddb_walk_still_advances_a_refuted_target_that_has_a_remaining_alternative() {
+    let mut env = build_env();
+    env.algo.conf_dependency_backjumping = true;
+    let node = env.root;
+
+    let outer_a = atom_concept_with_tag(&mut env, 421);
+    let outer_b = atom_concept_with_tag(&mut env, 422);
+    let inner_p = atom_concept_with_tag(&mut env, 431);
+    let inner_q = atom_concept_with_tag(&mut env, 432);
+
+    let outer_tps = synthetic_branch_track_points(&mut env, node, 1, 2);
+    env.ctx
+        .process_context_mut()
+        .track_point_mut(outer_tps[0])
+        .set_clashed_or_irelevant_branch(true);
+    push_synthetic_or_branch(&mut env, node, vec![outer_a, outer_b], 0, 1, outer_tps);
+
+    let inner_tps = synthetic_branch_track_points(&mut env, node, 2, 2);
+    push_synthetic_or_branch(&mut env, node, vec![inner_p, inner_q], 0, 1, inner_tps);
+
+    let advanced = env
+        .algo
+        .try_backtrack_or_branch_ddb(ClashDescId::NONE, &mut env.ctx);
+
+    assert!(advanced, "the refuted target has a remaining alternative");
+    assert_eq!(
+        env.algo.or_branch_stack.len(),
+        1,
+        "the live subtree above the backjump target is discarded"
+    );
+    assert_eq!(env.algo.ddb_jump_count, 1);
+    assert_eq!(
+        env.algo.ddb_jump_pop_total, 1,
+        "exactly one branch point was popped past"
+    );
+    assert_eq!(
+        env.algo.ddb_refuted_discard_count, 0,
+        "the refuted-and-exhausted escape must not fire here"
+    );
+    assert_eq!(
+        env.algo.or_branch_stack[0].next_alt, 2,
+        "the target advanced to its second alternative"
+    );
+}
+
+/// Stage 8. `record_or_branch_open` attributes each opened branch point to the
+/// node it branches on, split by the retained-base watermark and by whether the
+/// node is an ABox (nominal) node.
+///
+/// The split is the read-off that separates "KM re-searches the retained ABox"
+/// from "KM searches its own fresh successors". Konclude's class task inherits
+/// the deterministic consistency base with EVERY individual processing queue
+/// cleared (`CSatisfiableCalculationTaskFromCalculationJobGenerator.cpp:199-208`),
+/// so upstream the retained bucket is unreachable by construction.
+#[test]
+fn or_branch_opens_are_attributed_to_retained_nominal_and_fresh_nodes() {
+    let mut env = build_env();
+
+    // One retained ABox root, one retained anonymous node, then the watermark.
+    let nominal = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    let individual = env
+        .ctx
+        .ontology_arenas_mut()
+        .alloc_individual(Individual::new(1));
+    env.ctx
+        .process_context_mut()
+        .node_mut(nominal)
+        .set_individual_node_id(-1)
+        .set_nominal_individual(individual);
+    let retained_anonymous = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(retained_anonymous)
+        .set_individual_node_id(7);
+    env.algo.retained_base_node_count = env.ctx.process_context().node_count();
+
+    // A node created after the watermark is this job's own work.
+    let fresh = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(fresh)
+        .set_individual_node_id(1_000);
+
+    env.algo.record_or_branch_open(nominal, &env.ctx);
+    env.algo.record_or_branch_open(retained_anonymous, &env.ctx);
+    env.algo.record_or_branch_open(fresh, &env.ctx);
+    // An out-of-range handle still counts as an open, and is attributed nowhere.
+    env.algo.record_or_branch_open(NodeId::NONE, &env.ctx);
+
+    assert_eq!(env.algo.or_branch_open_count, 4);
+    assert_eq!(
+        env.algo.or_branch_open_retained_node_count, 2,
+        "both pre-watermark nodes are retained-base work"
+    );
+    assert_eq!(
+        env.algo.or_branch_open_nominal_node_count, 1,
+        "only the node carrying a nominal individual is ABox work"
+    );
+    assert_eq!(env.algo.or_branch_open_fresh_node_count, 1);
+}
+
+/// Without a retained base the watermark is zero, so every branch point is
+/// `fresh` and the split stays inert on the non-retained routes.
+#[test]
+fn or_branch_open_attribution_is_inert_without_a_retained_base() {
+    let mut env = build_env();
+    assert_eq!(env.algo.retained_base_node_count, 0);
+    let root = env.root;
+    env.algo.record_or_branch_open(root, &env.ctx);
+    assert_eq!(env.algo.or_branch_open_count, 1);
+    assert_eq!(env.algo.or_branch_open_retained_node_count, 0);
+    assert_eq!(env.algo.or_branch_open_fresh_node_count, 1);
+    assert_eq!(env.algo.or_branch_open_nominal_node_count, 0);
+}
+
+// ===========================================================================
+// u25 — backend-expansion reuse (`checkIndividualBackendExpansionReuseable`
+// cpp 25010-25086, `reuseIndividualBackendExpansion` cpp 25092-25373).
+//
+// These pin the soundness contract of the replay: every recorded model choice
+// enters the graph under ONE non-deterministic dependency track point, the
+// deterministic half is untouched, an unrepresentable record is discarded
+// rather than partially replayed, and a branch-epoch rollback removes the whole
+// replay so the sibling alternative starts from the pre-reuse state.
+// ===========================================================================
+
+/// Register one ABox individual with tag `tag` as a nominal node with node id
+/// `-tag`, and install a replay record for it.
+fn make_reuse_nominal(
+    env: &mut SelfTestEnv,
+    tag: Cint64,
+    replay: super::algorithm::NativeNominalBackendReplay,
+) -> NodeId {
+    let individual = env
+        .ctx
+        .ontology_arenas_mut()
+        .alloc_individual(Individual::new(tag));
+    let node = env
+        .ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    env.ctx
+        .process_context_mut()
+        .node_mut(node)
+        .set_individual_type(IndividualType::Nominal)
+        .set_nominal_individual(individual)
+        .set_individual_node_id(-tag);
+    env.ctx
+        .processing_data_box_mut()
+        .individual_process_node_vector_mut()
+        .set_local_data(-tag, node);
+    env.algo.native_nominal_backend_replay.insert(tag, replay);
+    node
+}
+
+/// A replay record that the reuse path accepts: association present, completely
+/// representable, no reusable content of its own (callers fill the slots).
+fn reusable_replay_record() -> super::algorithm::NativeNominalBackendReplay {
+    super::algorithm::NativeNominalBackendReplay {
+        association_present: true,
+        reuse_replay_representable: true,
+        has_reusable_elements: true,
+        ..Default::default()
+    }
+}
+
+/// A non-deterministic reuse dependency track point, stamped onto `node`'s
+/// backend-sync data exactly as `prepareBackendIndividual*ReuseExpansion` does.
+fn install_reuse_track_point(env: &mut SelfTestEnv, node: NodeId, branching_tag: i64) -> TrackPointId
+{
+    env.ctx
+        .processing_data_box_mut()
+        .set_maximum_deterministic_branch_tag(0);
+    let tp = real_dependency_track_point(
+        env,
+        node,
+        ConDescId::NONE,
+        DepKind::ReuseBackendPrioritizedIndividualExpansion,
+        1,
+        branching_tag,
+    );
+    let sync = env
+        .algo
+        .get_localized_individual_backend_cache_snychronisation_data(node, &mut env.ctx);
+    env.ctx
+        .process_context_mut()
+        .backend_sync_data_mut(sync)
+        .set_backend_expansion_reuse_dependency_track_point(tp);
+    tp
+}
+
+fn label_descriptor_of(
+    env: &SelfTestEnv,
+    node: NodeId,
+    concept: ConceptId,
+) -> Option<(bool, TrackPointId)> {
+    let label = env
+        .ctx
+        .process_context()
+        .node(node)
+        .use_reapply_con_label_set;
+    if label.is_none() {
+        return None;
+    }
+    let mut con_des = ConDescId::NONE;
+    let mut tp = TrackPointId::NONE;
+    // The label set is keyed by the REAL concept tag, so the `_in_context`
+    // resolver is the only one that finds an inserted descriptor (the bare
+    // accessor is the W2-DEFER shim keyed on `ConceptId::raw`).
+    if !env
+        .ctx
+        .process_context()
+        .label_set(label)
+        .get_concept_descriptor_in_context(
+            env.ctx.process_context(),
+            env.ctx.ontology_arenas(),
+            concept,
+            &mut con_des,
+            &mut tp,
+        )
+    {
+        return None;
+    }
+    Some((
+        env.ctx.process_context().con_desc(con_des).is_negated(),
+        tp,
+    ))
+}
+
+fn new_test_concept(env: &mut SelfTestEnv, tag: Cint64) -> ConceptId {
+    let mut c = Concept::new();
+    c.set_concept_tag(tag);
+    env.ctx.ontology_arenas_mut().alloc_concept(c)
+}
+
+/// ISOLATION + POLARITY + NO DETERMINISTIC CONTAMINATION.
+///
+/// Only the NON-deterministic cache values are replayed, each with the recorded
+/// polarity, and each lands under the reuse branch's non-deterministic track
+/// point — never under the base dependency (the deterministic half is
+/// `replay_native_representative_cache`'s job and must not be duplicated here).
+#[test]
+fn backend_expansion_reuse_replays_only_nondeterministic_values_under_the_branch_track_point() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let deterministic_concept = new_test_concept(&mut env, 4100);
+    let chosen_disjunct = new_test_concept(&mut env, 4101);
+    let negated_choice = new_test_concept(&mut env, 4102);
+
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![
+        (deterministic_concept, false, true),
+        (chosen_disjunct, false, false),
+        (negated_choice, true, false),
+    ];
+    let node = make_reuse_nominal(&mut env, 7, replay);
+    let reuse_tp = install_reuse_track_point(&mut env, node, 1);
+
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+
+    // The deterministic value is NOT contributed by the reuse path.
+    assert!(
+        label_descriptor_of(&env, node, deterministic_concept).is_none(),
+        "the reuse replay must not duplicate the deterministic cache half"
+    );
+    // Both non-deterministic values land, with their recorded polarity, under
+    // the ONE non-deterministic reuse track point.
+    let (chosen_negated, chosen_tp) = label_descriptor_of(&env, node, chosen_disjunct)
+        .expect("the chosen disjunct is replayed");
+    assert!(!chosen_negated);
+    assert_eq!(chosen_tp, reuse_tp, "model choices ride the reuse branch");
+    let (negated_negated, negated_tp) =
+        label_descriptor_of(&env, node, negated_choice).expect("the negated choice is replayed");
+    assert!(negated_negated, "the recorded polarity is preserved");
+    assert_eq!(negated_tp, reuse_tp);
+}
+
+/// ISOLATION (the hard invariant): with no reuse branch track point installed —
+/// or with a DETERMINISTIC one — the replay does nothing at all. A model choice
+/// must never be published at the base dependency, where it would read as an
+/// entailment.
+#[test]
+fn backend_expansion_reuse_is_inert_without_a_nondeterministic_track_point() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let chosen_disjunct = new_test_concept(&mut env, 4110);
+
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    let node = make_reuse_nominal(&mut env, 8, replay);
+
+    // (a) no track point at all.
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+    assert!(label_descriptor_of(&env, node, chosen_disjunct).is_none());
+
+    // (b) a DETERMINISTIC track point (branching tag <= the deterministic
+    //     maximum) is refused just as hard.
+    let deterministic_tp = deterministic_track_point(&mut env);
+    let sync = env
+        .algo
+        .get_localized_individual_backend_cache_snychronisation_data(node, &mut env.ctx);
+    env.ctx
+        .process_context_mut()
+        .backend_sync_data_mut(sync)
+        .set_backend_expansion_reuse_dependency_track_point(deterministic_tp);
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+    assert!(
+        label_descriptor_of(&env, node, chosen_disjunct).is_none(),
+        "a deterministic track point must not carry a model choice"
+    );
+}
+
+/// INELIGIBLE FALLBACK: a record the writer could not serialize exactly is
+/// DISCARDED (flagging the node `PRFBACKENDEXPANSIONREUSEDISCARDED`), and the
+/// replay stays inert even if a track point was somehow installed. `None` in the
+/// typed record means "unknown", never "empty".
+#[test]
+fn backend_expansion_reuse_declines_and_discards_an_unrepresentable_record() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let chosen_disjunct = new_test_concept(&mut env, 4120);
+
+    let mut replay = reusable_replay_record();
+    replay.reuse_replay_representable = false;
+    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    let node = make_reuse_nominal(&mut env, 9, replay);
+    install_reuse_track_point(&mut env, node, 1);
+
+    assert!(!env
+        .algo
+        .check_individual_backend_expansion_reuseable(node, &mut env.ctx));
+    assert!(env
+        .ctx
+        .process_context()
+        .node(node)
+        .has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
+        ));
+
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+    assert!(
+        label_descriptor_of(&env, node, chosen_disjunct).is_none(),
+        "an unrepresentable record must not be partially replayed"
+    );
+}
+
+/// POLARITY, on the GATE side (cpp 24990-25012): the gate reads the polarity of
+/// the descriptor that is actually present for the cached concept's TAG.
+///
+/// The opposite polarity refutes the recorded choice and kills the reuse. It
+/// does so whether the present descriptor is deterministic or branch-dependent:
+/// cpp 24998's `hasNondeterministicDependency` early-out only skips the FIRST
+/// `reusable = false` site, and cpp 25005's
+/// `conSetLabel->hasConcept(concept, !negation)` then fires unconditionally —
+/// `CReapplyConceptLabelSet::mConceptDesDepMap` holds exactly ONE descriptor per
+/// concept tag, so "descriptor present with `isNegated() != negation`" and
+/// "`hasConcept(concept, !negation)`" are the same predicate. The
+/// "problematic/involved individuals are correctly reported" comment at cpp
+/// 24997 therefore does not survive the next guard; the reuse is refused either
+/// way. What the determinism split does NOT do is make a SAME-polarity
+/// branch-dependent entry refuse the reuse.
+#[test]
+fn backend_expansion_reuse_check_reads_the_polarity_of_the_present_descriptor() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let contested = new_test_concept(&mut env, 4130);
+
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(contested, false, false)];
+    let node = make_reuse_nominal(&mut env, 10, replay);
+
+    // A deterministically present ¬contested refutes the recorded choice.
+    let deterministic_tp = deterministic_track_point(&mut env);
+    let mut target = node;
+    env.algo.add_concept_to_individual(
+        contested,
+        true,
+        &mut target,
+        deterministic_tp,
+        true,
+        false,
+        &mut env.ctx,
+    );
+    assert!(!env
+        .algo
+        .check_individual_backend_expansion_reuseable(node, &mut env.ctx));
+
+    // Same label content, but the ¬contested is now branch-dependent. The cpp
+    // 24998 early-out is skipped — and cpp 25005 refuses the reuse anyway.
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let contested = new_test_concept(&mut env, 4130);
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(contested, false, false)];
+    let node = make_reuse_nominal(&mut env, 10, replay);
+    let branch_tp = real_dependency_track_point(
+        &mut env,
+        node,
+        ConDescId::NONE,
+        DepKind::Or,
+        1,
+        3,
+    );
+    env.ctx
+        .processing_data_box_mut()
+        .set_maximum_deterministic_branch_tag(0);
+    let mut target = node;
+    env.algo.add_concept_to_individual(
+        contested,
+        true,
+        &mut target,
+        branch_tp,
+        true,
+        false,
+        &mut env.ctx,
+    );
+    assert!(
+        !env.algo
+            .check_individual_backend_expansion_reuseable(node, &mut env.ctx),
+        "cpp 25005 refuses the opposite polarity regardless of its determinism"
+    );
+
+    // The polarity — not the determinism — is what decides: the SAME polarity
+    // under the very same branch-dependent track point leaves the reuse
+    // available (cpp 24995 sees `isNegated() == negation`, cpp 25005 misses).
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let contested = new_test_concept(&mut env, 4130);
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(contested, false, false)];
+    let node = make_reuse_nominal(&mut env, 10, replay);
+    let branch_tp = real_dependency_track_point(
+        &mut env,
+        node,
+        ConDescId::NONE,
+        DepKind::Or,
+        1,
+        3,
+    );
+    env.ctx
+        .processing_data_box_mut()
+        .set_maximum_deterministic_branch_tag(0);
+    let mut target = node;
+    env.algo.add_concept_to_individual(
+        contested,
+        false,
+        &mut target,
+        branch_tp,
+        true,
+        false,
+        &mut env.ctx,
+    );
+    assert!(env
+        .algo
+        .check_individual_backend_expansion_reuseable(node, &mut env.ctx));
+}
+
+/// DISTINCTIONS: the non-deterministic different-individual label is replayed as
+/// distinct edges under the reuse track point; the individual's own tag and any
+/// member of the DETERMINISTIC same-individual label are skipped exactly as at
+/// cpp 25311.
+#[test]
+fn backend_expansion_reuse_replays_nondeterministic_different_individuals_as_distinct() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+
+    let mut replay = reusable_replay_record();
+    replay.cached_nondeterministic_different_individuals = vec![11, 12, 13];
+    // 13 is deterministically the SAME individual, so it is not a distinction;
+    // 11 is the node's own tag.
+    replay.cached_deterministic_same_individuals = vec![13];
+    let node = make_reuse_nominal(&mut env, 11, replay);
+    let different = make_reuse_nominal(&mut env, 12, reusable_replay_record());
+    let same = make_reuse_nominal(&mut env, 13, reusable_replay_record());
+    let reuse_tp = install_reuse_track_point(&mut env, node, 1);
+
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+
+    let distinct_hash = env.ctx.process_context().node(node).use_distinct_hash;
+    assert!(distinct_hash.is_some(), "a distinct edge was installed");
+    let edge = env
+        .ctx
+        .process_context()
+        .distinct_hash(distinct_hash)
+        .get_individual_distinct_edge(-12);
+    assert!(edge.is_some(), "tag 12 is stated distinct");
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .distinct_edge(edge)
+            .get_dependency_track_point(),
+        reuse_tp,
+        "the distinction rides the reuse branch, not the base dependency"
+    );
+    assert!(
+        !env.ctx
+            .process_context()
+            .distinct_hash(distinct_hash)
+            .is_individual_distinct(-13),
+        "a deterministically-same individual is not a distinction"
+    );
+    assert!(
+        !env.ctx
+            .process_context()
+            .distinct_hash(distinct_hash)
+            .is_individual_distinct(-11),
+        "the individual is never distinct from itself"
+    );
+    let _ = (different, same);
+    // Idempotence: Konclude's `hasReuseNonDeterministicDifferentIndividualStated`
+    // makes the replay run once.
+    let sync = env
+        .ctx
+        .process_context()
+        .node(node)
+        .individual_backend_cache_synchronisation_data(false);
+    assert!(env
+        .ctx
+        .process_context()
+        .backend_sync_data(sync)
+        .has_reuse_non_deterministic_different_individual_stated());
+}
+
+/// EDGES: a non-deterministic cached neighbour-role value is re-created as a
+/// role link; a deterministic one is left to the ordinary (base-dependency)
+/// neighbour replay.
+#[test]
+fn backend_expansion_reuse_replays_only_nondeterministic_neighbour_role_links() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let nondeterministic_role = {
+        let mut role = super::super::model::role::Role::new();
+        role.set_role_tag(4140);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+    let deterministic_role = {
+        let mut role = super::super::model::role::Role::new();
+        role.set_role_tag(4141);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+
+    let mut replay = reusable_replay_record();
+    replay.cached_neighbour_roles = vec![
+        (21, nondeterministic_role, false, false),
+        (21, deterministic_role, false, true),
+    ];
+    let node = make_reuse_nominal(&mut env, 20, replay);
+    let neighbour = make_reuse_nominal(&mut env, 21, reusable_replay_record());
+    install_reuse_track_point(&mut env, node, 1);
+
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+
+    let mut source = node;
+    let mut destination = neighbour;
+    assert!(
+        env.algo.has_individuals_link(
+            &mut source,
+            &mut destination,
+            nondeterministic_role,
+            true,
+            &mut env.ctx
+        ),
+        "the recorded non-deterministic link is re-created"
+    );
+    let mut source = node;
+    let mut destination = neighbour;
+    assert!(
+        !env.algo.has_individuals_link(
+            &mut source,
+            &mut destination,
+            deterministic_role,
+            true,
+            &mut env.ctx
+        ),
+        "the deterministic half belongs to the base-dependency replay"
+    );
+}
+
+/// ROLLBACK: the whole replay lives inside the reuse branch point's epoch, so
+/// popping that epoch (what `advance_topmost_or_branch` does before entering the
+/// discarding alternative) removes the replayed concepts, distinctions and the
+/// installed reuse track point together.
+#[test]
+fn backend_expansion_reuse_replay_is_rolled_back_with_its_branch_epoch() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let chosen_disjunct = new_test_concept(&mut env, 4150);
+
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    replay.cached_nondeterministic_different_individuals = vec![31];
+    let node = make_reuse_nominal(&mut env, 30, replay);
+    let _different = make_reuse_nominal(&mut env, 31, reusable_replay_record());
+    // Materialise the label + backend-sync satellites BEFORE the epoch so the
+    // rollback is a real restore rather than an arena truncation.
+    env.algo
+        .get_localized_individual_backend_cache_snychronisation_data(node, &mut env.ctx);
+
+    env.ctx.push_branch_epoch();
+    install_reuse_track_point(&mut env, node, 1);
+    assert!(env
+        .algo
+        .reuse_individual_backend_expansion(node, &mut env.ctx));
+    assert!(label_descriptor_of(&env, node, chosen_disjunct).is_some());
+
+    env.ctx.pop_branch_epoch();
+
+    assert!(
+        label_descriptor_of(&env, node, chosen_disjunct).is_none(),
+        "the sibling alternative starts from the pre-reuse label"
+    );
+    let sync = env
+        .ctx
+        .process_context()
+        .node(node)
+        .individual_backend_cache_synchronisation_data(false);
+    assert!(
+        sync.is_none()
+            || env
+                .ctx
+                .process_context()
+                .backend_sync_data(sync)
+                .get_backend_expansion_reuse_dependency_track_point()
+                .is_none(),
+        "the reuse track point is rolled back with the alternative"
+    );
+    let distinct_hash = env.ctx.process_context().node(node).use_distinct_hash;
+    assert!(
+        distinct_hash.is_none()
+            || !env
+                .ctx
+                .process_context()
+                .distinct_hash(distinct_hash)
+                .is_individual_distinct(-31),
+        "the replayed distinction is rolled back too"
+    );
+}
+
+/// The two-way branch itself: `prepareBackendIndividualPrioritizedReuseExpansion`
+/// pushes ONE branch point with two alternatives, and alternative 0 flags the
+/// individual reusing, stamps a NON-deterministic reuse track point on its
+/// backend-sync data, and re-queues it onto the reuse-expansion queue. The
+/// ordinary expansion is retained as alternative 1.
+#[test]
+fn prepare_backend_individual_prioritized_reuse_expansion_opens_a_two_way_reuse_branch() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    env.ctx
+        .processing_data_box_mut()
+        .set_maximum_deterministic_branch_tag(0);
+    let node = make_reuse_nominal(&mut env, 40, reusable_replay_record());
+    assert!(env
+        .algo
+        .prepare_backend_expansion_reuse_branching(&mut env.ctx));
+
+    let mut indi = node;
+    assert!(env
+        .algo
+        .prepare_backend_individual_prioritized_reuse_expansion(&mut indi, &mut env.ctx));
+
+    assert_eq!(env.algo.or_branch_stack.len(), 1);
+    let branch = env.algo.or_branch_stack.last().expect("branch pushed");
+    assert!(matches!(
+        branch.kind,
+        super::algorithm::BranchKind::BackendExpansionReuse(_)
+    ));
+    assert_eq!(branch.alternatives_len(), 2, "reuse and discard");
+    assert_eq!(branch.next_alt, 1, "alternative 0 is already entered");
+    assert!(branch.own_epoch, "the replay is only undoable by rollback");
+
+    assert!(env
+        .ctx
+        .process_context()
+        .node(indi)
+        .has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSINGINDIVIDUAL
+        ));
+    assert!(
+        !env.ctx
+            .process_context()
+            .node(indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
+            ),
+        "the discarding alternative must not be applied in the same task"
+    );
+    let sync = env
+        .ctx
+        .process_context()
+        .node(indi)
+        .individual_backend_cache_synchronisation_data(false);
+    let reuse_tp = env
+        .ctx
+        .process_context()
+        .backend_sync_data(sync)
+        .get_backend_expansion_reuse_dependency_track_point();
+    assert!(reuse_tp.is_some());
+    assert!(
+        env.algo
+            .has_nondeterministic_dependency(reuse_tp, &mut env.ctx),
+        "the reuse anchor is a NON-deterministic track point"
+    );
+    assert!(env
+        .ctx
+        .process_context()
+        .node(indi)
+        .backend_reuse_expansion_queued);
+}
+
+/// The discarding alternative deactivates the reuse and returns the individual
+/// to ordinary processing (`PRFBACKENDEXPANSIONREUSEDISCARDED` then makes
+/// `handle_backend_expansion_reuse_queue_node` skip both the preparation and the
+/// replay).
+#[test]
+fn backend_expansion_reuse_discard_alternative_retains_the_ordinary_expansion() {
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let chosen_disjunct = new_test_concept(&mut env, 4160);
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    let node = make_reuse_nominal(&mut env, 50, replay);
+
+    let discarded = env
+        .algo
+        .enter_backend_expansion_reuse_discard_alternative(node, &mut env.ctx);
+    assert!(env
+        .ctx
+        .process_context()
+        .node(discarded)
+        .has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED
+        ));
+    assert!(
+        env.ctx
+            .process_context()
+            .node(discarded)
+            .is_backend_indirect_compatibility_expansion_queued(),
+        "Konclude's indirect-compatibility queue still receives it"
+    );
+
+    // The queue arm now short-circuits: no preparation, no replay.
+    env.algo.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BackendExpansionReuse;
+    assert!(env
+        .algo
+        .handle_backend_expansion_reuse_queue_node(discarded, &mut env.ctx));
+    assert!(label_descriptor_of(&env, discarded, chosen_disjunct).is_none());
+}
+
+// ===========================================================================
+// u25 — backend-expansion-reuse ACTIVATION (Stage 10).
+//
+// Stage 9 wired the mechanism's activation only into the lazy nominal
+// MATERIALIZER (`u36::get_up_to_date_individual_by_id`, Konclude cpp
+// 22524-22527). A retained class job COW-inherits the whole ABox
+// individual-node vector, so it never materializes an individual and the
+// mechanism stayed inert (v49/v50, job 49443083: 309910 branch points on
+// retained nodes, zero reuse). Konclude's second activation site is
+// `initialNodeInitialize` (cpp 8713-8730) — the node is actually TAKEN off a
+// processing queue. These tests pin that site: it activates when a retained
+// nominal is reached, it does NOT activate on a mere id resolution, it decides
+// each individual at most once per job, and it never overrules the discarding
+// alternative or adopts an unrepresentable record.
+// ===========================================================================
+
+/// `individual_node_initializing` is the activation point. A retained nominal
+/// that a rule actually scheduled is queued for reuse and its own round is
+/// DEFERRED, so the recorded model is adopted before the individual opens its
+/// first disjunction.
+#[test]
+fn reaching_a_retained_nominal_activates_backend_expansion_reuse_before_its_disjunctions() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let chosen_disjunct = new_test_concept(&mut env, 4200);
+    let mut replay = reusable_replay_record();
+    replay.cached_concept_values = vec![(chosen_disjunct, false, false)];
+    let node = make_reuse_nominal(&mut env, 61, replay);
+    // The node belongs to the retained deterministic consistency base, so its
+    // inherited concept-processing queue may hold undecided disjunctions.
+    env.algo.retained_base_node_count = env.ctx.process_context().node_count();
+
+    // The node arrives from an ordinary processing queue, exactly as a retained
+    // ABox node re-queued by a rule that linked/modified it.
+    env.algo.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Immediate;
+    assert!(
+        !env.algo.individual_node_initializing(node, &mut env.ctx),
+        "the round is deferred until the reuse decision has been taken"
+    );
+
+    assert!(
+        env.ctx
+            .process_context()
+            .node(node)
+            .backend_reuse_expansion_queued,
+        "the individual is on the backend-individual reuse-expansion queue"
+    );
+    let queue = env.ctx.get_backend_individual_reuse_expansion_queue(false);
+    assert!(queue.is_some());
+    assert!(!env
+        .ctx
+        .process_context()
+        .indi_unsorted_proc_queue(queue)
+        .is_empty());
+    // cpp 22766-22770: the databox flag AND the per-task option are lifted, so
+    // u02's Probes 18/19/34 drain the queue within this same drive.
+    assert!(env
+        .ctx
+        .processing_data_box()
+        .is_backend_individual_late_reuse_expansion_activated());
+    assert!(env.algo.opt_backend_expansion_reuse);
+
+    assert_eq!(env.algo.native_reuse_activation_reached_count, 1);
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 1);
+    assert_eq!(env.algo.native_reuse_pending_defer_count, 1);
+    assert_eq!(env.algo.native_reuse_activation_repeat_count, 0);
+}
+
+/// The decision is taken at most ONCE per individual per job (Konclude's
+/// one-shot `isNominalIndividualRepresentativeBackendDataLoaded`). After the
+/// reuse round has consumed the queue entry, reaching the node again neither
+/// re-queues it nor defers it — otherwise a retained nominal could never make
+/// progress.
+#[test]
+fn backend_expansion_reuse_activation_is_one_shot_per_job() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let node = make_reuse_nominal(&mut env, 62, reusable_replay_record());
+    env.algo.retained_base_node_count = env.ctx.process_context().node_count();
+
+    assert!(env
+        .algo
+        .activate_backend_individual_expansion_reuse(node, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 1);
+
+    // The reuse round consumes the queue entry (and clears the queued flag).
+    env.ctx
+        .process_context_mut()
+        .node_mut(node)
+        .set_backend_reuse_expansion_queued(false);
+
+    assert!(
+        !env.algo
+            .activate_backend_individual_expansion_reuse(node, &mut env.ctx),
+        "the individual has already been decided in this job"
+    );
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 1);
+    assert_eq!(env.algo.native_reuse_activation_repeat_count, 1);
+
+    // ... and ordinary processing now proceeds instead of deferring forever.
+    env.algo.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Immediate;
+    assert!(env.algo.individual_node_initializing(node, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_pending_defer_count, 0);
+}
+
+/// LAZINESS. Resolving an individual's id is not "reaching" it: the retained
+/// roots must not be scheduled just because the search looked one up. The HIT
+/// path of the lazy loader only COUNTS the undecided association.
+#[test]
+fn backend_expansion_reuse_activation_is_lazy_and_never_eager() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let node = make_reuse_nominal(&mut env, 63, reusable_replay_record());
+
+    let resolved = env.algo.get_up_to_date_individual_by_id(-63, &mut env.ctx);
+    assert_eq!(
+        resolved, node,
+        "the retained node is COW-inherited, not created"
+    );
+    assert_eq!(
+        env.algo.native_reuse_lazy_lookup_hit_count, 1,
+        "the undecided association is recorded"
+    );
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 0);
+    assert_eq!(env.algo.native_reuse_activation_reached_count, 0);
+    assert!(
+        !env.ctx
+            .process_context()
+            .node(node)
+            .backend_reuse_expansion_queued,
+        "a lookup must not schedule the recorded model"
+    );
+}
+
+/// FAIL-CLOSED. A record the writer could not serialize exactly is declined at
+/// the activation gate, so it is never even queued — the same outcome Konclude
+/// reaches by never queueing an incompletely handled association.
+#[test]
+fn backend_expansion_reuse_activation_declines_an_unrepresentable_record() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let mut replay = reusable_replay_record();
+    replay.reuse_replay_representable = false;
+    let node = make_reuse_nominal(&mut env, 64, replay);
+
+    assert!(!env
+        .algo
+        .activate_backend_individual_expansion_reuse(node, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_unrepresentable_count, 1);
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 0);
+    assert!(!env
+        .ctx
+        .process_context()
+        .node(node)
+        .backend_reuse_expansion_queued);
+
+    // An association with no non-deterministic slot at all is equally inert.
+    let mut empty = reusable_replay_record();
+    empty.has_reusable_elements = false;
+    let plain = make_reuse_nominal(&mut env, 65, empty);
+    assert!(!env
+        .algo
+        .activate_backend_individual_expansion_reuse(plain, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_no_elements_count, 1);
+}
+
+/// TWO-WAY BRANCH PRESERVED. Once alternative 1 has discarded the reuse for a
+/// node, the activation must not put it back on the queue — that would replay a
+/// model the search has explicitly rejected. The same holds while alternative 0
+/// is active (`PRFBACKENDEXPANSIONREUSINGINDIVIDUAL`).
+#[test]
+fn backend_expansion_reuse_activation_never_overrules_the_two_way_branch() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let discarded = make_reuse_nominal(&mut env, 66, reusable_replay_record());
+    env.ctx
+        .process_context_mut()
+        .node_mut(discarded)
+        .add_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED,
+        );
+    assert!(!env
+        .algo
+        .activate_backend_individual_expansion_reuse(discarded, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_declined_state_count, 1);
+    assert!(!env
+        .ctx
+        .process_context()
+        .node(discarded)
+        .backend_reuse_expansion_queued);
+
+    let reusing = make_reuse_nominal(&mut env, 67, reusable_replay_record());
+    env.ctx
+        .process_context_mut()
+        .node_mut(reusing)
+        .add_processing_restriction_flags(
+            IndividualProcessNode::PRF_BACKENDEXPANSIONREUSINGINDIVIDUAL,
+        );
+    assert!(!env
+        .algo
+        .activate_backend_individual_expansion_reuse(reusing, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_declined_state_count, 2);
+}
+
+/// The configuration switch still gates everything: with
+/// `conf_backend_expansion_reuse` off the activation point is inert and the
+/// route behaves exactly as before the reuse port.
+#[test]
+fn backend_expansion_reuse_activation_is_off_when_the_mechanism_is_disarmed() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = false;
+    let node = make_reuse_nominal(&mut env, 68, reusable_replay_record());
+
+    env.algo.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Immediate;
+    assert!(env.algo.individual_node_initializing(node, &mut env.ctx));
+    assert_eq!(env.algo.native_reuse_activation_reached_count, 0);
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 0);
+    assert!(!env
+        .ctx
+        .process_context()
+        .node(node)
+        .backend_reuse_expansion_queued);
+}
+
+/// The deferral is SCOPED to retained nodes. A node materialized inside this job
+/// has no inherited concept-processing queue — Konclude lets it continue its
+/// round after the activation (cpp 8713-8730 falls through), and so does the
+/// port: it is queued for reuse but not deferred.
+#[test]
+fn backend_expansion_reuse_activation_does_not_defer_a_freshly_materialized_node() {
+    let mut env = build_env();
+    env.algo.conf_backend_expansion_reuse = true;
+    let node = make_reuse_nominal(&mut env, 69, reusable_replay_record());
+    // `retained_base_node_count` stays 0: this node is NOT below the retained
+    // watermark, i.e. it is this job's own.
+    assert_eq!(env.algo.retained_base_node_count, 0);
+
+    env.algo.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Immediate;
+    assert!(
+        env.algo.individual_node_initializing(node, &mut env.ctx),
+        "Konclude's own timing is kept for a node this job materialized"
+    );
+    assert_eq!(env.algo.native_reuse_activation_queued_count, 1);
+    assert_eq!(env.algo.native_reuse_pending_defer_count, 0);
+    assert!(
+        env.ctx
+            .process_context()
+            .node(node)
+            .backend_reuse_expansion_queued,
+        "the reuse round still runs, it is just not ordered ahead of this round"
     );
 }

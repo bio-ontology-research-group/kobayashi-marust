@@ -468,7 +468,7 @@ impl SaturationTaskHandleAlgorithm {
             }
         }
 
-        let try_flat_label_copy = false; // 5554 (set true only on the ABox representative path)
+        let mut try_flat_label_copy = false; // 5554
         calc_alg_context
             .process_context_mut()
             .sat_node_mut(*indi_proc_sat_node)
@@ -480,19 +480,105 @@ impl SaturationTaskHandleAlgorithm {
                 .sat_node(*indi_proc_sat_node)
                 .get_nominal_individual();
             if nominal_indi.is_some() {
-                // ABox-representative initialization (5558–5590): resolve the
-                // representative-assertion node (named nominal) or add the asserted
-                // concepts (anonymous nominal). W6-DEFER[api]: the representative
-                // resolve helpers are unported and the bridge pre-build creates no
-                // nominal nodes. FAIL-SAFE: mark insufficiently saturated instead of
-                // dropping assertions (never silently approximate).
-                self.update_direct_adding_individual_status_flags(
-                    *indi_proc_sat_node,
-                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
-                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
-                    calc_alg_context,
-                );
-                self.set_insufficient_node_occured(calc_alg_context);
+                if nominal_indi.index()
+                    < calc_alg_context.ontology_arenas().individual_count() as usize
+                {
+                    // Exact named-ABox path (C++ 5659–5674): resolve the
+                    // individual's assertion set against the shared separated
+                    // TOP node, saturate that reusable assertion-resolved node,
+                    // then flat-copy its resolved label. In particular, do not
+                    // seed the raw assertions directly on the named node: that
+                    // loses Konclude's assertion-set disjunction resolution and
+                    // makes globally absorbed ORs spuriously insufficient.
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_node_mut(*indi_proc_sat_node)
+                        .set_abox_individual_representation_node(true);
+                    let has_individual_name = calc_alg_context
+                        .ontology_arenas()
+                        .individual(nominal_indi)
+                        .has_individual_name();
+                    if has_individual_name {
+                        let resolve_node = if calc_alg_context
+                            .process_context()
+                            .sat_node(*indi_proc_sat_node)
+                            .is_separated()
+                        {
+                            self.get_separated_saturation_concept_assertion_resolve_node(
+                                calc_alg_context,
+                            )
+                        } else {
+                            let top_concept = calc_alg_context
+                                .processing_data_box()
+                                .ontology_top_concept();
+                            self.get_individual_node_for_concept(
+                                top_concept,
+                                false,
+                                calc_alg_context,
+                            )
+                        };
+                        if resolve_node.is_some() {
+                            let assertion_resolved_node = self
+                                .get_resolved_individual_node_representative_assertion(
+                                    resolve_node,
+                                    nominal_indi,
+                                    calc_alg_context,
+                                );
+                            if assertion_resolved_node.is_some() {
+                                special_indi_node = assertion_resolved_node;
+                                copy_individual_node = true;
+                                try_flat_label_copy = true;
+                            } else {
+                                self.update_direct_adding_individual_status_flags(
+                                    *indi_proc_sat_node,
+                                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                    calc_alg_context,
+                                );
+                                self.set_insufficient_node_occured(calc_alg_context);
+                            }
+                        } else {
+                            // Konclude's generator guarantees a resolve base.
+                            // A missing base in the typed port is an incomplete
+                            // job, never permission to reinterpret a named ABox
+                            // individual as an anonymous direct seed.
+                            self.update_direct_adding_individual_status_flags(
+                                *indi_proc_sat_node,
+                                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                                    | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                calc_alg_context,
+                            );
+                            self.set_insufficient_node_occured(calc_alg_context);
+                        }
+                    } else {
+                        // Exact anonymous-individual branch (C++ 5675–5685):
+                        // add only the assertion linker entries. The own
+                        // nominal concept is not synthesized into that list.
+                        let assertions = calc_alg_context
+                            .ontology_arenas()
+                            .individual(nominal_indi)
+                            .get_assertion_concept_linker()
+                            .to_vec();
+                        for assertion in assertions {
+                            self.add_concept_filtered_to_individual(
+                                assertion.target,
+                                assertion.negated,
+                                indi_proc_sat_node,
+                                calc_alg_context,
+                            );
+                        }
+                    }
+                } else {
+                    // A dangling typed individual id is an incomplete
+                    // saturation job, never an empty ABox.
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                            | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                }
             }
         }
 
@@ -958,23 +1044,156 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // C++ 5081–5082: the ENTIRE body is guarded by
-        // `indiProcSatNode->getNominalIndividual() != nullptr` — for concept-seeded
-        // nodes (the only kind the bridge pre-build creates) this is an exact no-op.
         let nominal_indi = calc_alg_context
             .process_context()
             .sat_node(*indi_proc_sat_node)
             .get_nominal_individual();
-        if nominal_indi.is_some() {
-            // W6-DEFER[api]: the assertion/reverse-assertion double loop (see the
-            // PORT-PENDING summary above) is not yet ported. FAIL-SAFE: a nominal
-            // node whose role assertions cannot be installed is INSUFFICIENTLY
-            // saturated — defer it to the completion tableau rather than silently
-            // dropping assertions (never silently approximate).
+        if nominal_indi.is_none() {
+            return;
+        }
+        if nominal_indi.index() >= calc_alg_context.ontology_arenas().individual_count() as usize {
             self.update_direct_adding_individual_status_flags(
                 *indi_proc_sat_node,
                 super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
                     | super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            );
+            self.set_insufficient_node_occured(calc_alg_context);
+            return;
+        }
+
+        // Exact C++ 5084–5134 endpoint handshake, over the port's value-backed
+        // saturation assertion journal. Each model assertion is present on both
+        // endpoints, once as its forward face and once as its reverse face.
+        // Konclude skips the face while the peer node is still uninitialized.
+        // Whichever endpoint initializes second then installs both semantic
+        // directions. In particular, this prevents an early reverse face from
+        // queuing an initializing backward link whose later status propagation
+        // would incorrectly make the already-finished ABox peer insufficient.
+        // Record the exact deterministic base-assertion journal while
+        // replaying it.  The ontology model retains the same forward and
+        // reverse linkers, so their mere presence cannot mean that an
+        // assertion was omitted.  Konclude's two loops below are the
+        // authoritative coverage contract: forward and reverse faces have
+        // distinct orientation bits and every asserted endpoint/role must
+        // occur in the staged journal.
+        let mut covered_model_assertions = Vec::new();
+        let mut role_assertion_linker = calc_alg_context
+            .process_context()
+            .sat_node_ext_role_assertion_linker(*indi_proc_sat_node);
+        while role_assertion_linker.is_some() {
+            if role_assertion_linker.index()
+                >= calc_alg_context
+                    .process_context()
+                    .sat_succ_role_assertion_linker_count()
+            {
+                self.update_direct_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+                return;
+            }
+            let (mut destination, role, role_inversed, next) = {
+                let linker = calc_alg_context
+                    .process_context()
+                    .sat_succ_role_assertion_linker(role_assertion_linker);
+                (
+                    linker.get_assertion_destination_node(),
+                    linker.get_assertion_role(),
+                    linker.get_assertion_role_negation(),
+                    linker.get_next(),
+                )
+            };
+            if destination.is_none()
+                || destination.index() >= calc_alg_context.process_context().sat_node_count()
+                || role.is_none()
+                || role.index() >= calc_alg_context.ontology_arenas().role_count() as usize
+            {
+                self.update_direct_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+                return;
+            }
+            let destination_individual = calc_alg_context
+                .process_context()
+                .sat_node(destination)
+                .get_nominal_individual();
+            if destination_individual.is_none()
+                || destination_individual.index()
+                    >= calc_alg_context.ontology_arenas().individual_count() as usize
+            {
+                self.update_direct_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+                return;
+            }
+            covered_model_assertions.push((destination_individual, role, role_inversed));
+            let peer_initialized = destination == *indi_proc_sat_node
+                || calc_alg_context
+                    .process_context()
+                    .sat_node(destination)
+                    .is_initialized();
+            if peer_initialized {
+                self.create_role_assertion_link(
+                    indi_proc_sat_node,
+                    &mut destination,
+                    role,
+                    role_inversed,
+                    calc_alg_context,
+                );
+                let mut reciprocal_source = destination;
+                let mut reciprocal_destination = *indi_proc_sat_node;
+                self.create_role_assertion_link(
+                    &mut reciprocal_source,
+                    &mut reciprocal_destination,
+                    role,
+                    !role_inversed,
+                    calc_alg_context,
+                );
+            }
+            role_assertion_linker = next;
+        }
+
+        // The native bridge translates model-level role assertions into the
+        // value-backed journal above before initialization. Other callers may
+        // still populate only the model linkers. Until their object-backed
+        // neighbour resolution path is ported, fail closed instead of silently
+        // classifying without those assertions.
+        let has_unmaterialized_model_role_assertions = {
+            let individual = calc_alg_context.ontology_arenas().individual(nominal_indi);
+            individual.get_assertion_role_linker().iter().any(|assertion| {
+                !covered_model_assertions.contains(&(
+                    assertion.individual,
+                    assertion.role,
+                    false,
+                ))
+            }) || individual
+                .get_reverse_assertion_role_linker()
+                .iter()
+                .any(|assertion| {
+                    !covered_model_assertions.contains(&(
+                        assertion.individual,
+                        assertion.role,
+                        true,
+                    ))
+                })
+        };
+        if has_unmaterialized_model_role_assertions {
+            self.update_direct_adding_individual_status_flags(
+                *indi_proc_sat_node,
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                    | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
                 calc_alg_context,
             );
             self.set_insufficient_node_occured(calc_alg_context);
@@ -1017,7 +1236,15 @@ impl SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(*indi_proc_sat_node)
             .get_nominal_individual();
-        if nominal_indi.is_some() {
+        let has_unmaterialized_data_assertions = nominal_indi.is_some()
+            && nominal_indi.index()
+                < calc_alg_context.ontology_arenas().individual_count() as usize
+            && !calc_alg_context
+                .ontology_arenas()
+                .individual(nominal_indi)
+                .get_assertion_data_linker()
+                .is_empty();
+        if has_unmaterialized_data_assertions {
             self.update_direct_adding_individual_status_flags(
                 *indi_proc_sat_node,
                 super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
@@ -1060,14 +1287,108 @@ impl SaturationTaskHandleAlgorithm {
         role_inversed: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (
-            &source_node,
-            &destination_node,
-            role,
-            role_inversed,
-            &calc_alg_context,
-        );
-        // W6-DEFER[api]: PORT-PENDING — see the structured transcription above.
+        if source_node.is_none()
+            || destination_node.is_none()
+            || role.is_none()
+            || source_node.index() >= calc_alg_context.process_context().sat_node_count()
+            || destination_node.index() >= calc_alg_context.process_context().sat_node_count()
+            || role.index() >= calc_alg_context.ontology_arenas().role_count() as usize
+        {
+            return;
+        }
+        let destination_initialized = *destination_node == *source_node
+            || calc_alg_context
+                .process_context()
+                .sat_node(*destination_node)
+                .is_initialized();
+        let super_roles = Self::saturation_indirect_super_roles(role, calc_alg_context);
+        let mut connected = false;
+        for super_role_link in super_roles {
+            let super_role = super_role_link.target;
+            let super_role_inversed = super_role_link.negated ^ role_inversed;
+            let (has_disjoint_roles, domain_concepts, role_data_missing) = {
+                let role_ref = calc_alg_context.ontology_arenas().role(super_role);
+                (
+                    !role_ref.disjoint_roles.is_empty(),
+                    role_ref
+                        .get_domain_range_concept_list(super_role_inversed)
+                        .to_vec(),
+                    role_ref.get_role_data().is_none(),
+                )
+            };
+            if has_disjoint_roles {
+                self.update_direct_adding_individual_status_flags(
+                    *source_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
+            for domain in domain_concepts {
+                self.add_concept_filtered_to_individual_update_copy(
+                    domain.target,
+                    domain.negated,
+                    source_node,
+                    false,
+                    calc_alg_context,
+                );
+            }
+
+            if super_role_inversed {
+                connected = true;
+                let mut back_prop_link =
+                    super::satellites::BackwardSaturationPropagationLink::new();
+                back_prop_link.init_backward_propagation_link(*source_node, super_role);
+                let back_prop_link = calc_alg_context
+                    .process_context_mut()
+                    .alloc_backward_sat_prop_link(back_prop_link);
+                if !destination_initialized {
+                    let old_head = calc_alg_context
+                        .process_context()
+                        .sat_node(*destination_node)
+                        .get_initializing_backward_propagation_links();
+                    calc_alg_context
+                        .process_context_mut()
+                        .backward_sat_prop_link_mut(back_prop_link)
+                        .set_next(old_head);
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_node_mut(*destination_node)
+                        .set_initializing_backward_propagation_links(back_prop_link);
+                } else {
+                    self.install_backward_propagation_link(
+                        *source_node,
+                        *destination_node,
+                        super_role,
+                        back_prop_link,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+            } else {
+                self.add_new_linked_extension_processing_role(
+                    super_role,
+                    source_node,
+                    true,
+                    true,
+                    calc_alg_context,
+                );
+                if role_data_missing {
+                    self.update_direct_adding_individual_status_flags(
+                        *source_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNMARKEDROLEASSERTION,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+        if !connected {
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(*destination_node)
+                .add_non_inverse_connected_individual_node_linker(*source_node);
+        }
     }
 
     /// Port of `createSuccessorForDataLiteral` (.cpp 5174–5265).
