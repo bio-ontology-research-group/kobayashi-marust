@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
-use super::super::model::ConceptId;
+use super::super::model::{ConceptId, RoleId};
 use super::super::process::stubs::{
     IndividualConceptBatchProcessingQueue, IndividualCustomPriorityProcessingQueue,
     IndividualDepthProcessingQueue, IndividualLinkerRotationProcessingQueue,
@@ -156,9 +156,32 @@ pub struct AtMostMergeBranch {
     pub rest: super::super::process::RestrictionSpecId,
 }
 
+/// The backend-expansion-reuse branching payload
+/// (`prepareBackendIndividualPrioritizedReuseExpansion`, cpp 24916–25003):
+/// Konclude forks TWO dependent branching tasks off one
+/// `REUSEBACKENDPRIORITIZEDINDIVIDUALEXPANSION` dependency — task 0 flags the
+/// individual `PRFBACKENDEXPANSIONREUSINGINDIVIDUAL`, stamps the reuse
+/// dependency track point on its backend-sync data and re-queues it onto the
+/// backend-individual reuse-expansion queue (so
+/// `reuseIndividualBackendExpansion` replays the recorded model choices under
+/// that ONE non-deterministic track point); task 1 flags it
+/// `PRFBACKENDEXPANSIONREUSEDISCARDED` and lets the ordinary expansion run.
+/// The in-process realisation makes those the two alternatives of an
+/// `OrBranchPoint`, so a clash under the replayed model backtracks into the
+/// ordinary expansion instead of being reported as an entailment.
+pub struct BackendExpansionReuseBranch {
+    /// The individual node the reuse branch was opened on (alternative 0
+    /// re-queues it, alternative 1 returns it to ordinary processing).
+    pub indi_node: NodeId,
+    /// The ABox individual tag whose typed association is being replayed.
+    /// Diagnostic only; the replay itself re-resolves the record from the node.
+    pub individual_tag: Cint64,
+}
+
 /// What the alternatives of an `OrBranchPoint` DO: add a disjunct (the OR rule),
-/// merge a successor pair (the at-most rule's non-deterministic merging), or
-/// qualify a successor (the choose rule).
+/// merge a successor pair (the at-most rule's non-deterministic merging),
+/// qualify a successor (the choose rule), or adopt/discard a recorded backend
+/// model (the backend-expansion reuse branching).
 pub enum BranchKind {
     /// The alternatives live in `OrBranchPoint::disjuncts`.
     Disjunction,
@@ -176,6 +199,10 @@ pub enum BranchKind {
         /// The at-most re-check payload.
         atmost: AtMostMergeBranch,
     },
+    /// Backend-expansion reuse (see [`BackendExpansionReuseBranch`]):
+    /// alternative 0 replays the recorded non-deterministic model, alternative
+    /// 1 discards the reuse and keeps the ordinary expansion.
+    BackendExpansionReuse(BackendExpansionReuseBranch),
 }
 
 /// An open disjunction branch point on the in-process chronological search stack.
@@ -199,6 +226,16 @@ pub struct OrBranchPoint {
     pub node: NodeId,
     /// The disjunction's operand list (`concept->getOperandList()`), in order.
     pub disjuncts: Vec<NegLink<ConceptId>>,
+    /// Indices in this task's filtered survivor list, in the order in which
+    /// alternatives are explored. Konclude keeps the semantic partition in
+    /// sorted operand order, but schedules the child tasks by learned branch
+    /// priority.
+    pub alternative_order: Vec<usize>,
+    /// Survivor-list index of the currently active alternative.
+    pub current_alt: usize,
+    /// The disjunction concept whose per-operand statistics drive
+    /// `alternative_order`. `NONE` for non-disjunction branch points.
+    pub branching_concept: ConceptId,
     /// The `negate` flag the OR rule was dispatched with (each alternative's
     /// effective negation is `disjunct.negated ^ negate`).
     pub negate: bool,
@@ -255,6 +292,119 @@ pub struct OrBranchPoint {
     pub own_epoch: bool,
 }
 
+/// Ontology-local statistics for one operand of one disjunction. Konclude's
+/// `CBranchingStatistics` survives the representative-computation tasks and
+/// is reused by the later consistency/classification tasks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OrBranchLearningStats {
+    pub expanded: u64,
+    pub clashed: u64,
+    pub satisfiable: u64,
+}
+
+/// Bridge-local, typed input for Konclude's lazy nominal backend load.
+///
+/// This does not activate the generic backend-cache stub. The bridge installs
+/// one immutable entry per ontology individual after each task reset, and
+/// `get_up_to_date_individual_by_id` consumes only the entry for the nominal it
+/// materialises. Cached completion labels carry their determinism explicitly;
+/// only deterministic values are replayed into a fresh task.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeNominalBackendReplay {
+    pub asserted_concepts: Vec<(ConceptId, bool)>,
+    pub deterministic_cached_concepts: Vec<(ConceptId, bool)>,
+    /// Complete FULL_CONCEPT_SET values as
+    /// `(concept, negated, deterministic)`, sorted by that key.
+    pub cached_concept_values: Vec<(ConceptId, bool, bool)>,
+    /// Positive own nominal excluded by Konclude's concept-set
+    /// synchronization test.
+    pub own_nominal_concept: ConceptId,
+    /// Exact positive assertion-role linkers copied on lazy materialization.
+    pub role_assertions: Vec<(RoleId, Cint64)>,
+    /// Exact representative-cache neighbour-role values as
+    /// `(neighbour individual tag, role, inversed, deterministic)`.
+    /// A freshly materialized asserted edge that occurs here is not a direct
+    /// modification of the cached neighbour and therefore does not invalidate
+    /// its expansion block.
+    pub cached_neighbour_roles: Vec<(Cint64, RoleId, bool, bool)>,
+    /// Konclude's FULL_CONCEPT_SET cardinality extension:
+    /// `(role, existentialMaxUsedCardinality)`.
+    pub cached_existential_max_cardinalities: Vec<(RoleId, Cint64)>,
+    /// Konclude's FULL_CONCEPT_SET cardinality extension:
+    /// `(role, minimumRestrictingCardinality)`.
+    pub cached_at_most_cardinalities: Vec<(RoleId, Cint64)>,
+    /// `isCompletelyPropagated()` controls whether neighbour criticality is
+    /// tested against the exact cached concept value or against cached
+    /// neighbour-role membership.
+    pub completely_propagated: bool,
+    /// Association version consumed by this task. Completion writeback checks
+    /// this against the shared cache before publishing a replacement.
+    pub association_update_id: Option<u64>,
+    /// All typed backend predicates required for expansion blocking held when
+    /// this immutable replay record was produced.
+    pub expansion_blocking_candidate: bool,
+    /// Every valid association, including an incompletely handled one, can
+    /// retain its raw assertion linkers while the typed neighbour-role labels
+    /// drive selective expansion.
+    pub neighbour_expansion_blocking_candidate: bool,
+    pub association_present: bool,
+    /// `NONDETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL` — the recorded model's
+    /// possibly-same individuals, replayed as merges by
+    /// `reuse_individual_backend_expansion` (cpp 25105–25133).
+    pub cached_nondeterministic_same_individuals: Vec<Cint64>,
+    /// `DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL` — the exclusion set both the
+    /// reusability check (cpp 25046) and the distinct replay (cpp 25311) test
+    /// a candidate different-individual against.
+    pub cached_deterministic_same_individuals: Vec<Cint64>,
+    /// `NONDETERMINISTIC_DIFFRENT_INDIVIDUAL_SET_LABEL` — the recorded model's
+    /// distinctions (cpp 25305–25336).
+    pub cached_nondeterministic_different_individuals: Vec<Cint64>,
+    /// `assocData->getRepresentativeSameIndividualId()`, the merge target seed
+    /// of cpp 25110.
+    pub cached_representative_same_individual_id: Option<Cint64>,
+    /// FAIL-CLOSED gate for the reuse replay: every slot the replay reads was
+    /// serialized exactly by the writeback (concept values, every neighbour
+    /// role-set label's values, both same-individual labels, the
+    /// different-individual label, the representative id) and the association
+    /// is completely handled. A single unrepresentable value leaves this
+    /// `false`, and `check_individual_backend_expansion_reuseable` then
+    /// DISCARDS the reuse rather than replaying a partial model.
+    pub reuse_replay_representable: bool,
+    /// Konclude's `hasReuseableElements` (cpp 22711–22735): does the
+    /// association carry any of the four non-deterministic slots? Only then is
+    /// the individual queued for reuse expansion (cpp 22765–22771).
+    pub has_reusable_elements: bool,
+}
+
+impl Default for NativeNominalBackendReplay {
+    /// The "no association at all" record: every label empty, every
+    /// blocking/reuse gate off. Written out rather than derived because
+    /// `ConceptId` (`Id<Concept>`) deliberately carries no `Default` bound.
+    fn default() -> Self {
+        NativeNominalBackendReplay {
+            asserted_concepts: Vec::new(),
+            deterministic_cached_concepts: Vec::new(),
+            cached_concept_values: Vec::new(),
+            own_nominal_concept: ConceptId::NONE,
+            role_assertions: Vec::new(),
+            cached_neighbour_roles: Vec::new(),
+            cached_existential_max_cardinalities: Vec::new(),
+            cached_at_most_cardinalities: Vec::new(),
+            completely_propagated: false,
+            association_update_id: None,
+            expansion_blocking_candidate: false,
+            neighbour_expansion_blocking_candidate: false,
+            association_present: false,
+            cached_nondeterministic_same_individuals: Vec::new(),
+            cached_deterministic_same_individuals: Vec::new(),
+            cached_nondeterministic_different_individuals: Vec::new(),
+            cached_representative_same_individual_id: None,
+            reuse_replay_representable: false,
+            has_reusable_elements: false,
+        }
+    }
+}
+
 impl OrBranchPoint {
     /// Number of alternatives this branch point enumerates.
     pub fn alternatives_len(&self) -> usize {
@@ -262,7 +412,37 @@ impl OrBranchPoint {
             BranchKind::Disjunction => self.disjuncts.len(),
             BranchKind::AtMostMerge(m) => m.pairs.len(),
             BranchKind::AtMostQualify { .. } => 2,
+            BranchKind::BackendExpansionReuse(_) => 2,
         }
+    }
+
+    /// Index used by the per-alternative dependency-track-point vector.
+    pub fn current_track_alternative(&self) -> usize {
+        match &self.kind {
+            BranchKind::Disjunction => self.current_alt,
+            BranchKind::AtMostMerge(_)
+            | BranchKind::AtMostQualify { .. }
+            | BranchKind::BackendExpansionReuse(_) => self.next_alt.wrapping_sub(1),
+        }
+    }
+
+    /// Stable ontology-local statistics key for the active disjunct.
+    ///
+    /// `plan_or_processing` removes already decided operands independently in
+    /// every task. A filtered-vector index therefore does not identify the
+    /// same original operand across representative jobs. Konclude stores the
+    /// statistics pointer on the original operand linker; the signed operand
+    /// literal is the Rust bridge's stable equivalent.
+    pub fn current_disjunct_learning_key(&self) -> Option<(ConceptId, ConceptId, bool)> {
+        if !matches!(&self.kind, BranchKind::Disjunction) {
+            return None;
+        }
+        let disjunct = *self.disjuncts.get(self.current_alt)?;
+        Some((
+            self.branching_concept,
+            disjunct.target,
+            disjunct.negated ^ self.negate,
+        ))
     }
 }
 
@@ -416,6 +596,22 @@ pub struct CompletionTaskHandleAlgorithm {
     pub conf_build_dependencies: bool,
     pub conf_dependency_backtracking: bool,
     pub conf_dependency_backjumping: bool,
+    /// DIAGNOSTIC ONLY, DEFAULT OFF — `KM_HT_DDB_REFUTED_DISCARD`.
+    ///
+    /// Lets the DDB stack walk (u02 `try_backtrack_or_branch_ddb`) discard a
+    /// refuted-and-exhausted decision TOGETHER with the branch points stacked
+    /// above it. The escape is UNSOUND in KM: it assumes an alternative was
+    /// advanced past only because the current context refuted it, but the
+    /// chronological fallback advances the topmost branch point for clashes
+    /// that do not depend on it, so `next_alt` having passed an alternative is
+    /// NOT a refutation record. Measured cost of trusting it: 12 spurious
+    /// `PathOfLength3 ⊑ X` on ore_ont_12653.
+    ///
+    /// Set ONLY from the env var in `configure_default_blocking` (and directly
+    /// by the two u02 walk selftests). Nothing in the production path turns it
+    /// on, and there is deliberately no inverse switch: the safe behaviour is
+    /// the one you get by changing nothing.
+    pub conf_ddb_refuted_discard: bool,
     /// In-process COW branch epochs (see `push_branch_epoch`): every OR
     /// alternative runs under an arena journal + databox snapshot, so a
     /// backtrack restores the COMPLETE graph state (multi-node, queues,
@@ -489,6 +685,20 @@ pub struct CompletionTaskHandleAlgorithm {
     pub opt_delayed_backend_initializiation_with_root_linkers: bool,
     pub conf_allow_backend_successor_expansion_blocking: bool,
     pub conf_allow_backend_neighbour_expansion_blocking: bool,
+    /// Bridge-local: decline the cache-backed selective neighbour expansion per
+    /// NEIGHBOUR VALUE instead of per NODE.
+    ///
+    /// Konclude's `expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache`
+    /// only clears `lazyNeighboursExpansionSucceded` in step (2) (cpp 24093–24151);
+    /// the per-neighbour step (5) either expands the neighbour or defers it onto the
+    /// `CBackendNeighbourExpansionQueue` (cpp 25690–25700), which is why the traced
+    /// 9540 classification reports `rawRoleAssertionReplay=0`
+    /// (`diagnostics/9540-konclude-trace/run-49428590/trace.log:203`). With that
+    /// queue still W6-DEFER, the bridge's exact-equivalent local decision is to skip
+    /// only the neighbour value it cannot justify and keep the node's association
+    /// block, rather than dropping the whole node's cache and raw-replaying both
+    /// assertion chains.
+    pub conf_native_selective_neighbour_per_value_decline: bool,
     pub conf_only_deterministic_representative_backend_individual_data_consideration: bool,
     pub conf_occurrence_statistics_collecting: bool,
     pub opt_collect_occurrence_statistics: bool,
@@ -515,6 +725,25 @@ pub struct CompletionTaskHandleAlgorithm {
     pub conf_expand_created_successors_from_saturation: bool,
     pub conf_successor_saturation_expansion_restrictions_resolving: bool,
     pub conf_caching_blocking_from_saturation: bool,
+    /// Bridge-local FAIL-CLOSED leg of the completion↔saturation coupling on
+    /// native-nominal ontologies.
+    ///
+    /// Konclude replays a creation-successor saturation label even when the
+    /// saturation node is nominal-connected (cpp 22081–22140: the nominal branch
+    /// propagates the connection to the ancestors, copies the
+    /// successor-connected-nominal set under `mConfExactNominalDependencyTracking`
+    /// and then replays), and it is entitled to: the copy keeps the exact
+    /// per-nominal dependency record that later invalidation reads.
+    ///
+    /// The bridge runs with `conf_exact_nominal_dependency_tracking = false`, so
+    /// that record is not kept, and the native-ABox saturation wave shares one
+    /// task with the concept wave. A nominal-connected saturation label can
+    /// therefore carry ABox-influenced concepts the bridge cannot re-attribute to
+    /// a nominal. With this flag set, such a node is DECLINED (no replay, no
+    /// clash raised from it) instead of being trusted — strictly fewer
+    /// consequences and strictly fewer clashes than Konclude, never more.
+    /// Nominal-FREE saturation nodes are unaffected and carry the whole coupling.
+    pub conf_saturation_coupling_declines_nominal_connected: bool,
     pub conf_merge_constructed_individual_node: bool,
     pub opt_merge_constructed_individual_node: bool,
 
@@ -643,6 +872,175 @@ pub struct CompletionTaskHandleAlgorithm {
     /// STATINC(SATURATIONCACHECONCEPTEXPANSIONCOUNT): saturated-label concepts
     /// replayed onto fresh successors (`try_expansion_from_saturated_data`).
     pub saturation_expansion_concept_count: Cint64,
+    /// KM-BRIDGE: `try_expansion_from_saturated_data` calls declined because the
+    /// creation-successor saturation node carries `INDSATFLAGNOMINALCONNECTION`
+    /// and `conf_saturation_coupling_declines_nominal_connected` is set. Zero
+    /// unless that fail-closed leg is armed (native-nominal ontologies).
+    pub saturation_nominal_connected_decline_count: Cint64,
+    /// STATINC(SATURATIONCACHELOSECOUNT) (cpp 4793): saturation-blocking cache
+    /// LOSSES in `detect_individual_node_saturation_cached` — the retest could
+    /// not re-confirm the node, so `PRF_SATURATIONBLOCKINGCACHED` (and, with it,
+    /// `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED`) was cleared and every
+    /// absorbed generating concept was replayed. The counterpart to
+    /// `saturation_cache_establish_count`: a run where the two track each other
+    /// is establishing blocks it immediately throws away.
+    pub saturation_cache_lose_count: Cint64,
+    /// KM-BRIDGE read-off for the same retest: how often it RE-CONFIRMED the
+    /// node instead (`is_node_satisfiable_cached` returned true). Requires an
+    /// installed saturation-node expansion cache handler — without one the
+    /// retest cannot reach the re-confirmation at all and every modification
+    /// is a loss.
+    pub saturation_cache_reconfirm_count: Cint64,
+    /// STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT) (cpp 14332): generating
+    /// (∃/≥) concepts PARKED on a cache-blocked node instead of creating a
+    /// successor. This is the counter that says whether the coupling actually
+    /// stops the search; `applied_some_rule_count` is what it replaces.
+    pub saturation_cached_absorbed_generating_count: Cint64,
+    /// STATINC(SATCACHEDABSORBEDDISJUNCTIONCONCEPTSCOUNT) (cpp 17031 / 14876):
+    /// disjunction + merging concepts parked on a satisfiable/completion-graph
+    /// cached node.
+    pub saturation_cached_absorbed_disjunction_count: Cint64,
+    /// KM-BRIDGE: absorbed generating concepts flushed back onto the concept
+    /// processing queue by `reapply_satisfiable_cached_absorbed_generating_concepts`.
+    /// Every flushed descriptor re-runs `apply_some_rule`, so a large value next
+    /// to `saturation_cache_lose_count` is the replay loop itself.
+    pub saturation_cached_reapplied_generating_count: Cint64,
+    /// KM-BRIDGE: the SUBSET of `saturation_cache_establish_count` that also
+    /// received `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED`, i.e. whose
+    /// saturation node was NOT cardinality-problematic (u22, cpp 21772).
+    /// `establishes` alone does not say the block can park a generating concept:
+    /// the ∃/≥ absorption (cpp 14390 / 16138) reads the SUCCESSOR-CREATION flag,
+    /// never `PRF_SATURATIONBLOCKINGCACHED`. `establishes` large with this at 0
+    /// means every established block is a leaf-only block by construction, and
+    /// `saturation_cached_absorbed_generating_count = 0` follows without any
+    /// cache loss.
+    pub saturation_cache_establish_succ_block_count: Cint64,
+    /// KM-BRIDGE: establishes whose saturation node carried
+    /// `INDSATFLAGCARDINALITYPROPLEMATIC` in its INDIRECT status flags — the
+    /// exact complement of `saturation_cache_establish_succ_block_count`, kept
+    /// separately so the cause is named rather than inferred from a difference.
+    pub saturation_cache_establish_cardinality_problematic_count: Cint64,
+    /// KM-BRIDGE: ∃-rule applications (`apply_some_rule`) that reached the
+    /// successor-generation branch on a node that IS `PRF_SATURATIONBLOCKINGCACHED`.
+    /// Zero means the established blocks never reach a generating-concept use
+    /// site at all (the blocked successors are never processed with an ∃/≥);
+    /// non-zero with `saturation_cached_absorbed_generating_count = 0` means they
+    /// reach it and the absorption gate rejects them.
+    pub some_rule_on_saturation_blocked_count: Cint64,
+    /// KM-BRIDGE: the residual of the absorption gate — the node DID carry one of
+    /// the four cache flags (cpp 14390 mask) but
+    /// `is_generating_concept_satisfiable_cached_absorpable` said no. Isolates the
+    /// functional-role / at-most leg of cpp 14175–14211 from the flag question.
+    pub some_rule_succ_block_not_absorbable_count: Cint64,
+
+    /// KM-BRIDGE (Stage 8): number of process nodes the RETAINED consistency
+    /// base already contained when this class job opened, i.e. the arena node
+    /// count captured immediately after
+    /// `restore_retained_classification_base`. Zero on every route that does
+    /// not run on a retained base.
+    ///
+    /// This is the discriminator between "the class job re-searches the ABox
+    /// Konclude leaves alone" and "the class job searches its own fresh
+    /// successors": Konclude's class task COW-references the deterministic
+    /// consistency root with EVERY individual processing queue cleared
+    /// (`CSatisfiableCalculationTaskFromCalculationJobGenerator.cpp:199-208`,
+    /// `clearIndiProcessingQueue = true`), so no retained node is scheduled
+    /// unless a rule applied to the new assumption root reaches it.
+    pub retained_base_node_count: usize,
+    /// KM-BRIDGE (Stage 8): OR branch points opened on a node that already
+    /// existed in the retained base (arena index `< retained_base_node_count`).
+    pub or_branch_open_retained_node_count: u64,
+    /// KM-BRIDGE (Stage 8): OR branch points opened on a nominal (ABox) node,
+    /// whether retained or materialized inside this job.
+    pub or_branch_open_nominal_node_count: u64,
+    /// KM-BRIDGE (Stage 8): OR branch points opened on a node created by THIS
+    /// job (arena index `>= retained_base_node_count`) that is not a nominal.
+    /// This is the only bucket Konclude's `Image_type` class job could have
+    /// populated, and it populated it zero times
+    /// (`diagnostics/9540-konclude-trace/run-49428590/trace.log:200-213`).
+    pub or_branch_open_fresh_node_count: u64,
+
+    // ----------------------------------------------------------------------
+    // KM-BRIDGE (Stage 10): backend-expansion-reuse ACTIVATION accounting.
+    //
+    // Stage 9 ported the reuse mechanism itself (`u25`) and wired its
+    // activation into the lazy nominal MATERIALIZER
+    // (`u36::get_up_to_date_individual_by_id`, the exact site of Konclude cpp
+    // 22524-22527). v49/v50 then measured that the mechanism never fires on a
+    // retained class job, because a retained job never takes that path: the
+    // ABox node already exists in the COW-inherited individual-node vector.
+    // Konclude's SECOND activation site is `initialNodeInitialize`
+    // (cpp 8713-8730), which runs for every node actually taken off a
+    // processing queue. These counters split "never reached" from "reached and
+    // declined" for each gate, so a single run says which one holds.
+    // ----------------------------------------------------------------------
+    /// Individual tags whose reuse activation has already been decided in THIS
+    /// calculation job. Konclude's one-shot is the per-node
+    /// `mLoadedNominalIndiRepresentativeBackendData` flag; on a KM retained
+    /// base that flag is structurally already `true` (see
+    /// [`Self::native_reuse_activation_reached_count`]), so the port keeps the
+    /// one-shot per job instead. Cleared with the algorithm, i.e. exactly once
+    /// per class job (`reset_classification_algorithm_on_retained_base`).
+    pub native_reuse_activated_individuals: HashSet<Cint64>,
+    /// Distinct ABox individuals carrying a typed association that REACHED the
+    /// activation point (`u03::individual_node_initializing`) for the FIRST time
+    /// in this job — later arrivals land in
+    /// [`Self::native_reuse_activation_repeat_count`]. Zero means the class job
+    /// never touches an ABox node, and no reuse wiring can matter.
+    ///
+    /// Konclude's own guard here is
+    /// `!indiProcNode->isNominalIndividualRepresentativeBackendDataLoaded()`
+    /// (cpp 8713). It fires on a Konclude class job because that job's base is
+    /// `consTaskData->getDeterministicSatisfiableTask()` =
+    /// `statCalcTask->getRootTask()`
+    /// (`CSatisfiableTaskConsistencyPreyingAnalyser.cpp:55-56`) — the task as it
+    /// stood at the FIRST non-deterministic fork, in which most ABox nodes were
+    /// never initialized, so the flag is still `false` on them. KM instead
+    /// initializes all ABox individuals eagerly
+    /// (`bridge.rs::initialize_native_nominal_state_for_tags`) before any fork,
+    /// so every retained node arrives with the flag already set and the literal
+    /// guard can never fire.
+    pub native_reuse_activation_reached_count: u64,
+    /// Activation points reached for an individual already decided in this job.
+    pub native_reuse_activation_repeat_count: u64,
+    /// Reached, but the node carries no typed association record at all
+    /// (Konclude: `indiAssData == nullptr`).
+    pub native_reuse_activation_no_record_count: u64,
+    /// Reached with a record that holds NO non-deterministic slot
+    /// (Konclude: `hasReuseableElements == false`, cpp 22711-22735).
+    pub native_reuse_activation_no_elements_count: u64,
+    /// Reached with reusable elements but a record the writer could not
+    /// serialize exactly — declined fail-closed (KM-DEVIATION[fail-closed]).
+    pub native_reuse_activation_unrepresentable_count: u64,
+    /// Reached, eligible, but the node is already ON the reuse path (queued, a
+    /// reuse track point installed) or the reuse was explicitly DISCARDED by
+    /// alternative 1 of the two-way branch.
+    pub native_reuse_activation_declined_state_count: u64,
+    /// Activations that actually enqueued the individual on the
+    /// backend-individual reuse-expansion queue.
+    pub native_reuse_activation_queued_count: u64,
+    /// Nodes whose ordinary processing was DEFERRED because a reuse decision is
+    /// still pending on them, so the recorded model is adopted (or explicitly
+    /// discarded) before the node opens its own first disjunction.
+    pub native_reuse_pending_defer_count: u64,
+    /// Retained nominal nodes resolved through the lazy id lookup
+    /// (`u36::get_up_to_date_individual_by_id` HIT path) while an undecided
+    /// association was installed. Instrumentation only — the HIT path is a
+    /// RESOLUTION, not a "reached/influenced", so it never activates.
+    pub native_reuse_lazy_lookup_hit_count: u64,
+    /// Nodes taken off the backend-individual reuse-expansion queue
+    /// (`u02` Probes 19/34 → `handle_backend_expansion_reuse_queue_node`).
+    pub native_reuse_queue_drain_count: u64,
+    /// `check_individual_backend_expansion_reuseable` verdicts.
+    pub native_reuse_check_pass_count: u64,
+    pub native_reuse_check_decline_count: u64,
+    /// Two-way reuse branches actually forked by
+    /// `prepare_backend_individual_prioritized_reuse_expansion`.
+    pub native_reuse_branch_fork_count: u64,
+    /// `reuse_individual_backend_expansion` calls that reached the replay with a
+    /// non-deterministic reuse track point installed and a representable record,
+    /// i.e. that actually put recorded model state back into the graph.
+    pub native_reuse_replay_applied_count: u64,
 
     /// KM-BRIDGE: singleton concepts — any two distinct nodes positively
     /// carrying one are the SAME individual (the bridge's realisation of the
@@ -764,6 +1162,30 @@ pub struct CompletionTaskHandleAlgorithm {
     /// adds disjuncts under the OR concept's own track point, so the tag is
     /// not observable downstream and the open-count stands in).
     pub or_branch_open_count: u64,
+    /// Konclude's ontology-local branch statistics. The bridge deliberately
+    /// carries this map across per-task resets while all completion-graph
+    /// state is rebuilt.
+    pub or_branch_learning_stats: HashMap<(ConceptId, ConceptId, bool), OrBranchLearningStats>,
+    /// Enable Konclude's cache-oriented sibling-task ordering over the
+    /// in-process OR alternatives. Kept separate from the statistics map so
+    /// routes that have not opted into the representative-task profile retain
+    /// their established chronological order.
+    pub conf_cache_oriented_or_ordering: bool,
+    /// Typed bridge associations used by the lazy nominal materializer. Empty
+    /// outside the native-ABox route.
+    pub native_nominal_backend_replay: HashMap<Cint64, NativeNominalBackendReplay>,
+    /// Set by the typed neighbour expansion when a SELECTED cached neighbour
+    /// cannot be installed exactly (a non-deterministic cached role value has no
+    /// branch dependency in a fresh task, or the merge chain to the neighbour is
+    /// longer than the ported merging hash can justify).
+    ///
+    /// Konclude has no counterpart: its representative cache is authoritative, so
+    /// `expandIndividualNeighbourNodeFromBackendCache` always succeeds and
+    /// `lazyNeighboursExpansionSucceded` only reports purged blocked flags. The
+    /// bridge's typed replay record can decline, and the C++ caller shape at
+    /// cpp 8938 already routes a false return into the raw bidirectional
+    /// assertion replay, so this flag is carried on that same channel.
+    pub native_selective_neighbour_expansion_declined: bool,
     /// Set by `cancellation_root_task` (u32): the tracked-clash analysis
     /// (`clashedBacktracking`, u29) traced a clash to branching level 0 — the
     /// clash is independent of every open disjunction alternative, so the
@@ -812,8 +1234,25 @@ pub struct CompletionTaskHandleAlgorithm {
     /// point and early-returned without a new mark (stale-mark thrash).
     pub ddb_already_marked_count: u64,
     /// DDB diagnostics: refuted-and-exhausted decisions discarded (with their
-    /// stacked subtrees) by the backjump scan.
+    /// stacked subtrees) by the UNSAFE positional escape — non-zero only under
+    /// the diagnostic `conf_ddb_refuted_discard`.
     pub ddb_refuted_discard_count: u64,
+    /// DDB: CLOSED decisions (every alternative's track point marked clashed,
+    /// i.e. Konclude's `hasOtherOpenedDependencyTrackingPoints() == false`)
+    /// discarded with their stacked subtrees by the backjump scan. The safe
+    /// counterpart of `ddb_refuted_discard_count`; on by default.
+    pub ddb_closed_decision_discard_count: u64,
+    /// DDB diagnostics: all-siblings-refuted propagations that reached
+    /// branching level 0 but whose reconstructed closure did NOT carry a
+    /// refutation record for every sibling alternative, so the root
+    /// cancellation (cpp 7318–7321) was WITHHELD instead of taken — see the
+    /// witness test in u29's
+    /// `backtrack_non_deterministic_branching_clashed_descriptor`. A non-zero
+    /// count is the exact measure of how often the closure reconstruction
+    /// (`get_collected_filtered_clashed_descriptors_from_branch` /
+    /// `…_before_processing_tag`, cpp 7587–7644 / 7669–7764) is still lossy;
+    /// withholding costs an early exit, never a verdict.
+    pub ddb_root_cancel_withheld_count: u64,
     /// KM_BRIDGE_SEARCH_LOG budget counter.
     pub search_log_count: u64,
     /// DDB diagnostics: backjumps taken (target found by the scan).
@@ -980,6 +1419,8 @@ impl CompletionTaskHandleAlgorithm {
             conf_build_dependencies: false,
             conf_dependency_backtracking: false,
             conf_dependency_backjumping: false,
+            // Unsafe escape: OFF unless `KM_HT_DDB_REFUTED_DISCARD` is set.
+            conf_ddb_refuted_discard: false,
             conf_inprocess_cow: false,
             conf_write_unsat_caching: false,
             conf_test_occur_unsat_cached: false,
@@ -1044,6 +1485,7 @@ impl CompletionTaskHandleAlgorithm {
             opt_delayed_backend_initializiation_with_root_linkers: false,
             conf_allow_backend_successor_expansion_blocking: false,
             conf_allow_backend_neighbour_expansion_blocking: false,
+            conf_native_selective_neighbour_per_value_decline: true,
             conf_only_deterministic_representative_backend_individual_data_consideration: false,
             conf_occurrence_statistics_collecting: false,
             opt_collect_occurrence_statistics: false,
@@ -1066,6 +1508,7 @@ impl CompletionTaskHandleAlgorithm {
             conf_expand_created_successors_from_saturation: false,
             conf_successor_saturation_expansion_restrictions_resolving: false,
             conf_caching_blocking_from_saturation: false,
+            conf_saturation_coupling_declines_nominal_connected: false,
             conf_merge_constructed_individual_node: false,
             opt_merge_constructed_individual_node: false,
 
@@ -1179,6 +1622,35 @@ impl CompletionTaskHandleAlgorithm {
 
             saturation_cache_establish_count: 0,
             saturation_expansion_concept_count: 0,
+            saturation_nominal_connected_decline_count: 0,
+            saturation_cache_lose_count: 0,
+            saturation_cache_reconfirm_count: 0,
+            saturation_cached_absorbed_generating_count: 0,
+            saturation_cached_absorbed_disjunction_count: 0,
+            saturation_cached_reapplied_generating_count: 0,
+            saturation_cache_establish_succ_block_count: 0,
+            saturation_cache_establish_cardinality_problematic_count: 0,
+            some_rule_on_saturation_blocked_count: 0,
+            some_rule_succ_block_not_absorbable_count: 0,
+            retained_base_node_count: 0,
+            or_branch_open_retained_node_count: 0,
+            or_branch_open_nominal_node_count: 0,
+            or_branch_open_fresh_node_count: 0,
+            native_reuse_activated_individuals: HashSet::new(),
+            native_reuse_activation_reached_count: 0,
+            native_reuse_activation_repeat_count: 0,
+            native_reuse_activation_no_record_count: 0,
+            native_reuse_activation_no_elements_count: 0,
+            native_reuse_activation_unrepresentable_count: 0,
+            native_reuse_activation_declined_state_count: 0,
+            native_reuse_activation_queued_count: 0,
+            native_reuse_pending_defer_count: 0,
+            native_reuse_lazy_lookup_hit_count: 0,
+            native_reuse_queue_drain_count: 0,
+            native_reuse_check_pass_count: 0,
+            native_reuse_check_decline_count: 0,
+            native_reuse_branch_fork_count: 0,
+            native_reuse_replay_applied_count: 0,
 
             singleton_concepts: Vec::new(),
             applied_singleton_merge_count: 0,
@@ -1249,6 +1721,10 @@ impl CompletionTaskHandleAlgorithm {
             or_branch_stack: Vec::new(),
             or_backtrack_count: 0,
             or_branch_open_count: 0,
+            or_branch_learning_stats: HashMap::new(),
+            conf_cache_oriented_or_ordering: false,
+            native_nominal_backend_replay: HashMap::new(),
+            native_selective_neighbour_expansion_declined: false,
             ddb_root_cancelled: false,
             drive_deadline: None,
             conf_or_reverse: false,
@@ -1257,6 +1733,8 @@ impl CompletionTaskHandleAlgorithm {
             ddb_line_init_fail_count: 0,
             ddb_already_marked_count: 0,
             ddb_refuted_discard_count: 0,
+            ddb_closed_decision_discard_count: 0,
+            ddb_root_cancel_withheld_count: 0,
             search_log_count: 0,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
@@ -1305,6 +1783,42 @@ impl CompletionTaskHandleAlgorithm {
     /// Port of `getAppliedTotalRuleCount`.
     pub fn applied_total_rule_count(&self) -> Cint64 {
         self.applied_total_rule_count
+    }
+
+    /// KM-BRIDGE (Stage 8): count one opened OR branch point and attribute it
+    /// to the node it branches on. Pure instrumentation — it is called exactly
+    /// where `or_branch_open_count` was incremented before and changes no
+    /// control flow.
+    ///
+    /// The three buckets answer the one question Stage 7 left open: a class job
+    /// running on Konclude's retained deterministic consistency base must not
+    /// re-open the ABox's disjunctions, because that base is handed over with
+    /// every individual processing queue cleared. `retained` or `nominal`
+    /// dominating the total is the search re-deriving the consistency model;
+    /// `fresh` dominating means the search is in the probe's own successor tree
+    /// and the ABox replay is not the site.
+    pub fn record_or_branch_open(
+        &mut self,
+        node: NodeId,
+        calc_alg_context: &super::context::CalculationAlgorithmContextBase,
+    ) {
+        self.or_branch_open_count += 1;
+        if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
+            return;
+        }
+        if calc_alg_context
+            .process_context()
+            .node(node)
+            .nominal_individual()
+            .is_some()
+        {
+            self.or_branch_open_nominal_node_count += 1;
+        }
+        if node.index() < self.retained_base_node_count {
+            self.or_branch_open_retained_node_count += 1;
+        } else {
+            self.or_branch_open_fresh_node_count += 1;
+        }
     }
 }
 

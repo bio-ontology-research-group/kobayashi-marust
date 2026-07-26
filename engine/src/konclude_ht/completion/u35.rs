@@ -606,6 +606,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // A bridge-local representative association is a snapshot, exactly
+        // like Konclude's backend synchronization data. Any genuine concept,
+        // link, or merge modification must revoke its skip-expansion
+        // permission before the ordinary retest machinery observes the node.
+        // The helper clears the synchronization bits before materializing the
+        // retained forward/reverse assertion vectors, so recursive neighbour
+        // notifications cannot invalidate the same node twice.
+        self.invalidate_native_nominal_backend_blocking(*indi, calc_alg_context);
         let mut add_individual_to_processing_queue_due_to_modification = false;
         if !calc_alg_context
             .process_context()

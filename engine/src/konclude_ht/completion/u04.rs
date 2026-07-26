@@ -950,8 +950,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         let mut inserted_with_priority_offset = false;
         if proc_restriction != INVALID {
-            // W3-DEFER[api]: priorityOffset = procRestriction->getPriorityOffset();
-            let priority_offset: f64 = 0.0;
+            // `procRestriction` is an arena handle rather than the C++ base
+            // pointer, but it carries the same persistent priority offset.
+            // This matters for static reapply records: re-queuing a delayed OR
+            // at its default priority makes `initializeORProcessing` delay it
+            // again and discard the already-planned branching restriction.
+            let priority_offset = calc_alg_context
+                .process_context()
+                .restriction_spec(RestrictionSpecId::new(proc_restriction))
+                .get_priority_offset();
             inserted_with_priority_offset = true;
             self.add_concept_restricted_to_processing_queue_offset(
                 concept_descriptor,

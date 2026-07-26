@@ -328,6 +328,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .process_context()
                             .blocking_indi_node_linker(blocking_ind_node_linker)
                             .get_candidate_individual_node();
+                        if blocker_cand_indi_node.is_none() {
+                            calc_alg_context.raise_stop(false);
+                            return Id::NONE;
+                        }
                         if blocker_node != Id::NONE {
                             break;
                         }
@@ -343,6 +347,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 blocker_cand_indi_node,
                                 calc_alg_context,
                             );
+                            if up_blocker_cand_indi_node.is_none() {
+                                calc_alg_context.raise_stop(false);
+                                return Id::NONE;
+                            }
 
                             if self.is_individual_node_valid_blocker(
                                 up_blocker_cand_indi_node,
@@ -360,9 +368,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 {
                                     // make sure the candidate is not a descendant
                                     let mut anc_prev_indi_node = up_blocker_cand_indi_node;
-                                    while calc_alg_context
-                                        .process_context()
-                                        .node(anc_prev_indi_node)
+                                    while !anc_prev_indi_node.is_none()
+                                        && calc_alg_context
+                                            .process_context()
+                                            .node(anc_prev_indi_node)
                                         .individual_ancestor_depth()
                                         >= calc_alg_context
                                             .process_context()
@@ -518,8 +527,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let Some(indi_node) = indi_node_cand_it.next_individual_candidate(true) else {
                         continue;
                     };
+                    if indi_node.is_none() {
+                        calc_alg_context.raise_stop(false);
+                        return Id::NONE;
+                    }
                     let mut up_indi_node =
                         self.get_up_to_date_individual(indi_node, calc_alg_context);
+                    if up_indi_node.is_none() {
+                        calc_alg_context.raise_stop(false);
+                        return Id::NONE;
+                    }
                     let up_indi_node_id = calc_alg_context
                         .process_context()
                         .node(up_indi_node)
@@ -1204,17 +1221,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the backend-sync data object is live. This method
-    /// now reads/writes the sync-owned criticality flags and cursors exactly at the
-    /// Konclude call sites. Backend association-label/cardinality extension lookup
-    /// and the newly-merged deterministic visitor remain deferred to the cache
-    /// handler/association-data waves.
+    /// KONCLUDE-PORT-NOTE[api]: the backend-sync data object is live and this method
+    /// reads/writes the sync-owned criticality flags and cursors exactly at the
+    /// Konclude call sites. The per-role cardinality loop is LIVE against the typed
+    /// native-ABox association's cardinality extension (`cached_at_most_cardinalities`
+    /// / `cached_existential_max_cardinalities`); the generic
+    /// `CBackendRepresentativeMemoryLabelCacheItemCardinalityExtensionData` lookup
+    /// stays deferred to the cache-handler wave.
+    ///
+    /// The newly-merged test runs through the live u15 visitor. Note that — unlike
+    /// `testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical` — this
+    /// predicate has NO unconditional `getMergedIndividualNodeLinker()` test after
+    /// it: a merged node only makes the cardinality critical when it is itself a
+    /// backend-cache representative (it carries synchronisation data).
     pub fn test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
         &mut self,
         indi_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut expansion_blocking_critical = false;
+        // The typed native-ABox association is held in the bridge replay journal
+        // instead of the generic representative-memory cache. Ensure the localized
+        // backend-sync data that carries this predicate's gate + cursors exists, so
+        // the C++ control flow below runs unchanged against either association.
+        let native_assoc_tag = self.native_association_tag(indi_node, calc_alg_context);
+        if native_assoc_tag.is_some()
+            && calc_alg_context
+                .process_context()
+                .node(indi_node)
+                .individual_backend_cache_synchronisation_data(false)
+                == Id::NONE
+        {
+            self.get_localized_individual_backend_cache_snychronisation_data(
+                indi_node,
+                calc_alg_context,
+            );
+        }
         let backend_sync_data: BackendSyncDataId = calc_alg_context
             .process_context()
             .node(indi_node)
@@ -1233,7 +1275,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .backend_sync_data(backend_sync_data)
                 .is_critical_cardinality_expansion_blocking();
-            if !is_critical_cardinality_expansion_blocking && assoc_data.is_some() {
+            if !is_critical_cardinality_expansion_blocking
+                && (assoc_data.is_some() || native_assoc_tag.is_some())
+            {
                 self.test_individual_node_backend_cache_new_mergings(indi_node, calc_alg_context);
                 // backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
                 let backend_sync_data: BackendSyncDataId = calc_alg_context
@@ -1241,7 +1285,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node(indi_node)
                     .individual_backend_cache_synchronisation_data(false);
 
-                let (merged_linker_changed, merged_linker_snapshot) = {
+                let (merged_linker_changed, merged_linker_snapshot, last_tested_linker_snapshot) = {
                     let sync = calc_alg_context
                         .process_context()
                         .backend_sync_data(backend_sync_data);
@@ -1249,11 +1293,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         sync.get_merged_individual_node_linker()
                             != sync.get_last_critical_neighbours_tested_merged_node_linker(),
                         sync.get_merged_individual_node_linker().to_vec(),
+                        sync.get_last_critical_neighbours_tested_merged_node_linker()
+                            .to_vec(),
                     )
                 };
                 if merged_linker_changed {
-                    // W6-DEFER[api]: visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
-                    //   indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
+                    // visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
+                    //   indiNode, mergedLinker, lastTested, false,
+                    //   [&](…) { expansionBlockingCritical = true; return false; }, ctx);
+                    //
+                    // The visitor stops on its FIRST visited node, but it only visits a
+                    // newly merged node that ITSELF carries backend-cache
+                    // synchronisation data (u15). A changed-but-non-representative
+                    // merged linker is therefore NOT critical here — unlike the
+                    // neighbour variant, this predicate has no unconditional
+                    // `getMergedIndividualNodeLinker()` test after the visit.
+                    let mut newly_merged_representative = false;
+                    self.visit_newly_merged_only_deterministic_representative_individuals_backend_synchronisation_data(
+                        indi_node,
+                        &merged_linker_snapshot,
+                        &last_tested_linker_snapshot,
+                        false,
+                        &mut |_base_indi_node, _loc_indi_node, _back_sync_dep_track_point| {
+                            newly_merged_representative = true;
+                            false
+                        },
+                        calc_alg_context,
+                    );
+                    if newly_merged_representative {
+                        expansion_blocking_critical = true;
+                    }
                     loc_backend_sync_data = self
                         .get_localized_individual_backend_cache_snychronisation_data(
                             indi_node,
@@ -1265,6 +1334,71 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .set_last_critical_neighbours_tested_merged_node_linker(
                             merged_linker_snapshot,
                         );
+                }
+
+                // fullConSetLabelCacheItem = assocData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL);
+                // cardExtensionData = fullConSetLabelCacheItem->getExtensionData(CARDINALITY_HASH);
+                // On the typed route the cardinality extension is the replay
+                // record's at-most / existential-max cardinality pairs.
+                if let Some(assoc_tag) = native_assoc_tag {
+                    if !expansion_blocking_critical {
+                        let replay = self.native_nominal_backend_replay.get(&assoc_tag).cloned();
+                        let has_cardinality_extension = replay
+                            .as_ref()
+                            .is_some_and(|replay| !replay.cached_at_most_cardinalities.is_empty());
+                        let role_succ_hash = calc_alg_context
+                            .process_context_mut()
+                            .node_mut(indi_node)
+                            .get_reapply_role_successor_hash(false);
+                        if role_succ_hash != Id::NONE && has_cardinality_extension {
+                            let replay = replay.expect("cardinality extension implies a replay");
+                            let last_added_link_edge: EdgeId = calc_alg_context
+                                .process_context()
+                                .node(indi_node)
+                                .get_last_added_role_link();
+                            let last_tested_link_edge = calc_alg_context
+                                .process_context()
+                                .backend_sync_data(backend_sync_data)
+                                .get_last_critical_cardinality_link_edge();
+                            let critical_cardinality_initially_checked = calc_alg_context
+                                .process_context()
+                                .backend_sync_data(backend_sync_data)
+                                .has_critical_cardinality_initially_checked();
+                            // if (lastTestedLinkEdge != lastAddedLinkEdge
+                            //     || !assocData->isCompletelyHandled()
+                            //        && !backendSyncData->hasCriticalCardinalityInitiallyChecked())
+                            //
+                            // `expansion_blocking_candidate` is the typed record's
+                            // `isCompletelyHandled() && …` conjunction, so its negation
+                            // is the exact "not completely handled" disjunct here.
+                            if last_tested_link_edge != last_added_link_edge
+                                || !replay.expansion_blocking_candidate
+                                    && !critical_cardinality_initially_checked
+                            {
+                                // The per-role loop (linkCount = roleSuccHash count
+                                // + existentialMaxUsedCardinality when the successor
+                                // expansion is blocked + the cached representative
+                                // neighbour count; critical iff > minimumRestrictingCardinality).
+                                expansion_blocking_critical = !self
+                                    .native_cardinality_critical_roles(
+                                        indi_node,
+                                        &replay,
+                                        calc_alg_context,
+                                    )
+                                    .is_empty();
+                                loc_backend_sync_data = self
+                                    .get_localized_individual_backend_cache_snychronisation_data(
+                                        indi_node,
+                                        calc_alg_context,
+                                    );
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .backend_sync_data_mut(loc_backend_sync_data)
+                                    .set_last_critical_cardinality_link_edge(last_added_link_edge)
+                                    .set_critical_cardinality_initially_checked(true);
+                            }
+                        }
+                    }
                 }
 
                 // W6-DEFER[api]: fullConSetLabelCacheItem =
@@ -1376,13 +1510,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: same backend-cache satellite family as the cardinality
-    /// variant above. The backend-sync-owned gates/cursors are now live; association
-    /// propagation and label-cache membership remain deferred. The commented-out
-    /// festo.com debug block in the source is omitted (dead debug code). The
-    /// concept-descriptor scan iterates the unported
-    /// `CReapplyConceptLabelSet` adding-sorted chain (currently empty); the `hasNondeterministicDependency`
-    /// and per-concept sibling calls are preserved on the skeleton.
+    /// KONCLUDE-PORT-NOTE[api]: LIVE. The backend-sync-owned gates/cursors, the
+    /// concept-descriptor scan with BOTH incremental cut-offs
+    /// (`lastCriticalNeighbourExpansionTestedConceptDescriptor` and, when the
+    /// association is completely propagated, `lastSynchedConceptDescriptor`), the
+    /// newly-merged-representative test and the per-concept sibling all run. The
+    /// association is resolved as either the generic representative-memory id or the
+    /// typed native-ABox handle (the nominal tag; see the `native_*` backend-cache
+    /// accessors in u36). The commented-out festo.com debug block in the source is
+    /// omitted (dead debug code).
     pub fn test_individual_node_backend_cache_neighbour_expansion_blocking_critical(
         &mut self,
         indi_node: NodeId,
@@ -1390,6 +1526,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let mut expansion_blocking_critical = false;
 
+        // The typed native-ABox association is held in the bridge replay journal
+        // instead of the generic representative-memory cache; ensure the localized
+        // backend-sync data that owns this predicate's gate + cursors exists so the
+        // C++ control flow below runs unchanged against either association.
+        let native_assoc_tag = self.native_association_tag(indi_node, calc_alg_context);
+        if native_assoc_tag.is_some()
+            && calc_alg_context
+                .process_context()
+                .node(indi_node)
+                .individual_backend_cache_synchronisation_data(false)
+                == Id::NONE
+        {
+            self.get_localized_individual_backend_cache_snychronisation_data(
+                indi_node,
+                calc_alg_context,
+            );
+        }
         let backend_sync_data: BackendSyncDataId = calc_alg_context
             .process_context()
             .node(indi_node)
@@ -1404,11 +1557,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .backend_sync_data(backend_sync_data)
                 .get_associtaion_data();
+            // The opaque association handle passed to the per-concept sibling: the
+            // nominal tag on the typed route, the generic association id otherwise.
+            let assoc_handle: Cint64 = match native_assoc_tag {
+                Some(tag) => tag,
+                None => assoc_data.raw,
+            };
             let is_critical_neighbour_expansion_blocking = calc_alg_context
                 .process_context()
                 .backend_sync_data(backend_sync_data)
                 .is_critical_neighbour_expansion_blocking();
-            if assoc_data.is_some() && !is_critical_neighbour_expansion_blocking {
+            if (assoc_data.is_some() || native_assoc_tag.is_some())
+                && !is_critical_neighbour_expansion_blocking
+            {
                 self.test_individual_node_backend_cache_new_mergings(indi_node, calc_alg_context);
                 let backend_sync_data: BackendSyncDataId = calc_alg_context
                     .process_context()
@@ -1418,6 +1579,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let (
                     merged_linker_changed,
                     merged_linker_snapshot,
+                    last_tested_linker_snapshot,
                     has_merged_individual_node_linker,
                 ) = {
                     let sync = calc_alg_context
@@ -1427,12 +1589,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         sync.get_merged_individual_node_linker()
                             != sync.get_last_critical_neighbours_tested_merged_node_linker(),
                         sync.get_merged_individual_node_linker().to_vec(),
+                        sync.get_last_critical_neighbours_tested_merged_node_linker()
+                            .to_vec(),
                         !sync.get_merged_individual_node_linker().is_empty(),
                     )
                 };
                 if merged_linker_changed {
-                    // W6-DEFER[api]: visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
-                    //   indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
+                    // visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
+                    //   indiNode, mergedLinker, lastCriticalNeighboursTestedLinker, false,
+                    //   [&](…) { expansionBlockingCritical = true; return false; }, ctx);
+                    // Visits only a newly merged node that itself carries backend-cache
+                    // synchronisation data (u15). Subsumed by the unconditional
+                    // `getMergedIndividualNodeLinker()` test right below, which the C++
+                    // also performs here — kept for exactness.
+                    let mut newly_merged_representative = false;
+                    self.visit_newly_merged_only_deterministic_representative_individuals_backend_synchronisation_data(
+                        indi_node,
+                        &merged_linker_snapshot,
+                        &last_tested_linker_snapshot,
+                        false,
+                        &mut |_base_indi_node, _loc_indi_node, _back_sync_dep_track_point| {
+                            newly_merged_representative = true;
+                            false
+                        },
+                        calc_alg_context,
+                    );
+                    if newly_merged_representative {
+                        expansion_blocking_critical = true;
+                    }
                     loc_backend_sync_data = self
                         .get_localized_individual_backend_cache_snychronisation_data(
                             indi_node,
@@ -1460,8 +1644,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .process_context()
                             .backend_sync_data(backend_sync_data)
                             .get_last_synched_concept_descriptor();
-                        // W6-DEFER[api]: if (!assocData->isCompletelyPropagated()) lastSynchedConDes = nullptr;
-                        last_synched_con_des = Id::NONE;
+                        // if (!assocData->isCompletelyPropagated()) lastSynchedConDes = nullptr;
+                        //
+                        // Dropping the cursor makes the scan reach every descriptor;
+                        // keeping it is the second incremental cut-off that bounds the
+                        // scan to the descriptors added since the last synchronization.
+                        if !native_assoc_tag.is_some_and(|tag| {
+                            self.native_association_completely_propagated(tag)
+                        }) {
+                            last_synched_con_des = Id::NONE;
+                        }
                         // conSet = indiNode->getReapplyConceptLabelSet(false);
                         let con_set: LabelSetId = calc_alg_context
                             .process_context_mut()
@@ -1503,13 +1695,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         calc_alg_context,
                                     );
 
-                                    if assoc_data.is_some()
+                                    if assoc_handle >= 0
                                         && self
                                             .test_individual_node_concept_backend_cache_neighbour_expansion_blocking_critical(
                                                 concept,
                                                 con_negation,
                                                 nondeterministic,
-                                                assoc_data.raw,
+                                                assoc_handle,
                                                 calc_alg_context,
                                             )
                                     {
@@ -1570,14 +1762,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testIndividualNodeConceptBackendCacheNeighbourExpansionBlockingCritical`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the concept-operator dispatch and the recursive AQ-AND
-    /// descent are reproduced in FULL over the concept arena. The terminal label-cache
-    /// queries (`mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel` /
-    /// `hasRoleInAssociatedCompinationRoleSetLabel`) and `assocData->isCompletelyPropagated()`
-    /// are on the unported backend-cache handler / association data; they are deferred —
-    /// with `mBackendCacheHandler` null the `!mBackendCacheHandler || ...` disjunction is
-    /// true, so a matching `∀/⩽` / `∃/⩾/value` concept is flagged critical, exactly as the
-    /// faithful translation requires.
+    /// KONCLUDE-PORT-NOTE[api]: LIVE. The concept-operator dispatch and the recursive
+    /// AQ-AND descent are reproduced in FULL over the concept arena; the terminal
+    /// label-cache queries (`hasConceptInAssociatedFullConceptSetLabel` /
+    /// `hasRoleInAssociatedCompinationRoleSetLabel`) and
+    /// `assocData->isCompletelyPropagated()` run against the typed native-ABox
+    /// association (`assoc_data` is its opaque handle — the nominal individual tag).
+    /// An unresolvable handle reproduces the C++ `!mBackendCacheHandler || ...`
+    /// disjunction, so a matching `∀/⩽` / `∃/⩾/value` concept is then flagged
+    /// critical, which never skips work.
     pub fn test_individual_node_concept_backend_cache_neighbour_expansion_blocking_critical(
         &mut self,
         concept: ConceptId,
@@ -1628,30 +1821,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .ontology_arenas()
                 .concept(concept)
                 .get_role();
-            // W6-DEFER[api]: if (assocData->isCompletelyPropagated())
-            let is_completely_propagated = false;
-            if is_completely_propagated {
-                // W6-DEFER[api]: if (!mBackendCacheHandler
-                //     || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
-                //          assocData, assocData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL),
-                //          concept, conNegation, !nondeterministic, calcAlgContext))
+            // `assocData` arrives as the opaque association handle: the nominal tag
+            // of the typed native-ABox association, or the generic association id.
+            // A handle with no typed association behind it reproduces the C++
+            // `!mBackendCacheHandler ||` disjunct — every matching operator is then
+            // critical, which never skips work.
+            if assoc_data < 0
+                || self.native_association_handle_for_individual(assoc_data) != assoc_data
+            {
+                expansion_blocking_critical = true;
+            } else if self.native_association_completely_propagated(assoc_data) {
+                // if (!mBackendCacheHandler
+                //     || !nondeterministic && !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
+                //          assocData, FULL_CONCEPT_SET_LABEL, concept, conNegation,
+                //          !nondeterministic, calcAlgContext))
                 //   expansionBlockingCritical = true;
-                if self.backend_cache_handler == Id::NONE {
-                    expansion_blocking_critical = true;
-                } else {
+                if !nondeterministic
+                    && !self.native_has_concept_in_full_concept_set_label(
+                        assoc_data,
+                        concept,
+                        con_negation,
+                        !nondeterministic,
+                    )
+                {
                     expansion_blocking_critical = true;
                 }
             } else {
-                // W6-DEFER[api]: if (!mBackendCacheHandler
+                // if (!mBackendCacheHandler
                 //     || mBackendCacheHandler->hasRoleInAssociatedCompinationRoleSetLabel(
-                //          assocData, getLabelCacheEntry(DETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL), role, false)
+                //          assocData, DETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false)
                 //     || mBackendCacheHandler->hasRoleInAssociatedCompinationRoleSetLabel(
-                //          assocData, getLabelCacheEntry(NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL), role, false))
+                //          assocData, NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL, role, false))
                 //   expansionBlockingCritical = true;
-                let _ = role;
-                if self.backend_cache_handler == Id::NONE {
-                    expansion_blocking_critical = true;
-                } else {
+                if self.native_has_role_in_combined_neighbour_role_set_label(
+                    assoc_data, role, true, false,
+                ) || self.native_has_role_in_combined_neighbour_role_set_label(
+                    assoc_data, role, false, false,
+                ) {
                     expansion_blocking_critical = true;
                 }
             }

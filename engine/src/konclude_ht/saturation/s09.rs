@@ -97,6 +97,24 @@ use super::satellites::{
     IndividualSaturationSuccessorLinkDataLinkerId, SaturationDisjunctExtractionLinker,
     SaturationModificationProcessUpdateType, SaturationSuccessorDataId,
 };
+use std::collections::{HashMap, HashSet};
+
+fn native_nominal_prefix_is_insufficient(
+    prefixes: Option<&HashMap<Cint64, Vec<(ConceptId, bool)>>>,
+    nominal_id: Cint64,
+    saturated: Option<&HashSet<(ConceptId, bool)>>,
+) -> bool {
+    let Some(prefix) = prefixes.and_then(|prefixes| prefixes.get(&nominal_id)) else {
+        return true;
+    };
+    if prefix.is_empty() {
+        return false;
+    }
+    let Some(saturated) = saturated else {
+        return true;
+    };
+    prefix.iter().any(|literal| !saturated.contains(literal))
+}
 
 // ---------------------------------------------------------------------------
 // W4-DEFER[api]: pending `CCriticalSaturationConceptTypeQueues::CRITICALSATURATIONCONCEPTQUEUETYPE`
@@ -1379,6 +1397,82 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        // Native-ABox bridge equivalent of Konclude's cached deterministic /
+        // non-deterministic consistency task pair. The snapshot stores exactly
+        // the non-deterministic prefix before the deterministic label head.
+        // Every prefix literal must already occur in this saturation label.
+        if let Some(prefixes) = self
+            .native_consistency_nominal_nondeterministic_prefix
+            .as_ref()
+        {
+            if con_des.is_none()
+                || con_des.index() >= calc_alg_context.process_context().con_sat_desc_count()
+                || indi_proc_sat_node.is_none()
+                || indi_proc_sat_node.index() >= calc_alg_context.process_context().sat_node_count()
+            {
+                return true;
+            }
+            let nominal = {
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_sat_desc(con_des)
+                    .get_concept();
+                if concept.is_none()
+                    || concept.index()
+                        >= calc_alg_context.ontology_arenas().concept_count() as usize
+                {
+                    return true;
+                }
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_nominal_individual()
+            };
+            if nominal.is_none()
+                || nominal.index() >= calc_alg_context.ontology_arenas().individual_count() as usize
+            {
+                return true;
+            }
+            let nominal_id = calc_alg_context
+                .ontology_arenas()
+                .individual(nominal)
+                .get_individual_id();
+            let prefix = prefixes.get(&nominal_id);
+            if prefix.is_some_and(Vec::is_empty) {
+                return false;
+            }
+
+            let label = calc_alg_context
+                .process_context()
+                .sat_node(*indi_proc_sat_node)
+                .reapply_con_sat_label_set;
+            if label.is_none() {
+                return true;
+            }
+            let mut saturated = HashSet::new();
+            let mut descriptor = calc_alg_context
+                .process_context()
+                .reapply_con_sat_label_set(label)
+                .get_concept_saturation_description_linker();
+            let mut walked = 0usize;
+            while descriptor.is_some() {
+                if descriptor.index() >= calc_alg_context.process_context().con_sat_desc_count()
+                    || walked > calc_alg_context.process_context().con_sat_desc_count()
+                {
+                    return true;
+                }
+                let descriptor_ref = calc_alg_context.process_context().con_sat_desc(descriptor);
+                saturated.insert((descriptor_ref.get_concept(), descriptor_ref.get_negation()));
+                descriptor = descriptor_ref.get_next_concept_desciptor();
+                walked += 1;
+            }
+            return native_nominal_prefix_is_insufficient(
+                Some(prefixes),
+                nominal_id,
+                Some(&saturated),
+            );
+        }
+
         // CConcept* concept = conDes->getConcept(); CRole* role = concept->getRole();
         // CIndividual* nominal = concept->getNominalIndividual(); cint64 nominalID = nominal->getIndividualID();
         // if (isConsistenceDataAvailable(calcAlgContext)) {
@@ -1919,6 +2013,58 @@ mod tests {
     use super::super::algorithm::SaturationTaskHandleAlgorithm;
     use super::super::satellites::ConceptSaturationDescriptor;
     use super::*;
+
+    fn nominal_prefix_fixture() -> (
+        HashMap<Cint64, Vec<(ConceptId, bool)>>,
+        HashSet<(ConceptId, bool)>,
+    ) {
+        let literal = (ConceptId::new(17), false);
+        (
+            HashMap::from([(7, vec![literal])]),
+            HashSet::from([literal]),
+        )
+    }
+
+    #[test]
+    fn native_nominal_prefix_equal_is_sufficient() {
+        let (prefixes, saturated) = nominal_prefix_fixture();
+        assert!(!native_nominal_prefix_is_insufficient(
+            Some(&prefixes),
+            7,
+            Some(&saturated),
+        ));
+    }
+
+    #[test]
+    fn native_nominal_prefix_missing_snapshot_fails_closed() {
+        let (_, saturated) = nominal_prefix_fixture();
+        assert!(native_nominal_prefix_is_insufficient(
+            None,
+            7,
+            Some(&saturated),
+        ));
+    }
+
+    #[test]
+    fn native_nominal_prefix_missing_literal_is_insufficient() {
+        let (prefixes, _) = nominal_prefix_fixture();
+        assert!(native_nominal_prefix_is_insufficient(
+            Some(&prefixes),
+            7,
+            Some(&HashSet::new()),
+        ));
+    }
+
+    #[test]
+    fn native_nominal_prefix_polarity_mismatch_is_insufficient() {
+        let (prefixes, _) = nominal_prefix_fixture();
+        let saturated = HashSet::from([(ConceptId::new(17), true)]);
+        assert!(native_nominal_prefix_is_insufficient(
+            Some(&prefixes),
+            7,
+            Some(&saturated),
+        ));
+    }
 
     #[test]
     fn s09_disjunct_common_extraction_adds_only_common_label() {

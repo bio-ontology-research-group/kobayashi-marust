@@ -28,7 +28,11 @@
 //! callbacks. That entire subsystem is the W6 Cache layer (not yet ported), so per
 //! the porting plan their bodies are `W6-DEFER[api]` stubs: the faithful control
 //! flow is recorded, the visitor signatures + structure are preserved, and every
-//! cache/linker dereference is a marked stub. `mergeIndividualNodeInto` is the core
+//! cache/linker dereference is a marked stub. EXCEPTION: the `CXLinker` overload of
+//! `visitNewlyMergedIndividualsBackendSynchronisationData` and its
+//! `…OnlyDeterministicRepresentative…` wrapper are LIVE — their linkers are the
+//! process-side `Vec<NodeId>` of `IndividualNodeBackendCacheSynchronisationData`,
+//! which the u20 criticality predicates depend on. `mergeIndividualNodeInto` is the core
 //! merge driver (not a Cache helper) but is `PORT-PENDING` for the same structural
 //! reason `takeNextProcessIndividual` (u02) is: 553 lines dispatching ~15 not-yet-
 //! ported sibling helpers from other units plus unported satellite-container
@@ -37,6 +41,7 @@
 
 #![allow(dead_code, unused_variables, unused_mut)]
 
+use super::super::model::individual::{ReverseRoleAssertion, RoleAssertion};
 use super::super::model::substrate::Cint64;
 use super::super::process::distinct::DistinctHashId;
 use super::super::process::edge::DistinctEdge;
@@ -210,6 +215,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         merge_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // A representative-cache expansion block is valid only for the exact
+        // cached concept/neighbour state. Konclude invalidates both
+        // synchronization records before merging and carries the assertions
+        // under the merge dependency. Do the same before phase 1 mutates
+        // either completion node.
+        self.invalidate_native_nominal_backend_blocking(
+            merge_into_individual_node,
+            calc_alg_context,
+        );
+        self.invalidate_native_nominal_backend_blocking(individual, calc_alg_context);
+
         // ---- phase 0: statistics + debug captures -------------------------------
         // STATINC(INDINODEMERGECOUNT, calcAlgContext);
         // (statistics gathering is a not-yet-ported subsystem; see u02 precedent.)
@@ -548,6 +564,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             nominal_individual,
             role_ass_linker,
             reverse_role_ass_linker,
+            role_assertions,
+            reverse_role_assertions,
+            assertion_owner_tag,
             initializing_concepts,
             data_ass_linker,
             mut additional_role_entries,
@@ -559,6 +578,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let nominal_individual = node.nominal_individual().raw;
             let role_ass_linker = node.assertion_role_linker();
             let reverse_role_ass_linker = node.reverse_assertion_role_linker();
+            let role_assertions = node.assertion_role_assertions().to_vec();
+            let reverse_role_assertions = node.reverse_assertion_role_assertions().to_vec();
+            let assertion_owner_tag = -node.individual_node_id();
             let initializing_concepts = node.process_initializing_concept_linker().to_vec();
             let data_ass_linker = node.assertion_data_linker();
 
@@ -600,6 +622,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 nominal_individual,
                 role_ass_linker,
                 reverse_role_ass_linker,
+                role_assertions,
+                reverse_role_assertions,
+                assertion_owner_tag,
                 initializing_concepts,
                 data_ass_linker,
                 additional_role_entries,
@@ -625,6 +650,102 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .set_next(old_head);
             pc.node_mut(merge_into_individual_node)
                 .set_additional_role_assertions_linker(linker);
+            new_links_added = true;
+        }
+
+        // Rust's native ABox bridge stores the same assertion chains by value
+        // because the C++ intrusive-linker addresses are not stable here.
+        // Preserve them on the surviving node and materialize only newly
+        // transferred assertions with the merge dependency. Existing target
+        // assertions retain their original derivations; a later lazy replay
+        // may see these values again, but the role-link deduplication makes
+        // that idempotent.
+        let mut transferred_role_assertions: Vec<RoleAssertion> = Vec::new();
+        let mut transferred_reverse_role_assertions: Vec<ReverseRoleAssertion> = Vec::new();
+        {
+            let pc = calc_alg_context.process_context();
+            let target = pc.node(merge_into_individual_node);
+            for assertion in role_assertions {
+                if !target.assertion_role_assertions().contains(&assertion) {
+                    transferred_role_assertions.push(assertion);
+                }
+            }
+            for assertion in reverse_role_assertions {
+                if !target
+                    .reverse_assertion_role_assertions()
+                    .contains(&assertion)
+                {
+                    transferred_reverse_role_assertions.push(assertion);
+                }
+            }
+        }
+        if !transferred_role_assertions.is_empty()
+            || !transferred_reverse_role_assertions.is_empty()
+        {
+            {
+                let target = calc_alg_context
+                    .process_context_mut()
+                    .node_mut(merge_into_individual_node);
+                let mut combined = target.assertion_role_assertions().to_vec();
+                combined.extend(transferred_role_assertions.iter().copied());
+                target.set_assertion_role_assertions(combined);
+                let mut combined_reverse = target.reverse_assertion_role_assertions().to_vec();
+                combined_reverse.extend(transferred_reverse_role_assertions.iter().copied());
+                target.set_reverse_assertion_role_assertions(combined_reverse);
+            }
+            for assertion in transferred_role_assertions {
+                if assertion.individual.is_none()
+                    || assertion.individual.index()
+                        >= calc_alg_context.ontology_arenas().individual_count() as usize
+                {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                }
+                let target_tag = calc_alg_context
+                    .ontology_arenas()
+                    .individual(assertion.individual)
+                    .get_individual_id();
+                if !self.install_native_role_assertion_edge(
+                    merge_into_individual_node,
+                    assertion.role,
+                    target_tag,
+                    merge_dep_track_point,
+                    calc_alg_context,
+                ) {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                }
+            }
+            if assertion_owner_tag < 0 {
+                calc_alg_context.raise_stop(false);
+                return;
+            }
+            for assertion in transferred_reverse_role_assertions {
+                if assertion.individual.is_none()
+                    || assertion.individual.index()
+                        >= calc_alg_context.ontology_arenas().individual_count() as usize
+                {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                }
+                let source_tag = calc_alg_context
+                    .ontology_arenas()
+                    .individual(assertion.individual)
+                    .get_individual_id();
+                let source = self.get_up_to_date_individual_by_id(-source_tag, calc_alg_context);
+                if source.is_none()
+                    || !self.install_native_role_assertion_edge(
+                        source,
+                        assertion.role,
+                        assertion_owner_tag,
+                        merge_dep_track_point,
+                        calc_alg_context,
+                    )
+                {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                }
+            }
             new_links_added = true;
         }
         for (source_individual, role_linker, reverse_role_linker, dep_track_point) in
@@ -853,30 +974,120 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// KONCLUDE-PORT-NOTE[overload]: see the `_hash` overload above; this one walks
     /// the `[newIndiMergedLinker .. prevIndiMergedLinker)` node linker chain.
     ///
-    /// W6-DEFER[api]: same backend-sync-data subsystem; per linked node it resolves
-    /// `getUpToDateIndividual`, looks the node's nominal id up in the merging hash for
-    /// the `backSyncDepTrackPoint`, and invokes `visitFunc` when the node carries
-    /// backend-cache sync data.
+    /// LIVE. Faithful transcription of cpp 23118–23142:
+    ///
+    /// ```text
+    /// visited = false; continueVisiting = true;
+    /// depTrackPoint = calcAlgContext->getBaseDependencyNode()->getContinueDependencyTrackPoint();
+    /// backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
+    /// if (backendSyncData && visitBaseIndividual) {
+    ///   continueVisiting = visitFunc(indiNode, indiNode, depTrackPoint); visited = true; }
+    /// if (newIndiMergedLinker != prevIndiMergedLinker) {
+    ///   mergingHash = indiNode->getIndividualMergingHash(false);
+    ///   for (it = newIndiMergedLinker; it && it != prevIndiMergedLinker && continueVisiting; it = it->getNext()) {
+    ///     backendSyncDataIndiNode = getUpToDateIndividual(it->getData(), calcAlgContext);
+    ///     mergingData = mergingHash->value(backendSyncDataIndiNode->getNominalIndividual()->getIndividualID());
+    ///     backSyncDepTrackPoint = mergingData.getDependencyTrackPoint();
+    ///     if (backendSyncDataIndiNode->getIndividualBackendCacheSynchronisationData(false)) {
+    ///       continueVisiting = visitFunc(indiNode, backendSyncDataIndiNode, backSyncDepTrackPoint);
+    ///       visited = true; } } }
+    /// return visited;
+    /// ```
+    ///
+    /// The gate that matters to every caller is the LAST one: a merged node is only
+    /// visited when it itself carries backend-cache synchronisation data, i.e. when
+    /// it is a representative individual the backend cache knows about. A merged node
+    /// without sync data is walked over silently.
+    ///
+    /// KM-DEVIATION[linker]: the C++ `CXLinker` is a prepend-list, so
+    /// `prevIndiMergedLinker` is a *suffix* of `newIndiMergedLinker` and the
+    /// `it != prevIndiMergedLinker` bound walks exactly the newly prepended prefix.
+    /// KM stores both as `Vec<NodeId>` snapshots, so the same window is "the entries
+    /// of `new` that `prev` does not already hold"; that coincides with the pointer
+    /// walk whenever `prev` is a suffix of `new` and degrades to "every entry is new"
+    /// when it is not, which never skips a visit.
     pub fn visit_newly_merged_individuals_backend_synchronisation_data_linker(
         &mut self,
         indi_node: NodeId,
-        new_indi_merged_linker: Cint64,
-        prev_indi_merged_linker: Cint64,
+        new_indi_merged_linker: &[NodeId],
+        prev_indi_merged_linker: &[NodeId],
         visit_base_individual: bool,
-        mut visit_func: impl FnMut(NodeId, NodeId, TrackPointId) -> bool,
+        visit_func: &mut dyn FnMut(NodeId, NodeId, TrackPointId) -> bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _ = (
-            indi_node,
-            new_indi_merged_linker,
-            prev_indi_merged_linker,
-            visit_base_individual,
-            calc_alg_context,
-        );
         // bool visited = false; bool continueVisiting = true;
-        let visited = false;
-        // W6-DEFER[api]: backend-sync-data gate + base-individual visit, then walk the
-        // CXLinker<CIndividualProcessNode*> chain invoking visitFunc per up-to-date node.
+        let mut visited = false;
+        let mut continue_visiting = true;
+        // depTrackPoint = calcAlgContext->getBaseDependencyNode()->getContinueDependencyTrackPoint();
+        let base_dep_node = calc_alg_context.base_dependency_node();
+        let dep_track_point = if base_dep_node.is_some() {
+            calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(base_dep_node)
+        } else {
+            TrackPointId::NONE
+        };
+        // backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
+        let backend_sync_data = calc_alg_context
+            .process_context()
+            .node(indi_node)
+            .individual_backend_cache_synchronisation_data(false);
+
+        if backend_sync_data.is_some() && visit_base_individual {
+            continue_visiting = visit_func(indi_node, indi_node, dep_track_point);
+            visited = true;
+        }
+
+        if new_indi_merged_linker != prev_indi_merged_linker {
+            for &merged in new_indi_merged_linker {
+                if !continue_visiting {
+                    break;
+                }
+                // the `it != prevIndiMergedLinker` window, see KM-DEVIATION[linker]
+                if prev_indi_merged_linker.contains(&merged) {
+                    continue;
+                }
+                // backendSyncDataIndiNode = getUpToDateIndividual(…, calcAlgContext);
+                let backend_sync_data_indi_node =
+                    self.get_up_to_date_individual(merged, calc_alg_context);
+                // mergingData = mergingHash->value(…->getNominalIndividual()->getIndividualID());
+                let back_sync_dep_track_point = {
+                    let process_context = calc_alg_context.process_context();
+                    let merging_hash = process_context.node(indi_node).use_individual_merging_hash;
+                    let merged_nominal = process_context
+                        .node(backend_sync_data_indi_node)
+                        .nominal_individual();
+                    if merging_hash.is_some() && merged_nominal.is_some() {
+                        let merged_indi_id = calc_alg_context
+                            .ontology_arenas()
+                            .individual(merged_nominal)
+                            .get_individual_id();
+                        process_context
+                            .individual_merging_hash(merging_hash)
+                            .get(merged_indi_id)
+                            .map(|merging_data| merging_data.get_dependency_track_point())
+                            .unwrap_or(TrackPointId::NONE)
+                    } else {
+                        TrackPointId::NONE
+                    }
+                };
+                // if (backendSyncDataIndiNode->getIndividualBackendCacheSynchronisationData(false))
+                let merged_backend_sync_data = calc_alg_context
+                    .process_context()
+                    .node(backend_sync_data_indi_node)
+                    .individual_backend_cache_synchronisation_data(false);
+                if merged_backend_sync_data.is_none() {
+                    continue;
+                }
+                continue_visiting = visit_func(
+                    indi_node,
+                    backend_sync_data_indi_node,
+                    back_sync_dep_track_point,
+                );
+                visited = true;
+            }
+        }
+
         visited
     }
 
@@ -892,10 +1103,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn visit_newly_merged_only_deterministic_representative_individuals_backend_synchronisation_data(
         &mut self,
         indi_node: NodeId,
-        new_indi_merged_linker: Cint64,
-        prev_indi_merged_linker: Cint64,
+        new_indi_merged_linker: &[NodeId],
+        prev_indi_merged_linker: &[NodeId],
         visit_base_individual: bool,
-        mut visit_func: impl FnMut(NodeId, NodeId, TrackPointId) -> bool,
+        visit_func: &mut dyn FnMut(NodeId, NodeId, TrackPointId) -> bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // Mirror the C++ lambda capture: `mConfOnlyDeterministicRepresentativeBackendIndividualDataConsideration`.
@@ -906,14 +1117,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             new_indi_merged_linker,
             prev_indi_merged_linker,
             visit_base_individual,
-            move |base_indi_node, loc_backend_sync_data_indi_node, back_sync_dep_track_point| {
-                // W6-DEFER[api]: CIndividualNodeRepresentativeMemoryBackendCacheSynchronisationData*
-                //   mergedBackendSyncData = locBackendSyncDataIndiNode->getIndividualBackendCacheSynchronisationData(false);
-                let merged_backend_sync_data_present = false;
+            &mut |base_indi_node, loc_backend_sync_data_indi_node, back_sync_dep_track_point| {
+                // mergedBackendSyncData = locBackendSyncDataIndiNode->getIndividualBackendCacheSynchronisationData(false);
+                // — the `_linker` overload above only forwards nodes that carry it, so
+                // it is present for every node reaching this wrapper.
+                let merged_backend_sync_data_present = true;
                 if conf_only_det && merged_backend_sync_data_present {
                     // W6-DEFER[api]: CBackendRepresentativeMemoryCacheIndividualAssociationData*
                     //   mergedAssocData = mergedBackendSyncData->getAssocitaionData();
                     //   if (mergedAssocData && mergedAssocData->hasDeterministicSameIndividualMerging()) return true;
+                    //
+                    // The association arena lives in the (unported-to-this-context)
+                    // W6 cache layer, so this SKIP stays deferred. It can only remove
+                    // visits, so leaving it inactive never skips work — the same
+                    // fail-open direction the rest of the backend-cache ports take.
                     let merged_assoc_data_has_det_same = false;
                     if merged_assoc_data_has_det_same {
                         return true;
@@ -1001,7 +1218,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 mod tests {
     use crate::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm;
     use crate::konclude_ht::completion::context::CalculationAlgorithmContextBase;
-    use crate::konclude_ht::model::individual::Individual;
+    use crate::konclude_ht::model::individual::{Individual, ReverseRoleAssertion, RoleAssertion};
+    use crate::konclude_ht::model::role::Role;
     use crate::konclude_ht::model::substrate::{Id, NegLink};
     use crate::konclude_ht::model::ConceptId;
     use crate::konclude_ht::process::edge::DistinctEdge;
@@ -1318,5 +1536,76 @@ mod tests {
             .process_asserted_data_literal_linker(literal_head);
         assert_eq!(literal.data_literal(), 700);
         assert_eq!(literal.next(), ProcessAssertedDataLiteralLinkerId::NONE);
+    }
+
+    #[test]
+    fn merge_individual_node_into_transfers_value_backed_role_assertions() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+        let role = calc_ctx.ontology_arenas_mut().alloc_role(Role::new());
+        let merge_into_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(10));
+        let merged_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(20));
+        let forward_target_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(30));
+        let reverse_source_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(40));
+
+        let mut allocate_nominal =
+            |individual, tag: i64, calc_ctx: &mut CalculationAlgorithmContextBase| {
+                let node = calc_ctx
+                    .process_context_mut()
+                    .alloc_node(IndividualProcessNode::new(Id::NONE));
+                calc_ctx
+                    .process_context_mut()
+                    .node_mut(node)
+                    .set_individual_node_id(-tag)
+                    .set_individual_type(IndividualType::Nominal)
+                    .set_nominal_individual(individual);
+                calc_ctx
+                    .processing_data_box_mut()
+                    .individual_process_node_vector_mut()
+                    .set_data(-tag, node);
+                node
+            };
+        let merge_into = allocate_nominal(merge_into_individual, 10, &mut calc_ctx);
+        let merged = allocate_nominal(merged_individual, 20, &mut calc_ctx);
+        let forward_target = allocate_nominal(forward_target_individual, 30, &mut calc_ctx);
+        let reverse_source = allocate_nominal(reverse_source_individual, 40, &mut calc_ctx);
+        let forward = RoleAssertion {
+            role,
+            individual: forward_target_individual,
+        };
+        let reverse = ReverseRoleAssertion {
+            individual: reverse_source_individual,
+            role,
+            role_assertion: role.raw,
+        };
+        calc_ctx
+            .process_context_mut()
+            .node_mut(merged)
+            .set_assertion_role_assertions(vec![forward])
+            .set_reverse_assertion_role_assertions(vec![reverse]);
+
+        let merge_dependency = calc_ctx.get_or_create_base_dependency_track_point();
+        algo.merge_individual_node_into(merge_into, merged, merge_dependency, &mut calc_ctx);
+        let survivor = calc_ctx.process_context().node(merge_into);
+        assert!(survivor.assertion_role_assertions().contains(&forward));
+        assert!(survivor
+            .reverse_assertion_role_assertions()
+            .contains(&reverse));
+        assert!(algo
+            .ht_role_successor_links(merge_into, role, &calc_ctx)
+            .iter()
+            .any(|&(_, successor)| successor == forward_target));
+        assert!(algo
+            .ht_role_successor_links(reverse_source, role, &calc_ctx)
+            .iter()
+            .any(|&(_, successor)| successor == merge_into));
     }
 }

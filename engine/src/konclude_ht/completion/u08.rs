@@ -72,8 +72,8 @@ use super::super::process::dependency::BranchTreeNode;
 use super::super::process::edge::{DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::{
-    BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
-    SatNodeId, TrackPointId,
+    BranchNodeId, ClashDescId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId,
+    RestrictionSpecId, SatNodeId, TrackPointId,
 };
 use super::algorithm::{AtMostMergeBranch, BranchKind, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
@@ -475,6 +475,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .node(*process_indi)
                 .has_partial_processing_restriction_flags(cache_flags);
+            // KM-BRIDGE read-off (Stage 7): separate the three ways this gate can
+            // fail. `some_rule_on_saturation_blocked_count` counts arrivals here
+            // on a node that IS saturation-blocked — if it stays 0 while
+            // `saturation_cache_establish_count` is in the millions, the blocks
+            // never reach a generating-concept use site at all; if it tracks the
+            // establishes while `absorbed` stays 0, the flag mask or the
+            // absorbable predicate is what rejects them.
+            if calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+                )
+            {
+                self.some_rule_on_saturation_blocked_count += 1;
+            }
+            // The gate itself is unchanged (cpp 14390): the absorbable predicate
+            // is still evaluated ONLY behind `conf_sat_exp_cached_succ_absorp &&
+            // has_successor_cache`, so the uncoupled path is byte-for-byte as
+            // before; only the residual is now counted.
             let cache_absorbable = self.conf_sat_exp_cached_succ_absorp
                 && has_successor_cache
                 && self.is_generating_concept_satisfiable_cached_absorpable(
@@ -482,6 +502,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     con_des,
                     calc_alg_context,
                 );
+            if self.conf_sat_exp_cached_succ_absorp && has_successor_cache && !cache_absorbable {
+                self.some_rule_succ_block_not_absorbable_count += 1;
+            }
             if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
                 && calc_alg_context.process_context().node_count() <= 20
             {
@@ -516,7 +539,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
             }
             if cache_absorbable {
-                // STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT)
+                self.saturation_cached_absorbed_generating_count += 1; // STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT)
                 self.add_satisfiable_cached_absorbed_generating_concept(
                     con_des,
                     *process_indi,
@@ -1665,6 +1688,255 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         !self.ht_label_concept_clash_set(indi1, indi2, calc_alg_context)
     }
 
+    /// Descriptor-carrying port of Konclude's
+    /// `isIndividualNodesMergeable` (cpp 20790–20827).
+    ///
+    /// Unlike [`Self::ht_individuals_mergeable`], this is the semantic
+    /// mergeability predicate used at a rule application: every negative
+    /// verdict carries the dependency that made the merge impossible. This is
+    /// essential for dependency-directed backtracking. A clash containing only
+    /// the nominal currently being processed makes an independent distinct
+    /// edge or opposite label look like a root-level contradiction.
+    pub fn ht_individuals_mergeable_with_clashes(
+        &mut self,
+        indi1: NodeId,
+        indi2: NodeId,
+        clash_descriptors: &mut ClashDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (distinct_edge, distinct_tp) = {
+            let pc = calc_alg_context.process_context();
+            let distinct_hash = pc.node(indi1).use_distinct_hash;
+            if distinct_hash.is_none() {
+                (Id::NONE, TrackPointId::NONE)
+            } else {
+                let indi2_id = pc.node(indi2).individual_node_id();
+                let edge = pc
+                    .distinct_hash(distinct_hash)
+                    .get_individual_distinct_edge(indi2_id);
+                let tp = if edge.is_some() {
+                    pc.distinct_edge(edge).get_dependency_track_point()
+                } else {
+                    TrackPointId::NONE
+                };
+                (edge, tp)
+            }
+        };
+        if distinct_edge.is_some() {
+            *clash_descriptors = self.create_clashed_individual_distinct_descriptor(
+                *clash_descriptors,
+                distinct_edge,
+                distinct_tp,
+                calc_alg_context,
+            );
+            return false;
+        }
+
+        if self.conf_unique_name_assumption {
+            let (nominal1, nominal2, tp1, tp2) = {
+                let pc = calc_alg_context.process_context();
+                (
+                    pc.node(indi1).nominal_individual(),
+                    pc.node(indi2).nominal_individual(),
+                    pc.node(indi1).dependency_track_point(),
+                    pc.node(indi2).dependency_track_point(),
+                )
+            };
+            if nominal1.is_some() && nominal2.is_some() && nominal1 != nominal2 {
+                let mut indi1_for_clash = indi1;
+                *clash_descriptors = self.create_clashed_concept_descriptor(
+                    *clash_descriptors,
+                    &mut indi1_for_clash,
+                    ConDescId::NONE,
+                    tp1,
+                    calc_alg_context,
+                );
+                let mut indi2_for_clash = indi2;
+                *clash_descriptors = self.create_clashed_concept_descriptor(
+                    *clash_descriptors,
+                    &mut indi2_for_clash,
+                    ConDescId::NONE,
+                    tp2,
+                    calc_alg_context,
+                );
+                return false;
+            }
+        }
+
+        if self.ht_label_concept_clash_set_with_descriptors(
+            indi1,
+            indi2,
+            clash_descriptors,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+
+        // The native bridge does not admit disjoint-role connection metadata
+        // yet. Do not silently skip Konclude's final mergeability gate if such
+        // state reaches this path: defer the task instead of manufacturing a
+        // clash with incomplete dependencies.
+        if calc_alg_context
+            .process_context()
+            .node(indi1)
+            .has_disjoint_role_connections()
+            || calc_alg_context
+                .process_context()
+                .node(indi2)
+                .has_disjoint_role_connections()
+        {
+            calc_alg_context.raise_stop(false);
+            return false;
+        }
+
+        true
+    }
+
+    /// Descriptor-carrying port of the individual-node overload of
+    /// `isLabelConceptClashSet` (cpp 20943–21015).
+    ///
+    /// The smaller label is either probed directly against the larger label or
+    /// merge-walked with it, using Konclude's same threshold. Each discovered
+    /// opposite-polarity pair contributes BOTH concept descriptors with their
+    /// own dependency track points.
+    pub fn ht_label_concept_clash_set_with_descriptors(
+        &mut self,
+        indi1: NodeId,
+        indi2: NodeId,
+        clash_descriptors: &mut ClashDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (mut sub_indi, mut super_indi, mut sub_set, mut super_set) = {
+            let pc = calc_alg_context.process_context();
+            (
+                indi1,
+                indi2,
+                pc.node(indi1).use_reapply_con_label_set,
+                pc.node(indi2).use_reapply_con_label_set,
+            )
+        };
+        if sub_set.is_none() || super_set.is_none() {
+            return false;
+        }
+        let (sub_count, super_count) = {
+            let pc = calc_alg_context.process_context();
+            (
+                pc.label_set(sub_set).get_concept_count(),
+                pc.label_set(super_set).get_concept_count(),
+            )
+        };
+        if super_count < sub_count {
+            std::mem::swap(&mut sub_indi, &mut super_indi);
+            std::mem::swap(&mut sub_set, &mut super_set);
+        }
+
+        let snapshot = |label_set, ctx: &CalculationAlgorithmContextBase| {
+            let pc = ctx.process_context();
+            let mut it = pc.label_set_concept_label_set_iterator(label_set, true, false, false);
+            let mut entries =
+                Vec::with_capacity(pc.label_set(label_set).get_concept_count().max(0) as usize);
+            while it.has_value() {
+                let con_des = it.get_concept_descriptor();
+                if con_des.is_some() {
+                    entries.push((
+                        it.get_data_tag(pc, ctx.ontology_arenas()),
+                        con_des,
+                        it.get_dependency_track_point(pc),
+                        pc.con_desc(con_des).is_negated(),
+                    ));
+                }
+                it.move_next(pc);
+            }
+            entries
+        };
+        let sub_entries = snapshot(sub_set, calc_alg_context);
+        let (sub_count, super_count) = {
+            let pc = calc_alg_context.process_context();
+            (
+                pc.label_set(sub_set).get_concept_count(),
+                pc.label_set(super_set).get_concept_count(),
+            )
+        };
+        let direct_lookup =
+            sub_count.saturating_mul(self.map_comparison_direct_lookup_factor) < super_count;
+
+        if direct_lookup {
+            let mut found_clash = false;
+            for (tag, sub_con_des, sub_tp, sub_negated) in sub_entries {
+                let (super_con_des, super_tp, super_negated) = {
+                    let pc = calc_alg_context.process_context();
+                    let mut con_des = ConDescId::NONE;
+                    let mut dep_track_point = TrackPointId::NONE;
+                    let found = pc
+                        .label_set(super_set)
+                        .get_concept_descriptor_by_tag_in_context(
+                            pc,
+                            tag,
+                            &mut con_des,
+                            &mut dep_track_point,
+                        );
+                    (
+                        con_des,
+                        dep_track_point,
+                        found && con_des.is_some() && pc.con_desc(con_des).is_negated(),
+                    )
+                };
+                if super_con_des.is_some() && sub_negated != super_negated {
+                    *clash_descriptors = self.create_clashed_concept_descriptor(
+                        *clash_descriptors,
+                        &mut sub_indi,
+                        sub_con_des,
+                        sub_tp,
+                        calc_alg_context,
+                    );
+                    *clash_descriptors = self.create_clashed_concept_descriptor(
+                        *clash_descriptors,
+                        &mut super_indi,
+                        super_con_des,
+                        super_tp,
+                        calc_alg_context,
+                    );
+                    found_clash = true;
+                }
+            }
+            return found_clash;
+        }
+
+        let super_entries = snapshot(super_set, calc_alg_context);
+        let mut sub_pos = 0usize;
+        let mut super_pos = 0usize;
+        while sub_pos < sub_entries.len() && super_pos < super_entries.len() {
+            let (sub_tag, sub_con_des, sub_tp, sub_negated) = sub_entries[sub_pos];
+            let (super_tag, super_con_des, super_tp, super_negated) = super_entries[super_pos];
+            if sub_tag < super_tag {
+                sub_pos += 1;
+            } else if super_tag < sub_tag {
+                super_pos += 1;
+            } else {
+                if sub_negated != super_negated {
+                    *clash_descriptors = self.create_clashed_concept_descriptor(
+                        *clash_descriptors,
+                        &mut sub_indi,
+                        sub_con_des,
+                        sub_tp,
+                        calc_alg_context,
+                    );
+                    *clash_descriptors = self.create_clashed_concept_descriptor(
+                        *clash_descriptors,
+                        &mut super_indi,
+                        super_con_des,
+                        super_tp,
+                        calc_alg_context,
+                    );
+                    return true;
+                }
+                sub_pos += 1;
+                super_pos += 1;
+            }
+        }
+        false
+    }
+
     /// Port of `isLabelConceptClashSet` (the `CIndividualProcessNode*` pair
     /// overload, cpp 20867–20934): true iff the two labels contain the SAME
     /// concept tag with OPPOSITE polarity.
@@ -1911,10 +2183,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let node_count_at_push = calc_alg_context.process_context().node_count();
                     let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
                     calc_alg_context.push_branch_epoch();
-                    self.or_branch_open_count += 1;
+                    self.record_or_branch_open(qsucc, calc_alg_context);
                     self.or_branch_stack.push(OrBranchPoint {
                         node: qsucc,
                         disjuncts: Vec::new(),
+                        alternative_order: Vec::new(),
+                        current_alt: 0,
+                        branching_concept: ConceptId::NONE,
                         negate: false,
                         next_alt: 1,
                         dep_track_point,
@@ -2168,10 +2443,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // the merge epoch: everything from here to this branch point's
             // discard/advance is rolled back by the epoch pop.
             calc_alg_context.push_branch_epoch();
-            self.or_branch_open_count += 1;
+            self.record_or_branch_open(*process_indi, calc_alg_context);
             self.or_branch_stack.push(OrBranchPoint {
                 node: *process_indi,
                 disjuncts: Vec::new(),
+                alternative_order: Vec::new(),
+                current_alt: 0,
+                branching_concept: ConceptId::NONE,
                 negate: false,
                 next_alt: 1,
                 dep_track_point,
@@ -2771,10 +3049,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let node_count_at_push = calc_alg_context.process_context().node_count();
                 let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
                 calc_alg_context.push_branch_epoch();
-                self.or_branch_open_count += 1;
+                self.record_or_branch_open(qsucc, calc_alg_context);
                 self.or_branch_stack.push(OrBranchPoint {
                     node: qsucc,
                     disjuncts: Vec::new(),
+                    alternative_order: Vec::new(),
+                    current_alt: 0,
+                    branching_concept: ConceptId::NONE,
                     negate: false,
                     next_alt: 1,
                     dep_track_point,
@@ -2901,10 +3182,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let (into, from) = pairs[0];
             let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
             calc_alg_context.push_branch_epoch();
-            self.or_branch_open_count += 1;
+            self.record_or_branch_open(*process_indi, calc_alg_context);
             self.or_branch_stack.push(OrBranchPoint {
                 node: *process_indi,
                 disjuncts: Vec::new(),
+                alternative_order: Vec::new(),
+                current_alt: 0,
+                branching_concept: ConceptId::NONE,
                 negate: false,
                 next_alt: 1,
                 dep_track_point,
@@ -3308,7 +3592,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
                 )
         {
-            // W3-DEFER[macro]: STATINC(SATCACHEDABSORBEDMERGINGCONCEPTSCOUNT, calc_alg_context)
+            self.saturation_cached_absorbed_disjunction_count += 1; // STATINC(SATCACHEDABSORBEDMERGINGCONCEPTSCOUNT)
             self.add_satisfiable_cached_absorbed_disjunction_concept(
                 con_des,
                 *process_indi,
@@ -3538,6 +3822,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
                     )
             {
+                self.saturation_cached_absorbed_generating_count += 1; // STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT)
                 self.add_satisfiable_cached_absorbed_generating_concept(
                     con_des,
                     *process_indi,
@@ -3713,9 +3998,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .individual(indi)
             .get_individual_id();
-        if !self.is_nominal_individual_node_available(nominal_id, calc_alg_context) {
-            // Native bridge nominals are preallocated in every probe. Keep the
-            // unported temporary/backend materialization path fail closed.
+        // Konclude materialises a nominal target on demand through
+        // `getUpToDateIndividual`; its representative-cache jobs queue only
+        // selected roots and let NOMINAL references load further named nodes
+        // lazily. Rust's conservative authoritative task initializes the
+        // complete ABox, but ordinary classification probes can still reach a
+        // named node through this generic lazy path.
+        if self
+            .get_up_to_date_individual_by_id(nominal_id, calc_alg_context)
+            .is_none()
+        {
             calc_alg_context.raise_stop(false);
             return;
         }
@@ -3762,21 +4054,76 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if current == nominal_node {
                 return;
             }
-            if !self.ht_individuals_mergeable(current, nominal_node, calc_alg_context) {
-                raise_nominal_clash(self, &mut current, calc_alg_context);
+            // Konclude adds the corrected target's nominal descriptor only when
+            // that named individual has itself already been merged. It carries
+            // the dependency for the correction into both the NOMINAL
+            // dependency and a possible merge clash.
+            let (nominal_con_des, nominal_con_dep_track_point) = {
+                let pc = calc_alg_context.process_context();
+                let corrected_nominal_id = pc.node(nominal_node).individual_node_id();
+                if nominal_id == corrected_nominal_id {
+                    (ConDescId::NONE, TrackPointId::NONE)
+                } else {
+                    let nominal_concept = calc_alg_context
+                        .ontology_arenas()
+                        .individual(indi)
+                        .get_individual_nominal_concept();
+                    let nominal_set = pc.node(nominal_node).use_reapply_con_label_set;
+                    let mut nominal_con_des = ConDescId::NONE;
+                    let mut nominal_con_dep_track_point = TrackPointId::NONE;
+                    if nominal_concept.is_some() && nominal_set.is_some() {
+                        let nominal_tag = calc_alg_context
+                            .ontology_arenas()
+                            .concept(nominal_concept)
+                            .get_concept_tag();
+                        pc.label_set(nominal_set)
+                            .get_concept_descriptor_by_tag_in_context(
+                                pc,
+                                nominal_tag,
+                                &mut nominal_con_des,
+                                &mut nominal_con_dep_track_point,
+                            );
+                    }
+                    (nominal_con_des, nominal_con_dep_track_point)
+                }
+            };
+            let mut clash_descriptors = ClashDescId::NONE;
+            if !self.ht_individuals_mergeable_with_clashes(
+                current,
+                nominal_node,
+                &mut clash_descriptors,
+                calc_alg_context,
+            ) {
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+                clash_descriptors = self.create_clashed_concept_descriptor(
+                    clash_descriptors,
+                    &mut current,
+                    con_des,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if nominal_con_des.is_some() {
+                    let mut nominal_node_for_clash = nominal_node;
+                    clash_descriptors = self.create_clashed_concept_descriptor(
+                        clash_descriptors,
+                        &mut nominal_node_for_clash,
+                        nominal_con_des,
+                        nominal_con_dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+                calc_alg_context.raise_clash(clash_descriptors);
                 return;
             }
-            let nominal_dep_track_point = calc_alg_context
-                .process_context()
-                .node(nominal_node)
-                .dependency_track_point();
             let mut merge_dep_track_point = TrackPointId::NONE;
             self.create_nominal_dependency(
                 &mut merge_dep_track_point,
                 &mut current,
                 con_des,
                 dep_track_point,
-                nominal_dep_track_point,
+                nominal_con_dep_track_point,
                 calc_alg_context,
             );
             self.propagate_individual_node_nominal_connection_status_to_ancestors(

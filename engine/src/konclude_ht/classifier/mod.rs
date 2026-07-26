@@ -4096,6 +4096,12 @@ impl SynchronousKPSetClassState {
     /// `subsumed ⊑ subsumer` is entailed. Accepting it without a pair probe is
     /// therefore sound and never drops a subsumption.
     ///
+    /// The synchronous initialization upholds the same invariant: saturation
+    /// labels join this subsumer set only for subjects whose label is
+    /// certified entailed (`known_subsumers_entailed`); uncertified
+    /// (branch-dependent / native-ABox) labels stay scheduling-only, so this
+    /// set never confirms a pair the completion path has not certified.
+    ///
     /// Distinct from [`candidate_state`](Self::candidate_state): a deterministic
     /// subsumer lives in the subsumer set, not the possible-subsumption map, so
     /// `candidate_state` returns `None` for it and the bridge would otherwise
@@ -4161,12 +4167,23 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
     /// essential: completion-message analysis, pseudo-model prechecks, and
     /// possible-subsumption pruning all update this same item after the initial
     /// saturation ordering has been built.
+    ///
+    /// `known_subsumers_entailed` is the per-subject output certification for
+    /// `known_subsumers`: `true` means every entry is entailed (told closure,
+    /// or a sufficient/SAT-certain saturation label) and may join the item's
+    /// TRUSTED subsumer set — the set `certain_subsumer` accepts without a
+    /// pair probe and the propagation/pruning passes treat as ⊑-facts.
+    /// `false` means the label may carry branch-dependent or native-ABox
+    /// saturation entries; such labels still build the predecessor graph and
+    /// the root-first test ORDER (pure scheduling), but never a trusted
+    /// subsumer entry — the completion path must re-derive their pairs.
     pub fn initialize_synchronous_kpset_from_saturation_data(
         &mut self,
         named_concepts: &[ConceptId],
         sat_verdict: &[Option<bool>],
         certain_subsumers: &[Option<Vec<usize>>],
         known_subsumers: &[Vec<usize>],
+        known_subsumers_entailed: &[bool],
         subjects: &[usize],
         concepts: &Arena<Concept>,
     ) -> SynchronousKPSetClassState {
@@ -4235,13 +4252,19 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             }
             subsumer_ids.sort_unstable_by_key(|id| id.index());
             subsumer_ids.dedup();
+            let label_entailed = known_subsumers_entailed
+                .get(subject)
+                .copied()
+                .unwrap_or(false);
 
             {
                 let item = ont_item
                     .get_concept_satisfiable_test_item_mut(item_id)
                     .expect("newly created KPSet item");
-                for &subsumer_id in &subsumer_ids {
-                    item.add_subsuming_concept_item(subsumer_id);
+                if label_entailed {
+                    for &subsumer_id in &subsumer_ids {
+                        item.add_subsuming_concept_item(subsumer_id);
+                    }
                 }
                 item.set_unprocessed_predecessor_items(subsumer_ids.len() as Cint64);
                 match sat_verdict.get(subject).copied().flatten() {
@@ -4586,15 +4609,18 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
     ///
     /// The bridge executes calculation jobs synchronously, so it does not use
     /// Konclude's classifier thread/event loop.  It does, however, need the
-    /// same KPSet predecessor graph and root-first work order.  Saturation
-    /// labels are sound even for insufficient nodes and therefore seed known
-    /// subsumers; sufficient nodes and clashes are marked as derived results.
+    /// same KPSet predecessor graph and root-first work order.  The order is
+    /// pure scheduling, so every saturation label contributes to it — the
+    /// per-subject `known_subsumers_entailed` certification only controls
+    /// whether the label additionally becomes trusted subsumer entries (see
+    /// [`Self::initialize_synchronous_kpset_from_saturation_data`]).
     pub fn create_obvious_subsumption_satisfiable_testing_order_from_saturation_data(
         &mut self,
         named_concepts: &[ConceptId],
         sat_verdict: &[Option<bool>],
         certain_subsumers: &[Option<Vec<usize>>],
         known_subsumers: &[Vec<usize>],
+        known_subsumers_entailed: &[bool],
         subjects: &[usize],
         concepts: &Arena<Concept>,
     ) -> Vec<usize> {
@@ -4603,6 +4629,7 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             sat_verdict,
             certain_subsumers,
             known_subsumers,
+            known_subsumers_entailed,
             subjects,
             concepts,
         )
@@ -7023,12 +7050,15 @@ mod tests {
             .collect();
         let known = vec![vec![], vec![0], vec![1, 0]];
         let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        // Uncertified labels must still drive the root-first order: scheduling
+        // never depends on the output-certification split.
         let order = classifier
             .create_obvious_subsumption_satisfiable_testing_order_from_saturation_data(
                 &named,
                 &[None, None, None],
                 &[None, None, None],
                 &known,
+                &[false, false, false],
                 &[2, 1, 0],
                 &concepts,
             );
@@ -7059,6 +7089,7 @@ mod tests {
                 &[None, None, None],
                 &[None, None, None],
                 &known,
+                &[false, false, false],
                 &[0, 1, 2],
                 &concepts,
             );
@@ -7088,11 +7119,14 @@ mod tests {
         // (2). Konclude's all-satisfiability-jobs barrier connects child to
         // parent and then invalidates that candidate before pair scheduling.
         let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        // Subjects 1 and 2 are SAT-certain with exact certain sets, so their
+        // labels are certified (entailed); subject 0 is unknown.
         let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
             &named,
             &[None, Some(false), Some(false)],
             &[None, Some(vec![0]), Some(vec![])],
             &[vec![], vec![0], vec![]],
+            &[false, true, true],
             &[0],
             &concepts,
         );
@@ -7152,13 +7186,15 @@ mod tests {
         // Subject 1 has a single deterministic (branch-independent) subsumer 0
         // (e.g. the axiom C1 ⊑ C0); subjects 0 and 2 have none. This mirrors the
         // analyser's `add_subsuming_concept_item` deposit for a non-authoritative
-        // subject whose deterministic label carries C0.
+        // subject whose deterministic label carries C0 — an ENTAILED entry, so
+        // the label is marked certified here.
         let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
         let state = classifier.initialize_synchronous_kpset_from_saturation_data(
             &named,
             &[Some(false), Some(false), Some(false)],
             &[None, None, None],
             &[vec![], vec![0], vec![]],
+            &[true, true, true],
             &[0, 1, 2],
             &concepts,
         );
@@ -7181,6 +7217,61 @@ mod tests {
         // Out-of-range subjects fail closed (never a spurious accept).
         assert!(!state.certain_subsumer(99, 0));
         assert!(!state.certain_subsumer(1, 99));
+    }
+
+    /// Regression (ore_ont_9540 family collapse): a saturation label extracted
+    /// from an insufficient node — branch-dependent or native-ABox influenced,
+    /// so NOT certified — must never become a trusted subsumer entry that the
+    /// bridge's `certain_subsumer` shortcut would accept without a pair probe,
+    /// while an entailed (certified) label with the same shape stays reusable
+    /// and the KPSet predecessor ORDER keeps consuming both.
+    #[test]
+    fn uncertified_saturation_labels_are_scheduling_only_never_trusted_subsumers() {
+        let mut concepts = Arena::new();
+        let mut top = Concept::new();
+        top.set_concept_tag(1)
+            .set_operator_code(super::super::model::op::CCTOP);
+        concepts.push(top);
+        let named: Vec<ConceptId> = (0..3)
+            .map(|offset| {
+                let mut concept = Concept::new();
+                concept
+                    .set_concept_tag(10 + offset)
+                    .set_operator_code(super::super::model::op::CCATOM)
+                    .add_class_name_linker(super::super::model::stubs::NameId::new(10 + offset));
+                concepts.push(concept)
+            })
+            .collect();
+
+        // Identical label shape for subjects 0 and 2 ({1} as known subsumer);
+        // subject 0's node is insufficient/unknown (uncertified — the
+        // native-ABox case), subject 2's label is entailed (certified).
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &named,
+            &[None, None, Some(false)],
+            &[None, None, Some(vec![1])],
+            &[vec![1], vec![], vec![1]],
+            &[false, false, true],
+            &[0, 1, 2],
+            &concepts,
+        );
+
+        // The uncertified label is NOT trusted: no probe-free acceptance, no
+        // subsumer entry for propagation/pruning to treat as a ⊑-fact.
+        assert!(!state.certain_subsumer(0, 1));
+        assert!(state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[state.item_ids[0].index()]
+        .get_subsuming_concept_item_list()
+        .is_empty());
+        // The certified label with the same content remains reusable.
+        assert!(state.certain_subsumer(2, 1));
+        // BOTH labels still feed the predecessor graph: the root-first order
+        // schedules the shared label root 1 before its dependents 0 and 2 —
+        // had the uncertified label been dropped from scheduling too, subject
+        // 0 would have been a ready root and ordered first.
+        assert_eq!(state.ordered_subjects, vec![1, 0, 2]);
     }
 
     #[test]

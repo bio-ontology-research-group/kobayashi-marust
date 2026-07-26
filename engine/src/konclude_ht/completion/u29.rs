@@ -1066,7 +1066,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// branching statistics, and — when no other branch track points remain open —
     /// collects the filtered clash descriptors of all branches and re-initialises
     /// the tracking line at the closed dependency node (cancelling the root task at
-    /// level 0). Returns whether backtracking continues.
+    /// level 0 — in KM only when every sibling alternative actually stored a
+    /// refutation, see the witness test there). Returns whether backtracking
+    /// continues.
     pub fn backtrack_non_deterministic_branching_clashed_descriptor(
         &mut self,
         tracked_clashed_des: ClashDescId,
@@ -1105,7 +1107,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             in_stack = true;
                             cur = bp
                                 .alt_track_points
-                                .get(bp.next_alt.wrapping_sub(1))
+                                .get(bp.current_track_alternative())
                                 .map(|&t| t == dep_track_point)
                                 .unwrap_or(false);
                             rem = bp.next_alt < bp.alternatives_len();
@@ -1204,22 +1206,44 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // W3/W6-DEFER[statistics/task]: disjunct/disjunction branching statistics
         // and task memory-pool communication stay at the Konclude call points.
-        let other_opened_track_points = {
+        // `hasOtherOpenedDependencyTrackingPoints` (CNonDeterministicDependencyNode.cpp
+        // 186–196) plus the ROOT-CANCEL WITNESS: whether every sibling
+        // alternative actually has a stored clash set. The propagation's premise
+        // is that all alternatives of this decision are refuted, and the closure
+        // rebuilt below is the union of the siblings' STORED sets
+        // (`get_collected_filtered_clashed_descriptors_from_branch` walks
+        // `get_clashes()` per branch track point). A sibling that stored NOTHING
+        // contributes no cause, so the union can come back at branching level 0
+        // for a clash that still depends on that alternative — the measured
+        // ore_ont_12653 degeneration (single-descriptor tag-0 closure; the
+        // `DDB-MARK ... stored: (EMPTY)` fingerprint). The node's OWN clash track
+        // point is excluded: it is pre-marked clashed and only carries the
+        // `addBranchClashes` causes of merge/qualify decisions, so it is empty
+        // for a plain disjunction by construction.
+        let clash_track_point = calc_alg_context
+            .process_context()
+            .dep_node(non_det_dependency_node)
+            .clash_track_point();
+        let (other_opened_track_points, all_siblings_stored_refutation) = {
             let proc_ctx = calc_alg_context.process_context();
             let mut other_opened = false;
+            let mut all_stored = true;
             let mut track_point_it = proc_ctx
                 .dep_node(non_det_dependency_node)
                 .branch_track_points();
-            while track_point_it.is_some() && !other_opened {
+            while track_point_it.is_some() {
                 let track_point = proc_ctx.track_point(track_point_it);
                 if track_point_it != dep_track_point
                     && !track_point.is_clashed_or_irelevant_branch()
                 {
                     other_opened = true;
                 }
+                if track_point_it != clash_track_point && track_point.get_clashes().is_none() {
+                    all_stored = false;
+                }
                 track_point_it = track_point.next;
             }
-            other_opened
+            (other_opened, all_stored)
         };
         if !other_opened_track_points {
             self.relevant_non_deterministic_decision_count += 1;
@@ -1304,7 +1328,45 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             k += 1;
                         }
                     }
-                    self.cancellation_root_task(calc_alg_context);
+                    // ROOT CANCELLATION IS A VERDICT (cpp 7318–7321: the clash
+                    // traced to branching level 0 ⇒ the probe is unsatisfiable
+                    // regardless of every open alternative), so it may only be
+                    // taken on a closure that is JUSTIFIED.
+                    //
+                    // Konclude is entitled to it because
+                    // `getCollectedFilteredClashedDescriptorsFromBranch`
+                    // (cpp 7587–7644) rebuilds the closure from the stored clash
+                    // set of EVERY sibling track point — each installed by
+                    // `setClashes(...,true)` (cpp 7228) after
+                    // `getBacktrackedDeterministicClashedDescriptorsBeforeProcessingTag`
+                    // (cpp 7669–7764) filtered it. If a sibling stored nothing,
+                    // the union is not a refutation of the decision and its
+                    // branching level is not the clash's true level: that is the
+                    // measured ore_ont_12653 degeneration (closure shrunk to the
+                    // decision's own tag-0 cause ⇒ 12 spurious
+                    // `PathOfLength3 ⊑ X`).
+                    //
+                    // `all_siblings_stored_refutation` is exactly that witness,
+                    // taken BEFORE the collection consumed anything. With it the
+                    // cancellation is Konclude's; without it the verdict is
+                    // WITHHELD and only counted — the marking, the closed
+                    // dependency node and the re-initialised tracking line all
+                    // stay, the search continues, and UNSAT can then only come
+                    // from an empty branch stack (`ddb-exhausted` in
+                    // `run_completion_on`). Withholding therefore costs an early
+                    // exit, never a verdict, and since this test can only ever
+                    // SUPPRESS a cancellation the previous code took
+                    // unconditionally, it cannot introduce a wrong UNSAT.
+                    //
+                    // `ddb_root_cancel_withheld_count` is the measure of how
+                    // often the reconstruction is still lossy; driving it to 0
+                    // on the 12653/9540 oracles is what closes the cpp
+                    // 7587–7764 port gap.
+                    if all_siblings_stored_refutation {
+                        self.cancellation_root_task(calc_alg_context);
+                    } else {
+                        self.ddb_root_cancel_withheld_count += 1;
+                    }
                 }
                 if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
                     self.write_clash_descriptors_to_cache_from_line(

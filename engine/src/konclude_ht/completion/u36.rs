@@ -88,8 +88,11 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::collections::HashSet;
+
+use super::super::model::individual::{ReverseRoleAssertion, RoleAssertion};
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
-use super::super::model::{ConceptId, IndividualId};
+use super::super::model::{ConceptId, IndividualId, RoleId};
 use super::super::process::descriptor::ClashDescriptor;
 use super::super::process::marker_hash::MarkerIndividualNodeHash;
 use super::super::process::node::{IndividualProcessNode, IndividualType};
@@ -104,6 +107,962 @@ use super::context::CalculationAlgorithmContextBase;
 type PropagationSteeringController = Cint64;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    pub(crate) fn native_nominal_tag_for_node(
+        &self,
+        node: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Option<Cint64> {
+        if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
+            return None;
+        }
+        let individual = calc_alg_context
+            .process_context()
+            .node(node)
+            .nominal_individual();
+        if individual.is_none()
+            || individual.index() >= calc_alg_context.ontology_arenas().individual_count() as usize
+        {
+            return None;
+        }
+        Some(
+            calc_alg_context
+                .ontology_arenas()
+                .individual(individual)
+                .get_individual_id(),
+        )
+    }
+
+    // =======================================================================
+    // Typed `mBackendCacheHandler` accessors for the native-ABox association.
+    //
+    // The generic representative-memory cache (`CBackendRepresentativeMemory*`)
+    // is not ported; the bridge installs one immutable
+    // `NativeNominalBackendReplay` per ontology individual instead. These four
+    // methods are the exact typed counterparts of the four backend-cache-handler
+    // queries that the neighbour-expansion family issues, so u20/u24/u27 can run
+    // their faithful Konclude control flow against real data. The association
+    // HANDLE is the nominal individual tag (Konclude's
+    // `CBackendRepresentativeMemoryCacheIndividualAssociationData*`).
+    // =======================================================================
+
+    /// Typed `mBackendCacheHandler->getIndividualAssociationData(indiID, ctx)`:
+    /// the nominal tag of `node` iff a replay association is installed for it.
+    pub(crate) fn native_association_tag(
+        &self,
+        node: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Option<Cint64> {
+        let tag = self.native_nominal_tag_for_node(node, calc_alg_context)?;
+        self.native_nominal_backend_replay
+            .get(&tag)
+            .filter(|replay| replay.association_present)
+            .map(|_| tag)
+    }
+
+    /// Typed `mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
+    /// assocData, FULL_CONCEPT_SET_LABEL, concept, negation, deterministic, ctx)`.
+    ///
+    /// The trailing C++ flag selects the label PARTITION, not "at least
+    /// deterministic": `canExpandDirectlyInfluencedNeighbourWithPropagation`
+    /// queries `true` and then, for a non-deterministic expansion, `false`, which
+    /// is only meaningful if the two searches address the deterministic and the
+    /// non-deterministic cache values respectively. The typed cache value carries
+    /// that bit explicitly, so the test is exact membership of the triple.
+    pub(crate) fn native_has_concept_in_full_concept_set_label(
+        &self,
+        assoc_tag: Cint64,
+        concept: ConceptId,
+        negated: bool,
+        deterministic: bool,
+    ) -> bool {
+        self.native_nominal_backend_replay
+            .get(&assoc_tag)
+            .is_some_and(|replay| {
+                replay
+                    .cached_concept_values
+                    .binary_search_by_key(
+                        &(concept.raw, negated, deterministic),
+                        |(cached_concept, cached_negated, cached_deterministic)| {
+                            (cached_concept.raw, *cached_negated, *cached_deterministic)
+                        },
+                    )
+                    .is_ok()
+            })
+    }
+
+    /// Typed `mBackendCacheHandler->hasRoleInAssociatedCompinationRoleSetLabel(
+    /// assocData, {DETERMINISTIC,NONDETERMINISTIC}_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL,
+    /// role, inversed)` (spelled `…CombinedNeigbourRoleSetLabel` at the sibling
+    /// call site — the same predicate).
+    ///
+    /// The two combined labels are the determinism partition of the per-neighbour
+    /// role sets, so the typed test scans the cached neighbour-role values for a
+    /// matching `(role, inversed, deterministic)` triple.
+    pub(crate) fn native_has_role_in_combined_neighbour_role_set_label(
+        &self,
+        assoc_tag: Cint64,
+        role: RoleId,
+        deterministic: bool,
+        inversed: bool,
+    ) -> bool {
+        self.native_nominal_backend_replay
+            .get(&assoc_tag)
+            .is_some_and(|replay| {
+                replay.cached_neighbour_roles.iter().any(
+                    |&(_, cached_role, cached_inversed, cached_deterministic)| {
+                        cached_role == role
+                            && cached_inversed == inversed
+                            && cached_deterministic == deterministic
+                    },
+                )
+            })
+    }
+
+    /// Typed `mBackendCacheHandler->visitNeighbourArrayIdsForRole` followed by
+    /// `visitNeighbourIndividualIdsForNeighbourArrayIdFromCursor`.
+    ///
+    /// The typed association stores one neighbour-role-set label per neighbour, so
+    /// a role's neighbour array IS its neighbour list and no cursor is needed; the
+    /// per-neighbour `isNeighbourPossiblyInfluenced()` bit on the localized
+    /// backend-sync data still supplies Konclude's re-visit suppression.
+    /// Non-inversed values only: an inversed cached value is the neighbour's
+    /// outgoing edge, expanded from the neighbour's own association.
+    pub(crate) fn native_neighbour_ids_for_role(
+        &self,
+        assoc_tag: Cint64,
+        role: RoleId,
+    ) -> Vec<(Cint64, bool)> {
+        let Some(replay) = self.native_nominal_backend_replay.get(&assoc_tag) else {
+            return Vec::new();
+        };
+        // One entry per neighbour. A neighbour that carries the role both
+        // deterministically and non-deterministically is reported deterministic:
+        // that is the value the replay may install on the base dependency.
+        let mut neighbours: Vec<(Cint64, bool)> = Vec::new();
+        for &(neighbour, cached_role, inversed, deterministic) in &replay.cached_neighbour_roles {
+            if cached_role != role || inversed {
+                continue;
+            }
+            match neighbours
+                .iter_mut()
+                .find(|(existing, _)| *existing == neighbour)
+            {
+                Some(entry) => entry.1 |= deterministic,
+                None => neighbours.push((neighbour, deterministic)),
+            }
+        }
+        neighbours
+    }
+
+    /// Typed `mBackendCacheHandler->getIndividualAssociationData(neighbourIndiId, …)`
+    /// as an opaque handle: the individual tag itself when an association is
+    /// installed, `INVALID` (the C++ `nullptr`) otherwise.
+    pub(crate) fn native_association_handle_for_individual(&self, individual_tag: Cint64) -> Cint64 {
+        if self
+            .native_nominal_backend_replay
+            .get(&individual_tag)
+            .is_some_and(|replay| replay.association_present)
+        {
+            individual_tag
+        } else {
+            INVALID
+        }
+    }
+
+    /// Typed `assocData->getNeighbourRoleSetHash()->getNeighbourRoleSetLabel(
+    /// neighbourNodeId)`: the `(role, deterministic)` values of one neighbour's
+    /// role-set label, non-inversed only.
+    pub(crate) fn native_neighbour_role_set_label_roles(
+        &self,
+        assoc_tag: Cint64,
+        neighbour_tag: Cint64,
+    ) -> Vec<(RoleId, bool)> {
+        let Some(replay) = self.native_nominal_backend_replay.get(&assoc_tag) else {
+            return Vec::new();
+        };
+        replay
+            .cached_neighbour_roles
+            .iter()
+            .filter(|(cached_neighbour, _, inversed, _)| {
+                *cached_neighbour == neighbour_tag && !*inversed
+            })
+            .map(|(_, role, _, deterministic)| (*role, *deterministic))
+            .collect()
+    }
+
+    /// Is `role(indiNode, neighbourTag)` one of `indi_node`'s ASSERTED ABox role
+    /// assertions?
+    ///
+    /// The typed representative association marks a neighbour-role value
+    /// NON-deterministic whenever either endpoint was merged non-deterministically
+    /// (`bridge::native_completion_role_metadata`'s
+    /// `edge_deterministic = source_merge_deterministic && target_merge_deterministic`).
+    /// That says nothing about the edge itself: an ABox role assertion holds in
+    /// EVERY model, so its cache marking cannot make it branch-dependent. The raw
+    /// replay fallback (`materialize_native_role_assertion_vectors`) installs
+    /// exactly this edge from exactly this chain on the task's base dependency, so
+    /// the cache-backed route may install it there too.
+    ///
+    /// Used to keep the per-neighbour decline of the selective expansion (u27) from
+    /// degenerating into a per-NODE cache loss.
+    pub(crate) fn native_asserted_role_edge(
+        &self,
+        indi_node: NodeId,
+        role: RoleId,
+        neighbour_tag: Cint64,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        if indi_node.is_none()
+            || indi_node.index() >= calc_alg_context.process_context().node_count()
+            || role.is_none()
+        {
+            return false;
+        }
+        let asserted_on_node = calc_alg_context
+            .process_context()
+            .node(indi_node)
+            .assertion_role_assertions()
+            .iter()
+            .any(|assertion| {
+                assertion.role == role
+                    && assertion.individual.is_some()
+                    && assertion.individual.index()
+                        < calc_alg_context.ontology_arenas().individual_count() as usize
+                    && calc_alg_context
+                        .ontology_arenas()
+                        .individual(assertion.individual)
+                        .get_individual_id()
+                        == neighbour_tag
+            });
+        if asserted_on_node {
+            return true;
+        }
+        // A lazily materialized node copies the same chain, but the bridge's typed
+        // replay journal is the authoritative record when
+        // `direct_native_role_assertions` owns the edges.
+        self.native_nominal_tag_for_node(indi_node, calc_alg_context)
+            .and_then(|tag| self.native_nominal_backend_replay.get(&tag))
+            .is_some_and(|replay| replay.role_assertions.contains(&(role, neighbour_tag)))
+    }
+
+    /// May a NON-deterministic cached neighbour-role value be installed on the
+    /// task's base dependency?
+    ///
+    /// Only when the edge is an asserted ABox role assertion — see
+    /// `native_asserted_role_edge`. A merely DERIVED non-deterministic value
+    /// is not entailed and the raw replay fallback would not install it either
+    /// (`materialize_native_role_assertion_vectors` replays the assertion chains
+    /// only), so skipping it installs exactly the same edge set while keeping the
+    /// node's association block.
+    pub(crate) fn native_cached_role_value_installable(
+        &self,
+        indi_node: NodeId,
+        role: RoleId,
+        neighbour_tag: Cint64,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        self.conf_native_selective_neighbour_per_value_decline
+            && self.native_asserted_role_edge(indi_node, role, neighbour_tag, calc_alg_context)
+    }
+
+    /// `assocData->isCompletelyPropagated()` on the typed association.
+    pub(crate) fn native_association_completely_propagated(&self, assoc_tag: Cint64) -> bool {
+        self.native_nominal_backend_replay
+            .get(&assoc_tag)
+            .is_some_and(|replay| replay.completely_propagated)
+    }
+
+    /// The `nonDeterministicConsequencesMissingExpansion` test of
+    /// `initializeNeighbourExpansionWithPropagation` (cpp 25620–25626): the
+    /// neighbour's FULL_CONCEPT_SET label must carry a cardinality extension
+    /// (`CARDINALITY_HASH`) or a non-deterministic element.
+    pub(crate) fn native_label_has_nondeterministic_consequences(
+        &self,
+        assoc_tag: Cint64,
+    ) -> bool {
+        self.native_nominal_backend_replay
+            .get(&assoc_tag)
+            .is_some_and(|replay| {
+                !replay.cached_at_most_cardinalities.is_empty()
+                    || !replay.cached_existential_max_cardinalities.is_empty()
+                    || replay
+                        .cached_concept_values
+                        .iter()
+                        .any(|(_, _, deterministic)| !*deterministic)
+            })
+    }
+
+    fn native_cached_neighbour_role_matches(
+        &self,
+        node: NodeId,
+        neighbour_tag: Cint64,
+        role: RoleId,
+        inversed: bool,
+        deterministic: bool,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let Some(tag) = self.native_nominal_tag_for_node(node, calc_alg_context) else {
+            return false;
+        };
+        self.native_nominal_backend_replay
+            .get(&tag)
+            .filter(|replay| replay.neighbour_expansion_blocking_candidate)
+            .is_some_and(|replay| {
+                replay
+                    .cached_neighbour_roles
+                    .binary_search_by_key(
+                        &(neighbour_tag, role.raw, inversed, deterministic),
+                        |(cached_neighbour, cached_role, cached_inversed, cached_deterministic)| {
+                            (
+                                *cached_neighbour,
+                                cached_role.raw,
+                                *cached_inversed,
+                                *cached_deterministic,
+                            )
+                        },
+                    )
+                    .is_ok()
+            })
+    }
+
+    /// Materialize the value-backed forward and reverse assertion chains that
+    /// `getUpToDateIndividual` copied from the ontology individual. The two
+    /// initialized bits are set before recursive named-neighbour loading so a
+    /// cyclic ABox cannot recursively replay the same assertion.
+    pub(crate) fn materialize_native_role_assertion_vectors(
+        &mut self,
+        node: NodeId,
+        dependency_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
+            return false;
+        }
+        let (
+            role_assertions_initialized,
+            reverse_role_assertions_initialized,
+            role_assertions,
+            reverse_role_assertions,
+            own_tag,
+        ): (
+            bool,
+            bool,
+            Vec<RoleAssertion>,
+            Vec<ReverseRoleAssertion>,
+            Cint64,
+        ) = {
+            let process_context = calc_alg_context.process_context();
+            let node_ref = process_context.node(node);
+            let Some(own_tag) = self.native_nominal_tag_for_node(node, calc_alg_context) else {
+                return false;
+            };
+            (
+                node_ref.has_role_assertions_initialized(),
+                node_ref.has_reverse_role_assertions_initialized(),
+                node_ref.assertion_role_assertions().to_vec(),
+                node_ref.reverse_assertion_role_assertions().to_vec(),
+                own_tag,
+            )
+        };
+        if role_assertions_initialized && reverse_role_assertions_initialized {
+            return true;
+        }
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(node)
+            .set_role_assertions_initialized(true)
+            .set_reverse_role_assertions_initialized(true);
+
+        if !role_assertions_initialized {
+            for assertion in role_assertions {
+                if assertion.individual.is_none()
+                    || assertion.individual.index()
+                        >= calc_alg_context.ontology_arenas().individual_count() as usize
+                {
+                    return false;
+                }
+                let target_tag = calc_alg_context
+                    .ontology_arenas()
+                    .individual(assertion.individual)
+                    .get_individual_id();
+                if !self.install_native_role_assertion_edge(
+                    node,
+                    assertion.role,
+                    target_tag,
+                    dependency_track_point,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+                if calc_alg_context.has_pending_signal() {
+                    return true;
+                }
+            }
+        }
+        if !reverse_role_assertions_initialized {
+            for assertion in reverse_role_assertions {
+                if assertion.individual.is_none()
+                    || assertion.individual.index()
+                        >= calc_alg_context.ontology_arenas().individual_count() as usize
+                {
+                    return false;
+                }
+                let source_tag = calc_alg_context
+                    .ontology_arenas()
+                    .individual(assertion.individual)
+                    .get_individual_id();
+                let source = self.get_up_to_date_individual_by_id(-source_tag, calc_alg_context);
+                if source.is_none()
+                    || !self.install_native_role_assertion_edge(
+                        source,
+                        assertion.role,
+                        own_tag,
+                        dependency_track_point,
+                        calc_alg_context,
+                    )
+                {
+                    return false;
+                }
+                if calc_alg_context.has_pending_signal() {
+                    return true;
+                }
+            }
+        }
+        true
+    }
+
+    /// Schedule Konclude's backend-synchronisation retest without consuming
+    /// either raw assertion linker. The retest decides whether the change is
+    /// neighbour/cardinality critical and expands only the affected cached
+    /// neighbours. Eagerly clearing these flags here would turn one local
+    /// concept change into recursive materialisation of the whole ABox.
+    pub(crate) fn invalidate_native_nominal_backend_blocking(
+        &mut self,
+        node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let Some(tag) = self.native_nominal_tag_for_node(node, calc_alg_context) else {
+            return false;
+        };
+        if !self.native_nominal_backend_replay.contains_key(&tag) {
+            return false;
+        }
+        let native_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        if !calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(native_blocking_flags)
+        {
+            return false;
+        }
+        if !calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+            )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                );
+        }
+        self.add_individual_to_backend_synchronisation_retest_queue(node, calc_alg_context);
+        true
+    }
+
+    /// Konclude's FULL_CONCEPT_SET synchronization check for the typed native
+    /// representative replay. Every current descriptor except the positive own
+    /// nominal must occur in the cached label with the same determinism bit.
+    fn native_replay_concepts_synchronized(
+        &mut self,
+        node: NodeId,
+        replay: &super::algorithm::NativeNominalBackendReplay,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let label = calc_alg_context
+            .process_context()
+            .node(node)
+            .reapply_con_label_set;
+        if label.is_none() {
+            return false;
+        }
+        let mut descriptor = calc_alg_context
+            .process_context()
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+        let mut walked = 0usize;
+        while descriptor.is_some() {
+            if descriptor.index() >= calc_alg_context.process_context().con_desc_count()
+                || walked > calc_alg_context.process_context().con_desc_count()
+            {
+                return false;
+            }
+            let (concept, negated, dependency_track_point, next) = {
+                let descriptor_ref = calc_alg_context.process_context().con_desc(descriptor);
+                (
+                    descriptor_ref.get_concept(),
+                    descriptor_ref.is_negated(),
+                    descriptor_ref.get_dependency_track_point(),
+                    descriptor_ref.get_next_concept_descriptor(),
+                )
+            };
+            if concept != replay.own_nominal_concept || negated {
+                let deterministic =
+                    !self.has_nondeterministic_dependency(dependency_track_point, calc_alg_context);
+                if replay
+                    .cached_concept_values
+                    .binary_search_by_key(&(concept.raw, negated, deterministic), |value| {
+                        (value.0.raw, value.1, value.2)
+                    })
+                    .is_err()
+                {
+                    return false;
+                }
+            }
+            descriptor = next;
+            walked += 1;
+        }
+        true
+    }
+
+    pub(crate) fn native_cardinality_critical_roles(
+        &self,
+        node: NodeId,
+        replay: &super::algorithm::NativeNominalBackendReplay,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<RoleId> {
+        let successor_blocked = calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
+            );
+        let mut roles = Vec::new();
+        for &(role, minimum_restricting_cardinality) in
+            &replay.cached_at_most_cardinalities
+        {
+            let current = calc_alg_context
+                .process_context()
+                .node(node)
+                .get_role_successor_count(role);
+            let existential = if successor_blocked {
+                replay
+                    .cached_existential_max_cardinalities
+                    .binary_search_by_key(&role.raw, |(cached_role, _)| cached_role.raw)
+                    .ok()
+                    .map(|index| replay.cached_existential_max_cardinalities[index].1)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let cached_neighbours = replay
+                .cached_neighbour_roles
+                .iter()
+                .filter(|(_, cached_role, inversed, _)| {
+                    *cached_role == role && !*inversed
+                })
+                .map(|(neighbour, _, _, _)| *neighbour)
+                .collect::<HashSet<_>>()
+                .len() as Cint64;
+            if current
+                .saturating_add(existential)
+                .saturating_add(cached_neighbours)
+                > minimum_restricting_cardinality
+            {
+                roles.push(role);
+            }
+        }
+        roles.sort_unstable_by_key(|role| role.raw);
+        roles.dedup();
+        roles
+    }
+
+    /// Typed native counterpart of Konclude's
+    /// `detectIndividualNodeBackendCacheSynchronized` (cpp 4231–4288) followed by
+    /// the assertion-linker call site that consumes it (cpp 8919–8952).
+    ///
+    /// The C++ shape is reproduced exactly:
+    ///
+    /// ```text
+    /// detectIndividualNodeBackendCacheSynchronized(indiNode, ctx);
+    /// if (!hasPartialFlags(PRFSYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED)) {
+    ///   if (mConfAllowBackendNeighbourExpansionBlocking)
+    ///     addFlags(PRFSYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION);
+    ///   if (!backendSyncData
+    ///       || !expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache(indiNode, ctx)) {
+    ///     clearAssertionRoles(); clearReverseAssertionRoles();
+    ///     for every assertion linker: addRoleAssertion(...);   // raw replay
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// so the cache-backed SELECTIVE expansion always precedes the raw
+    /// bidirectional assertion replay, and the replay runs only when the
+    /// selective expansion declines. Returns false only for an impossible typed
+    /// state (the caller then stops the task); an ordinary "nothing to expand" is
+    /// `true`.
+    pub(crate) fn process_native_nominal_backend_retest(
+        &mut self,
+        node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if node.is_none() || node.index() >= calc_alg_context.process_context().node_count() {
+            return true;
+        }
+        // `detectIndividualNodeBackendCacheSynchronized`'s outer guard: only a node
+        // that holds one of the five backend-synchronization flags has anything
+        // cache-backed left to decide.
+        let native_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        if !calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(native_blocking_flags)
+        {
+            return true;
+        }
+        let Some(tag) = self.native_association_tag(node, calc_alg_context) else {
+            return true;
+        };
+        let Some(replay) = self.native_nominal_backend_replay.get(&tag).cloned() else {
+            return true;
+        };
+
+        if calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+            )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(node)
+                .clear_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                );
+
+            // if (hasPartialFlags(PRFSYNCHRONIZEDBACKEND)
+            //     && !testIndividualNodeBackendCacheConceptsSynchronization(indiNode, ctx)) {
+            //   clear PRFSYNCHRONIZEDBACKEND; clear PRFSYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED; }
+            if calc_alg_context
+                .process_context()
+                .node(node)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND,
+                )
+                && !self.native_replay_concepts_synchronized(node, &replay, calc_alg_context)
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(node)
+                    .clear_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
+                    );
+            }
+
+            // W6-DEFER[api]: `testIndividualNodeBackendCacheSameMergedBlockingCritical`
+            // reads the deterministic same-individual label. The trace records that
+            // label empty on all 198 roots of the studied ontology and 0 roots
+            // deterministically merged, and the bridge rejects source
+            // `SameIndividual`, so the typed association never carries a
+            // deterministic merge for this predicate to release on.
+
+            // if (hasPartialFlags(NEIGHBOUREXPANSIONBLOCKED)
+            //     && testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical(indiNode, ctx))
+            //   clear NEIGHBOUREXPANSIONBLOCKED;
+            if calc_alg_context
+                .process_context()
+                .node(node)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+                )
+                && self.test_individual_node_backend_cache_neighbour_expansion_blocking_critical(
+                    node,
+                    calc_alg_context,
+                )
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(node)
+                    .clear_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+                    );
+            }
+
+            // if (hasPartialFlags(NEIGHBOUREXPANSIONBLOCKED | SUCCESSOREXPANSIONBLOCKED)
+            //     && testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality(indiNode, ctx)) {
+            //   clear SUCCESSOREXPANSIONBLOCKED; clear NEIGHBOUREXPANSIONBLOCKED; }
+            if calc_alg_context
+                .process_context()
+                .node(node)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
+                )
+                && self
+                    .test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
+                        node,
+                        calc_alg_context,
+                    )
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(node)
+                    .clear_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+                    );
+            }
+
+            // W6-DEFER[api]: the INDIRECTNOMINALEXPANSIONBLOCKED release needs
+            // `testIndividualNodeBackendCacheNominalIndirectConnectionBlockingCritical`
+            // (u17, PORT-PENDING). Keeping the bit set is the conservative
+            // direction — it never skips work — and
+            // `install_native_role_assertion_edge` clears it explicitly on any
+            // target it modifies outside the cached neighbour view.
+        }
+
+        // cpp 8919/8740: the raw assertion linkers are consumed only while the
+        // neighbour-expansion block is released, and never once a full expansion
+        // has already been performed.
+        if calc_alg_context
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION,
+            )
+        {
+            return true;
+        }
+        if self.conf_allow_backend_neighbour_expansion_blocking {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION,
+                );
+        }
+        if self.expand_directly_influenced_individual_neighbour_nodes_from_backend_cache(
+            node,
+            calc_alg_context,
+        ) {
+            return true;
+        }
+        if calc_alg_context.has_pending_signal() {
+            return true;
+        }
+
+        // Exact C++ fallback (cpp 8940–8952): a declined selective expansion
+        // consumes both raw assertion chains. Once every named edge has been
+        // materialized the cached association can no longer justify any expansion
+        // block, so the remaining synchronization bits are dropped and the node is
+        // marked fully expanded.
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(node)
+            .clear_processing_restriction_flags(native_blocking_flags);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(node)
+            .add_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION
+                    | IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            );
+        let dependency_track_point = {
+            let point = calc_alg_context
+                .process_context()
+                .node(node)
+                .dependency_track_point();
+            if point.is_some() {
+                point
+            } else {
+                calc_alg_context.get_or_create_base_dependency_track_point()
+            }
+        };
+        self.materialize_native_role_assertion_vectors(
+            node,
+            dependency_track_point,
+            calc_alg_context,
+        )
+    }
+
+    /// Copy one positive native ABox role assertion exactly as Konclude's
+    /// `addRoleAssertion`: materialize/correct the named target, create the
+    /// deterministic role-assertion dependency, then install all indirect
+    /// super-role and inverse links with domain/range and reapply processing.
+    pub fn install_native_role_assertion_edge(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        target_tag: Cint64,
+        prev_dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if source.is_none() || role.is_none() || target_tag < 0 {
+            return false;
+        }
+        let original_target = self.get_up_to_date_individual_by_id(-target_tag, calc_alg_context);
+        if original_target.is_none() {
+            return false;
+        }
+        let (mut target, nominal_merge_track_point) = if calc_alg_context
+            .process_context()
+            .node(original_target)
+            .has_merged_into_individual_node_id()
+        {
+            let first_target_id = calc_alg_context
+                .process_context()
+                .node(original_target)
+                .merged_into_individual_node_id();
+            let first_target =
+                self.get_up_to_date_individual_by_id(first_target_id, calc_alg_context);
+            if first_target.is_none()
+                || calc_alg_context
+                    .process_context()
+                    .node(first_target)
+                    .has_merged_into_individual_node_id()
+            {
+                // Konclude retrieves the combined b→…→representative
+                // dependency from the final node's IndividualMergingHash.
+                // Rust phase-6 merging-hash propagation is not ported yet, so
+                // a chain longer than one hop cannot be justified exactly.
+                // Decline the bridge route instead of omitting a branch cause
+                // while dependency-directed backtracking is active.
+                return false;
+            }
+            (
+                first_target,
+                calc_alg_context
+                    .process_context()
+                    .node(original_target)
+                    .merged_dependency_track_point(),
+            )
+        } else {
+            (original_target, TrackPointId::NONE)
+        };
+        target = self.get_localized_forced_backend_initialized_nominal_individual_node(
+            target,
+            calc_alg_context,
+        );
+        let mut source_ref = source;
+        let mut target_ref = target;
+        if self.has_individuals_link(
+            &mut source_ref,
+            &mut target_ref,
+            role,
+            true,
+            calc_alg_context,
+        ) {
+            return true;
+        }
+        let source_tag = self.native_nominal_tag_for_node(source, calc_alg_context);
+        let edge_deterministic = !self
+            .has_nondeterministic_dependency(prev_dep_track_point, calc_alg_context)
+            && (nominal_merge_track_point.is_none()
+                || !self
+                    .has_nondeterministic_dependency(nominal_merge_track_point, calc_alg_context));
+        let cached_target_edge = source_tag.is_some_and(|source_tag| {
+            self.native_cached_neighbour_role_matches(
+                target,
+                source_tag,
+                role,
+                true,
+                edge_deterministic,
+                calc_alg_context,
+            )
+        });
+        // A newly installed incoming assertion changes the target's
+        // neighbour, inverse-role, cardinality, and indirect-nominal view.
+        // Generic backend retesting cannot validate the bridge-local replay
+        // record and otherwise leaves the indirect-nominal blocking bit set.
+        // Fail closed before any reapply work observes the modified target.
+        let native_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        if !cached_target_edge
+            && calc_alg_context
+                .process_context()
+                .node(target)
+                .has_partial_processing_restriction_flags(native_blocking_flags)
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(target)
+                .clear_processing_restriction_flags(native_blocking_flags);
+        }
+        let source_individual = calc_alg_context
+            .process_context()
+            .node(source)
+            .nominal_individual();
+        if source_individual.is_none() {
+            return false;
+        }
+        let mut assertion_track_point = TrackPointId::NONE;
+        self.create_role_assertion_dependency(
+            &mut assertion_track_point,
+            source,
+            prev_dep_track_point,
+            nominal_merge_track_point,
+            role,
+            source_individual,
+            calc_alg_context,
+        );
+        if assertion_track_point.is_none() {
+            assertion_track_point = prev_dep_track_point;
+        }
+        let mut super_roles = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_indirect_super_role_list()
+            .to_vec();
+        if !super_roles
+            .iter()
+            .any(|link| link.target == role && !link.negated)
+        {
+            super_roles.push(NegLink {
+                target: role,
+                negated: false,
+            });
+        }
+        let link = self.create_new_individuals_links_reapplyed(
+            source,
+            target,
+            &super_roles,
+            role,
+            assertion_track_point,
+            true,
+            calc_alg_context,
+        );
+        if link.is_some() {
+            if !cached_target_edge {
+                self.propagate_individual_node_modified(&mut target, calc_alg_context);
+                self.add_individual_to_processing_queue(target, calc_alg_context);
+            }
+            true
+        } else {
+            self.has_individuals_link(
+                &mut source_ref,
+                &mut target_ref,
+                role,
+                true,
+                calc_alg_context,
+            )
+        }
+    }
+
     // NODE-RESOLUTION SUPERSESSION: the node-resolution family below
     // (`get_up_to_date_individual_by_id` / `get_localized_individual{,_by_id}` /
     // `get_successor_individual` / `get_localized_successor_individual` /
@@ -178,6 +1137,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //
         let up_to_date_indi = calc_alg_context.get_up_to_date_individual_by_id(indi_id);
         if up_to_date_indi.is_some() {
+            // HIT: the individual-node vector already holds this individual — on a
+            // retained class job that is EVERY ABox individual, COW-referenced
+            // from the deterministic consistency base. Konclude's create path
+            // below (cpp 22513-22580, with the backend-cache initialization at
+            // 22524-22527) is therefore never taken, which is why the reuse
+            // activation cannot live here alone.
+            //
+            // Instrumentation ONLY: a lazy id RESOLUTION is not a
+            // "reached/influenced" — `isNominalIndividualNodeAvailable` (u16) and
+            // the merge/link resolvers hit this path for nodes no rule touches.
+            // Activating here would schedule the recorded model of every
+            // individual the search merely looks up. The activation is done at the
+            // point the node is actually processed
+            // (`u03::individual_node_initializing`). This counter says how many
+            // such resolutions carried an undecided association, i.e. how much
+            // reuse the eager alternative would have scheduled.
+            let undecided_association =
+                match self.native_nominal_tag_for_node(up_to_date_indi, calc_alg_context) {
+                    Some(tag) if !self.native_reuse_activated_individuals.contains(&tag) => self
+                        .native_nominal_backend_replay
+                        .get(&tag)
+                        .map(|replay| replay.association_present && replay.has_reusable_elements)
+                        .unwrap_or(false),
+                    _ => false,
+                };
+            if undecided_association {
+                self.native_reuse_lazy_lookup_hit_count += 1;
+            }
             return up_to_date_indi;
         }
         if indi_id > 0 {
@@ -204,14 +1191,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         self.track_individual_referred_dependence(indi_id, calc_alg_context);
 
-        let base_dep_node = calc_alg_context.base_dependency_node();
-        let dep_track_point = if base_dep_node.is_some() {
-            calc_alg_context
-                .process_context_mut()
-                .materialize_continue_dependency_track_point(base_dep_node)
-        } else {
-            TrackPointId::NONE
-        };
+        // Konclude obtains this from the task's already-initialised base
+        // dependency node. Native bridge probes construct that task spine
+        // lazily, so materialise the same independent base track point before
+        // adding the nominal and cached assertion concepts.
+        let dep_track_point = calc_alg_context.get_or_create_base_dependency_track_point();
         let localiced_indi = calc_alg_context
             .process_context_mut()
             .alloc_node(IndividualProcessNode::new(Id::NONE));
@@ -229,17 +1213,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .set_role_assertion_creation_id(role_assertion_creation_id)
                 .set_nominal_individual_triples_assertions(true);
         }
+        let (assertion_roles, reverse_assertion_roles) = {
+            let individual_ref = calc_alg_context.ontology_arenas().individual(individual);
+            (
+                individual_ref.get_assertion_role_linker().to_vec(),
+                individual_ref.get_reverse_assertion_role_linker().to_vec(),
+            )
+        };
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(localiced_indi)
+            .set_assertion_role_assertions(assertion_roles)
+            .set_reverse_assertion_role_assertions(reverse_assertion_roles);
         calc_alg_context
             .processing_data_box_mut()
             .individual_process_node_vector_mut()
             .set_local_data(indi_id, localiced_indi);
 
-        // W3-DEFER[api]: exact pointer-copy assignments for
-        // `setAssertionRoleLinker`, `setReverseAssertionRoleLinker`,
-        // `setAssertionDataLinker`, and the incremental branch's
-        // `setAssertionConceptLinker` remain blocked because `CIndividual` assertion
-        // linkers are ported as model vectors, while the process-node fields are
-        // still opaque linker ids.
+        // The value-backed forward/reverse assertion chains above are the
+        // pointer-copy equivalent for native representative tasks. Data and
+        // incremental assertion linkers remain on their existing paths.
 
         // W3-DEFER[api]: no live databox slot for
         // `getUniversalConnectionNominalValueConcept` exists yet.
@@ -259,6 +1252,144 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             );
         }
+        // Konclude's representative-computation jobs can begin with selected
+        // roots and materialise other individuals lazily. Rust's authoritative
+        // consistency task initializes every ABox individual, but later
+        // classification probes can still enter through this lazy loader.
+        // Consume the same typed association/assertion sidecar so lazy and
+        // eager loads have identical deterministic input.
+        let mut native_expansion_blocked = false;
+        if let Some(replay) = self
+            .native_nominal_backend_replay
+            .get(&individual_id)
+            .cloned()
+        {
+            // Konclude keeps the ontology assertion-concept linker on every
+            // lazily materialized individual. Representative batches may
+            // discover an incomplete neighbour that was not one of the
+            // selected roots, so assertions cannot be left to the root
+            // initializer.
+            for &(concept, negated) in &replay.asserted_concepts {
+                self.add_concept_to_individual_skip_and_processing(
+                    concept,
+                    negated,
+                    localiced_indi,
+                    dep_track_point,
+                    true,
+                    true,
+                    false,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+            }
+            for &(concept, negated) in &replay.deterministic_cached_concepts {
+                self.add_concept_to_individual_skip_and_processing(
+                    concept,
+                    negated,
+                    localiced_indi,
+                    dep_track_point,
+                    true,
+                    false,
+                    false,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+            }
+            native_expansion_blocked = !calc_alg_context.has_pending_signal()
+                && replay.expansion_blocking_candidate
+                && self.conf_allow_backend_successor_expansion_blocking
+                && !calc_alg_context
+                    .process_context()
+                    .node(localiced_indi)
+                    .has_processing_restriction_flags(
+                        IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                    )
+                && self.native_replay_concepts_synchronized(
+                    localiced_indi,
+                    &replay,
+                    calc_alg_context,
+                );
+            let native_neighbour_blocked = !calc_alg_context.has_pending_signal()
+                && replay.neighbour_expansion_blocking_candidate
+                && self.conf_allow_backend_neighbour_expansion_blocking
+                && !calc_alg_context
+                    .process_context()
+                    .node(localiced_indi)
+                    .has_processing_restriction_flags(
+                        IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                    );
+            if native_neighbour_blocked {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                            | IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                    );
+            }
+            if native_expansion_blocked {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+                    );
+            } else if !native_neighbour_blocked
+                && !calc_alg_context.has_pending_signal()
+                && !self.materialize_native_role_assertion_vectors(
+                    localiced_indi,
+                    dep_track_point,
+                    calc_alg_context,
+                )
+            {
+                calc_alg_context.raise_stop(false);
+            }
+            if !native_expansion_blocked
+                && !native_neighbour_blocked
+                && !calc_alg_context.has_pending_signal()
+                && !replay.role_assertions.is_empty()
+                && calc_alg_context
+                    .process_context()
+                    .node(localiced_indi)
+                    .assertion_role_assertions()
+                    .is_empty()
+            {
+                // Fail closed on a malformed bridge payload: the replay
+                // journal and the ontology individual's value chain must agree.
+                calc_alg_context.raise_stop(false);
+            }
+            if replay.association_present {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .set_nominal_individual_representative_backend_data_loaded(true);
+            }
+
+            // `initializeIndividualNodeWithBackendCache`'s reuse activation
+            // (cpp 22710-22771), the FIRST of Konclude's two activation sites
+            // (cpp 22524-22527, the create path of this very method). The
+            // association's four non-deterministic slots are the ONLY record of
+            // the consistency model's branch choices for this individual — a
+            // derived task starts from the DETERMINISTIC root, so without this
+            // queueing the class jobs re-derive them disjunct by disjunct
+            // (Stage 8/9: retained-ABox branch opens dominate the search).
+            //
+            // The gate itself (four-slot `hasReuseableElements`, the
+            // late-reuse-activation databox flag, the fail-closed
+            // representability requirement and the per-job one-shot) lives in
+            // `u25::activate_backend_individual_expansion_reuse`, which the
+            // SECOND site (`u03::individual_node_initializing`, cpp 8713-8730)
+            // shares — a retained class job reaches only that one, since the ABox
+            // node vector is COW-inherited and no individual is ever materialized
+            // here.
+            self.activate_backend_individual_expansion_reuse(localiced_indi, calc_alg_context);
+        }
 
         if self.opt_consistence_node_marking {
             calc_alg_context
@@ -270,8 +1401,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         if !self.opt_incremental_compatible_expansion {
-            let mut expansion_blocked = false;
-            if self.load_individual_node_data_from_backend_cache(localiced_indi, calc_alg_context) {
+            let mut expansion_blocked = native_expansion_blocked;
+            if !expansion_blocked
+                && self
+                    .load_individual_node_data_from_backend_cache(localiced_indi, calc_alg_context)
+            {
                 calc_alg_context
                     .process_context_mut()
                     .node_mut(localiced_indi)
@@ -279,7 +1413,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // W6-DEFER[api]: `initializeIndividualNodeWithBackendCache` and
                 // `tryEstablishExpansionBlockingWithBackendCacheSynchronisation`.
             }
-            if !expansion_blocked {
+            if !expansion_blocked && !calc_alg_context.has_pending_signal() {
                 self.add_individual_to_processing_queue(localiced_indi, calc_alg_context);
             }
         } else {

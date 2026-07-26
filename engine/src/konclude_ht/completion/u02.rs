@@ -148,6 +148,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .unwrap_or(u64::MAX);
         let mut drives: u64 = 0;
         self.ddb_root_cancelled = false;
+        // cpp 783: `mOptBackendExpansionReuse =
+        //     satCalcTask->getProcessingDataBox()->isBackendIndividualLateReuseExpansionActivated();`
+        // The bridge has no CTask spine, so the per-task derivation happens at the
+        // drive entry instead. Re-deriving (rather than latching) matters because one
+        // `CompletionTaskHandleAlgorithm` is reused across probes: a probe whose fresh
+        // databox never saw a reusable association must not inherit the arming from
+        // the previous one. `get_up_to_date_individual_by_id` (u36) sets both the
+        // databox flag and this option when it first queues an individual, exactly as
+        // cpp 22766-22770 does.
+        self.opt_backend_expansion_reuse = calc_alg_context
+            .processing_data_box()
+            .is_backend_individual_late_reuse_expansion_activated();
         loop {
             if drives >= max_drives {
                 calc_alg_context.raise_stop(false);
@@ -193,6 +205,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             if !calc_alg_context.has_pending_signal() {
                 // fixpoint reached, no clash ⇒ consistent / complete.
+                if self.conf_cache_oriented_or_ordering {
+                    let successful_disjuncts: Vec<(ConceptId, ConceptId, bool)> = self
+                        .or_branch_stack
+                        .iter()
+                        .filter_map(|branch| branch.current_disjunct_learning_key())
+                        .collect();
+                    for key in successful_disjuncts {
+                        let statistics = self.or_branch_learning_stats.entry(key).or_default();
+                        statistics.expanded += 1;
+                        statistics.satisfiable += 1;
+                    }
+                }
                 return true;
             }
             match calc_alg_context.pending_signal() {
@@ -354,17 +378,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     fn discard_topmost_or_branch(
         &mut self,
+        clashed_alternative: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         let bp = self
             .or_branch_stack
             .pop()
             .expect("caller checked non-empty");
+        if self.conf_cache_oriented_or_ordering && matches!(&bp.kind, BranchKind::Disjunction) {
+            if let Some(key) = bp.current_disjunct_learning_key() {
+                let statistics = self.or_branch_learning_stats.entry(key).or_default();
+                statistics.expanded += 1;
+                if clashed_alternative {
+                    statistics.clashed += 1;
+                }
+            }
+        }
         {
             let kind = match &bp.kind {
                 BranchKind::Disjunction => "or",
                 BranchKind::AtMostMerge(_) => "merge",
                 BranchKind::AtMostQualify { .. } => "choose",
+                BranchKind::BackendExpansionReuse(_) => "reuse",
             };
             let m = format!(
                 "discard {} node={} next_alt={}/{} depth={}",
@@ -402,7 +437,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if bp.next_alt < bp.alternatives_len() {
                 break;
             }
-            self.discard_topmost_or_branch(calc_alg_context);
+            self.discard_topmost_or_branch(true, calc_alg_context);
         }
         if self.or_branch_stack.is_empty() {
             return false;
@@ -425,11 +460,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   level first (`getBranchingLevelTag() == mBranchingLevel` bucketing):
     ///   an unmarked branch point above the analysis stop is not in the
     ///   clash's dependency closure.
-    /// - POPS a marked-but-exhausted branch point (the u29 propagation has
-    ///   already marked the outer responsible decision when the last sibling
-    ///   clashed).
     /// - ADVANCES the topmost marked branch point with a remaining
     ///   alternative.
+    /// - DISCARDS a CLOSED decision (EVERY alternative's track point marked, so
+    ///   every alternative carries its own stored refutation — Konclude's
+    ///   `hasOtherOpenedDependencyTrackingPoints() == false`) together with the
+    ///   subtree stacked above it, then re-runs.
+    /// - FALLS BACK to the chronological backtrack when the topmost marked
+    ///   branch point has no alternative left but is NOT closed (some
+    ///   alternative was advanced past without being refuted). Discarding on
+    ///   that positional test is the unsound `conf_ddb_refuted_discard` escape
+    ///   (default OFF, diagnostic; see the soundness note at its branch).
     ///
     /// SAFETY NET: when the analysis marked NO branch point that still has a
     /// remaining alternative (e.g. it stopped early on a track point already
@@ -440,7 +481,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// therefore purely a pruner — a wrong UNSAT verdict cannot come from the
     /// marking, only from exhausting alternatives (modulo the pop-unmarked
     /// skip, which is justified per-clash by the level-ordering argument).
-    fn try_backtrack_or_branch_ddb(
+    pub(super) fn try_backtrack_or_branch_ddb(
         &mut self,
         clash: super::super::process::ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
@@ -467,22 +508,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // Scan (no mutation) from the top for the first branch point whose
         // CURRENT alternative the analysis marked clashed. Two cases:
         // - it still has an unexplored alternative → backjump and ADVANCE it;
-        // - it is EXHAUSTED → the whole decision is refuted, and every branch
-        //   point ABOVE it lives inside the refuted alternative's context —
-        //   DISCARD through it and re-run the backtrack on the remaining
-        //   stack. Without this second case the chronological fallback keeps
-        //   searching INSIDE the refuted subtree: the same clash re-traces to
-        //   the same marked track point, the analysis early-outs
-        //   (already-marked), and the search thrashes (measured on
-        //   ore_ont_12653 PathOfLength3: already_marked == fallbacks ==
-        //   ~100% of 2.9M backtracks against one exhausted mid-stack mark —
-        //   Konclude gets the escape for free from branch-task cancellation).
+        // - it has no alternative left → DISCARD through it when the decision is
+        //   CLOSED (all alternatives marked); otherwise chronological fallback.
+        //   Discarding on mere positional exhaustion would also cure the
+        //   measured thrash (ore_ont_12653 PathOfLength3: already_marked ==
+        //   fallbacks == ~100% of 2.9M backtracks against one exhausted
+        //   mid-stack mark) but is UNSOUND in KM — see the soundness note at
+        //   that branch; it needs the default-OFF `conf_ddb_refuted_discard`.
         let mut target: Option<(usize, bool)> = None;
         for i in (0..self.or_branch_stack.len()).rev() {
             let bp = &self.or_branch_stack[i];
             let cur_tp = bp
                 .alt_track_points
-                .get(bp.next_alt.wrapping_sub(1))
+                .get(bp.current_track_alternative())
                 .copied()
                 .unwrap_or(TrackPointId::NONE);
             let refuted = cur_tp.is_some()
@@ -502,30 +540,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         if !has_remaining {
-            // refuted AND exhausted: discard the refuted decision (and the
-            // subtree stacked above it), then retry the backtrack below.
+            // THE SAFE ESCAPE — a CLOSED decision, not a positionally exhausted
+            // one. Every alternative of the target has its OWN track point
+            // marked `is_clashed_or_irelevant_branch()`, i.e. every alternative
+            // was individually refuted by a clash analysis that stored its cause
+            // (u29 `set_clashes(..., true)`, cpp 7228). That is exactly
+            // Konclude's `hasOtherOpenedDependencyTrackingPoints() == false`
+            // (CNonDeterministicDependencyNode.cpp 186–196) evaluated on the
+            // search stack, so the decision is refuted under the CURRENT outer
+            // context — no assignment extending it, at this decision or at any
+            // branch point stacked above it, can succeed. Discard the decision
+            // with that subtree and re-run the walk on what is left.
             //
-            // KM_HT_DDB_REFUTED_DISCARD (opt-in): this escape collapses the
-            // stale-mark thrash (ore_ont_12653 PathOfLength3 read-off: 120 s /
-            // 2.9 M backtracks → 10.5 s), BUT it drives the search into the
-            // still-buggy u29 all-siblings-refuted propagation, whose
-            // collected closure degenerates to the decision's own tag-0 cause
-            // and wrongly ROOT-CANCELS (measured: 12 spurious
-            // PathOfLength3 ⊑ X; same single-descriptor closure signature as
-            // the pre-2a869e8 bug — the before-proc-tag remainder loses the
-            // non-local causes). Default OFF until that stepping is fixed
-            // against cpp 7677–7776; the fast repro NEEDS this flag.
-            if std::env::var_os("KM_HT_DDB_REFUTED_DISCARD").is_some() {
-                self.ddb_refuted_discard_count += 1;
+            // What makes this justified where the positional test below is not:
+            // it never infers a refutation from `next_alt`. Marks on a
+            // stack-resident decision are all w.r.t. the current outer context
+            // (advancing an outer branch point discards every inner branch point,
+            // and the disjunction is re-processed into FRESH track points), and
+            // the analysis that sets them is already gated on
+            // `unrestored_advance_count == 0` above. It is also strictly weaker
+            // than the backjump leg further down, which discards branch points
+            // that still HAVE untried alternatives on the level-ordering
+            // argument.
+            //
+            // No new verdict channel: if the discard empties the branch stack the
+            // caller reports UNSAT, which is precisely "every alternative of the
+            // outermost decision carries a stored refutation" — Konclude's
+            // closed-root case, and the same conclusion the chronological
+            // fallback reaches by popping the same exhausted stack.
+            let fully_refuted = {
+                let bp = &self.or_branch_stack[target];
+                let alternatives = bp.alternatives_len();
+                alternatives > 0
+                    && bp.alt_track_points.len() >= alternatives
+                    && bp.alt_track_points[..alternatives].iter().all(|&tp| {
+                        tp.is_some()
+                            && calc_alg_context
+                                .process_context()
+                                .track_point(tp)
+                                .is_clashed_or_irelevant_branch()
+                    })
+            };
+            if fully_refuted {
+                self.ddb_closed_decision_discard_count += 1;
                 while self.or_branch_stack.len() > target {
-                    self.discard_topmost_or_branch(calc_alg_context);
+                    let clashed_alternative = self.or_branch_stack.len() == target + 1;
+                    self.discard_topmost_or_branch(clashed_alternative, calc_alg_context);
                 }
                 if self.or_branch_stack.is_empty() {
                     return false;
                 }
+                // Bounded recursion: each level discarded at least one branch
+                // point, so the depth is at most the branch-stack length.
                 return self.try_backtrack_or_branch_ddb(clash, calc_alg_context);
             }
-            // default: chronological fallback (sound; thrashy on stale marks).
+            // REFUTED AND EXHAUSTED. Discarding the decision together with the
+            // branch points stacked above it would collapse the stale-mark
+            // thrash (ore_ont_12653 PathOfLength3 read-off: 120 s / 2.9 M
+            // backtracks → 10.5 s; ore_ont_9540's sole failing subject has the
+            // same fingerprint — 4.01 M backtracks / 2.90 M drives pinned to a
+            // 23–26 branch-depth band over a 390–399-node graph, against
+            // Konclude's 919 nondeterministic forks). It stays DEFAULT OFF
+            // because the assumption it needs is FALSE in KM:
+            //
+            //   "an alternative was advanced past only because the current
+            //    context refuted it"
+            //
+            // The chronological fallback (`try_backtrack_or_branch`, taken on
+            // every analysis that finds no usable mark — measured at ~100 % of
+            // the 12653 backtracks) advances the TOPMOST branch point for a
+            // clash that need not depend on it, and the `pop unmarked` leg
+            // below abandons branch points with untried alternatives. So
+            // `next_alt == alternatives_len()` is a position, NOT a refutation
+            // record for every alternative, and the subtree above a
+            // position-exhausted decision may still contain models. Konclude is
+            // entitled to the same escape only because it HAS the records: each
+            // sibling carries its own stored clash set
+            // (`setClashes(...,true)`, cpp 7228), `cancellationTask(branchAccTask)`
+            // (cpp 7088) kills the refuted branch's accumulating task so its
+            // queued siblings are never scheduled, and the
+            // `!hasOtherOpenedDependencyTrackingPoints` arm (cpp 7287–7333)
+            // closes the dependency node only after collecting those sets. The
+            // safe KM equivalent is therefore a CLOSURE-JUSTIFIED jump (see the
+            // u29 witness test and `ddb_root_cancel_withheld_count`), not this
+            // positional discard. Measured cost of shipping it anyway: 12
+            // spurious `PathOfLength3 ⊑ X` on ore_ont_12653.
+            //
+            // `conf_ddb_refuted_discard` (`KM_HT_DDB_REFUTED_DISCARD`, off
+            // unless that env var is set) keeps the escape reachable for the
+            // diagnosis and for its selftest. There is
+            // deliberately no inverse switch — changing nothing gives the safe
+            // path.
+            if self.conf_ddb_refuted_discard {
+                self.ddb_refuted_discard_count += 1;
+                while self.or_branch_stack.len() > target {
+                    let clashed_alternative = self.or_branch_stack.len() == target + 1;
+                    self.discard_topmost_or_branch(clashed_alternative, calc_alg_context);
+                }
+                if self.or_branch_stack.is_empty() {
+                    return false;
+                }
+                // Bounded recursion: each level discarded at least one branch
+                // point, so the depth is at most the branch-stack length.
+                return self.try_backtrack_or_branch_ddb(clash, calc_alg_context);
+            }
+            // DEFAULT: chronological fallback (sound; thrashy on stale marks).
             self.ddb_fallback_count += 1;
             return self.try_backtrack_or_branch(calc_alg_context);
         };
@@ -583,13 +702,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     (
                         bp.next_alt < bp.alternatives_len(),
                         bp.alt_track_points
-                            .get(bp.next_alt.wrapping_sub(1))
+                            .get(bp.current_track_alternative())
                             .copied()
                             .unwrap_or(TrackPointId::NONE),
                         match &bp.kind {
                             BranchKind::Disjunction => "or",
                             BranchKind::AtMostMerge(_) => "merge",
                             BranchKind::AtMostQualify { .. } => "choose",
+                            BranchKind::BackendExpansionReuse(_) => "reuse",
                         },
                         bp.node.index(),
                         bp.next_alt,
@@ -640,7 +760,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // recurs under every one of their alternatives; marked-but-exhausted
         // ones were propagated through by u29 when their last sibling clashed.
         while self.or_branch_stack.len() > target + 1 {
-            self.discard_topmost_or_branch(calc_alg_context);
+            self.discard_topmost_or_branch(false, calc_alg_context);
         }
         self.advance_topmost_or_branch(calc_alg_context);
         true
@@ -655,6 +775,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         self.or_backtrack_count += 1;
+        if self.conf_cache_oriented_or_ordering {
+            if let Some(branch) = self.or_branch_stack.last() {
+                if let Some(key) = branch.current_disjunct_learning_key() {
+                    let statistics = self.or_branch_learning_stats.entry(key).or_default();
+                    statistics.expanded += 1;
+                    statistics.clashed += 1;
+                }
+            }
+        }
         {
             let m = self
                 .or_branch_stack
@@ -664,6 +793,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         BranchKind::Disjunction => "or",
                         BranchKind::AtMostMerge(_) => "merge",
                         BranchKind::AtMostQualify { .. } => "choose",
+                        BranchKind::BackendExpansionReuse(_) => "reuse",
                     };
                     format!(
                         "advance {} node={} to_alt={}/{} depth={}",
@@ -765,12 +895,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             self.advance_atmost_qualify_alternative(calc_alg_context);
             return;
         }
+        // Backend-expansion reuse branch point: the second alternative DISCARDS the
+        // recorded model and lets the ordinary expansion run
+        // (`prepareBackendIndividualPrioritizedReuseExpansion`'s `i == 1` task). The
+        // epoch pop above already rolled back every merge / concept / link /
+        // distinction the replayed model installed, together with the reuse
+        // dependency track point on the node's backend-sync data.
+        if matches!(
+            self.or_branch_stack.last().map(|bp| &bp.kind),
+            Some(BranchKind::BackendExpansionReuse(_))
+        ) {
+            self.advance_backend_expansion_reuse_alternative(calc_alg_context);
+            return;
+        }
 
         // advance the topmost open branch to its next unexplored alternative.
         let (node, target, op_negated, dep_track_point, node_count_at_push, sem_branch) = {
             let bp = self.or_branch_stack.last_mut().expect("checked non-empty");
-            let link = bp.disjuncts[bp.next_alt];
-            let alt_tp = bp.alt_track_points.get(bp.next_alt).copied();
+            let alternative = bp.alternative_order[bp.next_alt];
+            let link = bp.disjuncts[alternative];
+            let alt_tp = bp.alt_track_points.get(alternative).copied();
             // Semantic branching (`executeORBranching` non-pos operands): the
             // new alternative also asserts the NEGATION of every previously
             // refuted alternative (`addOpNegated = !posOperand ^ isNegated ^
@@ -780,7 +924,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // (`AtomicSemanticBranching`, no extra rule work).
             let sem_branch: Vec<NegLink<ConceptId>> =
                 if self.conf_semantic_branching || self.conf_atomic_semantic_branching {
-                    bp.disjuncts[..bp.next_alt]
+                    bp.disjuncts[..alternative]
                         .iter()
                         .map(|l| NegLink {
                             target: l.target,
@@ -790,6 +934,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 } else {
                     Vec::new()
                 };
+            bp.current_alt = alternative;
             bp.next_alt += 1;
             (
                 bp.node,
@@ -1055,6 +1200,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
             }
         }
+    }
+
+    /// Advance the topmost (backend-expansion-reuse) branch point to its second
+    /// alternative: DISCARD the recorded backend model and let the ordinary
+    /// expansion run (`prepareBackendIndividualPrioritizedReuseExpansion`'s
+    /// `i == 1` forked task, cpp 24977-24990). The caller has already rolled the
+    /// epoch back — undoing the replayed merges / concepts / links / distinctions
+    /// AND the reuse dependency track point on the backend-sync data — and cleared
+    /// the pending signal.
+    fn advance_backend_expansion_reuse_alternative(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let indi_node = {
+            let bp = self
+                .or_branch_stack
+                .last_mut()
+                .expect("caller checked topmost");
+            let BranchKind::BackendExpansionReuse(reuse) = &bp.kind else {
+                unreachable!("caller checked kind")
+            };
+            let indi_node = reuse.indi_node;
+            let alt_tp = bp
+                .alt_track_points
+                .get(bp.next_alt)
+                .copied()
+                .filter(|tp| tp.is_some());
+            bp.next_alt += 1;
+            if let Some(tp) = alt_tp {
+                calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                    .process_context()
+                    .track_point(tp)
+                    .get_branch_node();
+            }
+            indi_node
+        };
+        self.enter_backend_expansion_reuse_discard_alternative(indi_node, calc_alg_context);
     }
 
     /// Advance the topmost (choose) branch point to its second alternative:
@@ -2299,8 +2481,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .set_nominal_non_deterministic_processing_nodes_sorted(true);
         }
 
-        // --- Probe 18: prepare backend reuse-expansion branching.
-        // W3-DEFER[api]: task branching + reuse-mode dependency siblings. ---
+        // --- Probe 18: prepare backend reuse-expansion branching (cpp 2446-2449).
+        // LIVE. Creates the `REUSEBACKENDEXPANSIONMODES` dependency once and selects
+        // the PRIORITIZED reuse mode — the arm Konclude takes whenever the task
+        // carries a representative-backend updating adapter that has not hit its
+        // expansion limit (cpp 24785-24790), which is the bridge's situation. The
+        // fixed/prioritized MODE fork (the no-adapter arm) stays W3-DEFER[task]. ---
+        if indi_proc_node.is_none() && self.opt_backend_expansion_reuse {
+            self.prepare_backend_expansion_reuse_branching(calc_alg_context);
+        }
 
         // --- Probe 19: fixed-mode backend reuse-expansion (cpp 2453-2460). LIVE. ---
         if indi_proc_node.is_none() && self.opt_backend_expansion_reuse {

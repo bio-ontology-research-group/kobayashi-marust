@@ -27,7 +27,8 @@
 //!   - everything else (multiple role atoms, head role atoms / role
 //!     hierarchy, `Eq`, body `Exist`, nominals, card_defs, chains) counts as
 //!     unsupported in v1.
-use std::collections::{BTreeSet, HashMap};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::classifier::{
     OptimizedKPSetClassSubsumptionClassifierThread, RecordingClassificationMessageDataObserver,
@@ -38,7 +39,7 @@ use super::completion::context::CalculationAlgorithmContextBase;
 use super::completion::stubs::SatisfiableTaskClassificationMessageAnalyser;
 use super::model::concept::Concept;
 use super::model::concept_process::{ConceptProcessData, ReplacementData};
-use super::model::individual::{ConceptAssertion, Individual};
+use super::model::individual::{ConceptAssertion, Individual, ReverseRoleAssertion, RoleAssertion};
 use super::model::op;
 use super::model::role::Role;
 use super::model::role_chain::RoleChain;
@@ -78,6 +79,20 @@ fn is_builtin_top_role_name(name: &str) -> bool {
         || raw.starts_with("owl:topDataProperty__")
         || raw.starts_with("topObjectProperty__")
         || raw.starts_with("topDataProperty__")
+}
+
+fn is_builtin_bottom_role_name(name: &str) -> bool {
+    let raw = name.trim_matches(['<', '>']);
+    raw == "owl:bottomObjectProperty"
+        || raw == "owl:bottomDataProperty"
+        || raw == "http://www.w3.org/2002/07/owl#bottomObjectProperty"
+        || raw == "http://www.w3.org/2002/07/owl#bottomDataProperty"
+        || raw == "bottomObjectProperty"
+        || raw == "bottomDataProperty"
+        || raw.starts_with("owl:bottomObjectProperty__")
+        || raw.starts_with("owl:bottomDataProperty__")
+        || raw.starts_with("bottomObjectProperty__")
+        || raw.starts_with("bottomDataProperty__")
 }
 
 fn has_builtin_top_role(tin: &TInput) -> bool {
@@ -1309,8 +1324,23 @@ pub struct Bridged {
     /// Native ontology individuals that must be reconstructed in every probe.
     /// Empty retains the historical nominal-free bridge behaviour.
     nominal_seeds: Vec<NominalSeed>,
+    /// Mixed cardinality+ABox tasks copy positive assertion-role linkers
+    /// directly. Nominal-only tasks retain the previously validated
+    /// `exists R.{b}` completion encoding.
+    direct_native_role_assertions: bool,
     /// Explicit OWL inequalities. Absence never implies inequality (no UNA).
     nominal_different: Vec<(Cint64, Cint64)>,
+    /// Konclude's representative-backend association written by the ABox
+    /// individual-saturation jobs and read by every later full-completion
+    /// graph. `RefCell` mirrors the precomputation lifecycle: saturation owns
+    /// the one write, while probe resets only read the immutable association.
+    native_representative_cache: RefCell<Option<NativeAboxRepresentativeCache>>,
+    /// Immutable-by-value copy of the completed ontology-consistency graph's
+    /// non-deterministic nominal-label prefixes. Konclude exposes these only
+    /// after individual saturation, representative-cache recomputation, and
+    /// the authoritative full consistency task have finished.
+    native_consistency_nominal_nondeterministic_prefix:
+        RefCell<Option<HashMap<Cint64, Vec<(ConceptId, bool)>>>>,
 }
 
 #[derive(Clone)]
@@ -1318,13 +1348,368 @@ struct NominalSeed {
     individual: IndividualId,
     individual_tag: Cint64,
     nominal_concept: ConceptId,
+    /// Completion concept assertions. Positive object-property assertions use
+    /// `exists R.{b}` only on the legacy nominal-only profile; the mixed
+    /// cardinality+ABox profile copies their typed role linkers directly.
     assertions: Vec<(ConceptId, bool)>,
+    /// Saturation's native ABox edge view. Keeping these separate prevents a
+    /// positive edge from being represented both as a real named neighbour and
+    /// as an anonymous existential successor.
+    role_assertions: Vec<(RoleId, Cint64)>,
 }
 
 impl Bridged {
     fn has_native_nominals(&self) -> bool {
         !self.nominal_seeds.is_empty()
     }
+}
+
+/// One representative-memory neighbour-role-set label.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct NativeAboxNeighbourRoleSet {
+    neighbour_tag: Cint64,
+    /// `(role, inversed)` entries, sorted by role id then polarity.
+    roles: Vec<(RoleId, bool)>,
+    /// Exact backend cache values for this neighbour role-set label.
+    role_values: Option<Vec<NativeAboxRoleValue>>,
+    /// `connIndiDetMerged` used while Konclude creates these values. `false`
+    /// requires every role value contributed through this alias to remain
+    /// nondeterministic.
+    merged_alias_deterministic: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NativeAboxRoleValue {
+    role: RoleId,
+    inversed: bool,
+    deterministic: bool,
+}
+
+/// One value of Konclude's `FULL_CONCEPT_SET_LABEL`. Completion writeback must
+/// retain the cache-value determinism bit; replaying a branch-dependent value
+/// with the base dependency would turn one model choice into an entailment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NativeAboxConceptValue {
+    concept: ConceptId,
+    negated: bool,
+    deterministic: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NativeAboxAssociationOrigin {
+    IndividualSaturation,
+    CompletionWriteback,
+}
+
+/// The typed subset of
+/// `CBackendRepresentativeMemoryCacheIndividualAssociationData` consumed by
+/// the bridge's full-completion path.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct NativeAboxRepresentativeEntry {
+    individual_tag: Cint64,
+    /// FULL_CONCEPT_SET_LABEL.
+    concepts: Vec<(ConceptId, bool)>,
+    /// Exact cache values, including the deterministic/non-deterministic
+    /// identifier. `None` means that label family was not serialized and keeps
+    /// the association fail-closed.
+    concept_values: Option<Vec<NativeAboxConceptValue>>,
+    /// COMBINED_INSTANTIATED_ROLE_SET_LABEL.
+    instantiated_roles: Vec<RoleId>,
+    instantiated_role_values: Option<Vec<NativeAboxRoleValue>>,
+    /// COMBINED_EXISTENTIAL_INSTANTIATED_ROLE_SET_LABEL.
+    existential_roles: Vec<RoleId>,
+    existential_role_values: Option<Vec<NativeAboxRoleValue>>,
+    /// CARDINALITY_ASSOCIATION_DATA, minimum upper bound per role.
+    at_most_cardinalities: Vec<(RoleId, Cint64)>,
+    /// CARDINALITY_ASSOCIATION_DATA, maximum existential cardinality already
+    /// represented by the cached completion label, per role.
+    existential_max_cardinalities: Vec<(RoleId, Cint64)>,
+    /// INDIRECTLY_CONNECTED_NOMINAL_INDIVIDUAL_SET_LABEL.
+    indirect_nominal_connections: Vec<Cint64>,
+    /// NEIGHBOUR_INSTANTIATED_ROLE_SET_COMBINATION_LABEL.
+    neighbour_role_combinations: Vec<NativeAboxNeighbourRoleSet>,
+    /// Konclude's association-status triple. `completely_propagated` is
+    /// independent metadata; the expansion-blocking status conjunct is
+    /// `completely_handled`.
+    completely_saturated: bool,
+    completely_handled: bool,
+    completely_propagated: bool,
+    insufficient: bool,
+    /// `hasRepresentativeSameIndividualMerging()`. `None` is deliberately
+    /// unknown/fail-closed; the native ABox route currently rejects source
+    /// `SameIndividual`, so its saturation writer records `Some(false)`.
+    representative_same_individual_merging: Option<bool>,
+    /// Pointer identity of
+    /// `DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL`. These are identities rather
+    /// than only equal contents because Konclude's blocking gate compares the
+    /// two cache-entry pointers.
+    deterministic_same_individual_label_identity: Option<u64>,
+    /// Pointer identity returned by
+    /// `getDeterministicMergedSameConsideredLabelCacheEntry()`.
+    deterministic_merged_same_considered_label_identity: Option<u64>,
+    /// Canonical contents behind the two identities above. Pointer equality in
+    /// Konclude implies canonical-label equality; retaining the contents avoids
+    /// relying on a potentially colliding numeric fingerprint.
+    deterministic_same_individuals: Option<Vec<Cint64>>,
+    deterministic_merged_same_considered_individuals: Option<Vec<Cint64>>,
+    nondeterministic_same_individuals: Option<Vec<Cint64>>,
+    deterministic_different_individuals: Option<Vec<Cint64>>,
+    nondeterministic_different_individuals: Option<Vec<Cint64>>,
+    representative_same_individual_id: Option<Cint64>,
+    deterministic_same_individual_id: Option<Cint64>,
+    /// Exact completion-node status captured by the successful association
+    /// writer. Saturation associations use `None` because their status is held
+    /// by the saturation flag words instead.
+    completion_processing_restriction_flags: Option<Cint64>,
+    completion_label_descriptor_count: Option<usize>,
+    /// Cache update/synchronization metadata corresponding to
+    /// `usedAssociationUpdateId` and the representative adapter's scheduled
+    /// bit.
+    association_update_id: u64,
+    used_association_update_id: Option<u64>,
+    scheduled_individual: Option<bool>,
+    association_origin: Option<NativeAboxAssociationOrigin>,
+    /// These gates are set only when the writer serialized every field that
+    /// the current bridge reader relies on. An unsupported merge/link/sync
+    /// shape leaves the entry present but incomplete.
+    merge_identity_metadata_complete: bool,
+    role_metadata_complete: bool,
+    synchronization_metadata_complete: bool,
+}
+
+impl NativeAboxRepresentativeEntry {
+    fn complete_for_precomputation(&self) -> bool {
+        self.completely_handled
+            && self.concept_values.is_some()
+            && self.merge_identity_metadata_complete
+            && self.role_metadata_complete
+            && self.synchronization_metadata_complete
+            && match (
+                self.representative_same_individual_merging,
+                self.representative_same_individual_id,
+                self.deterministic_same_individual_id,
+            ) {
+                (Some(false), Some(representative), Some(deterministic)) => {
+                    representative == self.individual_tag && deterministic == self.individual_tag
+                }
+                (Some(true), Some(representative), Some(deterministic)) => {
+                    representative != self.individual_tag && deterministic == representative
+                }
+                _ => false,
+            }
+            && self
+                .deterministic_same_individual_label_identity
+                .zip(self.deterministic_merged_same_considered_label_identity)
+                .is_some_and(|(same, considered)| same == considered)
+            && self.deterministic_same_individuals.is_some()
+            && self.deterministic_same_individuals
+                == self.deterministic_merged_same_considered_individuals
+    }
+
+    fn reusable_for_full_completion(&self) -> bool {
+        self.complete_for_precomputation()
+            && self.representative_same_individual_merging == Some(false)
+        // Konclude's `tryEstablishExpansionBlockingWithBackendCacheSynchronisation`
+        // does not inspect the non-deterministic same-individual label here.
+        // The exact blocking predicate is complete handling, no
+        // representative-same merge, canonical deterministic-same identity, and
+        // concept-label synchronization (the latter is checked by the caller).
+        //
+        // KONCLUDE-PORT-NOTE[reuse]: the backend-expansion REUSE queue is a
+        // different mechanism from this blocking predicate and is NOT off by
+        // default upstream — `mConfBackendExpansionReuse` is a ctor `true`
+        // (cpp 514) and `mOptBackendExpansionReuse` is switched on for every
+        // task carrying a representative-backend updating adapter (cpp 844-845),
+        // with the late-dynamic arm at cpp 22892-22924 setting the DATABOX flag
+        // `setBackendIndividualLateReuseExpansionActivated(true)`, which
+        // `initProcessingDataBox(parent)` (cpp 453) then propagates to every
+        // derived task including the class jobs. See `has_reusable_elements`.
+    }
+
+    /// Konclude's `hasReuseableElements` (cpp 22884-22916): does this
+    /// association carry any NON-deterministic content that a later task could
+    /// replay instead of re-deriving? Konclude reads exactly four slots —
+    /// non-deterministic elements in `FULL_CONCEPT_SET_LABEL`, a
+    /// `NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL`, a
+    /// `NONDETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL`, and a
+    /// `NONDETERMINISTIC_DIFFRENT_INDIVIDUAL_SET_LABEL` — and queues the node
+    /// for `reuseIndividualBackendExpansion` (cpp 25092-25373) when any is set.
+    ///
+    /// KM writes all four (see `write_completed_native_representative_associations`)
+    /// and reads none of them: `replay_native_representative_cache` filters to
+    /// `value.deterministic`, and `u25::reuse_individual_backend_expansion` is a
+    /// PORT-PENDING stub. This predicate exists so the gap is measurable before
+    /// it is closed.
+    fn has_reusable_elements(&self) -> bool {
+        let nondeterministic_concepts = self
+            .concept_values
+            .as_ref()
+            .is_some_and(|values| values.iter().any(|value| !value.deterministic));
+        nondeterministic_concepts
+            || self.has_nondeterministic_neighbour_roles()
+            || self
+                .nondeterministic_same_individuals
+                .as_ref()
+                .is_some_and(|values| !values.is_empty())
+            || self
+                .nondeterministic_different_individuals
+                .as_ref()
+                .is_some_and(|values| !values.is_empty())
+    }
+
+    /// The `NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL`
+    /// slot, i.e. the neighbour role links Konclude's reuse expansion re-creates
+    /// at cpp 25318-25440. In the Stage-2 trace this slot is set on 86 of the
+    /// 198 associations (`ANALYSIS.md` section 4).
+    fn has_nondeterministic_neighbour_roles(&self) -> bool {
+        self.neighbour_role_combinations.iter().any(|combination| {
+            combination
+                .role_values
+                .as_ref()
+                .is_some_and(|values| values.iter().any(|value| !value.deterministic))
+        })
+    }
+
+    /// FAIL-CLOSED gate for `u25::reuse_individual_backend_expansion`: every
+    /// slot that replay reads must be present with its determinism bit, and the
+    /// association must be completely handled (Konclude only reaches the reuse
+    /// queue under `indiAssData->isCompletelyHandled()`, cpp 22710).
+    ///
+    /// Konclude's cache is authoritative, so it has no equivalent test — a
+    /// missing label there simply means the slot is empty. The bridge's typed
+    /// record uses `None` for "the writer could not serialize this exactly", so
+    /// `None` must NOT be read as "empty": replaying a model with a silently
+    /// dropped merge, link or distinction under one non-deterministic track
+    /// point would assert a state the recorded model never had.
+    fn reuse_replay_representable(&self) -> bool {
+        self.completely_handled
+            && self.concept_values.is_some()
+            && self.instantiated_role_values.is_some()
+            && self.existential_role_values.is_some()
+            && self
+                .neighbour_role_combinations
+                .iter()
+                .all(|combination| combination.role_values.is_some())
+            && self.deterministic_same_individuals.is_some()
+            && self.nondeterministic_same_individuals.is_some()
+            && self.deterministic_different_individuals.is_some()
+            && self.nondeterministic_different_individuals.is_some()
+            && self.representative_same_individual_id.is_some()
+            && self.merge_identity_metadata_complete
+            && self.role_metadata_complete
+    }
+}
+
+/// Per-slot occupancy of the published associations: how much of the recorded
+/// model's non-deterministic half `reuse_individual_backend_expansion` has to
+/// replay. Test-only read-off over [`NativeAboxRepresentativeCache`].
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct NativeAssociationNondeterminismStats {
+    total: usize,
+    complete: usize,
+    nondeterministic_concepts: usize,
+    nondeterministic_neighbour_roles: usize,
+    nondeterministic_same_individuals: usize,
+    nondeterministic_different_individuals: usize,
+    reusable_elements: usize,
+}
+
+#[cfg(test)]
+fn native_association_nondeterminism_stats(
+    cache: &NativeAboxRepresentativeCache,
+) -> NativeAssociationNondeterminismStats {
+    let mut stats = NativeAssociationNondeterminismStats::default();
+    for entry in cache.entries.values() {
+        stats.total += 1;
+        if entry.complete_for_precomputation() {
+            stats.complete += 1;
+        }
+        if entry
+            .concept_values
+            .as_ref()
+            .is_some_and(|values| values.iter().any(|value| !value.deterministic))
+        {
+            stats.nondeterministic_concepts += 1;
+        }
+        if entry.has_nondeterministic_neighbour_roles() {
+            stats.nondeterministic_neighbour_roles += 1;
+        }
+        if entry
+            .nondeterministic_same_individuals
+            .as_ref()
+            .is_some_and(|values| !values.is_empty())
+        {
+            stats.nondeterministic_same_individuals += 1;
+        }
+        if entry
+            .nondeterministic_different_individuals
+            .as_ref()
+            .is_some_and(|values| !values.is_empty())
+        {
+            stats.nondeterministic_different_individuals += 1;
+        }
+        if entry.has_reusable_elements() {
+            stats.reusable_elements += 1;
+        }
+    }
+    stats
+}
+
+/// Exact association-status split from
+/// `CSaturationNodeBackendAssociationCacheHandler`: handling depends only on
+/// indirect insufficiency and the two completed flags. Direct propagation is
+/// recorded independently and does not disable backend expansion blocking.
+fn native_abox_association_status(direct_flags: Cint64, indirect_flags: Cint64) -> (bool, bool) {
+    use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+
+    let insufficient = indirect_flags & F::INDSATFLAGINSUFFICIENT != 0
+        || indirect_flags & F::INDSATFLAGCOMPLETED == 0
+        || direct_flags & F::INDSATFLAGCOMPLETED == 0;
+    let completely_propagated = direct_flags & F::INDSATFLAGPROPAGATIONINCOMPLETE == 0;
+    (!insufficient, completely_propagated)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct NativeAboxRepresentativeCache {
+    entries: HashMap<Cint64, NativeAboxRepresentativeEntry>,
+    /// Konclude aborts the whole association write when any representative
+    /// saturation node clashes. Completion remains authoritative in this case.
+    association_write_aborted: bool,
+    /// Monotone bridge-local equivalent of Konclude's association update id.
+    next_association_update_id: u64,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum NativePrecomputationPhase {
+    Start,
+    IndividualSaturation,
+    FullConsistencyCompletion,
+    ConsistencyDeclared,
+}
+
+fn advance_native_precomputation_phase(
+    phase: &mut NativePrecomputationPhase,
+    next: NativePrecomputationPhase,
+) -> Option<()> {
+    let valid = matches!(
+        (*phase, next),
+        (
+            NativePrecomputationPhase::Start,
+            NativePrecomputationPhase::IndividualSaturation
+        ) | (
+            NativePrecomputationPhase::IndividualSaturation,
+            NativePrecomputationPhase::FullConsistencyCompletion
+        ) | (
+            NativePrecomputationPhase::FullConsistencyCompletion,
+            NativePrecomputationPhase::ConsistencyDeclared
+        )
+    );
+    if !valid {
+        return None;
+    }
+    *phase = next;
+    Some(())
 }
 
 /// Tag base for bridged concepts (tag 1 is the ontology TOP sentinel).
@@ -1353,15 +1738,45 @@ impl<'a> Builder<'a> {
         if ops.len() == 1 {
             return ops[0];
         }
+        // `CConcept::addOperandLinker` inserts through `CSortedNegLinker`.
+        // Stable tag order is part of Konclude's semantic-branch partition and
+        // of its cold branch-priority tie break.
+        let mut sorted_ops = ops.to_vec();
+        sorted_ops.sort_unstable_by_key(|(concept, negated)| {
+            (
+                self.ctx
+                    .ontology_arenas()
+                    .concept(*concept)
+                    .get_concept_tag(),
+                *negated,
+            )
+        });
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
         c.set_operator_code(op::CCOR);
-        for &(o, n) in ops {
+        for (o, n) in sorted_ops {
             c.add_operand_linker(o, n);
         }
         c.set_operand_count(ops.len() as i64);
         (self.ctx.ontology_arenas_mut().alloc_concept(c), false)
+    }
+    /// Transport one signed concept through an attachment vector whose entries
+    /// are positive concept ids. A positive value needs no wrapper. A negative
+    /// value uses the exact singleton-OR degeneration: saturation's OR rule
+    /// immediately adds its sole signed operand, without introducing a choice.
+    fn positive_attachment_concept(&mut self, concept: (ConceptId, bool)) -> ConceptId {
+        if !concept.1 {
+            return concept.0;
+        }
+        let tag = self.fresh_tag();
+        let mut wrapper = Concept::new();
+        wrapper
+            .set_concept_tag(tag)
+            .set_operator_code(op::CCOR)
+            .add_operand_linker(concept.0, true)
+            .set_operand_count(1);
+        self.ctx.ontology_arenas_mut().alloc_concept(wrapper)
     }
     fn and_of(&mut self, ops: &[(ConceptId, bool)]) -> (ConceptId, bool) {
         if ops.len() == 1 {
@@ -1776,6 +2191,39 @@ fn full_absorption_trigger(
                 concept,
                 complexity: 1,
             })
+        } else if !negated && op_code == op::CCNOMINAL {
+            // Exact `getTriggersForConcept` CCNOMINAL branch (C++ 3246–3271):
+            // a nominal is a usable positive trigger, but the trigger lives on
+            // its named individual rather than as an unfolding of the nominal
+            // concept. This is what absorbs `{a} -> C` and
+            // `({a1} or ... or {an}) -> C` without leaving a critical OR on
+            // TOP. The representative-assertion resolver consumes the real
+            // individual assertion linker when it builds the saturation seed.
+            let individual = b
+                .ctx
+                .ontology_arenas()
+                .concept(concept)
+                .get_nominal_individual();
+            if individual.is_none() {
+                None
+            } else {
+                let nominal_trigger = b.implication_trigger();
+                let assertion = ConceptAssertion {
+                    target: nominal_trigger,
+                    negated: false,
+                };
+                let individual = b.ctx.ontology_arenas_mut().individual_mut(individual);
+                if !individual
+                    .get_assertion_concept_linker()
+                    .contains(&assertion)
+                {
+                    individual.add_assertion_concept_linker(assertion);
+                }
+                Some(AbsorptionTrigger {
+                    concept: nominal_trigger,
+                    complexity: 1,
+                })
+            }
         } else if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
             || (negated && op_code == op::CCOR)
         {
@@ -2366,6 +2814,20 @@ fn encode_source_subclass(
         return SourceEncoding::Unsupported;
     };
 
+    if matches!(left, SourceConcept::Top) {
+        // Exact `CConcreteOntologyUpdateBuilder::buildConceptSubClassInclusion`
+        // CCTOP branch: TOP receives the inclusion expression itself via
+        // `setConceptOperandsFromClassTerms`. Do not manufacture
+        // `not TOP or right`: when `right` is already a disjunction, that
+        // creates a nested OR whose outer critical check cannot be discharged
+        // by an asserted inner disjunct. The unsigned attachment vectors use a
+        // deterministic singleton wrapper only for a negative signed value.
+        let inclusion = b.positive_attachment_concept(right_built);
+        tbox.push(inclusion);
+        top_gcis.push(inclusion);
+        return SourceEncoding::TopGci;
+    }
+
     if matches!(left, SourceConcept::Name(_))
         && !left_built.1
         && b.add_unfolding(left_built.0, right_built.0, right_built.1)
@@ -2856,6 +3318,89 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
     !tin.nominals.is_empty() || !tin.nominal_abox.is_empty()
 }
 
+/// Select Konclude's conditional-full mixed number-restriction+ABox profile.
+///
+/// `number` is set by `cb_to_ht` only after an equality-head number clause was
+/// converted without dropping an atom. It also remains set when
+/// `KM_NO_HT_CARD=1` keeps that exact clausal encoding and leaves `card_defs`
+/// empty. The typed nominal certificate and the bridge's normal
+/// `unsupported == 0` fence independently remain mandatory, so this scheduling
+/// choice cannot admit an unsupported ABox or number construct.
+///
+/// Konclude enables full completion only below its 10,000-individual
+/// conditional threshold. Larger ABoxes use the lazy/batched precomputation
+/// route and must not enter the retained all-root schedule (or its
+/// definition-containment shortcut).
+const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
+
+fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
+    native_nominals
+        && tin.number
+        && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+}
+
+/// Large conditional-nonfull ABoxes that can be consistency-checked by one
+/// representative per asserted-type signature and then omitted from taxonomy
+/// jobs. With no nominal occurrence, cross-individual edge, inequality, or
+/// universal role, the logic is closed under disjoint unions: each independent
+/// assertion signature needs one satisfiable root, while individual identity
+/// cannot affect a TBox class subsumption.
+fn independent_large_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
+    fn coupled(concept: &SourceConcept) -> bool {
+        match concept {
+            SourceConcept::Nominal(_) => true,
+            SourceConcept::Not(inner) => coupled(inner),
+            SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                operands.iter().any(coupled)
+            }
+            SourceConcept::Exists(role, filler)
+            | SourceConcept::Forall(role, filler)
+            | SourceConcept::AtLeast(_, role, filler)
+            | SourceConcept::AtMost(_, role, filler) => {
+                matches!(role, SourceRole::Universal) || coupled(filler)
+            }
+            SourceConcept::HasSelf(role) => matches!(role, SourceRole::Universal),
+            SourceConcept::Name(_) | SourceConcept::Top | SourceConcept::Bottom => false,
+        }
+    }
+
+    native_nominals
+        && tin.nominal_abox.individuals.len() >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+        && tin.nominal_abox.role_assertions.is_empty()
+        && tin.nominal_abox.negative_role_assertions.is_empty()
+        && tin.nominal_abox.different.is_empty()
+        && tin.source_axioms.iter().all(|axiom| {
+            !coupled(&axiom.left) && !coupled(&axiom.right)
+        })
+        && tin
+            .nominal_abox
+            .individuals
+            .iter()
+            .flat_map(|entry| entry.assertions.iter())
+        .all(|assertion| !coupled(assertion))
+}
+
+/// Select one stable representative for each logical asserted-type set.
+///
+/// Frontend assertion order is not semantic, and duplicate assertions do not
+/// distinguish two otherwise independent roots. Canonicalising the signature
+/// avoids repeating the same completion task for differently ordered input.
+fn independent_abox_representative_tags(bridged: &Bridged) -> HashSet<Cint64> {
+    let mut signatures = HashSet::new();
+    let mut selected_tags = HashSet::new();
+    for seed in &bridged.nominal_seeds {
+        let signature: BTreeSet<(Cint64, bool)> = seed
+            .assertions
+            .iter()
+            .map(|(concept, negated)| (concept.raw, *negated))
+            .collect();
+        if signatures.insert(signature) {
+            selected_tags.insert(seed.individual_tag);
+        }
+    }
+    selected_tags
+}
+
 /// Independent bridge-side validation of the frontend coverage certificate.
 /// This deliberately does not relax the legacy fast-tableau nominal fence.
 fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
@@ -2883,6 +3428,27 @@ fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
     if meta.different.iter().any(|(left, right)| {
         !individuals.contains(left.as_str()) || !individuals.contains(right.as_str())
     }) {
+        return false;
+    }
+    let roles: BTreeSet<&str> = tin.roles.iter().map(String::as_str).collect();
+    if roles.len() != tin.roles.len() {
+        return false;
+    }
+    if meta
+        .role_assertions
+        .iter()
+        .chain(meta.negative_role_assertions.iter())
+        .any(|assertion| {
+            assertion.role.is_empty()
+                || assertion.source.is_empty()
+                || assertion.target.is_empty()
+                || is_builtin_top_role_name(&assertion.role)
+                || is_builtin_bottom_role_name(&assertion.role)
+                || !roles.contains(assertion.role.as_str())
+                || !individuals.contains(assertion.source.as_str())
+                || !individuals.contains(assertion.target.as_str())
+        })
+    {
         return false;
     }
     // An inverse-free conversion retains the historical `nominals` ids; every
@@ -3034,6 +3600,12 @@ fn bridge_tinput_with_trigger_absorption(
     // source channel. The old `tin.nominals` spelling/fence remains untouched
     // for every other consumer.
     let native_nominal_covered = native_nominal_metadata_covered(tin, source_mode);
+    // `TInput::number` is the semantic feature bit: it remains set when the
+    // frontend keeps the clausal cardinality encoding and therefore emits no
+    // `card_defs` (the production 9540 route uses `KM_NO_HT_CARD=1`).  The
+    // side-channel's presence is an encoding choice, not a fragment test.
+    let direct_native_role_assertions =
+        native_cardinality_abox_profile(tin, native_nominal_covered);
     let nominal_concept_index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -3042,6 +3614,7 @@ fn bridge_tinput_with_trigger_absorption(
         .collect();
     let mut nominal_by_name: HashMap<String, ConceptId> = HashMap::new();
     let mut nominal_tag_by_name: HashMap<String, Cint64> = HashMap::new();
+    let mut nominal_seed_index_by_name: HashMap<String, usize> = HashMap::new();
     let mut nominal_seeds = Vec::new();
     let mut nominal_different = Vec::new();
     if native_nominal_covered {
@@ -3058,7 +3631,13 @@ fn bridge_tinput_with_trigger_absorption(
             };
             let individual_tag = b.ctx.ontology_arenas().individual_count();
             let mut individual = Individual::new(individual_tag);
-            individual.set_individual_nominal_concept(nominal_concept);
+            // Source ABox entries are named OWL individuals. Konclude's
+            // saturation initializer selects its assertion-resolved-node path
+            // through `CIndividual::hasIndividualName`; preserve that metadata
+            // instead of leaving every bridged individual anonymous.
+            individual
+                .add_individual_name_linker(NameId::new(individual_tag))
+                .set_individual_nominal_concept(nominal_concept);
             let individual = b.ctx.ontology_arenas_mut().alloc_individual(individual);
             b.ctx
                 .ontology_arenas_mut()
@@ -3072,19 +3651,56 @@ fn bridge_tinput_with_trigger_absorption(
             }
             nominal_by_name.insert(entry.individual.clone(), nominal_concept);
             nominal_tag_by_name.insert(entry.individual.clone(), individual_tag);
+            nominal_seed_index_by_name.insert(entry.individual.clone(), nominal_seeds.len());
             nominal_seeds.push(NominalSeed {
                 individual,
                 individual_tag,
                 nominal_concept,
                 assertions: Vec::new(),
+                role_assertions: Vec::new(),
             });
         }
         for (left, right) in &tin.nominal_abox.different {
-            if let (Some(&left), Some(&right)) = (
+            if let (
+                Some(&left_tag),
+                Some(&right_tag),
+                Some(&left_index),
+                Some(&right_index),
+                Some(&left_nominal),
+                Some(&right_nominal),
+            ) = (
                 nominal_tag_by_name.get(left),
                 nominal_tag_by_name.get(right),
+                nominal_seed_index_by_name.get(left),
+                nominal_seed_index_by_name.get(right),
+                nominal_by_name.get(left),
+                nominal_by_name.get(right),
             ) {
-                nominal_different.push((left, right));
+                nominal_different.push((left_tag, right_tag));
+                // Konclude translates DifferentIndividuals(a,b) into the two
+                // ordinary negative nominal assertions a:¬{b}, b:¬{a}.
+                // Keeping them in the labels preserves component locality:
+                // unrelated named nodes need not be materialised merely to
+                // install a global pairwise edge.
+                for (seed_index, distinct_nominal) in
+                    [(left_index, right_nominal), (right_index, left_nominal)]
+                {
+                    let seed = &mut nominal_seeds[seed_index];
+                    if !seed.assertions.contains(&(distinct_nominal, true)) {
+                        seed.assertions.push((distinct_nominal, true));
+                    }
+                    let assertion = ConceptAssertion {
+                        target: distinct_nominal,
+                        negated: true,
+                    };
+                    let individual = b.ctx.ontology_arenas_mut().individual_mut(seed.individual);
+                    if !individual
+                        .get_assertion_concept_linker()
+                        .contains(&assertion)
+                    {
+                        individual.add_assertion_concept_linker(assertion);
+                    }
+                }
             }
         }
     }
@@ -3636,7 +4252,7 @@ fn bridge_tinput_with_trigger_absorption(
                 let left = $left;
                 let right = $right;
                 if seen_inclusions.insert((left.clone(), right.clone())) {
-                    match encode_source_subclass(
+                    let encoding = encode_source_subclass(
                         &mut b,
                         left,
                         right,
@@ -3651,7 +4267,8 @@ fn bridge_tinput_with_trigger_absorption(
                         &mut trigger_caches,
                         &mut tbox,
                         &mut top_gcis,
-                    ) {
+                    );
+                    match encoding {
                         SourceEncoding::Direct => direct += 1,
                         SourceEncoding::RoleLink => role_links += 1,
                         SourceEncoding::AbsorbedGci => absorbed += 1,
@@ -3809,6 +4426,159 @@ fn bridge_tinput_with_trigger_absorption(
                                 negated,
                             });
                     }
+                }
+            }
+            // Keep object-property assertions in the DL-equivalent class form
+            // consumed by completion, and in the real named-edge form consumed
+            // by individual saturation:
+            //
+            //   R(a,b)  ->  a : exists R.{b}
+            //  !R(a,b) ->  a : forall R.not {b}
+            //
+            // The two views live in distinct seed fields, so saturation never
+            // creates both a named edge and an anonymous existential witness.
+            for (assertion, negative) in tin
+                .nominal_abox
+                .role_assertions
+                .iter()
+                .map(|assertion| (assertion, false))
+                .chain(
+                    tin.nominal_abox
+                        .negative_role_assertions
+                        .iter()
+                        .map(|assertion| (assertion, true)),
+                )
+            {
+                let Some(&seed_index) = nominal_seed_index_by_name.get(assertion.source.as_str())
+                else {
+                    source_unsupported += 1;
+                    continue;
+                };
+                let nominal = SourceConcept::Nominal(assertion.target.clone());
+                let filler = if negative {
+                    SourceConcept::Not(Box::new(nominal))
+                } else {
+                    nominal
+                };
+                let source_assertion = if negative {
+                    SourceConcept::Forall(
+                        SourceRole::Name(assertion.role.clone()),
+                        Box::new(filler),
+                    )
+                } else {
+                    SourceConcept::Exists(
+                        SourceRole::Name(assertion.role.clone()),
+                        Box::new(filler),
+                    )
+                };
+                let Some((concept, negated)) = build_source_concept(
+                    &mut b,
+                    &source_assertion,
+                    &concept_index,
+                    &role_index,
+                    &named,
+                    &roles,
+                    &inv_roles,
+                    &nominal_by_name,
+                    &mut concept_cache,
+                ) else {
+                    source_unsupported += 1;
+                    continue;
+                };
+                // Konclude copies positive assertion-role linkers directly
+                // into mixed cardinality+ABox completion tasks. Keep the
+                // historical existential encoding only outside that exact
+                // profile. A genuine class assertion with the same syntax was
+                // inserted above and remains in the journal.
+                {
+                    let seed = &mut nominal_seeds[seed_index];
+                    if (negative || !direct_native_role_assertions)
+                        && !seed.assertions.contains(&(concept, negated))
+                    {
+                        seed.assertions.push((concept, negated));
+                    }
+                }
+                if negative {
+                    let seed = &nominal_seeds[seed_index];
+                    let individual = b.ctx.ontology_arenas_mut().individual_mut(seed.individual);
+                    if !individual
+                        .get_assertion_concept_linker()
+                        .contains(&ConceptAssertion {
+                            target: concept,
+                            negated,
+                        })
+                    {
+                        individual.add_assertion_concept_linker(ConceptAssertion {
+                            target: concept,
+                            negated,
+                        });
+                    }
+                } else {
+                    let Some(&role_index) = role_index.get(assertion.role.as_str()) else {
+                        source_unsupported += 1;
+                        continue;
+                    };
+                    let Some(&target_tag) = nominal_tag_by_name.get(assertion.target.as_str())
+                    else {
+                        source_unsupported += 1;
+                        continue;
+                    };
+                    let Some(&target_seed_index) =
+                        nominal_seed_index_by_name.get(assertion.target.as_str())
+                    else {
+                        source_unsupported += 1;
+                        continue;
+                    };
+                    let edge = (roles[role_index], target_tag);
+                    let source_individual = {
+                        let seed = &mut nominal_seeds[seed_index];
+                        if !seed.role_assertions.contains(&edge) {
+                            seed.role_assertions.push(edge);
+                        }
+                        seed.individual
+                    };
+                    let target_individual = nominal_seeds[target_seed_index].individual;
+                    let forward = RoleAssertion {
+                        role: roles[role_index],
+                        individual: target_individual,
+                    };
+                    let reverse = ReverseRoleAssertion {
+                        individual: source_individual,
+                        role: roles[role_index],
+                        role_assertion: roles[role_index].raw,
+                    };
+                    {
+                        let source = b
+                            .ctx
+                            .ontology_arenas_mut()
+                            .individual_mut(source_individual);
+                        if !source.get_assertion_role_linker().contains(&forward) {
+                            source.add_assertion_role_linker(forward);
+                        }
+                    }
+                    {
+                        let target = b
+                            .ctx
+                            .ontology_arenas_mut()
+                            .individual_mut(target_individual);
+                        if !target
+                            .get_reverse_assertion_role_linker()
+                            .contains(&reverse)
+                        {
+                            target.add_reverse_assertion_role_linker(reverse);
+                        }
+                    }
+                    // A separately asserted expression may be structurally
+                    // identical to the generated `exists R.{b}`. The real edge
+                    // already entails it, so remove that concept from the
+                    // saturation-side model label to prevent a second witness.
+                    b.ctx
+                        .ontology_arenas_mut()
+                        .individual_mut(source_individual)
+                        .assertion_concept_linker
+                        .retain(|assertion| {
+                            assertion.target != concept || assertion.negated != negated
+                        });
                 }
             }
         }
@@ -4653,6 +5423,30 @@ fn bridge_tinput_with_trigger_absorption(
     }
     bridge_phase!("terminology-stamp");
 
+    // Konclude's preprocessors may add assertions after the source ABox was
+    // materialized. In particular, nominal trigger absorption asserts a fresh
+    // CCIMPLTRIG on the corresponding named individual. Saturation reads the
+    // model individual directly; the completion bridge replays
+    // `NominalSeed::assertions`, so carry every later model assertion into
+    // that replay journal as well. Keep completion-only `exists R.{b}` entries
+    // already in the seed: the saturation model deliberately represents those
+    // positive role assertions as named edges instead.
+    if native_nominal_covered {
+        for seed in &mut nominal_seeds {
+            let model_assertions = ctx
+                .ontology_arenas()
+                .individual(seed.individual)
+                .get_assertion_concept_linker()
+                .to_vec();
+            for assertion in model_assertions {
+                let literal = (assertion.target, assertion.negated);
+                if !seed.assertions.contains(&literal) {
+                    seed.assertions.push(literal);
+                }
+            }
+        }
+    }
+
     let _ = functional_count;
     certified_unsatisfiable.sort_unstable();
     certified_unsatisfiable.dedup();
@@ -4667,7 +5461,10 @@ fn bridge_tinput_with_trigger_absorption(
         source_tbox: source_mode,
         certified_unsatisfiable,
         nominal_seeds,
+        direct_native_role_assertions,
         nominal_different,
+        native_representative_cache: RefCell::new(None),
+        native_consistency_nominal_nondeterministic_prefix: RefCell::new(None),
     }
 }
 
@@ -4702,6 +5499,14 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
         if std::env::var_os("KM_HT_NO_SEMB").is_none() {
             algo.conf_atomic_semantic_branching = true;
         }
+        // KM_HT_DDB_REFUTED_DISCARD: DIAGNOSTIC, DEFAULT OFF. Lets the DDB
+        // stack walk discard a positionally-exhausted refuted decision with the
+        // subtree above it (u02 `try_backtrack_or_branch_ddb`). UNSOUND — KM has
+        // no per-alternative refutation record to justify it (12 spurious
+        // `PathOfLength3 ⊑ X` on ore_ont_12653); read here so the unsafe escape
+        // is opt-in from ONE place and a probe reset (which re-runs this
+        // function) cannot silently acquire it. No inverse switch exists.
+        algo.conf_ddb_refuted_discard = std::env::var_os("KM_HT_DDB_REFUTED_DISCARD").is_some();
     }
     // Complete-state restore per alternative via arena journals. The per-node
     // localization landed
@@ -4756,6 +5561,16 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_anywhere_blocking_linked_candidate_hash_search = true;
     algo.conf_anywhere_blocking_lazy_exact_hashing = true;
     algo.conf_save_core_blocking_concepts_candidates = true;
+    // Konclude's production default. The generic u20 backend-association path
+    // remains fail-closed; the native ABox bridge activates this only after
+    // its explicit representative-cache predicate and concept-sync test.
+    algo.conf_allow_backend_successor_expansion_blocking = true;
+    algo.conf_allow_backend_neighbour_expansion_blocking = true;
+    // Decline the cache-backed selective neighbour expansion per NEIGHBOUR VALUE,
+    // never per NODE: one unjustifiable neighbour value must not drop the whole
+    // node's association block and raw-replay both assertion chains. See
+    // `conf_native_selective_neighbour_per_value_decline`.
+    algo.conf_native_selective_neighbour_per_value_decline = true;
 }
 
 /// Seed `concept` onto `root`'s concept-processing queue at the immediate
@@ -4817,6 +5632,12 @@ pub fn bridged_unsat(
     // fresh root node (the classify_test `make_root`)
     let id = *next_indi_id;
     *next_indi_id += 1;
+    let next_reserved = ctx
+        .processing_data_box_mut()
+        .next_individual_node_id(false)
+        .max(id.saturating_add(1));
+    ctx.processing_data_box_mut()
+        .set_first_possible_individual_node_id(next_reserved);
     let mut root = ctx
         .process_context_mut()
         .alloc_node(IndividualProcessNode::new(Id::NONE));
@@ -5327,6 +6148,12 @@ fn bridged_classify_subject_with_root(
 
     let id = *next_indi_id;
     *next_indi_id += 1;
+    let next_reserved = ctx
+        .processing_data_box_mut()
+        .next_individual_node_id(false)
+        .max(id.saturating_add(1));
+    ctx.processing_data_box_mut()
+        .set_first_possible_individual_node_id(next_reserved);
     let mut root = ctx
         .process_context_mut()
         .alloc_node(IndividualProcessNode::new(Id::NONE));
@@ -5739,7 +6566,37 @@ fn fresh_bridge_env_with_trigger_absorption(
     ctx.processing_data_box_mut().ontology_top_concept = top;
     let bridged = bridge_tinput_with_trigger_absorption(&mut ctx, tin, trigger_absorb);
     algo.singleton_concepts = bridged.singleton_concepts.clone();
-    if bridged.has_native_nominals() {
+    // `CCalculationConfigurationExtension` enables direct rule preprocessing
+    // in Konclude's production completion tasks. In particular, a freshly
+    // added OR is immediately lowered from priority 13 to the delayed queue
+    // before a task fork snapshots the processing queue. The bridge bypasses
+    // `readCalculationConfig`, so install that exact scheduling profile for
+    // the native cardinality+ABox route that needs representative tasks.
+    //
+    // Keep the accompanying cache-oriented alternative learning on the same
+    // semantic profile. Nominal-only 10621 and cardinality-only 7914 retain
+    // their validated legacy scheduling.
+    let card_nominal_profile = native_cardinality_abox_profile(tin, bridged.has_native_nominals());
+    let independent_abox_elided =
+        independent_large_abox_profile(tin, bridged.has_native_nominals());
+    algo.conf_direct_rule_preprocessing = card_nominal_profile;
+    algo.conf_cache_oriented_or_ordering = card_nominal_profile;
+    if card_nominal_profile {
+        // Konclude's null-configuration production defaults allow eager
+        // preprocessing to recurse through 300 nested rule applications. A
+        // zero limit only preprocesses the first descriptor and then silently
+        // falls back to ordinary queueing for every conclusion it produces.
+        algo.current_rec_proc_depth_limit = 300;
+        algo.conf_atomic_semantic_branching = true;
+        // This is also Konclude's production dependency profile. The
+        // cardinality+ABox route has complete branch epochs and now preserves
+        // the real dependencies of failed nominal merges, so dependency-
+        // directed backtracking can safely skip choices absent from a clash.
+        algo.conf_build_dependencies = true;
+        algo.conf_dependency_backtracking = true;
+        algo.conf_dependency_backjumping = true;
+    }
+    if bridged.has_native_nominals() && !independent_abox_elided {
         // Forced singleton merges can cross an OR alternative. Full in-process
         // COW is the existing complete restore mechanism for those writes.
         algo.conf_inprocess_cow = true;
@@ -5750,8 +6607,9 @@ fn fresh_bridge_env_with_trigger_absorption(
     (algo, ctx, bridged)
 }
 
-/// Recreate all ontology individuals in a fresh per-probe process context,
-/// seed their exact asserted types, and install only explicit inequalities.
+/// Recreate all ontology individuals in a fresh per-probe process context and
+/// seed their exact asserted types. Explicit inequalities are already present
+/// as ordinary negative nominal assertions, exactly as in Konclude.
 /// Returns false solely for an impossible typed-id/materialization mismatch;
 /// semantic clashes remain pending for the consistency drive to decide.
 fn initialize_native_nominal_state(
@@ -5759,18 +6617,170 @@ fn initialize_native_nominal_state(
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
 ) -> bool {
+    initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
+}
+
+fn install_native_nominal_backend_replay(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    bridged: &Bridged,
+) {
+    use super::completion::algorithm::NativeNominalBackendReplay;
+
+    algo.native_nominal_backend_replay.clear();
+    // A new association set is a new set of reuse decisions: the per-job
+    // one-shot record (`u25::activate_backend_individual_expansion_reuse`) must
+    // not carry a decision taken against the previous associations. Every
+    // caller that replaces the algorithm wholesale resets it anyway; this covers
+    // the callers that only re-install the replay.
+    algo.native_reuse_activated_individuals.clear();
+    let cache = bridged.native_representative_cache.borrow();
+    for seed in &bridged.nominal_seeds {
+        let association_entry = cache
+            .as_ref()
+            .filter(|cache| !cache.association_write_aborted)
+            .and_then(|cache| cache.entries.get(&seed.individual_tag));
+        // An incomplete association may not yet cover every asserted edge,
+        // so its labels cannot drive blocking. The task still consumed that
+        // association header and version, however, and writeback must compare
+        // against it exactly.
+        let replay_entry =
+            association_entry.filter(|entry| native_cache_entry_covers_seed(entry, seed));
+        let deterministic_cached_concepts = replay_entry
+            .and_then(|entry| entry.concept_values.as_ref())
+            .into_iter()
+            .flatten()
+            .filter(|value| value.deterministic)
+            .map(|value| (value.concept, value.negated))
+            .collect();
+        let cached_concept_values = replay_entry
+            .and_then(|entry| entry.concept_values.as_ref())
+            .into_iter()
+            .flatten()
+            .map(|value| (value.concept, value.negated, value.deterministic))
+            .collect();
+        let mut cached_neighbour_roles: Vec<(Cint64, RoleId, bool, bool)> = replay_entry
+            .into_iter()
+            .flat_map(|entry| entry.neighbour_role_combinations.iter())
+            .flat_map(|combination| {
+                combination.role_values.iter().flatten().map(move |value| {
+                    (
+                        combination.neighbour_tag,
+                        value.role,
+                        value.inversed,
+                        value.deterministic,
+                    )
+                })
+            })
+            .collect();
+        cached_neighbour_roles.sort_unstable_by_key(
+            |(neighbour, role, inversed, deterministic)| {
+                (*neighbour, role.raw, *inversed, *deterministic)
+            },
+        );
+        algo.native_nominal_backend_replay.insert(
+            seed.individual_tag,
+            NativeNominalBackendReplay {
+                asserted_concepts: seed.assertions.clone(),
+                deterministic_cached_concepts,
+                cached_concept_values,
+                own_nominal_concept: seed.nominal_concept,
+                role_assertions: if bridged.direct_native_role_assertions {
+                    seed.role_assertions.clone()
+                } else {
+                    Vec::new()
+                },
+                cached_neighbour_roles,
+                cached_existential_max_cardinalities: replay_entry
+                    .map(|entry| entry.existential_max_cardinalities.clone())
+                    .unwrap_or_default(),
+                cached_at_most_cardinalities: replay_entry
+                    .map(|entry| entry.at_most_cardinalities.clone())
+                    .unwrap_or_default(),
+                completely_propagated: replay_entry
+                    .is_some_and(|entry| entry.completely_propagated),
+                association_update_id: association_entry.map(|entry| entry.association_update_id),
+                expansion_blocking_candidate: replay_entry.is_some_and(|entry| {
+                    entry.reusable_for_full_completion()
+                        && native_cache_entry_covers_seed(entry, seed)
+                }),
+                // Konclude's independent-neighbour block requires only a non-null
+                // backend association, because its representative cache is
+                // authoritative: the association's neighbour-role-set labels are
+                // always a superset of the individual's raw assertion linkers, so
+                // blocking the raw expansion never loses an edge. The bridge's
+                // typed replay record is such a superset exactly when
+                // `native_cache_entry_covers_seed` holds (it checks that every
+                // asserted edge of the seed occurs in a neighbour-role-set label),
+                // so that is the exact equivalent condition here — an association
+                // that does NOT cover the seed must keep the raw replay.
+                // Completeness, representative-same, deterministic-same identity
+                // and concept-sync remain mandatory only for the stronger
+                // successor/indirect block above.
+                neighbour_expansion_blocking_candidate: replay_entry.is_some(),
+                association_present: association_entry.is_some(),
+                // The four reuse slots (`hasReuseableElements`, cpp 22711-22735)
+                // plus the merge target seed. These are read ONLY by
+                // `u25::reuse_individual_backend_expansion`, under the
+                // non-deterministic reuse branch track point — never by
+                // `replay_native_representative_cache`, which stays
+                // deterministic-only at the base dependency.
+                cached_nondeterministic_same_individuals: replay_entry
+                    .and_then(|entry| entry.nondeterministic_same_individuals.clone())
+                    .unwrap_or_default(),
+                cached_deterministic_same_individuals: replay_entry
+                    .and_then(|entry| entry.deterministic_same_individuals.clone())
+                    .unwrap_or_default(),
+                cached_nondeterministic_different_individuals: replay_entry
+                    .and_then(|entry| entry.nondeterministic_different_individuals.clone())
+                    .unwrap_or_default(),
+                cached_representative_same_individual_id: replay_entry
+                    .and_then(|entry| entry.representative_same_individual_id),
+                reuse_replay_representable: replay_entry
+                    .is_some_and(NativeAboxRepresentativeEntry::reuse_replay_representable),
+                has_reusable_elements: replay_entry
+                    .is_some_and(NativeAboxRepresentativeEntry::has_reusable_elements),
+            },
+        );
+    }
+}
+
+fn initialize_native_nominal_state_for_tags(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    selected_tags: Option<&HashSet<Cint64>>,
+) -> bool {
     if !bridged.has_native_nominals() {
         return true;
     }
     let base_tp = ctx.get_or_create_base_dependency_track_point();
     let top = ctx.processing_data_box().ontology_top_concept();
-    let mut nodes = HashMap::new();
     for seed in &bridged.nominal_seeds {
+        if selected_tags.is_some_and(|tags| !tags.contains(&seed.individual_tag)) {
+            continue;
+        }
         let mut node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
         if node.is_none()
             || ctx.process_context().node(node).nominal_individual() != seed.individual
         {
             return false;
+        }
+        // Ordinary legacy tasks have no representative-backend adapter.
+        // Konclude only consults the association reader for tasks whose
+        // generator installed that adapter; applying replay unconditionally
+        // made a large legacy ABox scan every association during pristine
+        // construction. The retained/full and representative-task paths call
+        // `install_native_nominal_backend_replay` before reaching here.
+        if algo
+            .native_nominal_backend_replay
+            .contains_key(&seed.individual_tag)
+        {
+            if !replay_native_representative_cache(algo, ctx, bridged, seed, node, base_tp) {
+                return false;
+            }
+            if ctx.has_pending_signal() {
+                return true;
+            }
         }
         // The materializer normally adds the canonical nominal concept; repeat
         // it idempotently so this helper is independent of backend-cache gates.
@@ -5798,13 +6808,38 @@ fn initialize_native_nominal_state(
                 return true;
             }
         }
-        nodes.insert(seed.individual_tag, node);
-    }
-    for &(left, right) in &bridged.nominal_different {
-        let (Some(&left), Some(&right)) = (nodes.get(&left), nodes.get(&right)) else {
-            return false;
-        };
-        algo.ht_make_individuals_distinct(&[left, right], base_tp, ctx);
+        // No eager named-edge installation once a replay journal exists: the typed
+        // lazy loader (`get_up_to_date_individual_by_id`) already decided, per
+        // individual, whether the cached association blocks the raw expansion or
+        // whether `materialize_native_role_assertion_vectors` must replay it. This
+        // path only covers the FIRST graph, built before any association exists
+        // (Konclude's own individual-saturation input), where every named edge is
+        // installed because nothing can be cache-backed yet.
+        if bridged.direct_native_role_assertions
+            && !algo
+                .native_nominal_backend_replay
+                .contains_key(&seed.individual_tag)
+        {
+            for &(role, target_tag) in &seed.role_assertions {
+                if !algo.install_native_role_assertion_edge(node, role, target_tag, base_tp, ctx) {
+                    return false;
+                }
+                if ctx.has_pending_signal() {
+                    return true;
+                }
+            }
+        }
+        // Keep the synchronization hook after every asserted/base concept has
+        // been inserted, but only for a task that actually carries the
+        // representative adapter. Ordinary tasks have no backend association
+        // reader upstream and retain the historical initializer.
+        if algo
+            .native_nominal_backend_replay
+            .contains_key(&seed.individual_tag)
+        {
+            let _ =
+                try_establish_native_backend_expansion_blocking(algo, ctx, bridged, seed, node);
+        }
     }
     true
 }
@@ -5826,16 +6861,234 @@ fn reset_probe_env(
     bridged: &Bridged,
     preserve_saturation: bool,
 ) {
+    reset_probe_env_impl(algo, ctx, bridged, preserve_saturation, true);
+}
+
+/// Recreate one legacy classification calculation task after ontology
+/// consistency. The conditional-full profile does not use this reconstruction:
+/// it retains the exact successful all-root consistency graph and restores that
+/// graph before each class job.
+fn reset_classification_probe_env(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    preserve_saturation: bool,
+    independent_abox_elided: bool,
+) {
+    reset_probe_env_impl(
+        algo,
+        ctx,
+        bridged,
+        preserve_saturation,
+        !independent_abox_elided,
+    );
+}
+
+/// Reset only calculation-job-local algorithm state while leaving a retained
+/// consistency completion graph untouched. The surrounding branch epoch owns
+/// exact graph restoration; this mirrors a class task COW-referencing
+/// Konclude's deterministic consistency base.
+fn reset_classification_algorithm_on_retained_base(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    bridged: &Bridged,
+) {
+    let budget = algo.probe_budget;
+    let branch_learning = std::mem::take(&mut algo.or_branch_learning_stats);
+    let mut fresh = CompletionTaskHandleAlgorithm::new();
+    configure_default_blocking(&mut fresh);
+    fresh.singleton_concepts = bridged.singleton_concepts.clone();
+    fresh.probe_budget = budget;
+    fresh.conf_direct_rule_preprocessing = true;
+    fresh.conf_cache_oriented_or_ordering = true;
+    fresh.conf_dependency_backtracking = algo.conf_dependency_backtracking;
+    fresh.conf_dependency_backjumping = algo.conf_dependency_backjumping;
+    fresh.conf_build_dependencies = algo.conf_build_dependencies;
+    fresh.conf_atomic_semantic_branching = algo.conf_atomic_semantic_branching;
+    fresh.current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
+    fresh.or_branch_learning_stats = branch_learning;
+    *algo = fresh;
+    install_native_nominal_backend_replay(algo, bridged);
+}
+
+/// Restore the retained deterministic consistency base before the next class
+/// job, and open that job's own branch epoch on top of it.
+///
+/// This is the reset side of Konclude's
+/// `CSatisfiableCalculationTaskFromCalculationJobGenerator` base continuation:
+/// every class job starts from `getDeterministicSatisfiableTask()` — the
+/// depth-0 consistency root with all individual processing queues cleared — and
+/// from the fresh-node id reserved off the successful leaf. Nothing of the
+/// PREVIOUS job may survive into the next one.
+///
+/// The previous job is rolled back in FULL, not one alternative deep. A
+/// satisfiable probe returns with its OR stack still open (the model IS the set
+/// of open alternatives); `bridged_unsat` and
+/// `bridged_classify_subject_with_root` only `clear()` that stack on entry and
+/// [`reset_classification_algorithm_on_retained_base`] replaces the whole
+/// algorithm, so nothing else ever pops the branch epochs those alternatives
+/// pushed (`u03.rs` under `conf_inprocess_cow`, and the at-most/qualify family
+/// in `u08.rs` unconditionally). Popping a single epoch per job leaked one
+/// journal level per surviving fork AND restored only the innermost
+/// alternative, so from the second job on the search ran on the previous job's
+/// committed disjuncts instead of on the retained base. That is what defeats
+/// cheap reuse: the ABox roots keep the previous job's
+/// `PRF_INVALIDBLOCKINGORCACHING` and cleared backend-synchronisation bits, so
+/// neither [`try_establish_native_backend_expansion_blocking`] nor the
+/// `native_*_blocked` gates in `u36::get_up_to_date_individual_by_id` can
+/// re-establish the neighbour-expansion block, and every later probe falls
+/// through to the raw assertion replay of the whole ABox.
+///
+/// Returns `None` — defer, never a verdict — if the epoch accounting cannot be
+/// justified; a state that is not provably the retained base is never reused.
+fn restore_retained_classification_base(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    base_databox: &super::process::databox::ProcessingDataBox,
+    base_branch_node: super::process::BranchNodeId,
+    base_next_id: Cint64,
+) -> Option<()> {
+    let owned_epoch_count = algo
+        .or_branch_stack
+        .iter()
+        .filter(|branch| branch.own_epoch)
+        .count();
+    // One base epoch (the class-job epoch opened at the bottom of this
+    // function, or at the retained-base snapshot for the first job) plus
+    // exactly one per surviving owned alternative.
+    if ctx.process_context().branch_epoch_depth() != owned_epoch_count + 1 {
+        return None;
+    }
+    while let Some(branch) = algo.or_branch_stack.pop() {
+        if branch.own_epoch {
+            ctx.pop_branch_epoch();
+        }
+    }
+    ctx.pop_branch_epoch();
+    if ctx.process_context().branch_epoch_depth() != 0 || !algo.or_branch_stack.is_empty() {
+        return None;
+    }
+    // The dependency/branch-tree cursor is watermark-only memory and is NOT
+    // journaled, exactly as at the consistency-phase rollback.
+    ctx.base.used_branch_tree_node = base_branch_node;
+    ctx.branch_tree_node = base_branch_node;
+    ctx.clear_pending_signal();
+    ctx.push_branch_epoch();
+    initialize_retained_classification_databox(ctx, base_databox, base_next_id);
+    reset_classification_algorithm_on_retained_base(algo, bridged);
+    // Stage-8 read-off watermark. Every node already in the arena belongs to
+    // the retained deterministic consistency base; Konclude hands that base to
+    // a class task with all individual processing queues cleared, so a branch
+    // point opened below this watermark is work its class task never scheduled.
+    algo.retained_base_node_count = ctx.process_context().node_count();
+    Some(())
+}
+
+/// Materialize the class-job databox from the retained consistency parent.
+/// DB-1 is the exact port of `initProcessingDataBox(parent)`: it COW-references
+/// the individual vector and graph state while clearing inherited processing
+/// queues and task-local review sets. Blocking candidate hashes and node-switch
+/// history remain inherited because they index the retained graph.
+///
+/// `parent` is passed explicitly, and is always the databox captured at the
+/// retained deterministic consistency base. Konclude derives every class job
+/// from `consTaskData->getDeterministicSatisfiableTask()`, never from the
+/// preceding class job; reading the live context here instead would chain job
+/// N onto job N-1 whenever the branch-epoch rollback is not exact.
+fn initialize_retained_classification_databox(
+    ctx: &mut CalculationAlgorithmContextBase,
+    parent: &super::process::databox::ProcessingDataBox,
+    final_leaf_next_id: Cint64,
+) {
+    use super::process::databox::ProcessingDataBox;
+
+    let mut child = ProcessingDataBox::new();
+    child.init_processing_data_box_parent_with_process_context(
+        Some(parent),
+        ctx.process_context_mut(),
+    );
+    child.set_first_possible_individual_node_id(final_leaf_next_id);
+    child
+        .clear_individual_processing_queue()
+        .clear_individual_depth_first_processing_queue()
+        .clear_individual_immediately_processing_queue()
+        .clear_role_assertion_processing_queue()
+        .clear_backend_cache_synchronization_processing_queue()
+        .clear_backend_direct_influence_expansion_queue()
+        .clear_backend_indirect_compatibility_expansion_queue()
+        .clear_backend_individual_reuse_expansion_queue()
+        .clear_backend_late_individual_neighbour_expansion_queue()
+        .clear_backend_individual_neighbour_expansion_queue()
+        .clear_delaying_nominal_processing_queue()
+        .clear_nominal_caching_loss_reactivation_processing_queue()
+        .clear_variable_binding_concept_batch_processing_queue()
+        .clear_individual_depth_processing_queue()
+        .clear_nominal_deterministic_processing_queue()
+        .clear_nominal_processing_queue()
+        .clear_incremental_expansion_initializing_processing_queue()
+        .clear_incremental_expansion_i_processing_queue()
+        .clear_incremental_compatibility_checking_queue()
+        .clear_individual_depth_first_deterministic_expansion_processing_queue()
+        .clear_individual_depth_deterministic_expansion_preprocessing_queue()
+        .clear_blocking_update_review_processing_queue()
+        .clear_blocked_reactivation_processing_queue()
+        .clear_value_space_triggering_processing_queue()
+        .clear_distinct_value_space_satisfiability_checking_queue();
+    child
+        .clear_early_individual_reactivation_processing_queue()
+        .clear_late_individual_reactivation_processing_queue()
+        .clear_signature_blocking_review_set()
+        .clear_reusing_review_data()
+        .clear_delayed_backend_concept_set_label_processing_initialization_queue()
+        .clear_backend_neighbour_expansion_queue();
+    ctx.base.used_processing_data_box = child;
+}
+
+fn reset_probe_env_impl(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    preserve_saturation: bool,
+    initialize_all_nominals: bool,
+) {
     use super::model::ontology::OntologyArenas;
     // Fresh algorithm: search state (OR stack, DDB marks, blocking caches,
-    // stats, deadlines) must not leak between probes. Same construction as
-    // `fresh_bridge_env` so verdicts are identical.
+    // deadlines) must not leak between probes. Konclude's per-disjunct
+    // ontology statistics are the deliberate exception: representative
+    // component tasks teach the later consistency/classification tasks.
     let budget = algo.probe_budget;
+    let card_nominal_profile =
+        algo.conf_direct_rule_preprocessing && algo.conf_cache_oriented_or_ordering;
+    let direct_rule_preprocessing = algo.conf_direct_rule_preprocessing;
+    let cache_oriented_or_ordering = algo.conf_cache_oriented_or_ordering;
+    let current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
+    let dependency_backtracking = algo.conf_dependency_backtracking;
+    let dependency_backjumping = algo.conf_dependency_backjumping;
+    let build_dependencies = algo.conf_build_dependencies;
+    let atomic_semantic_branching = algo.conf_atomic_semantic_branching;
+    let branch_learning = if card_nominal_profile {
+        std::mem::take(&mut algo.or_branch_learning_stats)
+    } else {
+        HashMap::new()
+    };
     let mut a = CompletionTaskHandleAlgorithm::new();
     configure_default_blocking(&mut a);
     a.singleton_concepts = bridged.singleton_concepts.clone();
     a.probe_budget = budget;
+    if card_nominal_profile {
+        a.conf_direct_rule_preprocessing = direct_rule_preprocessing;
+        a.conf_cache_oriented_or_ordering = cache_oriented_or_ordering;
+        a.current_rec_proc_depth_limit = current_rec_proc_depth_limit;
+        a.conf_dependency_backtracking = dependency_backtracking;
+        a.conf_dependency_backjumping = dependency_backjumping;
+        a.conf_build_dependencies = build_dependencies;
+        a.conf_atomic_semantic_branching = atomic_semantic_branching;
+        a.or_branch_learning_stats = branch_learning;
+    }
     *algo = a;
+    if card_nominal_profile {
+        install_native_nominal_backend_replay(algo, bridged);
+    }
     // Fresh context EXCEPT the shared read-only terminology: rebuild through
     // the same ctor as `fresh_bridge_env`, then graft the arenas back. This
     // resets EVERY per-probe field (process context, databox, dependency
@@ -5885,7 +7138,7 @@ fn reset_probe_env(
     if let Some(state) = sat_node_expansion_cache {
         ctx.restore_used_saturation_node_expansion_cache_handler(state);
     }
-    if bridged.has_native_nominals() {
+    if bridged.has_native_nominals() && initialize_all_nominals {
         algo.conf_inprocess_cow = true;
         if !initialize_native_nominal_state(algo, ctx, bridged) {
             ctx.raise_stop(false);
@@ -5899,6 +7152,1103 @@ fn reset_probe_env(
 /// even when dependency-directed backjumping itself remains opt-in.
 fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_build_dependencies = true;
+    if algo.conf_cache_oriented_or_ordering {
+        // The representative-batch profile replays learned disjunct
+        // priorities. Its alternatives must therefore remain disjoint. Keep
+        // the legacy nominal-only and cardinality-only schedules unchanged.
+        algo.conf_atomic_semantic_branching = true;
+    }
+}
+
+/// Konclude's representative-computation scheduler takes only entries whose
+/// association is not completely handled. Its default 1500-individual batch
+/// multiplied by the 0.005 scheduling factor yields seven roots.
+const NATIVE_REPRESENTATIVE_BATCH_SIZE: usize = 7;
+
+fn native_incomplete_abox_seed_batch(
+    bridged: &Bridged,
+    batch_size: usize,
+) -> Option<HashSet<Cint64>> {
+    if batch_size == 0 {
+        return None;
+    }
+    let cache = bridged.native_representative_cache.borrow();
+    let cache = cache.as_ref()?;
+    if cache.association_write_aborted
+        || !bridged
+            .nominal_seeds
+            .iter()
+            .all(|seed| cache.entries.contains_key(&seed.individual_tag))
+    {
+        return None;
+    }
+    let mut incomplete: Vec<Cint64> = bridged
+        .nominal_seeds
+        .iter()
+        .filter_map(|seed| {
+            cache
+                .entries
+                .get(&seed.individual_tag)
+                .filter(|entry| !entry.complete_for_precomputation())
+                .map(|_| seed.individual_tag)
+        })
+        .collect();
+    incomplete.sort_unstable();
+    incomplete.truncate(batch_size);
+    Some(incomplete.into_iter().collect())
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct NativeRepresentativeCoordinationState {
+    running_tasks: usize,
+    failed_tasks: usize,
+    writeback_failed: bool,
+    clashed: bool,
+}
+
+fn native_representative_coordination_complete(
+    bridged: &Bridged,
+    coordination: NativeRepresentativeCoordinationState,
+) -> bool {
+    if coordination.running_tasks != 0
+        || coordination.failed_tasks != 0
+        || coordination.writeback_failed
+        || coordination.clashed
+    {
+        return false;
+    }
+    let cache = bridged.native_representative_cache.borrow();
+    cache.as_ref().is_some_and(|cache| {
+        !cache.association_write_aborted
+            && bridged.nominal_seeds.iter().all(|seed| {
+                cache
+                    .entries
+                    .get(&seed.individual_tag)
+                    .is_some_and(NativeAboxRepresentativeEntry::complete_for_precomputation)
+            })
+    })
+}
+
+fn native_completion_dependency_is_deterministic(
+    ctx: &CalculationAlgorithmContextBase,
+    dependency_track_point: super::process::TrackPointId,
+) -> bool {
+    dependency_track_point.is_some()
+        && ctx
+            .process_context()
+            .track_point(dependency_track_point)
+            .get_branching_tag()
+            <= ctx.processing_data_box().maximum_deterministic_branch_tag()
+}
+
+fn native_completion_merge_target(
+    ctx: &CalculationAlgorithmContextBase,
+    mut node: NodeId,
+    deterministic_only: bool,
+) -> Option<NodeId> {
+    let mut walked = 0usize;
+    while node.is_some()
+        && node.index() < ctx.process_context().node_count()
+        && ctx
+            .process_context()
+            .node(node)
+            .has_merged_into_individual_node_id()
+    {
+        if walked > ctx.process_context().node_count() {
+            return None;
+        }
+        let node_ref = ctx.process_context().node(node);
+        if deterministic_only
+            && !native_completion_dependency_is_deterministic(
+                ctx,
+                node_ref.merged_dependency_track_point(),
+            )
+        {
+            break;
+        }
+        node = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(node_ref.merged_into_individual_node_id());
+        walked += 1;
+    }
+    (node.is_some() && node.index() < ctx.process_context().node_count()).then_some(node)
+}
+
+fn native_completion_nominal_tag(
+    ctx: &CalculationAlgorithmContextBase,
+    node: NodeId,
+) -> Option<Cint64> {
+    if node.is_none() || node.index() >= ctx.process_context().node_count() {
+        return None;
+    }
+    let individual = ctx.process_context().node(node).nominal_individual();
+    if individual.is_none()
+        || individual.index() >= ctx.ontology_arenas().individual_count() as usize
+    {
+        return None;
+    }
+    Some(
+        ctx.ontology_arenas()
+            .individual(individual)
+            .get_individual_id(),
+    )
+}
+
+/// Return the process node stored for one ontology individual only when the
+/// vector slot still denotes that exact individual. Individual tag zero uses
+/// key zero (`-0 == 0`), which is also in the generated-node half of
+/// Konclude's double-dynamic vector. Sparse representative tasks can therefore
+/// expose an unrelated generated node in the unmaterialized tag-zero slot.
+/// Such a node is not a touched backend association.
+fn native_exact_nominal_process_node(
+    ctx: &CalculationAlgorithmContextBase,
+    individual_tag: Cint64,
+) -> Option<NodeId> {
+    let node = ctx
+        .processing_data_box()
+        .individual_process_node_vector()
+        .get_data(-individual_tag);
+    (node.is_some()
+        && node.index() < ctx.process_context().node_count()
+        && native_completion_nominal_tag(ctx, node) == Some(individual_tag))
+        .then_some(node)
+}
+
+/// Exact value set produced by
+/// `determineSameIndividualSetLabelAssociationBackendItem`. With a merging
+/// hash, Konclude includes the representative itself and either deterministic
+/// merged members or all merged members. KM's merge primitive preserves the
+/// same information as `merged_into + dependency` on every original node but
+/// does not yet populate Konclude's phase-6 survivor merging hash. Therefore
+/// the current nominal vector is also scanned and the exact merge-chain
+/// equivalence class is unioned with any live hash values.
+fn native_completion_same_individuals(
+    ctx: &CalculationAlgorithmContextBase,
+    node: NodeId,
+    deterministic_only: bool,
+) -> Option<Vec<Cint64>> {
+    let own_tag = native_completion_nominal_tag(ctx, node)?;
+    let merging_hash = ctx.process_context().node(node).use_individual_merging_hash;
+    let mut values = vec![own_tag];
+    if merging_hash.is_some() {
+        for (&individual_tag, data) in ctx
+            .process_context()
+            .individual_merging_hash(merging_hash)
+            .iter()
+        {
+            if individual_tag < 0
+                || individual_tag == own_tag
+                || !data.is_merged_with_individual()
+                || (deterministic_only
+                    && !native_completion_dependency_is_deterministic(
+                        ctx,
+                        data.get_dependency_track_point(),
+                    ))
+            {
+                continue;
+            }
+            values.push(individual_tag);
+        }
+    }
+    for individual in ctx.ontology_arenas().individual_iter() {
+        let individual_tag = individual.get_individual_id();
+        if individual_tag < 0 {
+            return None;
+        }
+        let Some(original) = native_exact_nominal_process_node(ctx, individual_tag) else {
+            continue;
+        };
+        let representative = native_completion_merge_target(ctx, original, deterministic_only)?;
+        if representative == node {
+            values.push(individual_tag);
+        }
+    }
+    values.sort_unstable();
+    values.dedup();
+    if values.len() > 1 {
+        Some(values)
+    } else {
+        // Konclude does not install a SAME-INDIVIDUAL-SET label for a
+        // singleton association.
+        Some(Vec::new())
+    }
+}
+
+fn native_completion_label_values(
+    ctx: &CalculationAlgorithmContextBase,
+    extraction_node: NodeId,
+    deterministic_node: NodeId,
+) -> Option<(Vec<NativeAboxConceptValue>, usize)> {
+    let label = ctx
+        .process_context()
+        .node(extraction_node)
+        .reapply_con_label_set;
+    if label.is_none() {
+        return None;
+    }
+    let deterministic_label = ctx
+        .process_context()
+        .node(deterministic_node)
+        .reapply_con_label_set;
+    if deterministic_label.is_none() {
+        return None;
+    }
+    let deterministic_membership = |concept: ConceptId, negated: bool| {
+        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context()
+            .label_set(deterministic_label)
+            .concept_des_dep_map
+            .get(&tag)
+            .filter(|data| data.concept_descriptor.is_some())
+            .is_some_and(|data| {
+                let descriptor = ctx.process_context().con_desc(data.concept_descriptor);
+                descriptor.get_concept() == concept
+                    && descriptor.is_negated() == negated
+                    && native_completion_dependency_is_deterministic(
+                        ctx,
+                        descriptor.get_dependency_track_point(),
+                    )
+            })
+    };
+
+    let mut descriptor = ctx
+        .process_context()
+        .label_set(label)
+        .get_adding_sorted_concept_description_linker();
+    let mut values = Vec::new();
+    let mut descriptor_count = 0usize;
+    while descriptor.is_some() {
+        if descriptor.index() >= ctx.process_context().con_desc_count()
+            || descriptor_count > ctx.process_context().con_desc_count()
+        {
+            return None;
+        }
+        let descriptor_ref = ctx.process_context().con_desc(descriptor);
+        let concept = descriptor_ref.get_concept();
+        let negated = descriptor_ref.is_negated();
+        if concept.is_none() || concept.index() >= ctx.ontology_arenas().concept_count() as usize {
+            return None;
+        }
+        let positive_nominal =
+            !negated && ctx.ontology_arenas().concept(concept).get_operator_code() == op::CCNOMINAL;
+        if !positive_nominal {
+            let deterministic = if extraction_node == deterministic_node {
+                native_completion_dependency_is_deterministic(
+                    ctx,
+                    descriptor_ref.get_dependency_track_point(),
+                )
+            } else {
+                deterministic_membership(concept, negated)
+            };
+            values.push(NativeAboxConceptValue {
+                concept,
+                negated,
+                deterministic,
+            });
+        }
+        descriptor = descriptor_ref.get_next_concept_descriptor();
+        descriptor_count += 1;
+    }
+    values.sort_unstable_by_key(|value| (value.concept.raw, value.negated, value.deterministic));
+    values.dedup();
+    Some((values, descriptor_count))
+}
+
+struct NativeCompletionRoleMetadata {
+    instantiated_roles: Vec<RoleId>,
+    instantiated_role_values: Vec<NativeAboxRoleValue>,
+    existential_roles: Vec<RoleId>,
+    existential_role_values: Vec<NativeAboxRoleValue>,
+    at_most_cardinalities: Vec<(RoleId, Cint64)>,
+    existential_max_cardinalities: Vec<(RoleId, Cint64)>,
+    indirect_nominal_connections: Vec<Cint64>,
+    neighbour_role_combinations: Vec<NativeAboxNeighbourRoleSet>,
+}
+
+fn native_completion_merge_chain_is_deterministic(
+    ctx: &CalculationAlgorithmContextBase,
+    original: NodeId,
+    merged: NodeId,
+) -> Option<bool> {
+    let final_node = native_completion_merge_target(ctx, original, false)?;
+    if final_node != merged {
+        return None;
+    }
+    Some(native_completion_merge_target(ctx, original, true)? == merged)
+}
+
+/// Return the nominal ids represented by one completion-graph connection
+/// node, together with Konclude's `connIndiDetMerged` bit for each id.
+fn native_completion_connection_aliases(
+    ctx: &CalculationAlgorithmContextBase,
+    connection_node: NodeId,
+) -> Option<BTreeMap<Cint64, bool>> {
+    let mut aliases = BTreeMap::new();
+    aliases.insert(native_completion_nominal_tag(ctx, connection_node)?, true);
+    let merging_hash = ctx
+        .process_context()
+        .node(connection_node)
+        .use_individual_merging_hash;
+    if merging_hash.is_some() {
+        for (&individual_tag, data) in ctx
+            .process_context()
+            .individual_merging_hash(merging_hash)
+            .iter()
+        {
+            if individual_tag < 0 || !data.is_merged_with_individual() {
+                continue;
+            }
+            let deterministic = native_completion_dependency_is_deterministic(
+                ctx,
+                data.get_dependency_track_point(),
+            );
+            aliases
+                .entry(individual_tag)
+                .and_modify(|current| *current |= deterministic)
+                .or_insert(deterministic);
+        }
+    }
+    Some(aliases)
+}
+
+fn native_record_completion_neighbour_role(
+    instantiated_values: &mut BTreeMap<(Cint64, bool), bool>,
+    neighbour_values: &mut BTreeMap<Cint64, BTreeMap<(Cint64, bool), bool>>,
+    neighbour_alias_determinism: &mut BTreeMap<Cint64, bool>,
+    indirect_nominals: &mut BTreeSet<Cint64>,
+    role: RoleId,
+    inversed: bool,
+    edge_deterministic: bool,
+    aliases: &BTreeMap<Cint64, bool>,
+) {
+    let any_deterministic = aliases
+        .values()
+        .any(|alias_deterministic| edge_deterministic && *alias_deterministic);
+    instantiated_values
+        .entry((role.raw, inversed))
+        .and_modify(|current| *current |= any_deterministic)
+        .or_insert(any_deterministic);
+    for (&neighbour_tag, &alias_deterministic) in aliases {
+        indirect_nominals.insert(neighbour_tag);
+        neighbour_alias_determinism
+            .entry(neighbour_tag)
+            .and_modify(|current| *current |= alias_deterministic)
+            .or_insert(alias_deterministic);
+        neighbour_values
+            .entry(neighbour_tag)
+            .or_default()
+            .entry((role.raw, inversed))
+            .and_modify(|current| {
+                *current |= edge_deterministic && alias_deterministic;
+            })
+            .or_insert(edge_deterministic && alias_deterministic);
+    }
+}
+
+fn native_completion_role_metadata(
+    ctx: &CalculationAlgorithmContextBase,
+    node: NodeId,
+    concept_values: &[NativeAboxConceptValue],
+    bridged: &Bridged,
+    seed: &NominalSeed,
+) -> Option<NativeCompletionRoleMetadata> {
+    use super::model::op::{
+        CCALL, CCAQALL, CCAQSOME, CCATLEAST, CCATMOST, CCSELF, CCSOME, CCVALUE,
+    };
+
+    let previous_entry = bridged
+        .native_representative_cache
+        .borrow()
+        .as_ref()
+        .and_then(|cache| cache.entries.get(&seed.individual_tag))
+        .cloned();
+    let mut existential_values: BTreeMap<Cint64, bool> = previous_entry
+        .as_ref()
+        .and_then(|entry| entry.existential_role_values.as_ref())
+        .into_iter()
+        .flatten()
+        .map(|value| (value.role.raw, value.deterministic))
+        .collect();
+    let mut existential_max: BTreeMap<Cint64, Cint64> = previous_entry
+        .as_ref()
+        .into_iter()
+        .flat_map(|entry| entry.existential_max_cardinalities.iter())
+        .map(|(role, cardinality)| (role.raw, *cardinality))
+        .collect();
+    let mut at_most: BTreeMap<Cint64, Cint64> = previous_entry
+        .as_ref()
+        .into_iter()
+        .flat_map(|entry| entry.at_most_cardinalities.iter())
+        .map(|(role, cardinality)| (role.raw, *cardinality))
+        .collect();
+    for value in concept_values {
+        let concept_ref = ctx.ontology_arenas().concept(value.concept);
+        let operator = concept_ref.get_operator_code();
+        let role = concept_ref.get_role();
+        if role.is_some()
+            && ((!value.negated
+                && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST))
+                || (value.negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
+        {
+            existential_values
+                .entry(role.raw)
+                .and_modify(|deterministic| *deterministic |= value.deterministic)
+                .or_insert(value.deterministic);
+            let cardinality = if (!value.negated
+                && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
+                || (value.negated && matches!(operator, CCALL | CCAQALL))
+            {
+                1
+            } else if !value.negated && operator == CCATLEAST {
+                concept_ref.get_parameter().max(0)
+            } else {
+                concept_ref.get_parameter().saturating_add(1).max(0)
+            };
+            existential_max
+                .entry(role.raw)
+                .and_modify(|current| *current = (*current).max(cardinality))
+                .or_insert(cardinality);
+        }
+        let bound = if !value.negated && operator == CCATMOST {
+            Some(concept_ref.get_parameter())
+        } else if value.negated && operator == CCATLEAST {
+            Some(concept_ref.get_parameter().saturating_sub(1))
+        } else {
+            None
+        };
+        if let (Some(bound), true) = (bound, role.is_some()) {
+            at_most
+                .entry(role.raw)
+                .and_modify(|current| *current = (*current).min(bound))
+                .or_insert(bound);
+        }
+    }
+
+    let mut instantiated_values: BTreeMap<(Cint64, bool), bool> = previous_entry
+        .as_ref()
+        .and_then(|entry| entry.instantiated_role_values.as_ref())
+        .into_iter()
+        .flatten()
+        .map(|value| ((value.role.raw, value.inversed), value.deterministic))
+        .collect();
+    let mut neighbour_values: BTreeMap<Cint64, BTreeMap<(Cint64, bool), bool>> =
+        BTreeMap::new();
+    let mut neighbour_alias_determinism: BTreeMap<Cint64, bool> = BTreeMap::new();
+    if let Some(entry) = previous_entry.as_ref() {
+        for combination in &entry.neighbour_role_combinations {
+            if native_exact_nominal_process_node(ctx, combination.neighbour_tag).is_some() {
+                // Konclude reuses the previous neighbour-role-set label only
+                // when that neighbour was not collected in the current
+                // completion task. A materialized neighbour is touched: its
+                // current connection node and merging data replace the old
+                // label. In particular, retaining the old deterministic bit
+                // here would hide a branch-local at-most merge.
+                continue;
+            }
+            neighbour_alias_determinism.insert(
+                combination.neighbour_tag,
+                combination.merged_alias_deterministic?,
+            );
+            let values = combination.role_values.as_ref()?;
+            neighbour_values.insert(
+                combination.neighbour_tag,
+                values
+                    .iter()
+                    .map(|value| {
+                        (
+                            (value.role.raw, value.inversed),
+                            value.deterministic,
+                        )
+                    })
+                    .collect(),
+            );
+        }
+    }
+    let mut indirect_nominals: BTreeSet<Cint64> = previous_entry
+        .as_ref()
+        .into_iter()
+        .flat_map(|entry| entry.indirect_nominal_connections.iter().copied())
+        .chain(
+            ctx
+        .process_context()
+        .node_successor_connected_nominals(node)
+        .into_iter()
+        )
+        .collect();
+    let mut successor_iterator = ctx.process_context().node_successor_iterator(node);
+    while successor_iterator.has_next() {
+        let successor_id = successor_iterator.next_individual_id(true);
+        let successor = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(successor_id);
+        if successor.is_none() || successor.index() >= ctx.process_context().node_count() {
+            return None;
+        }
+        if ctx
+            .process_context()
+            .node(successor)
+            .has_purged_blocked_processing_restriction_flags()
+        {
+            continue;
+        }
+        // `determineRoleInstantiatedSetLabelAssociationBackendItems` retains
+        // the connection node's original nominal id and then iterates every
+        // merged id in its merging hash. Resolving the node first collapses
+        // R(a,b), R(a,c) to only one neighbour after an at-most merge and makes
+        // the association fail to cover the original ABox assertions.
+        let mut neighbour_tags =
+            native_completion_connection_aliases(ctx, successor).unwrap_or_default();
+        if neighbour_tags.is_empty() {
+            let merged = native_completion_merge_target(ctx, successor, false)?;
+            if let Some(tag) = native_completion_nominal_tag(ctx, merged) {
+                neighbour_tags.insert(tag, false);
+            }
+        }
+        indirect_nominals.extend(neighbour_tags.keys().copied());
+        for (&neighbour_tag, &deterministic) in &neighbour_tags {
+            neighbour_alias_determinism
+                .entry(neighbour_tag)
+                .and_modify(|current| *current |= deterministic)
+                .or_insert(deterministic);
+        }
+        let mut role_iterator = ctx
+            .process_context()
+            .node_successor_role_iterator(node, successor_id);
+        while role_iterator.has_next() {
+            let edge = role_iterator.next(true);
+            if edge.is_none() || edge.index() >= ctx.process_context().edges().len() {
+                return None;
+            }
+            let edge_ref = ctx.process_context().edge(edge);
+            let role = edge_ref.get_link_role();
+            if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize {
+                return None;
+            }
+            let deterministic = native_completion_dependency_is_deterministic(
+                ctx,
+                edge_ref.get_dependency_track_point(),
+            );
+            if neighbour_tags.is_empty() {
+                instantiated_values
+                    .entry((role.raw, false))
+                    .and_modify(|current| *current |= deterministic)
+                    .or_insert(deterministic);
+            } else {
+                native_record_completion_neighbour_role(
+                    &mut instantiated_values,
+                    &mut neighbour_values,
+                    &mut neighbour_alias_determinism,
+                    &mut indirect_nominals,
+                    role,
+                    false,
+                    deterministic,
+                    &neighbour_tags,
+                );
+            }
+        }
+    }
+
+    // `merge_individuals` prunes successor edges from the merged-away node.
+    // Konclude does not lose the original ABox connection: its separate
+    // connection-successor set and role-assertion dependency chain survive
+    // the merge and are consumed by
+    // `determineRoleInstantiatedSetLabelAssociationBackendItems`. The Rust
+    // process graph has no equivalent connection-successor set, so replay the
+    // immutable assertion journal separately from inferred graph edges. For
+    // each endpoint, the final representative and every alias in its merging
+    // hash are retained; a nondeterministic endpoint merge makes only that
+    // moved link contribution nondeterministic.
+    for source_seed in &bridged.nominal_seeds {
+        let Some(source_original) =
+            native_exact_nominal_process_node(ctx, source_seed.individual_tag)
+        else {
+            // Sparse representative jobs materialize only their selected
+            // roots and on-demand neighbours. An absent source cannot have
+            // contributed a link to this task graph.
+            continue;
+        };
+        let source_final = native_completion_merge_target(ctx, source_original, false)?;
+        let source_merge_deterministic =
+            native_completion_merge_chain_is_deterministic(ctx, source_original, source_final)?;
+        for &(role, target_tag) in &source_seed.role_assertions {
+            let Some(target_original) = native_exact_nominal_process_node(ctx, target_tag) else {
+                // A successful backend-neighbour expansion deliberately keeps
+                // uninfluenced neighbours unmaterialized. Their canonical
+                // neighbour-role label was copied from the consumed
+                // association above, exactly as Konclude's writer reuses
+                // previous label items when all links were not collected.
+                continue;
+            };
+            let target_final = native_completion_merge_target(ctx, target_original, false)?;
+            let target_merge_deterministic =
+                native_completion_merge_chain_is_deterministic(ctx, target_original, target_final)?;
+            let edge_deterministic = source_merge_deterministic && target_merge_deterministic;
+            if source_final == node {
+                let mut aliases = native_completion_connection_aliases(ctx, target_final)?;
+                aliases
+                    .entry(target_tag)
+                    .and_modify(|current| *current |= target_merge_deterministic)
+                    .or_insert(target_merge_deterministic);
+                native_record_completion_neighbour_role(
+                    &mut instantiated_values,
+                    &mut neighbour_values,
+                    &mut neighbour_alias_determinism,
+                    &mut indirect_nominals,
+                    role,
+                    false,
+                    edge_deterministic,
+                    &aliases,
+                );
+            }
+            if target_final == node {
+                let mut aliases = native_completion_connection_aliases(ctx, source_final)?;
+                aliases
+                    .entry(source_seed.individual_tag)
+                    .and_modify(|current| *current |= source_merge_deterministic)
+                    .or_insert(source_merge_deterministic);
+                native_record_completion_neighbour_role(
+                    &mut instantiated_values,
+                    &mut neighbour_values,
+                    &mut neighbour_alias_determinism,
+                    &mut indirect_nominals,
+                    role,
+                    true,
+                    edge_deterministic,
+                    &aliases,
+                );
+            }
+        }
+    }
+
+    let instantiated_role_values: Vec<NativeAboxRoleValue> = instantiated_values
+        .into_iter()
+        .map(|((role, inversed), deterministic)| NativeAboxRoleValue {
+            role: RoleId::new(role),
+            inversed,
+            deterministic,
+        })
+        .collect();
+    let instantiated_roles: Vec<RoleId> = instantiated_role_values
+        .iter()
+        .map(|value| value.role)
+        .collect();
+    let existential_role_values: Vec<NativeAboxRoleValue> = existential_values
+        .into_iter()
+        .map(|(role, deterministic)| NativeAboxRoleValue {
+            role: RoleId::new(role),
+            inversed: false,
+            deterministic,
+        })
+        .collect();
+    let existential_roles: Vec<RoleId> = existential_role_values
+        .iter()
+        .map(|value| value.role)
+        .collect();
+    let neighbour_role_combinations = neighbour_values
+        .into_iter()
+        .map(|(neighbour_tag, roles)| {
+            let role_values: Vec<NativeAboxRoleValue> = roles
+                .into_iter()
+                .map(|((role, inversed), deterministic)| NativeAboxRoleValue {
+                    role: RoleId::new(role),
+                    inversed,
+                    deterministic,
+                })
+                .collect();
+            NativeAboxNeighbourRoleSet {
+                neighbour_tag,
+                roles: role_values
+                    .iter()
+                    .map(|value| (value.role, value.inversed))
+                    .collect(),
+                role_values: Some(role_values),
+                merged_alias_deterministic: neighbour_alias_determinism
+                    .get(&neighbour_tag)
+                    .copied(),
+            }
+        })
+        .collect();
+
+    Some(NativeCompletionRoleMetadata {
+        instantiated_roles,
+        instantiated_role_values,
+        existential_roles,
+        existential_role_values,
+        at_most_cardinalities: at_most
+            .into_iter()
+            .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+            .collect(),
+        existential_max_cardinalities: existential_max
+            .into_iter()
+            .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+            .collect(),
+        indirect_nominal_connections: indirect_nominals.into_iter().collect(),
+        neighbour_role_combinations,
+    })
+}
+
+fn native_completion_different_individuals(
+    ctx: &CalculationAlgorithmContextBase,
+    node: NodeId,
+    deterministic_only: bool,
+    own_tag: Cint64,
+) -> Option<Vec<Cint64>> {
+    let distinct_hash = ctx.process_context().node_distinct_hash_existing(node);
+    if distinct_hash.is_none() {
+        return Some(Vec::new());
+    }
+    let mut iterator = ctx
+        .process_context()
+        .distinct_hash(distinct_hash)
+        .get_distinct_iterator();
+    let mut values = Vec::new();
+    while iterator.has_next() {
+        let (process_id, dependency_track_point) =
+            iterator.next_distinct_individual_id_dep(ctx.process_context().distinct_edges(), true);
+        if deterministic_only
+            && !native_completion_dependency_is_deterministic(ctx, dependency_track_point)
+        {
+            continue;
+        }
+        let individual_tag = -process_id;
+        if individual_tag >= 0 && individual_tag != own_tag {
+            values.push(individual_tag);
+        }
+    }
+    if !values.is_empty() {
+        values.push(own_tag);
+        values.sort_unstable();
+        values.dedup();
+    }
+    Some(values)
+}
+
+/// Capability produced only by the `Some(true)` arm of a fully driven
+/// representative-computation task. Requiring this token keeps cache
+/// publication structurally separate from stopped, clashed, or merely
+/// initialized task graphs.
+struct NativeSuccessfulRepresentativeTask<'a> {
+    selected_individuals: &'a HashSet<Cint64>,
+    /// Immutable `usedAssociationUpdateId` values captured when the task was
+    /// created. Completion branching may localize or merge process nodes, but
+    /// it must not change which backend association version the task read.
+    used_association_update_ids: &'a HashMap<Cint64, u64>,
+}
+
+fn freeze_native_representative_association_versions(
+    algo: &CompletionTaskHandleAlgorithm,
+) -> HashMap<Cint64, u64> {
+    algo.native_nominal_backend_replay
+        .iter()
+        .filter_map(|(&tag, replay)| {
+            replay
+                .association_update_id
+                .map(|association_update_id| (tag, association_update_id))
+        })
+        .collect()
+}
+
+/// Publish a prepared representative batch atomically. Every association
+/// version is validated before the first cache mutation, matching Konclude's
+/// `usedAssociationUpdateId` transaction guard.
+fn commit_native_representative_association_batch(
+    cache: &mut NativeAboxRepresentativeCache,
+    prepared: Vec<(Cint64, NativeAboxRepresentativeEntry)>,
+    selected_individuals: &HashSet<Cint64>,
+) -> Option<HashSet<Cint64>> {
+    if prepared.is_empty()
+        || selected_individuals.is_empty()
+        || !selected_individuals
+            .iter()
+            .all(|tag| prepared.iter().any(|(prepared_tag, _)| prepared_tag == tag))
+    {
+        return None;
+    }
+    let mut seen = HashSet::with_capacity(prepared.len());
+    for (tag, entry) in &prepared {
+        if !seen.insert(*tag)
+            || entry.individual_tag != *tag
+            || entry.used_association_update_id
+                != cache
+                    .entries
+                    .get(tag)
+                    .map(|current| current.association_update_id)
+            || !entry.complete_for_precomputation()
+        {
+            return None;
+        }
+    }
+
+    let mut updated = HashSet::with_capacity(prepared.len());
+    for (tag, mut entry) in prepared {
+        cache.next_association_update_id = cache.next_association_update_id.saturating_add(1);
+        entry.association_update_id = cache.next_association_update_id;
+        cache.entries.insert(tag, entry);
+        updated.insert(tag);
+    }
+    Some(updated)
+}
+
+fn write_completed_native_representative_associations(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    completed_task: NativeSuccessfulRepresentativeTask<'_>,
+) -> Option<HashSet<Cint64>> {
+    let selected_individuals = completed_task.selected_individuals;
+    if selected_individuals.is_empty() || ctx.has_pending_signal() {
+        return None;
+    }
+    let consumed_updates = completed_task.used_association_update_ids;
+    let mut prepared = Vec::new();
+    for seed in &bridged.nominal_seeds {
+        let Some(original) = native_exact_nominal_process_node(ctx, seed.individual_tag) else {
+            if selected_individuals.contains(&seed.individual_tag) {
+                return None;
+            }
+            // Konclude's association writer visits only individuals collected
+            // by this completion task. Preserve every unselected,
+            // unmaterialized association byte-for-byte, including its update
+            // id. In particular, the generated-node value at vector key zero
+            // is not a touched association for nominal tag zero.
+            continue;
+        };
+        let deterministic_node = native_completion_merge_target(ctx, original, true)?;
+        let extraction_node = native_completion_merge_target(ctx, deterministic_node, false)?;
+        let deterministic_representative_tag =
+            native_completion_nominal_tag(ctx, deterministic_node)?;
+        let extraction_representative_tag = native_completion_nominal_tag(ctx, extraction_node)?;
+        let representative_same_individual_merging =
+            deterministic_representative_tag != seed.individual_tag;
+        let (concept_values, descriptor_count) =
+            native_completion_label_values(ctx, extraction_node, deterministic_node)?;
+        let concepts = concept_values
+            .iter()
+            .map(|value| (value.concept, value.negated))
+            .collect();
+        let role_metadata = native_completion_role_metadata(
+            ctx,
+            extraction_node,
+            &concept_values,
+            bridged,
+            seed,
+        )?;
+        let deterministic_different_individuals = native_completion_different_individuals(
+            ctx,
+            deterministic_node,
+            true,
+            deterministic_representative_tag,
+        )?;
+        let nondeterministic_different_individuals = native_completion_different_individuals(
+            ctx,
+            extraction_node,
+            false,
+            extraction_representative_tag,
+        )?;
+        let deterministic_same_individuals =
+            native_completion_same_individuals(ctx, deterministic_node, true)?;
+        let nondeterministic_same_individuals =
+            native_completion_same_individuals(ctx, extraction_node, false)?;
+        let deterministic_same_label_identity =
+            native_individual_label_identity(&deterministic_same_individuals);
+        // The immutable replay journal is the task's
+        // `usedAssociationUpdateId`. A branch-local merge/localization can
+        // replace the original process node and thereby lose its convenience
+        // `backend_data_loaded` bit, but it cannot change the journal version.
+        // Presence of a materialized original node plus a consumed version is
+        // therefore the exact synchronization proof used for transactional
+        // publication.
+        let synchronization_metadata_complete = consumed_updates.contains_key(&seed.individual_tag);
+        // Konclude installs a deterministically merged association only after
+        // its representative's deterministic-same label explicitly contains
+        // the source id. Nondeterministic model merges do not change the
+        // representative id; they are carried by the separate all-mergings
+        // label and remain replay choices rather than asserted equalities.
+        let merge_identity_metadata_complete = !representative_same_individual_merging
+            || deterministic_same_individuals.contains(&seed.individual_tag);
+        let entry = NativeAboxRepresentativeEntry {
+            individual_tag: seed.individual_tag,
+            concepts,
+            concept_values: Some(concept_values),
+            instantiated_roles: role_metadata.instantiated_roles,
+            instantiated_role_values: Some(role_metadata.instantiated_role_values),
+            existential_roles: role_metadata.existential_roles,
+            existential_role_values: Some(role_metadata.existential_role_values),
+            at_most_cardinalities: role_metadata.at_most_cardinalities,
+            existential_max_cardinalities: role_metadata.existential_max_cardinalities,
+            indirect_nominal_connections: role_metadata.indirect_nominal_connections,
+            neighbour_role_combinations: role_metadata.neighbour_role_combinations,
+            completely_saturated: true,
+            completely_handled: true,
+            completely_propagated: true,
+            insufficient: false,
+            representative_same_individual_merging: Some(representative_same_individual_merging),
+            deterministic_same_individual_label_identity: merge_identity_metadata_complete
+                .then_some(deterministic_same_label_identity),
+            deterministic_merged_same_considered_label_identity: merge_identity_metadata_complete
+                .then_some(deterministic_same_label_identity),
+            deterministic_same_individuals: merge_identity_metadata_complete
+                .then_some(deterministic_same_individuals.clone()),
+            deterministic_merged_same_considered_individuals: merge_identity_metadata_complete
+                .then_some(deterministic_same_individuals),
+            nondeterministic_same_individuals: merge_identity_metadata_complete
+                .then_some(nondeterministic_same_individuals),
+            deterministic_different_individuals: Some(deterministic_different_individuals),
+            nondeterministic_different_individuals: Some(nondeterministic_different_individuals),
+            representative_same_individual_id: Some(deterministic_representative_tag),
+            deterministic_same_individual_id: Some(deterministic_representative_tag),
+            completion_processing_restriction_flags: Some(
+                ctx.process_context()
+                    .node(extraction_node)
+                    .processing_restriction_flags(),
+            ),
+            completion_label_descriptor_count: Some(descriptor_count),
+            association_update_id: 0,
+            used_association_update_id: consumed_updates.get(&seed.individual_tag).copied(),
+            scheduled_individual: Some(selected_individuals.contains(&seed.individual_tag)),
+            association_origin: Some(NativeAboxAssociationOrigin::CompletionWriteback),
+            merge_identity_metadata_complete,
+            role_metadata_complete: true,
+            synchronization_metadata_complete,
+        };
+        // Transactional writeback: validate the complete typed association
+        // before touching the shared cache. Unsupported merge/synchronization
+        // shapes keep the prior incomplete entry intact. A scheduled
+        // individual cannot be skipped because its task would otherwise be
+        // falsely reported as having discharged the association.
+        let typed_complete = entry.complete_for_precomputation();
+        let seed_covered = native_cache_entry_covers_seed(&entry, seed);
+        let complete = typed_complete && seed_covered;
+        if !complete {
+            if selected_individuals.contains(&seed.individual_tag) {
+                return None;
+            }
+            continue;
+        }
+        prepared.push((seed.individual_tag, entry));
+    }
+    let mut cache = bridged.native_representative_cache.borrow_mut();
+    let cache = cache.as_mut()?;
+    commit_native_representative_association_batch(cache, prepared, selected_individuals)
+}
+
+/// Direct port of Konclude's representative-cache computation lifecycle:
+/// select at most seven incomplete associations, run a fresh satisfiability
+/// task, atomically publish every touched association, then reschedule until
+/// no incomplete association remains. A failed task or writeback is unknown,
+/// never a consistency claim.
+fn precompute_native_representative_batches(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    preserve_saturation: bool,
+    task_budget_seconds: u64,
+) -> Option<bool> {
+    {
+        let cache = bridged.native_representative_cache.borrow();
+        let cache = cache.as_ref()?;
+        if cache.association_write_aborted {
+            // The writer aborts only after observing a clashed representative
+            // saturation node. Saturation is an under-approximation, so such a
+            // clash is a sound ontology clash; this is Konclude's
+            // `hasIndividualPrecomputationClashed()` path.
+            return Some(false);
+        }
+    }
+    if bridged.nominal_seeds.is_empty() {
+        return None;
+    }
+    let mut coordination = NativeRepresentativeCoordinationState::default();
+    loop {
+        let selected =
+            native_incomplete_abox_seed_batch(bridged, NATIVE_REPRESENTATIVE_BATCH_SIZE)?;
+        if selected.is_empty() {
+            break;
+        }
+        let previous_versions: HashMap<Cint64, u64> = {
+            let cache = bridged.native_representative_cache.borrow();
+            let cache = cache.as_ref()?;
+            selected
+                .iter()
+                .map(|tag| {
+                    cache
+                        .entries
+                        .get(tag)
+                        .map(|entry| (*tag, entry.association_update_id))
+                })
+                .collect::<Option<HashMap<_, _>>>()?
+        };
+        coordination.running_tasks += 1;
+        reset_probe_env_impl(algo, ctx, bridged, preserve_saturation, false);
+        // Representative computation always has a backend association task
+        // adapter. Do not infer that lifecycle from `card_defs`: cardinality
+        // can occur inside a named assertion while that compatibility field is
+        // empty. Install the typed journal for every representative task and
+        // freeze the versions before completion can branch, merge, or localize
+        // any process node.
+        install_native_nominal_backend_replay(algo, bridged);
+        let used_association_update_ids = freeze_native_representative_association_versions(algo);
+        if !selected
+            .iter()
+            .all(|tag| used_association_update_ids.contains_key(tag))
+        {
+            coordination.running_tasks -= 1;
+            coordination.failed_tasks += 1;
+            return None;
+        }
+        algo.conf_inprocess_cow = true;
+        configure_production_search(algo);
+        algo.probe_budget = Some(std::time::Duration::from_secs(task_budget_seconds.max(1)));
+        if !initialize_native_nominal_state_for_tags(algo, ctx, bridged, Some(&selected)) {
+            coordination.running_tasks -= 1;
+            coordination.failed_tasks += 1;
+            return None;
+        }
+        match native_nominal_consistency(algo, ctx, bridged) {
+            Some(false) => {
+                coordination.running_tasks -= 1;
+                coordination.clashed = true;
+                return Some(false);
+            }
+            None => {
+                coordination.running_tasks -= 1;
+                coordination.failed_tasks += 1;
+                return None;
+            }
+            Some(true) => {}
+        }
+        let Some(updated) = write_completed_native_representative_associations(
+            ctx,
+            bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &used_association_update_ids,
+            },
+        ) else {
+            coordination.running_tasks -= 1;
+            coordination.writeback_failed = true;
+            return None;
+        };
+        coordination.running_tasks -= 1;
+        let selected_advanced = {
+            let cache = bridged.native_representative_cache.borrow();
+            let cache = cache.as_ref()?;
+            selected.iter().all(|tag| {
+                updated.contains(tag)
+                    && cache.entries.get(tag).is_some_and(|entry| {
+                        entry.complete_for_precomputation()
+                            && entry.association_update_id
+                                > previous_versions.get(tag).copied().unwrap_or(u64::MAX)
+                    })
+            })
+        };
+        if !selected_advanced {
+            coordination.writeback_failed = true;
+            return None;
+        }
+    }
+    native_representative_coordination_complete(bridged, coordination).then_some(true)
 }
 
 fn empty_role_nominal_model_certificate(tin: &TInput, bridged: &Bridged) -> bool {
@@ -5907,6 +8257,7 @@ fn empty_role_nominal_model_certificate(tin: &TInput, bridged: &Bridged) -> bool
         || !tin.nominal_abox.complete
         || !tin.nominal_abox.unsupported.is_empty()
         || tin.nominal_abox.individuals.is_empty()
+        || !tin.nominal_abox.role_assertions.is_empty()
     {
         return false;
     }
@@ -6019,6 +8370,18 @@ fn empty_role_nominal_model_certificate(tin: &TInput, bridged: &Bridged) -> bool
         })
     }
 
+    // Assertions are usually the cheapest way to refute this deliberately
+    // sparse witness. Check them before the potentially domain-wide TBox
+    // validation: a large ABox with an ordinary named type otherwise evaluates
+    // every source axiom for every individual only to reject the same witness
+    // at the end. This is a pure reordering of conjunction checks.
+    for (element, entry) in tin.nominal_abox.individuals.iter().enumerate() {
+        for assertion in &entry.assertions {
+            if holds(assertion, element, domain_size, &individuals) != Some(true) {
+                return false;
+            }
+        }
+    }
     for axiom in &tin.source_axioms {
         for element in 0..domain_size {
             let Some(left) = holds(&axiom.left, element, domain_size, &individuals) else {
@@ -6033,14 +8396,6 @@ fn empty_role_nominal_model_certificate(tin: &TInput, bridged: &Bridged) -> bool
                 crate::json_io::SourceAxiomKind::Disjoint => !(left && right),
             };
             if !satisfied {
-                return false;
-            }
-        }
-    }
-
-    for (element, entry) in tin.nominal_abox.individuals.iter().enumerate() {
-        for assertion in &entry.assertions {
-            if holds(assertion, element, domain_size, &individuals) != Some(true) {
                 return false;
             }
         }
@@ -6093,6 +8448,66 @@ fn native_nominal_consistency(
     (!algo.completeness_poisoned).then_some(true)
 }
 
+/// Copy the non-deterministic prefix of every nominal label from the completed
+/// ontology-consistency graph. Konclude keeps a deterministic task and a
+/// completion-graph-cached task whose label tails share the deterministic
+/// head; in the in-process bridge, dependency branch tags identify that same
+/// prefix before the first deterministic descriptor.
+fn snapshot_native_consistency_nominal_nondeterministic_prefix(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<HashMap<Cint64, Vec<(ConceptId, bool)>>> {
+    let mut snapshot = HashMap::with_capacity(bridged.nominal_seeds.len());
+    for seed in &bridged.nominal_seeds {
+        let node = algo.get_up_to_date_individual_by_id(-seed.individual_tag, ctx);
+        if node.is_none() {
+            return None;
+        }
+        let node = algo.get_corrected_merged_into_individual_node(node, ctx);
+        if node.is_none() || node.index() >= ctx.process_context().node_count() {
+            return None;
+        }
+        let label = ctx.process_context().node(node).reapply_con_label_set;
+        if label.is_none() {
+            snapshot.insert(seed.individual_tag, Vec::new());
+            continue;
+        }
+        let mut descriptor = ctx
+            .process_context()
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+        let mut prefix = Vec::new();
+        let mut walked = 0usize;
+        while descriptor.is_some() {
+            if descriptor.index() >= ctx.process_context().con_desc_count()
+                || walked > ctx.process_context().con_desc_count()
+            {
+                return None;
+            }
+            let (concept, negated, dependency_track_point, next) = {
+                let descriptor_ref = ctx.process_context().con_desc(descriptor);
+                (
+                    descriptor_ref.get_concept(),
+                    descriptor_ref.is_negated(),
+                    descriptor_ref.get_dependency_track_point(),
+                    descriptor_ref.get_next_concept_descriptor(),
+                )
+            };
+            if !algo.has_nondeterministic_dependency(dependency_track_point, ctx) {
+                break;
+            }
+            prefix.push((concept, negated));
+            descriptor = next;
+            walked += 1;
+        }
+        prefix.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+        prefix.dedup();
+        snapshot.insert(seed.individual_tag, prefix);
+    }
+    Some(snapshot)
+}
+
 /// Verify a sparse batch of positive conjunctions against one source-mode
 /// bridge terminology. `true` means every concept in one seed row cannot hold
 /// at the same root. Every row gets fresh process state, while the expensive
@@ -6130,6 +8545,173 @@ fn configure_production_completion_saturation_coupling(algo: &mut CompletionTask
     // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 237.
     algo.conf_saturation_expansion_cache_reading =
         std::env::var_os("KM_HT_NO_SAT_CACHE_READING").is_none();
+    // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 236
+    // (`mConfSaturationCachingTestingDuringBlockingTests = true`). Konclude
+    // re-runs `detectIndividualNodeSaturationCached` on every localized ancestor
+    // it walks during a blocking test (cpp 19101), which is what keeps the
+    // saturation block and the `skipBlockerSearch` short-circuit (cpp 19106,
+    // ported at u19.rs:1153) in agreement on a node the blocking walk reaches
+    // before the processing queue does. The KM ctor default is FALSE and no
+    // other writer exists, so the port ran every blocking test with the retest
+    // suppressed; this restores the upstream default.
+    algo.conf_saturation_caching_testing_during_blocking_tests = true;
+}
+
+/// The native-nominal variant of the completion-side coupling: the same
+/// Konclude flags, plus the fail-closed nominal-connection decline.
+///
+/// Konclude additionally sets `mConfSaturationCachingWithNominals`
+/// (u31.rs:153); the bridge deliberately leaves it FALSE. That is the guard
+/// `try_establish_saturation_caching` (u22.rs:993-1011) reads: a saturation node
+/// carrying `INDSATFLAGNOMINALCONNECTION` then cannot establish
+/// `PRF_SATURATIONBLOCKINGCACHED`, because the release condition Konclude relies
+/// on — `tryInstallSaturationCachingReactivation` over the node's
+/// successor-connected-nominal set — needs the exact per-nominal dependency
+/// record the bridge does not keep (`conf_exact_nominal_dependency_tracking`
+/// is false). `conf_saturation_coupling_declines_nominal_connected` closes the
+/// matching hole on the expansion side (u17).
+///
+/// Nominal-connected saturation nodes are therefore inert on this route in BOTH
+/// directions, and every remaining node is nominal-free, i.e. a pure TBox
+/// consequence set. The `is_critical_nominal_concept_descriptor_insufficient`
+/// port (`saturation/s09.rs:1394-1507`) already forces a saturation node that
+/// reaches a nominal without a consistency-prefix witness to INSUFFICIENT, which
+/// is a second, independent fail-closed layer on the caching side.
+fn configure_native_nominal_completion_saturation_coupling(
+    algo: &mut CompletionTaskHandleAlgorithm,
+) {
+    configure_production_completion_saturation_coupling(algo);
+    // Konclude u31.rs:153 sets this true; the bridge must not. Set explicitly
+    // (not merely left at the ctor default) so the decision is local to this
+    // function and cannot be inherited from a previously configured algorithm.
+    algo.conf_saturation_caching_with_nominals = false;
+    algo.conf_saturation_coupling_declines_nominal_connected = true;
+    configure_native_backend_expansion_reuse(algo);
+}
+
+/// Backend-expansion reuse (`u25::reuse_individual_backend_expansion`), the
+/// mechanism by which a derived task adopts the consistency model's recorded
+/// non-deterministic ABox state in ONE non-deterministic step instead of
+/// re-deriving it disjunct by disjunct.
+///
+/// `mConfBackendExpansionReuse` is a Konclude ctor `true`
+/// (`CCalculationTableauCompletionTaskHandleAlgorithm.cpp` 478, re-asserted at
+/// 680); KM's `CompletionTaskHandleAlgorithm::new` seeds the whole config block
+/// to `false` by port convention and the bridge never runs `read_calculation_config`
+/// (that lives on the unported `handle_task` spine), so the flag has to be set
+/// here to reach the upstream default.
+///
+/// This only ARMS the mechanism. An individual is queued for reuse
+/// (`u36::get_up_to_date_individual_by_id`, Konclude cpp 22765-22771) exclusively
+/// when its association is completely handled, carries at least one of the four
+/// non-deterministic labels (`has_reusable_elements`), and is fully representable
+/// in the typed replay record (`reuse_replay_representable`). An ontology whose
+/// associations record no branch choices therefore sees no change at all.
+///
+/// Konclude's LATE-DYNAMIC activation arms
+/// (`mConfBackendExpansionLateDynamicReuseActivation` plus the
+/// neighbour-/same-individual COUNT thresholds, cpp 22738-22764) are label-size
+/// heuristics and are deliberately NOT ported: they would make the mechanism fire
+/// as a function of how big a particular ontology's labels happen to be.
+fn configure_native_backend_expansion_reuse(algo: &mut CompletionTaskHandleAlgorithm) {
+    algo.conf_backend_expansion_reuse = true;
+    // The count-threshold arms stay off (see the doc comment); with them off
+    // `conf_backend_expansion_late_dynamic_reuse_activation` has nothing to gate.
+    algo.conf_backend_expansion_late_dynamic_reuse_activation = false;
+    algo.conf_backend_expansion_neighbour_individual_count_reuse_activation = 0;
+    algo.conf_backend_expansion_same_individual_count_reuse_activation = 0;
+}
+
+/// Fail-closed precondition for arming the completion↔saturation coupling on a
+/// native-nominal ontology.
+///
+/// The coupling dereferences ontology-side concept→saturation reference
+/// linkings into the process context's saturation-node arena. Three things must
+/// hold before a completion probe may follow one of those pointers, and none of
+/// them is checked anywhere else:
+///
+/// 1. the saturation arena survived the probe-env reset (the `preserve_saturation`
+///    carry in `reset_probe_env_impl`) and is non-empty;
+/// 2. every installed linking resolves to an IN-RANGE saturation node — a stale
+///    or out-of-range id would index a foreign node;
+/// 3. no linking resolves to an ABox individual REPRESENTATION node. That is the
+///    separation the whole soundness argument rests on: the ABox wave
+///    (`build_native_abox_saturation_seeds`) writes only individual-tag slots and
+///    installs no concept linking, so a linking that pointed at one would mean
+///    the two waves had collided in the id space and an ABox-influenced label
+///    could be replayed onto an unrelated successor.
+///
+/// Any violation returns `false` and the coupling stays off, leaving the route
+/// exactly as it behaves today.
+fn native_saturation_coupling_metadata_covered(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> bool {
+    use super::model::concept_process::ConceptProcessDataId;
+
+    if !bridged.has_native_nominals() {
+        return false;
+    }
+    let sat_node_count = ctx.process_context().sat_node_count();
+    if sat_node_count == 0 {
+        return false;
+    }
+    let mut resolved = 0usize;
+    let check = |node: super::process::SatNodeId, resolved: &mut usize| -> bool {
+        if node.is_none() {
+            return true;
+        }
+        if node.index() >= sat_node_count {
+            return false;
+        }
+        if ctx
+            .process_context()
+            .sat_node(node)
+            .is_abox_individual_representation_node()
+        {
+            return false;
+        }
+        *resolved += 1;
+        true
+    };
+    let concept_count = ctx.ontology_arenas().concept_count();
+    for index in 0..concept_count {
+        let concept = ConceptId::new(index);
+        let concept_data = ctx.ontology_arenas().concept(concept).get_concept_data();
+        if concept_data == super::model::substrate::INVALID {
+            continue;
+        }
+        let ref_linking = ctx
+            .ontology_arenas()
+            .concept_process_data(ConceptProcessDataId::new(concept_data))
+            .get_concept_reference_linking();
+        if ref_linking.is_none() {
+            continue;
+        }
+        let linking_data = ctx
+            .ontology_arenas()
+            .concept_saturation_reference_linking_data(ref_linking);
+        let items = [
+            linking_data.get_concept_saturation_reference_linking_data(false),
+            linking_data.get_concept_saturation_reference_linking_data(true),
+            linking_data.get_existential_successor_concept_saturation_reference_linking_data(),
+        ];
+        for item in items {
+            if item.is_none() {
+                continue;
+            }
+            let node = ctx
+                .ontology_arenas()
+                .saturation_concept_reference_linking(item)
+                .get_individual_process_node_for_concept();
+            if !check(node, &mut resolved) {
+                return false;
+            }
+        }
+    }
+    // A coupling with nothing to read is not "covered": it would silently be a
+    // no-op and hide a broken saturation hand-off behind an "armed" log line.
+    resolved > 0
 }
 
 // ---------------------------------------------------------------------------
@@ -6273,6 +8855,20 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
 /// are essential after the bridge installs native CRole domain/range linkers:
 /// their nodes initialize with `initRole`, exactly as Konclude requires.
 fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
+    assert!(
+        build_saturation_seeds_with_deadline(ctx, bridged, None),
+        "unbounded saturation-seed construction cannot time out"
+    );
+}
+
+/// Build the generic concept-saturation seeds, stopping safely when the
+/// caller's task budget expires. The bridge owns the partially constructed
+/// context and discards it on `false`, so no incomplete seed set is consumed.
+fn build_saturation_seeds_with_deadline(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    deadline: Option<std::time::Instant>,
+) -> bool {
     use super::model::concept_process::{
         ConceptProcessData, ConceptSaturationReferenceLinkingData,
         SaturationConceptReferenceLinking, SaturationConceptReferenceLinkingId,
@@ -6352,24 +8948,26 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // Exact `hasRoleRanges`: inspect the range side of every signed indirect
     // super role. The local helper restores Konclude's reflexive role entry
     // for saturation without changing the completion arena's role lists.
-    let roles_with_ranges: std::collections::HashSet<RoleId> = (0..ctx
-        .ontology_arenas()
-        .role_count())
-        .map(RoleId::new)
-        .filter(|&role| {
-            super::saturation::algorithm::SaturationTaskHandleAlgorithm::saturation_indirect_super_roles(
-                role,
-                ctx,
-            )
-            .iter()
-            .any(|super_link| {
-                !ctx.ontology_arenas()
-                    .role(super_link.target)
-                    .get_domain_range_concept_list(!super_link.negated)
-                    .is_empty()
-            })
-        })
-        .collect();
+    let mut roles_with_ranges = std::collections::HashSet::new();
+    for role_index in 0..ctx.ontology_arenas().role_count() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
+        let role = RoleId::new(role_index);
+        if super::saturation::algorithm::SaturationTaskHandleAlgorithm::saturation_indirect_super_roles(
+            role,
+            ctx,
+        )
+        .iter()
+        .any(|super_link| {
+            !ctx.ontology_arenas()
+                .role(super_link.target)
+                .get_domain_range_concept_list(!super_link.negated)
+                .is_empty()
+        }) {
+            roles_with_ranges.insert(role);
+        }
+    }
     // Restriction concept -> its role-specific successor item. Konclude wires
     // this through mExistentialSuccessorSatConRefLinking (cpp 2071-2074).
     let mut existential_successor_seed: Vec<(ConceptId, usize)> = Vec::new();
@@ -6386,6 +8984,10 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     }
     let n = ctx.ontology_arenas().concept_count();
     for i in 0..n {
+        if i & 0x3ff == 0 && deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return false;
+        }
         let cid = ConceptId::new(i);
         let (op_code, role, operands) = {
             let c = ctx.ontology_arenas().concept(cid);
@@ -6451,6 +9053,9 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     let mut invalid_special = std::collections::HashSet::new();
     let mut extension_item = 0usize;
     while extension_item < seeds.len() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
         let seed = seeds[extension_item];
         extension_item += 1;
         let seed_concept = ctx.ontology_arenas().concept(seed.concept);
@@ -6468,10 +9073,24 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             examine.push((seed.concept, seed.negated));
         }
 
+        // Source-mode concepts can contain cyclic auxiliary definitions. The
+        // C++ construction records processed concepts in its preprocessing
+        // items; the compact Rust traversal must do the same explicitly.
+        // Re-examining a signed concept cannot add information here: seed and
+        // invalid-special insertion are both idempotent set operations.
+        let mut examined = std::collections::HashSet::new();
         let mut cursor = 0usize;
         while cursor < examine.len() {
             let (concept, negated) = examine[cursor];
             cursor += 1;
+            if !examined.insert((concept, negated)) {
+                continue;
+            }
+            if cursor & 0x3ff == 0
+                && deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+            {
+                return false;
+            }
             let data = ctx.ontology_arenas().concept(concept);
             let op_code = data.get_operator_code();
             let operands = data.get_operand_list().to_vec();
@@ -6552,6 +9171,9 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     let mut indirect_successors = vec![false; seeds.len()];
     let mut exist_references: Vec<Vec<usize>> = vec![Vec::new(); seeds.len()];
     for item in 0..seeds.len() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
         let mut stack = vec![(seeds[item].concept, seeds[item].negated)];
         let mut visited = std::collections::HashSet::new();
         while let Some((concept, negated)) = stack.pop() {
@@ -6673,6 +9295,11 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
 
     // C++ propagateSubsumerItemFlag / propagateExistInitializationFlag.
     for item in 0..seeds.len() {
+        if item & 0x3ff == 0
+            && deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return false;
+        }
         if indirect_successors[item] {
             let mut next = special_reference[item];
             while let Some(reference) = next {
@@ -6800,6 +9427,11 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // Allocate every ontology item before wiring cross-item references.
     let mut onto_items = vec![SaturationConceptReferenceLinkingId::NONE; seeds.len()];
     for (item_index, seed) in seeds.iter().enumerate() {
+        if item_index & 0x3ff == 0
+            && deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return false;
+        }
         let concept = seed.concept;
         let negation = seed.negated;
         if seed.role_ranges.is_some() {
@@ -6872,6 +9504,9 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // node is constructed. This is the exact reference read first by
     // `createSuccessorForConcept`; ordinary filler lookup remains its fallback.
     for (restriction, item_index) in existential_successor_seed {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
         if item_index == usize::MAX || onto_items[item_index].is_none() {
             continue;
         }
@@ -6918,6 +9553,11 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // Reference mode, C++ 2190-2205. Trigger-host concepts conservatively use
     // COPY, matching the triggerImpHash guard in Konclude.
     for item in 0..seeds.len() {
+        if item & 0x3ff == 0
+            && deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline)
+        {
+            return false;
+        }
         let Some(reference) = special_reference[item] else {
             continue;
         };
@@ -6948,7 +9588,15 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
 
     // Generator construction loop. Build all nodes first, then queue them in
     // dependency order; databox insertion is head-first, hence reverse insert.
-    let mut next_indi_id: Cint64 = 1;
+    // Konclude starts concept-test ids strictly above the ABox vector's next
+    // individual id. Sharing ids would overwrite a representative node in the
+    // saturation vector and make cache labels depend on construction order.
+    let mut next_indi_id: Cint64 = bridged
+        .nominal_seeds
+        .iter()
+        .map(|seed| seed.individual_tag)
+        .max()
+        .map_or(1, |max_tag| max_tag.saturating_add(1).max(1));
     let mut linkers = vec![IndividualSaturationProcessNodeLinkerId::NONE; seeds.len()];
     // `extendApproximatedSaturationCalculationJobConstruction` prepends each
     // construct. The task generator therefore allocates nodes in reverse
@@ -6956,6 +9604,9 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // IDs. Successor-extension processing is keyed by negative individual ID,
     // so this reversal is required to process dependencies before dependents.
     for &item_index in order.iter().rev() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
         let seed = seeds[item_index];
         let concept = seed.concept;
         let negation = seed.negated;
@@ -6999,6 +9650,9 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // list. Adding the reverse construction sequence reproduces the final
     // dependency-first list.
     for &item_index in order.iter().rev() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return false;
+        }
         ctx.processing_data_box_mut()
             .add_individual_saturation_process_node_linker(linkers[item_index]);
     }
@@ -7028,6 +9682,921 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             copy_count,
         );
     }
+    true
+}
+
+/// Construct Konclude's second saturation wave: one separated representative
+/// node for every ABox individual, using the individual's real id. Positive
+/// object-property assertions are installed as named-to-named role links; the
+/// completion-only `exists R.{b}` spelling is deliberately not seeded here.
+fn build_native_abox_saturation_seeds(
+    _sat_algo: &mut super::saturation::algorithm::SaturationTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    deadline: Option<std::time::Instant>,
+) -> Option<Vec<(Cint64, super::process::SatNodeId)>> {
+    use super::process::sat_node::IndividualSaturationProcessNode;
+
+    let mut nodes = Vec::with_capacity(bridged.nominal_seeds.len());
+    let mut by_tag = HashMap::with_capacity(bridged.nominal_seeds.len());
+    let mut linkers = Vec::with_capacity(bridged.nominal_seeds.len());
+    for seed in &bridged.nominal_seeds {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return None;
+        }
+        let occupied = ctx
+            .processing_data_box()
+            .individual_saturation_process_node_vector_ref()
+            .is_some_and(|vector| vector.has_data(seed.individual_tag));
+        if occupied {
+            return None;
+        }
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
+        ctx.process_context_mut()
+            .sat_node_mut(node)
+            .init_individual_saturation_process_node(seed.individual_tag, Id::NONE, Id::NONE)
+            .set_nominal_individual(seed.individual)
+            .set_separated(true)
+            .set_abox_individual_representation_node(true);
+        ctx.processing_data_box_mut()
+            .individual_saturation_process_node_vector(true)
+            .expect("create=true yields a saturation-node vector")
+            .set_data(seed.individual_tag, node);
+        let linker = ctx
+            .process_context_mut()
+            .sat_node_individual_saturation_process_node_linker(node, true);
+        ctx.process_context_mut()
+            .indi_sat_process_node_linker_mut(linker)
+            .set_processing_queued(true);
+        nodes.push((seed.individual_tag, node));
+        by_tag.insert(seed.individual_tag, node);
+        linkers.push(linker);
+    }
+
+    // Stage each forward edge and reverse face once all named representatives
+    // exist. `initialize_role_assertions` consumes this typed journal only
+    // after `initialize_initialization_concepts` has copied the named
+    // assertion-resolved label, matching Konclude's exact initialization
+    // order. Installing the semantic link here would add domain/range concepts
+    // to the old label and the subsequent representative copy would erase
+    // them.
+    for seed in &bridged.nominal_seeds {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return None;
+        }
+        let source = *by_tag.get(&seed.individual_tag)?;
+        for &(role, target_tag) in &seed.role_assertions {
+            if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+                return None;
+            }
+            let target = *by_tag.get(&target_tag)?;
+            ctx.process_context_mut()
+                .sat_node_ext_add_role_assertion(source, target, role, false);
+            ctx.process_context_mut()
+                .sat_node_ext_add_role_assertion(target, source, role, true);
+        }
+    }
+
+    // ProcessingDataBox stores the C++ head at the Vec tail. Reverse insertion
+    // makes the ascending individual order the actual processing order.
+    for linker in linkers.into_iter().rev() {
+        if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+            return None;
+        }
+        ctx.processing_data_box_mut()
+            .add_individual_saturation_process_node_linker(linker);
+    }
+    Some(nodes)
+}
+
+fn native_cache_label_concepts(
+    ctx: &CalculationAlgorithmContextBase,
+    node: super::process::SatNodeId,
+) -> Option<Vec<(ConceptId, bool)>> {
+    let label = ctx
+        .process_context()
+        .sat_node(node)
+        .reapply_con_sat_label_set;
+    if label.is_none() {
+        return Some(Vec::new());
+    }
+    let mut concepts = Vec::new();
+    let mut descriptor = ctx
+        .process_context()
+        .reapply_con_sat_label_set(label)
+        .get_concept_saturation_description_linker();
+    let mut walked = 0usize;
+    while descriptor.is_some() {
+        if descriptor.index() >= ctx.process_context().con_sat_desc_count()
+            || walked > ctx.process_context().con_sat_desc_count()
+        {
+            return None;
+        }
+        let data = ctx.process_context().con_sat_desc(descriptor);
+        concepts.push((data.get_concept(), data.get_negation()));
+        descriptor = data.get_next_concept_desciptor();
+        walked += 1;
+    }
+    concepts.sort_unstable_by_key(|(concept, negated)| (concept.raw, *negated));
+    concepts.dedup();
+    Some(concepts)
+}
+
+fn native_individual_label_identity(values: &[Cint64]) -> u64 {
+    // Stable FNV-1a over canonical signed ids. The reuse gate also compares the
+    // full vectors, so this identifier supplies Konclude's canonical-label
+    // identity metadata without making correctness depend on hash collision.
+    let mut hash = 0xcbf29ce484222325u64;
+    for value in values {
+        for byte in value.to_le_bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    hash
+}
+
+/// Write the bridge-local typed equivalent of Konclude's representative
+/// backend association. Every label family used by the completion read path is
+/// materialised, even when the entry is explicitly marked insufficient.
+fn write_native_abox_representative_cache(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    nodes: &[(Cint64, super::process::SatNodeId)],
+) -> Option<NativeAboxRepresentativeCache> {
+    use super::model::op::{
+        CCALL, CCAQALL, CCAQSOME, CCATLEAST, CCATMOST, CCSELF, CCSOME, CCVALUE,
+    };
+    use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+
+    if nodes.len() != bridged.nominal_seeds.len() {
+        return None;
+    }
+    let mut cache = NativeAboxRepresentativeCache::default();
+    for &(individual_tag, node) in nodes {
+        if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
+            return None;
+        }
+        let (direct_flags, indirect_flags) = {
+            let saturation_node = ctx.process_context().sat_node(node);
+            (
+                saturation_node.direct_status_flags.get_flags(),
+                saturation_node.indirect_status_flags.get_flags(),
+            )
+        };
+        if direct_flags & F::INDSATFLAGCLASHED != 0 || indirect_flags & F::INDSATFLAGCLASHED != 0 {
+            cache.entries.clear();
+            cache.association_write_aborted = true;
+            return Some(cache);
+        }
+
+        let concepts = native_cache_label_concepts(ctx, node)?;
+        let mut existential_roles: BTreeSet<Cint64> = BTreeSet::new();
+        let mut existential_max: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+        let mut at_most: BTreeMap<Cint64, Cint64> = BTreeMap::new();
+        for &(concept, negated) in &concepts {
+            if concept.is_none()
+                || concept.index() >= ctx.ontology_arenas().concept_count() as usize
+            {
+                return None;
+            }
+            let concept_ref = ctx.ontology_arenas().concept(concept);
+            let operator = concept_ref.get_operator_code();
+            let role = concept_ref.get_role();
+            if role.is_some()
+                && ((!negated
+                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF | CCATLEAST))
+                    || (negated && matches!(operator, CCALL | CCAQALL | CCATMOST)))
+            {
+                existential_roles.insert(role.raw);
+                let cardinality = if (!negated
+                    && matches!(operator, CCSOME | CCAQSOME | CCVALUE | CCSELF))
+                    || (negated && matches!(operator, CCALL | CCAQALL))
+                {
+                    1
+                } else if !negated && operator == CCATLEAST {
+                    concept_ref.get_parameter().max(0)
+                } else {
+                    concept_ref.get_parameter().saturating_add(1).max(0)
+                };
+                existential_max
+                    .entry(role.raw)
+                    .and_modify(|current| *current = (*current).max(cardinality))
+                    .or_insert(cardinality);
+            }
+            let bound = if !negated && operator == CCATMOST {
+                Some(concept_ref.get_parameter())
+            } else if negated && operator == CCATLEAST {
+                Some(concept_ref.get_parameter().saturating_sub(1))
+            } else {
+                None
+            };
+            if let (Some(bound), true) = (bound, role.is_some()) {
+                at_most
+                    .entry(role.raw)
+                    .and_modify(|current| *current = (*current).min(bound))
+                    .or_insert(bound);
+            }
+        }
+
+        let mut instantiated_role_orientations: BTreeSet<(Cint64, bool)> = BTreeSet::new();
+        let mut neighbour_roles: BTreeMap<Cint64, BTreeSet<(Cint64, bool)>> = BTreeMap::new();
+        let mut indirect_nominals: BTreeSet<Cint64> = ctx
+            .process_context_mut()
+            .sat_node_successor_connected_nominals(node)
+            .into_iter()
+            .collect();
+        let linked_hash = ctx
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(node, false);
+        if linked_hash.is_some() {
+            let role_buckets: Vec<(RoleId, _)> = ctx
+                .process_context()
+                .linked_role_sat_succ_hash(linked_hash)
+                .get_linked_role_successor_hash()
+                .iter()
+                .map(|(&role, &data)| (role, data))
+                .collect();
+            for (role, bucket) in role_buckets {
+                let successors: Vec<_> = ctx
+                    .process_context()
+                    .linked_role_sat_succ_data(bucket)
+                    .get_successor_node_data_map()
+                    .values()
+                    .copied()
+                    .collect();
+                let mut role_instantiated = false;
+                for successor in successors {
+                    if successor.is_none()
+                        || successor.index() >= ctx.process_context().sat_succ_data_count()
+                    {
+                        return None;
+                    }
+                    let successor_data = ctx.process_context().sat_succ_data(successor);
+                    if !successor_data.is_active() {
+                        continue;
+                    }
+                    role_instantiated = true;
+                    let mut neighbour_tag = if successor_data.value_nominal_connection {
+                        indirect_nominals.insert(successor_data.value_nominal_id);
+                        Some(successor_data.value_nominal_id)
+                    } else {
+                        None
+                    };
+                    if neighbour_tag.is_none()
+                        && successor_data.succ_indi_node.is_some()
+                        && successor_data.succ_indi_node.index()
+                            < ctx.process_context().sat_node_count()
+                    {
+                        let successor_node = ctx
+                            .process_context()
+                            .sat_node(successor_data.succ_indi_node);
+                        let nominal = successor_node.get_nominal_individual();
+                        neighbour_tag = if nominal.is_some()
+                            && nominal.index() < ctx.ontology_arenas().individual_count() as usize
+                        {
+                            Some(
+                                ctx.ontology_arenas()
+                                    .individual(nominal)
+                                    .get_individual_id(),
+                            )
+                        } else {
+                            // An existential whose filler is `{a}` points at a
+                            // concept-saturation node rather than the ABox
+                            // representative. Recover the nominal id from that
+                            // node's label. The association status remains the
+                            // exact direct/indirect saturation-status test
+                            // below; this metadata shape is not an additional
+                            // insufficiency condition in Konclude.
+                            let label = successor_node.reapply_con_sat_label_set;
+                            let mut inferred_nominal = None;
+                            if label.is_some() {
+                                let mut descriptor = ctx
+                                    .process_context()
+                                    .reapply_con_sat_label_set(label)
+                                    .get_concept_saturation_description_linker();
+                                let mut walked = 0usize;
+                                while descriptor.is_some()
+                                    && descriptor.index()
+                                        < ctx.process_context().con_sat_desc_count()
+                                    && walked <= ctx.process_context().con_sat_desc_count()
+                                {
+                                    let descriptor_ref =
+                                        ctx.process_context().con_sat_desc(descriptor);
+                                    let candidate = descriptor_ref.get_concept();
+                                    if !descriptor_ref.get_negation()
+                                        && candidate.is_some()
+                                        && candidate.index()
+                                            < ctx.ontology_arenas().concept_count() as usize
+                                        && ctx
+                                            .ontology_arenas()
+                                            .concept(candidate)
+                                            .get_operator_code()
+                                            == op::CCNOMINAL
+                                    {
+                                        let individual = ctx
+                                            .ontology_arenas()
+                                            .concept(candidate)
+                                            .get_nominal_individual();
+                                        if individual.is_some()
+                                            && individual.index()
+                                                < ctx.ontology_arenas().individual_count() as usize
+                                        {
+                                            inferred_nominal = Some(
+                                                ctx.ontology_arenas()
+                                                    .individual(individual)
+                                                    .get_individual_id(),
+                                            );
+                                            break;
+                                        }
+                                    }
+                                    descriptor = descriptor_ref.get_next_concept_desciptor();
+                                    walked += 1;
+                                }
+                            }
+                            if let Some(nominal_tag) = inferred_nominal {
+                                indirect_nominals.insert(nominal_tag);
+                                Some(nominal_tag)
+                            } else {
+                                Some(successor_node.get_individual_id())
+                            }
+                        };
+                    }
+                    if let Some(neighbour_tag) = neighbour_tag {
+                        neighbour_roles
+                            .entry(neighbour_tag)
+                            .or_default()
+                            .insert((role.raw, false));
+                    }
+                }
+                if role_instantiated {
+                    instantiated_role_orientations.insert((role.raw, false));
+                }
+            }
+        }
+
+        // Konclude's association writer consumes both assertion linkers on an
+        // ontology individual. The saturation successor hash above contains
+        // only links oriented out of this representative, so it cannot by
+        // itself serialize the reverse linker on an assertion target. Replay
+        // the immutable typed ABox journal in both directions, including every
+        // indirect super-role orientation installed by `addRoleAssertion`.
+        // These are asserted links and therefore deterministic; model-choice
+        // links remain exclusively on the completion writeback path below.
+        for source_seed in &bridged.nominal_seeds {
+            for &(asserted_role, target_tag) in &source_seed.role_assertions {
+                if asserted_role.is_none()
+                    || asserted_role.index() >= ctx.ontology_arenas().role_count() as usize
+                {
+                    return None;
+                }
+                let mut super_roles = ctx
+                    .ontology_arenas()
+                    .role(asserted_role)
+                    .get_indirect_super_role_list()
+                    .to_vec();
+                if !super_roles
+                    .iter()
+                    .any(|link| link.target == asserted_role && !link.negated)
+                {
+                    super_roles.push(NegLink {
+                        target: asserted_role,
+                        negated: false,
+                    });
+                }
+                for role_link in super_roles {
+                    let role = role_link.target;
+                    if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize
+                    {
+                        return None;
+                    }
+                    if individual_tag == source_seed.individual_tag {
+                        instantiated_role_orientations.insert((role.raw, role_link.negated));
+                        indirect_nominals.insert(target_tag);
+                        neighbour_roles
+                            .entry(target_tag)
+                            .or_default()
+                            .insert((role.raw, role_link.negated));
+                    }
+                    if individual_tag == target_tag {
+                        instantiated_role_orientations.insert((role.raw, !role_link.negated));
+                        indirect_nominals.insert(source_seed.individual_tag);
+                        neighbour_roles
+                            .entry(source_seed.individual_tag)
+                            .or_default()
+                            .insert((role.raw, !role_link.negated));
+                    }
+                }
+            }
+        }
+
+        let (completely_handled, completely_propagated) =
+            native_abox_association_status(direct_flags, indirect_flags);
+        let status_incomplete = !completely_handled;
+        // The saturation substrate does not retain per-descriptor dependency
+        // track points. Only a completely handled association certifies its
+        // final label. Values from an insufficient association remain
+        // metadata and must not be replayed as branch-zero facts.
+        let concept_values = concepts
+            .iter()
+            .map(|&(concept, negated)| NativeAboxConceptValue {
+                concept,
+                negated,
+                deterministic: completely_handled,
+            })
+            .collect();
+        let deterministic_same_individuals = Vec::new();
+        let deterministic_same_label_identity =
+            native_individual_label_identity(&deterministic_same_individuals);
+        let mut deterministic_different_individuals: Vec<Cint64> = bridged
+            .nominal_different
+            .iter()
+            .filter_map(|&(left, right)| {
+                if left == individual_tag {
+                    Some(right)
+                } else if right == individual_tag {
+                    Some(left)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !deterministic_different_individuals.is_empty() {
+            deterministic_different_individuals.push(individual_tag);
+            deterministic_different_individuals.sort_unstable();
+            deterministic_different_individuals.dedup();
+        }
+        cache.next_association_update_id = cache.next_association_update_id.saturating_add(1);
+        let instantiated_role_values: Vec<NativeAboxRoleValue> =
+            instantiated_role_orientations
+                .into_iter()
+                .map(|(role, inversed)| NativeAboxRoleValue {
+                    role: RoleId::new(role),
+                    inversed,
+                    deterministic: true,
+                })
+                .collect();
+        let instantiated_roles: Vec<RoleId> = instantiated_role_values
+            .iter()
+            .map(|value| value.role)
+            .collect();
+        let existential_roles: Vec<RoleId> =
+            existential_roles.into_iter().map(RoleId::new).collect();
+        let entry = NativeAboxRepresentativeEntry {
+            individual_tag,
+            concepts,
+            concept_values: Some(concept_values),
+            instantiated_role_values: Some(instantiated_role_values),
+            instantiated_roles,
+            existential_role_values: Some(
+                existential_roles
+                    .iter()
+                    .map(|&role| NativeAboxRoleValue {
+                        role,
+                        inversed: false,
+                        deterministic: true,
+                    })
+                    .collect(),
+            ),
+            existential_roles,
+            at_most_cardinalities: at_most
+                .into_iter()
+                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                .collect(),
+            existential_max_cardinalities: existential_max
+                .into_iter()
+                .map(|(role, cardinality)| (RoleId::new(role), cardinality))
+                .collect(),
+            indirect_nominal_connections: indirect_nominals.into_iter().collect(),
+            neighbour_role_combinations: neighbour_roles
+                .into_iter()
+                .map(|(neighbour_tag, roles)| NativeAboxNeighbourRoleSet {
+                    neighbour_tag,
+                    roles: roles
+                        .into_iter()
+                        .map(|(role, inversed)| (RoleId::new(role), inversed))
+                        .collect(),
+                    role_values: None,
+                    merged_alias_deterministic: Some(true),
+                })
+                .collect(),
+            completely_saturated: completely_handled,
+            completely_handled,
+            completely_propagated,
+            insufficient: status_incomplete,
+            representative_same_individual_merging: Some(false),
+            deterministic_same_individual_label_identity: Some(deterministic_same_label_identity),
+            deterministic_merged_same_considered_label_identity: Some(
+                deterministic_same_label_identity,
+            ),
+            deterministic_same_individuals: Some(deterministic_same_individuals.clone()),
+            deterministic_merged_same_considered_individuals: Some(deterministic_same_individuals),
+            nondeterministic_same_individuals: Some(Vec::new()),
+            deterministic_different_individuals: Some(deterministic_different_individuals.clone()),
+            nondeterministic_different_individuals: Some(deterministic_different_individuals),
+            representative_same_individual_id: Some(individual_tag),
+            deterministic_same_individual_id: Some(individual_tag),
+            completion_processing_restriction_flags: None,
+            completion_label_descriptor_count: None,
+            association_update_id: cache.next_association_update_id,
+            used_association_update_id: None,
+            scheduled_individual: None,
+            association_origin: Some(NativeAboxAssociationOrigin::IndividualSaturation),
+            merge_identity_metadata_complete: true,
+            role_metadata_complete: true,
+            synchronization_metadata_complete: true,
+        };
+        let mut entry = entry;
+        for combination in &mut entry.neighbour_role_combinations {
+            combination.role_values = Some(
+                combination
+                    .roles
+                    .iter()
+                    .map(|&(role, inversed)| NativeAboxRoleValue {
+                        role,
+                        inversed,
+                        deterministic: true,
+                    })
+                    .collect(),
+            );
+        }
+        cache.entries.insert(individual_tag, entry);
+    }
+    Some(cache)
+}
+
+fn native_cache_entry_covers_seed(
+    entry: &NativeAboxRepresentativeEntry,
+    seed: &NominalSeed,
+) -> bool {
+    let sorted_roles = |roles: &[RoleId]| {
+        roles.iter().all(|role| role.is_some())
+            // The same role may occur once in each orientation. The typed
+            // values below carry that polarity, while Konclude's combined
+            // role-set projection retains the repeated role id.
+            && roles.windows(2).all(|pair| pair[0].raw <= pair[1].raw)
+    };
+    let sorted_cardinalities = entry
+        .at_most_cardinalities
+        .iter()
+        .all(|(role, _)| role.is_some())
+        && entry
+            .at_most_cardinalities
+            .windows(2)
+            .all(|pair| pair[0].0.raw < pair[1].0.raw);
+    let sorted_existential_cardinalities = entry
+        .existential_max_cardinalities
+        .iter()
+        .all(|(role, cardinality)| role.is_some() && *cardinality >= 0)
+        && entry
+            .existential_max_cardinalities
+            .windows(2)
+            .all(|pair| pair[0].0.raw < pair[1].0.raw);
+    let sorted_indirect_nominals = entry
+        .indirect_nominal_connections
+        .windows(2)
+        .all(|pair| pair[0] < pair[1]);
+    let neighbour_roles_well_formed = entry.neighbour_role_combinations.iter().all(|combination| {
+        let role_values_well_formed = combination.role_values.as_ref().is_some_and(|values| {
+            values.windows(2).all(|pair| {
+                (pair[0].role.raw, pair[0].inversed, pair[0].deterministic)
+                    < (pair[1].role.raw, pair[1].inversed, pair[1].deterministic)
+            }) && values
+                .iter()
+                .map(|value| (value.role, value.inversed))
+                .collect::<Vec<_>>()
+                == combination.roles
+        });
+        let merge_alias_well_formed =
+            combination
+                .merged_alias_deterministic
+                .is_some_and(|deterministic| {
+                    deterministic
+                        || combination
+                            .role_values
+                            .as_ref()
+                            .is_some_and(|values| values.iter().all(|value| !value.deterministic))
+                });
+        role_values_well_formed
+            && merge_alias_well_formed
+            && combination
+                .roles
+                .iter()
+                .all(|(role, _)| role.is_some() && entry.instantiated_roles.contains(role))
+            && combination
+                .roles
+                .windows(2)
+                .all(|pair| (pair[0].0.raw, pair[0].1) < (pair[1].0.raw, pair[1].1))
+    });
+    let concept_values_well_formed = entry.concept_values.as_ref().is_some_and(|values| {
+        values.windows(2).all(|pair| {
+            (pair[0].concept.raw, pair[0].negated, pair[0].deterministic)
+                < (pair[1].concept.raw, pair[1].negated, pair[1].deterministic)
+        }) && values
+            .iter()
+            .map(|value| (value.concept, value.negated))
+            .collect::<Vec<_>>()
+            == entry.concepts
+    });
+    let role_values_well_formed = |roles: &[RoleId], values: &Option<Vec<NativeAboxRoleValue>>| {
+        values.as_ref().is_some_and(|values| {
+            values.windows(2).all(|pair| {
+                (pair[0].role.raw, pair[0].inversed, pair[0].deterministic)
+                    < (pair[1].role.raw, pair[1].inversed, pair[1].deterministic)
+            }) && values.iter().map(|value| value.role).collect::<Vec<_>>() == roles
+        })
+    };
+
+    let asserted_roles_covered = seed.role_assertions.iter().all(|&(role, target_tag)| {
+        entry
+            .neighbour_role_combinations
+            .iter()
+            .find(|combination| combination.neighbour_tag == target_tag)
+            .is_some_and(|combination| combination.roles.contains(&(role, false)))
+    });
+    entry.individual_tag == seed.individual_tag
+        && concept_values_well_formed
+        && sorted_roles(&entry.instantiated_roles)
+        && sorted_roles(&entry.existential_roles)
+        && role_values_well_formed(&entry.instantiated_roles, &entry.instantiated_role_values)
+        && role_values_well_formed(&entry.existential_roles, &entry.existential_role_values)
+        && sorted_cardinalities
+        && sorted_existential_cardinalities
+        && sorted_indirect_nominals
+        && neighbour_roles_well_formed
+        && entry.representative_same_individual_id.is_some()
+        && entry.deterministic_same_individual_id.is_some()
+        && asserted_roles_covered
+}
+
+fn native_generated_role_assertion_synchronized(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    entry: &NativeAboxRepresentativeEntry,
+    concept: ConceptId,
+    negated: bool,
+) -> bool {
+    if negated
+        || concept.is_none()
+        || concept.index() >= ctx.ontology_arenas().concept_count() as usize
+    {
+        return false;
+    }
+    let concept_ref = ctx.ontology_arenas().concept(concept);
+    if concept_ref.get_operator_code() != op::CCSOME || concept_ref.get_operand_count() != 1 {
+        return false;
+    }
+    let role = concept_ref.get_role();
+    let Some(filler) = concept_ref.get_operand_list().first() else {
+        return false;
+    };
+    if filler.negated {
+        return false;
+    }
+    let Some(target) = bridged
+        .nominal_seeds
+        .iter()
+        .find(|target| target.nominal_concept == filler.target)
+    else {
+        return false;
+    };
+    seed.role_assertions
+        .contains(&(role, target.individual_tag))
+        && entry
+            .neighbour_role_combinations
+            .iter()
+            .find(|combination| combination.neighbour_tag == target.individual_tag)
+            .is_some_and(|combination| combination.roles.contains(&(role, false)))
+}
+
+/// Exact concept-label conjunct of
+/// `testIndividualNodeBackendCacheConceptsSynchronization` for a saturation
+/// written representative entry. Saturation's FULL_CONCEPT_SET label contains
+/// deterministic cache values, so a newly added non-deterministic descriptor
+/// does not equal that cached value and must invalidate synchronization.
+fn native_backend_concepts_synchronized(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    node: NodeId,
+    entry: &NativeAboxRepresentativeEntry,
+) -> bool {
+    if !entry.completely_handled
+        || node.is_none()
+        || node.index() >= ctx.process_context().node_count()
+    {
+        return false;
+    }
+    let label = ctx.process_context().node(node).reapply_con_label_set;
+    if label.is_none() {
+        return false;
+    }
+    let mut descriptor = ctx
+        .process_context()
+        .label_set(label)
+        .get_adding_sorted_concept_description_linker();
+    let mut walked = 0usize;
+    while descriptor.is_some() {
+        if descriptor.index() >= ctx.process_context().con_desc_count()
+            || walked > ctx.process_context().con_desc_count()
+        {
+            return false;
+        }
+        let (concept, negated, dependency_track_point, next) = {
+            let descriptor_ref = ctx.process_context().con_desc(descriptor);
+            (
+                descriptor_ref.get_concept(),
+                descriptor_ref.is_negated(),
+                descriptor_ref.get_dependency_track_point(),
+                descriptor_ref.get_next_concept_descriptor(),
+            )
+        };
+        // Konclude excludes exactly the positive own nominal descriptor.
+        if concept != seed.nominal_concept || negated {
+            let nondeterministic =
+                algo.has_nondeterministic_dependency(dependency_track_point, ctx);
+            let cached = entry.concept_values.as_ref().is_some_and(|values| {
+                values
+                    .binary_search_by_key(&(concept.raw, negated, !nondeterministic), |value| {
+                        (value.concept.raw, value.negated, value.deterministic)
+                    })
+                    .is_ok()
+            });
+            if !cached
+                && !native_generated_role_assertion_synchronized(
+                    ctx, bridged, seed, entry, concept, negated,
+                )
+            {
+                return false;
+            }
+        }
+        descriptor = next;
+        walked += 1;
+    }
+    true
+}
+
+/// Bridge-local port of
+/// `tryEstablishExpansionBlockingWithBackendCacheSynchronisation` (cpp 22554–22578).
+///
+/// The generic u20 routine bottoms out in the unported representative-memory
+/// association; this route carries every Konclude predicate in the typed
+/// native-ABox association and reproduces the C++ split exactly:
+///
+/// ```text
+/// if (assocData) {
+///   backendExpBlocking = assocData->isCompletelyHandled()
+///                        && !assocData->hasRepresentativeSameIndividualMerging();
+///   if (backendExpBlocking && getDeterministicMergedSameConsideredLabelCacheEntry()
+///          != getLabelCacheEntry(DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL))
+///     backendExpBlocking = false;
+///   if (backendExpBlocking && testIndividualNodeBackendCacheConceptsSynchronization(...)) {
+///     if (!PRFINVALIDBLOCKINGORCACHING && mConfAllowBackendSuccessorExpansionBlocking)
+///       add(PRFSYNCHRONIZEDBACKEND | …SUCCESSOREXPANSIONBLOCKED | …INDIRECTNOMINALEXPANSIONBLOCKED);
+///     expansionBlocked = true;
+///   }
+///   if (mConfAllowBackendNeighbourExpansionBlocking)
+///     add(PRFSYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+///         | PRFRETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED);
+/// }
+/// ```
+///
+/// so the INDEPENDENT neighbour block plus its retest flag are installed for ANY
+/// association (`reusable_for_full_completion()` / concept synchronization gate
+/// only the stronger successor + indirect-nominal block), and the returned
+/// `expansionBlocked` still reports only the strong block.
+fn try_establish_native_backend_expansion_blocking(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    node: NodeId,
+) -> bool {
+    if node.is_none()
+        || node.index() >= ctx.process_context().node_count()
+        || !ctx
+            .process_context()
+            .node(node)
+            .is_nominal_individual_representative_backend_data_loaded()
+    {
+        return false;
+    }
+    // `if (assocData)` — the typed association must additionally COVER the seed's
+    // asserted edges to stand in for the raw assertion linkers (see
+    // `neighbour_expansion_blocking_candidate`).
+    let entry = {
+        let cache = bridged.native_representative_cache.borrow();
+        let Some(cache) = cache.as_ref() else {
+            return false;
+        };
+        if cache.association_write_aborted {
+            return false;
+        }
+        let Some(entry) = cache.entries.get(&seed.individual_tag) else {
+            return false;
+        };
+        if !native_cache_entry_covers_seed(entry, seed) {
+            return false;
+        }
+        entry.clone()
+    };
+
+    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
+    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
+    let mut expansion_blocked = false;
+    if entry.reusable_for_full_completion()
+        && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, &entry)
+    {
+        if !ctx
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            )
+            && algo.conf_allow_backend_successor_expansion_blocking
+        {
+            ctx.process_context_mut()
+                .node_mut(node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                        | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+                );
+        }
+        expansion_blocked = true;
+    }
+    // The independent neighbour block: gated only on the config flag, exactly as
+    // upstream. `PRFRETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED` schedules the
+    // first `detectIndividualNodeBackendCacheSynchronized` pass, which decides via
+    // the critical predicates whether the block is released and the cache-backed
+    // selective expansion runs.
+    if algo.conf_allow_backend_neighbour_expansion_blocking {
+        ctx.process_context_mut()
+            .node_mut(node)
+            .add_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+            );
+    }
+    expansion_blocked
+}
+
+/// Read FULL_CONCEPT_SET_LABEL into one completion nominal. All saturated
+/// concepts are sound and may be replayed for an insufficient association;
+/// only the separate expansion/blocking permission is gated by complete,
+/// non-insufficient status.
+fn replay_native_representative_cache(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    seed: &NominalSeed,
+    node: NodeId,
+    dependency_track_point: super::process::TrackPointId,
+) -> bool {
+    let entry = {
+        let cache = bridged.native_representative_cache.borrow();
+        let Some(cache) = cache.as_ref() else {
+            return true;
+        };
+        if cache.association_write_aborted {
+            return true;
+        }
+        let Some(entry) = cache.entries.get(&seed.individual_tag) else {
+            return false;
+        };
+        if !native_cache_entry_covers_seed(entry, seed) {
+            return false;
+        }
+        entry.clone()
+    };
+
+    let Some(concept_values) = entry.concept_values.as_ref() else {
+        return false;
+    };
+    for value in concept_values.iter().filter(|value| value.deterministic) {
+        algo.add_concept_to_individual_skip_and_processing(
+            value.concept,
+            value.negated,
+            node,
+            dependency_track_point,
+            true,
+            false,
+            false,
+            ctx,
+        );
+        if ctx.has_pending_signal() {
+            break;
+        }
+    }
+    ctx.process_context_mut()
+        .node_mut(node)
+        .set_nominal_individual_representative_backend_data_loaded(true);
+
+    true
 }
 
 /// Per-classification saturation outcome, extracted into plain data so the
@@ -7040,10 +10609,43 @@ pub struct SaturationOutcome {
     /// self excluded) — present exactly when the node is sufficient
     /// (SAT-certain), per `CPrecomputedSaturationSubsumerExtractor`.
     pub certain_subsumers: Vec<Option<Vec<usize>>>,
-    /// Sound positive named labels for every processed saturation node,
-    /// including insufficient nodes. Insufficiency means incomplete, not
-    /// incorrect; Konclude seeds KPSet known subsumers from these labels.
+    /// Positive named labels for every processed saturation node, including
+    /// insufficient nodes. For a pure-TBox saturation these are sound
+    /// consequences even on insufficient nodes. With native-ABox nodes in the
+    /// saturation graph an insufficient node's label can additionally carry
+    /// individual-derived or branch-dependent entries (nominal backward
+    /// propagation, substitute chains through assertion-resolved nodes), which
+    /// are facts about particular individuals or one retained model — NOT
+    /// class subsumptions. They may therefore seed KPSet *scheduling* (the
+    /// predecessor graph and test order) unconditionally, but may become
+    /// taxonomy edges or probe-free trusted subsumers only for subjects whose
+    /// label is certified — see [`SaturationOutcome::label_certified`].
     pub known_subsumers: Vec<Vec<usize>>,
+}
+
+impl SaturationOutcome {
+    /// True iff `subject`'s extracted label may be consumed as unconditional
+    /// subsumptions.
+    ///
+    /// This is exactly Konclude's `CPrecomputedSaturationSubsumerExtractor`
+    /// consumption contract: a CLASHED node is UNSAT-certain (every pair
+    /// `subject ⊑ c` is then vacuously entailed), and a sufficient node
+    /// (¬INSUFFICIENT ∧ ¬UNPROCESSED, no problematic EQ candidate — i.e.
+    /// `certain_subsumers` present) has an EXACT deterministic subsumer set.
+    /// Everything else — in particular nominal-connected / native-ABox
+    /// influenced nodes, which the saturation flags INSUFFICIENT — must have
+    /// its label treated as candidate data only and re-derived through the
+    /// completion path (read-off, KPSet messages, pair probes).
+    pub fn label_certified(&self, subject: usize) -> bool {
+        match self.sat_verdict.get(subject).copied().flatten() {
+            Some(true) => true,
+            Some(false) => self
+                .certain_subsumers
+                .get(subject)
+                .is_some_and(Option::is_some),
+            None => false,
+        }
+    }
 }
 
 /// Resolve Konclude's saturation substitute chain and report the named
@@ -7270,12 +10872,83 @@ fn bridged_saturate_with_trigger_absorption(
 /// either way (the concept→saturation reference linkings installed by the
 /// seeds point at them; see `reset_probe_env`'s saturation carry).
 fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
+    run_bridged_saturation_with_native_consistency_prefix(
+        ctx,
+        bridged,
+        None,
+        NativeSaturationAssociationMode::Publish,
+    )
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum NativeSaturationAssociationMode {
+    /// Individual-saturation precomputation owns the representative-cache
+    /// association write.
+    Publish,
+    /// A later saturation consumer may inspect the installed consistency
+    /// model, but must not replace the completed representative associations.
+    ReadOnlyConsumer,
+}
+
+fn run_bridged_saturation_with_native_consistency_prefix(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    native_consistency_prefix: Option<HashMap<Cint64, Vec<(ConceptId, bool)>>>,
+    association_mode: NativeSaturationAssociationMode,
+) -> bool {
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
+    sat_algo.native_consistency_nominal_nondeterministic_prefix = native_consistency_prefix;
     configure_production_saturation(&mut sat_algo);
+    let preparation_started = std::time::Instant::now();
+    let preparation_budget = std::time::Duration::from_secs(
+        std::env::var("KM_HT_SATURATION_BUDGET_S")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(120),
+    );
+    let preparation_deadline = Some(preparation_started + preparation_budget);
     extract_propagation_into_creation_direction(ctx);
-    build_saturation_seeds(ctx, bridged);
+    if preparation_deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
+        return false;
+    }
+    if !build_saturation_seeds_with_deadline(ctx, bridged, preparation_deadline) {
+        return false;
+    }
+    // Konclude constructs the concept-testing nodes and the named ABox nodes
+    // into one saturation task, then enters the processing loop once. In
+    // particular, a named node creates its separated TOP assertion-resolve
+    // node and assertion extensions before the task reaches critical-concept
+    // checking. Running the concept wave to completion first would copy an
+    // already-insufficient TOP status into every later assertion extension;
+    // adding a satisfying class assertion cannot retract that monotone flag.
+    let native_nodes = if bridged.has_native_nominals() {
+        let Some(native_nodes) =
+            build_native_abox_saturation_seeds(&mut sat_algo, ctx, bridged, preparation_deadline)
+        else {
+            return false;
+        };
+        Some(native_nodes)
+    } else {
+        None
+    };
     if !sat_algo.run_saturation_on(ctx) {
         return false;
+    }
+    if let Some(native_nodes) = native_nodes {
+        // The representative-cache writer consumes the final linked-successor
+        // view. Force the same incremental collection Konclude performs in its
+        // saturation analyser before copying the role label families.
+        for &(_, node) in &native_nodes {
+            let mut node = node;
+            sat_algo.collect_linked_successor_nodes(&mut node, ctx, INVALID);
+        }
+        let Some(cache) = write_native_abox_representative_cache(ctx, bridged, &native_nodes)
+        else {
+            return false;
+        };
+        if association_mode == NativeSaturationAssociationMode::Publish {
+            *bridged.native_representative_cache.borrow_mut() = Some(cache);
+        }
     }
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         eprintln!(
@@ -7338,11 +11011,14 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
     }
 }
 
-/// Deterministic named hierarchy already present in Konclude's CCSUB/CCEQ
-/// terminology before classification. A named subclass implies every named
-/// top-level conjunct of its definition; closing those edges transitively is
-/// a sound known-subsumer seed for KPSet and requires no tableau probe.
-fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+/// Linear told-name closure used outside the mixed native
+/// cardinality+ABox profile.  The richer definition-containment closure below
+/// is valuable for that profile, but its global structural fixpoint is
+/// unnecessary on large nominal-free TBoxes: any omitted shortcut pair is
+/// still decided by the ordinary completion probes.
+fn source_told_named_subsumer_closure(
+    tin: &TInput,
+) -> std::collections::HashSet<(usize, usize)> {
     let index: HashMap<&str, usize> = tin
         .concepts
         .iter()
@@ -7395,6 +11071,267 @@ fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usi
             if closure.insert((sub, sup)) {
                 stack.extend(direct[sup].iter().copied());
             }
+        }
+    }
+    closure
+}
+
+/// Deterministic named hierarchy already present in Konclude's CCSUB/CCEQ
+/// terminology before classification: the EXACT, search-free part of the
+/// subsumption relation, closed under both of its rules and transitively.
+/// Every pair is entailed, so it is a sound known-subsumer seed for KPSet and
+/// requires no tableau probe.
+///
+/// Two rules, both decided by set containment on the axioms alone:
+///
+/// * TOLD — `N ⊑ … ⊓ M ⊓ …` with `M` a named class ⇒ `N ⊑ M`.
+/// * DEFINITION — whenever the source proves `D ⊑ M` (an equivalence side, or
+///   an inclusion whose right side is the named class `M`) and every top-level
+///   conjunct of `D` is already known to hold for `N`, then
+///   `N ⊑ ⨅conj(D) ⊑ M`. `And` is a `BTreeSet` in the source syntax, so equal
+///   conjunctions ARE syntactically equal here — the same reason the
+///   terminology builder's `concept_cache` shares one `ConceptId` between the
+///   two definitions.
+///
+/// Neither rule can fire in the converse direction: `conj(D_M) ⊆ conj(D_N)`
+/// justifies `N ⊑ M` only; `M ⊑ N` needs the opposite containment AND a
+/// definition for `N`.
+///
+/// Why the DEFINITION rule belongs here rather than in the completion:
+/// Konclude derives it from the absorbed reverse direction of `M`'s definition,
+/// which is a MODEL-based route — the KPSet candidate set only ever contains
+/// what the one completion model the search built happens to carry, and a
+/// definition whose trigger chain runs through a disjunction is carried only by
+/// the branch that model committed to. Measured on ore_ont_9540: subject
+/// `UJI_Wall` reached the verification phase with two candidates (its told
+/// subsumer plus one non-candidate equivalence), so `Possible_UJI_Wall` — whose
+/// definition conjuncts are exactly a subset of `UJI_Wall`'s — was never tested
+/// and never emitted. This pass decides that class of consequence up front, and
+/// because the pairs also land in the known-subsumer set they REMOVE pair
+/// probes instead of adding any.
+fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+    let index: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+    let n_named = tin.concepts.len();
+
+    /// Top-level conjuncts of a superclass side. `And` is flattened; `Top`
+    /// carries no obligation and no information.
+    fn conjuncts<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a SourceConcept>) {
+        match concept {
+            SourceConcept::And(operands) => {
+                for operand in operands {
+                    conjuncts(operand, out);
+                }
+            }
+            SourceConcept::Top => {}
+            other => out.push(other),
+        }
+    }
+
+    /// One `D ⊑ M` provider: the named conjuncts of `D` (as class indices) and
+    /// its structural conjuncts (as interned keys). Both must be discharged for
+    /// a class before `M` may be concluded for it.
+    type Provider = (usize, Vec<usize>, Vec<usize>);
+
+    /// Structural conjuncts are interned only where a provider body TESTS them.
+    /// Any other conjunct can never decide a rule, so it is neither interned
+    /// nor inherited — that is what keeps the per-class sets small on a large
+    /// source TBox.
+    fn record_provider<'a>(
+        head: &SourceConcept,
+        body: &'a SourceConcept,
+        index: &HashMap<&str, usize>,
+        keys: &mut HashMap<&'a SourceConcept, usize>,
+        providers: &mut Vec<Provider>,
+    ) {
+        let SourceConcept::Name(head) = head else {
+            return;
+        };
+        let Some(&sup) = index.get(head.as_str()) else {
+            return;
+        };
+        let mut parts = Vec::new();
+        conjuncts(body, &mut parts);
+        let mut named = Vec::new();
+        let mut structural = Vec::new();
+        for part in parts {
+            match part {
+                SourceConcept::Name(name) => match index.get(name.as_str()) {
+                    Some(&class) => named.push(class),
+                    // A conjunct outside the concept vector can never be
+                    // discharged, so the whole body is unusable here.
+                    None => return,
+                },
+                other => {
+                    let next = keys.len();
+                    structural.push(*keys.entry(other).or_insert(next));
+                }
+            }
+        }
+        named.sort_unstable();
+        named.dedup();
+        structural.sort_unstable();
+        structural.dedup();
+        // `⊤ ⊑ M` is sound but would make every class a subclass of `M` from a
+        // purely syntactic pass; leave that shape to the completion. A body
+        // that is just `M` itself is vacuous.
+        if named.is_empty() && structural.is_empty() {
+            return;
+        }
+        if structural.is_empty() && named.len() == 1 && named[0] == sup {
+            return;
+        }
+        providers.push((sup, named, structural));
+    }
+
+    let mut keys: HashMap<&SourceConcept, usize> = HashMap::new();
+    let mut providers: Vec<Provider> = Vec::new();
+    for axiom in &tin.source_axioms {
+        match axiom.kind {
+            // `D ⊑ M` with a named right side — including the structural-left
+            // GCI half of an equivalence the terminology could not host as a
+            // direct definition.
+            crate::json_io::SourceAxiomKind::SubClass => {
+                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+            }
+            crate::json_io::SourceAxiomKind::Equivalent => {
+                record_provider(&axiom.left, &axiom.right, &index, &mut keys, &mut providers);
+                record_provider(&axiom.right, &axiom.left, &index, &mut keys, &mut providers);
+            }
+            crate::json_io::SourceAxiomKind::Disjoint => {}
+        }
+    }
+
+    // Seed the per-class state from the asserted superclass sides.
+    let mut upper: Vec<std::collections::HashSet<usize>> = vec![Default::default(); n_named];
+    let mut key_subjects: Vec<Vec<usize>> = vec![Vec::new(); keys.len()];
+    let mut pair_stack: Vec<(usize, usize)> = Vec::new();
+    let mut key_stack: Vec<(usize, usize)> = Vec::new();
+    {
+        let mut seed = |left: &SourceConcept, right: &SourceConcept| {
+            let SourceConcept::Name(left) = left else {
+                return;
+            };
+            let Some(&sub) = index.get(left.as_str()) else {
+                return;
+            };
+            let mut parts = Vec::new();
+            conjuncts(right, &mut parts);
+            for part in parts {
+                match part {
+                    SourceConcept::Name(name) => {
+                        if let Some(&sup) = index.get(name.as_str()) {
+                            pair_stack.push((sub, sup));
+                        }
+                    }
+                    other => {
+                        if let Some(&key) = keys.get(other) {
+                            if upper[sub].insert(key) {
+                                key_subjects[key].push(sub);
+                                key_stack.push((sub, key));
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        for axiom in &tin.source_axioms {
+            match axiom.kind {
+                crate::json_io::SourceAxiomKind::SubClass => seed(&axiom.left, &axiom.right),
+                crate::json_io::SourceAxiomKind::Equivalent => {
+                    seed(&axiom.left, &axiom.right);
+                    seed(&axiom.right, &axiom.left);
+                }
+                crate::json_io::SourceAxiomKind::Disjoint => {}
+            }
+        }
+    }
+
+    let mut closure: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut supers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    let mut subs: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    loop {
+        // Propagate the current facts to a fixpoint: transitivity of the pair
+        // relation, and inheritance of a superclass's conjuncts by its
+        // subclasses (`N ⊑ M ⊑ D` ⇒ `N ⊑ D`).
+        while !pair_stack.is_empty() || !key_stack.is_empty() {
+            while let Some((sub, sup)) = pair_stack.pop() {
+                if sub == sup || sub >= n_named || sup >= n_named || !closure.insert((sub, sup)) {
+                    continue;
+                }
+                supers[sub].push(sup);
+                subs[sup].push(sub);
+                let inherited: Vec<usize> = upper[sup].iter().copied().collect();
+                for key in inherited {
+                    if upper[sub].insert(key) {
+                        key_subjects[key].push(sub);
+                        key_stack.push((sub, key));
+                    }
+                }
+                for i in 0..supers[sup].len() {
+                    pair_stack.push((sub, supers[sup][i]));
+                }
+                for i in 0..subs[sub].len() {
+                    pair_stack.push((subs[sub][i], sup));
+                }
+            }
+            while let Some((sub, key)) = key_stack.pop() {
+                for i in 0..subs[sub].len() {
+                    let descendant = subs[sub][i];
+                    if upper[descendant].insert(key) {
+                        key_subjects[key].push(descendant);
+                        key_stack.push((descendant, key));
+                    }
+                }
+            }
+        }
+        // One DEFINITION sweep over the propagated state. Candidates come from
+        // the smallest witness set of any single conjunct — a class can only
+        // discharge a body if it already carries every one of its conjuncts.
+        let mut derived = false;
+        for (sup, named, structural) in &providers {
+            let mut best: Option<(usize, bool, usize)> = None;
+            for &class in named {
+                let len = subs[class].len() + 1;
+                if best.is_none_or(|(best_len, _, _)| len < best_len) {
+                    best = Some((len, true, class));
+                }
+            }
+            for &key in structural {
+                let len = key_subjects[key].len();
+                if best.is_none_or(|(best_len, _, _)| len < best_len) {
+                    best = Some((len, false, key));
+                }
+            }
+            let candidates: Vec<usize> = match best {
+                Some((_, true, class)) => {
+                    let mut candidates = subs[class].clone();
+                    candidates.push(class);
+                    candidates
+                }
+                Some((_, false, key)) => key_subjects[key].clone(),
+                None => continue,
+            };
+            for sub in candidates {
+                if sub == *sup || closure.contains(&(sub, *sup)) {
+                    continue;
+                }
+                let discharged = structural.iter().all(|key| upper[sub].contains(key))
+                    && named
+                        .iter()
+                        .all(|&class| class == sub || closure.contains(&(sub, class)));
+                if discharged {
+                    pair_stack.push((sub, *sup));
+                    derived = true;
+                }
+            }
+        }
+        if !derived {
+            break;
         }
     }
     closure
@@ -7566,15 +11503,10 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
-    // Consumer-specific capability fence.  The fast Ht installs typed object
-    // ABox edges and negative-edge constraints; this Konclude bridge currently
-    // does not.  A globally complete frontend payload must not be mistaken for
-    // bridge support for every field, especially on 9540 (1,862 role facts).
-    if !tin.nominal_abox.role_assertions.is_empty()
-        || !tin.nominal_abox.negative_role_assertions.is_empty()
-    {
-        return None;
-    }
+    // Typed role facts are admitted only through the exact source-mode
+    // metadata gate below. The terminology builder gives them the exact
+    // existential/universal nominal encoding used by the source-mode concept
+    // machinery.
     // A named mirror `N ≡ ¬∃R.F` is represented in source NNF as
     // `N ≡ ∀R.¬F`. With inverse roles, a root type can constrain the
     // generated R-successor through R⁻ and thereby entail cross-region
@@ -7605,9 +11537,32 @@ fn bridged_classify_opts_with_trigger_absorption(
     if has_any_nominal_input(tin) && !native_nominals {
         return None;
     }
-    // The saturation nominal rule is an approximation/candidate producer; the
-    // complete completion rule below is authoritative for native nominals.
-    let use_saturation = use_saturation && !native_nominals;
+    let independent_abox_elided = independent_large_abox_profile(tin, native_nominals);
+    // Native ABox saturation is scheduled separately, immediately before the
+    // authoritative full consistency graph. Do not feed its subject verdicts
+    // into taxonomy KPSet: those labels are ABox-influenced (measured on
+    // ore_ont_9540: 18 spurious family-collapsing subsumptions), and Konclude
+    // does not consume them for classification either — its KPSet reads the
+    // CONCEPT saturation items, not the per-individual representation nodes.
+    //
+    // The COMPLETION-side coupling is a different mechanism and is NOT ABox
+    // derived. `get_creation_successor_saturation_node` (u22.rs:1293) resolves a
+    // creation successor only through the ontology-side concept→saturation
+    // reference linkings that `build_saturation_seeds_with_deadline` installs;
+    // `build_native_abox_saturation_seeds` installs none, it only writes the
+    // individual-tag slots of the saturation-node vector. So the coupling reads
+    // exactly the TBox concept wave, which is what Konclude's classification
+    // completion tasks read (`conf_expand_created_successors_from_saturation` /
+    // `conf_caching_blocking_from_saturation`, u31.rs:151-153 defaults). Folding
+    // the two decisions into one `use_saturation` flag was the divergence: on
+    // every native-nominal ontology KM ran its classification probes with the
+    // coupling structurally off, so `saturation_cache_establish_count` and
+    // `saturation_expansion_concept_count` are 0 by construction and every
+    // generated successor is expanded by the tableau instead of being replayed
+    // from, and blocked by, its saturation node.
+    let native_saturation_coupling_requested =
+        use_satcache && native_nominals && !independent_abox_elided;
+    let use_saturation = use_saturation && (!native_nominals || independent_abox_elided);
     let use_satcache = use_satcache && use_saturation;
     let n_named = tin.concepts.len();
     // The classification UNIVERSE: real named classes only. `tin.concepts`
@@ -7647,10 +11602,6 @@ fn bridged_classify_opts_with_trigger_absorption(
         subsumptions: Vec::new(),
     };
     let subject_set: std::collections::HashSet<usize> = subjects.iter().copied().collect();
-    let mut saturation_known_pairs = source_named_subsumer_closure(tin);
-    saturation_known_pairs.retain(|(sub, sup)| subject_set.contains(sub) && universe.contains(sup));
-    out.subsumptions
-        .extend(saturation_known_pairs.iter().copied());
     // ONE bridged environment for the whole classification (#13): built once,
     // reset to pristine between probes (`reset_probe_env`), instead of an
     // O(TBox) rebuild per subject AND per pairwise probe.
@@ -7667,18 +11618,180 @@ fn bridged_classify_opts_with_trigger_absorption(
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(2);
+    let card_nominal_profile = native_cardinality_abox_profile(tin, bridged.has_native_nominals());
+    // The exact, search-free part of the relation (told names + definition
+    // conjunct containment, transitively closed).  Select the richer
+    // definition rule from the bridge's actual retained-native-nominal state,
+    // not from broader source metadata that may describe a nominal-free
+    // normalized TBox.
+    let mut saturation_known_pairs = if card_nominal_profile {
+        source_named_subsumer_closure(tin)
+    } else if independent_abox_elided {
+        HashSet::new()
+    } else {
+        source_told_named_subsumer_closure(tin)
+    };
+    saturation_known_pairs.retain(|(sub, sup)| subject_set.contains(sub) && universe.contains(sup));
+    out.subsumptions
+        .extend(saturation_known_pairs.iter().copied());
+    let mut native_saturation_ran = false;
+    // Armed once, after the precomputation saturation has COMPLETED and its
+    // concept→saturation reference linkings have been verified to be present,
+    // in range and disjoint from the ABox representation nodes. Stays false on
+    // every route that does not run that saturation (empty-role certificate,
+    // legacy nominal-only schedule, budget-aborted pass), so the coupling can
+    // never read a partial or absent saturation graph.
+    let mut native_saturation_coupling = false;
+    let mut retained_consistency_base = false;
+    let mut retained_consistency_next_id = 1_000i64;
+    // The two pieces of the retained deterministic consistency base that the
+    // branch-epoch journals do NOT restore (see the snapshot site below).
+    let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
+    let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
     if bridged.has_native_nominals() {
+        if independent_abox_elided {
+            // ConditionalFull=false, role-independent ABox: one root per
+            // distinct asserted-type signature is an exact consistency task.
+            // Duplicate individuals add no constraints without nominals,
+            // inequalities, or inter-individual edges.
+            reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+            let selected_tags = independent_abox_representative_tags(&bridged);
+            if !initialize_native_nominal_state_for_tags(
+                &mut algo,
+                &mut ctx,
+                &bridged,
+                Some(&selected_tags),
+            ) {
+                return None;
+            }
+            algo.probe_budget = Some(std::time::Duration::from_secs(
+                base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
+            ));
+            configure_production_search(&mut algo);
+            match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+                Some(false) => {
+                    return Some(BridgedClassification {
+                        consistent: false,
+                        unsatisfiable: Vec::new(),
+                        subsumptions: Vec::new(),
+                    });
+                }
+                Some(true) => {}
+                None => return None,
+            }
+        } else {
         let model_certified = empty_role_nominal_model_certificate(tin, &bridged);
         if progress && model_certified {
             eprintln!("BRIDGE-NOMINAL-CONSISTENCY: exact empty-role source model");
         }
         if !model_certified {
-            let mut decided = None;
-            for round in 0..=retry_rounds {
+            if card_nominal_profile {
+                // `CTotallyPrecomputationThread` schedules these phases in this
+                // exact default conditional-full order: saturation first, then
+                // one all-root consistency completion. At 198 individuals the
+                // full-completion threshold suppresses representative batches.
+                let mut precomputation_phase = NativePrecomputationPhase::Start;
+                advance_native_precomputation_phase(
+                    &mut precomputation_phase,
+                    NativePrecomputationPhase::IndividualSaturation,
+                )?;
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                if !run_bridged_saturation(&mut ctx, &bridged) {
+                    return None;
+                }
+                native_saturation_ran = true;
+                advance_native_precomputation_phase(
+                    &mut precomputation_phase,
+                    NativePrecomputationPhase::FullConsistencyCompletion,
+                )?;
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+                // The reset carried the saturation arenas (`preserve_saturation`);
+                // verify the concept-side hand-off before anything may read it.
+                native_saturation_coupling = native_saturation_coupling_requested
+                    && native_saturation_coupling_metadata_covered(&ctx, &bridged);
+                // Konclude's saturation-node expansion cache HANDLER is
+                // constructed for every completion task
+                // (`CReasonerManagerThread::createTaskHandleAlgorithm`, cpp
+                // 202-204/230); only its cache CONTENT is optional. The handler
+                // is what `detectIndividualNodeSaturationCached` (cpp 4769)
+                // needs to run its retest at all, and the retest's FIRST branch
+                // (`CSaturationNodeExpansionCacheHandler::isNodeSatisfiableCached`,
+                // cpp 101-108) is cache-INDEPENDENT: a node whose label has not
+                // grown since the caching was last validated
+                // (`lastConfirmedConceptDescriptor == addingSortedConceptDescriptionLinker`)
+                // and whose saturation node is still neither insufficient nor
+                // clashed stays saturation-blocked.
+                //
+                // Without the handler that branch is unreachable, so EVERY
+                // `propagateIndividualNodeModified` on a saturation-blocked node
+                // — including link-only ones (`setIndividualNodeAncestorConnectionModified`,
+                // the functional-successor reuse at u35, merges) that do not
+                // touch the label — clears `PRF_SATURATIONBLOCKINGCACHED` +
+                // `PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED` and replays
+                // every absorbed generating concept. The block is then
+                // re-established on the successor the replay creates, and the
+                // cycle repeats: establishes grow with the search instead of
+                // bounding it.
+                //
+                // The cache stays EMPTY here: `install_bridge_saturation_node_expansion_cache`
+                // builds it with a NONE reader, and the two writing paths
+                // (`conf_saturation_satisfiabilitiy_expansion_cache_writing`,
+                // `conf_saturation_concept_unsatisfiability_saturated_cache_writing`)
+                // remain false on this route, so no saturation node ever gets a
+                // `cache_expansion_data` entry. `cached_deterministic_expansion_concepts`
+                // (u17) and the cache-entry arm of `is_node_satisfiable_cached`
+                // therefore stay inert exactly as they are today — this restores
+                // the re-confirmation and nothing else.
+                if native_saturation_coupling {
+                    install_bridge_saturation_node_expansion_cache(&mut ctx);
+                }
+                // Konclude's consistency task generator reserves the first
+                // positive completion-node id before the all-root job. Named
+                // ABox roots use negative ids and must not leave this allocator
+                // at the databox default zero.
+                ctx.processing_data_box_mut()
+                    .set_first_possible_individual_node_id(retained_consistency_next_id);
                 algo.probe_budget = Some(std::time::Duration::from_secs(
-                    base_budget.saturating_mul(4u64.saturating_pow(round)),
+                    base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
                 ));
                 configure_production_search(&mut algo);
+                // The all-root consistency completion is a
+                // `CCalculationTableauCompletionTaskHandleAlgorithm` like every
+                // class job, and Konclude's coupling flags are ctor/config
+                // defaults, not per-task settings — the consistency task runs
+                // with them too. It must: the class jobs COW-inherit this
+                // graph's nodes, so a successor created here without saturation
+                // blocking data stays unblocked in every later job.
+                if native_saturation_coupling {
+                    configure_native_nominal_completion_saturation_coupling(&mut algo);
+                }
+                let used_association_update_ids =
+                    freeze_native_representative_association_versions(&algo);
+                // The successful full-consistency completion is the association
+                // writer on this profile, exactly as upstream: with
+                // `fullCompletionGraphConstruction=1` the batched representative
+                // computation is suppressed and
+                // `CIndividualNodeBackendCacheHandler` writes the associations from
+                // the completion graph via the task's representative-backend
+                // updating adapter. The Stage-2 trace shows precisely that —
+                // `trace-summary.txt` records 198 `backend.association
+                // mode=generated` events (all `usedAssociationUpdateId=1`, i.e.
+                // replacing the saturation-written v1 associations, 179 of which
+                // were `loadedIncompletelyMarked=1`) emitted before the first
+                // classification job at `trace.log:200`, from the patched hook in
+                // `CIndividualNodeBackendCacheHandler.cpp:1852`. Only associations
+                // the saturation writer could not complete are (re)written; a
+                // complete one keeps its version byte for byte.
+                let incomplete_associations: HashSet<Cint64> = bridged
+                    .native_representative_cache
+                    .borrow()
+                    .as_ref()?
+                    .entries
+                    .iter()
+                    .filter_map(|(&tag, entry)| {
+                        (!entry.complete_for_precomputation()).then_some(tag)
+                    })
+                    .collect();
                 match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
                     Some(false) => {
                         return Some(BridgedClassification {
@@ -7688,20 +11801,117 @@ fn bridged_classify_opts_with_trigger_absorption(
                         });
                     }
                     Some(true) => {
-                        decided = Some(());
-                        break;
+                        if !incomplete_associations.is_empty() {
+                            write_completed_native_representative_associations(
+                                &ctx,
+                                &bridged,
+                                NativeSuccessfulRepresentativeTask {
+                                    selected_individuals: &incomplete_associations,
+                                    used_association_update_ids: &used_association_update_ids,
+                                },
+                            )?;
+                        }
                     }
-                    None if round < retry_rounds => {
-                        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                    None => {
+                        return None;
                     }
-                    None => {}
                 }
+                advance_native_precomputation_phase(
+                    &mut precomputation_phase,
+                    NativePrecomputationPhase::ConsistencyDeclared,
+                )?;
+                retained_consistency_next_id = ctx
+                    .processing_data_box_mut()
+                    .next_individual_node_id(false);
+                if retained_consistency_next_id <= 0 {
+                    return None;
+                }
+                // The successful leaf supplies only the reserved positive id.
+                // Roll every active alternative epoch back to the graph at the
+                // first nondeterministic fork: Konclude's deterministic
+                // consistency continuation base.
+                let owned_epoch_count = algo
+                    .or_branch_stack
+                    .iter()
+                    .filter(|branch| branch.own_epoch)
+                    .count();
+                let deterministic_branch_node = algo
+                    .or_branch_stack
+                    .first()
+                    .map(|branch| branch.parent_used_branch_node)
+                    .unwrap_or(ctx.base.used_branch_tree_node);
+                if owned_epoch_count != ctx.process_context().branch_epoch_depth() {
+                    return None;
+                }
+                while let Some(branch) = algo.or_branch_stack.pop() {
+                    if branch.own_epoch {
+                        ctx.pop_branch_epoch();
+                    }
+                }
+                if ctx.process_context().branch_epoch_depth() != 0
+                    || !algo.or_branch_stack.is_empty()
+                {
+                    return None;
+                }
+                // Epochs restore the graph and databox; the normal branch
+                // discard path separately restores this dependency-tree
+                // cursor. Manual all-branch rollback must do the same.
+                ctx.base.used_branch_tree_node = deterministic_branch_node;
+                ctx.branch_tree_node = deterministic_branch_node;
+                install_native_nominal_backend_replay(&mut algo, &bridged);
+                // PRISTINE BASE SNAPSHOT. Konclude bases EVERY class job on the
+                // deterministic consistency task
+                // (`consTaskData->getDeterministicSatisfiableTask()`), never on the
+                // previous class job. Both pieces of that base live OUTSIDE the
+                // epoch journals — the databox is a plain context field and the
+                // branch-tree cursor is watermark-only memory — so they must be
+                // captured here, at depth 0, and re-installed verbatim by every
+                // later `renew`. Reading them back off the live context (the
+                // pre-fix behaviour) chains class job N onto class job N-1.
+                retained_consistency_branch_node = deterministic_branch_node;
+                retained_consistency_databox = Some(ctx.processing_data_box().clone());
+                ctx.push_branch_epoch();
+                retained_consistency_base = true;
+            } else {
+                // Preserve the exact nominal-only schedule from efbcbbc. Its
+                // 10621 classification is a validated full-IRI reference.
+                let mut decided = None;
+                for round in 0..=retry_rounds {
+                    algo.probe_budget = Some(std::time::Duration::from_secs(
+                        base_budget.saturating_mul(4u64.saturating_pow(round)),
+                    ));
+                    configure_production_search(&mut algo);
+                    match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+                        Some(false) => {
+                            return Some(BridgedClassification {
+                                consistent: false,
+                                unsatisfiable: Vec::new(),
+                                subsumptions: Vec::new(),
+                            });
+                        }
+                        Some(true) => {
+                            decided = Some(());
+                            break;
+                        }
+                        None if round < retry_rounds => {
+                            reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                        }
+                        None => {}
+                    }
+                }
+                decided?;
             }
-            decided?;
         }
-        // Classification probes start from the same pristine fixed ABox, not
-        // from the model found by the ontology-consistency task.
-        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+        }
+        if !retained_consistency_base {
+            reset_classification_probe_env(
+                &mut algo,
+                &mut ctx,
+                &bridged,
+                native_saturation_ran,
+                independent_abox_elided,
+            );
+        }
     }
     let certified_unsatisfiable: std::collections::HashSet<usize> = bridged
         .certified_unsatisfiable
@@ -7734,13 +11944,26 @@ fn bridged_classify_opts_with_trigger_absorption(
     // the saturated label (Konclude's CPrecomputedSaturationSubsumerExtractor
     // consumption). Only the UNKNOWN residue runs the completion probes,
     // with the coupling (u08/u17/u22) armed when `use_satcache`.
-    let mut saturation_ran = false;
+    let mut saturation_ran = native_saturation_ran;
     let mut satcache_active = false;
     if use_saturation {
         let t_sat = std::time::Instant::now();
         let mut saturation_complete = true;
         let outcome = if use_satcache {
-            saturation_complete = run_bridged_saturation(&mut ctx, &bridged);
+            let native_consistency_prefix = bridged
+                .native_consistency_nominal_nondeterministic_prefix
+                .borrow()
+                .clone();
+            saturation_complete = if native_consistency_prefix.is_some() {
+                run_bridged_saturation_with_native_consistency_prefix(
+                    &mut ctx,
+                    &bridged,
+                    native_consistency_prefix,
+                    NativeSaturationAssociationMode::ReadOnlyConsumer,
+                )
+            } else {
+                run_bridged_saturation(&mut ctx, &bridged)
+            };
             // An interrupted approximation pass still contains only monotonic
             // consequences. Extracted positive labels and clash flags are
             // sound KPSet seeds; the completed-node guard prevents unfinished
@@ -7788,7 +12011,19 @@ fn bridged_classify_opts_with_trigger_absorption(
                     );
                 }
             }
+            // Output certification: only CERTIFIED labels become taxonomy
+            // edges here (UNSAT-certain subjects, whose pairs are vacuous, and
+            // SAT-certain subjects, whose extracted set is exact). An
+            // insufficient/unknown node's label can carry branch-dependent or
+            // native-ABox-derived entries (measured on ore_ont_9540: 18
+            // spurious family-collapsing subsumptions from ABox-influenced
+            // labels emitted unconditionally); those subjects stay in the
+            // residue below, where every candidate pair is re-derived by the
+            // completion path before it may reach the output.
             for &s in &pending {
+                if !outcome.label_certified(s) {
+                    continue;
+                }
                 for &c in &outcome.known_subsumers[s] {
                     if c != s && universe.contains(&c) && saturation_known_pairs.insert((s, c)) {
                         out.subsumptions.push((s, c));
@@ -7830,14 +12065,21 @@ fn bridged_classify_opts_with_trigger_absorption(
             }
             // Konclude does not run the insufficient residue in signature
             // order.  Its KPSet classifier builds the predecessor graph from
-            // every sound saturation label, then schedules root classes
-            // before their descendants.  The bridge executes jobs
-            // synchronously, but consumes the same production KPSet order.
+            // every saturation label, then schedules root classes before
+            // their descendants.  The bridge executes jobs synchronously, but
+            // consumes the same production KPSet order. Labels drive that
+            // SCHEDULING unconditionally; only certified labels (see
+            // `SaturationOutcome::label_certified`) may enter the trusted
+            // subsumer sets that `certain_subsumer` accepts without a probe.
+            let known_subsumers_entailed: Vec<bool> = (0..n_named)
+                .map(|subject| outcome.label_certified(subject))
+                .collect();
             let state = classifier.initialize_synchronous_kpset_from_saturation_data(
                 &bridged.named,
                 &outcome.sat_verdict,
                 &outcome.certain_subsumers,
                 &outcome.known_subsumers,
+                &known_subsumers_entailed,
                 &pending,
                 ctx.ontology_arenas().concepts(),
             );
@@ -7876,11 +12118,16 @@ fn bridged_classify_opts_with_trigger_absorption(
                 known[sub].push(sup);
             }
         }
+        // Source-closure subsumers (told names plus definition conjunct
+        // containment) are entailed by construction, so they remain fully
+        // trusted KPSet subsumer entries.
+        let known_subsumers_entailed = vec![true; n_named];
         let state = classifier.initialize_synchronous_kpset_from_saturation_data(
             &bridged.named,
             &empty_verdict,
             &empty_certain,
             &known,
+            &known_subsumers_entailed,
             &pending,
             ctx.ontology_arenas().concepts(),
         );
@@ -7969,6 +12216,11 @@ fn bridged_classify_opts_with_trigger_absorption(
     // already grants deterministic label positives; disable with
     // `KM_HT_NO_DET_SUBSUMER=1` for an A/B against the probe-every-pair path.
     let deterministic_subsumer_shortcut = std::env::var_os("KM_HT_NO_DET_SUBSUMER").is_none();
+    let probe_start_id = if retained_consistency_base {
+        retained_consistency_next_id
+    } else {
+        1_000
+    };
     let mut synchronous_satisfiable_phase_finished = false;
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
@@ -7990,15 +12242,31 @@ fn bridged_classify_opts_with_trigger_absorption(
         let t_subj = std::time::Instant::now();
         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
                          ctx: &mut CalculationAlgorithmContextBase,
-                         cow: bool| {
-            if fresh_env {
+                         cow: bool|
+         -> Option<()> {
+            if retained_consistency_base {
+                restore_retained_classification_base(
+                    algo,
+                    ctx,
+                    &bridged,
+                    retained_consistency_databox.as_ref()?,
+                    retained_consistency_branch_node,
+                    retained_consistency_next_id,
+                )?;
+            } else if fresh_env {
                 let budget = algo.probe_budget;
                 let (a2, c2, _b2) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
                 *algo = a2;
                 *ctx = c2;
                 algo.probe_budget = budget;
             } else {
-                reset_probe_env(algo, ctx, &bridged, saturation_ran);
+                reset_classification_probe_env(
+                    algo,
+                    ctx,
+                    &bridged,
+                    saturation_ran,
+                    independent_abox_elided,
+                );
             }
             configure_production_search(algo);
             if ctx.base.used_sat_exp_cache_handler.is_some() {
@@ -8021,6 +12289,16 @@ fn bridged_classify_opts_with_trigger_absorption(
                 configure_production_completion_saturation_coupling(algo);
                 algo.conf_saturation_satisfiabilitiy_expansion_cache_writing =
                     std::env::var_os("KM_HT_NO_SAT_CACHE_WRITING").is_none();
+            } else if native_saturation_coupling && !fresh_env {
+                // Native-nominal route: the same Konclude coupling, but reading
+                // the precomputation saturation instead of a classification-time
+                // pass, with the nominal-connected fail-closed legs. The shared
+                // associated-expansion cache stays OUT — it is installed only
+                // under `satcache_active` above, so no cross-probe deterministic
+                // expansion is replayed here and
+                // `conf_saturation_satisfiabilitiy_expansion_cache_writing`
+                // stays false, matching Konclude's own default (u31.rs:155).
+                configure_native_nominal_completion_saturation_coupling(algo);
             }
             // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
             // probe under COW branch epochs — complete per-alternative state
@@ -8031,6 +12309,7 @@ fn bridged_classify_opts_with_trigger_absorption(
             if cow {
                 algo.conf_inprocess_cow = true;
             }
+            Some(())
         };
         let derived = {
             let item = &kpset_state
@@ -8068,8 +12347,8 @@ fn bridged_classify_opts_with_trigger_absorption(
             }
             (subs, false, None)
         } else {
-            renew(algo, ctx, false);
-            let mut next_indi_id: i64 = 1_000;
+            renew(algo, ctx, false)?;
+            let mut next_indi_id: i64 = probe_start_id;
             let mut readoff = bridged_classify_subject_with_root(
                 algo,
                 ctx,
@@ -8081,8 +12360,8 @@ fn bridged_classify_opts_with_trigger_absorption(
             if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
                 // Plain search untrusted (an unrestored advance phantomized
                 // nodes) — the poison deferred the read-off. Escalate to COW.
-                renew(algo, ctx, true);
-                let mut id_cow: i64 = 1_000;
+                renew(algo, ctx, true)?;
+                let mut id_cow: i64 = probe_start_id;
                 readoff = bridged_classify_subject_with_root(
                     algo,
                     ctx,
@@ -8148,9 +12427,9 @@ fn bridged_classify_opts_with_trigger_absorption(
         // pairs. On the disjunction family a second full read-off usually
         // removes only one candidate and costs far more than those pair checks.
         if !authoritative && std::env::var_os("KM_BRIDGE_REVERSE_READOFF").is_some() {
-            renew(algo, ctx, false);
+            renew(algo, ctx, false)?;
             algo.conf_or_reverse = true;
-            let mut id_rev: i64 = 1_000;
+            let mut id_rev: i64 = probe_start_id;
             if let Some((subs_rev, _, reverse_root)) =
                 bridged_classify_subject_with_root(algo, ctx, &bridged, &mut id_rev, s, n_named)
             {
@@ -8187,12 +12466,12 @@ fn bridged_classify_opts_with_trigger_absorption(
         // subsumed by every named concept, so disambiguate with a direct
         // single-seed unsat probe.
         if authoritative && subs.len() == n_named {
-            renew(algo, ctx, false);
-            let mut id2: i64 = 1_000;
+            renew(algo, ctx, false)?;
+            let mut id2: i64 = probe_start_id;
             let mut v = bridged_unsat(algo, ctx, &bridged, &mut id2, &[(bridged.named[s], false)]);
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
-                renew(algo, ctx, true);
-                let mut id_cow: i64 = 1_000;
+                renew(algo, ctx, true)?;
+                let mut id_cow: i64 = probe_start_id;
                 v = bridged_unsat(
                     algo,
                     ctx,
@@ -8297,8 +12576,8 @@ fn bridged_classify_opts_with_trigger_absorption(
                     tin.concepts[s], tin.concepts[c]
                 );
             }
-            renew(algo, ctx, false);
-            let mut id2: i64 = 1_000;
+            renew(algo, ctx, false)?;
+            let mut id2: i64 = probe_start_id;
             let mut v = bridged_unsat(
                 algo,
                 ctx,
@@ -8308,8 +12587,8 @@ fn bridged_classify_opts_with_trigger_absorption(
             );
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
                 // plain verdict untrusted — confirm under COW epochs
-                renew(algo, ctx, true);
-                let mut id_cow: i64 = 1_000;
+                renew(algo, ctx, true)?;
+                let mut id_cow: i64 = probe_start_id;
                 v = bridged_unsat(
                     algo,
                     ctx,
@@ -8551,6 +12830,93 @@ mod tests {
         }
     }
 
+    fn nominal_role(
+        role: &str,
+        source: &str,
+        target: &str,
+    ) -> crate::json_io::NominalRoleAssertionMeta {
+        crate::json_io::NominalRoleAssertionMeta {
+            role: role.into(),
+            source: source.into(),
+            target: target.into(),
+        }
+    }
+
+    fn basic_native_role_input(
+        roles: &[&str],
+        nominal_abox: crate::json_io::NominalAboxMeta,
+    ) -> TInput {
+        use crate::frontend::syntax::Concept as C;
+
+        fn contains_number(concept: &C) -> bool {
+            match concept {
+                C::AtLeast(..) | C::AtMost(..) => true,
+                C::Not(operand) | C::Exists(_, operand) | C::Forall(_, operand) => {
+                    contains_number(operand)
+                }
+                C::And(operands) | C::Or(operands) => operands.iter().any(contains_number),
+                C::Name(_) | C::Top | C::Bottom | C::Nominal(_) | C::HasSelf(_) => false,
+            }
+        }
+        let number = nominal_abox
+            .individuals
+            .iter()
+            .flat_map(|individual| &individual.assertions)
+            .any(contains_number);
+        TInput {
+            concepts: vec![
+                "A".into(),
+                "__nom__a".into(),
+                "__nom__b".into(),
+                "__nom__c".into(),
+            ],
+            roles: roles.iter().map(|role| (*role).into()).collect(),
+            queries: vec![0],
+            number,
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox,
+            ..Default::default()
+        }
+    }
+
+    fn cached_native_role_input() -> TInput {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![C::AtMost(5, R::Name("r".into()), Box::new(C::Top))],
+                ),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions.push(nominal_role("r", "a", "b"));
+        meta.role_assertions.push(nominal_role("s", "c", "a"));
+        basic_native_role_input(&["r", "s"], meta)
+    }
+
+    fn force_native_association_incomplete(
+        bridged: &Bridged,
+        individual_tag: Cint64,
+        completely_propagated: bool,
+    ) {
+        let mut cache = bridged.native_representative_cache.borrow_mut();
+        let entry = cache
+            .as_mut()
+            .expect("representative cache")
+            .entries
+            .get_mut(&individual_tag)
+            .expect("native association");
+        entry.completely_saturated = false;
+        entry.completely_handled = false;
+        entry.completely_propagated = completely_propagated;
+        entry.insufficient = true;
+    }
+
     fn source_subclass(
         left: crate::frontend::syntax::Concept,
         right: crate::frontend::syntax::Concept,
@@ -8610,6 +12976,151 @@ mod tests {
             ),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn semantic_number_flag_selects_native_abox_profile_without_card_defs() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![C::AtMost(1, R::Name("r".into()), Box::new(C::Top))],
+                ),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions
+            .extend([nominal_role("r", "a", "b"), nominal_role("r", "a", "c")]);
+        let tin = basic_native_role_input(&["r"], meta);
+        assert!(tin.number);
+        assert!(
+            tin.card_defs.is_empty(),
+            "the regression must exercise KM_NO_HT_CARD-style input"
+        );
+
+        let (algo, _ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(native_cardinality_abox_profile(
+            &tin,
+            bridged.has_native_nominals()
+        ));
+        assert!(
+            bridged.direct_native_role_assertions,
+            "typed role assertions must replace the legacy existential spelling"
+        );
+        assert!(algo.conf_direct_rule_preprocessing);
+        assert!(algo.conf_cache_oriented_or_ordering);
+
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("the no-card_defs mixed ABox profile must complete");
+        assert!(
+            result.consistent,
+            "without DifferentIndividuals, the two R-neighbours may merge"
+        );
+    }
+
+    #[test]
+    fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
+        let mut tin = cached_native_role_input();
+        let template = tin.nominal_abox.individuals[0].clone();
+        tin.nominal_abox.individuals.resize(9_999, template.clone());
+        assert!(native_cardinality_abox_profile(&tin, true));
+        tin.nominal_abox.individuals.push(template);
+        assert!(
+            !native_cardinality_abox_profile(&tin, true),
+            "Konclude's conditional-full profile is strict below 10,000 individuals"
+        );
+    }
+
+    #[test]
+    fn independent_large_abox_profile_rejects_every_coupling_fence() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut clean = cached_native_role_input();
+        clean.nominal_abox.role_assertions.clear();
+        clean.number = true;
+        clean.source_axioms = vec![source_subclass(C::Name("A".into()), C::Top)];
+        let template = clean.nominal_abox.individuals[0].clone();
+        clean
+            .nominal_abox
+            .individuals
+            .resize(CONDITIONAL_FULL_INDIVIDUAL_LIMIT, template);
+        assert!(independent_large_abox_profile(&clean, true));
+        assert!(!independent_large_abox_profile(&clean, false));
+
+        let mut coupled = clean.clone();
+        coupled.nominal_abox.individuals.pop();
+        assert!(!independent_large_abox_profile(&coupled, true));
+
+        let mut coupled = clean.clone();
+        coupled
+            .nominal_abox
+            .role_assertions
+            .push(nominal_role("r", "a", "b"));
+        assert!(!independent_large_abox_profile(&coupled, true));
+
+        let mut coupled = clean.clone();
+        coupled.nominal_abox.negative_role_assertions.push(nominal_role(
+            "r", "a", "b",
+        ));
+        assert!(!independent_large_abox_profile(&coupled, true));
+
+        let mut coupled = clean.clone();
+        coupled.nominal_abox.different.push(("a".into(), "b".into()));
+        assert!(!independent_large_abox_profile(&coupled, true));
+
+        for concept in [
+            C::Not(Box::new(C::Nominal("a".into()))),
+            C::Exists(R::Universal, Box::new(C::Top)),
+            C::Forall(R::Universal, Box::new(C::Top)),
+            C::AtLeast(1, R::Universal, Box::new(C::Top)),
+            C::AtMost(1, R::Universal, Box::new(C::Top)),
+            C::HasSelf(R::Universal),
+        ] {
+            let mut coupled = clean.clone();
+            coupled.source_axioms = vec![source_subclass(C::Name("A".into()), concept)];
+            assert!(!independent_large_abox_profile(&coupled, true));
+        }
+
+        for assertion in [
+            C::And([C::Nominal("a".into()), C::Top].into()),
+            C::Exists(R::Universal, Box::new(C::Top)),
+        ] {
+            let mut coupled = clean.clone();
+            coupled.nominal_abox.individuals[0]
+                .assertions
+                .push(assertion);
+            assert!(!independent_large_abox_profile(&coupled, true));
+        }
+    }
+
+    #[test]
+    fn independent_abox_representatives_canonicalize_assertion_sets() {
+        let tin = cached_native_role_input();
+        let (_algo, _ctx, mut bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let first = bridged.nominal_seeds[0].clone();
+        let mut reordered = first.clone();
+        reordered.individual_tag = 10_001;
+        reordered.assertions.reverse();
+        reordered.assertions.push(reordered.assertions[0]);
+        let mut duplicate = first.clone();
+        duplicate.individual_tag = 10_002;
+        let mut distinct = first.clone();
+        distinct.individual_tag = 10_003;
+        distinct.assertions[0].1 = !distinct.assertions[0].1;
+        bridged.nominal_seeds = vec![first.clone(), reordered, duplicate, distinct.clone()];
+
+        let selected = independent_abox_representative_tags(&bridged);
+        assert_eq!(selected.len(), 2);
+        assert!(selected.contains(&first.individual_tag));
+        assert!(selected.contains(&distinct.individual_tag));
+        assert!(!selected.contains(&10_001));
+        assert!(!selected.contains(&10_002));
     }
 
     fn exact_atomic_datatype_input() -> TInput {
@@ -9261,6 +13772,327 @@ mod tests {
         assert!(explicit_different.unsatisfiable.contains(&0));
     }
 
+    /// Native-nominal input with one existential over a named class, so
+    /// `build_saturation_seeds` has a concept wave to install linkings for.
+    fn native_saturation_coupling_input() -> TInput {
+        use crate::frontend::syntax::Concept as C;
+        use crate::frontend::syntax::Role as R;
+
+        TInput {
+            concepts: vec!["A".into(), "B".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0, 1],
+            source_axioms: vec![
+                source_subclass(
+                    C::Name("A".into()),
+                    C::Exists(R::Name("r".into()), Box::new(C::Name("B".into()))),
+                ),
+                source_subclass(C::Name("A".into()), C::Nominal("a".into())),
+            ],
+            nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
+            ..Default::default()
+        }
+    }
+
+    /// The first (concept, saturation node) pair the coupling would resolve,
+    /// walked exactly as `native_saturation_coupling_metadata_covered` walks it.
+    fn first_resolved_saturation_node(
+        ctx: &CalculationAlgorithmContextBase,
+    ) -> super::super::process::SatNodeId {
+        use super::super::model::concept_process::ConceptProcessDataId;
+
+        for index in 0..ctx.ontology_arenas().concept_count() {
+            let concept_data = ctx
+                .ontology_arenas()
+                .concept(ConceptId::new(index))
+                .get_concept_data();
+            if concept_data == INVALID {
+                continue;
+            }
+            let ref_linking = ctx
+                .ontology_arenas()
+                .concept_process_data(ConceptProcessDataId::new(concept_data))
+                .get_concept_reference_linking();
+            if ref_linking.is_none() {
+                continue;
+            }
+            let linking_data = ctx
+                .ontology_arenas()
+                .concept_saturation_reference_linking_data(ref_linking);
+            for item in [
+                linking_data.get_concept_saturation_reference_linking_data(false),
+                linking_data.get_concept_saturation_reference_linking_data(true),
+                linking_data.get_existential_successor_concept_saturation_reference_linking_data(),
+            ] {
+                if item.is_none() {
+                    continue;
+                }
+                let node = ctx
+                    .ontology_arenas()
+                    .saturation_concept_reference_linking(item)
+                    .get_individual_process_node_for_concept();
+                if node.is_some() {
+                    return node;
+                }
+            }
+        }
+        super::super::process::SatNodeId::NONE
+    }
+
+    /// The coupling may only be armed once the concept wave has actually
+    /// installed resolvable linkings. Before `build_saturation_seeds` there is
+    /// no saturation arena at all, so the gate must refuse.
+    #[test]
+    fn native_saturation_coupling_gate_refuses_without_a_saturation_wave() {
+        let tin = native_saturation_coupling_input();
+        let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(bridged.has_native_nominals());
+        assert_eq!(ctx.process_context().sat_node_count(), 0);
+        assert!(!native_saturation_coupling_metadata_covered(&ctx, &bridged));
+    }
+
+    /// After the concept wave the gate opens, and every linking it can follow
+    /// resolves to a concept-test node — never to an ABox representation node.
+    /// This is the separation the coupling's soundness argument rests on:
+    /// `build_native_abox_saturation_seeds` installs no concept linkings.
+    #[test]
+    fn native_saturation_coupling_gate_opens_on_the_concept_wave_only() {
+        let tin = native_saturation_coupling_input();
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        build_saturation_seeds(&mut ctx, &bridged);
+        let abox_nodes = build_native_abox_saturation_seeds(
+            &mut super::super::saturation::algorithm::SaturationTaskHandleAlgorithm::new(),
+            &mut ctx,
+            &bridged,
+            None,
+        )
+        .expect("native ABox seeds must build");
+        assert!(!abox_nodes.is_empty());
+        assert!(native_saturation_coupling_metadata_covered(&ctx, &bridged));
+        for &(_, node) in &abox_nodes {
+            assert!(
+                ctx.process_context()
+                    .sat_node(node)
+                    .is_abox_individual_representation_node(),
+                "the ABox wave must mark its nodes as representation nodes"
+            );
+        }
+
+        // And the configuration it enables keeps both nominal fail-closed legs.
+        configure_native_nominal_completion_saturation_coupling(&mut algo);
+        assert!(algo.conf_expand_created_successors_from_saturation);
+        assert!(algo.conf_caching_blocking_from_saturation);
+        assert!(
+            !algo.conf_saturation_caching_with_nominals,
+            "saturation caching with nominals needs the exact per-nominal dependency \
+             record the bridge does not keep"
+        );
+        assert!(algo.conf_saturation_coupling_declines_nominal_connected);
+        assert!(
+            algo.conf_saturation_caching_testing_during_blocking_tests,
+            "cpp ctor line 236 — Konclude re-tests the saturation caching of every \
+             localized ancestor it walks in a blocking test (cpp 19101), which is \
+             what keeps the block and the skipBlockerSearch short-circuit in sync"
+        );
+    }
+
+    /// The saturation-blocking RETEST is only reachable with an installed
+    /// saturation-node expansion cache HANDLER (`detect_individual_node_saturation_cached`,
+    /// cpp 4769). Konclude constructs that handler for every completion task;
+    /// the bridge must install it on the native-nominal route too, with the
+    /// cache left EMPTY and both writing flags off, so the retest gets only its
+    /// cache-independent re-confirmation and no cross-probe expansion replay.
+    #[test]
+    fn native_saturation_coupling_installs_an_empty_expansion_cache_handler() {
+        let tin = native_saturation_coupling_input();
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        build_saturation_seeds(&mut ctx, &bridged);
+        assert!(native_saturation_coupling_metadata_covered(&ctx, &bridged));
+        assert!(
+            !ctx.sat_node_exp_cache_handler.is_some(),
+            "no handler before the install"
+        );
+
+        install_bridge_saturation_node_expansion_cache(&mut ctx);
+        configure_native_nominal_completion_saturation_coupling(&mut algo);
+
+        assert!(
+            ctx.sat_node_exp_cache_handler.is_some(),
+            "the retest gate in u21 reads exactly this handle"
+        );
+        assert!(
+            algo.conf_saturation_expansion_cache_reading,
+            "cpp ctor line 237 — without it the retest never consults the handler"
+        );
+        assert!(
+            !algo.conf_saturation_satisfiabilitiy_expansion_cache_writing,
+            "no completion probe may extend the cache on this route (u31.rs:155)"
+        );
+        assert!(
+            !algo.conf_saturation_concept_unsatisfiability_saturated_cache_writing,
+            "and no unsat write either, so no saturation node ever gains a cache entry"
+        );
+        // With nothing written, every saturation node stays entry-free, so the
+        // cache ARM of `is_node_satisfiable_cached` and
+        // `cached_deterministic_expansion_concepts` remain inert.
+        for index in 0..ctx.process_context().sat_node_count() {
+            assert!(
+                ctx.process_context()
+                    .sat_node(super::super::process::SatNodeId::new(index as Cint64))
+                    .get_cache_expansion_data()
+                    .is_none(),
+                "installing the handler must not populate the cache"
+            );
+        }
+    }
+
+    /// If the two waves ever collided in the saturation-node id space — a
+    /// concept linking resolving to an ABox representation node — the gate must
+    /// fail closed rather than let an ABox-influenced label be replayed onto an
+    /// unrelated successor.
+    #[test]
+    fn native_saturation_coupling_gate_refuses_an_abox_representation_node() {
+        let tin = native_saturation_coupling_input();
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        build_saturation_seeds(&mut ctx, &bridged);
+        assert!(native_saturation_coupling_metadata_covered(&ctx, &bridged));
+
+        let node = first_resolved_saturation_node(&ctx);
+        assert!(node.is_some(), "the concept wave must install a linking");
+        ctx.process_context_mut()
+            .sat_node_mut(node)
+            .set_abox_individual_representation_node(true);
+        assert!(!native_saturation_coupling_metadata_covered(&ctx, &bridged));
+    }
+
+    #[test]
+    fn native_different_individuals_are_negative_nominal_assertions() {
+        let tin = TInput {
+            concepts: vec!["__nom__a".into(), "__nom__b".into()],
+            source_axioms: vec![source_subclass(
+                crate::frontend::syntax::Concept::Top,
+                crate::frontend::syntax::Concept::Top,
+            )],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+                vec![("a", "b")],
+            ),
+            ..Default::default()
+        };
+        let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let a = &bridged.nominal_seeds[0];
+        let b = &bridged.nominal_seeds[1];
+        assert!(a.assertions.contains(&(b.nominal_concept, true)));
+        assert!(b.assertions.contains(&(a.nominal_concept, true)));
+        assert!(ctx
+            .ontology_arenas()
+            .individual(a.individual)
+            .get_assertion_concept_linker()
+            .contains(&ConceptAssertion {
+                target: b.nominal_concept,
+                negated: true,
+            }));
+        assert!(ctx
+            .ontology_arenas()
+            .individual(b.individual)
+            .get_assertion_concept_linker()
+            .contains(&ConceptAssertion {
+                target: a.nominal_concept,
+                negated: true,
+            }));
+    }
+
+    #[test]
+    fn native_representative_scheduler_selects_seven_incomplete_entries() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let mut concepts = vec!["A".to_owned()];
+        concepts.extend((0..12).map(|index| format!("__nom__i{index}")));
+        let individuals = (0..12)
+            .map(|index| NominalIndividualMeta {
+                individual: format!("i{index}"),
+                proxies: vec![format!("__nom__i{index}")],
+                assertions: Vec::new(),
+                assertion_markers: Vec::new(),
+            })
+            .collect();
+        let role_assertions = (0..11)
+            .map(|index| nominal_role("r", &format!("i{index}"), &format!("i{}", index + 1)))
+            .collect();
+        let tin = TInput {
+            concepts,
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: NominalAboxMeta {
+                complete: true,
+                individuals,
+                different: Vec::new(),
+                role_assertions,
+                negative_role_assertions: Vec::new(),
+                unsupported: Vec::new(),
+            },
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert_eq!(bridged.nominal_seeds.len(), 12);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            for entry in cache
+                .as_mut()
+                .expect("individual-saturation associations")
+                .entries
+                .values_mut()
+            {
+                entry.completely_handled = false;
+                entry.insufficient = true;
+            }
+        }
+        let selected =
+            native_incomplete_abox_seed_batch(&bridged, NATIVE_REPRESENTATIVE_BATCH_SIZE)
+                .expect("incomplete individual-saturation associations");
+        assert_eq!(selected.len(), NATIVE_REPRESENTATIVE_BATCH_SIZE);
+        let mut actual: Vec<_> = selected.iter().copied().collect();
+        actual.sort_unstable();
+        let mut expected: Vec<_> = bridged
+            .nominal_seeds
+            .iter()
+            .map(|seed| seed.individual_tag)
+            .collect();
+        expected.sort_unstable();
+        expected.truncate(NATIVE_REPRESENTATIVE_BATCH_SIZE);
+        assert_eq!(actual, expected);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        assert!(initialize_native_nominal_state_for_tags(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            Some(&selected),
+        ));
+        assert!(bridged
+            .nominal_seeds
+            .iter()
+            .filter(|seed| selected.contains(&seed.individual_tag))
+            .all(|seed| {
+                ctx.processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(-seed.individual_tag)
+                    .is_some()
+            }));
+    }
+
     #[test]
     fn positive_and_negative_singletons_drive_exact_taxonomy() {
         use crate::frontend::syntax::Concept as C;
@@ -9426,33 +14258,3262 @@ mod tests {
     }
 
     #[test]
-    fn bridge_defers_before_search_when_typed_role_arrays_are_present() {
-        use crate::json_io::{NominalAboxMeta, NominalRoleAssertionMeta};
+    fn native_abox_role_metadata_is_fail_closed() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::json_io::NominalRoleAssertionMeta;
 
-        for negative in [false, true] {
-            let assertion = NominalRoleAssertionMeta {
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        tin.nominal_abox
+            .role_assertions
+            .push(NominalRoleAssertionMeta {
                 role: "r".into(),
                 source: "a".into(),
                 target: "b".into(),
-            };
-            let mut meta = NominalAboxMeta {
-                complete: true,
-                ..NominalAboxMeta::default()
-            };
-            if negative {
-                meta.negative_role_assertions.push(assertion);
-            } else {
-                meta.role_assertions.push(assertion);
-            }
-            let tin = TInput {
-                nominal_abox: meta,
-                ..TInput::default()
+            });
+        assert!(native_nominal_metadata_covered(&tin, true));
+        assert!(
+            !native_nominal_metadata_covered(&tin, false),
+            "typed role facts require the exact source-concept mode"
+        );
+        assert!(
+            bridged_classify_opts_with_trigger_absorption(&tin, false, false, false).is_none(),
+            "non-source mode must retain the historical role-array defer"
+        );
+
+        for (role, source, target) in [
+            ("missing", "a", "b"),
+            ("r", "missing", "b"),
+            ("r", "a", "missing"),
+            ("", "a", "b"),
+        ] {
+            let mut invalid = tin.clone();
+            invalid.nominal_abox.role_assertions[0] = NominalRoleAssertionMeta {
+                role: role.into(),
+                source: source.into(),
+                target: target.into(),
             };
             assert!(
-                bridged_classify_opts(&tin, false, false).is_none(),
-                "the bridge must not preempt the native-ABox HT when role arrays are present"
+                !native_nominal_metadata_covered(&invalid, true),
+                "invalid role assertion metadata was accepted: {role}({source},{target})"
+            );
+            assert!(
+                bridged_classify_opts_with_trigger_absorption(&invalid, false, false, true)
+                    .is_none(),
+                "invalid role assertion metadata reached bridge search"
             );
         }
+
+        let mut duplicate_role = tin.clone();
+        duplicate_role.roles.push("r".into());
+        assert!(
+            !native_nominal_metadata_covered(&duplicate_role, true),
+            "duplicate role names make name-to-id resolution ambiguous"
+        );
+
+        for builtin in [
+            "owl:topObjectProperty",
+            "http://www.w3.org/2002/07/owl#topObjectProperty",
+            "owl:bottomObjectProperty",
+            "http://www.w3.org/2002/07/owl#bottomObjectProperty",
+        ] {
+            let mut invalid = tin.clone();
+            invalid.roles = vec![builtin.into()];
+            invalid.nominal_abox.role_assertions[0].role = builtin.into();
+            assert!(
+                !native_nominal_metadata_covered(&invalid, true),
+                "builtin role assertion must not become an ordinary role: {builtin}"
+            );
+            assert!(
+                bridged_classify_opts_with_trigger_absorption(&invalid, false, false, true)
+                    .is_none(),
+                "builtin role assertion reached bridge search: {builtin}"
+            );
+        }
+
+        let mut incomplete = tin.clone();
+        incomplete.nominal_abox.complete = false;
+        assert!(!native_nominal_metadata_covered(&incomplete, true));
+        assert!(
+            bridged_classify_opts_with_trigger_absorption(&incomplete, false, false, true)
+                .is_none()
+        );
+
+        let mut unsupported = tin.clone();
+        unsupported
+            .nominal_abox
+            .unsupported
+            .push("focused unsupported ABox axiom".into());
+        assert!(!native_nominal_metadata_covered(&unsupported, true));
+        assert!(
+            bridged_classify_opts_with_trigger_absorption(&unsupported, false, false, true)
+                .is_none()
+        );
+
+        let mut unresolved_proxy = tin;
+        unresolved_proxy.nominal_abox.individuals[1].proxies[0] = "__nom__missing".into();
+        assert!(!native_nominal_metadata_covered(&unresolved_proxy, true));
+        assert!(bridged_classify_opts_with_trigger_absorption(
+            &unresolved_proxy,
+            false,
+            false,
+            true,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn native_abox_representative_cache_carries_and_replays_full_labels() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let mut meta = native_nominal_meta(
+            vec![
+                ("a", "__nom__a", vec![C::Name("A".into())]),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions.push(nominal_role("r", "a", "b"));
+        meta.role_assertions.push(nominal_role("r", "b", "c"));
+        let tin = TInput {
+            concepts: vec![
+                "A".into(),
+                "B".into(),
+                "C".into(),
+                "__nom__a".into(),
+                "__nom__b".into(),
+                "__nom__c".into(),
+            ],
+            roles: vec!["r".into()],
+            queries: vec![0, 1],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Name("B".into()))],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+
+        let seed = &bridged.nominal_seeds[0];
+        let target_tag = bridged.nominal_seeds[1].individual_tag;
+        let final_tag = bridged.nominal_seeds[2].individual_tag;
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            let cache = cache.as_mut().expect("representative cache written");
+            assert!(!cache.association_write_aborted);
+            // Value-backed assertion linkers correctly make the raw
+            // saturation association insufficient. This focused replay test
+            // supplies the post-representative status while retaining the
+            // saturation-produced labels and neighbour-role values.
+            for entry in cache.entries.values_mut() {
+                entry.completely_saturated = true;
+                entry.completely_handled = true;
+                entry.completely_propagated = true;
+                entry.insufficient = false;
+            }
+            let entry = cache
+                .entries
+                .get(&seed.individual_tag)
+                .expect("source representative association");
+            assert!(entry.concepts.contains(&(bridged.named[1], false)));
+            assert!(entry.instantiated_roles.contains(&bridged.roles[0]));
+            assert!(entry
+                .neighbour_role_combinations
+                .iter()
+                .any(|combination| combination.neighbour_tag == target_tag
+                    && combination.roles.contains(&(bridged.roles[0], false))));
+            let target_entry = cache
+                .entries
+                .get(&target_tag)
+                .expect("target representative association");
+            assert!(target_entry
+                .neighbour_role_combinations
+                .iter()
+                .find(|combination| combination.neighbour_tag == seed.individual_tag)
+                .and_then(|combination| combination.role_values.as_ref())
+                .is_some_and(|values| values.iter().any(|value| {
+                    value.role == bridged.roles[0] && value.inversed && value.deterministic
+                })));
+            assert!(
+                entry.reusable_for_full_completion(),
+                "the simple saturation association should be replay-blockable"
+            );
+        }
+
+        reset_probe_env(&mut algo, &mut ctx, &bridged, true);
+        let node = ctx.get_up_to_date_individual_by_id(-seed.individual_tag);
+        assert!(node.is_some());
+        assert!(ctx
+            .process_context()
+            .node(node)
+            .is_nominal_individual_representative_backend_data_loaded());
+        let label = ctx.process_context().node(node).reapply_con_label_set;
+        assert!(label.is_some());
+        assert!(ctx
+            .process_context()
+            .label_set(label)
+            .contains_concept_in_context(
+                ctx.process_context(),
+                ctx.ontology_arenas(),
+                bridged.named[1],
+                false,
+            ));
+        let blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        let target = ctx.get_up_to_date_individual_by_id(-target_tag);
+        let final_target = ctx.get_up_to_date_individual_by_id(-final_tag);
+        assert!(target.is_some() && final_target.is_some());
+        assert_eq!(
+            ctx.process_context()
+                .node(node)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "a complete source association was not expansion-blocked"
+        );
+        assert_eq!(
+            ctx.process_context()
+                .node(target)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "a complete incoming-role association was not expansion-blocked"
+        );
+        assert_eq!(
+            ctx.process_context()
+                .node(final_target)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "the complete role-chain sink was not expansion-blocked"
+        );
+        assert!(
+            algo.ht_role_successor_links(node, bridged.roles[0], &ctx)
+                .is_empty(),
+            "an expansion-blocked association eagerly rebuilt its cached edge"
+        );
+
+        // A concept missing from the cached source label schedules Konclude's
+        // backend retest. `detectIndividualNodeBackendCacheSynchronized`
+        // clears full/successor synchronization, but an atomic concept cannot
+        // influence a role neighbour: the independent neighbour block and raw
+        // assertion vectors remain valid and no edge is eagerly replayed.
+        let base = ctx.get_or_create_base_dependency_track_point();
+        let mut modified_source = node;
+        algo.add_concept_to_individual(
+            bridged.named[2],
+            false,
+            &mut modified_source,
+            base,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(node, &mut ctx));
+        let successor_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED;
+        assert_eq!(
+            ctx.process_context()
+                .node(node)
+                .processing_restriction_flags()
+                & successor_blocking_flags,
+            0,
+        );
+        assert!(!ctx
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ));
+        assert!(ctx
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+            ));
+        assert_eq!(
+            ctx.process_context()
+                .node(target)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "an exact cached incoming edge invalidated its neighbour"
+        );
+        assert!(
+            algo.ht_role_successor_links(node, bridged.roles[0], &ctx)
+                .is_empty(),
+            "an uninfluenced cached edge was eagerly materialized"
+        );
+
+        // The same concept-only transition on the target preserves its cached
+        // incoming/outgoing neighbour labels and leaves both raw vectors for a
+        // later selective or fallback expansion.
+        let mut modified_target = target;
+        algo.add_concept_to_individual(
+            bridged.named[2],
+            false,
+            &mut modified_target,
+            base,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(target, &mut ctx));
+        assert_eq!(
+            ctx.process_context()
+                .node(target)
+                .processing_restriction_flags()
+                & successor_blocking_flags,
+            0,
+        );
+        assert!(ctx
+            .process_context()
+            .node(target)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+            ));
+        assert!(
+            algo.ht_role_successor_links(target, bridged.roles[0], &ctx)
+                .is_empty(),
+            "an uninfluenced role-chain tail was eagerly materialized"
+        );
+    }
+
+    #[test]
+    fn conditional_full_class_probe_restores_all_root_consistency_base() {
+        use crate::frontend::syntax::Concept as C;
+
+        let mut mixed = cached_native_role_input();
+        mixed.concepts.extend(["B".into(), "C".into()]);
+        mixed.source_axioms.push(source_subclass(
+            C::Top,
+            C::Or([C::Name("B".into()), C::Name("C".into())].into()),
+        ));
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&mixed, true);
+        assert!(native_cardinality_abox_profile(
+            &mixed,
+            bridged.has_native_nominals()
+        ));
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+        ctx.processing_data_box_mut()
+            .set_first_possible_individual_node_id(1_000);
+        configure_production_search(&mut algo);
+        assert_eq!(native_nominal_consistency(&mut algo, &mut ctx, &bridged), Some(true));
+
+        let base_next_id = ctx
+            .processing_data_box_mut()
+            .next_individual_node_id(false);
+        assert!(base_next_id > 0);
+        let owned_epoch_count = algo
+            .or_branch_stack
+            .iter()
+            .filter(|branch| branch.own_epoch)
+            .count();
+        assert!(
+            owned_epoch_count > 0,
+            "the regression fixture must exercise deterministic first-fork rollback"
+        );
+        let deterministic_branch_node = algo
+            .or_branch_stack
+            .first()
+            .expect("forced disjunction branch")
+            .parent_used_branch_node;
+        assert_eq!(
+            owned_epoch_count,
+            ctx.process_context().branch_epoch_depth(),
+            "every nondeterministic branch epoch must be represented by the retained branch stack"
+        );
+        while let Some(branch) = algo.or_branch_stack.pop() {
+            if branch.own_epoch {
+                ctx.pop_branch_epoch();
+            }
+        }
+        assert_eq!(ctx.process_context().branch_epoch_depth(), 0);
+        assert!(algo.or_branch_stack.is_empty());
+        ctx.base.used_branch_tree_node = deterministic_branch_node;
+        ctx.branch_tree_node = deterministic_branch_node;
+        assert_eq!(ctx.base.used_branch_tree_node, deterministic_branch_node);
+        assert_eq!(ctx.branch_tree_node, deterministic_branch_node);
+        let base_node_count = ctx.process_context().node_count();
+        let fixed_nodes: Vec<_> = bridged
+            .nominal_seeds
+            .iter()
+            .map(|seed| {
+                native_exact_nominal_process_node(&ctx, seed.individual_tag)
+                    .expect("full consistency must retain every fixed root")
+            })
+            .collect();
+        let branch_only = [
+            bridged.named[mixed.concepts.len() - 2],
+            bridged.named[mixed.concepts.len() - 1],
+        ];
+        for &node in &fixed_nodes {
+            let label = ctx.process_context().node(node).reapply_con_label_set;
+            assert!(label.is_some());
+            for &concept in &branch_only {
+                assert!(
+                    !ctx
+                        .process_context()
+                        .label_set(label)
+                        .contains_concept_in_context(
+                            ctx.process_context(),
+                            ctx.ontology_arenas(),
+                            concept,
+                            false,
+                        ),
+                    "the deterministic consistency base retained a branch-only disjunct"
+                );
+            }
+        }
+        let base_source_flags = ctx
+            .process_context()
+            .node(fixed_nodes[0])
+            .processing_restriction_flags();
+        let base_databox = ctx.processing_data_box().clone();
+        ctx.push_branch_epoch();
+        initialize_retained_classification_databox(&mut ctx, &base_databox, base_next_id);
+        reset_classification_algorithm_on_retained_base(&mut algo, &bridged);
+
+        let mut next_id = base_next_id;
+        let (_, _, first_root) = bridged_classify_subject_with_root(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut next_id,
+            0,
+            mixed.concepts.len(),
+        )
+        .expect("first class probe");
+        assert_eq!(ctx.process_context().node(first_root).individual_node_id(), base_next_id);
+        assert!(fixed_nodes.iter().all(|node| node.is_some()));
+
+        // The production reset: the whole previous class job is rolled back,
+        // however many alternative epochs it left open.
+        restore_retained_classification_base(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &base_databox,
+            deterministic_branch_node,
+            base_next_id,
+        )
+        .expect("retained base must be restorable after the first class job");
+        assert_eq!(
+            ctx.process_context().branch_epoch_depth(),
+            1,
+            "exactly one class-job epoch stands on the retained base"
+        );
+        assert_eq!(ctx.process_context().node_count(), base_node_count);
+        for seed in &bridged.nominal_seeds {
+            assert!(native_exact_nominal_process_node(&ctx, seed.individual_tag).is_some());
+        }
+
+        let mut next_id = base_next_id;
+        let (_, _, second_root) = bridged_classify_subject_with_root(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut next_id,
+            0,
+            mixed.concepts.len(),
+        )
+        .expect("second class probe");
+        assert_eq!(
+            ctx.process_context().node(second_root).individual_node_id(),
+            base_next_id,
+            "each isolated class job must reserve the same first positive id"
+        );
+        restore_retained_classification_base(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &base_databox,
+            deterministic_branch_node,
+            base_next_id,
+        )
+        .expect("retained base must be restorable after the second class job");
+        ctx.pop_branch_epoch();
+        assert_eq!(ctx.process_context().node_count(), base_node_count);
+
+        // The retained roots still consume the current final association.
+        let source = &bridged.nominal_seeds[0];
+        let current_update_id = bridged
+            .native_representative_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.entries.get(&source.individual_tag))
+            .map(|entry| entry.association_update_id)
+            .expect("completed source association");
+        let source_node =
+            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        assert!(source_node.is_some());
+        assert_eq!(
+            algo.native_nominal_backend_replay[&source.individual_tag].association_update_id,
+            Some(current_update_id)
+        );
+        assert_eq!(
+            ctx.process_context()
+                .node(source_node)
+                .processing_restriction_flags(),
+            base_source_flags,
+            "two isolated probes must restore the deterministic base flags exactly"
+        );
+        assert!(bridged.nominal_seeds[1..]
+            .iter()
+            .all(|seed| native_exact_nominal_process_node(&ctx, seed.individual_tag).is_some()));
+
+        // A route backed by an actual consistency completion task keeps the
+        // existing all-root reconstruction.
+        let legacy_meta = native_nominal_meta(
+            vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+            vec![],
+        );
+        let legacy = basic_native_role_input(&["r"], legacy_meta);
+        let (mut legacy_algo, mut legacy_ctx, legacy_bridged) =
+            fresh_bridge_env_with_trigger_absorption(&legacy, true);
+        assert!(!native_cardinality_abox_profile(
+            &legacy,
+            legacy_bridged.has_native_nominals()
+        ));
+        reset_classification_probe_env(
+            &mut legacy_algo,
+            &mut legacy_ctx,
+            &legacy_bridged,
+            false,
+            false,
+        );
+        assert!(legacy_bridged.nominal_seeds.iter().all(|seed| {
+            native_exact_nominal_process_node(&legacy_ctx, seed.individual_tag).is_some()
+        }));
+    }
+
+    /// A class job that ends SATISFIABLE returns with its OR stack still open,
+    /// so under COW it leaves one branch epoch per surviving alternative behind.
+    /// The retained-base reset must roll back ALL of them: popping a single
+    /// epoch (the pre-fix `renew`) leaves the next job on the previous job's
+    /// committed disjuncts and grows the journal stack once per probe, which is
+    /// what defeated cheap ABox reuse on the 9540 conditional-full profile.
+    #[test]
+    fn retained_base_reset_rolls_back_every_leftover_alternative_epoch() {
+        use crate::frontend::syntax::Concept as C;
+
+        let mut mixed = cached_native_role_input();
+        mixed.concepts.extend(["B".into(), "C".into()]);
+        mixed.source_axioms.push(source_subclass(
+            C::Top,
+            C::Or([C::Name("B".into()), C::Name("C".into())].into()),
+        ));
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&mixed, true);
+        assert!(native_cardinality_abox_profile(
+            &mixed,
+            bridged.has_native_nominals()
+        ));
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, true);
+        ctx.processing_data_box_mut()
+            .set_first_possible_individual_node_id(1_000);
+        configure_production_search(&mut algo);
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
+
+        let base_next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
+        let deterministic_branch_node = algo
+            .or_branch_stack
+            .first()
+            .expect("forced disjunction branch")
+            .parent_used_branch_node;
+        while let Some(branch) = algo.or_branch_stack.pop() {
+            if branch.own_epoch {
+                ctx.pop_branch_epoch();
+            }
+        }
+        assert_eq!(ctx.process_context().branch_epoch_depth(), 0);
+        ctx.base.used_branch_tree_node = deterministic_branch_node;
+        ctx.branch_tree_node = deterministic_branch_node;
+        install_native_nominal_backend_replay(&mut algo, &bridged);
+        let base_node_count = ctx.process_context().node_count();
+        let base_databox = ctx.processing_data_box().clone();
+        let base_root_flags: Vec<_> = bridged
+            .nominal_seeds
+            .iter()
+            .map(|seed| {
+                let node = native_exact_nominal_process_node(&ctx, seed.individual_tag)
+                    .expect("retained root");
+                ctx.process_context()
+                    .node(node)
+                    .processing_restriction_flags()
+            })
+            .collect();
+        ctx.push_branch_epoch();
+        initialize_retained_classification_databox(&mut ctx, &base_databox, base_next_id);
+        reset_classification_algorithm_on_retained_base(&mut algo, &bridged);
+
+        // The production 9540 configuration runs the class jobs under COW
+        // (KM_TRIGGER_ABSORB), so every open alternative owns an epoch. The
+        // unit-test default leaves COW off, which is exactly why the existing
+        // retained-base coverage never observed the leak.
+        algo.conf_inprocess_cow = true;
+        let mut next_id = base_next_id;
+        assert!(bridged_classify_subject_with_root(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut next_id,
+            0,
+            mixed.concepts.len(),
+        )
+        .is_some());
+        let leftover = algo
+            .or_branch_stack
+            .iter()
+            .filter(|branch| branch.own_epoch)
+            .count();
+        assert!(
+            leftover > 0,
+            "the fixture must leave at least one open alternative epoch behind"
+        );
+        assert_eq!(
+            ctx.process_context().branch_epoch_depth(),
+            leftover + 1,
+            "class-job epoch plus one epoch per surviving alternative"
+        );
+
+        restore_retained_classification_base(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &base_databox,
+            deterministic_branch_node,
+            base_next_id,
+        )
+        .expect("retained base must be restorable");
+        assert_eq!(
+            ctx.process_context().branch_epoch_depth(),
+            1,
+            "the reset must leave exactly the next class job's own epoch"
+        );
+        assert!(algo.or_branch_stack.is_empty());
+        assert_eq!(ctx.base.used_branch_tree_node, deterministic_branch_node);
+        assert_eq!(ctx.branch_tree_node, deterministic_branch_node);
+        ctx.pop_branch_epoch();
+        assert_eq!(
+            ctx.process_context().node_count(),
+            base_node_count,
+            "no node of the finished class job may survive into the next one"
+        );
+        for (seed, expected) in bridged.nominal_seeds.iter().zip(&base_root_flags) {
+            let node = native_exact_nominal_process_node(&ctx, seed.individual_tag)
+                .expect("retained root");
+            assert_eq!(
+                ctx.process_context()
+                    .node(node)
+                    .processing_restriction_flags(),
+                *expected,
+                "an ABox root kept the finished class job's backend-synchronisation state"
+            );
+        }
+    }
+
+    #[test]
+    fn native_representative_batch_replays_incoming_assertion_vector() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let mut meta = native_nominal_meta(
+            vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+            vec![],
+        );
+        meta.role_assertions.push(nominal_role("r", "a", "b"));
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source_seed = bridged.nominal_seeds[0].clone();
+        let target_seed = bridged.nominal_seeds[1].clone();
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            let target = cache
+                .as_mut()
+                .expect("representative cache")
+                .entries
+                .get_mut(&target_seed.individual_tag)
+                .expect("target association");
+            target.completely_handled = false;
+            target.insufficient = true;
+        }
+        let selected = HashSet::from([target_seed.individual_tag]);
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        assert!(initialize_native_nominal_state_for_tags(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            Some(&selected),
+        ));
+        let source = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-source_seed.individual_tag);
+        let target = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-target_seed.individual_tag);
+        assert!(
+            source.is_none() && target.is_some(),
+            "successful cached-neighbour blocking materialized the uninfluenced source"
+        );
+        assert!(
+            !ctx.process_context()
+                .node(target)
+                .reverse_assertion_role_assertions()
+                .is_empty(),
+            "the selected target lost its incoming assertion vector"
+        );
+        assert!(
+            ctx.process_context()
+                .node(target)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+                ),
+            "the incomplete target association did not retain neighbour blocking"
+        );
+    }
+
+    #[test]
+    fn native_abox_named_assertion_resolve_copy_discharges_satisfied_disjunction() {
+        use crate::frontend::syntax::Concept as C;
+
+        // Konclude does not seed a named individual's raw assertions directly
+        // into its final saturation node. It first builds an assertion-resolved
+        // node from the separated TOP base. The asserted B below resolves the
+        // global B-or-C choice for a, while the same choice remains genuinely
+        // insufficient for b.
+        let tin = TInput {
+            concepts: vec![
+                "Q".into(),
+                "B".into(),
+                "C".into(),
+                "__nom__a".into(),
+                "__nom__b".into(),
+            ],
+            queries: vec![0, 1, 2],
+            source_axioms: vec![source_subclass(
+                C::Top,
+                C::Or(
+                    [C::Name("B".into()), C::Name("C".into())]
+                        .into_iter()
+                        .collect(),
+                ),
+            )],
+            nominal_abox: native_nominal_meta(
+                vec![
+                    ("a", "__nom__a", vec![C::Name("B".into())]),
+                    ("b", "__nom__b", vec![]),
+                ],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(bridged.nominal_seeds.iter().all(|seed| {
+            ctx.ontology_arenas()
+                .individual(seed.individual)
+                .has_individual_name()
+        }));
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+
+        let cache = bridged.native_representative_cache.borrow();
+        let cache = cache.as_ref().expect("representative cache written");
+        let a = cache
+            .entries
+            .get(&bridged.nominal_seeds[0].individual_tag)
+            .expect("a association");
+        let b = cache
+            .entries
+            .get(&bridged.nominal_seeds[1].individual_tag)
+            .expect("b association");
+        assert!(
+            a.complete_for_precomputation(),
+            "the asserted disjunct must discharge the approximate OR"
+        );
+        assert!(
+            !b.complete_for_precomputation(),
+            "an unresolved global disjunction must remain insufficient"
+        );
+    }
+
+    #[test]
+    fn native_abox_representative_cache_records_cardinality_and_indirect_nominals() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![
+                        C::AtMost(1, R::Name("r".into()), Box::new(C::Top)),
+                        C::Exists(R::Name("r".into()), Box::new(C::Nominal("b".into()))),
+                    ],
+                ),
+                ("b", "__nom__b", vec![]),
+            ],
+            vec![],
+        );
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let cache = bridged.native_representative_cache.borrow();
+        let entry = cache
+            .as_ref()
+            .expect("representative cache written")
+            .entries
+            .get(&bridged.nominal_seeds[0].individual_tag)
+            .expect("source representative association");
+        assert!(entry.at_most_cardinalities.contains(&(bridged.roles[0], 1)));
+        assert!(entry.existential_roles.contains(&bridged.roles[0]));
+        assert!(entry
+            .indirect_nominal_connections
+            .contains(&bridged.nominal_seeds[1].individual_tag));
+        assert_eq!(
+            entry.reusable_for_full_completion(),
+            entry.completely_handled,
+            "indirect nominal metadata must not invent an extra status gate"
+        );
+    }
+
+    #[test]
+    fn native_abox_association_status_matches_konclude_writer_predicate() {
+        use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+
+        let completed = F::INDSATFLAGCOMPLETED;
+        assert_eq!(
+            native_abox_association_status(completed, completed),
+            (true, true)
+        );
+        assert_eq!(
+            native_abox_association_status(
+                completed | F::INDSATFLAGPROPAGATIONINCOMPLETE,
+                completed,
+            ),
+            (true, false),
+            "propagation status is recorded separately from handled status"
+        );
+        assert_eq!(
+            native_abox_association_status(
+                completed
+                    | F::INDSATFLAGINSUFFICIENT
+                    | F::INDSATFLAGUNPROCESSED
+                    | F::INDSATFLAGUNREGISTEREDPROPAGATION
+                    | F::INDSATFLAGUNMARKEDROLEASSERTION,
+                completed,
+            ),
+            (true, true),
+            "Konclude's association writer does not fold direct flags into insufficiency"
+        );
+        assert_eq!(
+            native_abox_association_status(completed, completed | F::INDSATFLAGINSUFFICIENT),
+            (false, true)
+        );
+        assert_eq!(native_abox_association_status(0, completed), (false, true));
+        assert_eq!(native_abox_association_status(completed, 0), (false, true));
+    }
+
+    #[test]
+    fn native_precomputation_phase_order_is_strict() {
+        let mut phase = NativePrecomputationPhase::Start;
+        assert!(advance_native_precomputation_phase(
+            &mut phase,
+            NativePrecomputationPhase::IndividualSaturation,
+        )
+        .is_some());
+        assert!(advance_native_precomputation_phase(
+            &mut phase,
+            NativePrecomputationPhase::FullConsistencyCompletion,
+        )
+        .is_some());
+        assert!(advance_native_precomputation_phase(
+            &mut phase,
+            NativePrecomputationPhase::ConsistencyDeclared,
+        )
+        .is_some());
+
+        for invalid_next in [
+            NativePrecomputationPhase::FullConsistencyCompletion,
+            NativePrecomputationPhase::ConsistencyDeclared,
+        ] {
+            let mut invalid = NativePrecomputationPhase::Start;
+            assert!(
+                advance_native_precomputation_phase(&mut invalid, invalid_next).is_none(),
+                "a precomputation phase was skipped"
+            );
+            assert_eq!(invalid, NativePrecomputationPhase::Start);
+        }
+        let mut reordered = NativePrecomputationPhase::IndividualSaturation;
+        assert!(advance_native_precomputation_phase(
+            &mut reordered,
+            NativePrecomputationPhase::ConsistencyDeclared,
+        )
+        .is_none());
+        assert_eq!(reordered, NativePrecomputationPhase::IndividualSaturation);
+    }
+
+    #[test]
+    fn native_representative_coordination_requires_clean_quiescence() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
+            ..Default::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        assert!(native_representative_coordination_complete(
+            &bridged,
+            NativeRepresentativeCoordinationState::default(),
+        ));
+        for state in [
+            NativeRepresentativeCoordinationState {
+                running_tasks: 1,
+                ..Default::default()
+            },
+            NativeRepresentativeCoordinationState {
+                failed_tasks: 1,
+                ..Default::default()
+            },
+            NativeRepresentativeCoordinationState {
+                writeback_failed: true,
+                ..Default::default()
+            },
+            NativeRepresentativeCoordinationState {
+                clashed: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(!native_representative_coordination_complete(
+                &bridged, state
+            ));
+        }
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            cache
+                .as_mut()
+                .expect("representative cache")
+                .entries
+                .get_mut(&bridged.nominal_seeds[0].individual_tag)
+                .expect("nominal association")
+                .completely_handled = false;
+        }
+        assert!(!native_representative_coordination_complete(
+            &bridged,
+            NativeRepresentativeCoordinationState::default(),
+        ));
+    }
+
+    #[test]
+    fn native_representative_writeback_rejects_stale_batch_atomically() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let selected: HashSet<_> = bridged
+            .nominal_seeds
+            .iter()
+            .map(|seed| seed.individual_tag)
+            .collect();
+        let mut cache = bridged.native_representative_cache.borrow_mut();
+        let cache = cache.as_mut().expect("representative cache");
+        let mut prepared = Vec::new();
+        for &tag in &selected {
+            let current = cache.entries.get(&tag).expect("association").clone();
+            assert!(current.complete_for_precomputation());
+            let mut replacement = current.clone();
+            replacement.used_association_update_id = Some(current.association_update_id);
+            replacement.scheduled_individual = Some(true);
+            replacement.association_origin = Some(NativeAboxAssociationOrigin::CompletionWriteback);
+            prepared.push((tag, replacement));
+        }
+        let stale_tag = *selected.iter().next().expect("selected tag");
+        cache
+            .entries
+            .get_mut(&stale_tag)
+            .expect("stale association")
+            .association_update_id += 1;
+        let before_ids: HashMap<_, _> = cache
+            .entries
+            .iter()
+            .map(|(&tag, entry)| (tag, entry.association_update_id))
+            .collect();
+        let before_next = cache.next_association_update_id;
+        assert!(
+            commit_native_representative_association_batch(cache, prepared, &selected,).is_none()
+        );
+        assert_eq!(cache.next_association_update_id, before_next);
+        assert_eq!(
+            cache
+                .entries
+                .iter()
+                .map(|(&tag, entry)| (tag, entry.association_update_id))
+                .collect::<HashMap<_, _>>(),
+            before_ids,
+            "a stale member caused a partial cache publication"
+        );
+    }
+
+    #[test]
+    fn native_abox_representative_reuse_gate_has_every_backend_conjunct() {
+        let mut entry = NativeAboxRepresentativeEntry {
+            individual_tag: 1,
+            concept_values: Some(Vec::new()),
+            completely_saturated: true,
+            completely_handled: true,
+            completely_propagated: true,
+            representative_same_individual_merging: Some(false),
+            deterministic_same_individual_label_identity: Some(7),
+            deterministic_merged_same_considered_label_identity: Some(7),
+            deterministic_same_individuals: Some(Vec::new()),
+            deterministic_merged_same_considered_individuals: Some(Vec::new()),
+            nondeterministic_same_individuals: Some(Vec::new()),
+            representative_same_individual_id: Some(1),
+            deterministic_same_individual_id: Some(1),
+            merge_identity_metadata_complete: true,
+            role_metadata_complete: true,
+            synchronization_metadata_complete: true,
+            ..Default::default()
+        };
+        assert!(entry.reusable_for_full_completion());
+        entry.nondeterministic_same_individuals = Some(vec![2, 3]);
+        assert!(
+            entry.reusable_for_full_completion(),
+            "Konclude's full-block predicate does not reject a non-deterministic same-individual label"
+        );
+        entry.completely_propagated = false;
+        assert!(
+            entry.reusable_for_full_completion(),
+            "propagation is not part of Konclude's expansion-blocking predicate"
+        );
+        entry.completely_handled = false;
+        assert!(!entry.reusable_for_full_completion());
+        entry.completely_handled = true;
+        entry.representative_same_individual_merging = Some(true);
+        assert!(!entry.reusable_for_full_completion());
+        entry.representative_same_individual_merging = None;
+        assert!(!entry.reusable_for_full_completion());
+        entry.representative_same_individual_merging = Some(false);
+        entry.deterministic_merged_same_considered_label_identity = Some(8);
+        assert!(!entry.reusable_for_full_completion());
+        entry.deterministic_merged_same_considered_label_identity = None;
+        assert!(!entry.reusable_for_full_completion());
+    }
+
+    /// Stage 8. Konclude's `hasReuseableElements` (cpp 22884-22916) reads four
+    /// non-deterministic association slots and, when any is set, queues the node
+    /// for `reuseIndividualBackendExpansion` (cpp 25092-25373) — the replay that
+    /// puts the consistency model's CHOSEN disjuncts, merges, links and
+    /// distinctions back into a later task under ONE non-deterministic
+    /// dependency track point. Every slot is INDEPENDENT of the full-block
+    /// predicate above, so this pins the four reads separately.
+    #[test]
+    fn association_reusable_elements_read_the_four_nondeterministic_slots() {
+        let base = NativeAboxRepresentativeEntry {
+            individual_tag: 1,
+            concept_values: Some(vec![NativeAboxConceptValue {
+                concept: ConceptId::new(0),
+                negated: false,
+                deterministic: true,
+            }]),
+            completely_handled: true,
+            ..Default::default()
+        };
+        assert!(
+            !base.has_reusable_elements(),
+            "a purely deterministic association has nothing to reuse"
+        );
+        assert!(!base.has_nondeterministic_neighbour_roles());
+
+        let mut nondeterministic_concept = base.clone();
+        nondeterministic_concept
+            .concept_values
+            .as_mut()
+            .expect("concept values")
+            .push(NativeAboxConceptValue {
+                concept: ConceptId::new(1),
+                negated: false,
+                deterministic: false,
+            });
+        assert!(nondeterministic_concept.has_reusable_elements());
+
+        // The 86-of-198 slot in the Stage-2 trace: a neighbour-role value the
+        // consistency model created non-deterministically.
+        let mut nondeterministic_neighbour = base.clone();
+        nondeterministic_neighbour
+            .neighbour_role_combinations
+            .push(NativeAboxNeighbourRoleSet {
+                neighbour_tag: 2,
+                roles: vec![(RoleId::new(0), false)],
+                role_values: Some(vec![NativeAboxRoleValue {
+                    role: RoleId::new(0),
+                    inversed: false,
+                    deterministic: false,
+                }]),
+                merged_alias_deterministic: Some(false),
+            });
+        assert!(nondeterministic_neighbour.has_nondeterministic_neighbour_roles());
+        assert!(nondeterministic_neighbour.has_reusable_elements());
+
+        // A neighbour label whose every value is deterministic is NOT the
+        // non-deterministic slot, even though the label itself exists.
+        let mut deterministic_neighbour = base.clone();
+        deterministic_neighbour
+            .neighbour_role_combinations
+            .push(NativeAboxNeighbourRoleSet {
+                neighbour_tag: 2,
+                roles: vec![(RoleId::new(0), false)],
+                role_values: Some(vec![NativeAboxRoleValue {
+                    role: RoleId::new(0),
+                    inversed: false,
+                    deterministic: true,
+                }]),
+                merged_alias_deterministic: Some(true),
+            });
+        assert!(!deterministic_neighbour.has_nondeterministic_neighbour_roles());
+        assert!(!deterministic_neighbour.has_reusable_elements());
+
+        // The 60-of-198 slot.
+        let mut nondeterministic_same = base.clone();
+        nondeterministic_same.nondeterministic_same_individuals = Some(vec![1, 2]);
+        assert!(nondeterministic_same.has_reusable_elements());
+        nondeterministic_same.nondeterministic_same_individuals = Some(Vec::new());
+        assert!(!nondeterministic_same.has_reusable_elements());
+
+        let mut nondeterministic_different = base.clone();
+        nondeterministic_different.nondeterministic_different_individuals = Some(vec![1, 3]);
+        assert!(nondeterministic_different.has_reusable_elements());
+
+        let cache = NativeAboxRepresentativeCache {
+            entries: HashMap::from([
+                (1, base),
+                (2, nondeterministic_concept),
+                (3, nondeterministic_neighbour),
+                (4, deterministic_neighbour),
+                (5, nondeterministic_different),
+            ]),
+            ..Default::default()
+        };
+        let stats = native_association_nondeterminism_stats(&cache);
+        assert_eq!(stats.total, 5);
+        assert_eq!(stats.nondeterministic_concepts, 1);
+        assert_eq!(stats.nondeterministic_neighbour_roles, 1);
+        assert_eq!(stats.nondeterministic_same_individuals, 0);
+        assert_eq!(stats.nondeterministic_different_individuals, 1);
+        assert_eq!(stats.reusable_elements, 3);
+    }
+
+    /// Stage 8. The completion writeback publishes the model's
+    /// non-deterministic half, and the per-task replay record carries it —
+    /// but `deterministic_cached_concepts`, the ONLY list
+    /// `replay_native_representative_cache` reads, drops it.
+    ///
+    /// This is the exact missing retained state: KM writes what Konclude's
+    /// `reuseIndividualBackendExpansion` consumes and has no consumer for it
+    /// (`completion::u25::reuse_individual_backend_expansion` is a PORT-PENDING
+    /// stub). Nothing here asserts that the non-deterministic values SHOULD be
+    /// replayed unconditionally — they must not be; upstream replays them under
+    /// a branch alternative, never as base facts.
+    #[test]
+    fn replay_record_carries_nondeterministic_values_but_the_replay_list_drops_them() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        assert!(native_representative_coordination_complete(
+            &bridged,
+            NativeRepresentativeCoordinationState::default(),
+        ));
+        let seed = bridged.nominal_seeds[0].clone();
+
+        // Flip one published value's determinism bit in place. Rewriting the
+        // bit keeps `concepts` and the value ordering intact, so the entry stays
+        // well-formed under `native_cache_entry_covers_seed` — asserted below,
+        // because an ill-formed entry would make the replay record empty and
+        // the test vacuous.
+        let nondeterministic = {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            let entry = cache
+                .as_mut()
+                .expect("representative cache")
+                .entries
+                .get_mut(&seed.individual_tag)
+                .expect("nominal association");
+            let values = entry.concept_values.as_mut().expect("concept values");
+            assert!(!values.is_empty(), "no published concept value to flip");
+            let flipped = values[0];
+            assert!(flipped.deterministic);
+            values[0].deterministic = false;
+            assert!(entry.has_reusable_elements());
+            assert!(
+                native_cache_entry_covers_seed(entry, &seed),
+                "flipping the determinism bit invalidated the association"
+            );
+            (flipped.concept, flipped.negated)
+        };
+
+        install_native_nominal_backend_replay(&mut algo, &bridged);
+        let replay = algo
+            .native_nominal_backend_replay
+            .get(&seed.individual_tag)
+            .expect("typed replay record");
+        assert!(
+            replay
+                .cached_concept_values
+                .iter()
+                .any(|&(concept, negated, deterministic)| (concept, negated) == nondeterministic
+                    && !deterministic),
+            "the replay record lost the non-deterministic association value"
+        );
+        assert!(
+            !replay.deterministic_cached_concepts.contains(&nondeterministic),
+            "a non-deterministic value entered the unconditional replay list"
+        );
+    }
+
+    #[test]
+    fn incomplete_native_neighbour_stays_blocked_with_both_linkers_retained() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+        bridged
+            .native_representative_cache
+            .borrow_mut()
+            .as_mut()
+            .expect("representative cache")
+            .entries
+            .get_mut(&source.individual_tag)
+            .expect("source association")
+            .role_metadata_complete = false;
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let source_node =
+            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        assert!(source_node.is_some());
+        let source_ref = ctx.process_context().node(source_node);
+        assert!(source_ref.has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+        ));
+        assert!(!source_ref.assertion_role_assertions().is_empty());
+        assert!(!source_ref.reverse_assertion_role_assertions().is_empty());
+        assert!(!source_ref.has_role_assertions_initialized());
+        assert!(!source_ref.has_reverse_role_assertions_initialized());
+        for untouched in &bridged.nominal_seeds[1..] {
+            assert!(
+                ctx.processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(-untouched.individual_tag)
+                    .is_none(),
+                "an incomplete association recursively materialized an uninfluenced neighbour"
+            );
+        }
+    }
+
+    #[test]
+    fn native_critical_concept_unblocks_only_the_influenced_neighbour() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        let forward_target = bridged.nominal_seeds[1].individual_tag;
+        let reverse_source = bridged.nominal_seeds[2].individual_tag;
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let source_node =
+            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let mut universal = Concept::new();
+        universal
+            .set_concept_tag(20_001)
+            .set_operator_code(op::CCALL)
+            .set_role(bridged.roles[0])
+            .add_operand_linker(bridged.named[0], false)
+            .set_operand_count(1);
+        let universal = ctx.ontology_arenas_mut().alloc_concept(universal);
+        let dependency = ctx.get_or_create_base_dependency_track_point();
+        let mut source_mut = source_node;
+        algo.add_concept_to_individual(
+            universal,
+            false,
+            &mut source_mut,
+            dependency,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(source_node, &mut ctx));
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-forward_target)
+                .is_some(),
+            "the universal's affected forward neighbour was not materialized"
+        );
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-reverse_source)
+                .is_none(),
+            "an unrelated incoming neighbour was materialized"
+        );
+        let source_ref = ctx.process_context().node(source_node);
+        assert!(!source_ref.has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+        ));
+        assert!(!source_ref.has_role_assertions_initialized());
+        assert!(!source_ref.has_reverse_role_assertions_initialized());
+    }
+
+    #[test]
+    fn native_cardinality_criticality_releases_neighbour_only_block() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let source_node =
+            algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        let neighbour_block =
+            IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED;
+        let successor_block =
+            IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED;
+        assert!(
+            ctx.process_context()
+                .node(source_node)
+                .has_partial_processing_restriction_flags(neighbour_block),
+            "Konclude blocks neighbour expansion even for an incomplete association"
+        );
+        assert!(
+            !ctx.process_context()
+                .node(source_node)
+                .has_partial_processing_restriction_flags(successor_block),
+            "an incomplete association must not acquire full successor blocking"
+        );
+        let mut at_most = Concept::new();
+        at_most
+            .set_concept_tag(20_002)
+            .set_operator_code(op::CCATMOST)
+            .set_parameter(0)
+            .set_role(bridged.roles[0])
+            .add_operand_linker(ctx.processing_data_box().ontology_top_concept(), false)
+            .set_operand_count(1);
+        let at_most = ctx.ontology_arenas_mut().alloc_concept(at_most);
+        let dependency = ctx.get_or_create_base_dependency_track_point();
+        let mut source_mut = source_node;
+        algo.add_concept_to_individual(
+            at_most,
+            false,
+            &mut source_mut,
+            dependency,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(source_node, &mut ctx));
+        assert!(
+            !ctx.process_context()
+                .node(source_node)
+                .has_partial_processing_restriction_flags(neighbour_block),
+            "critical at-most did not release neighbour expansion blocking"
+        );
+        assert!(
+            !ctx.process_context()
+                .node(source_node)
+                .has_partial_processing_restriction_flags(successor_block),
+            "selective expansion fabricated successor blocking"
+        );
+        assert!(ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-bridged.nominal_seeds[1].individual_tag)
+            .is_some());
+        assert!(!ctx
+            .process_context()
+            .node(source_node)
+            .has_role_assertions_initialized());
+    }
+
+    /// Demote every forward cached neighbour-role value of `individual_tag` towards
+    /// `neighbour_tag` to NON-deterministic — the shape the 9540 completion writer
+    /// produces for any edge with a non-deterministically merged endpoint
+    /// (`native_completion_role_metadata`'s
+    /// `edge_deterministic = source_merge_deterministic && target_merge_deterministic`;
+    /// the Stage-2 trace records 86 of 198 roots with a populated
+    /// `NONDETERMINISTIC_COMBINED_NEIGHBOUR_INSTANTIATED_ROLE_SET_LABEL`).
+    fn demote_cached_neighbour_role_values(
+        bridged: &Bridged,
+        individual_tag: Cint64,
+        neighbour_tag: Cint64,
+    ) {
+        let mut cache = bridged.native_representative_cache.borrow_mut();
+        let entry = cache
+            .as_mut()
+            .expect("representative cache")
+            .entries
+            .get_mut(&individual_tag)
+            .expect("source association");
+        let mut demoted = false;
+        for combination in &mut entry.neighbour_role_combinations {
+            if combination.neighbour_tag != neighbour_tag {
+                continue;
+            }
+            for value in combination.role_values.iter_mut().flatten() {
+                if !value.inversed {
+                    value.deterministic = false;
+                    demoted = true;
+                }
+            }
+        }
+        assert!(
+            demoted,
+            "the fixture must carry a forward cached neighbour-role value"
+        );
+    }
+
+    /// A/B leg of [`asserted_edge_survives_nondeterministic_cache_marking`]: with
+    /// `conf_native_selective_neighbour_per_value_decline = false` the pre-fix
+    /// per-NODE latch is restored — one unjustifiable neighbour value consumes both
+    /// assertion linkers, marks the node fully expanded and drops every
+    /// cached-association blocking bit. Konclude's caller shape (cpp 8938) is
+    /// `if (!backendSyncData || !expandDirectlyInfluenced…()) { clearAssertionRoles();
+    /// … addRoleAssertion(…) }`, so this IS the declined-path contract; what the fix
+    /// changes is only WHEN the route declines.
+    #[test]
+    fn raw_assertion_replay_runs_only_when_selective_cache_expansion_declines() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        let forward_target = bridged.nominal_seeds[1].individual_tag;
+        let reverse_source = bridged.nominal_seeds[2].individual_tag;
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+        demote_cached_neighbour_role_values(&bridged, source.individual_tag, forward_target);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        algo.conf_native_selective_neighbour_per_value_decline = false;
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        assert!(source_node.is_some());
+        assert!(ctx
+            .process_context()
+            .node(source_node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
+            ));
+        assert!(!ctx
+            .process_context()
+            .node(source_node)
+            .has_role_assertions_initialized());
+
+        // A universal over the cached role is neighbour-critical, so the block is
+        // released and the selective expansion is attempted first.
+        let mut universal = Concept::new();
+        universal
+            .set_concept_tag(20_003)
+            .set_operator_code(op::CCALL)
+            .set_role(bridged.roles[0])
+            .add_operand_linker(bridged.named[0], false)
+            .set_operand_count(1);
+        let universal = ctx.ontology_arenas_mut().alloc_concept(universal);
+        let dependency = ctx.get_or_create_base_dependency_track_point();
+        let mut source_mut = source_node;
+        algo.add_concept_to_individual(
+            universal,
+            false,
+            &mut source_mut,
+            dependency,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(source_node, &mut ctx));
+
+        let source_ref = ctx.process_context().node(source_node);
+        assert!(
+            source_ref.has_role_assertions_initialized()
+                && source_ref.has_reverse_role_assertions_initialized(),
+            "a declined selective expansion did not fall back to the raw replay"
+        );
+        assert!(
+            source_ref.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION,
+            ),
+            "the raw replay did not mark the node fully expanded"
+        );
+        let native_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        assert_eq!(
+            source_ref.processing_restriction_flags() & native_blocking_flags,
+            0,
+            "a materialized node kept cached-association blocking bits"
+        );
+        // Both directions are replayed by the fallback — that is exactly what the
+        // selective route exists to avoid.
+        assert!(ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-forward_target)
+            .is_some());
+        assert!(ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-reverse_source)
+            .is_some());
+    }
+
+    /// An ABox role assertion holds in every model, so a NON-deterministic cache
+    /// marking on it (which only records that an ENDPOINT was merged
+    /// non-deterministically) must not cost the node its association block.
+    ///
+    /// This is the 9540 latch: the Stage-2 trace shows `corridorTI_3` (node -42, the
+    /// individual `Image_type ≡ {corridorTI_3}` reduces to) carrying
+    /// `nondetNeighbourRoles=new/sig:208/count:6` and all 59 `corridorTI_3_RS_*`
+    /// roots `nondetMergedInto=-38`
+    /// (`diagnostics/9540-konclude-trace/run-49428590/trace.log`), while Konclude
+    /// keeps every one of them cache-backed for the whole classification
+    /// (`rawRoleAssertionReplay=0`, ONE `expandIndividualNeighbourNodeFromBackendCache`
+    /// in the entire `Image_type` subsumption test). Before the fix KM turned each
+    /// of those roots into a fully materialized, `PRF_INVALIDBLOCKINGORCACHING` node
+    /// during the single full-consistency completion, i.e. BEFORE the retained
+    /// classification base is snapshotted, so every later class job inherited an
+    /// ABox with all named edges installed and no blocking left to re-establish.
+    #[test]
+    fn asserted_edge_survives_nondeterministic_cache_marking() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        let forward_target = bridged.nominal_seeds[1].individual_tag;
+        let reverse_source = bridged.nominal_seeds[2].individual_tag;
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+        // `r(a, b)` is asserted by `cached_native_role_input`.
+        demote_cached_neighbour_role_values(&bridged, source.individual_tag, forward_target);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        assert!(
+            algo.conf_native_selective_neighbour_per_value_decline,
+            "the per-value decline is the production default"
+        );
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        assert!(source_node.is_some());
+
+        // A universal over the cached role is neighbour-critical, so the block is
+        // released and the selective expansion is attempted first.
+        let mut universal = Concept::new();
+        universal
+            .set_concept_tag(20_004)
+            .set_operator_code(op::CCALL)
+            .set_role(bridged.roles[0])
+            .add_operand_linker(bridged.named[0], false)
+            .set_operand_count(1);
+        let universal = ctx.ontology_arenas_mut().alloc_concept(universal);
+        let dependency = ctx.get_or_create_base_dependency_track_point();
+        let mut source_mut = source_node;
+        algo.add_concept_to_individual(
+            universal,
+            false,
+            &mut source_mut,
+            dependency,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(source_node, &mut ctx));
+        assert!(
+            !algo.native_selective_neighbour_expansion_declined,
+            "an asserted edge with a non-deterministic cache marking declined the route"
+        );
+
+        let source_ref = ctx.process_context().node(source_node);
+        assert!(
+            !source_ref.has_role_assertions_initialized()
+                && !source_ref.has_reverse_role_assertions_initialized(),
+            "the selective route fell back to the raw bidirectional replay"
+        );
+        assert!(
+            !source_ref.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION
+                    | IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ),
+            "the node was latched out of cached-association blocking"
+        );
+        // The asserted, influenced neighbour IS materialized — the edge itself is
+        // entailed and is installed on the base dependency exactly as the raw replay
+        // would have installed it.
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-forward_target)
+                .is_some(),
+            "the asserted forward edge was dropped"
+        );
+        // The unrelated incoming neighbour stays cache-backed — the whole point.
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-reverse_source)
+                .is_none(),
+            "an uninfluenced neighbour was materialized anyway"
+        );
+    }
+
+    /// The complement: a cached neighbour-role value that is NOT an ABox assertion
+    /// and is marked non-deterministic is skipped, and skipping it costs nothing —
+    /// the raw replay fallback (`materialize_native_role_assertion_vectors`) replays
+    /// the assertion chains only, so it would not have installed that edge either.
+    /// The node keeps its association block and its other neighbours stay cached.
+    #[test]
+    fn derived_nondeterministic_cached_neighbour_is_skipped_without_losing_the_node_cache() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        let forward_target = bridged.nominal_seeds[1].individual_tag;
+        let unrelated = bridged.nominal_seeds[2].individual_tag;
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        // Inject a DERIVED non-deterministic `r(a, c)` into the replay journal: `c`
+        // is a neighbour of `a` only through the asserted `s(c, a)`, so `r(a, c)` is
+        // not asserted in either direction.
+        {
+            let replay = algo
+                .native_nominal_backend_replay
+                .get_mut(&source.individual_tag)
+                .expect("replay journal installed for the source individual");
+            assert!(
+                !replay.role_assertions.contains(&(bridged.roles[0], unrelated)),
+                "the fixture must not assert the injected derived edge"
+            );
+            replay
+                .cached_neighbour_roles
+                .push((unrelated, bridged.roles[0], false, false));
+            replay.cached_neighbour_roles.sort_unstable_by_key(
+                |(neighbour, role, inversed, deterministic)| {
+                    (*neighbour, role.raw, *inversed, *deterministic)
+                },
+            );
+        }
+        let source_node = algo.get_up_to_date_individual_by_id(-source.individual_tag, &mut ctx);
+        assert!(source_node.is_some());
+
+        let mut universal = Concept::new();
+        universal
+            .set_concept_tag(20_005)
+            .set_operator_code(op::CCALL)
+            .set_role(bridged.roles[0])
+            .add_operand_linker(bridged.named[0], false)
+            .set_operand_count(1);
+        let universal = ctx.ontology_arenas_mut().alloc_concept(universal);
+        let dependency = ctx.get_or_create_base_dependency_track_point();
+        let mut source_mut = source_node;
+        algo.add_concept_to_individual(
+            universal,
+            false,
+            &mut source_mut,
+            dependency,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(algo.process_native_nominal_backend_retest(source_node, &mut ctx));
+        assert!(
+            !algo.native_selective_neighbour_expansion_declined,
+            "a skippable derived value declined the whole node's cache"
+        );
+
+        let source_ref = ctx.process_context().node(source_node);
+        assert!(
+            !source_ref.has_role_assertions_initialized()
+                && !source_ref.has_reverse_role_assertions_initialized(),
+            "the selective route fell back to the raw bidirectional replay"
+        );
+        assert!(
+            !source_ref.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION
+                    | IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ),
+            "the node was latched out of cached-association blocking"
+        );
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-forward_target)
+                .is_some(),
+            "the deterministic asserted neighbour was not expanded"
+        );
+        assert!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-unrelated)
+                .is_none(),
+            "an unentailed derived edge was installed on the base dependency"
+        );
+    }
+
+    /// Minimized `ore_ont_9540` shape, from the Stage-2 Konclude trace
+    /// (`diagnostics/9540-konclude-trace/ANALYSIS.md`):
+    ///
+    /// ```text
+    /// ImageType     ≡ {a}
+    /// ImageWithDoor ≡ ∃contains.Door ⊓ ImageType
+    /// ClassAssertion(ImageType a)              contains(a, d)
+    /// ```
+    ///
+    /// `ImageType ⊑ ImageWithDoor` must NOT hold: nothing forces `a` to contain a
+    /// `Door`, so the pair is SATISFIABLE — the answer the traced probe gives
+    /// (`classifier.pairresult … taskSatisfiable=1 subsumptionHolds=0`). The
+    /// at-most assertion puts the ontology on the cardinality+ABox profile, i.e. the
+    /// cache-backed root route this change touches.
+    #[test]
+    fn minimized_9540_nominal_class_pair_stays_satisfiable() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![
+                        C::Name("ImageType".into()),
+                        C::AtMost(5, R::Name("contains".into()), Box::new(C::Top)),
+                    ],
+                ),
+                ("d", "__nom__d", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions.push(nominal_role("contains", "a", "d"));
+        let door = C::Exists(
+            R::Name("contains".into()),
+            Box::new(C::Name("Door".into())),
+        );
+        let tin = TInput {
+            concepts: vec![
+                "ImageType".into(),
+                "ImageWithDoor".into(),
+                "Door".into(),
+                "__nom__a".into(),
+                "__nom__d".into(),
+            ],
+            roles: vec!["contains".into()],
+            queries: vec![0, 1, 2],
+            number: true,
+            source_axioms: vec![
+                source_subclass(C::Name("ImageType".into()), C::Nominal("a".into())),
+                source_subclass(C::Nominal("a".into()), C::Name("ImageType".into())),
+                source_subclass(
+                    C::Name("ImageWithDoor".into()),
+                    C::And([door.clone(), C::Name("ImageType".into())].into_iter().collect()),
+                ),
+                source_subclass(
+                    C::And([door, C::Name("ImageType".into())].into_iter().collect()),
+                    C::Name("ImageWithDoor".into()),
+                ),
+            ],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, true, false, true)
+            .expect("the minimized 9540 pair must be decided");
+        assert!(result.consistent);
+        assert!(result.unsatisfiable.is_empty());
+        assert!(
+            !result.subsumptions.contains(&(0, 1)),
+            "ImageType ⊑ ImageWithDoor must stay satisfiable: no Door container is asserted"
+        );
+    }
+
+    /// Minimized ore_ont_9540 `UJI_Wall ⊑ Possible_UJI_Wall` shape.
+    ///
+    /// `Upper` and `Lower` are defined over the SAME conjuncts, with `Upper`'s
+    /// conjunct set a strict subset of `Lower`'s, and one shared conjunct is a
+    /// disjunction — so the reverse absorbed implication for `Upper` is carried
+    /// only by the branch a single completion model commits to, which is exactly
+    /// why the model-based candidate set missed the pair on 9540. `Lower` also
+    /// carries a told superclass, like `UJI_Wall`, so its equivalence cannot be
+    /// hosted as one direct definition. `Chain` puts a told subclass underneath
+    /// `Lower` so transitivity is covered too.
+    fn definition_containment_input() -> TInput {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let choice = C::Or(
+            [C::Name("P".into()), C::Name("Q".into())]
+                .into_iter()
+                .collect(),
+        );
+        let shared = C::Exists(R::Name("r".into()), Box::new(C::Name("B".into())));
+        let extra = C::Exists(R::Name("s".into()), Box::new(C::Name("B".into())));
+        let upper = C::And(
+            [C::Name("A".into()), choice.clone(), shared.clone()]
+                .into_iter()
+                .collect(),
+        );
+        let lower = C::And(
+            [C::Name("A".into()), choice, shared, extra]
+                .into_iter()
+                .collect(),
+        );
+        TInput {
+            concepts: vec![
+                "A".into(),
+                "P".into(),
+                "Q".into(),
+                "B".into(),
+                "Upper".into(),
+                "Lower".into(),
+                "Chain".into(),
+            ],
+            roles: vec!["r".into(), "s".into()],
+            queries: vec![0, 1, 2, 3, 4, 5, 6],
+            source_axioms: vec![
+                source_equivalence(C::Name("Upper".into()), upper),
+                source_equivalence(C::Name("Lower".into()), lower),
+                source_subclass(C::Name("Lower".into()), C::Name("A".into())),
+                source_subclass(C::Name("Chain".into()), C::Name("Lower".into())),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn source_closure_derives_definition_containment_transitively_without_the_converse() {
+        let tin = definition_containment_input();
+        let closure = source_named_subsumer_closure(&tin);
+        let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
+
+        let mut derived: Vec<(usize, usize)> = closure.iter().copied().collect();
+        derived.sort_unstable();
+        let mut expected = vec![
+            (upper, a),
+            (lower, a),
+            (lower, upper),
+            (chain, a),
+            (chain, lower),
+            (chain, upper),
+        ];
+        expected.sort_unstable();
+        assert_eq!(
+            derived, expected,
+            "the exact source closure must derive the definition-containment \
+             subsumer, its transitive closure, and nothing else"
+        );
+        // Conjunct containment holds in ONE direction only: `Lower`'s conjuncts
+        // cover `Upper`'s definition, never the other way round.
+        assert!(!closure.contains(&(upper, lower)));
+        assert!(!closure.contains(&(upper, chain)));
+        assert!(!closure.contains(&(a, upper)));
+    }
+
+    #[test]
+    fn definition_containment_subsumers_reach_the_classification_output() {
+        let tin = definition_containment_input();
+        let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
+        let entailed = [
+            (lower, upper),
+            (chain, upper),
+            (chain, lower),
+            (upper, a),
+            (lower, a),
+            (chain, a),
+        ];
+        let unentailed = [(upper, lower), (upper, chain), (a, upper), (a, lower)];
+
+        // The 9540 route: source mode with trigger absorption, saturation folded
+        // off (native nominals do that there, an empty ABox does it here), so
+        // the KPSet seeds come from the exact closure.
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("the minimized definition-containment TBox must be decided");
+        assert!(result.consistent);
+        assert!(result.unsatisfiable.is_empty());
+        for pair in entailed {
+            assert!(
+                result.subsumptions.contains(&pair),
+                "entailed pair {pair:?} missing from the classification output"
+            );
+        }
+        for pair in unentailed {
+            assert!(
+                !result.subsumptions.contains(&pair),
+                "unentailed pair {pair:?} must not be emitted"
+            );
+        }
+
+        // Same requirement on the saturation route. A defer there is a different
+        // failure mode (budget/fragment) and is covered by its own tests; what
+        // this asserts is that the route cannot LOSE the closure pairs.
+        let saturated = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true);
+        if let Some(saturated) = saturated {
+            for pair in entailed {
+                assert!(
+                    saturated.subsumptions.contains(&pair),
+                    "the saturation route dropped entailed pair {pair:?}"
+                );
+            }
+            for pair in unentailed {
+                assert!(
+                    !saturated.subsumptions.contains(&pair),
+                    "the saturation route emitted unentailed pair {pair:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_abox_replay_blocks_then_invalidates_on_new_concept() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let meta = native_nominal_meta(vec![("a", "__nom__a", vec![C::Name("A".into())])], vec![]);
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let seed = bridged.nominal_seeds[0].clone();
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            let entry = cache
+                .as_mut()
+                .expect("representative cache written")
+                .entries
+                .get_mut(&seed.individual_tag)
+                .expect("representative entry");
+            entry.completely_saturated = true;
+            entry.completely_handled = true;
+            entry.completely_propagated = true;
+            entry.insufficient = false;
+            entry.representative_same_individual_merging = Some(false);
+            entry.deterministic_same_individual_label_identity = Some(11);
+            entry.deterministic_merged_same_considered_label_identity = Some(11);
+            assert!(entry.concepts.contains(&(bridged.named[0], false)));
+            assert!(entry.reusable_for_full_completion());
+        }
+        let blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+
+        reset_probe_env(&mut algo, &mut ctx, &bridged, true);
+        let node = ctx.get_up_to_date_individual_by_id(-seed.individual_tag);
+        assert!(node.is_some());
+        assert!(
+            algo.native_nominal_backend_replay[&seed.individual_tag].expansion_blocking_candidate,
+            "the complete typed association was not eligible for replay"
+        );
+        assert_eq!(
+            ctx.process_context()
+                .node(node)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "representative replay did not install the exact blocking flags"
+        );
+        assert!(
+            try_establish_native_backend_expansion_blocking(
+                &mut algo, &mut ctx, &bridged, &seed, node,
+            ),
+            "the bridge-level blocking helper rejected a synchronized association"
+        );
+        let base = ctx.get_or_create_base_dependency_track_point();
+        let mut modified = node;
+        algo.add_concept_to_individual(
+            bridged.named[1],
+            false,
+            &mut modified,
+            base,
+            false,
+            true,
+            &mut ctx,
+        );
+        assert!(
+            algo.process_native_nominal_backend_retest(node, &mut ctx),
+            "native backend retest failed"
+        );
+        let successor_blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED;
+        assert_eq!(
+            ctx.process_context()
+                .node(node)
+                .processing_restriction_flags()
+                & successor_blocking_flags,
+            0,
+            "a changed concept label retained stale successor blocking"
+        );
+        assert!(ctx
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+            ));
+        assert!(!ctx
+            .process_context()
+            .node(node)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ),
+            "a concept-only retest invalidated the reusable neighbour labels"
+        );
+        let label = ctx.process_context().node(node).reapply_con_label_set;
+        assert!(label.is_some());
+        assert!(ctx
+            .process_context()
+            .label_set(label)
+            .contains_concept_in_context(
+                ctx.process_context(),
+                ctx.ontology_arenas(),
+                bridged.named[1],
+                false,
+            ));
+    }
+
+    #[test]
+    fn successful_completion_writeback_is_transactional_and_enables_next_replay() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![C::Name("A".into())])],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let seed = bridged.nominal_seeds[0].clone();
+        {
+            let mut cache = bridged.native_representative_cache.borrow_mut();
+            let entry = cache
+                .as_mut()
+                .expect("saturation association")
+                .entries
+                .get_mut(&seed.individual_tag)
+                .expect("nominal association");
+            // Force representative recomputation while retaining a well-typed
+            // source association for deterministic label replay.
+            entry.completely_handled = false;
+            entry.insufficient = true;
+            entry.synchronization_metadata_complete = false;
+        }
+        let selected = HashSet::from([seed.individual_tag]);
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let frozen_used_association_update_ids =
+            freeze_native_representative_association_versions(&algo);
+        assert!(initialize_native_nominal_state_for_tags(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            Some(&selected),
+        ));
+        algo.probe_budget = Some(std::time::Duration::from_secs(10));
+        configure_production_search(&mut algo);
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
+
+        let node = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-seed.individual_tag);
+        assert!(node.is_some());
+        let old_update_id = bridged
+            .native_representative_cache
+            .borrow()
+            .as_ref()
+            .expect("representative cache")
+            .entries[&seed.individual_tag]
+            .association_update_id;
+
+        // A task can finish without a usable consumed-association version.
+        // Declining that shape must not partially replace the old incomplete
+        // entry.
+        let mut missing_used_association_update_ids = frozen_used_association_update_ids.clone();
+        assert!(missing_used_association_update_ids
+            .remove(&seed.individual_tag)
+            .is_some());
+        assert!(write_completed_native_representative_associations(
+            &ctx,
+            &bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &missing_used_association_update_ids,
+            },
+        )
+        .is_none());
+        {
+            let cache = bridged.native_representative_cache.borrow();
+            let old_entry =
+                &cache.as_ref().expect("representative cache").entries[&seed.individual_tag];
+            assert_eq!(old_entry.association_update_id, old_update_id);
+            assert_eq!(
+                old_entry.association_origin,
+                Some(NativeAboxAssociationOrigin::IndividualSaturation)
+            );
+            assert!(!old_entry.synchronization_metadata_complete);
+        }
+
+        // A frozen task version that no longer equals the cache version must
+        // also abort before the first association mutation.
+        let mut stale_used_association_update_ids = frozen_used_association_update_ids.clone();
+        *stale_used_association_update_ids
+            .get_mut(&seed.individual_tag)
+            .expect("frozen task association version") += 1;
+        assert!(write_completed_native_representative_associations(
+            &ctx,
+            &bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &stale_used_association_update_ids,
+            },
+        )
+        .is_none());
+        assert_eq!(
+            bridged
+                .native_representative_cache
+                .borrow()
+                .as_ref()
+                .expect("representative cache")
+                .entries[&seed.individual_tag]
+                .association_update_id,
+            old_update_id,
+            "a stale frozen task version changed the cache"
+        );
+
+        let updated = write_completed_native_representative_associations(
+            &ctx,
+            &bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &frozen_used_association_update_ids,
+            },
+        )
+        .expect("complete task association writeback");
+        assert_eq!(updated, selected);
+        {
+            let cache = bridged.native_representative_cache.borrow();
+            let written =
+                &cache.as_ref().expect("representative cache").entries[&seed.individual_tag];
+            assert!(written.reusable_for_full_completion());
+            assert_eq!(
+                written.association_origin,
+                Some(NativeAboxAssociationOrigin::CompletionWriteback)
+            );
+            assert!(written.association_update_id > old_update_id);
+            assert_eq!(written.used_association_update_id, Some(old_update_id));
+            assert_eq!(written.scheduled_individual, Some(true));
+        }
+
+        let blocking_flags = IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+            | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED;
+        reset_probe_env(&mut algo, &mut ctx, &bridged, true);
+        let replayed = ctx.get_up_to_date_individual_by_id(-seed.individual_tag);
+        assert_eq!(
+            ctx.process_context()
+                .node(replayed)
+                .processing_restriction_flags()
+                & blocking_flags,
+            blocking_flags,
+            "valid writeback was not expansion-blocked on the next task"
+        );
+        assert!(
+            ctx.process_context()
+                .node(replayed)
+                .is_nominal_individual_representative_backend_data_loaded(),
+            "valid writeback was not replayed into the next task"
+        );
+    }
+
+    #[test]
+    fn selective_writeback_preserves_untouched_neighbour_labels_and_versions() {
+        let tin = cached_native_role_input();
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let source = bridged.nominal_seeds[0].clone();
+        force_native_association_incomplete(&bridged, source.individual_tag, true);
+        let (old_source_neighbours, untouched_versions) = {
+            let cache = bridged.native_representative_cache.borrow();
+            let cache = cache.as_ref().expect("representative cache");
+            (
+                cache.entries[&source.individual_tag]
+                    .neighbour_role_combinations
+                    .clone(),
+                bridged.nominal_seeds[1..]
+                    .iter()
+                    .map(|seed| {
+                        (
+                            seed.individual_tag,
+                            cache.entries[&seed.individual_tag].association_update_id,
+                        )
+                    })
+                    .collect::<HashMap<_, _>>(),
+            )
+        };
+
+        let selected = HashSet::from([source.individual_tag]);
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let frozen = freeze_native_representative_association_versions(&algo);
+        assert!(initialize_native_nominal_state_for_tags(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            Some(&selected),
+        ));
+        algo.probe_budget = Some(std::time::Duration::from_secs(10));
+        configure_production_search(&mut algo);
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
+        for untouched in &bridged.nominal_seeds[1..] {
+            assert!(ctx
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-untouched.individual_tag)
+                .is_none());
+        }
+
+        let updated = write_completed_native_representative_associations(
+            &ctx,
+            &bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &frozen,
+            },
+        )
+        .expect("selective association writeback");
+        assert_eq!(updated, selected);
+        let cache = bridged.native_representative_cache.borrow();
+        let cache = cache.as_ref().expect("representative cache");
+        assert_eq!(
+            cache.entries[&source.individual_tag].neighbour_role_combinations,
+            old_source_neighbours,
+            "an unexpanded neighbour label was reconstructed instead of reused"
+        );
+        for (tag, version) in untouched_versions {
+            assert_eq!(
+                cache.entries[&tag].association_update_id, version,
+                "an untouched neighbour association version advanced"
+            );
+        }
+    }
+
+    #[test]
+    fn sparse_writeback_ignores_unselected_tag_zero_alias_but_rejects_selected_mismatch() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let untouched = bridged.nominal_seeds[0].clone();
+        let selected_seed = bridged.nominal_seeds[1].clone();
+        assert_eq!(untouched.individual_tag, 0);
+        force_native_association_incomplete(&bridged, selected_seed.individual_tag, true);
+        let selected = HashSet::from([selected_seed.individual_tag]);
+
+        reset_probe_env_impl(&mut algo, &mut ctx, &bridged, true, false);
+        let frozen = freeze_native_representative_association_versions(&algo);
+        assert!(initialize_native_nominal_state_for_tags(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            Some(&selected),
+        ));
+        algo.probe_budget = Some(std::time::Duration::from_secs(10));
+        configure_production_search(&mut algo);
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
+
+        // `-0 == 0`: emulate the generated-node value that shares the
+        // double-dynamic vector key with an unmaterialized tag-zero nominal.
+        let alias = ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        ctx.process_context_mut()
+            .node_mut(alias)
+            .set_individual_node_id(0);
+        ctx.processing_data_box_mut()
+            .individual_process_node_vector_mut()
+            .set_local_data(0, alias);
+        assert_eq!(
+            ctx.processing_data_box()
+                .individual_process_node_vector()
+                .get_data(0),
+            alias
+        );
+        assert!(
+            native_exact_nominal_process_node(&ctx, untouched.individual_tag).is_none(),
+            "a generated node was mistaken for the untouched tag-zero nominal"
+        );
+
+        let untouched_before = bridged
+            .native_representative_cache
+            .borrow()
+            .as_ref()
+            .expect("representative cache")
+            .entries[&untouched.individual_tag]
+            .clone();
+        let updated = write_completed_native_representative_associations(
+            &ctx,
+            &bridged,
+            NativeSuccessfulRepresentativeTask {
+                selected_individuals: &selected,
+                used_association_update_ids: &frozen,
+            },
+        )
+        .expect("tag-zero alias must not poison selective writeback");
+        assert_eq!(updated, selected);
+        assert_eq!(
+            bridged
+                .native_representative_cache
+                .borrow()
+                .as_ref()
+                .expect("representative cache")
+                .entries[&untouched.individual_tag],
+            untouched_before,
+            "an untouched association or its update id changed"
+        );
+
+        // Conversely, a selected association must still have an exact
+        // materialized ontology individual. Reject a mismatched slot before
+        // any cache entry or monotone update counter changes.
+        ctx.processing_data_box_mut()
+            .individual_process_node_vector_mut()
+            .set_local_data(-selected_seed.individual_tag, alias);
+        let cache_before_failure = bridged
+            .native_representative_cache
+            .borrow()
+            .as_ref()
+            .expect("representative cache")
+            .clone();
+        assert!(
+            write_completed_native_representative_associations(
+                &ctx,
+                &bridged,
+                NativeSuccessfulRepresentativeTask {
+                    selected_individuals: &selected,
+                    used_association_update_ids: &frozen,
+                },
+            )
+            .is_none(),
+            "a selected association with the wrong individual identity was accepted"
+        );
+        assert_eq!(
+            bridged
+                .native_representative_cache
+                .borrow()
+                .as_ref()
+                .expect("representative cache"),
+            &cache_before_failure,
+            "failed selected writeback partially mutated the cache"
+        );
+    }
+
+    #[test]
+    fn native_abox_positive_role_assertion_is_exact_existential() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        use crate::json_io::NominalRoleAssertionMeta;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![C::Forall(
+                        R::Name("r".into()),
+                        Box::new(C::Not(Box::new(C::Nominal("b".into())))),
+                    )],
+                ),
+                ("b", "__nom__b", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions.push(NominalRoleAssertionMeta {
+            role: "r".into(),
+            source: "a".into(),
+            target: "b".into(),
+        });
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (_algo, _ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(
+            !empty_role_nominal_model_certificate(&tin, &bridged),
+            "a positive role assertion must prevent the empty-role shortcut"
+        );
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("positive native role assertion must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b) must clash with a : forall R.not {{b}}"
+        );
+
+        let mut direct_tin = tin.clone();
+        // `card_defs` is only an encoding side channel. Production routing
+        // uses `TInput::number`, which remains true even when
+        // KM_NO_HT_CARD keeps the clausal encoding and emits no card_defs.
+        direct_tin.number = true;
+        direct_tin.card_defs.push(CardDefJson {
+            marker: 0,
+            min: false,
+            n: 2,
+            role: 0,
+            filler: 0,
+        });
+        let (mut direct_algo, mut direct_ctx, direct) =
+            fresh_bridge_env_with_trigger_absorption(&direct_tin, true);
+        assert!(direct.direct_native_role_assertions);
+        let source_seed = &direct.nominal_seeds[0];
+        assert!(
+            !source_seed.assertions.iter().any(|&(concept, negated)| {
+                !negated
+                    && direct_ctx
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code()
+                        == op::CCSOME
+                    && direct_ctx.ontology_arenas().concept(concept).get_role() == direct.roles[0]
+            }),
+            "the generated positive role assertion leaked back into completion concepts"
+        );
+        let source = direct_ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-source_seed.individual_tag);
+        let target = direct_ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-direct.nominal_seeds[1].individual_tag);
+        assert!(
+            direct_algo
+                .ht_role_successor_links(source, direct.roles[0], &direct_ctx)
+                .iter()
+                .any(|&(_, successor)| successor == target),
+            "the typed role assertion was not installed as a named edge"
+        );
+        configure_production_search(&mut direct_algo);
+        assert_eq!(
+            native_nominal_consistency(&mut direct_algo, &mut direct_ctx, &direct),
+            Some(false),
+            "the direct named edge must preserve the assertion clash"
+        );
+    }
+
+    #[test]
+    fn native_direct_role_assertion_defers_on_multihop_target_merge() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::orchestrate::cb_to_ht::CardDefJson;
+
+        let tin = TInput {
+            concepts: vec![
+                "A".into(),
+                "__nom__a".into(),
+                "__nom__b".into(),
+                "__nom__c".into(),
+                "__nom__d".into(),
+            ],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            number: true,
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 0,
+            }],
+            nominal_abox: native_nominal_meta(
+                vec![
+                    ("a", "__nom__a", vec![]),
+                    ("b", "__nom__b", vec![]),
+                    ("c", "__nom__c", vec![]),
+                    ("d", "__nom__d", vec![]),
+                ],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        let source = ctx.get_up_to_date_individual_by_id(-bridged.nominal_seeds[0].individual_tag);
+        let target = ctx.get_up_to_date_individual_by_id(-bridged.nominal_seeds[1].individual_tag);
+        let middle = ctx.get_up_to_date_individual_by_id(-bridged.nominal_seeds[2].individual_tag);
+        let representative =
+            ctx.get_up_to_date_individual_by_id(-bridged.nominal_seeds[3].individual_tag);
+        let middle_id = ctx.process_context().node(middle).individual_node_id();
+        let representative_id = ctx
+            .process_context()
+            .node(representative)
+            .individual_node_id();
+        let merge_track = ctx.get_or_create_base_dependency_track_point();
+        ctx.process_context_mut()
+            .node_mut(target)
+            .set_merged_into_individual_node_id(middle_id)
+            .set_merged_dependency_track_point(merge_track);
+        ctx.process_context_mut()
+            .node_mut(middle)
+            .set_merged_into_individual_node_id(representative_id)
+            .set_merged_dependency_track_point(merge_track);
+
+        assert!(
+            !algo.install_native_role_assertion_edge(
+                source,
+                bridged.roles[0],
+                bridged.nominal_seeds[1].individual_tag,
+                merge_track,
+                &mut ctx,
+            ),
+            "a multi-hop target merge was accepted without Konclude's combined merging hash"
+        );
+        assert!(
+            algo.ht_role_successor_links(source, bridged.roles[0], &ctx)
+                .is_empty(),
+            "the failed-closed multi-hop assertion installed an under-justified edge"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_handshake_does_not_propagate_late_peer_status() {
+        use crate::frontend::syntax::Concept as C;
+
+        let mut meta = native_nominal_meta(
+            vec![
+                ("a", "__nom__a", vec![]),
+                (
+                    "b",
+                    "__nom__b",
+                    vec![C::Or(
+                        [C::Name("B".into()), C::Name("C".into())]
+                            .into_iter()
+                            .collect(),
+                    )],
+                ),
+            ],
+            vec![],
+        );
+        // a initializes first. The reverse face on a must wait for b; otherwise
+        // b's later disjunction-insufficiency propagates through an initializing
+        // backward link and contaminates a's representative association.
+        meta.role_assertions.push(nominal_role("r", "b", "a"));
+        let tin = TInput {
+            concepts: vec![
+                "A".into(),
+                "B".into(),
+                "C".into(),
+                "__nom__a".into(),
+                "__nom__b".into(),
+            ],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let cache = bridged.native_representative_cache.borrow();
+        let cache = cache.as_ref().expect("representative cache");
+        let a = &cache.entries[&bridged.nominal_seeds[0].individual_tag];
+        let b = &cache.entries[&bridged.nominal_seeds[1].individual_tag];
+        assert!(
+            !a.insufficient,
+            "the earlier role target inherited its later peer's status"
+        );
+        assert!(
+            b.insufficient,
+            "the disjunctive peer must remain insufficient"
+        );
+    }
+
+    #[test]
+    fn native_abox_negative_role_assertion_is_exact_universal() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        use crate::json_io::NominalRoleAssertionMeta;
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![C::Exists(
+                        R::Name("r".into()),
+                        Box::new(C::Nominal("b".into())),
+                    )],
+                ),
+                ("b", "__nom__b", vec![]),
+            ],
+            vec![],
+        );
+        meta.negative_role_assertions
+            .push(NominalRoleAssertionMeta {
+                role: "r".into(),
+                source: "a".into(),
+                target: "b".into(),
+            });
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("negative native role assertion must be decided");
+        assert!(
+            !result.consistent,
+            "!R(a,b) must clash with a : exists R.{{b}}"
+        );
+    }
+
+    #[test]
+    fn native_abox_same_positive_and_negative_role_fact_clashes() {
+        let mut meta = native_nominal_meta(
+            vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+            vec![],
+        );
+        let fact = nominal_role("r", "a", "b");
+        meta.role_assertions.push(fact.clone());
+        meta.negative_role_assertions.push(fact);
+        let tin = basic_native_role_input(&["r"], meta);
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("opposite assertions of the same role fact must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b) and !R(a,b) must make the ontology inconsistent"
+        );
+    }
+
+    #[test]
+    fn native_abox_negative_role_fact_alone_has_empty_role_model() {
+        let mut meta = native_nominal_meta(
+            vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+            vec![],
+        );
+        meta.negative_role_assertions
+            .push(nominal_role("r", "a", "b"));
+        let tin = basic_native_role_input(&["r"], meta);
+        let (_algo, _ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(
+            empty_role_nominal_model_certificate(&tin, &bridged),
+            "a negative role fact is true in the empty-role model"
+        );
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("negative-only native role fact must be decided");
+        assert!(result.consistent);
+    }
+
+    #[test]
+    fn native_abox_positive_self_edge_is_not_dropped() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut meta = native_nominal_meta(
+            vec![(
+                "a",
+                "__nom__a",
+                vec![C::Forall(
+                    R::Name("r".into()),
+                    Box::new(C::Not(Box::new(C::Nominal("a".into())))),
+                )],
+            )],
+            vec![],
+        );
+        meta.role_assertions.push(nominal_role("r", "a", "a"));
+        let tin = basic_native_role_input(&["r"], meta);
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("native role self-edge must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,a) must clash with a : forall R.not {{a}}"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_assertion_respects_inverse_roles() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+        use crate::json_io::NominalRoleAssertionMeta;
+
+        let mut meta = native_nominal_meta(
+            vec![
+                ("a", "__nom__a", vec![]),
+                (
+                    "b",
+                    "__nom__b",
+                    vec![C::Forall(
+                        R::Inverse("r".into()),
+                        Box::new(C::Not(Box::new(C::Nominal("a".into())))),
+                    )],
+                ),
+            ],
+            vec![],
+        );
+        meta.role_assertions.push(NominalRoleAssertionMeta {
+            role: "r".into(),
+            source: "a".into(),
+            target: "b".into(),
+        });
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            inverse: true,
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("inverse consequence of native role assertion must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b) must clash with b : forall inverse(R).not {{a}}"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_assertion_respects_role_supers() {
+        use crate::frontend::syntax::Concept as C;
+        use crate::json_io::NominalRoleAssertionMeta;
+
+        let mut meta = native_nominal_meta(
+            vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
+            vec![],
+        );
+        meta.role_assertions.push(NominalRoleAssertionMeta {
+            role: "r".into(),
+            source: "a".into(),
+            target: "b".into(),
+        });
+        meta.negative_role_assertions
+            .push(NominalRoleAssertionMeta {
+                role: "s".into(),
+                source: "a".into(),
+                target: "b".into(),
+            });
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into(), "__nom__b".into()],
+            roles: vec!["r".into(), "s".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            clauses: vec![HtClause {
+                body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                head: vec![HAtom::Role { r: 1, s: 0, t: 1 }],
+            }],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("role-super consequence of native assertion must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b), R subPropertyOf S, and !S(a,b) must clash"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_assertion_respects_domain_and_range() {
+        use crate::frontend::syntax::Concept as C;
+
+        let make = |domain: bool| {
+            let entries = if domain {
+                vec![
+                    ("a", "__nom__a", vec![C::Not(Box::new(C::Name("D".into())))]),
+                    ("b", "__nom__b", vec![]),
+                ]
+            } else {
+                vec![
+                    ("a", "__nom__a", vec![]),
+                    ("b", "__nom__b", vec![C::Not(Box::new(C::Name("E".into())))]),
+                ]
+            };
+            let mut meta = native_nominal_meta(entries, vec![]);
+            meta.role_assertions.push(nominal_role("r", "a", "b"));
+            TInput {
+                concepts: vec![
+                    "A".into(),
+                    "D".into(),
+                    "E".into(),
+                    "__nom__a".into(),
+                    "__nom__b".into(),
+                ],
+                roles: vec!["r".into()],
+                queries: vec![0],
+                source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+                role_domains: domain.then_some((0, 1)).into_iter().collect(),
+                role_ranges: (!domain).then_some((0, 2)).into_iter().collect(),
+                nominal_abox: meta,
+                ..Default::default()
+            }
+        };
+
+        let domain = make(true);
+        let result = bridged_classify_opts_with_trigger_absorption(&domain, false, false, true)
+            .expect("role-domain consequence on native edge must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b) and Domain(R,D) must clash with not D(a)"
+        );
+
+        let range = make(false);
+        let result = bridged_classify_opts_with_trigger_absorption(&range, false, false, true)
+            .expect("role-range consequence on native edge must be decided");
+        assert!(
+            !result.consistent,
+            "R(a,b) and Range(R,E) must clash with not E(b)"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_assertion_respects_role_chains() {
+        let mut meta = native_nominal_meta(
+            vec![
+                ("a", "__nom__a", vec![]),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions
+            .extend([nominal_role("p", "a", "c"), nominal_role("q", "c", "b")]);
+        meta.negative_role_assertions
+            .push(nominal_role("r", "a", "b"));
+        let mut tin = basic_native_role_input(&["p", "q", "r"], meta);
+        tin.chains.push((0, 1, 2));
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("role-chain consequence of native edges must be decided");
+        assert!(
+            !result.consistent,
+            "p(a,c), q(c,b), p o q subPropertyOf r, and !r(a,b) must clash"
+        );
+    }
+
+    #[test]
+    fn native_abox_role_assertion_respects_transitivity() {
+        let mut meta = native_nominal_meta(
+            vec![
+                ("a", "__nom__a", vec![]),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions
+            .extend([nominal_role("r", "a", "b"), nominal_role("r", "b", "c")]);
+        meta.negative_role_assertions
+            .push(nominal_role("r", "a", "c"));
+        let mut tin = basic_native_role_input(&["r"], meta);
+        tin.transitive.push(0);
+        let result = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
+            .expect("transitive consequence of native edges must be decided");
+        assert!(
+            !result.consistent,
+            "r(a,b), r(b,c), Transitive(r), and !r(a,c) must clash"
+        );
+    }
+
+    #[test]
+    fn native_abox_nondeterministic_atmost_merge_completes_without_direct_blocking() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut meta = native_nominal_meta(
+            vec![
+                (
+                    "a",
+                    "__nom__a",
+                    vec![C::AtMost(1, R::Name("r".into()), Box::new(C::Top))],
+                ),
+                ("b", "__nom__b", vec![]),
+                ("c", "__nom__c", vec![]),
+            ],
+            vec![],
+        );
+        meta.role_assertions
+            .extend([nominal_role("r", "a", "b"), nominal_role("r", "a", "c")]);
+        let tin = basic_native_role_input(&["r"], meta);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        assert_eq!(
+            precompute_native_representative_batches(&mut algo, &mut ctx, &bridged, true, 10,),
+            Some(true)
+        );
+        let cache = bridged.native_representative_cache.borrow();
+        let cache = cache.as_ref().expect("representative cache");
+        let source_seed = &bridged.nominal_seeds[0];
+        let source_entry = cache
+            .entries
+            .get(&source_seed.individual_tag)
+            .expect("source representative association");
+        assert!(native_cache_entry_covers_seed(source_entry, source_seed));
+        for target in &bridged.nominal_seeds[1..] {
+            assert!(
+                source_entry
+                    .neighbour_role_combinations
+                    .iter()
+                    .any(|combination| combination.neighbour_tag == target.individual_tag),
+                "the merged neighbour alias disappeared from the role association"
+            );
+        }
+        let alias_index = source_entry
+            .neighbour_role_combinations
+            .iter()
+            .position(|combination| combination.merged_alias_deterministic == Some(false))
+            .expect("one at-most merged alias must be nondeterministic");
+        assert!(
+            source_entry
+                .neighbour_role_combinations
+                .iter()
+                .any(
+                    |combination| combination.merged_alias_deterministic == Some(true)
+                        && combination
+                            .role_values
+                            .as_ref()
+                            .is_some_and(|values| values.iter().any(|value| value.deterministic))
+                ),
+            "the unmerged asserted neighbour lost its deterministic role value"
+        );
+        assert!(source_entry.neighbour_role_combinations[alias_index]
+            .role_values
+            .as_ref()
+            .is_some_and(|values| values.iter().all(|value| !value.deterministic)));
+        let mut falsely_deterministic_alias = source_entry.clone();
+        for value in falsely_deterministic_alias.neighbour_role_combinations[alias_index]
+            .role_values
+            .as_mut()
+            .expect("typed role values")
+        {
+            value.deterministic = true;
+        }
+        assert!(
+            !native_cache_entry_covers_seed(&falsely_deterministic_alias, source_seed),
+            "a nondeterministically merged neighbour alias was accepted as deterministic"
+        );
+
+        let nondeterministically_merged = cache
+            .entries
+            .values()
+            .find(|entry| {
+                entry
+                    .nondeterministic_same_individuals
+                    .as_ref()
+                    .is_some_and(|individuals| individuals.len() > 1)
+            })
+            .expect("at-most model must serialize its nondeterministic merge");
+        let mut expected_same: Vec<Cint64> = bridged.nominal_seeds[1..]
+            .iter()
+            .map(|seed| seed.individual_tag)
+            .collect();
+        expected_same.sort_unstable();
+        assert_eq!(
+            nondeterministically_merged
+                .nondeterministic_same_individuals
+                .as_ref(),
+            Some(&expected_same)
+        );
+        assert!(
+            nondeterministically_merged
+                .deterministic_same_individuals
+                .as_ref()
+                .is_some_and(Vec::is_empty),
+            "the at-most branch choice was promoted to deterministic equality"
+        );
+        assert!(nondeterministically_merged.complete_for_precomputation());
+        assert!(
+            nondeterministically_merged.reusable_for_full_completion(),
+            "Konclude's production full-block gate accepts branch-local same-individual contents"
+        );
+    }
+
+    #[test]
+    fn native_abox_inferred_live_successor_is_serialized_separately_from_assertion_journal() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let meta = native_nominal_meta(
+            vec![(
+                "a",
+                "__nom__a",
+                vec![C::Exists(R::Name("r".into()), Box::new(C::Top))],
+            )],
+            vec![],
+        );
+        let tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into()],
+            roles: vec!["r".into()],
+            queries: vec![0],
+            source_axioms: vec![source_subclass(C::Name("A".into()), C::Top)],
+            nominal_abox: meta,
+            ..Default::default()
+        };
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
+        configure_production_search(&mut algo);
+        assert_eq!(
+            native_nominal_consistency(&mut algo, &mut ctx, &bridged),
+            Some(true)
+        );
+
+        let seed = &bridged.nominal_seeds[0];
+        assert!(
+            seed.role_assertions.is_empty(),
+            "the inferred edge was accidentally inserted into the assertion journal"
+        );
+        let original = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-seed.individual_tag);
+        let deterministic_node =
+            native_completion_merge_target(&ctx, original, true).expect("deterministic root");
+        let extraction_node =
+            native_completion_merge_target(&ctx, deterministic_node, false).expect("model root");
+        assert!(
+            ctx.process_context()
+                .node_successor_iterator(extraction_node)
+                .has_next(),
+            "the existential did not leave a live completion successor"
+        );
+        let (concept_values, _) =
+            native_completion_label_values(&ctx, extraction_node, deterministic_node)
+                .expect("completion label");
+        let metadata = native_completion_role_metadata(
+            &ctx,
+            extraction_node,
+            &concept_values,
+            &bridged,
+            seed,
+        )
+        .expect("live-successor role metadata");
+        assert!(
+            metadata
+                .instantiated_role_values
+                .iter()
+                .any(|value| value.role == bridged.roles[0]
+                    && !value.inversed
+                    && value.deterministic),
+            "the inferred-only live edge was not serialized"
+        );
+    }
+
+    #[test]
+    fn native_abox_atmost_respects_different_and_no_una() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let make = |different: bool, reverse: bool| {
+            let mut meta = native_nominal_meta(
+                vec![
+                    (
+                        "a",
+                        "__nom__a",
+                        vec![C::AtMost(1, R::Name("r".into()), Box::new(C::Top))],
+                    ),
+                    ("b", "__nom__b", vec![]),
+                    ("c", "__nom__c", vec![]),
+                ],
+                if different { vec![("b", "c")] } else { vec![] },
+            );
+            meta.role_assertions
+                .extend([nominal_role("r", "a", "b"), nominal_role("r", "a", "c")]);
+            if reverse {
+                meta.role_assertions.reverse();
+            }
+            basic_native_role_input(&["r"], meta)
+        };
+
+        let distinct = make(true, false);
+        let result = bridged_classify_opts_with_trigger_absorption(&distinct, false, false, true)
+            .expect("at-most plus explicit inequality must be decided");
+        assert!(
+            !result.consistent,
+            "at-most 1 R, R(a,b), R(a,c), and b different c must clash"
+        );
+
+        let mergeable = make(false, false);
+        let result = bridged_classify_opts_with_trigger_absorption(&mergeable, false, false, true)
+            .expect("at-most without UNA must be decided");
+        assert!(
+            result.consistent,
+            "without DifferentIndividuals, b and c may merge"
+        );
+
+        let reversed = make(false, true);
+        let reversed_result =
+            bridged_classify_opts_with_trigger_absorption(&reversed, false, false, true)
+                .expect("reordered native assertions must be decided");
+        assert_eq!(reversed_result.consistent, result.consistent);
+        assert_eq!(reversed_result.unsatisfiable, result.unsatisfiable);
+        assert_eq!(reversed_result.subsumptions, result.subsumptions);
+
+        let (mut reused_algo, mut reused_ctx, reused_bridged) =
+            fresh_bridge_env_with_trigger_absorption(&mergeable, true);
+        configure_production_search(&mut reused_algo);
+        let cold = native_nominal_consistency(&mut reused_algo, &mut reused_ctx, &reused_bridged);
+        reset_probe_env(&mut reused_algo, &mut reused_ctx, &reused_bridged, false);
+        configure_production_search(&mut reused_algo);
+        let reset = native_nominal_consistency(&mut reused_algo, &mut reused_ctx, &reused_bridged);
+
+        let (mut fresh_algo, mut fresh_ctx, fresh_bridged) =
+            fresh_bridge_env_with_trigger_absorption(&mergeable, true);
+        configure_production_search(&mut fresh_algo);
+        let fresh = native_nominal_consistency(&mut fresh_algo, &mut fresh_ctx, &fresh_bridged);
+        assert_eq!(cold, Some(true));
+        assert_eq!(reset, cold, "reset/reused nominal state changed verdict");
+        assert_eq!(fresh, cold, "fresh and reused environments disagree");
     }
 
     #[test]
@@ -9671,6 +17732,67 @@ mod tests {
         );
         assert_eq!(implication_concept.get_operand_list()[1].target, left);
         assert!(implication_concept.get_operand_list()[1].negated);
+    }
+
+    #[test]
+    fn nominal_absorption_trigger_is_asserted_on_named_individual() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let individual = b
+            .ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(0));
+        let nominal = b.atom(TAG_BASE + 1);
+        b.ctx
+            .ontology_arenas_mut()
+            .concept_mut(nominal)
+            .set_operator_code(op::CCNOMINAL)
+            .set_nominal_individual(individual);
+
+        let mut caches = TriggerCaches::default();
+        let trigger =
+            full_absorption_trigger(&mut b, (nominal, false), &HashMap::new(), &mut caches)
+                .expect("positive nominal trigger");
+        assert_eq!(trigger.complexity, 1);
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(trigger.concept)
+                .get_operator_code(),
+            op::CCIMPLTRIG
+        );
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .individual(individual)
+                .get_assertion_concept_linker(),
+            &[ConceptAssertion {
+                target: trigger.concept,
+                negated: false,
+            }]
+        );
+
+        let reused =
+            full_absorption_trigger(&mut b, (nominal, false), &HashMap::new(), &mut caches)
+                .expect("cached nominal trigger");
+        assert_eq!(reused.concept, trigger.concept);
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .individual(individual)
+                .get_assertion_concept_linker()
+                .len(),
+            1,
+            "the cached trigger must not duplicate the ABox assertion"
+        );
+        assert!(
+            full_absorption_trigger(&mut b, (nominal, true), &HashMap::new(), &mut caches)
+                .is_none(),
+            "Konclude's absorber supports only the positive nominal polarity"
+        );
     }
 
     #[test]
@@ -10325,6 +18447,38 @@ mod tests {
             !out.known_subsumers[0].contains(&3),
             "the non-RBox guarded clause must not saturate A ⊆ X"
         );
+        assert!(
+            out.label_certified(0),
+            "a sufficient pure-TBox node keeps its label reusable as certified edges"
+        );
+    }
+
+    /// Regression (ore_ont_9540, 18 spurious family-collapsing subsumptions):
+    /// a saturation label may become an UNCONDITIONAL taxonomy edge or a
+    /// probe-free trusted KPSet subsumer only when the extracting node is
+    /// certified. Branch-dependent / native-ABox influenced nodes surface as
+    /// insufficient or EQ-problematic — verdict unknown — and must fail the
+    /// certification, while UNSAT-certain and sufficient SAT-certain labels
+    /// remain consumable.
+    #[test]
+    fn saturation_label_certification_gates_unconditional_edges() {
+        let outcome = SaturationOutcome {
+            sat_verdict: vec![None, Some(false), Some(false), Some(true)],
+            certain_subsumers: vec![None, Some(vec![2]), None, None],
+            known_subsumers: vec![vec![1, 2], vec![2], vec![1], vec![0]],
+        };
+        // Insufficient/unprocessed (native-ABox influenced) node: unknown
+        // verdict — its label carries individual/branch facts, NOT certified.
+        assert!(!outcome.label_certified(0));
+        // Sufficient node with the exact extracted set: certified.
+        assert!(outcome.label_certified(1));
+        // SAT-certain without an exact set is not a complete-label
+        // certificate — fail closed.
+        assert!(!outcome.label_certified(2));
+        // UNSAT-certain subject: every pair is vacuously entailed.
+        assert!(outcome.label_certified(3));
+        // Out-of-range subjects fail closed.
+        assert!(!outcome.label_certified(4));
     }
 
     #[test]
@@ -10474,6 +18628,7 @@ mod tests {
             &[None, None],
             &[None, None],
             &[Vec::new(), Vec::new()],
+            &[false, false],
             &[0],
             ctx.ontology_arenas().concepts(),
         );
@@ -10579,6 +18734,7 @@ mod tests {
             &vec![None; n],
             &vec![None; n],
             &vec![Vec::new(); n],
+            &vec![false; n],
             &(0..n).collect::<Vec<_>>(),
             ctx.ontology_arenas().concepts(),
         );
@@ -10619,6 +18775,7 @@ mod tests {
             &vec![None; n],
             &vec![None; n],
             &vec![Vec::new(); n],
+            &vec![false; n],
             &(0..n).collect::<Vec<_>>(),
             ctx.ontology_arenas().concepts(),
         );
@@ -10670,6 +18827,7 @@ mod tests {
             &vec![None; n],
             &vec![None; n],
             &vec![Vec::new(); n],
+            &vec![false; n],
             &(0..n).collect::<Vec<_>>(),
             ctx.ontology_arenas().concepts(),
         );
@@ -12342,6 +20500,7 @@ mod tests {
                     t: 0,
                 }],
             }],
+            number: true,
             card_defs: vec![CardDefJson {
                 marker: 0,
                 min: false,
@@ -12389,6 +20548,7 @@ mod tests {
                     head: vec![ex(0, 2)],
                 },
             ],
+            number: true,
             card_defs: vec![CardDefJson {
                 marker: 0,
                 min: false,
@@ -12443,6 +20603,7 @@ mod tests {
                     head: vec![c(false, 1, 0)],
                 },
             ],
+            number: true,
             card_defs: vec![CardDefJson {
                 marker: 0,
                 min: false,
@@ -12502,6 +20663,7 @@ mod tests {
                     head: vec![],
                 },
             ],
+            number: true,
             card_defs: vec![CardDefJson {
                 marker: 0,
                 min: false,
@@ -12534,6 +20696,7 @@ mod tests {
             concepts: vec!["A".into(), "B".into()],
             roles: vec!["r".into()],
             clauses: vec![],
+            number: true,
             card_defs: vec![
                 CardDefJson {
                     marker: 0,

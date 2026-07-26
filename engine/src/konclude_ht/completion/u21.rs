@@ -1352,9 +1352,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+        if still_saturation_cached {
+            // KM-BRIDGE read-off: the retest RE-CONFIRMED the node. Reaching
+            // here at all needs an installed saturation-node expansion cache
+            // handler (the gate above); the confirmation itself is normally
+            // `is_node_satisfiable_cached`'s cache-INDEPENDENT first branch —
+            // "nothing was added to the label since the caching was last
+            // validated, and the saturation node is still neither insufficient
+            // nor clashed" (`CSaturationNodeExpansionCacheHandler.cpp:101-108`).
+            self.saturation_cache_reconfirm_count += 1;
+        }
         if !still_saturation_cached {
             if prev_sat_cached {
-                // STATINC(SATURATIONCACHELOSECOUNT, …);  // W3-DEFER[api]
+                self.saturation_cache_lose_count += 1; // STATINC(SATURATIONCACHELOSECOUNT)
                 calc_alg_context
                     .process_context_mut()
                     .node_mut(individual_node)

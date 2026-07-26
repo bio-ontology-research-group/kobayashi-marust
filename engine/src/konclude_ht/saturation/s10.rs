@@ -281,8 +281,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             //   (dead local in C++ — created for side-effect only)
             let _con_set = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolved_node)
-                .get_reapply_concept_saturation_label_set(true);
+                .sat_node_reapply_concept_saturation_label_set(resolved_node, true);
 
             // add all concepts to individual
             for &(concept, negated) in &con_ass_linker {
@@ -471,8 +470,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .set_separated(separated);
             let _con_set = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolved_node)
-                .get_reapply_concept_saturation_label_set(true);
+                .sat_node_reapply_concept_saturation_label_set(resolved_node, true);
 
             // add all concepts to individual
             for &(concept, negated) in &con_ass_linker {
@@ -590,8 +588,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .set_separated(separated);
             let _con_set = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolved_node)
-                .get_reapply_concept_saturation_label_set(true);
+                .sat_node_reapply_concept_saturation_label_set(resolved_node, true);
 
             // add all concepts to individual
             for &(concept, negated) in &con_ass_linker {
@@ -1269,8 +1266,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             // CReapplyConceptSaturationLabelSet* resolveConSet = resolveNode->getReapplyConceptSaturationLabelSet(true);
             let resolve_con_set = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolve_node)
-                .get_reapply_concept_saturation_label_set(true);
+                .sat_node_reapply_concept_saturation_label_set(resolve_node, true);
             self.add_concept_filtered_to_individual_label_set(
                 top_concept,
                 false,

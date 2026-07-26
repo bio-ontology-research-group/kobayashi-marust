@@ -26,6 +26,12 @@ pub struct IndividualNodeBackendCacheSynchronisationData {
     pub non_concept_set_backend_neighbour_label_related_processing: bool,
     pub critical_cardinality_expansion_blocking: bool,
     pub critical_cardinality_initially_checked: bool,
+    /// `hasNeighbourInfluenceTestingCriticalCardinalityReset()` — records whether
+    /// step (5) of
+    /// `expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache`
+    /// already reset its two concept-descriptor cursors for the CURRENT critical
+    /// cardinality, so a still-critical cardinality resets them only once.
+    pub neighbour_influence_testing_critical_cardinality_reset: bool,
     pub critical_neighbour_expansion_blocking: bool,
     pub critical_indirect_connection_individual_expansion_blocking: bool,
     pub all_neighbour_expansion: bool,
@@ -50,6 +56,12 @@ pub struct IndividualNodeBackendCacheSynchronisationData {
     pub last_indirectly_connected_nominal_individuals_handled_merged_node_linker: Vec<NodeId>,
     pub last_synched_concept_descriptor: ConDescId,
     pub last_synchronization_tested_concept_descriptor: ConDescId,
+    /// `getLastNeighbourInfluenceTestedConceptDescriptor()` — the cursor that
+    /// bounds step (5) of
+    /// `expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache`
+    /// (cpp 24350) so a repeated retest only re-scans concept descriptors added
+    /// since the previous influenced-neighbour expansion.
+    pub last_neighbour_influence_tested_concept_descriptor: ConDescId,
     pub last_critical_neighbour_expansion_tested_concept_descriptor: ConDescId,
     pub last_indirect_connected_individual_expansion_tested_concept_descriptor: ConDescId,
     pub last_critical_cardinality_link_edge: EdgeId,
@@ -76,6 +88,7 @@ impl Default for IndividualNodeBackendCacheSynchronisationData {
             non_concept_set_backend_neighbour_label_related_processing: false,
             critical_cardinality_expansion_blocking: false,
             critical_cardinality_initially_checked: false,
+            neighbour_influence_testing_critical_cardinality_reset: false,
             critical_neighbour_expansion_blocking: false,
             critical_indirect_connection_individual_expansion_blocking: false,
             all_neighbour_expansion: false,
@@ -100,6 +113,7 @@ impl Default for IndividualNodeBackendCacheSynchronisationData {
             last_indirectly_connected_nominal_individuals_handled_merged_node_linker: Vec::new(),
             last_synched_concept_descriptor: Id::NONE,
             last_synchronization_tested_concept_descriptor: Id::NONE,
+            last_neighbour_influence_tested_concept_descriptor: Id::NONE,
             last_critical_neighbour_expansion_tested_concept_descriptor: Id::NONE,
             last_indirect_connected_individual_expansion_tested_concept_descriptor: Id::NONE,
             last_critical_cardinality_link_edge: Id::NONE,
@@ -224,6 +238,20 @@ impl IndividualNodeBackendCacheSynchronisationData {
 
     pub fn set_critical_cardinality_initially_checked(&mut self, active: bool) -> &mut Self {
         self.critical_cardinality_initially_checked = active;
+        self
+    }
+
+    pub fn has_neighbour_influence_testing_critical_cardinality_reset(&self) -> bool {
+        self.neighbour_influence_testing_critical_cardinality_reset
+    }
+
+    /// `hasNeighbourInfluenceTestingCriticalCardinalityReset(bool)` — the C++
+    /// overloads the getter name for the setter; the port suffixes it.
+    pub fn set_neighbour_influence_testing_critical_cardinality_reset(
+        &mut self,
+        active: bool,
+    ) -> &mut Self {
+        self.neighbour_influence_testing_critical_cardinality_reset = active;
         self
     }
 
@@ -479,6 +507,38 @@ impl IndividualNodeBackendCacheSynchronisationData {
         con_des: ConDescId,
     ) -> &mut Self {
         self.last_synchronization_tested_concept_descriptor = con_des;
+        self
+    }
+
+    pub fn get_last_neighbour_influence_tested_concept_descriptor(&self) -> ConDescId {
+        self.last_neighbour_influence_tested_concept_descriptor
+    }
+
+    pub fn set_last_neighbour_influence_tested_concept_descriptor(
+        &mut self,
+        con_des: ConDescId,
+    ) -> &mut Self {
+        self.last_neighbour_influence_tested_concept_descriptor = con_des;
+        self
+    }
+
+    /// `(*getNeighbourExpansionDataHash(false))[id].isNeighbourPossiblyInfluenced()`.
+    /// The per-neighbour expansion data of the C++ hash carries exactly this one
+    /// bit in the ported (native-ABox) route.
+    pub fn is_neighbour_possibly_influenced(&self, neighbour_indi_id: Cint64) -> bool {
+        self.neighbour_expansion_data_hash
+            .get(&neighbour_indi_id)
+            .is_some_and(|value| *value != 0)
+    }
+
+    /// `(*getNeighbourExpansionDataHash(true))[id].setNeighbourPossiblyInfluenced(true)`.
+    pub fn set_neighbour_possibly_influenced(
+        &mut self,
+        neighbour_indi_id: Cint64,
+        influenced: bool,
+    ) -> &mut Self {
+        self.neighbour_expansion_data_hash
+            .insert(neighbour_indi_id, Cint64::from(influenced));
         self
     }
 
