@@ -1,7 +1,7 @@
 # Fresh ORE all-route and all-reasoner panel
 
 > **Rerun boundary (2026-07-23):** the executable contract and 30-chunk driver
-> are updated for KM revision `efbcbbc57193bd5a50b0ee8f07c25114414fc01d`.
+> are updated for KM revision `cff26d2cdd39ef7176454ce03e099aee6f012425`.
 > They contain 37 public KM routes and 68 total procedures, or 40,256 expected
 > measurements. The committed result tables described below still belong to
 > the completed 66-procedure run. They remain authoritative until the rerun is
