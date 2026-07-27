@@ -15,7 +15,10 @@ ontologies completed without a failed chunk. Aggregate job `49486148` produced
 soundness, completeness, runtime, and memory results. `full-results.jsonl.gz`
 contains the row-level evidence, and `receipt.json` binds both files by SHA-256.
 
-Headline sound-and-complete counts are 580 for the best KM route, 587 for
-Konclude, 557 for HermiT, and 531 for ELK. The exact 9540 full-completion route
-is deliberately narrow and records 362 sound-and-complete classifications when
-replayed over the complete corpus.
+The largest single current-main KM arm has 580 sound-and-complete results, but
+that is not KM portfolio coverage. The union across the initial KM arms is 587.
+That initial contract incorrectly omitted two source-bound historical routes
+which had previously raised verified portfolio coverage to 589. The
+`historical_routes` supplement reruns those identities across the full corpus;
+the final portfolio headline must include its audited results. Konclude has
+587, HermiT 557, and ELK 531 sound-and-complete results in the initial panel.
