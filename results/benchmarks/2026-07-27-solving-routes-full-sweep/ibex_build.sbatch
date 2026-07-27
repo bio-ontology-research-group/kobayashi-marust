@@ -14,7 +14,7 @@ set -euo pipefail
 root=/ibex/scratch/hohndor/km/full-panel-20260727-solving-routes
 script_dir=$(/usr/bin/readlink -f "${SLURM_SUBMIT_DIR:?}")
 [[ ! -e $root/build ]] || { echo "refusing pre-existing build root" >&2; exit 2; }
-tmp_root=${SLURM_TMPDIR:?}/km-routes47-build-$SLURM_JOB_ID
+tmp_root=${SLURM_TMPDIR:-$root/tmp}/km-routes47-build-$SLURM_JOB_ID
 export PATH=/home/hohndor/.cargo/bin:/usr/bin:/bin
 export CARGO_TARGET_DIR=$tmp_root/target
 export CARGO_TERM_COLOR=never
