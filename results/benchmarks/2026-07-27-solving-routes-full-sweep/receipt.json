@@ -1,0 +1,9 @@
+{
+  "array_tasks": 50,
+  "ontologies": 592,
+  "procedures": 47,
+  "raw_sha256": "f802eb37a903397d8ab5fbe956a19b79af61fd2096dee6437034e02676ea7f1b",
+  "rows": 27824,
+  "schema_version": 1,
+  "table_sha256": "0711a1be8dbe5995e7293014295dbd4c14b2606af911a09f4e32e95fc7074e8e"
+}
