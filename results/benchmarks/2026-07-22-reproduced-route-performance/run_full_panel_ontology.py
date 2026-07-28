@@ -203,12 +203,23 @@ def main() -> int:
             binary = args.konclude
             runtime_sha = konclude_runtime_sha
             runner_extra.extend(
-                ["--workers", "16", "--library-path", str(args.konclude_library)]
+                [
+                    "--workers",
+                    str(procedure.get("workers", 16)),
+                    "--library-path",
+                    str(args.konclude_library),
+                ]
             )
         elif kind == "elk":
             binary = args.elk
             runtime_sha = java_sha
-            runner_extra.extend(["--java", str(args.java), "--java-heap=-Xmx16g"])
+            runner_extra.extend(
+                [
+                    "--java",
+                    str(args.java),
+                    f"--java-heap={procedure.get('java_heap', '-Xmx16g')}",
+                ]
+            )
         elif kind == "hermit":
             binary = args.hermit_oracle
             runtime_sha = hermit_runtime_sha
@@ -216,7 +227,7 @@ def main() -> int:
                 [
                     "--java",
                     str(args.java),
-                    "--java-heap=-Xmx16g",
+                    f"--java-heap={procedure.get('java_heap', '-Xmx16g')}",
                     "--classpath",
                     args.hermit_classpath,
                     "--hermit-main-class",
