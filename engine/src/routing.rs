@@ -467,7 +467,12 @@ pub fn select_for(requested: Route, profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
-        SemanticFragment::Nominal => Route::Nominals,
+        // A generic nominal/ABox input gets the certified bridge as an
+        // acceleration attempt, but an honest bridge defer retains the exact
+        // nominal-aware CB fallback. This composition is complete on the same
+        // domain as `Nominals`; unlike forcing ordinary CB/EL after empirical
+        // agreement, it never drops ABox semantics.
+        SemanticFragment::Nominal => Route::CertifiedNominals,
         // A scoped inverse+cardinality ontology whose number-role component is
         // source-certified disjoint from inverse/non-simple roles must retain a
         // production route carrying the card arm. The worker independently
@@ -1202,7 +1207,7 @@ mod tests {
 
         profile.source.abox_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.inverse_cardinality_role_separable = true;
         assert_eq!(
@@ -1235,15 +1240,16 @@ mod tests {
         assert_eq!(select(&profile), Route::CertifiedNominals);
 
         // Every source-side premise is fail-closed.  A second inequality axiom
-        // or the absence of the exact datatype fragment keeps the old nominal
-        // dispatch rather than broadening the bridge based on an ORE id.
+        // or the absence of the exact datatype fragment falls back to the
+        // generic certified bridge + exact nominal-CB composition rather than
+        // broadening the specialized native-ABox certificate.
         profile
             .source
             .axiom_types
             .insert("DifferentIndividuals".into(), 2);
         profile.source.abox_axioms = 87;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
         profile
             .source
             .axiom_types
@@ -1251,7 +1257,7 @@ mod tests {
         profile.source.abox_axioms = 86;
         profile.expressivity.datatype = false;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.source.rule_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Rules);
