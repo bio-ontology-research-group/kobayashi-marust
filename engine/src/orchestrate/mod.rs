@@ -482,7 +482,10 @@ pub(crate) fn classify_with_evidence(
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
     let routed_cfg = if matches!(
         selected_route,
-        crate::routing::Route::Auto | crate::routing::Route::Manual
+        crate::routing::Route::Auto
+            | crate::routing::Route::AutoSpeed
+            | crate::routing::Route::AutoMemory
+            | crate::routing::Route::Manual
     ) {
         None
     } else {

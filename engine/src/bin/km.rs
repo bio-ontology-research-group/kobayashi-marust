@@ -216,7 +216,9 @@ fn explain_cmd(rest: &[String]) {
 }
 
 fn routes_cmd() {
-    println!("auto\tlearned source-profile decision tree (classify default)");
+    println!("auto\tbalanced source-profile policy (classify default)");
+    println!("auto-speed\truntime-first source-profile policy");
+    println!("auto-memory\tpeak-memory-first source-profile policy");
     println!("manual\tpreserve individually supplied KM_* options");
     for route in kobayashi_marust::routing::Route::NAMED {
         println!("{}", route.as_str());

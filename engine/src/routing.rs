@@ -15,6 +15,8 @@ mod routing_tree_generated;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Route {
     Auto,
+    AutoSpeed,
+    AutoMemory,
     Manual,
     Default,
     Default8,
@@ -98,6 +100,8 @@ impl Route {
     pub fn as_str(self) -> &'static str {
         match self {
             Route::Auto => "auto",
+            Route::AutoSpeed => "auto-speed",
+            Route::AutoMemory => "auto-memory",
             Route::Manual => "manual",
             Route::Default => "default",
             Route::Default8 => "default8",
@@ -142,7 +146,9 @@ impl Route {
     /// matching the benchmark runner's ordered `--env` handling.
     pub fn settings(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Route::Auto | Route::Manual | Route::Default => &[],
+            Route::Auto | Route::AutoSpeed | Route::AutoMemory | Route::Manual | Route::Default => {
+                &[]
+            }
             Route::Default8 => &[("KM_THREADS", "8")],
             Route::Default1 => &[("KM_THREADS", "1")],
             Route::ProductionAll => PRODUCTION_ALL,
@@ -183,7 +189,10 @@ impl Route {
     /// Normalize the process environment to the matrix procedure. This is
     /// called once, before normalisation or any reasoner thread starts.
     pub fn apply_environment(self) {
-        if matches!(self, Route::Auto | Route::Manual) {
+        if matches!(
+            self,
+            Route::Auto | Route::AutoSpeed | Route::AutoMemory | Route::Manual
+        ) {
             return;
         }
         for key in ROUTE_KEYS {
@@ -241,7 +250,7 @@ impl Route {
     /// unless every candidate ontology passes through the automatic production
     /// policy.
     pub fn is_explanation_safe(self) -> bool {
-        self == Route::Auto
+        matches!(self, Route::Auto | Route::AutoSpeed | Route::AutoMemory)
     }
 }
 
@@ -257,6 +266,8 @@ impl FromStr for Route {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let route = match value {
             "auto" => Route::Auto,
+            "auto-speed" | "auto_speed" => Route::AutoSpeed,
+            "auto-memory" | "auto_memory" => Route::AutoMemory,
             "manual" | "legacy" => Route::Manual,
             "default" => Route::Default,
             "default8" => Route::Default8,
@@ -322,6 +333,49 @@ pub enum SemanticFragment {
     PositiveAbox,
     Nominal,
     SriqCore,
+}
+
+impl SemanticFragment {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedRules => "unsupported-rules",
+            Self::Rules => "rules",
+            Self::NativeBridgeAbox => "native-bridge-abox",
+            Self::PositiveAbox => "positive-abox",
+            Self::Nominal => "nominal",
+            Self::SriqCore => "sriq-core",
+        }
+    }
+}
+
+/// Lexicographic cost objective used after semantic eligibility and predicted
+/// completion probability have been applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolicyObjective {
+    Balanced,
+    Speed,
+    Memory,
+}
+
+impl PolicyObjective {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Balanced => "balanced",
+            Self::Speed => "speed",
+            Self::Memory => "memory",
+        }
+    }
+}
+
+impl Route {
+    pub fn policy_objective(self) -> Option<PolicyObjective> {
+        match self {
+            Route::Auto => Some(PolicyObjective::Balanced),
+            Route::AutoSpeed => Some(PolicyObjective::Speed),
+            Route::AutoMemory => Some(PolicyObjective::Memory),
+            _ => None,
+        }
+    }
 }
 
 /// Source-only certificate for the combined nominal/datatype bridge fragment.
@@ -394,7 +448,10 @@ fn sriq_policy_eligible(route: Route) -> bool {
     )
 }
 
-pub fn select(profile: &OntologyProfile) -> Route {
+pub fn select_for(requested: Route, profile: &OntologyProfile) -> Route {
+    let objective = requested
+        .policy_objective()
+        .unwrap_or(PolicyObjective::Balanced);
     match semantic_fragment(profile) {
         // These branches are semantic dispatch, not learned performance
         // choices. Ordinary proxy CB is incomplete for singleton/ABox meaning,
@@ -423,7 +480,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
             Route::ProductionAll
         }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
-            let learned = routing_tree_generated::select(profile);
+            let learned = routing_tree_generated::select(profile, objective);
             if sriq_policy_eligible(learned) {
                 learned
             } else {
@@ -432,6 +489,57 @@ pub fn select(profile: &OntologyProfile) -> Route {
                 Route::CbPlain16
             }
         }
+    }
+}
+
+/// Backwards-compatible balanced automatic policy.
+pub fn select(profile: &OntologyProfile) -> Route {
+    select_for(Route::Auto, profile)
+}
+
+#[derive(serde::Serialize)]
+struct RouteDiagnostic<'a> {
+    feature_schema_version: u32,
+    training_receipt: &'a str,
+    semantic_gate: &'a str,
+    policy: &'a str,
+    selected_route: &'a str,
+    ranked_candidates: [&'a str; 1],
+    predicted_completion_probability: Option<f64>,
+    predicted_runtime_s: Option<f64>,
+    predicted_peak_memory_gib: Option<f64>,
+    resource_budget_exclusions: [&'a str; 0],
+    confidence: &'a str,
+    fallback_reason: &'a str,
+}
+
+/// Emit a stable machine-readable policy receipt when requested. The
+/// conservative bootstrap deliberately reports unknown costs rather than
+/// inventing predictions from censored or incomparable historical runs.
+pub fn emit_diagnostic(requested: Route, selected: Route, profile: &OntologyProfile) {
+    if std::env::var_os("KM_ROUTE_DIAGNOSTICS").is_none() {
+        return;
+    }
+    let objective = requested
+        .policy_objective()
+        .unwrap_or(PolicyObjective::Balanced);
+    let selected_name = selected.as_str();
+    let report = RouteDiagnostic {
+        feature_schema_version: routing_tree_generated::FEATURE_SCHEMA_VERSION,
+        training_receipt: routing_tree_generated::TRAINING_RECEIPT,
+        semantic_gate: semantic_fragment(profile).as_str(),
+        policy: objective.as_str(),
+        selected_route: selected_name,
+        ranked_candidates: [selected_name],
+        predicted_completion_probability: None,
+        predicted_runtime_s: None,
+        predicted_peak_memory_gib: None,
+        resource_budget_exclusions: [],
+        confidence: "fallback",
+        fallback_reason: "audited multi-objective matrix not yet emitted; selected the semantic-gated complete-procedure fallback",
+    };
+    if let Ok(json) = serde_json::to_string(&report) {
+        eprintln!("KM_ROUTE_DIAGNOSTIC {json}");
     }
 }
 
@@ -1445,5 +1553,25 @@ mod tests {
     fn generated_tree_has_no_ontology_identity() {
         let source = include_str!("routing/routing_tree_generated.rs");
         assert!(!source.contains("ore_ont_"));
+    }
+
+    #[test]
+    fn automatic_policy_names_are_public_and_safe() {
+        assert_eq!("auto-speed".parse(), Ok(Route::AutoSpeed));
+        assert_eq!("auto-memory".parse(), Ok(Route::AutoMemory));
+        assert!(Route::AutoSpeed.is_explanation_safe());
+        assert!(Route::AutoMemory.is_explanation_safe());
+        let profile = OntologyProfile::default();
+        assert_eq!(select_for(Route::AutoSpeed, &profile), Route::ProductionAll);
+        assert_eq!(
+            select_for(Route::AutoMemory, &profile),
+            Route::ProductionAll
+        );
+    }
+
+    #[test]
+    fn generated_policy_has_versioned_receipt() {
+        assert!(routing_tree_generated::FEATURE_SCHEMA_VERSION > 0);
+        assert!(!routing_tree_generated::TRAINING_RECEIPT.is_empty());
     }
 }

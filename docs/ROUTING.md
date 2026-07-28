@@ -6,7 +6,23 @@ normalisation. The default command uses the generated decision tree:
 ```bash
 km classify ontology.ofn
 km classify --route auto ontology.ofn
+km classify --route auto-speed ontology.ofn
+km classify --route auto-memory ontology.ofn
 ```
+
+`auto` is the balanced time-memory objective. `auto-speed` is runtime-first and
+`auto-memory` is peak-memory-first. Semantic eligibility and completion
+probability precede all three cost objectives. Set `KM_ROUTE_DIAGNOSTICS=1` for
+the versioned feature schema, training receipt, semantic gate, selected policy,
+ranked candidates, predicted costs, budget exclusions, confidence, and
+fallback reason.
+
+The shipped policy is currently a conservative bootstrap: all three objectives
+select `production_all`, the only audited complete-procedure bundle carrying
+both the restored 3215 completion bridge and the guarded 7499 cardinality
+fallback. Its diagnostics report unknown predicted costs and fallback
+confidence. Distinct objective trees must not be emitted until the
+multi-objective route matrix and its correctness-domain audit are complete.
 
 Every measured procedure remains directly selectable:
 

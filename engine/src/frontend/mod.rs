@@ -462,12 +462,15 @@ fn ofn_to_clauses_requested(
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let mut profile = profile_builder.finish(text.len() as u64);
-    let automatic = requested == crate::routing::Route::Auto;
+    let automatic = requested.policy_objective().is_some();
     let mut route = if automatic {
-        crate::routing::select(&profile)
+        crate::routing::select_for(requested, &profile)
     } else {
         requested
     };
+    if automatic {
+        crate::routing::emit_diagnostic(requested, route, &profile);
+    }
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
