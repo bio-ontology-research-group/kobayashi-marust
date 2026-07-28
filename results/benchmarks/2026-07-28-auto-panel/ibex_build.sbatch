@@ -58,7 +58,8 @@ receipt = {
 )
 PY
 
-"$build_root/bin/km-main" routes | /usr/bin/grep -Fx auto
-"$build_root/bin/km-main" routes | /usr/bin/grep -Fx auto-speed
-"$build_root/bin/km-main" routes | /usr/bin/grep -Fx auto-memory
+"$build_root/bin/km-main" routes >"$build_root/routes.txt"
+/usr/bin/awk -F '\t' '$1 == "auto" { found=1 } END { exit !found }' "$build_root/routes.txt"
+/usr/bin/awk -F '\t' '$1 == "auto-speed" { found=1 } END { exit !found }' "$build_root/routes.txt"
+/usr/bin/awk -F '\t' '$1 == "auto-memory" { found=1 } END { exit !found }' "$build_root/routes.txt"
 echo "BUILD_COMPLETE revision=$revision binary=$build_root/bin/km-main"
