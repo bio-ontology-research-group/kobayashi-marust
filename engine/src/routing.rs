@@ -467,12 +467,20 @@ pub fn select_for(requested: Route, profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
-        // A generic nominal/ABox input gets the certified bridge as an
-        // acceleration attempt, but an honest bridge defer retains the exact
-        // nominal-aware CB fallback. This composition is complete on the same
-        // domain as `Nominals`; unlike forcing ordinary CB/EL after empirical
-        // agreement, it never drops ABox semantics.
-        SemanticFragment::Nominal => Route::CertifiedNominals,
+        // Promote the certified bridge portfolio only when the source contains
+        // both explicit singleton meaning and class assertions for it to
+        // exploit.  The bridge still rechecks lossless coverage and retains the
+        // exact nominal-aware CB fallback.  Proxy-only class-assertion ABoxes
+        // and inequality-only nominal inputs stay on the established nominal
+        // mechanism: the bridge preflight is safe there, but its setup can
+        // consume the caller's entire time budget before that fallback runs.
+        SemanticFragment::Nominal
+            if profile.expressivity.nominal_individual
+                && profile.source.class_assertions > 0 =>
+        {
+            Route::CertifiedNominals
+        }
+        SemanticFragment::Nominal => Route::Nominals,
         // A scoped inverse+cardinality ontology whose number-role component is
         // source-certified disjoint from inverse/non-simple roles must retain a
         // production route carrying the card arm. The worker independently
@@ -1207,6 +1215,10 @@ mod tests {
 
         profile.source.abox_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::Nominals);
+
+        profile.expressivity.nominal_individual = true;
+        profile.source.class_assertions = 1;
         assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.inverse_cardinality_role_separable = true;
@@ -1216,6 +1228,8 @@ mod tests {
             "the scoped source certificate must select the exact card+nominal portfolio"
         );
         profile.inverse_cardinality_role_separable = false;
+        profile.expressivity.nominal_individual = false;
+        profile.source.class_assertions = 0;
 
         profile.schema_version = 2;
         profile.positive_abox_tbox_separable = true;
@@ -1241,15 +1255,15 @@ mod tests {
 
         // Every source-side premise is fail-closed.  A second inequality axiom
         // or the absence of the exact datatype fragment falls back to the
-        // generic certified bridge + exact nominal-CB composition rather than
-        // broadening the specialized native-ABox certificate.
+        // structurally gated certified bridge + exact nominal-CB composition
+        // rather than broadening the specialized native-ABox certificate.
         profile
             .source
             .axiom_types
             .insert("DifferentIndividuals".into(), 2);
         profile.source.abox_axioms = 87;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
-        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert_eq!(select(&profile), Route::Nominals);
         profile
             .source
             .axiom_types
@@ -1257,6 +1271,9 @@ mod tests {
         profile.source.abox_axioms = 86;
         profile.expressivity.datatype = false;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::Nominals);
+
+        profile.expressivity.nominal_individual = true;
         assert_eq!(select(&profile), Route::CertifiedNominals);
 
         profile.source.rule_axioms = 1;
