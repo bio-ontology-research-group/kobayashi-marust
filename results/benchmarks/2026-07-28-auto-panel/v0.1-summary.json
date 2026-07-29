@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "release": "v0.1",
+  "source_commit": "d2aa211",
+  "benchmark_commit": "7dba203",
+  "ibex_build_job": "49562896",
+  "ibex_targeted_job": "49562897",
+  "ibex_full_sweep_job": "49567140",
+  "binary_sha256": "074e936258a956d1919b5da6ed4ead9cc088e5f15d0cd24479646e6928aac2d9",
+  "source_archive_sha256": "d51d303632a2630b73f93457831dc42415527c6f2890efcbac66c62a5f00f679",
+  "limits": {
+    "wall_seconds": 300,
+    "peak_memory_mib": 30720,
+    "cpus": 16
+  },
+  "corpus": {
+    "ontologies": 592,
+    "gold": "Konclude ORE 2015 signatures"
+  },
+  "targeted_validation": {
+    "ontologies": 14,
+    "policies": 3,
+    "exact_matches": 42,
+    "rows": 42
+  },
+  "policies": {
+    "auto": {
+      "accepted": 575,
+      "exact_matches": 570,
+      "consistency_mismatch": 2,
+      "full_iri_only": 2,
+      "known_gold_defect": 1,
+      "timeout": 9,
+      "error": 6,
+      "memout": 1,
+      "unsupported": 1
+    },
+    "auto-speed": {
+      "accepted": 575,
+      "exact_matches": 570,
+      "consistency_mismatch": 2,
+      "full_iri_only": 2,
+      "known_gold_defect": 1,
+      "timeout": 9,
+      "error": 6,
+      "memout": 1,
+      "unsupported": 1
+    },
+    "auto-memory": {
+      "accepted": 575,
+      "exact_matches": 570,
+      "consistency_mismatch": 2,
+      "full_iri_only": 2,
+      "known_gold_defect": 1,
+      "timeout": 9,
+      "error": 6,
+      "memout": 1,
+      "unsupported": 1
+    }
+  },
+  "comparison_to_job_49530271": {
+    "accepted_before": 570,
+    "accepted_after": 575,
+    "lost_accepted_outputs": 0,
+    "new_exact_matches": [
+      "ore_ont_15672.owl",
+      "ore_ont_1579.owl",
+      "ore_ont_15846.owl",
+      "ore_ont_5107.owl",
+      "ore_ont_9654.owl"
+    ]
+  },
+  "known_gold_defect": {
+    "ontology": "ore_ont_13503.owl",
+    "description": "Konclude gold omits the logically required unsatisfiable named DAML Nothing class; HermiT independently agrees with KM."
+  },
+  "row_evidence": "/ibex/scratch/hohndor/km/auto-v01-d2aa211/runs/49567140/results"
+}
