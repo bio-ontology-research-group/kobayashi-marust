@@ -39,6 +39,25 @@ Focused automatic-route job 49637883 completed:
 
 Both consistency verdicts and unsatisfiable-class sets match Konclude.
 
+The source-bound complete-corpus array `49638031` and its independent
+after-any audit `49638032` also completed. The audit found exactly 592 durable
+terminal rows and emitted:
+
+```text
+{"counts":{"error":13,"memout":3,"ok":548,"timeout":2,"unsupported":26},
+ "recovered":[["ore_ont_3524.owl","slurm_oom_kill_marker"],
+              ["ore_ont_15703.owl","slurm_oom_kill_marker"]]}
+SWEEP_AUDIT_COMPLETE terminal=592
+```
+
+Of those rows, 545 match the frozen Konclude signatures. Two report a
+consistency mismatch, one is unsound against that reference, and 44 do not
+publish an answer. This sweep proves the positive-EL-ABox revision at corpus
+scope, but it is not the current KM headline: subsequent typed-object,
+cardinality, datatype, and dateTime bridge revisions supersede its binary.
+The accepted evidence remains at
+`ibex:/ibex/scratch/hohndor/km/positive-el-abox-full-20260730`.
+
 The first focused submission, job 49637486, was rejected by the dynamic loader
 because the workstation executable required glibc 2.39. Job 49637596 therefore
 builds from the source-bound archive on an IBEX compute node. Job 49637597
