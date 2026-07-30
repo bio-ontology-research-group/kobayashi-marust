@@ -153,3 +153,18 @@ Superseded submission `49646960` and audit `49646961` were cancelled before
 execution. Slurm interpreted the ten-entry allow-list as a ten-node request
 until the script added `--nodes=1`; queue inspection caught this before any
 benchmark row was produced.
+
+The running sweep exposed an automatic-route regression on 1481. Its source
+profile is a 1,302-axiom typed object-ABox in SOI with no number restriction
+or datatype. `certified_nominals` reached the 20-GB process-tree cap after
+64.2317 seconds, although the frozen complete route matrix records many exact
+closures and `production_all` at 0.4 seconds. This is a route-selection
+failure, not a missing reasoning procedure.
+
+The follow-up feature rule sends typed object-ABoxes with neither ordinary nor
+qualified cardinality and no datatype to `production_all`. Cardinality-bearing
+SHOIN inputs and atomic datatype TBoxes retain `certified_nominals`; the giant
+15846 profile retains its separate large-nominal gate. Both portfolios keep an
+exact nominal-aware fallback, so this changes scheduling only. The complete
+serial release suite passes with 1,801 tests, eight ignored, and zero failures.
+Current-binary forced-route control job `49647712` is pending on IBEX.

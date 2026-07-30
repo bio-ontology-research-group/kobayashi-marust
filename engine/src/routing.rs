@@ -540,6 +540,19 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
             Route::CertifiedNominals
         }
+        // Typed object-ABoxes without number restrictions do not need the
+        // cardinality-oriented bridge portfolio.  The complete production
+        // portfolio retains the exact nominal fallback and gives its plain CB
+        // competitors a chance to close these SOI inputs before root-context
+        // materialization consumes the process-tree memory budget.
+        SemanticFragment::Nominal
+            if typed_object_abox_bridge_candidate(profile)
+                && !profile.expressivity.cardinality
+                && !profile.expressivity.qualified_cardinality
+                && !profile.expressivity.datatype =>
+        {
+            Route::ProductionAll
+        }
         // Try the exact typed object-ABox bridge before materializing every
         // nominal into CB root contexts.  The bridge is complete-answer-or-
         // defer and `certified_nominals` retains that exact CB fallback, so a
@@ -1500,11 +1513,13 @@ mod tests {
         let profile = source_profile(
             r#"Ontology(
                 Declaration(Class(<A>))
+                Declaration(Class(<B>))
                 Declaration(ObjectProperty(<r>))
                 ClassAssertion(<A> <a>)
                 ObjectPropertyAssertion(<r> <a> <b>)
                 DifferentIndividuals(<a> <b>)
                 EquivalentClasses(<N> ObjectOneOf(<a>))
+                SubClassOf(<B> ObjectMinCardinality(2 <r>))
                 InverseObjectProperties(<r> <s>)
                 TransitiveObjectProperty(<s>)
             )"#,
@@ -1545,6 +1560,27 @@ mod tests {
             );
             assert_eq!(select(&candidate), Route::Nominals);
         }
+    }
+
+    #[test]
+    fn typed_object_abox_without_cardinality_uses_production_portfolio() {
+        let profile = source_profile(
+            r#"Ontology(
+                Declaration(Class(<A>))
+                Declaration(ObjectProperty(<r>))
+                ClassAssertion(<A> <a>)
+                ObjectPropertyAssertion(<r> <a> <b>)
+                DifferentIndividuals(<a> <b>)
+                EquivalentClasses(<N> ObjectOneOf(<a>))
+                SubClassOf(<A> ObjectSomeValuesFrom(<r> <A>))
+                InverseObjectProperties(<r> <s>)
+                TransitiveObjectProperty(<s>)
+            )"#,
+        );
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(typed_object_abox_bridge_candidate(&profile));
+        assert!(!profile.expressivity.cardinality);
+        assert_eq!(select(&profile), Route::ProductionAll);
     }
 
     #[test]
