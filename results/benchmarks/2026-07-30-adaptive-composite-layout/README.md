@@ -222,3 +222,29 @@ bottom concepts while continuing to reject bottom roles, ABox, RBox, Boolean
 constructors other than bottom, restrictions, cardinalities, nominals, and
 datatypes. The other five gate cases passed, including exact 15846 in 174.9937
 seconds at 18,946.9 MiB.
+
+The v7 automatic gate selected ELC for 3524, but the ordinary benchmark runner
+was then cgroup-OOM-killed during local-name canonicalization. Diagnostics with
+24, 32, 64, and 128 GiB separated the stages:
+
+- The current frontend emits a 353,051,472-byte clause file at a 1.98-GiB
+  peak. Its SHA-256 is byte-identical to the historically exact frontend.
+- Current and historical ELC workers both complete that exact input in about
+  5.3 seconds at about 2.48 GiB and emit byte-identical output.
+- Direct `km classify` completes at about 2.48 GiB.
+- The collision-unsafe ORE local-name projection is the failing component.
+  Ontologies 3524 and 15703 already have a documented full-IRI-only benchmark
+  path because that projection collapses distinct nested IRIs and previously
+  required more than 235 GiB.
+
+Collision-safe full-IRI gate `49651828` classifies 3524 through ELC in 18.4848
+seconds at 2,589.8 MiB. Its 1,604,386-subsumption fingerprint is
+`090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a`,
+exactly matching the established Konclude full-IRI fingerprint. The
+fingerprinting step is postprocessing and is reported separately: 15.9954
+seconds at 902.61 MiB.
+
+ELC computes bottom propagation in its own complete fixpoint. The frontend
+therefore skips the general SROIQ bottom prepass on the two ELC-only routes.
+All other routes retain it unchanged. This avoids redundant giant-taxonomy
+work without changing the normalized ELC answer or the calculus.

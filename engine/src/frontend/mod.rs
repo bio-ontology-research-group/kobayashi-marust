@@ -489,11 +489,6 @@ fn ofn_to_clauses_requested(
         }
     }
     let ontology = ontology;
-    let bottom_prepass = if std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none() {
-        Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
-    } else {
-        None
-    };
     // Source features are now complete and their borrowed distinct-entity sets
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
@@ -507,6 +502,17 @@ fn ofn_to_clauses_requested(
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
+    // ELC computes bottom propagation as part of its own complete fixpoint.
+    // Building the general SROIQ bottom certificate is therefore redundant on
+    // an ELC-only route and can be quadratic on giant flat taxonomies with
+    // many paths to owl:Nothing. Other routes retain the prepass unchanged.
+    let bottom_prepass = if route_needs_bottom_prepass(route)
+        && std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none()
+    {
+        Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
+    } else {
+        None
+    };
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
     let nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
@@ -832,6 +838,13 @@ fn ofn_to_clauses_requested(
     })
 }
 
+fn route_needs_bottom_prepass(route: crate::routing::Route) -> bool {
+    !matches!(
+        route,
+        crate::routing::Route::Elc | crate::routing::Route::ElcCert
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn with_ofn_to_clauses_requested_route<T>(
     text: &str,
@@ -840,6 +853,20 @@ pub(crate) fn with_ofn_to_clauses_requested_route<T>(
 ) -> Result<T, parse::OutOfFragment> {
     let _guard = crate::routing::EnvironmentGuard::capture();
     ofn_to_clauses_requested(text, requested).map(consume)
+}
+
+#[cfg(test)]
+mod bottom_prepass_route_tests {
+    use super::route_needs_bottom_prepass;
+    use crate::routing::Route;
+
+    #[test]
+    fn el_completion_does_not_build_the_general_bottom_certificate() {
+        assert!(!route_needs_bottom_prepass(Route::Elc));
+        assert!(!route_needs_bottom_prepass(Route::ElcCert));
+        assert!(route_needs_bottom_prepass(Route::ProductionAll));
+        assert!(route_needs_bottom_prepass(Route::CbPlain16));
+    }
 }
 
 /// Convert the ontology's parsed `DLSafeRule` axioms into the JSON rule channel
