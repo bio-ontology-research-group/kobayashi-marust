@@ -1,13 +1,13 @@
 #!/bin/bash
 # Complete source-bound acceptance sweep with one exclusive allocation per
-# ontology. The Slurm allocation exceeds the reasoner cap so the Python
-# supervisor survives a watchdog race and can publish a terminal memout row.
+# ontology. A separate afterany audit salvages checkpoints and verifies an OOM
+# marker before recovering any terminal row lost to a whole-cgroup burst.
 #SBATCH --job-name=km-main592x
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=debug
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --mem=24G
 #SBATCH --exclusive
 #SBATCH --array=0-591%10
 #SBATCH --export=NONE
@@ -24,7 +24,22 @@ index=${SLURM_ARRAY_TASK_ID:?}
 [[ $(/usr/bin/wc -l < "$ontology_list") -eq 592 ]]
 ontology=$(/usr/bin/sed -n "$((index + 1))p" "$ontology_list")
 [[ $ontology =~ ^ore_ont_[0-9]+\.owl$ ]]
-[[ ! -e "$root/results/$ontology.json" ]]
+if [[ -e "$root/results/$ontology.json" ]]; then
+  /usr/bin/python3 - "$root/results/$ontology.json" "$ontology" "$index" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2]:
+    raise SystemExit(f"ontology mismatch in existing row: {row}")
+if row.get("slurm_array_task_id") != str(sys.argv[3]):
+    raise SystemExit(f"task mismatch in existing row: {row}")
+if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
+    raise SystemExit(f"invalid existing terminal status: {row}")
+PY
+  echo "ALREADY_COMPLETE index=$index ontology=$ontology"
+  exit 0
+fi
 
 work=${SLURM_TMPDIR:-/tmp}/km-main592x-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
@@ -33,7 +48,7 @@ work=${SLURM_TMPDIR:-/tmp}/km-main592x-${SLURM_JOB_ID}
   --kind km \
   --arm km_route_auto_integrated_main_exclusive \
   --ontology "$km_root/corpus/$ontology" \
-  --binary "$root/ibex_reasoner_step.sh" \
+  --binary "$root/km" \
   --workers 16 \
   --timeout 240 \
   --memcap-mb 20480 \
