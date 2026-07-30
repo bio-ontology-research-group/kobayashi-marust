@@ -1,0 +1,32 @@
+# ORE 6999 exact dateTime bridge restoration
+
+This change restores `ore_ont_6999.owl` through the automatic
+`certified_nominals` portfolio. The source router already selected that
+complete-answer-or-defer portfolio; the converted-input bridge previously
+declined because its datatype certificate omitted bare `xsd:dateTime` and
+data-property cardinality two.
+
+The certificate now admits:
+
+- bare `xsd:dateTime` as a nonempty atomic family with at least two values;
+- `owl:Thing`-filled data-property lower and upper bounds from zero through
+  two.
+
+It still rejects date/time literals, facets, `xsd:dateTimeStamp`, bounds above
+two, and non-Top data fillers. The existing validator continues to require
+lossless source axioms, normalized clauses, singleton relations, range
+memberships, and complete typed ABox data before the bridge may answer.
+
+Local source evidence:
+
+- the full serial release suite passes with 1,805 library tests and all
+  integration tests, with zero failures;
+- automatic routing selects `certified_nominals`;
+- 6999 completes in 0.39 seconds at 44,056 KiB peak RSS;
+- 6999 matches Konclude exactly: zero named-class subsumption pairs, one
+  identical unsatisfiable class, and the same consistency verdict;
+- 9635 remains exact at 159 subsumptions and one unsatisfiable class;
+- 10621 remains exact at 70,827 subsumptions and 33,433 unsatisfiable classes.
+
+Source-bound IBEX focused and full-sweep evidence is added only after its
+terminal audits pass.

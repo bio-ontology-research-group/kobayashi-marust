@@ -1194,7 +1194,7 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         DRange::Named(datatype)
             if matches!(
                 datatype.kind,
-                "boolean" | "int" | "integer" | "string" | "float"
+                "boolean" | "dateTime" | "int" | "integer" | "string" | "float"
             ) =>
         {
             Some(datatype.kind)
@@ -1790,6 +1790,7 @@ mod tests {
     fn bridge_atomic_gate_matches_the_exact_10621_fragment() {
         for supported in [
             "__dt__boolean",
+            "__dt__dateTime",
             "__dt__float",
             "__dt__int",
             "__dt__integer",
@@ -1812,7 +1813,7 @@ mod tests {
             "__dt__c__DataOneOf(\"true\"^^xsd:boolean)",
             "__dt__c__DataOneOf(\"true\"^^xsd:boolean \"true\"^^xsd:boolean)",
             "__dt__c__DataUnionOf(xsd:string xsd:boolean)",
-            "__dt__dateTime",
+            "__dt__dateTimeStamp",
         ] {
             assert!(
                 !bridge_exact_atomic_name(unsupported),

@@ -1048,8 +1048,8 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             SourceConcept::And(conjuncts) | SourceConcept::Or(conjuncts) => conjuncts
                 .iter()
                 .all(|conjunct| data_role_uses_are_safe_cardinality_only(conjunct, datatype_roles)),
-            SourceConcept::AtLeast(0..=1, SourceRole::Name(role), filler)
-            | SourceConcept::AtMost(0..=1, SourceRole::Name(role), filler)
+            SourceConcept::AtLeast(0..=2, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(0..=2, SourceRole::Name(role), filler)
                 if datatype_roles.contains(role.as_str())
                     && matches!(filler.as_ref(), SourceConcept::Top) =>
             {
@@ -1115,12 +1115,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && !source_concept_contains_internal_datatype(right)
                     && !source_concept_mentions_roles(right, &datatype_role_names)
             );
-            // Objectification preserves bounds zero and one over Top. Every
-            // admitted atomic datatype family is nonempty, so `>= 1` can pick
-            // a value; `<= 1` is functionality; and exact singleton relation
-            // clauses retain clashes between distinct fixed values. Recurse
-            // through ordinary-role fillers, but keep larger data bounds and
-            // non-Top data fillers fail-closed.
+            // Objectification preserves bounds zero through two over Top.
+            // Every admitted atomic datatype family contains at least two
+            // values, and exact singleton relation clauses retain equality and
+            // clashes between fixed values. Recurse through ordinary-role
+            // fillers, but keep larger data bounds and non-Top data fillers
+            // fail-closed.
             let allowed_safe_cardinality =
                 data_role_uses_are_safe_cardinality_only(&axiom.left, &datatype_role_names)
                     && data_role_uses_are_safe_cardinality_only(&axiom.right, &datatype_role_names);
@@ -13681,7 +13681,7 @@ mod tests {
                 [
                     C::Name("Q_guard".into()),
                     C::AtLeast(
-                        1,
+                        2,
                         R::Name("integer_value".into()),
                         Box::new(C::Top),
                     ),
@@ -13693,17 +13693,17 @@ mod tests {
         ));
         assert!(
             exact_atomic_datatype_bridge_fragment(&safe, true),
-            "unit lower bounds and data-property functionality are exact under objectification"
+            "small data bounds are exact under objectification"
         );
 
         for unsafe_bound in [
             C::AtLeast(
-                2,
+                3,
                 R::Name("integer_value".into()),
                 Box::new(C::Top),
             ),
             C::AtMost(
-                2,
+                3,
                 R::Name("integer_value".into()),
                 Box::new(C::Top),
             ),
@@ -13761,6 +13761,46 @@ mod tests {
         assert!(
             exact_atomic_datatype_bridge_fragment(&tin, true),
             "the complete Boolean enumeration is extensionally xsd:boolean"
+        );
+    }
+
+    #[test]
+    fn exact_atomic_datatype_fragment_accepts_bare_datetime_range() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let mut tin = exact_atomic_datatype_input();
+        tin.concepts.push("__dt__dateTime".into());
+        tin.roles.push("timestamp".into());
+        tin.source_axioms.extend([
+            source_subclass(
+                C::Top,
+                C::Forall(
+                    R::Name("timestamp".into()),
+                    Box::new(C::Name("__dt__dateTime".into())),
+                ),
+            ),
+            source_subclass(
+                C::Name("A".into()),
+                C::And(
+                    [
+                        C::AtLeast(2, R::Name("timestamp".into()), Box::new(C::Top)),
+                        C::AtMost(2, R::Name("timestamp".into()), Box::new(C::Top)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+            ),
+        ]);
+        assert!(
+            exact_atomic_datatype_bridge_fragment(&tin, true),
+            "bare dateTime is a nonempty exact atomic range with at least two values"
+        );
+
+        *tin.concepts.last_mut().expect("dateTime concept") =
+            "__dt__dateTimeStamp".into();
+        assert!(
+            !exact_atomic_datatype_bridge_fragment(&tin, true),
+            "dateTimeStamp remains outside the exact atomic map"
         );
     }
 
