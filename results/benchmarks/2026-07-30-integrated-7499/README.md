@@ -32,10 +32,10 @@ and full-sweep capsules.
 
 The current chain is:
 
-- build: job `49630612`;
-- focused exactness gate: job `49630613`;
-- complete 592-ontology automatic sweep: array job `49630614`;
-- independent terminal-row audit: job `49630615`.
+- build: job `49630715`;
+- focused exactness gate: job `49630735`;
+- complete 592-ontology automatic sweep: array job `49630737`;
+- independent terminal-row audit: job `49630738`.
 
 The focused gate requires exact Konclude signature matches for 19 automatic
 hard cases and for ontology 7499 through the explicit measurement route. A

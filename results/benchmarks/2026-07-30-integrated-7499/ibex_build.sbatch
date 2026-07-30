@@ -4,11 +4,9 @@
 #SBATCH --job-name=km-main4368-build
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=batch
-#SBATCH --constraint=cpu_intel_gold_6248
-#SBATCH --exclusive
 #SBATCH --time=01:30:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=32G
 #SBATCH --export=NONE
 #SBATCH --output=/ibex/scratch/hohndor/km/integrated-build-main-20260730/slurm-%x-%j.out
 
@@ -27,7 +25,7 @@ test "$(/usr/bin/sha256sum "$archive" | /usr/bin/cut -d' ' -f1)" = \
 /usr/bin/mkdir "$root/source-$SLURM_JOB_ID"
 /usr/bin/tar -xzf "$archive" -C "$root/source-$SLURM_JOB_ID"
 cd "$root/source-$SLURM_JOB_ID/engine"
-/usr/bin/nice -n 5 cargo build --release --bin km --jobs 32
+/usr/bin/nice -n 5 cargo build --release --bin km --jobs 16
 
 binary=$CARGO_TARGET_DIR/release/km
 "$binary" routes >/dev/null
