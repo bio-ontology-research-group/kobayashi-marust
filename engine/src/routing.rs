@@ -492,7 +492,6 @@ fn giant_flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
         && source.intersections == 0
         && source.unions == 0
         && source.complements == 0
-        && source.bottom_occurrences == 0
         && source.bottom_role_occurrences == 0
         && source.existentials == 0
         && source.universals == 0
@@ -1627,6 +1626,10 @@ mod tests {
         profile.source.declared_classes = 123_311;
         profile.source.distinct_classes = 123_311;
         profile.source.max_concept_depth = 1;
+        // The current frontend records every class position in this ontology
+        // as a potential bottom occurrence. Bottom concepts remain in EL and
+        // the worker validates the normalized fragment independently.
+        profile.source.bottom_occurrences = 123_313;
         profile.expressivity.inverse = true;
         profile.expressivity.transitivity = true;
 

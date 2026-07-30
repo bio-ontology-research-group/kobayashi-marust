@@ -211,3 +211,14 @@ Source archive SHA-256:
 Source-bound build `49650190` feeds six-case exact automatic-route gate
 `49650191`: 3524 must select ELC, 1481 must retain `production_all`, and
 15672, 15846, 6999, and 1034 must retain exact classifications.
+
+Gate `49650191` rejected 3524 before classification because its authoritative
+current profile selected `production_all`. Profile capture job `49650378`
+identified the mismatch: the frontend reports 123,313 bottom occurrences even
+though the complete source axiom-type inventory contains only `Declaration`
+and `SubClassOf`. Bottom concepts are part of EL and ELC validates the
+normalized fragment independently. The corrected predicate therefore permits
+bottom concepts while continuing to reject bottom roles, ABox, RBox, Boolean
+constructors other than bottom, restrictions, cardinalities, nominals, and
+datatypes. The other five gate cases passed, including exact 15846 in 174.9937
+seconds at 18,946.9 MiB.
