@@ -677,6 +677,30 @@ fn is_reserved_vocabulary_curie(s: &str) -> bool {
     )
 }
 
+/// RBox fence reasons whose axiom is still carried EXACTLY by the emitted DL
+/// clauses, so fencing the side-channel row loses no semantics:
+/// `IrreflexiveObjectProperty` (`R(x,x) → ⊥`), `ReflexiveObjectProperty` (the
+/// `R(x,x)` fact) and a complex `ObjectPropertyDomain`/`ObjectPropertyRange` on
+/// a NAMED role (`∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C`, clausified by `parse.rs`).
+///
+/// `role-constraint` is deliberately absent: `rbox.rs` uses that one reason for
+/// both `AsymmetricObjectProperty` (clausified) and `DisjointObjectProperties`
+/// (dropped), so the normalized row cannot tell them apart and must fail
+/// closed. `role-chain`, `inverse-role`, `inverse-functional` and
+/// `incomplete-nominal-abox` are real representation gaps and also fail closed.
+///
+/// One shape shares the `complex-domain`/`complex-range` reason without a
+/// clause: a ⊥ class (`domain(R) = owl:Nothing`), which `rbox.rs` fences and
+/// `parse.rs` does not clausify. Admitting it can only LOSE an entailment, and
+/// the source certificate declines it outright, so no automatic route reaches
+/// the cardinality arm through it.
+pub(crate) fn is_clause_retained_fence(reason: &str) -> bool {
+    matches!(
+        reason,
+        "irreflexivity" | "reflexivity" | "complex-domain" | "complex-range"
+    )
+}
+
 fn is_universal_object_role(role: &str) -> bool {
     matches!(
         short(role),
@@ -704,15 +728,32 @@ fn normalized_inverse_cardinality_role_separable(
     rbox: Option<&[Vec<String>]>,
     cardinalities: &[crate::json_io::CardMeta],
 ) -> bool {
+    // A universal object role is admitted in exactly one shape: WRITE-ONLY.
+    // `SubObjectPropertyOf(R, owl:topObjectProperty)` is a tautology, and the
+    // frontend compiles it into the ordinary bridge clause `R(x,y) → U(x,y)`.
+    // When `U` never occurs in a clause BODY, carries no number restriction and
+    // no RBox row other than that super-role position, nothing can read the
+    // edges it writes, so it constrains no derivation and cannot supply an
+    // NN/NI premise. Any other occurrence (a body atom, a counted role, a
+    // domain/range/inverse/chain row) still declines: the frontend does not
+    // interpret `U` as the universal connection, so reasoning over it would be
+    // an approximation.
     if cardinalities.is_empty()
         || cardinalities
             .iter()
             .any(|cardinality| is_universal_object_role(&cardinality.role))
         || clauses.iter().any(|clause| {
-            clause.body.iter().chain(clause.head.iter()).any(|atom| {
-                matches!(atom, JAtom::Role { role, .. }
-                if short(role).starts_with("__inv__") || is_universal_object_role(role))
-            })
+            clause
+                .body
+                .iter()
+                .any(|atom| {
+                    matches!(atom, JAtom::Role { role, .. }
+                    if short(role).starts_with("__inv__") || is_universal_object_role(role))
+                })
+                || clause.head.iter().any(|atom| {
+                    matches!(atom, JAtom::Role { role, .. }
+                    if short(role).starts_with("__inv__"))
+                })
         })
     {
         return false;
@@ -779,8 +820,15 @@ fn normalized_inverse_cardinality_role_separable(
                 saw_inverse = true;
             }
             Some("subrole") if axiom.len() == 3 => {
-                if is_universal_object_role(&axiom[1]) || is_universal_object_role(&axiom[2]) {
+                if is_universal_object_role(&axiom[1]) {
                     invalid = true;
+                    continue;
+                }
+                if is_universal_object_role(&axiom[2]) {
+                    // `R ⊑ owl:topObjectProperty` is a tautology and the clause
+                    // scan above already proved the universal role is never
+                    // read. It adds no role-role dependency: leave the sub-role
+                    // in its own component.
                     continue;
                 }
                 connect(&axiom[1], &axiom[2], &mut dependencies);
@@ -819,6 +867,22 @@ fn normalized_inverse_cardinality_role_separable(
                 }
                 inverse_roles.insert(role);
                 saw_inverse = true;
+            }
+            Some("fenced")
+                if axiom.len() >= 3 && is_clause_retained_fence(axiom[1].as_str()) =>
+            {
+                // Clause-retained role constraints. `rbox.rs` records these
+                // rows because the FIRST-CLASS RBox channel cannot represent
+                // them, but `parse.rs`/`normalise.rs` still clausify the axiom
+                // exactly: irreflexivity is `R(x,x) → ⊥`, reflexivity is the
+                // `R(x,x)` fact, and a complex domain/range on a named role is
+                // the ordinary `∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C` inclusion. The Ht
+                // therefore consumes the full semantics from the clause set.
+                // Like `domain`/`range` above they constrain a role against
+                // classes (or against itself), never two role components, so
+                // they create no NN/NI number-role premise. The source
+                // certificate additionally proves the constrained role is
+                // outside the number-role component.
             }
             // These shapes either combine inverse and number directly or are
             // not represented by the exact first-class RBox machinery.
@@ -3561,6 +3625,103 @@ mod trigger_absorb_tests {
             Some(&separated),
             &cards
         ));
+    }
+
+    #[test]
+    fn clause_retained_fences_and_write_only_universal_super_are_certified() {
+        use crate::json_io::{CardMeta, JAtom, JClause, JTerm};
+        let cards = vec![CardMeta {
+            marker: "Q_card".into(),
+            min: true,
+            n: 2,
+            role: "p".into(),
+            filler: "C".into(),
+        }];
+        // ore_ont_7499's RBox shape: named inverse pair, a fenced irreflexivity
+        // and complex range on roles the number role never reaches, plus the
+        // tautological `u ⊑ owl:topObjectProperty`.
+        let retained: Vec<Vec<String>> = vec![
+            vec!["inverse".into(), "i".into(), "j".into()],
+            vec!["subrole".into(), "u".into(), "owl:topObjectProperty".into()],
+            vec!["fenced".into(), "irreflexivity".into(), "v".into()],
+            vec![
+                "fenced".into(),
+                "complex-range".into(),
+                "range(w) = union".into(),
+            ],
+        ];
+        // The frontend's write-only bridge clause for the universal super-role.
+        let top_bridge = JClause {
+            body: vec![JAtom::Role {
+                role: "u".into(),
+                source: JTerm::Var { name: "x".into() },
+                target: JTerm::Var { name: "y".into() },
+            }],
+            head: vec![JAtom::Role {
+                role: "owl:topObjectProperty".into(),
+                source: JTerm::Var { name: "x".into() },
+                target: JTerm::Var { name: "y".into() },
+            }],
+        };
+        assert!(normalized_inverse_cardinality_role_separable(
+            &[top_bridge.clone()],
+            Some(&retained),
+            &cards
+        ));
+
+        // Reading the universal role back (a body occurrence) is a real
+        // universal premise and still declines.
+        let reads_top = JClause {
+            body: vec![JAtom::Role {
+                role: "owl:topObjectProperty".into(),
+                source: JTerm::Var { name: "x".into() },
+                target: JTerm::Var { name: "y".into() },
+            }],
+            head: vec![JAtom::Concept {
+                concept: "D".into(),
+                term: JTerm::Var { name: "y".into() },
+            }],
+        };
+        assert!(!normalized_inverse_cardinality_role_separable(
+            &[top_bridge, reads_top],
+            Some(&retained),
+            &cards
+        ));
+
+        // The universal role in the SUB position, or any fence reason that is
+        // not clause-retained, still fails closed.
+        for unsafe_rbox in [
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["subrole".into(), "owl:topObjectProperty".into(), "u".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["fenced".into(), "role-constraint".into(), "v".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["fenced".into(), "role-chain".into(), "v".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec!["fenced".into(), "inverse-role".into(), "v".into()],
+            ],
+            vec![
+                vec!["inverse".into(), "i".into(), "j".into()],
+                vec![
+                    "fenced".into(),
+                    "incomplete-nominal-abox".into(),
+                    "v".into(),
+                ],
+            ],
+        ] {
+            let unsafe_rbox: Vec<Vec<String>> = unsafe_rbox;
+            assert!(
+                !normalized_inverse_cardinality_role_separable(&[], Some(&unsafe_rbox), &cards),
+                "unsafe normalized RBox was certified: {unsafe_rbox:?}"
+            );
+        }
     }
 
     /// A synthetic DL-safe rule KB mirroring the 2669/15516 core: an asserted

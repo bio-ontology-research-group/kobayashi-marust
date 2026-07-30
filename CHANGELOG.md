@@ -116,6 +116,115 @@ and is not used as evidence here until it completes.
 The evidence is in `results/benchmarks/2026-07-30-3215-restoration/` and the
 causal record in `docs/SOLVE-3215.md`.
 
+### Restore exact ore_ont_7499 with clause-retained cardinality fences (2026-07-30)
+
+The 2026-07-27 full sweep records ore_ont_7499 as unsolved on every current-main
+route: `auto` errors at 190 s, `manual` and the documented `card_race` /
+`htforce_race` environments time out at 240 s, and `production_all` publishes a
+SOUND but INCOMPLETE taxonomy — the CB engine finishes in 68.8 s with 32,847 of
+the 36,145 gold subsumptions (full-IRI taxonomy `c9450c3e…` against the
+Konclude/HermiT identity `a87bedcb…`). Every one of the 3,298 missing pairs
+needs the `≥2 VO_0001243.OBI_0100026` recognition that defines `VO_0000641`;
+the first-class `≥n` rules derive it, the CB engine does not. The historical
+`card_race` binary (`0d20dd1`, 92.8 s / 18.5 GiB, sweep evidence
+`results/benchmarks/2026-07-18-ore-solve-routes/evidence/retained-route-rerun/`)
+answered gold-exact through the first-class cardinality arm.
+
+Diffing that binary's `cb_to_ht` input against current main shows the arm is now
+gated off by three certificate rules that are each stricter than their own
+justification. The historical input reached the arm only because `spawn_ht`
+passed `rbox = None` (no inverse pairs, no fences, no ABox), i.e. the arm ran
+INVERSE-BLIND. This change instead admits the same ontology to the arm with the
+inverse-aware configuration current main already has, and the exactness is
+recovered at 1.2 GiB instead of 18.5 GiB.
+
+**Clause-retained RBox fences.** `rbox.rs` records a `fenced` row whenever the
+first-class RBox channel has no shape for an axiom, even where
+`parse.rs`/`normalise.rs` still clausify it exactly: irreflexivity is
+`R(x,x) → ⊥`, reflexivity the `R(x,x)` fact, and a complex domain/range on a
+NAMED role the ordinary `∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C` inclusion. 7499 carries
+`IrreflexiveObjectProperty(RO_0002351)` and a `ObjectUnionOf` range on
+`VO_0001480`, and both the source and the normalized certificate declined on
+those markers alone. They are now admitted: like the plain `domain`/`range`
+rows, they constrain a role against classes (or itself) and never merge two role
+components, so they add no NN/NI number-role premise, and the Ht consumes the
+axiom itself from the clause set. The source certificate additionally proves the
+constrained role is outside the number-role component; `role-constraint` stays
+fenced because `rbox.rs` uses that one reason for both asymmetry (clausified)
+and `DisjointObjectProperties` (dropped), so the normalized recheck cannot tell
+them apart.
+
+**Write-only universal super-role.** 7499 declares
+`SubObjectPropertyOf(RO_0001000, owl:topObjectProperty)`, a tautology the
+frontend compiles to the bridge clause `R(x,y) → U(x,y)`. The certificate
+declined on any universal-role occurrence. It now admits the super-role position
+only, and the normalized recheck proves the universal role is WRITE-ONLY (no
+clause body atom, no counted role, no other RBox row), so nothing can read the
+edges it writes. A universal role in the sub position, in a restriction, or on a
+number role still declines.
+
+**Native ABox materialization is a separate question.** The old certificate
+bundled the number-role separation proof with the native-ABox conditions, so
+7499 lost the cardinality arm because its 74 `BFO_0000062` assertions feed a
+proper role chain. `OntologyProfile` now carries both halves:
+`card_number_role_separable` (number-role separation alone, the precondition of
+the `≥n`/`≤n` rules) and the unchanged `inverse_cardinality_role_separable`
+(that plus exact ABox materialization). `Route::CertifiedCardNominals` still
+requires both — ore_ont_9540 keeps its exact native-ABox route — while the new
+`certified_card_proxy_abox` route serves the number-role half alone. It
+reproduces the validated `card_race` environment (`KM_HT_ONLY=card`,
+`KM_HT_MODE=race`, `KM_ABSORB=0`, CB racing) and adds
+`KM_HT_CARD_PROXY_ABOX=1`, which keeps an ABox that fails
+`native_abox_role_automata_separable` out of the card input. Seeding the
+uncertified ABox instead buys no completeness: the card arm does not finish in
+400 s with it and finishes gold-exact in ~110 s without it.
+
+**That route is MEASUREMENT-ONLY and is never selected automatically.**
+Dropping ABox axioms removes constraints, so every subsumption it publishes is
+entailed — but that is an under-approximation, which proves soundness, not
+completeness for the ontology as a whole. Completeness would additionally
+require that the ABox cannot change a named-class subsumption AND that the KB is
+consistent, because an inconsistent KB entails every subsumption while a dropped
+ABox still yields an ordinary taxonomy. The frontend's `abox_inconsistent`
+precheck cannot supply the second premise: it closes asserted memberships over
+named subclasses, domain/range and `SameIndividual` and fires only on an
+asserted disjoint pair or a negative-assertion clash, so `A ⊑ ⊥` with
+`ClassAssertion(A a)`, a cardinality clash, and a role-chain-derived range clash
+all escape it (new test
+`abox_consistency.rs::derived_abox_contradictions_are_not_detected` pins both
+counterexamples). ore_ont_7499 alone cannot license the general rule, so
+`select` keeps every unmaterializable ABox on the exact nominal calculus and the
+route stays explicitly selectable only, pending a general ABox-irrelevance
+certificate (the existing `positive_abox_tbox_separable` is the shape one would
+take) plus a complete consistency decision.
+
+Result on the workstation (56 shared cores, ontology SHA-256 `37450d59…`):
+`km classify --route certified_card_proxy_abox ore_ont_7499.owl` returns 36,145
+subsumptions, 0 unsatisfiable, in 114 s of HT worker time (1 m 54 s wall) at
+1.04 GiB. The full-IRI fingerprint
+(`results/benchmarks/2026-07-27-solving-routes-full-sweep/full_panel_fingerprint.py`)
+is `a87bedcb6f6af4e3471686a5a6627a98e4ecd3a8fd102bd610ed38e352d22038`, byte-identical
+to Konclude and HermiT in the frozen sweep and to the historical `card_race`
+binary's own output. ore_ont_7499's AUTOMATIC route remains `nominals`. Route
+selection over the local diagnostic corpus is unchanged everywhere (9540 keeps
+`certified_card_nominals`; 10702, 15672, 9635, 10908, 12698, 7914 keep
+`nominals`), and the answers of 1603, 7901, 105 are identical to the pre-change
+binary. `production_all` is untouched and still publishes its incomplete CB
+answer on 7499; the CB `≥n` recognition gap is a separate open defect.
+
+Tests: `routing.rs::the_abox_dropping_card_race_is_never_selected_automatically`
+(no profile shape reaches the route through `select`) and
+`abox_consistency.rs::derived_abox_contradictions_are_not_detected`;
+`frontend/profile.rs::clause_retained_role_constraints_stay_out_of_the_number_component`
+(7499-shaped source certifies, chain-connected ABox splits the two halves) plus
+eight new fail-closed sources in the existing certificate test;
+`orchestrate/cb_to_ht.rs::clause_retained_fences_and_write_only_universal_super_are_certified`
+(write-only universal super admitted, a body occurrence declines, every
+non-retained fence reason declines);
+`orchestrate/race.rs::clause_retained_fences_keep_the_card_arm`; and the routing
+tests for the new bundle, its route keys, its names, and the three-way selection.
+No Lean re-certification: this changes procedure eligibility and worker input
+composition, not a CB-calculus derivation.
 ### Exact incremental direct-HT classification (2026-07-23)
 
 Extended `IncrementalClassifier` with an explicitly selected hypertableau

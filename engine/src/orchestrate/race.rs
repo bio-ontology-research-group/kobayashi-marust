@@ -649,6 +649,20 @@ fn typed_nominal_bridge_exclusive(tin: &cb_to_ht::TInput, bridge_exclusive: bool
         && !tin.nominal_abox.individuals.is_empty()
 }
 
+/// Fences the first-class cardinality arm can carry without losing an axiom.
+/// An empty fence list is the ideal, but `rbox.rs` also records a row for role
+/// constraints the FIRST-CLASS RBox channel cannot express while the frontend
+/// still clausifies them exactly (irreflexivity, reflexivity, a complex
+/// domain/range on a named role — see `cb_to_ht::is_clause_retained_fence`).
+/// Those markers mean "not in the RBox side channel", not "dropped", so the Ht
+/// still consumes the full semantics from the clause set and the arm stays
+/// complete. Every other fence reason still keeps the ont off this route.
+fn card_fences_supported(tin: &cb_to_ht::TInput) -> bool {
+    tin.fenced
+        .iter()
+        .all(|fence| cb_to_ht::is_clause_retained_fence(&fence.reason))
+}
+
 /// The first-class number route (`KM_HT_CARD`): a faithful,
 /// datatype/inverse/nominal-safe TInput carrying first-class `≥n`/`≤n`
 /// restrictions (`card_defs`). Extracted so the exact gate the production
@@ -666,7 +680,7 @@ fn card_candidate_from(
     ht_card
         && !tin.card_defs.is_empty()
         && tin.dropped == 0
-        && tin.fenced.is_empty()
+        && card_fences_supported(tin)
         && (!tin.inverse || (card_recog && tin.inverse_cardinality_role_separable))
         && (tin.nominals.is_empty() || tin.native_abox.complete)
         && native_abox_role_automata_separable(tin)
@@ -1079,7 +1093,29 @@ fn spawn_ht(
         &[],
         false,
     );
-    cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
+    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
+    // Native-ABox admission for the cardinality arm (`KM_HT_CARD_PROXY_ABOX`,
+    // set by the `certified_card_proxy_abox` route). The native ABox is exact
+    // only when every asserted role component clears the role-automata fence;
+    // handing the card arm an ABox it cannot materialize through chains adds no
+    // completeness and costs the whole classification (ore_ont_7499: the card
+    // arm does not finish in 400 s with the uncertified ABox seeded, and does
+    // finish gold-exact in ~110 s without it). Keeping it out is exactly the
+    // ABox contract the always-running CB engine has — `classify` short-circuits
+    // on the frontend's `abox_inconsistent` precheck and otherwise reasons over
+    // the TBox clause set — and dropping ABox axioms can only lose entailments,
+    // never add one. Every other worker keeps today's unconditional install.
+    let card_proxy_abox = std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()
+        && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
+    if card_proxy_abox {
+        let mut native = tin.clone();
+        cb_to_ht::install_nominal_abox(&mut native, &nominal_abox);
+        if native_abox_role_automata_separable(&native) {
+            tin = native;
+        }
+    } else {
+        cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
+    }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
             "KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s",
@@ -1148,7 +1184,6 @@ fn spawn_ht(
     // nominal-predecessor premise missing from the fast HT while inverse axioms
     // themselves remain exact. Uncertified inverse+cardinality inputs stay out;
     // datatype inputs always stay out (no concrete-domain oracle in the Ht).
-    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     let card_candidate = card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let qo_candidate = cfg.qo_router
         && !card_candidate
@@ -2688,6 +2723,56 @@ mod tests {
         assert!(!card_candidate_from(&nominal, true, true, false));
         nominal.native_abox.complete = true;
         assert!(card_candidate_from(&nominal, true, true, false));
+    }
+
+    #[test]
+    fn clause_retained_fences_keep_the_card_arm() {
+        // `rbox.rs` records a row for role constraints the first-class RBox
+        // channel cannot express while the frontend still clausifies them
+        // exactly. Those markers must not cost the arm (ore_ont_7499 carries an
+        // irreflexivity and a complex range), but every other reason still does.
+        for retained in ["irreflexivity", "reflexivity", "complex-domain", "complex-range"] {
+            let mut tin = card_def_tin();
+            tin.fenced.push(cb_to_ht::Fenced {
+                reason: retained.into(),
+                detail: "role".into(),
+            });
+            assert!(card_fences_supported(&tin), "{retained} must be supported");
+            assert!(
+                card_candidate_from(&tin, true, true, false),
+                "{retained} must keep the card arm"
+            );
+        }
+        for dropped in [
+            "inverse+number(SHIQ)",
+            "nominal+inverse(SHOI/SHOIQ)",
+            "role-constraint",
+            "role-chain",
+            "inverse-role",
+            "inverse-functional",
+            "incomplete-nominal-abox",
+            "unknown-rbox",
+        ] {
+            let mut tin = card_def_tin();
+            tin.fenced.push(cb_to_ht::Fenced {
+                reason: dropped.into(),
+                detail: "role".into(),
+            });
+            assert!(!card_fences_supported(&tin), "{dropped} must fail closed");
+            assert!(
+                !card_candidate_from(&tin, true, true, false),
+                "{dropped} must keep the ont off the card arm"
+            );
+        }
+        // A supported fence next to an unsupported one still declines.
+        let mut mixed = card_def_tin();
+        for reason in ["irreflexivity", "role-chain"] {
+            mixed.fenced.push(cb_to_ht::Fenced {
+                reason: reason.into(),
+                detail: "role".into(),
+            });
+        }
+        assert!(!card_candidate_from(&mixed, true, true, false));
     }
 
     #[test]

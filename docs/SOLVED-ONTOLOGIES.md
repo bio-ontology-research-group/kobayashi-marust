@@ -89,6 +89,55 @@ reproduce the source-bound 10621 capsule.
 
 ---
 
+## Solved via the certified cardinality arm
+
+### ore_ont_7499: clause-retained fences on the number-role certificate (2026-07-30)
+
+- **Symptom**: no current-main route returned the ontology. The 2026-07-27 full
+  sweep records `auto` as an error at 190 s, `manual` and the documented
+  `card_race`/`htforce_race` environments as 240 s timeouts, and
+  `production_all` as SOUND but INCOMPLETE: 32,847 of the 36,145 gold
+  subsumptions in 68.8 s.
+- **Precise cause**: the 3,298 missing pairs all need `X ⊑ ≥2
+  VO_0001243.OBI_0100026`, the definition of `VO_0000641`, which only the
+  first-class `≥n` rules derive. The cardinality arm was gated off by three
+  certificate rules that are each stricter than their own justification: an
+  RBox `fenced` row for `IrreflexiveObjectProperty(RO_0002351)` and for the
+  `ObjectUnionOf` range of `VO_0001480`, although `parse.rs`/`normalise.rs`
+  clausify both exactly; the tautological
+  `SubObjectPropertyOf(RO_0001000, owl:topObjectProperty)`, which the frontend
+  compiles into a write-only bridge clause; and the native-ABox conditions,
+  which are bundled into the same flag as the number-role separation proof even
+  though the 74 asserted `BFO_0000062` edges say nothing about whether a number
+  restriction touches an inverse role.
+- **Mechanism**: admit clause-retained fence rows and a write-only universal
+  super-role in both the source and the normalized certificate; split
+  `card_number_role_separable` (number-role separation) from
+  `inverse_cardinality_role_separable` (that plus exact ABox materialization);
+  and add the `certified_card_proxy_abox` route, which reproduces the validated
+  `card_race` environment and keeps an uncertified native ABox out of the card
+  input.
+- **Result**: `km classify --route certified_card_proxy_abox` returns 36,145
+  subsumptions and 0 unsatisfiable classes in 114 s of HT worker time (1 m 54 s
+  wall) at 1.04 GiB on the shared workstation. The full-IRI taxonomy fingerprint
+  is `a87bedcb6f6af4e3471686a5a6627a98e4ecd3a8fd102bd610ed38e352d22038`,
+  identical to Konclude and HermiT in the frozen sweep. The historical
+  `card_race` binary (`0d20dd1`) produced the same answer in 92.8 s at 18.5 GiB
+  while running the arm inverse-blind; the restored route keeps the
+  inverse-aware configuration and uses 15x less memory.
+- **Claim boundary**: this is a solved ontology for an EXPLICITLY selected
+  route, not for the automatic policy. The route drops an ABox it cannot
+  materialize, which is an under-approximation: sound, but complete for the
+  whole ontology only if the ABox cannot change a named-class subsumption and
+  the KB is consistent. The frontend's asserted-inconsistency precheck decides
+  neither, so `auto` keeps 7499 on `nominals` until a general ABox-irrelevance
+  certificate and a complete consistency decision exist.
+- **Correction**: the 2026-07-05 entry below reads 7499's missing pairs as a
+  gold local-name collision. The full-IRI fingerprint refutes that: the pairs
+  are genuinely absent from the CB answer and present in both baselines.
+
+---
+
 ## Solved via the exact CB nominal calculus
 
 ### ore_ont_148: nominal-label isolation and incremental Pred (2026-07-16)

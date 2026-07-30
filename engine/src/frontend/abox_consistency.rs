@@ -342,4 +342,44 @@ mod tests {
         )]);
         assert!(collect(&o).is_none());
     }
+
+    /// This precheck is SOUND ONLY. It closes asserted memberships over named
+    /// subclasses, domain/range and SameIndividual and fires on an ASSERTED
+    /// disjoint pair, so a DERIVED contradiction escapes it. These are real
+    /// inconsistent ontologies it reports nothing about, which is exactly why
+    /// no automatic route may drop an ABox behind it: an inconsistent KB
+    /// entails every subsumption, while a dropped ABox yields an ordinary
+    /// taxonomy and hides that.
+    #[test]
+    fn derived_abox_contradictions_are_not_detected() {
+        // `A ⊑ ⊥` with `ClassAssertion(A a)`: globally inconsistent, but ⊥ is
+        // not an asserted disjoint pair, so the collection does not even start.
+        let bottom = ont(vec![
+            Axiom::SubClassOf(
+                Concept::Name("A".into()),
+                Concept::Name("owl:Nothing".into()),
+            ),
+            Axiom::ConceptAssertion(Concept::Name("A".into()), "a".into()),
+        ]);
+        assert!(
+            collect(&bottom).is_none(),
+            "an unsatisfiable asserted type is outside this precheck"
+        );
+
+        // A role-chain-derived range clash: `r(a,b)`, `s(b,c)`, `r∘s ⊑ t`,
+        // `range(t) = D`, `DisjointClasses(D, E)`, `ClassAssertion(E c)`. The
+        // KB is inconsistent, but the derivation needs the chain edge `t(a,c)`,
+        // which no asserted axiom supplies.
+        let chained = ont(vec![
+            Axiom::DisjointClasses(Concept::Name("D".into()), Concept::Name("E".into())),
+            Axiom::RoleAssertion("r".into(), "a".into(), "b".into()),
+            Axiom::RoleAssertion("s".into(), "b".into(), "c".into()),
+            Axiom::ConceptAssertion(Concept::Name("E".into()), "c".into()),
+        ]);
+        let data = collect(&chained).expect("the disjoint pair forces collection");
+        assert!(
+            !data.is_inconsistent(&[RboxRecord::Range("t".into(), "D".into())]),
+            "a chain-derived clash is invisible to the asserted-only precheck"
+        );
+    }
 }

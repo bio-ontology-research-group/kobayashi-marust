@@ -230,6 +230,15 @@ pub struct OntologyProfile {
     /// Konclude's NN/NI nominal-predecessor rule has no number-role premise.
     #[serde(default)]
     pub inverse_cardinality_role_separable: bool,
+    /// The number-role half of the certificate above, WITHOUT the native-ABox
+    /// materialization conditions. It is the exact precondition of the
+    /// first-class `≥n`/`≤n` card arm; an ontology that holds this but not
+    /// `inverse_cardinality_role_separable` can still take the card arm, but
+    /// only with the ABox treated the way the CB engine treats it (dropped
+    /// behind the frontend's asserted-inconsistency precheck), never as a
+    /// natively materialized ABox.
+    #[serde(default)]
+    pub card_number_role_separable: bool,
     pub expressivity: ExpressivityProfile,
     pub source: SourceStatistics,
     pub clauses: ClauseStatistics,
@@ -261,6 +270,16 @@ pub struct SourceProfileBuilder<'a> {
     non_simple_roles: HashSet<&'a str>,
     chain_roles: HashSet<&'a str>,
     role_dependencies: HashMap<&'a str, HashSet<&'a str>>,
+    /// Roles carrying an axiom the FIRST-CLASS RBox channel cannot represent
+    /// while `parse.rs`/`normalise.rs` still clausify it exactly (irreflexivity,
+    /// reflexivity, a complex domain/range on a named role). The certificate
+    /// keeps them out of the number-role component instead of declining
+    /// outright; see [`SourceProfileBuilder::card_number_role_separable`].
+    clause_retained_constraint_roles: HashSet<&'a str>,
+    /// `owl:topObjectProperty` observed anywhere except as the SUPER role of a
+    /// plain `SubObjectPropertyOf` (where it is a tautology the frontend
+    /// compiles to a write-only bridge clause).
+    universal_role_beyond_subrole_super: bool,
     number_role_seen: bool,
     object_cardinality_seen: bool,
     inverse_role_seen: bool,
@@ -301,6 +320,8 @@ impl<'a> Default for SourceProfileBuilder<'a> {
             non_simple_roles: HashSet::new(),
             chain_roles: HashSet::new(),
             role_dependencies: HashMap::new(),
+            clause_retained_constraint_roles: HashSet::new(),
+            universal_role_beyond_subrole_super: false,
             number_role_seen: false,
             object_cardinality_seen: false,
             inverse_role_seen: false,
@@ -486,10 +507,23 @@ impl<'a> SourceProfileBuilder<'a> {
                     .get(1)
                     .and_then(|role| self.atomic_certificate_role(role));
                 if let (Some(sub), Some(sup)) = (dependency_sub, dependency_sup) {
-                    self.connect_roles(sub, sup);
+                    // `R ⊑ owl:topObjectProperty` is a tautology: it merges no
+                    // role components and adds no constraint. The frontend
+                    // compiles it into the write-only bridge clause
+                    // `R(x,y) → U(x,y)`, so it is not a USE of the universal
+                    // connection either. The normalized recheck independently
+                    // proves nothing ever reads `U`.
+                    if !is_universal_role(sup) {
+                        self.connect_roles(sub, sup);
+                    }
                 }
-                for r in &args {
+                for (index, r) in args.iter().enumerate() {
+                    let universal_super = index == 1 && role_is_universal(r);
+                    let seen_before = self.universal_role_beyond_subrole_super;
                     self.object_role(r);
+                    if universal_super {
+                        self.universal_role_beyond_subrole_super = seen_before;
+                    }
                 }
             }
             "EquivalentObjectProperties" => {
@@ -596,27 +630,36 @@ impl<'a> SourceProfileBuilder<'a> {
                 }
                 self.object_roles(&args);
             }
-            "AsymmetricObjectProperty" | "ReflexiveObjectProperty" => {
+            "AsymmetricObjectProperty" => {
                 self.logical_rbox(head);
+                // `normalise.rs` clausifies asymmetry exactly, but `rbox.rs`
+                // records it under the SAME `role-constraint` reason as
+                // `DisjointObjectProperties`, which is dropped. The normalized
+                // recheck cannot tell the two apart, so the source certificate
+                // declines here to keep both gates in agreement.
                 self.inverse_cardinality_certificate_invalid = true;
+                self.object_roles(&args);
+            }
+            "ReflexiveObjectProperty" => {
+                self.logical_rbox(head);
+                // The `R(x,x)` fact carries the semantics into the clause set;
+                // only the RBox side channel fences it.
+                self.clause_retained_role_constraint(args.first().copied());
                 self.object_roles(&args);
             }
             "IrreflexiveObjectProperty" => {
                 self.logical_rbox(head);
                 self.expr.negation_disjunction = true;
-                self.inverse_cardinality_certificate_invalid = true;
+                // `R(x,x) → ⊥` is emitted into the clause set; the RBox row is
+                // fenced only because the first-class channel has no shape for
+                // it.
+                self.clause_retained_role_constraint(args.first().copied());
                 self.object_roles(&args);
             }
             "ObjectPropertyDomain" => {
                 self.logical_rbox(head);
                 self.stats.domain_axioms += 1;
-                if !args.first().is_some_and(|role| role.as_atom().is_some())
-                    || !args
-                        .get(1)
-                        .is_some_and(|class| class.as_atom().is_some_and(|name| !is_bottom(name)))
-                {
-                    self.inverse_cardinality_certificate_invalid = true;
-                }
+                self.object_property_domain_range_certificate(args.first().copied(), args.get(1).copied());
                 let domain_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -631,13 +674,7 @@ impl<'a> SourceProfileBuilder<'a> {
             "ObjectPropertyRange" => {
                 self.logical_rbox(head);
                 self.stats.range_axioms += 1;
-                if !args.first().is_some_and(|role| role.as_atom().is_some())
-                    || !args
-                        .get(1)
-                        .is_some_and(|class| class.as_atom().is_some_and(|name| !is_bottom(name)))
-                {
-                    self.inverse_cardinality_certificate_invalid = true;
-                }
+                self.object_property_domain_range_certificate(args.first().copied(), args.get(1).copied());
                 let range_role = args.first().and_then(|arg| arg.as_atom());
                 if let Some(r) = args.first() {
                     self.object_role(r);
@@ -818,6 +855,7 @@ impl<'a> SourceProfileBuilder<'a> {
     pub fn finish(mut self, file_bytes: u64) -> OntologyProfile {
         // Compute borrowed-set certificates before moving the raw axiom-type
         // map and entity sets into their owned statistics representation.
+        let card_number_role_separable = self.card_number_role_separable();
         let inverse_cardinality_role_separable = self.inverse_cardinality_role_separable();
         self.stats.file_bytes = file_bytes;
         self.stats.declared_classes = self.declared_classes.len() as u64;
@@ -913,6 +951,7 @@ impl<'a> SourceProfileBuilder<'a> {
             schema_version: 2,
             positive_abox_tbox_separable,
             inverse_cardinality_role_separable,
+            card_number_role_separable,
             expressivity: self.expr,
             source: self.stats,
             clauses: ClauseStatistics::default(),
@@ -1241,6 +1280,7 @@ impl<'a> SourceProfileBuilder<'a> {
             Node::Atom(r) => {
                 if is_universal_role(r) {
                     self.expr.universal_role = true;
+                    self.universal_role_beyond_subrole_super = true;
                 } else {
                     self.object_properties.insert(r);
                 }
@@ -1269,6 +1309,42 @@ impl<'a> SourceProfileBuilder<'a> {
         }
     }
 
+    /// Record a role whose only unrepresentable axiom is a clause-retained
+    /// constraint (irreflexivity / reflexivity / a complex domain or range on a
+    /// named role). `parse.rs` and `normalise.rs` emit the exact clause, so the
+    /// Ht still consumes the axiom; the certificate only has to keep such a
+    /// role out of the number-role component. Anything else fails closed.
+    fn clause_retained_role_constraint(&mut self, node: Option<&Node<'a>>) {
+        match node.and_then(|node| node.as_atom()) {
+            Some(role) if !is_universal_role(role) && !is_bottom_role(role) => {
+                self.clause_retained_constraint_roles.insert(role);
+            }
+            _ => self.inverse_cardinality_certificate_invalid = true,
+        }
+    }
+
+    /// `ObjectPropertyDomain`/`ObjectPropertyRange` certificate arm. A named
+    /// role with a named non-⊥ class is the exact first-class RBox row. A named
+    /// role with a COMPLEX class is fenced in the RBox but clausified by
+    /// `parse.rs` as `∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C`, so it is clause-retained. Every
+    /// other shape (inverse role expression, or a ⊥ class, which `parse.rs`
+    /// does not clausify) fails closed.
+    fn object_property_domain_range_certificate(
+        &mut self,
+        role: Option<&Node<'a>>,
+        class: Option<&Node<'a>>,
+    ) {
+        let Some(true) = role.map(|role| role.as_atom().is_some()) else {
+            self.inverse_cardinality_certificate_invalid = true;
+            return;
+        };
+        match class {
+            Some(Node::Atom(name)) if !is_bottom(name) => {}
+            Some(Node::List(..)) => self.clause_retained_role_constraint(role),
+            _ => self.inverse_cardinality_certificate_invalid = true,
+        }
+    }
+
     fn connect_roles(&mut self, left: &'a str, right: &'a str) {
         self.role_dependencies
             .entry(left)
@@ -1290,7 +1366,14 @@ impl<'a> SourceProfileBuilder<'a> {
         }
     }
 
-    fn inverse_cardinality_role_separable(&self) -> bool {
+    /// The NUMBER-ROLE half of the scoped inverse+cardinality certificate: no
+    /// number restriction applies to an inverse, inverse-connected, chained,
+    /// transitive, universal, bottom, or clause-retained-constraint role. That
+    /// is what the fast Ht's first-class `≥n`/`≤n` rules plus inverse-aware
+    /// blocking need; it says nothing about how a native ABox is materialized.
+    /// [`SourceProfileBuilder::inverse_cardinality_role_separable`] adds the
+    /// ABox half on top.
+    fn card_number_role_separable(&self) -> bool {
         if !self.number_role_seen
             || !self.object_cardinality_seen
             || !self.inverse_role_seen
@@ -1300,7 +1383,7 @@ impl<'a> SourceProfileBuilder<'a> {
             || self.stats.imports != 0
             || self.stats.rule_axioms != 0
             || self.expr.datatype
-            || self.expr.universal_role
+            || self.universal_role_beyond_subrole_super
             || self.stats.bottom_role_occurrences != 0
         {
             return false;
@@ -1314,6 +1397,7 @@ impl<'a> SourceProfileBuilder<'a> {
             }
             if self.inverse_roles.contains(role)
                 || self.non_simple_roles.contains(role)
+                || self.clause_retained_constraint_roles.contains(role)
                 || is_universal_role(role)
                 || is_bottom_role(role)
             {
@@ -1322,6 +1406,13 @@ impl<'a> SourceProfileBuilder<'a> {
             if let Some(neighbours) = self.role_dependencies.get(role) {
                 pending.extend(neighbours.iter().copied());
             }
+        }
+        true
+    }
+
+    fn inverse_cardinality_role_separable(&self) -> bool {
+        if !self.card_number_role_separable() {
+            return false;
         }
 
         // A negative ground assertion ¬R(a,b) is checked by a guarded clash
@@ -1909,19 +2000,28 @@ mod tests {
             "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<p> <r>) <s>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<a> <b> <c>) <s>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             "Ontology(InverseObjectProperties(<i> <j>) TransitiveObjectProperty(<p>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
-            // A native negative edge may not depend on role-chain or
-            // transitivity materialization (directly or through hierarchy).
-            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) NegativeObjectPropertyAssertion(<t> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
-            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<n> <t>) TransitiveObjectProperty(<t>) NegativeObjectPropertyAssertion(<n> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
-            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) ObjectPropertyAssertion(<r> <a> <b>) ObjectPropertyAssertion(<s> <b> <c>) ObjectPropertyRange(<t> <C>) DisjointClasses(<C> <D>) ClassAssertion(<D> <c>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             // inverse functionality combines the two mechanisms directly
             "Ontology(InverseObjectProperties(<i> <j>) InverseFunctionalObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             // inline inverse expressions retain the hard fail-closed fence
             "Ontology(InverseObjectProperties(<i> <j>) SubClassOf(<A> ObjectMaxCardinality(1 ObjectInverseOf(<p>) <C>)))",
             // Every normalized RBox / equality fence must also fail at source,
             // before a nominal ontology can be sent away from its exact CB path.
-            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyDomain(<i> ObjectUnionOf(<A> <B>)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
-            "Ontology(InverseObjectProperties(<i> <j>) ReflexiveObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // A clause-retained role constraint is admitted (see
+            // `clause_retained_role_constraints_stay_out_of_the_number_component`)
+            // but ONLY while it stays out of the number-role component.
+            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyDomain(<p> ObjectUnionOf(<A> <B>)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyRange(<p> ObjectUnionOf(<A> <B>)) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) IrreflexiveObjectProperty(<p>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<p> <r>) ReflexiveObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // A ⊥ domain/range is fenced in the RBox and NOT clausified by
+            // parse.rs, so it is a genuine drop, not a clause-retained row.
+            "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyDomain(<i> owl:Nothing) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // Asymmetry shares the ambiguous `role-constraint` fence reason
+            // with the dropped DisjointObjectProperties, so it fails closed.
+            "Ontology(InverseObjectProperties(<i> <j>) AsymmetricObjectProperty(<r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // owl:topObjectProperty is inert only as the SUPER of a plain role
+            // inclusion; in the sub position it is a genuine universal premise.
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(owl:topObjectProperty <r>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             "Ontology(InverseObjectProperties(<i> <j>) SameIndividual(<a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             "Ontology(InverseObjectProperties(<i> <j>) HasKey(<A> <r> <d>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             // no concrete-domain oracle in the card worker
@@ -1932,11 +2032,94 @@ mod tests {
             "Ontology(InverseObjectProperties(<i> <j>) ObjectPropertyAssertion(owl:bottomObjectProperty <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
             "Ontology(InverseObjectProperties(<i> <j>) UnsupportedLogicalAxiom(<X> <Y>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
         ] {
+            let profile = source(unsafe_source);
             assert!(
-                !source(unsafe_source).inverse_cardinality_role_separable,
+                !profile.inverse_cardinality_role_separable,
                 "unsafe inverse/cardinality source was certified: {unsafe_source}"
             );
+            assert!(
+                !profile.card_number_role_separable,
+                "a number-role violation must decline both certificates: {unsafe_source}"
+            );
         }
+
+        // The ABox-materialization premises are the OTHER half. They decline
+        // the native nominal route without touching the number-role proof, so
+        // the cardinality arm stays available through the proxy-ABox route.
+        for abox_only in [
+            // A native negative edge may not depend on role-chain or
+            // transitivity materialization (directly or through hierarchy).
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) NegativeObjectPropertyAssertion(<t> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(<n> <t>) TransitiveObjectProperty(<t>) NegativeObjectPropertyAssertion(<n> <a> <b>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+            // ore_ont_7499's shape: an asserted edge feeding a proper chain.
+            "Ontology(InverseObjectProperties(<i> <j>) SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) ObjectPropertyAssertion(<r> <a> <b>) ObjectPropertyAssertion(<s> <b> <c>) ObjectPropertyRange(<t> <C>) DisjointClasses(<C> <D>) ClassAssertion(<D> <c>) SubClassOf(<A> ObjectMaxCardinality(1 <p> <C>)))",
+        ] {
+            let profile = source(abox_only);
+            assert!(
+                !profile.inverse_cardinality_role_separable,
+                "an unmaterializable ABox must decline the native nominal route: {abox_only}"
+            );
+            assert!(
+                profile.card_number_role_separable,
+                "an ABox premise must not decline the number-role proof: {abox_only}"
+            );
+        }
+    }
+
+    #[test]
+    fn clause_retained_role_constraints_stay_out_of_the_number_component() {
+        // ore_ont_7499 in miniature: named inverse pairs, a transitive role, a
+        // role chain, a complex range and an irreflexive role on roles that the
+        // number restriction never touches, plus the tautological
+        // `R ⊑ owl:topObjectProperty`. `rbox.rs` fences the range/irreflexivity
+        // rows because the first-class RBox channel has no shape for them, but
+        // `parse.rs`/`normalise.rs` clausify both exactly, so the certificate
+        // must not decline: no number restriction reaches an inverse,
+        // non-simple, universal or constrained role.
+        let retained = source(
+            r#"Ontology(
+              InverseObjectProperties(<i> <j>)
+              TransitiveObjectProperty(<i>)
+              SubObjectPropertyOf(ObjectPropertyChain(<i> <i>) <k>)
+              SubObjectPropertyOf(<u> owl:topObjectProperty)
+              IrreflexiveObjectProperty(<v>)
+              ObjectPropertyRange(<w> ObjectUnionOf(<A> <B>))
+              FunctionalObjectProperty(<f>)
+              SubClassOf(<A> ObjectMinCardinality(2 <p> <C>))
+            )"#,
+        );
+        assert!(
+            retained.card_number_role_separable,
+            "clause-retained role constraints on non-number roles must not decline"
+        );
+        assert!(
+            retained.inverse_cardinality_role_separable,
+            "without ABox assertions both halves of the certificate hold"
+        );
+
+        // The ABox half is independent: an asserted edge whose role feeds a
+        // proper role chain cannot be materialized exactly, so the native
+        // nominal route declines while the number-role certificate still holds
+        // (this is exactly the ore_ont_7499 split, which the
+        // `certified_card_proxy_abox` route serves).
+        let chain_abox = source(
+            r#"Ontology(
+              InverseObjectProperties(<i> <j>)
+              SubObjectPropertyOf(ObjectPropertyChain(<e> <e>) <k>)
+              IrreflexiveObjectProperty(<v>)
+              ObjectPropertyAssertion(<e> <a> <b>)
+              ClassAssertion(<A> <a>)
+              SubClassOf(<A> ObjectMinCardinality(2 <p> <C>))
+            )"#,
+        );
+        assert!(
+            chain_abox.card_number_role_separable,
+            "the number-role half is independent of ABox materialization"
+        );
+        assert!(
+            !chain_abox.inverse_cardinality_role_separable,
+            "a chain-connected positive assertion still declines the native ABox route"
+        );
     }
 
     #[test]

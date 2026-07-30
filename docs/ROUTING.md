@@ -116,6 +116,7 @@ HT combinations, plus four external baselines:
 | `ht_rules` | DL-safe-rule consistency procedure with CB classification |
 | `card_fn` | Functional properties as first-class `≤1` restrictions; measurement-only because forcing it regresses other inputs |
 | `nominals` | Exact CB nominal/ABox calculus; the required route for every ABox outside the source-certified positive separation fragment |
+| `certified_card_proxy_abox` | First-class cardinality arm raced against CB for a source-certified number-role fragment, with an unmaterializable ABox kept out of the card input; sound but not complete for the whole ontology, so it is measurement-only and never automatically selected |
 | `seq_on`, `seq_off` | Force the Sequoia definer ordering on or off instead of using its internal structural gate |
 | `elk`, `hermit`, `konclude_w1`, `konclude_w16` | External baselines, with official Konclude measured at one and 16 workers |
 
@@ -203,6 +204,60 @@ calculus, so the learner cannot replace it with faster proxy CB. The sole
 exception is a source-proved positive ABox fragment described below. That
 fragment enters the same performance tree as the nominal-free TBox core because
 the certificate proves both consistency and TBox separation.
+
+### Inverse and cardinality certificates
+
+The first-class `≥n`/`≤n` arm needs one property: no number restriction may
+apply to an inverse, inverse-connected, chained, transitive, universal, or
+otherwise constrained role. Under that condition the exact inverse axioms, the
+SHOQ number rules, and the inverse-aware blocking compose without Konclude's
+NN/NI nominal-predecessor rule. `card_number_role_separable` records exactly
+that proof. `inverse_cardinality_role_separable` records it together with the
+separate ABox conditions: no negative assertion component may touch a non-simple
+role and no positive assertion component may feed a proper role chain, because
+the role automata are side data whose default use is universal propagation
+rather than materializing every named-individual edge.
+
+Both certificates admit an axiom that the first-class RBox channel cannot
+represent while the frontend still clausifies it exactly. `rbox.rs` fences
+irreflexivity, reflexivity, and a complex domain or range on a named role;
+`parse.rs` and `normalise.rs` emit `R(x,x) → ⊥`, the `R(x,x)` fact, and the
+ordinary `∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C` inclusion for them. Those rows constrain a role
+against classes or itself, never two role components, so they add no number-role
+premise; the source certificate additionally requires the constrained role to
+stay outside the number-role component. Asymmetry shares one fence reason with
+the dropped `DisjointObjectProperties`, so it fails closed. `owl:topObjectProperty`
+is admitted only as the super role of a plain role inclusion, where it is a
+tautology compiled into a write-only bridge clause and the normalized recheck
+proves no clause body, counted role, or other RBox row reads it.
+
+A profile that holds both certificates selects `certified_card_nominals`, the
+isolated HT mechanism carrying the exact typed ABox. A profile that holds only
+the number-role half keeps the exact nominal calculus: the automatic policy
+never drops an ABox.
+
+The `certified_card_proxy_abox` route runs the same cardinality arm against the
+CB engine with the uncertified native ABox kept out of the card input. It is
+explicitly selectable and measurement-only. Dropping ABox axioms removes
+constraints, so every subsumption it publishes is entailed, but that is an
+under-approximation and proves soundness only. Completeness for the original
+ontology needs two further facts the route does not establish: that the ABox
+cannot change a named-class subsumption, and that the KB is consistent — an
+inconsistent KB entails every subsumption, while a dropped ABox still yields an
+ordinary taxonomy. The frontend's `abox_inconsistent` precheck does not close
+that gap: it closes asserted memberships over named subclasses, domain/range and
+`SameIndividual` and fires only on an asserted disjoint pair or a negative
+assertion clash, so `A ⊑ ⊥` with `ClassAssertion(A a)`, a cardinality clash, or a
+role-chain-derived range clash all escape it
+(`abox_consistency.rs::derived_abox_contradictions_are_not_detected`). The
+existing `positive_abox_tbox_separable` certificate is the shape a future
+automatic version would need, together with a complete consistency decision.
+
+ORE 7499 is the corpus witness for the arm itself: its 74 asserted
+`BFO_0000062` edges feed a proper role chain, its irreflexive role and complex
+range are outside the number-role component, and
+`km classify --route certified_card_proxy_abox` returns the Konclude/HermiT
+taxonomy exactly. Its automatic route remains `nominals`.
 
 ### Positive ABox separation certificate
 
