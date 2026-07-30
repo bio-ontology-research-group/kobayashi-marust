@@ -51,3 +51,11 @@ Replacement arrays `49644178` (`debug`) and `49644193` (`batch`) were
 submitted without whole-node exclusivity. They share the same result paths;
 the array that starts first must run alone and the other must be cancelled
 before execution.
+
+Both speculative arrays allocated index zero simultaneously, so both were
+cancelled and their shared partial result directory was deleted. No output
+from that collision is admissible evidence. Subsequent single-array attempts
+`49644276` and `49644282` remained unable to backfill because the only Gold
+6248 debug node was memory-fragmented and reserved. The correctness gate is
+therefore CPU-model-neutral; its wall-time observations are diagnostic only.
+The complete production sweep remains fixed to Gold 6248 CPUs.

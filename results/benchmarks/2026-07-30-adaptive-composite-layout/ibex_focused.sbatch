@@ -3,7 +3,6 @@
 #SBATCH --job-name=km-adaptive-comp-gate
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=batch
-#SBATCH --constraint=cpu_intel_gold_6248
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=24G
@@ -31,12 +30,6 @@ expected_routes=(
 index=${SLURM_ARRAY_TASK_ID:?}
 ontology=${ontologies[$index]}
 expected_route=${expected_routes[$index]}
-cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
-if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
-  echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
-  exit 2
-fi
-
 work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/focused/results" "$root/focused/failures"
 PYTHONPATH="$root" /usr/bin/python3 -c \
