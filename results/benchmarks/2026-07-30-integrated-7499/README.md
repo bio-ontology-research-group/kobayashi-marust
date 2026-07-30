@@ -51,13 +51,15 @@ The active source-bound chain is:
 
 - IBEX build: job `49628097`, completed successfully;
 - focused exactness gate: job `49628211`, using the installed build;
-- complete 592-ontology automatic sweep: job `49628212`, after successful
+- complete 592-ontology automatic sweep: job `49628278`, after successful
   focused validation.
 
 The full array uses one exclusive allocation per ontology, a 240-second
 reasoner timeout, a 20,480 MiB watchdog, per-ontology profile validation,
 terminal checkpoints, atomic result publication, and exact Konclude-signature
-comparison. The Slurm allocation is 28 GiB so the Python supervisor remains
-alive long enough to publish a terminal `memout` if the reasoner crosses the
-20,480 MiB contract. Results are not claimed until the jobs complete and their
-output and checkpoint counts are audited.
+comparison. The initial 22 GiB and 28 GiB Slurm allocations both let two giant
+reasoner processes cross the cgroup limit between watchdog samples, killing the
+supervisor before it could publish a row. The Slurm allocation is 64 GiB so the
+Python supervisor remains alive long enough to publish a terminal `memout` if
+the reasoner crosses the 20,480 MiB contract. Results are not claimed until the
+jobs complete and their output and checkpoint counts are audited.

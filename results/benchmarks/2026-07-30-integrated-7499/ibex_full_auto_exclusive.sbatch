@@ -7,7 +7,7 @@
 #SBATCH --partition=debug
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=28G
+#SBATCH --mem=64G
 #SBATCH --exclusive
 #SBATCH --array=0-591%10
 #SBATCH --export=NONE
