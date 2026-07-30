@@ -576,6 +576,7 @@ pub(crate) struct EnvironmentGuard {
 impl EnvironmentGuard {
     pub(crate) fn capture() -> Self {
         let values = std::iter::once("KM_ROUTE")
+            .chain(std::iter::once("KM_COMP_IND_BITS"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
             .collect();

@@ -26,6 +26,7 @@
 //! assertion-heavy ontologies while keeping every stored term four bytes.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// A term is just its ordered unsigned integer id (see module docs).
 pub type Term = u32;
@@ -42,9 +43,49 @@ pub const FTERM_BASE: Term = 1 << 20;
 pub const COMP_BASE: Term = 1 << 22;
 /// Composite `f(o)` terms occupy `COMP_BASE ..`: `(f - FTERM_BASE)` in the
 /// bits above `COMP_IND_BITS`, the raw individual id in the low bits. The
-/// 17/15 split covers 131,071 named individuals and 32,735 Skolem functions
-/// simultaneously, including ORE 15846 (129,647 / 20,932).
+/// The default 17/15 split covers 131,071 named individuals and 32,735 Skolem
+/// functions simultaneously, including ORE 15846 (129,647 / 20,932). A worker
+/// may select another split through `KM_COMP_IND_BITS` before saturation. The
+/// orchestrator derives that value from exact normalized-clause symbol counts;
+/// for example, 15/17 covers ORE 1194 (18,055 individuals / 130,303 normalized
+/// Skolem functions).
 pub const COMP_IND_BITS: u32 = 17;
+static ACTIVE_COMP_IND_BITS: OnceLock<u32> = OnceLock::new();
+
+#[inline]
+fn comp_ind_bits() -> u32 {
+    *ACTIVE_COMP_IND_BITS.get_or_init(|| {
+        let bits = std::env::var("KM_COMP_IND_BITS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(COMP_IND_BITS);
+        assert!((1..32).contains(&bits), "KM_COMP_IND_BITS must be in 1..32");
+        bits
+    })
+}
+
+/// Pick a positional split that represents every dense function and
+/// individual id. Prefer the established 17-bit individual layout whenever it
+/// fits, preserving byte-for-byte term ordering for the normal case.
+pub fn choose_comp_ind_bits(functions: u64, individuals: u64) -> Option<u32> {
+    let fits = |bits: u32| {
+        let individual_limit = 1u64 << bits;
+        individuals < individual_limit
+            && functions
+                .checked_shl(bits)
+                .and_then(|base| base.checked_add(individuals))
+                .is_some_and(|packed| packed <= (Term::MAX - COMP_BASE) as u64)
+    };
+    if fits(COMP_IND_BITS) {
+        return Some(COMP_IND_BITS);
+    }
+    let minimum = if individuals == 0 {
+        1
+    } else {
+        (u64::BITS - individuals.leading_zeros()).max(1)
+    };
+    (minimum..32).find(|&bits| fits(bits))
+}
 
 #[inline]
 pub fn zvar(i: i32) -> Term {
@@ -110,9 +151,10 @@ pub fn comp_term(f: Term, o: Term) -> Term {
     debug_assert!(is_function(f) && f < COMP_BASE && is_individual(o));
     let fi = f - FTERM_BASE;
     let oi = o - IND_BASE;
-    let packed = ((fi as u64) << COMP_IND_BITS) + oi as u64;
+    let bits = comp_ind_bits();
+    let packed = ((fi as u64) << bits) + oi as u64;
     assert!(
-        oi < (1 << COMP_IND_BITS) && packed <= (Term::MAX - COMP_BASE) as u64,
+        (oi as u64) < (1u64 << bits) && packed <= (Term::MAX - COMP_BASE) as u64,
         "nominal mode: f(o) term space exhausted (f id {fi}, individual {})",
         ind_id(o)
     );
@@ -128,10 +170,8 @@ pub fn is_comp(t: Term) -> bool {
 pub fn comp_parts(t: Term) -> (Term, Term) {
     debug_assert!(is_comp(t));
     let v = t - COMP_BASE;
-    (
-        FTERM_BASE + (v >> COMP_IND_BITS),
-        IND_BASE + (v & ((1 << COMP_IND_BITS) - 1)),
-    )
+    let bits = comp_ind_bits();
+    (FTERM_BASE + (v >> bits), IND_BASE + (v & ((1 << bits) - 1)))
 }
 #[inline]
 pub fn term_max(a: Term, b: Term) -> Term {
@@ -788,5 +828,12 @@ mod term_encoding_tests {
         // The documented 17/15 composite split uses the final u32 value
         // exactly; arithmetic must neither wrap nor leave an accidental gap.
         assert_eq!(comp_term(fterm(32_735), ind_term(131_071)), Term::MAX);
+    }
+
+    #[test]
+    fn adaptive_composite_layout_covers_both_ore_extremes() {
+        assert_eq!(choose_comp_ind_bits(20_932, 129_647), Some(17));
+        assert_eq!(choose_comp_ind_bits(130_303, 18_055), Some(15));
+        assert_eq!(choose_comp_ind_bits(1 << 20, 1 << 20), None);
     }
 }

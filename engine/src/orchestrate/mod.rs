@@ -465,6 +465,16 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     classify_with_evidence(initial_cfg, ont).map(|evidence| evidence.classification)
 }
 
+fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
+    crate::calc::choose_comp_ind_bits(
+        profile.clauses.function_term_symbols,
+        profile
+            .clauses
+            .individual_term_symbols
+            .max(profile.source.distinct_individuals),
+    )
+}
+
 pub(crate) fn classify_with_evidence(
     initial_cfg: &Config,
     ont: &Path,
@@ -491,6 +501,9 @@ pub(crate) fn classify_with_evidence(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        if let Some(bits) = composite_layout(&meta.profile) {
+            std::env::set_var("KM_COMP_IND_BITS", bits.to_string());
+        }
         std::env::set_var("KM_ROUTE", "manual");
         Some(Config::from_env())
     };
@@ -1014,7 +1027,7 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
-    use super::{inproc_engine_out, is_bottom, use_elc_portfolio};
+    use super::{composite_layout, inproc_engine_out, is_bottom, use_elc_portfolio};
     use crate::reasoner::Reasoner;
 
     /// Regression: the in-process CB fast path published a resource-truncated
@@ -1074,5 +1087,14 @@ mod tests {
         assert!(is_bottom("\u{22A5}"));
         assert!(!is_bottom("Nothing"));
         assert!(!is_bottom("http://example.org#Nothing"));
+    }
+
+    #[test]
+    fn composite_layout_uses_source_individuals_before_nominal_clause_augmentation() {
+        let mut profile = crate::frontend::profile::OntologyProfile::default();
+        profile.clauses.function_term_symbols = 130_303;
+        profile.clauses.individual_term_symbols = 0;
+        profile.source.distinct_individuals = 18_055;
+        assert_eq!(composite_layout(&profile), Some(15));
     }
 }
