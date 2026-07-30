@@ -25,4 +25,5 @@ Local validation:
 - the complete serial release suite passes: 1,797 library tests, eight ignored,
   and all integration tests, with zero failures.
 
-IBEX build and exactness results are recorded after their jobs terminate.
+IBEX build job `49642445` and dependent five-case exactness array `49642446`
+are pending. Results are recorded after their jobs terminate.
