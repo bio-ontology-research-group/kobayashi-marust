@@ -4,7 +4,7 @@
 # marker before recovering any terminal row lost to a whole-cgroup burst.
 #SBATCH --job-name=km-main592x
 #SBATCH --account=pi-hohndor
-#SBATCH --partition=debug
+#SBATCH --partition=batch
 # Fixed hardware is required for comparable wall-time aggregates.  The debug
 # partition also contains AMD EPYC 7702 and Intel E5-2699 v3 nodes.
 #SBATCH --constraint=cpu_intel_gold_6248

@@ -34,8 +34,8 @@ The current chain is:
 
 - build: job `49630715`;
 - focused exactness gate: job `49631418`;
-- complete 592-ontology automatic sweep: array job `49632192`;
-- independent terminal-row audit: job `49632193`.
+- complete 592-ontology automatic sweep: array job `49632438`;
+- independent terminal-row audit: job `49632439`.
 
 The focused gate completed successfully. All 19 automatic hard cases and
 ontology 7499 through the explicit measurement route matched their Konclude
