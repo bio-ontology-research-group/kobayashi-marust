@@ -1,0 +1,81 @@
+#!/bin/bash
+# Exact automatic-route gate for 1194 and adjacent certificate controls.
+#SBATCH --job-name=km-1194-gate
+#SBATCH --account=pi-hohndor
+#SBATCH --partition=batch
+#SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --time=00:12:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=24G
+#SBATCH --exclusive
+#SBATCH --array=0-4
+#SBATCH --export=NONE
+#SBATCH --output=/ibex/scratch/hohndor/km/class-only-chain-abox-1194-20260730/focused/slurm-%A_%a.out
+
+set -euo pipefail
+root=/ibex/scratch/hohndor/km/class-only-chain-abox-1194-20260730
+km_root=/ibex/scratch/hohndor/km
+ontologies=(
+  ore_ont_1194.owl
+  ore_ont_6999.owl
+  ore_ont_10621.owl
+  ore_ont_15672.owl
+  ore_ont_15846.owl
+)
+expected_routes=(
+  certified_nominals
+  certified_nominals
+  certified_nominals
+  ""
+  certified_nominals
+)
+index=${SLURM_ARRAY_TASK_ID:?}
+ontology=${ontologies[$index]}
+expected_route=${expected_routes[$index]}
+cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
+  echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
+  exit 2
+fi
+
+work=${SLURM_TMPDIR:-/tmp}/km-1194-${SLURM_JOB_ID}
+/usr/bin/mkdir -p "$work" "$root/focused/results" "$root/focused/failures"
+PYTHONPATH="$root" /usr/bin/python3 -c \
+  'import ore_canon, tree_watchdog; print("HARNESS_IMPORTS_OK")'
+observed_route=$("$root/km" profile "$km_root/corpus/$ontology" |
+  /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["selected_route"])')
+if [[ -n $expected_route ]]; then
+  test "$observed_route" = "$expected_route"
+fi
+
+/usr/bin/python3 "$root/full_panel_run_one.py" \
+  --kind km \
+  --arm km_route_auto_class_only_chain_abox_1194 \
+  --ontology "$km_root/corpus/$ontology" \
+  --binary "$root/km" \
+  --workers 16 \
+  --timeout 240 \
+  --memcap-mb 20480 \
+  --gold "$km_root/cmp2/out/konclude/konclude__$ontology.sig.gz" \
+  --gold-kind konclude \
+  --workdir "$work/run" \
+  --failures-dir "$root/focused/failures" \
+  --checkpoint "$root/focused/results/$ontology.checkpoint.json" \
+  --env KM_ROUTE=auto \
+  > "$root/focused/results/$ontology.json.tmp"
+
+/usr/bin/python3 - "$root/focused/results/$ontology.json.tmp" "$ontology" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2]:
+    raise SystemExit(f"ontology mismatch: {row}")
+if not row.get("checkpointed"):
+    raise SystemExit(f"missing terminal checkpoint: {row}")
+if row.get("status") != "ok" or row.get("verdict") != "match":
+    raise SystemExit(f"automatic route failed exactness gate: {row}")
+PY
+/usr/bin/mv "$root/focused/results/$ontology.json.tmp" \
+  "$root/focused/results/$ontology.json"
+echo "TASK_COMPLETE ontology=$ontology route=$observed_route"
