@@ -1,19 +1,21 @@
 #!/bin/bash
 # Complete source-bound, resumable 592-ontology automatic-route sweep.
-#SBATCH --job-name=km-adaptive-comp-v3-592
+#SBATCH --job-name=km-adaptive-comp-v4-592
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=batch
 #SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --nodelist=cn512-06-r,cn512-07-l,cn512-02-r,cn512-11-r,cn512-03-r,cn512-08-r,cn512-14-r,cn512-05-l,cn512-03-l,cn512-16-l
+#SBATCH --nodes=1
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=24G
 #SBATCH --exclusive
 #SBATCH --array=0-591%10
 #SBATCH --export=NONE
-#SBATCH --output=/ibex/scratch/hohndor/km/adaptive-composite-layout-v3-full-20260731/slurm-%A_%a.out
+#SBATCH --output=/ibex/scratch/hohndor/km/adaptive-composite-layout-v4-full-20260731/slurm-%A_%a.out
 
 set -euo pipefail
-root=/ibex/scratch/hohndor/km/adaptive-composite-layout-v3-full-20260731
+root=/ibex/scratch/hohndor/km/adaptive-composite-layout-v4-full-20260731
 km_root=/ibex/scratch/hohndor/km
 ontology_list=$km_root/routing_20260715/onts.txt
 index=${SLURM_ARRAY_TASK_ID:?}
@@ -45,11 +47,11 @@ PY
   exit 0
 fi
 
-work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v3-592-${SLURM_JOB_ID}
+work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v4-592-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
 /usr/bin/python3 "$root/full_panel_run_one.py" \
   --kind km \
-  --arm km_route_auto_adaptive_composite_layout_v3 \
+  --arm km_route_auto_adaptive_composite_layout_v4 \
   --ontology "$km_root/corpus/$ontology" \
   --binary "$root/km" \
   --workers 16 \

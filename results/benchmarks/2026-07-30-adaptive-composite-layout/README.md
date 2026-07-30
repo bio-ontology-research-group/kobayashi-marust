@@ -134,3 +134,22 @@ suite passes with 1,800 tests, eight ignored, and zero failures. Archive
 SHA-256:
 `c733f1ee4a88a16b605ff8d5044f57a7531cb29a997e2aabe02dcb347ad5c145`.
 Source-bound build `49646505` feeds exact automatic-route gate `49646506`.
+
+Gate `49646506` passed all six frozen-signature controls. Automatic routing
+selected `certified_nominals` for 15846 and matched Konclude exactly in
+213.8929 seconds at 19,180.67 MiB, with 10,640 subsumptions and no missing or
+extra entailments. Ontologies 6999, 1034, 2237, 1579, and 3377 also matched
+exactly. The deployed binary SHA-256 is
+`d5d675b850092a5dac01800978ed0f165dd403d375042bb2875b548464a9109b`.
+
+The complete source-bound 592-ontology production sweep uses that exact
+binary under array job `49646977`; dependent audit job `49646978` rejects
+missing, duplicate, malformed, wrong-index, wrong-binary, and non-terminal
+rows. Every classification has a 240-second timeout and a 20-GB summed
+process-tree watchdog. The array explicitly requests one node from a
+Gold-6248 allow-list and verifies the CPU model at runtime.
+
+Superseded submission `49646960` and audit `49646961` were cancelled before
+execution. Slurm interpreted the ten-entry allow-list as a ten-node request
+until the script added `--nodes=1`; queue inspection caught this before any
+benchmark row was produced.
