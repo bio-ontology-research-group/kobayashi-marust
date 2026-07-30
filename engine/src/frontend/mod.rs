@@ -20,6 +20,7 @@ pub mod profile;
 pub mod rbox;
 pub mod sexpr;
 pub mod syntax;
+pub mod top_role;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -450,9 +451,27 @@ fn ofn_to_clauses_requested(
     // heap string per token, and the AST was additionally deep-cloned for the
     // rbox/declared scans — together the 20 GB peak on 500 MB ontologies).
     let mut profile_builder = profile::SourceProfileBuilder::new();
-    let ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
+    let mut top_role_scan = top_role::TopRoleScan::default();
+    let mut ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
         profile_builder.observe(node);
+        top_role_scan.observe(node);
     })?;
+    // `R ⊑ owl:topObjectProperty` is a tautology. When it is the ontology's only
+    // mention of the builtin, removing it keeps every entailment and every CB
+    // derivation (nothing ever reads the write-only role) while letting the
+    // procedures that fail closed on a universal role — the konclude_ht bridge
+    // among them — see the terminology they can actually classify.
+    // `KM_NO_TOP_ROLE_ELISION` restores the pre-elision clause and RBox output
+    // for differential testing; it is not a routing switch.
+    let elide_top_role =
+        top_role_scan.eliminable() && std::env::var_os("KM_NO_TOP_ROLE_ELISION").is_none();
+    if elide_top_role {
+        let removed = top_role::elide_vacuous_inclusions(&mut ontology, &reg);
+        if std::env::var_os("KM_DEBUG_TOP_ROLE").is_some() {
+            eprintln!("KM_DEBUG_TOP_ROLE elided {removed} vacuous top-role inclusion(s)");
+        }
+    }
+    let ontology = ontology;
     let bottom_prepass = if std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none() {
         Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
     } else {
@@ -550,6 +569,12 @@ fn ofn_to_clauses_requested(
         }
         Ok(())
     })?;
+    // The RBox is re-extracted from the source text, so it still carries the
+    // rows of the inclusions elided above. They are what puts the builtin into
+    // the TInput role table.
+    if elide_top_role {
+        top_role::elide_vacuous_rbox_rows(&mut rbox, &reg);
+    }
     // asserted-ABox inconsistency: named-disjointness clash (abox_consistency)
     // or datatype range/functionality clash (data_abox); both sound prechecks.
     let abox_inconsistent =

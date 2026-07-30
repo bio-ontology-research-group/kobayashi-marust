@@ -226,4 +226,20 @@ impl Ontology {
             .map(|a| a.as_ref())
             .filter(|a| matches!(a, Axiom::Rule(..)))
     }
+
+    /// Drop every axiom for which `keep` is false, returning how many went.
+    ///
+    /// The duplicate-suppression set is kept in step, so a later `add` of a
+    /// removed axiom re-inserts it.
+    pub fn retain_axioms(&mut self, keep: impl Fn(&Axiom) -> bool) -> usize {
+        let before = self.axioms.len();
+        self.axioms.retain(|ax| {
+            if keep(ax) {
+                return true;
+            }
+            self.seen.remove(ax);
+            false
+        });
+        before - self.axioms.len()
+    }
 }
