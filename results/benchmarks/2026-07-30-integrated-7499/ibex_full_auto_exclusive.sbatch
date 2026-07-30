@@ -5,6 +5,9 @@
 #SBATCH --job-name=km-main592x
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=debug
+# Fixed hardware is required for comparable wall-time aggregates.  The debug
+# partition also contains AMD EPYC 7702 and Intel E5-2699 v3 nodes.
+#SBATCH --constraint=cpu_intel_gold_6248
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=24G
@@ -19,6 +22,11 @@ root=/ibex/scratch/hohndor/km/integrated-main-full-20260730
 km_root=/ibex/scratch/hohndor/km
 ontology_list=$km_root/routing_20260715/onts.txt
 index=${SLURM_ARRAY_TASK_ID:?}
+cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
+  echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
+  exit 2
+fi
 [[ $index =~ ^([0-9]|[1-9][0-9]|[1-5][0-9][0-9])$ ]]
 (( index < 592 ))
 [[ $(/usr/bin/wc -l < "$ontology_list") -eq 592 ]]

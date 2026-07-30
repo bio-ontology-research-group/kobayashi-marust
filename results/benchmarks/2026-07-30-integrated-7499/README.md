@@ -34,8 +34,8 @@ The current chain is:
 
 - build: job `49630715`;
 - focused exactness gate: job `49631418`;
-- complete 592-ontology automatic sweep: array job `49631419`;
-- independent terminal-row audit: job `49631420`.
+- complete 592-ontology automatic sweep: array job `49632192`;
+- independent terminal-row audit: job `49632193`.
 
 The focused gate completed successfully. All 19 automatic hard cases and
 ontology 7499 through the explicit measurement route matched their Konclude
@@ -44,10 +44,20 @@ recovered 4755 in 6.26 s, 8068 in 3.81 s, and 11315 in 9.53 s on the gate node;
 11745 remained exact and completed in 25.03 s. Slurm therefore released the
 full array.
 
+An initial release of the full array, job `49631419`, exposed that the debug
+partition could schedule unconstrained tasks on different CPU generations.
+It produced two exact diagnostic rows, which are archived separately on IBEX,
+and was cancelled before further tasks ran. Those rows are excluded from every
+production aggregate. The replacement array above fixes and verifies the CPU
+model.
+
 ## Full-sweep terminal guarantees
 
-Each ontology receives one exclusive 24 GiB allocation, a 240-second reasoner
-timeout, and a 20,480 MiB measured-tree watchdog. The runner writes terminal
+Each ontology receives one exclusive 24 GiB allocation on an Intel Xeon Gold
+6248 node, a 240-second reasoner timeout, and a 20,480 MiB measured-tree
+watchdog. The job checks the runtime CPU model before invoking KM, so a
+scheduler or constraint regression fails instead of contaminating timing
+aggregates. The runner writes terminal
 checkpoints and publishes final rows atomically. Profiling happens only after
 the authoritative result exists and has its own address-space limit.
 
