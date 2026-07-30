@@ -248,3 +248,22 @@ ELC computes bottom propagation in its own complete fixpoint. The frontend
 therefore skips the general SROIQ bottom prepass on the two ELC-only routes.
 All other routes retain it unchanged. This avoids redundant giant-taxonomy
 work without changing the normalized ELC answer or the calculus.
+
+The bottom-aware source is commit `bf38a8d`; its archive SHA-256 is
+`521f57a95660b5a8f3b320441cacf2e59be55a18570ea89e034c1eaef2b216af`.
+Source-bound build `49651896` produced binary SHA-256
+`727f91c62cf28cda1a91d0ebc0d07b40cefe594914b11c4ed9eacd30a1e7cdff`.
+The ordinary five-case v8 gate passed, including exact 15846 in 189.5256
+seconds at 18,844.32 MiB. Automatic full-IRI gate `49651898` selected ELC for
+3524 and matched exactly in 20.0688 seconds at 2,564.38 MiB.
+
+The production sweep now selects a collision-safe runner only for 3524 and
+15703. It leaves reasoner timing and process-tree RSS measurement unchanged,
+skips the non-injective local-name closure, fingerprints the retained full-IRI
+answer, compares it with the established Konclude fingerprint, records the
+result in the terminal row, and deletes the large taxonomy. Wrapper gate
+`49652266` passed end to end for 3524 in 18.3166 seconds at 2,581.45 MiB.
+
+Complete v8 array `49652271` and strict audit `49652272` replace the cancelled,
+never-started v5 array and audit. The v8 array remains held on
+`afterok:49646978` so the v4 baseline finishes without resource competition.
