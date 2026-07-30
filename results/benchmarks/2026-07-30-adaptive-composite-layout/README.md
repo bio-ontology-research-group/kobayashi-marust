@@ -182,3 +182,8 @@ in 0.9659 seconds at 225.69 MiB. Retained controls 15672, 6999, and 1034 also
 match exactly. Giant control 15846 retains `certified_nominals` and matches
 exactly in 177.4123 seconds at 19,100.21 MiB. Gate `49648747` therefore passes
 all five cases.
+
+Complete v5 array `49649240` is source-bound to that accepted binary and waits
+on `afterok:49646978`, the strict v4 audit. This preserves an uncontended v4
+baseline before the next 592-ontology iteration begins. Dependent v5 audit
+`49649241` runs after every v5 array task reaches a terminal state.
