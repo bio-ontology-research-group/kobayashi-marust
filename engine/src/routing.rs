@@ -452,6 +452,26 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.universal_role
 }
 
+/// Large nominal ABoxes need the certified bridge portfolio's bounded
+/// synchronous competitor instead of spawning the full parallel nominal CB
+/// fallback immediately. A source false positive is correctness-neutral: the
+/// bridge independently proves lossless converted-input coverage or defers,
+/// and the companion worker is the same exact nominal calculus.
+fn large_nominal_portfolio_candidate(profile: &OntologyProfile) -> bool {
+    const LARGE_NOMINAL_INDIVIDUALS: u64 = 100_000;
+    const LARGE_NOMINAL_ABOX_AXIOMS: u64 = 100_000;
+
+    let source = &profile.source;
+    source.distinct_individuals >= LARGE_NOMINAL_INDIVIDUALS
+        && source.abox_axioms >= LARGE_NOMINAL_ABOX_AXIOMS
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.distinct_data_properties == 0
+        && source.datatype_constructors == 0
+        && !profile.expressivity.datatype
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
@@ -516,6 +536,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
+        }
+        SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
+            Route::CertifiedNominals
         }
         // Try the exact typed object-ABox bridge before materializing every
         // nominal into CB root contexts.  The bridge is complete-answer-or-
@@ -1451,6 +1474,24 @@ mod tests {
             .axiom_types
             .insert("NegativeClassAssertion".to_string(), 1);
         assert!(!independent_large_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+    }
+
+    #[test]
+    fn large_nominal_abox_uses_bounded_exact_portfolio() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 256_427;
+        profile.source.class_assertions = 111_561;
+        profile.source.role_assertions = 78_441;
+        profile.source.distinct_individuals = 129_647;
+        profile.expressivity.nominal_individual = true;
+        profile.expressivity.nominal = true;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(large_nominal_portfolio_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+
+        profile.source.datatype_constructors = 1;
+        assert!(!large_nominal_portfolio_candidate(&profile));
         assert_eq!(select(&profile), Route::Nominals);
     }
 

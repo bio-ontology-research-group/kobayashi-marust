@@ -114,3 +114,16 @@ and zero failures. Archive SHA-256:
 `5820e9db19c8aa50e6703f8a0390813e6d0312eff5d3bbc4d9d3ea2f81722906`.
 Source-bound IBEX build `49645472` feeds exact automatic-route gate `49645473`
 for 15846, 6999, 1034, 2237, 1579, and 3377.
+
+Gate `49645473` matched 6999, 1034, 2237, 1579, and 3377 exactly. Its 15846
+profile selected `nominals`, not the independent-ABox predicate: the ontology
+has 129,647 individuals, 256,427 ABox axioms, role assertions, equality,
+nominals, chains, and the universal role. Sixteen nominal CB workers reached
+the 18 GiB summed watchdog after 80.88 seconds.
+
+Certified-nominal control `49645724` matched 15846 exactly in 210.3321 seconds
+at 18,964.77 MiB. Its complete-or-defer bridge retains the exact nominal CB
+fallback but bounds the giant synchronous competitor. The follow-up automatic
+gate therefore targets large nominal ABoxes by source size and excludes rules,
+imports, data properties, and datatype constructors. This is a scheduling
+gate, not an approximation: bridge false positives defer to exact nominal CB.
