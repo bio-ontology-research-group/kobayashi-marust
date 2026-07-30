@@ -422,6 +422,17 @@ reproduce the source-bound 10621 capsule.
 
 ### ore_ont_541 and ore_ont_12653: source terminology + isolated OR tasks (2026-07-10)
 
+- **Current automatic-route restoration (2026-07-30)**: 541's only logical
+  uses of `owl:topObjectProperty` are three tautological
+  `R SubPropertyOf owl:topObjectProperty` axioms. The frontend now elides these
+  from the normalized ontology and RBox only when neither builtin top property
+  occurs anywhere else. This leaves all OWL entailments unchanged and removes
+  the artificial universal-role fence that prevented the source-terminology
+  bridge from running. Source-bound IBEX build 49633775 and exact test
+  49633776 produced 164/164 reference pairs, zero missing, zero extra, matching
+  consistency and no unsatisfiable-class difference in 0.15 seconds at
+  29,760 KiB. The tested binary SHA-256 is
+  `0e9e612a3c51b03f0709ce1ae3c10a67bdd70653bdc83480bc0f3cd8c64cd460`.
 - **Symptom**: both timed out in the production CB portfolio. Earlier bridge
   variants either thrashed, deferred, or solved only a test harness.
 - **Konclude diagnosis**: instrumentation plus source inspection showed two

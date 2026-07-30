@@ -9,6 +9,36 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Elide isolated tautological top-role inclusions; restore ore_ont_541 (2026-07-30)
+
+The functional-syntax frontend now removes
+`SubObjectPropertyOf(R owl:topObjectProperty)` and the corresponding data-role
+axiom only when the relevant top property has no other logical occurrence in
+the ontology. Such an inclusion is true in every OWL 2 interpretation. Before
+this pass KM represented the builtin as an ordinary role and produced a
+write-only `R(x,y) -> U(x,y)` clause plus an RBox row. The CB result did not
+depend on that row, but the universal-role feature made the otherwise suitable
+Konclude-derived completion bridge decline `ore_ont_541`.
+
+The pass scans the source document before normalization and removes matching
+axioms from both the ontology AST and the independently extracted RBox. A
+declaration is not treated as a logical use. Any other use of either builtin
+top property disables the entire transformation, so an ontology that needs
+universal-role semantics is unchanged and still follows the existing
+fail-closed path. `KM_NO_TOP_ROLE_ELISION=1` is a differential-test switch,
+not a routing option.
+
+Source-bound IBEX job 49633775 built revision `af4cb54` with archive SHA-256
+`a19af2619f9c083dee1508e82b9ca9f8235f17b393b489b77a7c63a61e2a50af`;
+the installed binary SHA-256 is
+`0e9e612a3c51b03f0709ce1ae3c10a67bdd70653bdc83480bc0f3cd8c64cd460`.
+Exact test job 49633776 classified `ore_ont_541` through the normal automatic
+portfolio in 0.15 seconds at 29,760 KiB. Its full result has 164/164 reference
+pairs, zero missing, zero extra, the same empty unsatisfiable-class set and the
+same consistency verdict. The change is semantics-preserving frontend
+preprocessing and does not alter a calculus rule, so it needs no Lean
+re-certification.
+
 ### One prepared ontology shared across parallel CB workers (2026-07-30)
 
 Split the CB engine's immutable ontology state out of `Engine` into
