@@ -37,13 +37,12 @@ The current chain is:
 - complete 592-ontology automatic sweep: array job `49631419`;
 - independent terminal-row audit: job `49631420`.
 
-The focused gate requires exact Konclude signature matches for 19 automatic
-hard cases and for ontology 7499 through the explicit measurement route. A
-completed diagnostic gate established 18 automatic exact matches plus the
-7499 exact match; ontology 11315 timed out because the source EL pre-gate
-rejected its three named-class disjointness axioms. Commit `4368e2e` corrects
-that feature rule. The current gate must prove all 20 cases before Slurm releases
-the full array.
+The focused gate completed successfully. All 19 automatic hard cases and
+ontology 7499 through the explicit measurement route matched their Konclude
+signatures exactly. In particular, the feature correction in `4368e2e`
+recovered 4755 in 6.26 s, 8068 in 3.81 s, and 11315 in 9.53 s on the gate node;
+11745 remained exact and completed in 25.03 s. Slurm therefore released the
+full array.
 
 ## Full-sweep terminal guarantees
 
