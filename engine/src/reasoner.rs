@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::calc::*;
 use crate::clause::OntologyClause;
-use crate::engine::{Engine, RetainedInsertBoundary, RetainedInsertStats};
+use crate::engine::{Engine, PreparedOntology, RetainedInsertBoundary, RetainedInsertStats};
 use crate::json_io::{JAtom, JClause, JTerm};
 
 fn short(name: &str) -> &str {
@@ -373,8 +373,12 @@ impl Reasoner {
             .unwrap_or(1)
     }
 
-    fn build_engine(&self) -> Engine {
-        Engine::new(self.sig0.clone(), self.clauses0.clone(), self.dropped)
+    /// Finalize the ontology once per classification.  Every engine built from
+    /// the result shares one clause arena, signature and nominal-certificate
+    /// map, so the query-parallel paths below no longer hold one private copy of
+    /// the (up to million-clause) ontology per worker thread.
+    fn prepare(&self) -> PreparedOntology {
+        Engine::prepare(self.sig0.clone(), self.clauses0.clone(), self.dropped)
     }
 
     pub(crate) fn absorb(
@@ -408,6 +412,7 @@ impl Reasoner {
     /// soundly split (`Foreign`).
     fn split_recurse(
         &self,
+        prepared: &PreparedOntology,
         query: Iri,
         decisions: &HashMap<Vec<Pred>, Vec<Iri>>,
         budget: &mut usize,
@@ -423,7 +428,7 @@ impl Reasoner {
                 decisions.len()
             );
         }
-        let mut e = self.build_engine();
+        let mut e = Engine::from_prepared(prepared);
         // Branch closures run under the tame ordered regime.
         set_branch_ordered(true);
         e.set_branch_decisions(decisions.clone());
@@ -453,7 +458,7 @@ impl Reasoner {
                 for &d in &ds {
                     let mut dd = decisions.clone();
                     dd.entry(core.clone()).or_default().push(d);
-                    match self.split_recurse(query, &dd, budget) {
+                    match self.split_recurse(prepared, query, &dd, budget) {
                         SplitBranch::Foreign => return SplitBranch::Foreign,
                         SplitBranch::Closed => {}
                         SplitBranch::Open(s) => {
@@ -475,12 +480,15 @@ impl Reasoner {
     /// Direction B (`KM_SPLIT`) classification driver: split-classify each query,
     /// falling back to the default engine for queries whose closure carries a
     /// disjunction the propositional-on-x driver cannot split.
-    fn saturate_split(&mut self, queries: &[Iri]) {
+    fn saturate_split(&mut self, prepared: &PreparedOntology, queries: &[Iri]) {
         // Global inconsistency (⊤ ⊑ ⊥), detected once via an empty-query run
         // under the complete (unordered) regime.
         set_branch_ordered(false);
+        // The branch engines below (one per search node) share the caller's
+        // finalized ontology instead of re-indexing and re-cloning the clause
+        // set per node.
         let (inc, inc_incomplete) = {
-            let mut e = self.build_engine();
+            let mut e = Engine::from_prepared(prepared);
             e.run_for(&[]);
             (e.inconsistent(), e.incomplete())
         };
@@ -493,7 +501,7 @@ impl Reasoner {
         for &q in queries {
             let mut budget = node_budget;
             let init: HashMap<Vec<Pred>, Vec<Iri>> = HashMap::new();
-            match self.split_recurse(q, &init, &mut budget) {
+            match self.split_recurse(prepared, q, &init, &mut budget) {
                 SplitBranch::Foreign => fallback.push(q),
                 SplitBranch::Closed => {
                     let a = self.sig0.concept_names[q as usize].clone();
@@ -522,7 +530,7 @@ impl Reasoner {
         if !fallback.is_empty() {
             // Fallback queries run under the complete (unordered) regime.
             set_branch_ordered(false);
-            let mut e = self.build_engine();
+            let mut e = Engine::from_prepared(prepared);
             e.run_for(&fallback);
             let (s, i, incomplete, n) = (
                 e.subsumptions(),
@@ -613,7 +621,14 @@ impl Reasoner {
         // parallel workers below all read the resulting global). Env overrides
         // win inside `set_seq_order_auto`.
         set_seq_order_auto(self.has_internal_definer_disjunction());
-        let mut queries = self.build_engine().named_queries();
+        // Finalize the ontology once. Every engine below (the sequential run,
+        // each static chunk, each work-stealing worker) is built from this one
+        // immutable copy, so the clause arena, signature and nominal
+        // certificates exist once per classification rather than once per
+        // worker thread. The query list also comes from it, which drops the
+        // throw-away engine that used to be built just to enumerate queries.
+        let prepared = self.prepare();
+        let mut queries = prepared.named_queries();
         // KM_QUERIES: classify only the named subjects listed (comma-
         // separated internal names) — the certified-EL hybrid's residue path:
         // elc answers every subject its certificate determined, and the
@@ -626,7 +641,7 @@ impl Reasoner {
         // Direction B (docs/DISJUNCTION-SPLITTING.md): split-classify when
         // KM_SPLIT is set. Gated, default OFF.
         if std::env::var_os("KM_SPLIT").is_some() {
-            self.saturate_split(&queries);
+            self.saturate_split(&prepared, &queries);
             return;
         }
         // Direction A (docs/ROOT-ORDERED-RESOLUTION.md): ordered resolution in
@@ -648,7 +663,7 @@ impl Reasoner {
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
         if threads <= 1 || queries.len() <= 1 {
-            let mut e = self.build_engine();
+            let mut e = Engine::from_prepared(&prepared);
             e.run_for(&queries);
             let (subs, inc, incomplete, n) = (
                 e.subsumptions(),
@@ -680,7 +695,7 @@ impl Reasoner {
             let partials: Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)> = chunks
                 .par_iter()
                 .map(|chunk| {
-                    let mut e = self.build_engine();
+                    let mut e = Engine::from_prepared(&prepared);
                     e.run_for(chunk);
                     (
                         e.subsumptions(),
@@ -715,14 +730,14 @@ impl Reasoner {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let n = queries.len();
         let cursor = AtomicUsize::new(0);
-        let this: &Reasoner = self;
+        let prepared_ref: &PreparedOntology = &prepared;
         let queries_ref: &[Iri] = &queries;
         let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)>> =
             std::sync::Mutex::new(Vec::with_capacity(threads));
         rayon::scope(|s| {
             for _ in 0..threads {
                 s.spawn(|_| {
-                    let mut engine = this.build_engine();
+                    let mut engine = Engine::from_prepared(prepared_ref);
                     let mut did_any = false;
                     loop {
                         let seen = cursor.load(Ordering::Relaxed);

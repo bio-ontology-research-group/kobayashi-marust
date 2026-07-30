@@ -9,6 +9,48 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### One prepared ontology shared across parallel CB workers (2026-07-30)
+
+Split the CB engine's immutable ontology state out of `Engine` into
+`PreparedOntology` (`Engine::prepare` / `Engine::from_prepared`): the normalized
+clause arena, the Hyper candidate indexes, the trigger-analysed `Sig` and the
+nominal-enumeration certificates. `Reasoner::saturate` prepares the ontology
+once and gives every worker the same `Arc`-shared copy, so the sequential run,
+each static chunk and each work-stealing worker no longer hold a private clone
+of the clause set. Retained insertion is the only writer and now goes through
+`Arc::make_mut`, so an engine that still shares a prepared ontology copies
+before it mutates. Preparing once also removes the throw-away engine that
+existed only to enumerate the named queries, and the `KM_SPLIT` search reuses
+one prepared ontology across its branch engines instead of re-indexing the
+clause set per search node.
+
+On `ore_ont_1194` (1,062,241 clauses, 88,440 interned concept names, 221,086
+class assertions) the clones were the 20 GiB wall. Engine peak RSS over an equal
+240 s of saturation, `KM_NOMINALS=1`, 56 threads: **19.58 GiB -> 4.15 GiB**.
+TBox-only mode over the same 240 s: 1 thread 1.59 -> 1.59 GiB, 8 threads 4.90 ->
+2.75, 16 threads 7.78 -> 3.87, 56 threads 19.67 -> 4.97. The marginal cost of an
+extra worker at 56 threads falls from about 335 MB to about 62 MB, the residue
+being per-engine saturation state that cannot be shared. A fixed 40-query run
+(same work in both builds) drops 13.79 GiB -> 2.24 GiB.
+
+1194 is **not** closed. With memory no longer the limit it is wall-clock bound
+far past the contract (no fixpoint after 1,800 s at 56 threads), and its default
+classify route still fails at about 33 s in both builds with the reported
+`nominal mode: f(o) term space exhausted (f id 124950, individual 18055)` limit:
+`COMP_IND_BITS = 17` leaves about 32,767 Skolem-function ids in the composite
+`f(o)` range and the absorbed nominal route introduces 124,950. Lifting that
+encoding limit is the next step for the route, and it is untouched here.
+
+Fixpoint-preserving: preparation is a pure function of the input clause set
+(`Engine::new` is `prepare` followed by `from_prepared`), the shared state is
+immutable for the whole saturation, and the query partition is unchanged, so
+each worker derives exactly what it derived before. Validation: byte-identical
+engine output HEAD vs shared on 10 ORE ontologies at 1, 4 and 8 threads, the
+same in nominal mode on the five of them with an ABox, byte-identical frontend
+output, and `cargo test --release` at 1779 passed / 0 failed / 8 ignored plus the
+integration suites. Numbers, commands and caveats in
+[`results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md).
+
 ### Exact incremental direct-HT classification (2026-07-23)
 
 Extended `IncrementalClassifier` with an explicitly selected hypertableau

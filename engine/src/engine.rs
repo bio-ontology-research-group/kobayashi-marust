@@ -16,6 +16,7 @@
 //! finite covering bound live in `lean/ContextCalculus/Nominals.lean`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use smallvec::SmallVec;
 
@@ -1833,10 +1834,45 @@ pub(crate) struct RetainedInsertStats {
     pub edges_after: usize,
 }
 
+/// The finalized, immutable ontology state of one classification: the clause
+/// arena with its Hyper candidate indexes, the trigger-analysed signature, and
+/// the nominal-enumeration certificates.  Building it reads the clause set and
+/// mutates the signature (trigger bits, `nothing` promotion); once built,
+/// nothing in saturation writes to it, so every parallel worker engine can
+/// share one copy behind an `Arc` instead of holding a private clone (on a
+/// million-clause ABox each clone is hundreds of MB, and the query-parallel
+/// path builds one engine per worker thread).
+///
+/// Retained insertion is the one writer, and it goes through `Arc::make_mut`:
+/// an engine that still shares its ontology copies first, so a shared prepared
+/// ontology is never mutated under another worker.
+#[derive(Clone)]
+pub struct PreparedOntology {
+    sig: Arc<Sig>,
+    ont: Arc<Ontology>,
+    nominal_enumerations: Arc<HashMap<Iri, Vec<Term>>>,
+    /// Nom rule width `K` over the whole ontology (see `Engine::nom_k`).
+    nom_k: usize,
+    /// first fresh additional-nominal id (above every input individual)
+    nom_first: i32,
+    dropped_unsupported: usize,
+}
+
+impl PreparedOntology {
+    /// The named query concepts of this ontology: every non-internal,
+    /// non-`Nothing` concept name.  Reads only the finalized signature, so the
+    /// query list no longer costs a throw-away engine construction.
+    pub fn named_queries(&self) -> Vec<Iri> {
+        (0..self.sig.concept_names.len() as Iri)
+            .filter(|&i| !self.sig.is_internal(i) && !self.sig.is_nothing_concept(i))
+            .collect()
+    }
+}
+
 #[derive(Clone)]
 pub struct Engine {
-    pub sig: Sig,
-    ont: Ontology,
+    pub sig: Arc<Sig>,
+    ont: Arc<Ontology>,
     contexts: Vec<Context>,
     /// Root/split context dedup: content hash of the core -> candidate context
     /// ids (collisions resolved by exact `contexts[id].core` comparison, never
@@ -1855,7 +1891,7 @@ pub struct Engine {
     /// the completed ABox label when such a nominal is integrated; KM uses the
     /// exact multi-nominal analogue and intersects the completed ground labels
     /// instead of replaying the whole ABox through a query root.
-    nominal_enumerations: HashMap<Iri, Vec<Term>>,
+    nominal_enumerations: Arc<HashMap<Iri, Vec<Term>>>,
     /// Complete named atomic subsumers for enumeration-certified queries already
     /// answered from the ground closure. Kept outside `contexts` so the
     /// expensive nominal query root is never created.
@@ -2026,6 +2062,18 @@ pub struct ClosureFacts {
 
 impl Engine {
     pub fn new(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> Engine {
+        Engine::from_prepared(&Engine::prepare(sig, ont_clauses, dropped))
+    }
+
+    /// Finalize the ontology once: index the clauses, complete the signature's
+    /// trigger analysis, compute the Nom parameters and the nominal-enumeration
+    /// certificates.  The result is immutable and shareable, so a query-parallel
+    /// classification prepares it once and hands the same copy to every worker
+    /// (`from_prepared`) instead of re-indexing and re-cloning the clause arena
+    /// per worker.  Output-identical: `Engine::new` is exactly `prepare` followed
+    /// by `from_prepared`, and preparation is a pure function of the input clause
+    /// set.
+    pub fn prepare(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> PreparedOntology {
         let mut sig = sig;
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some();
         let (ont_clauses, max_input_ind, ground_merge) =
@@ -2093,18 +2141,33 @@ impl Engine {
                 }
             }
         }
+        let nominal_enumerations = detect_nominal_enumerations(&sig, &ont.clauses);
+        PreparedOntology {
+            sig: Arc::new(sig),
+            ont: Arc::new(ont),
+            nominal_enumerations: Arc::new(nominal_enumerations),
+            nom_k: (max_z - 1).max(0) as usize,
+            nom_first: max_ind + 1,
+            dropped_unsupported: dropped,
+        }
+    }
+
+    /// A fresh engine over an already prepared ontology.  Only the per-engine
+    /// mutable saturation state (contexts, arenas, message queue, Nom interner)
+    /// is allocated; the clause arena, signature and nominal certificates are
+    /// shared with every other engine built from the same `PreparedOntology`.
+    pub fn from_prepared(prepared: &PreparedOntology) -> Engine {
         let nom_budget = std::env::var("KM_NOM_BUDGET")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(4096);
-        let nominal_enumerations = detect_nominal_enumerations(&sig, &ont.clauses);
         Engine {
-            sig,
-            ont,
+            sig: Arc::clone(&prepared.sig),
+            ont: Arc::clone(&prepared.ont),
             contexts: Vec::new(),
             core_index: HashMap::new(),
             ground_ctx: None,
-            nominal_enumerations,
+            nominal_enumerations: Arc::clone(&prepared.nominal_enumerations),
             nominal_shortcuts: HashMap::new(),
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::new(),
@@ -2133,12 +2196,12 @@ impl Engine {
             pred_intern_idx: HashMap::new(),
             cc_arena: [Vec::new(), Vec::new()],
             cc_intern_idx: [HashMap::new(), HashMap::new()],
-            dropped_unsupported: dropped,
+            dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
-            nom_k: (max_z - 1).max(0) as usize,
+            nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::new()),
-            nom_next: std::cell::Cell::new(max_ind + 1),
-            nom_base: ind_term(max_ind + 1),
+            nom_next: std::cell::Cell::new(prepared.nom_first),
+            nom_base: ind_term(prepared.nom_first),
             nom_budget,
             nom_truncated: std::cell::Cell::new(false),
             stat_propagate: 0,
@@ -2280,7 +2343,11 @@ impl Engine {
             next_sig.backward_role_succ_trigger[i] |= self.sig.backward_role_succ_trigger[i];
         }
         next_sig.rsucc = self.sig.rsucc;
-        self.sig = next_sig;
+        // A retained insertion is the one writer of the otherwise immutable
+        // ontology state.  Replacing/`make_mut`-ing the shared handles leaves
+        // any other holder (a co-existing engine that shares this prepared
+        // ontology) on its own unchanged copy.
+        self.sig = Arc::new(next_sig);
 
         let first_new = self.ont.clauses.len();
         let max_added_individual = input_max_individual(&additions);
@@ -2324,16 +2391,18 @@ impl Engine {
             // Do not promote direct-bottom clauses into Sig::nothing here: see
             // Ontology::push_clause. Hyper replay derives the exact same bottom
             // consequences without invalidating retained ordering caches.
-            self.ont.push_clause(&mut self.sig, clause, false);
+            let sig = Arc::make_mut(&mut self.sig);
+            Arc::make_mut(&mut self.ont).push_clause(sig, clause, false);
         }
-        self.ont.canonicalise_candidates();
+        Arc::make_mut(&mut self.ont).canonicalise_candidates();
 
         // Any cached context-independent closure reflects the old ontology.
         // Existing contexts are replayed below; future contexts recompute the
         // closure lazily from the extended indexes.
         self.shared_closure = None;
         self.shared_root_closure = None;
-        self.nominal_enumerations = detect_nominal_enumerations(&self.sig, &self.ont.clauses);
+        self.nominal_enumerations =
+            Arc::new(detect_nominal_enumerations(&self.sig, &self.ont.clauses));
         self.nominal_shortcuts.clear();
 
         let old_contexts = self.contexts.len();
@@ -7321,7 +7390,7 @@ mod rsucc_rolechain_tests {
     ) -> Vec<String> {
         let name = sig.concept_names[query_id as usize].clone();
         let mut e = Engine::new(sig, clauses, 0);
-        e.sig.rsucc = rsucc;
+        Arc::make_mut(&mut e.sig).rsucc = rsucc;
         e.run_for(&[query_id]);
         let mut s = e
             .subsumptions()
@@ -7467,10 +7536,10 @@ mod rsucc_rolechain_tests {
         // A2 is unsatisfiable (its S-successor is E ⊑ ⊥); `subsumptions` surfaces
         // the ⊥ subject. We only need the answer to be identical with r-Succ on/off.
         let mut e_off = Engine::new(sig2.clone(), rng.clone(), 0);
-        e_off.sig.rsucc = false;
+        Arc::make_mut(&mut e_off.sig).rsucc = false;
         e_off.run_for(&[a2]);
         let mut e_on = Engine::new(sig2, rng, 0);
-        e_on.sig.rsucc = true;
+        Arc::make_mut(&mut e_on.sig).rsucc = true;
         e_on.run_for(&[a2]);
         let supers_off = e_off
             .subsumptions()
