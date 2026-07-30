@@ -29,6 +29,9 @@ Local release evidence:
 - classification completes in 0.14 seconds at 17,136 KiB peak RSS;
 - the result matches Konclude exactly: 159/159 subsumptions, one identical
   unsatisfiable class, and the same consistency verdict.
+- post-change automatic-route controls remain exact for 10621 (70,827
+  subsumptions and 33,433 unsatisfiable classes), 15672 (142 subsumptions),
+  and 9540 (66 subsumptions).
 
 The source-bound focused IBEX result and complete 592-ontology sweep are added
 after their terminal audits pass.
