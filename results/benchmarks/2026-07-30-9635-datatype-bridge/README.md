@@ -33,5 +33,11 @@ Local release evidence:
   subsumptions and 33,433 unsatisfiable classes), 15672 (142 subsumptions),
   and 9540 (66 subsumptions).
 
-The source-bound focused IBEX result and complete 592-ontology sweep are added
-after their terminal audits pass.
+IBEX acceptance is bound to source commit `93dcec4`, archive SHA-256
+`39850e9eca2359b87ebc88d468ddc3c7f8eb6215628d210ce5fad2b781ddcb83`,
+and binary SHA-256
+`03bc9facf50cef57cbf9657952a7b34d7b94f378441cdd968c46c56ecb886f08`.
+Build job 49640672 completed. Focused exactness array 49640673 is the
+dependency gate for complete sweep 49640841; terminal audit 49640842 runs
+after the array under all outcomes. Results are added here only after the
+audit proves 592 terminal rows.
