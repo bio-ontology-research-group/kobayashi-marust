@@ -193,3 +193,21 @@ evidence solves this 1.97-million-axiom flat taxonomy exactly with both
 `production_all` and `elc`, with `elc` fastest at about 19 seconds and 2.6 GB.
 Current-v5 route comparison array `49649529` reruns both candidates against
 the frozen Konclude signature on Gold 6248 CPUs.
+
+The source profile for 3524 contains 1,974,320 `SubClassOf` axioms and
+123,311 named-class declarations. It has no ABox, RBox, Boolean class
+constructor, role restriction, cardinality, nominal, or datatype structure,
+and its maximum concept depth is one. External expressivity flags report
+inverse roles and transitivity despite the absence of role axioms, so the
+router now recognizes the source structure directly. The performance
+threshold applies only to million-edge flat taxonomies; ELC still validates
+the normalized fragment before reasoning.
+
+The source predicate matches only 3524 in the 592-ontology profile table.
+Routing commit `2faf2ce` selects ELC for that predicate. Its complete serial
+release suite passes with 1,802 tests, eight ignored, and zero failures.
+Source archive SHA-256:
+`1876fc4f4eef6d5999c590faccd7445c83acb635bf79e6679385b5a7e9814d27`.
+Source-bound build `49650190` feeds six-case exact automatic-route gate
+`49650191`: 3524 must select ELC, 1481 must retain `production_all`, and
+15672, 15846, 6999, and 1034 must retain exact classifications.
