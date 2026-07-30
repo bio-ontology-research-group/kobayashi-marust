@@ -416,6 +416,42 @@ fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.functionality
 }
 
+/// Source-only admission gate for trying the exact typed object-ABox bridge.
+///
+/// This is deliberately only a candidate test.  The converted-input bridge
+/// independently requires lossless clause, RBox, nominal, and ABox coverage
+/// and returns DEFER on any mismatch.  Automatic dispatch pairs that attempt
+/// with the exact nominal-aware CB fallback, so broadening this source gate can
+/// improve performance but can never authorize a partial bridge answer.
+///
+/// Data assertions and equality are excluded because the typed object-ABox
+/// bridge does not currently represent them.  Complex role chains, the
+/// universal role, and self restrictions are excluded here as cheap source
+/// predictors for normalized bridge fences; ordinary inverse roles,
+/// transitivity, unqualified cardinality, object nominals, role assertions,
+/// and pairwise inequality remain eligible.
+fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    let represented_abox = count("ClassAssertion")
+        .saturating_add(count("ObjectPropertyAssertion"))
+        .saturating_add(count("NegativeObjectPropertyAssertion"))
+        .saturating_add(count("DifferentIndividuals"));
+
+    source.abox_axioms > 0
+        && represented_abox == source.abox_axioms
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("DataPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+        && count("SameIndividual") == 0
+        && source.role_chain_axioms == 0
+        && source.has_self == 0
+        && !profile.expressivity.datatype
+        && !profile.expressivity.universal_role
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
@@ -480,6 +516,15 @@ pub fn select(profile: &OntologyProfile) -> Route {
         }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
+        }
+        // Try the exact typed object-ABox bridge before materializing every
+        // nominal into CB root contexts.  The bridge is complete-answer-or-
+        // defer and `certified_nominals` retains that exact CB fallback, so a
+        // source false positive affects only scheduling.  This recovers the
+        // SHOIN object-ABox family (including ORE 15672) without an
+        // ontology-specific dispatch rule.
+        SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
+            Route::CertifiedNominals
         }
         // An ABox that fails the materialization certificate stays on the exact
         // nominal calculus. `certified_card_proxy_abox` can classify several of
@@ -1406,6 +1451,43 @@ mod tests {
             .insert("NegativeClassAssertion".to_string(), 1);
         assert!(!independent_large_abox_candidate(&profile));
         assert_eq!(select(&profile), Route::Nominals);
+    }
+
+    #[test]
+    fn typed_object_abox_candidate_uses_certified_bridge_portfolio() {
+        let profile = source_profile(
+            r#"Ontology(
+                Declaration(Class(<A>))
+                Declaration(ObjectProperty(<r>))
+                ClassAssertion(<A> <a>)
+                ObjectPropertyAssertion(<r> <a> <b>)
+                DifferentIndividuals(<a> <b>)
+                EquivalentClasses(<N> ObjectOneOf(<a>))
+                InverseObjectProperties(<r> <s>)
+                TransitiveObjectProperty(<s>)
+            )"#,
+        );
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(typed_object_abox_bridge_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+
+        for unsupported_abox in [
+            r#"DataPropertyAssertion(<p> <a> "x")"#,
+            "SameIndividual(<a> <b>)",
+        ] {
+            let candidate = source_profile(&format!(
+                r#"Ontology(
+                    ClassAssertion(<A> <a>)
+                    EquivalentClasses(<N> ObjectOneOf(<a>))
+                    {unsupported_abox}
+                )"#
+            ));
+            assert!(
+                !typed_object_abox_bridge_candidate(&candidate),
+                "{unsupported_abox} must keep the existing exact nominal route"
+            );
+            assert_eq!(select(&candidate), Route::Nominals);
+        }
     }
 
     #[test]
