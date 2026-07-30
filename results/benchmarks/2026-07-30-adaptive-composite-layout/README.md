@@ -41,4 +41,13 @@ routing controls.
 IBEX build job `49643820` is running. The initially submitted array `49643821`
 was cancelled before execution because its harness incorrectly required a
 Konclude-gold verdict for 1194. The corrected dependent array is recorded
-as job `49643915`.
+as job `49643915`. That array was cancelled while pending because whole-node
+Gold 6248 allocations could not backfill. The gate does not accept comparative
+performance, so its replacement retains 16 allocated CPUs, 24 GB allocation,
+the 20 GB process-tree watchdog, the CPU-model assertion, and frozen-signature
+checks without requiring the entire node.
+
+Replacement arrays `49644178` (`debug`) and `49644193` (`batch`) were
+submitted without whole-node exclusivity. They share the same result paths;
+the array that starts first must run alone and the other must be cancelled
+before execution.

@@ -7,7 +7,6 @@
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=24G
-#SBATCH --exclusive
 #SBATCH --array=0-4
 #SBATCH --export=NONE
 #SBATCH --output=/ibex/scratch/hohndor/km/adaptive-composite-layout-20260730/focused/slurm-%A_%a.out
