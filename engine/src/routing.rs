@@ -409,7 +409,6 @@ fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
         && source.max_cardinalities == 0
         && source.exact_cardinalities == 0
         && source.has_self == 0
-        && source.disjoint_class_axioms == 0
         && source.functional_role_axioms == 0
         && source.inverse_functional_role_axioms == 0
         && !profile.expressivity.cardinality
@@ -1351,6 +1350,15 @@ mod tests {
         assert!(independent_large_abox_candidate(&profile));
         assert!(independent_large_abox_el_candidate(&profile));
         assert_eq!(select(&profile), Route::Elc);
+
+        // Named-class disjointness is the EL bottom axiom C ⊓ D ⊑ ⊥.  The
+        // normalized ELC worker remains the authoritative fragment check, so
+        // source-level disjointness must not divert an otherwise EL ontology
+        // into the much slower nominal bridge.
+        profile.source.disjoint_class_axioms = 3;
+        assert!(independent_large_abox_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+        profile.source.disjoint_class_axioms = 0;
 
         profile.source.unions = 1;
         assert!(independent_large_abox_candidate(&profile));
