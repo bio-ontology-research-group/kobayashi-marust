@@ -6,7 +6,7 @@
 set -euo pipefail
 
 root=/ibex/scratch/hohndor/km/integrated-main-full-20260730
-exec /usr/bin/srun \
+exec /opt/slurm/cluster/ibex/install-v2/RedHat-9/bin/srun \
   --overlap \
   --exact \
   --ntasks=1 \
