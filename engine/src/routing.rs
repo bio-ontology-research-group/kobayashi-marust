@@ -359,15 +359,14 @@ fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
 }
 
 /// Source-only candidate gate for Konclude-style large independent-ABox
-/// precomputation.
+/// precomputation and TBox classification.
 ///
-/// The native bridge repeats the stronger normalized-input certificate and
-/// either returns a complete taxonomy or declines. Keep this leaf atomic:
-/// eagerly constructing the nominal-aware CB fallback materializes the
-/// independent ABox into every root context, which both defeats the bridge's
-/// ABox-elision optimization and can exceed the packed `f(o)` term space.
-/// A bridge decline is therefore an explicit unsupported result, never a
-/// proxy-CB answer.
+/// Every individual has exactly one class assertion and there are no role,
+/// equality, rule, data, or nominal constraints. The ordinary TBox taxonomy is
+/// therefore complete for subsumption, and the conductor checks every asserted
+/// class against the final unsatisfiable set to recover ABox inconsistency.
+/// The production portfolio may race its certified native bridge with that
+/// exact TBox path without materializing the ABox into nominal root contexts.
 fn independent_large_abox_candidate(profile: &OntologyProfile) -> bool {
     const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: u64 = 10_000;
 
@@ -513,7 +512,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
         SemanticFragment::Nominal if independent_large_abox_el_candidate(profile) => Route::Elc,
         SemanticFragment::Nominal if independent_large_abox_candidate(profile) => {
-            Route::HtBridge
+            Route::ProductionAll
         }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
@@ -1394,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    fn independent_large_abox_uses_atomic_complete_or_defer_bridge() {
+    fn independent_large_abox_uses_complete_production_portfolio() {
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 10_000;
         profile.source.class_assertions = 10_000;
@@ -1417,7 +1416,7 @@ mod tests {
         profile.source.unions = 1;
         assert!(independent_large_abox_candidate(&profile));
         assert!(!independent_large_abox_el_candidate(&profile));
-        assert_eq!(select(&profile), Route::HtBridge);
+        assert_eq!(select(&profile), Route::ProductionAll);
         profile.source.unions = 0;
 
         for unsafe_axiom in [

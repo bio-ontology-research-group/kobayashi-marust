@@ -90,3 +90,20 @@ Initial batch jobs `49644759` / `49644760` were cancelled while still pending.
 Debug build job `49644810` and dependent five-case gate `49644811` use the
 separate `adaptive-composite-layout-v2-20260731` root; build CPU model does not
 enter benchmark measurements.
+
+The v2 gate proves the representation correction reaches production workers.
+1194 no longer panics at 13 seconds: it runs for 198.72 seconds before the
+summed process-tree memory watchdog kills its parallel CB workers. Its parent
+peak is 3,749.06 MiB, but the runner's watchdog correctly accounts for all
+descendants. This removes the packed-term defect without claiming a 1194
+closure. The automatic 15846 route exposed a separate router regression:
+atomic `ht_bridge` reached 18,491.56 MiB and was killed after 72.17 seconds.
+
+Forced-route control job `49645058` ran the same v2 binary on 15846 with its
+known `production_all` route. It matched the frozen signature exactly in
+9.6886 seconds at 903.23 MiB. The source-only large independent-ABox certificate
+proves one class assertion per independent individual and excludes role,
+equality, rule, data, and nominal constraints. The conductor also checks every
+asserted class against the final unsatisfiable set. This supports selecting the
+complete production portfolio for the certified non-EL family instead of the
+atomic bridge.
