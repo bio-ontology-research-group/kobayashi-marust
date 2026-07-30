@@ -127,3 +127,10 @@ fallback but bounds the giant synchronous competitor. The follow-up automatic
 gate therefore targets large nominal ABoxes by source size and excludes rules,
 imports, data properties, and datatype constructors. This is a scheduling
 gate, not an approximation: bridge false positives defer to exact nominal CB.
+
+Large-nominal router source commit:
+`fbb9a85ac6c4738e4cf98db59075a788c7df8d07`. Its complete serial release
+suite passes with 1,800 tests, eight ignored, and zero failures. Archive
+SHA-256:
+`c733f1ee4a88a16b605ff8d5044f57a7531cb29a997e2aabe02dcb347ad5c145`.
+Source-bound build `49646505` feeds exact automatic-route gate `49646506`.
