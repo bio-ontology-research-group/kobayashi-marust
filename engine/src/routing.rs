@@ -351,6 +351,65 @@ fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
         && source.distinct_individuals == source.class_assertions
 }
 
+/// Source-only candidate gate for Konclude-style large independent-ABox
+/// precomputation.
+///
+/// The native bridge repeats the stronger normalized-input certificate and
+/// either returns a complete taxonomy or declines. Keep this leaf atomic:
+/// eagerly constructing the nominal-aware CB fallback materializes the
+/// independent ABox into every root context, which both defeats the bridge's
+/// ABox-elision optimization and can exceed the packed `f(o)` term space.
+/// A bridge decline is therefore an explicit unsupported result, never a
+/// proxy-CB answer.
+fn independent_large_abox_candidate(profile: &OntologyProfile) -> bool {
+    const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: u64 = 10_000;
+
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.distinct_individuals >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+        && source.class_assertions > 0
+        && source.abox_axioms == source.class_assertions
+        && source.distinct_individuals == source.class_assertions
+        && source.role_assertions == 0
+        && source.distinct_data_properties == 0
+        && source.datatype_constructors == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && !profile.expressivity.datatype
+        && !profile.expressivity.nominal
+        && !profile.expressivity.universal_role
+        && count("DifferentIndividuals") == 0
+        && count("SameIndividual") == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+}
+
+/// Source-level EL candidate within the independently separable ABox family.
+///
+/// The ELC worker still checks the normalized clause shape and returns
+/// not-EL instead of answering outside its fragment. These source fences keep
+/// the automatic leaf conservative and distinguish the large pure-EL ORE
+/// terminologies from the SRIQ member of the same ABox family.
+fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    independent_large_abox_candidate(profile)
+        && source.unions == 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.has_self == 0
+        && source.disjoint_class_axioms == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.functionality
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
@@ -407,6 +466,10 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::UnsupportedRules => Route::HtRules,
         SemanticFragment::Rules => Route::HtRules,
         SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
+        SemanticFragment::Nominal if independent_large_abox_el_candidate(profile) => Route::Elc,
+        SemanticFragment::Nominal if independent_large_abox_candidate(profile) => {
+            Route::HtBridge
+        }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
@@ -1155,6 +1218,59 @@ mod tests {
             SemanticFragment::UnsupportedRules
         );
         assert_eq!(select(&profile), Route::HtRules);
+    }
+
+    #[test]
+    fn independent_large_abox_uses_atomic_complete_or_defer_bridge() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 10_000;
+        profile.source.class_assertions = 10_000;
+        profile.source.distinct_individuals = 10_000;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(independent_large_abox_candidate(&profile));
+        assert!(independent_large_abox_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        profile.source.unions = 1;
+        assert!(independent_large_abox_candidate(&profile));
+        assert!(!independent_large_abox_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtBridge);
+        profile.source.unions = 0;
+
+        for unsafe_axiom in [
+            "DifferentIndividuals",
+            "SameIndividual",
+            "NegativeObjectPropertyAssertion",
+        ] {
+            profile
+                .source
+                .axiom_types
+                .insert(unsafe_axiom.to_string(), 1);
+            assert!(!independent_large_abox_candidate(&profile));
+            assert_eq!(select(&profile), Route::Nominals);
+            profile.source.axiom_types.remove(unsafe_axiom);
+        }
+
+        profile.source.role_assertions = 1;
+        assert!(!independent_large_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+        profile.source.role_assertions = 0;
+
+        profile.source.class_assertions += 1;
+        profile.source.abox_axioms += 1;
+        assert!(!independent_large_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
+        profile.source.class_assertions -= 1;
+        profile.source.abox_axioms -= 1;
+
+        profile.source.abox_axioms += 1;
+        profile
+            .source
+            .axiom_types
+            .insert("NegativeClassAssertion".to_string(), 1);
+        assert!(!independent_large_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Nominals);
     }
 
     #[test]

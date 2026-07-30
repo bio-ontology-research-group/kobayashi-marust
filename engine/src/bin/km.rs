@@ -230,6 +230,11 @@ fn profile_cmd(rest: &[String]) {
         status: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         el_rbox_safe: Option<bool>,
+        /// Route selected from the source profile under the current automatic
+        /// production policy. This is diagnostic only: `km profile` still
+        /// normalizes with the stable plain frontend below.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        selected_route: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         profile: Option<kobayashi_marust::frontend::profile::OntologyProfile>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,17 +266,24 @@ fn profile_cmd(rest: &[String]) {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| ont.to_string());
         let row = match orchestrate::frontend_run::run_ofn_split(&cfg, path) {
-            Ok((_clauses, meta)) => ProfileRow {
-                ont: name,
-                status: "ok".to_string(),
-                el_rbox_safe: Some(meta.el_rbox_safe),
-                profile: Some(meta.profile),
-                error: None,
-            },
+            Ok((_clauses, meta)) => {
+                let selected_route = kobayashi_marust::routing::select(&meta.profile)
+                    .as_str()
+                    .to_string();
+                ProfileRow {
+                    ont: name,
+                    status: "ok".to_string(),
+                    el_rbox_safe: Some(meta.el_rbox_safe),
+                    selected_route: Some(selected_route),
+                    profile: Some(meta.profile),
+                    error: None,
+                }
+            }
             Err(e) => ProfileRow {
                 ont: name,
                 status: "error".to_string(),
                 el_rbox_safe: None,
+                selected_route: None,
                 profile: None,
                 error: Some(e.to_string()),
             },
