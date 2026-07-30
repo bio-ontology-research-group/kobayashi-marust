@@ -59,3 +59,9 @@ from that collision is admissible evidence. Subsequent single-array attempts
 6248 debug node was memory-fragmented and reserved. The correctness gate is
 therefore CPU-model-neutral; its wall-time observations are diagnostic only.
 The complete production sweep remains fixed to Gold 6248 CPUs.
+
+The clean CPU-model-neutral replacement is array `49644382`, explicitly
+targeted at idle debug node `cn506-11-l`. It remains queued for fair-share
+priority. The older production array was briefly held after its running task
+finished, then released at 363 durable ontology results; it resumes
+independently and no completed checkpoint was removed.
