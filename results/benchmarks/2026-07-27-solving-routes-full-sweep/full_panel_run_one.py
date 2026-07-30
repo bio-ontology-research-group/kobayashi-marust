@@ -472,8 +472,12 @@ def run(args):
         or "oom_kill" in stderr_text.lower()
         or "out of memory" in stderr_text.lower()
     )
+    nested_timeout = "KM_NESTED_TIMEOUT" in stderr_text
     if status == "ok" and proc.returncode != 0 and allocation_failed:
         status = "memout"
+        record.update(status=status, verdict=status)
+    elif status == "ok" and proc.returncode == 124 and nested_timeout:
+        status = "timeout"
         record.update(status=status, verdict=status)
     unsupported_baseline = args.kind != "km" and any(
         marker in stderr_text.lower() for marker in UNSUPPORTED_PATTERNS
