@@ -20,12 +20,11 @@ ontology=ore_ont_3524.owl
 probe=$root/containment-probe-$SLURM_JOB_ID
 work=${SLURM_TMPDIR:-/tmp}/km-cgroup-probe-$SLURM_JOB_ID
 /usr/bin/mkdir -p "$probe" "$work"
-/usr/bin/cp "$km_root/corpus/$ontology" "$work/$ontology"
 
 /usr/bin/python3 "$root/full_panel_run_one.py" \
   --kind km \
   --arm km_reasoner_step_containment_probe \
-  --ontology "$work/$ontology" \
+  --ontology "$km_root/corpus/$ontology" \
   --binary "$root/ibex_reasoner_step.sh" \
   --workers 16 \
   --timeout 240 \

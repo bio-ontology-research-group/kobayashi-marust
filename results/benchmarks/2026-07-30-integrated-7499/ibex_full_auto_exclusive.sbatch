@@ -28,12 +28,11 @@ ontology=$(/usr/bin/sed -n "$((index + 1))p" "$ontology_list")
 
 work=${SLURM_TMPDIR:-/tmp}/km-main592x-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
-/usr/bin/cp "$km_root/corpus/$ontology" "$work/$ontology"
 
 /usr/bin/python3 "$root/full_panel_run_one.py" \
   --kind km \
   --arm km_route_auto_integrated_main_exclusive \
-  --ontology "$work/$ontology" \
+  --ontology "$km_root/corpus/$ontology" \
   --binary "$root/ibex_reasoner_step.sh" \
   --workers 16 \
   --timeout 240 \
@@ -71,7 +70,7 @@ PY
 profile_tmp="$root/profiles/$ontology.json.tmp"
 profile_err="$root/profiles/$ontology.err.tmp"
 if timeout 240 /usr/bin/prlimit --as=25769803776 -- \
-    "$root/km" profile "$work/$ontology" > "$profile_tmp" 2> "$profile_err" \
+    "$root/km" profile "$km_root/corpus/$ontology" > "$profile_tmp" 2> "$profile_err" \
   && /usr/bin/python3 - "$profile_tmp" "$ontology" <<'PY'
 import json
 import sys
