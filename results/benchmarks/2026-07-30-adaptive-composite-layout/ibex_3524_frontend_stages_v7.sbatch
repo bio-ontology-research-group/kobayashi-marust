@@ -30,6 +30,13 @@ import json
 import pathlib
 import sys
 
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 meta = pathlib.Path(sys.argv[1])
 clauses = pathlib.Path(sys.argv[2])
 row = json.load(meta.open())
@@ -38,7 +45,7 @@ print(json.dumps({
     "selected_route": row.get("route"),
     "meta_bytes": meta.stat().st_size,
     "clauses_bytes": clauses.stat().st_size,
-    "clauses_sha256": hashlib.file_digest(clauses.open("rb"), "sha256").hexdigest(),
+    "clauses_sha256": sha256(clauses),
 }, sort_keys=True))
 PY
 /usr/bin/mv "$out/receipt.json.tmp" "$out/receipt.json"

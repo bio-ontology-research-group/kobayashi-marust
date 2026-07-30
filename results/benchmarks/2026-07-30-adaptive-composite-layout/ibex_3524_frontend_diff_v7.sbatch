@@ -34,6 +34,13 @@ import json
 import pathlib
 import sys
 
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 root = pathlib.Path(sys.argv[1])
 rows = {}
 for version in ("current", "historical"):
@@ -41,11 +48,9 @@ for version in ("current", "historical"):
     meta = root / f"{version}.meta.json"
     rows[version] = {
         "clauses_bytes": clauses.stat().st_size,
-        "clauses_sha256": hashlib.file_digest(
-            clauses.open("rb"), "sha256"
-        ).hexdigest(),
+        "clauses_sha256": sha256(clauses),
         "meta_bytes": meta.stat().st_size,
-        "meta_sha256": hashlib.file_digest(meta.open("rb"), "sha256").hexdigest(),
+        "meta_sha256": sha256(meta),
     }
 rows["clauses_identical"] = (
     rows["current"]["clauses_sha256"] == rows["historical"]["clauses_sha256"]
