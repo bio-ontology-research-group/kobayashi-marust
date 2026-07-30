@@ -40,11 +40,18 @@ post-build smoke command used `km --help`, whose intentional usage exit code
 made the fail-fast script stop before installation. Its dependent jobs did not
 run. The smoke command is now `km routes`.
 
+Focused job `49628099` then stopped after the first reasoner result because the
+focused capsule lacked the comparator's `ore_canon.py` module. The reasoner
+completed ontology 148, but its uncomputed verdict is not evidence. The job and
+its dependent full sweep were cancelled. The gate now verifies the comparator
+import before running any ontology and treats every comparator error as a
+terminal gate failure.
+
 The active source-bound chain is:
 
 - IBEX build: job `49628097`, completed successfully;
-- focused exactness gate: job `49628099`, after successful build;
-- complete 592-ontology automatic sweep: job `49628188`, after successful
+- focused exactness gate: job `49628211`, using the installed build;
+- complete 592-ontology automatic sweep: job `49628212`, after successful
   focused validation.
 
 The full array uses one exclusive allocation per ontology, a 240-second

@@ -21,6 +21,10 @@ out=$root/focused-$SLURM_JOB_ID
 mkdir -p "$out"
 
 sha256sum "$bin"
+if ! PYTHONPATH="$root" /usr/bin/python3 -c "import ore_canon"; then
+  echo "FOCUSED_GATE_SETUP_FAILED missing ore_canon"
+  exit 2
+fi
 fail=0
 
 run_case() {
@@ -44,8 +48,12 @@ run_case() {
   fi
 
   local verdict
-  verdict=$(/usr/bin/python3 "$root/kmsig.py" "$out/$stem.json" "$gold" |
-    /usr/bin/tr '\n' ' ')
+  if ! verdict=$(PYTHONPATH="$root" /usr/bin/python3 \
+    "$root/kmsig.py" "$out/$stem.json" "$gold" | /usr/bin/tr '\n' ' '); then
+    echo "GATE ont=$id route=$route rc=0 stats=[$stats] COMPARATOR_FAIL"
+    fail=1
+    return
+  fi
   echo "GATE ont=$id route=$route rc=0 stats=[$stats] $verdict"
   if [[ $verdict != *EXACT_MATCH* ]]; then
     fail=1
