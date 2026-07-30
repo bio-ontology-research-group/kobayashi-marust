@@ -132,7 +132,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         } else {
             None
         };
-        if std::env::var_os("KM_BRIDGE_CACHE_DEBUG").is_some() {
+        if super::bridge_cache_debug_enabled() {
             if let Some((requires_nondeterministic, concepts)) = &result {
                 let concepts = concepts
                     .iter()
@@ -624,7 +624,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if sat_label.is_none() {
             return false;
         }
-        if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+        if super::sat_absorb_debug_enabled() {
             eprintln!(
                 "SAT-ROOT-INIT concept-tag={} root={} base-sat={} resolved-sat={} flags={:#x} sat-label={}",
                 calc_alg_context
@@ -800,10 +800,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .reapply_con_sat_label_set(sat_label)
             .get_concept_saturation_description_linker();
-        let sat_label_debug = std::env::var("KM_SAT_LABEL_DEBUG_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-            == Some(tag);
+        let sat_label_debug = super::sat_label_debug_tag() == Some(tag);
         while sat_des.is_some() {
             let (sat_concept, sat_negation, next) = {
                 let descriptor = calc_alg_context.process_context().con_sat_desc(sat_des);
@@ -880,7 +877,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if let Some((requires_nondeterministic, expansion)) =
             Self::cached_deterministic_expansion_concepts(base_sat_node, calc_alg_context)
         {
-            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+            if super::sat_absorb_debug_enabled() {
                 for (expansion_concept, expansion_negated) in &expansion {
                     let concept_ref = calc_alg_context
                         .ontology_arenas()
@@ -956,7 +953,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context_mut()
             .node_mut(*indi)
             .set_individual_saturation_blocking_data(sat_blocking);
-        if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+        if super::sat_absorb_debug_enabled() {
             eprintln!(
                 "SAT-ROOT-READY root={} label={} last-confirmed={}",
                 calc_alg_context
@@ -1032,7 +1029,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !initialized || sat_con_set.is_none() {
             return false;
         }
-        let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+        let trace = super::sat_absorb_debug_enabled()
             && calc_alg_context.process_context().node_count() <= 20;
         if trace {
             eprintln!(

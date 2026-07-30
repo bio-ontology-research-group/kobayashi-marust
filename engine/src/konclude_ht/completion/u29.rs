@@ -879,11 +879,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // DDB diagnostics (KM_BRIDGE_PROGRESS): dump the first few clash
         // closures — descriptor classes and tags decide the whole analysis.
-        let dump_this_call =
-            self.ddb_analysis_dumps < 8 && std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let dump_this_call = self.ddb_analysis_dumps < 8 && super::bridge_progress_enabled();
         // KM_BRIDGE_DUMP_CLASH additionally dumps the closure at the ROOT-CANCEL
         // moment (the verdict-deciding analysis), however late it happens.
-        let dump_on_root_cancel = std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some();
+        let dump_on_root_cancel = super::bridge_dump_clash_enabled();
         let mut closure_parts: Vec<String> = Vec::new();
         if dump_this_call || dump_on_root_cancel {
             closure_parts =
@@ -1095,9 +1094,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // marked — no new mark, likely followed by a fallback (the tp is
             // stale w.r.t. the current stack).
             self.ddb_already_marked_count += 1;
-            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
-                && self.ddb_already_marked_count <= 4
-            {
+            if super::bridge_progress_enabled() && self.ddb_already_marked_count <= 4 {
                 let (in_stack, cur, rem) = {
                     let mut in_stack = false;
                     let mut cur = false;
@@ -1178,7 +1175,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // KM_BRIDGE_DUMP_CLASH: every refuted-alternative MARK with the stored
         // closure — an EMPTY store here is the taint-death fingerprint of the
         // 12653 wrong-root-cancel (memory cont-14).
-        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some() {
+        if super::bridge_dump_clash_enabled() {
             eprintln!(
                 "DDB-MARK tp#{} tag={} stored: {}",
                 dep_track_point.index(),
@@ -1261,9 +1258,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // the descriptors and rewrites their next pointers — formatting
             // afterwards shows only the residual head, which mis-shrank the
             // 12653 wrong-root-cancel closure to one element).
-            let collected_dump: Option<String> = if std::env::var_os("KM_BRIDGE_DUMP_CLASH")
-                .is_some()
-            {
+            let collected_dump: Option<String> = if super::bridge_dump_clash_enabled() {
                 Some(self.ht_fmt_tracked_closure(collected_tracked_clashed_des, calc_alg_context))
             } else {
                 None
@@ -1274,9 +1269,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             ) {
                 if tracking_line.get_branching_level() == 0 {
-                    if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
-                        && self.ddb_analysis_dumps < 16
-                    {
+                    if super::bridge_dump_clash_enabled() && self.ddb_analysis_dumps < 16 {
                         self.ddb_analysis_dumps += 1;
                         let s = collected_dump.unwrap_or_default();
                         eprintln!("DDB-ROOT-CANCEL[propagated] collected closure: {s}");
@@ -1540,8 +1533,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // produces NOTHING silently erases its branch taint from the
                 // stored closure (dedup-freed causes are fine; a NONE unwind
                 // is the suspect) — surface both counts.
-                if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
-                    && new_tracked_clashed_descriptor_it.is_none()
+                if super::bridge_dump_clash_enabled() && new_tracked_clashed_descriptor_it.is_none()
                 {
                     eprintln!(
                         "DDB-UNWIND-NONE after-tag desc: {}",
@@ -1579,9 +1571,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         );
                     }
                 }
-                if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
-                    && unwind_inserted == 0
-                    && unwind_deduped > 0
+                if super::bridge_dump_clash_enabled() && unwind_inserted == 0 && unwind_deduped > 0
                 {
                     eprintln!(
                         "DDB-UNWIND-ALLDEDUP after-tag desc ({} causes deduped): {}",

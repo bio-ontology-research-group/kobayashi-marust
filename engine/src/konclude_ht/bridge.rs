@@ -10907,12 +10907,26 @@ fn run_bridged_saturation_with_native_consistency_prefix(
             .unwrap_or(120),
     );
     let preparation_deadline = Some(preparation_started + preparation_budget);
+    let phase_progress = super::completion::bridge_progress_enabled();
     extract_propagation_into_creation_direction(ctx);
+    if phase_progress {
+        eprintln!(
+            "BRIDGE-SAT-PHASE propagation-direction: {:.2}s",
+            preparation_started.elapsed().as_secs_f64()
+        );
+    }
     if preparation_deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
         return false;
     }
+    let t_seeds = std::time::Instant::now();
     if !build_saturation_seeds_with_deadline(ctx, bridged, preparation_deadline) {
         return false;
+    }
+    if phase_progress {
+        eprintln!(
+            "BRIDGE-SAT-PHASE seeds: {:.2}s",
+            t_seeds.elapsed().as_secs_f64()
+        );
     }
     // Konclude constructs the concept-testing nodes and the named ABox nodes
     // into one saturation task, then enters the processing loop once. In
@@ -10931,8 +10945,22 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     } else {
         None
     };
+    let t_loop = std::time::Instant::now();
     if !sat_algo.run_saturation_on(ctx) {
+        if phase_progress {
+            eprintln!(
+                "BRIDGE-SAT-PHASE loop: {:.2}s (budget overrun)",
+                t_loop.elapsed().as_secs_f64()
+            );
+        }
         return false;
+    }
+    if phase_progress {
+        eprintln!(
+            "BRIDGE-SAT-PHASE loop: {:.2}s (nodes={})",
+            t_loop.elapsed().as_secs_f64(),
+            ctx.process_context().sat_node_count()
+        );
     }
     if let Some(native_nodes) = native_nodes {
         // The representative-cache writer consumes the final linked-successor
@@ -11605,8 +11633,16 @@ fn bridged_classify_opts_with_trigger_absorption(
     // ONE bridged environment for the whole classification (#13): built once,
     // reset to pristine between probes (`reset_probe_env`), instead of an
     // O(TBox) rebuild per subject AND per pairwise probe.
+    let t_env = std::time::Instant::now();
     let (mut algo, mut ctx, bridged) =
         fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+    if progress {
+        eprintln!(
+            "BRIDGE-ENV: {:.2}s (named={}, trigger_absorb={trigger_absorb})",
+            t_env.elapsed().as_secs_f64(),
+            bridged.named.len()
+        );
+    }
     if bridged.unsupported > 0 {
         return None;
     }
@@ -11969,7 +12005,15 @@ fn bridged_classify_opts_with_trigger_absorption(
             // sound KPSet seeds; the completed-node guard prevents unfinished
             // nodes from becoming SAT-certain. Do not couple this partial graph
             // into completion below.
-            Some(extract_saturation_outcome(&mut ctx, &bridged))
+            let t_extract = std::time::Instant::now();
+            let extracted = extract_saturation_outcome(&mut ctx, &bridged);
+            if progress {
+                eprintln!(
+                    "BRIDGE-SAT-PHASE extract: {:.2}s",
+                    t_extract.elapsed().as_secs_f64()
+                );
+            }
+            Some(extracted)
         } else {
             bridged_saturate_with_trigger_absorption(tin, trigger_absorb)
         };
@@ -12233,10 +12277,17 @@ fn bridged_classify_opts_with_trigger_absorption(
         // is the synchronous barrier: build the KPSet propagation graph and
         // prune the completed maps before looking at a single pair.
         if !prepare_only && !synchronous_satisfiable_phase_finished {
+            let t_barrier = std::time::Instant::now();
             classifier.finish_synchronous_satisfiable_phase(
                 &mut kpset_state,
                 ctx.ontology_arenas().concepts(),
             );
+            if progress {
+                eprintln!(
+                    "BRIDGE-SAT-PHASE kpset-barrier: {:.2}s",
+                    t_barrier.elapsed().as_secs_f64()
+                );
+            }
             synchronous_satisfiable_phase_finished = true;
         }
         let t_subj = std::time::Instant::now();
@@ -12659,6 +12710,7 @@ fn bridged_classify_opts_with_trigger_absorption(
     // classification messages.  This is Konclude's satisfiability phase; no
     // possible-subsumption pair may be scheduled before its all-jobs barrier.
     let verification_subjects = pending.clone();
+    let t_prepare = std::time::Instant::now();
     let mut permanent_defer = 0usize;
     for round in 0..=retry_rounds {
         algo.probe_budget = Some(std::time::Duration::from_secs(
@@ -12707,11 +12759,20 @@ fn bridged_classify_opts_with_trigger_absorption(
         return None;
     }
 
+    if progress {
+        eprintln!(
+            "BRIDGE-SAT-PHASE prepare-total: {:.2}s ({} subjects)",
+            t_prepare.elapsed().as_secs_f64(),
+            verification_subjects.len()
+        );
+    }
+
     // Phase 2: the first call crosses the all-models barrier inside
     // `classify_one`, ports Konclude's global KPSet graph/map pruning, and
     // then verifies only candidates that remain unknown.  Successful model
     // jobs marked their items derived, so they are not rerun here.
     pending = verification_subjects;
+    let t_verify = std::time::Instant::now();
     permanent_defer = 0;
     for round in 0..=retry_rounds {
         algo.probe_budget = Some(std::time::Duration::from_secs(
@@ -12744,6 +12805,12 @@ fn bridged_classify_opts_with_trigger_absorption(
         if pending.is_empty() || permanent_defer > 0 {
             break;
         }
+    }
+    if progress {
+        eprintln!(
+            "BRIDGE-SAT-PHASE verify-total: {:.2}s",
+            t_verify.elapsed().as_secs_f64()
+        );
     }
     // KM_HT_UNSATCACHE diagnostics: writes vs hits across the WHOLE
     // classification (the handler is carried across probe resets, so these

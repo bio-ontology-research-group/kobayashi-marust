@@ -499,14 +499,7 @@ impl SaturationNodeExpansionCacheHandler {
             .get_dependency_track_point();
 
         let mut last_possibly_nondeterministic_con_des = ConDescId::NONE;
-        let cache_trace_tags = std::env::var("KM_SAT_CACHE_TRACE_TAG")
-            .ok()
-            .map(|spec| {
-                spec.split(',')
-                    .filter_map(|tag| tag.parse::<Cint64>().ok())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let cache_trace_tags = super::sat_cache_trace_tags();
         let mut con_des_it = con_des;
         while con_des_it.is_some() && con_des_it != last_con_des {
             let dep_track_point = process_context

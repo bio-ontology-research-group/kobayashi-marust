@@ -278,6 +278,19 @@ reproduce the source-bound 10621 capsule.
   improving from 499. The complete C++ comparison and evidence are in
   `SOLVE-3215.md` and
   `../results/benchmarks/2026-07-13-3215-closure/`.
+- **Restored 2026-07-30**: the 2026-07-27 sweep reported 3215 as a timeout on
+  every KM arm, and so did the source-bound rerun of this closure binary, so
+  the cause was lost headroom rather than a regression against the design above.
+  On today's benchmark hardware both the closure build and current main need
+  about 400 seconds, and both still produce the exact 3,923,171-pair signature.
+  Phase timers put the whole cost in the satisfiability phase, and stack
+  sampling put over a third of that phase in `getenv`: the completion rule
+  bodies read their CLI-only diagnostics inline, once per concept addition. The
+  cached gates in `konclude_ht::completion` remove that cost the same way the
+  2026-07-13 change removed it from saturation. IBEX job 49624875 now finishes
+  `ht_bridge` in 162.2 s at 5,560,592 KB and the production `auto` route in
+  161.9 s at 5,500,480 KB, both exactly equal to gold. See `SOLVE-3215.md` and
+  `../results/benchmarks/2026-07-30-3215-restoration/`.
 
 ### ore_ont_5303: equivalent non-candidate classification hand-off (2026-07-13)
 

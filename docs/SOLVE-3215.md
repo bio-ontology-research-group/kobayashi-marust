@@ -1,6 +1,6 @@
 # Closing ORE ontology 3215 by matching Konclude's classification phases
 
-Date: 2026-07-13
+Date: 2026-07-13, restored 2026-07-30 (see "Restoring the budget" below)
 
 ## Result
 
@@ -223,3 +223,107 @@ preceding and final binaries under identical flags. All nine pairs completed:
 eight exact-match improvements including 3215, one smaller remaining
 both-disagree signature, and zero exact-match regressions. This separates the
 correctness improvements from the timing recoveries seen in the full sweep.
+
+## Restoring the budget (2026-07-30)
+
+### What the 2026-07-27 sweep showed
+
+The 2026-07-27 full sweep
+(`results/benchmarks/2026-07-27-solving-routes-full-sweep/`) reports
+`ore_ont_3215.owl` as a timeout on all 44 current-main KM arms, including the
+`km_solution_kpset_barrier` arm that replays the environment recorded above.
+The source-bound historical supplement is the same story: exclusive job
+49522590 reran the 2026-07-13 closure binary identity alone on a
+`cpu_intel_gold_6248` node and it also timed out, at 240.03 s and 8,398 MB.
+Konclude answers the same ontology in 64.5 s at 9,702 MB.
+
+So the regression hypothesis was wrong. The closure was not undone by a later
+commit.
+
+### The measurement that settles it
+
+Rebuilding `91db9fb` (the closure) and current main from source and running
+both on one host, with the documented environment, gives:
+
+| Binary | HT worker | Total | Peak RSS | Signature |
+|---|---:|---:|---:|---|
+| `91db9fb` (closure) | 397.7 s | 411.7 s | 5,353,720 KB | exact, 3,923,171 pairs |
+| current main | 385.8 s | 385.8 s | 5,536,200 KB | exact, 3,923,171 pairs |
+
+Current main is not slower than the closure, and both are still exactly equal
+to Konclude gold. The peak RSS of the historical build reproduces the recorded
+5,351,252 KB to within 0.05%, which confirms the rebuild is the same work. The
+KPSet design, the all-satisfiability-jobs barrier, and the saturation labels
+are all intact. What the ontology no longer had was margin: on the hardware
+that measures the 240-second contract today, both binaries need about 400 s.
+
+### Where the time goes
+
+`KM_BRIDGE_PROGRESS` now prints a per-phase breakdown. On current main:
+
+| Phase | Time |
+|---|---:|
+| Frontend + clause hand-off | 6.6 s |
+| Bridge environment (trigger absorption) | 1.1 s |
+| Saturation seeds + loop + extraction | 34.4 s |
+| Satisfiability phase (18,323 completion jobs) | ~340 s |
+| KPSet barrier | 0.8 s |
+| Verification (0 pairwise subsumption tests) | 12.7 s |
+
+The saturation phase still answers 36,650 subjects directly and hands the
+completion path the same 18,323-subject residue the Konclude trace reports.
+The barrier still eliminates every pairwise test. The whole cost is the
+satisfiability phase, and it is Konclude's own job count, run one at a time.
+
+### The defect: `getenv` in the completion rule bodies
+
+Stack sampling of the satisfiability phase puts more than a third of it inside
+`getenv`. The completion rule bodies consult their CLI-only diagnostics inline,
+once per concept addition:
+
+- `insert_concepts_to_individual_concept_set` and
+  `add_concept_to_individual{,_skip_and_processing}` read `KM_BRIDGE_WATCH_TAG`,
+  `KM_BRIDGE_WATCH_NEGTAG` and `KM_BRIDGE_WATCH_NODE`;
+- `create_successor_individual`, the OR/clash sites, and the at-most and merge
+  paths read `KM_BRIDGE_SEARCH_LOG`, `KM_BRIDGE_DUMP_CLASH`,
+  `KM_SAT_ABSORB_DEBUG`, `KM_HT_OR_TRACE` and their siblings;
+- `ProcessContext::ht_check_dangling_satellites` reads `KM_BRIDGE_SEARCH_LOG`
+  on every `pop_branch_epoch`.
+
+`std::env::var` takes the process-wide environment lock and allocates a
+`String` on each call, so a disabled diagnostic costs more than the rule it
+guards. Section 2 above removed exactly this cost from the saturation hot path
+in 2026-07-13, for exactly this ontology and this reason. The completion layer
+never received the same treatment, and the completion work that landed after
+the closure multiplied the number of those call sites a single job crosses.
+
+### The fix
+
+`engine/src/konclude_ht/completion/mod.rs` now owns cached accessors for each
+of these settings, built from the `OnceLock` pattern
+`engine/src/konclude_ht/saturation/mod.rs` already uses, and all 50 inline
+reads route through them. Every accessor returns exactly what the inline call
+returned: the environment is immutable for the life of a worker, and no route
+bundle, orchestrator path, or test sets any of these variables. Every
+diagnostic keeps working.
+
+No rule fires differently and no derived set moves, so no Lean
+re-certification is required. This is the removal of an observation cost, not a
+calculus change.
+
+### Result
+
+IBEX job 49624875, exclusive `cpu_intel_gold_6248` node, 240 s and 20 GiB:
+
+| Route | Wall | Peak RSS | Signature |
+|---|---:|---:|---|
+| `ht_bridge` | 162.2 s | 5,560,592 KB | exact, 3,923,171 pairs |
+| `auto` (production) | 161.9 s | 5,500,480 KB | exact, 3,923,171 pairs |
+
+Zero missing, zero extra, no unsatisfiable-class difference, same consistency
+result. On the workstation the isolated route drops from 385.8 s to 215.4 s.
+
+`engine/tests/completion_hot_path_env.rs` fails the build if an inline
+`std::env::var` returns to a completion rule body or to the process-context
+epoch check, and a unit test pins every cached gate to its unconfigured
+default.

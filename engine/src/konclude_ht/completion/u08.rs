@@ -277,10 +277,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_operand_list()
             .to_vec();
-        if let Some(watch_tag) = std::env::var("KM_BRIDGE_WATCH_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-        {
+        if let Some(watch_tag) = super::bridge_watch_tag() {
             if op_con_linker_it.iter().any(|link| {
                 calc_alg_context
                     .ontology_arenas()
@@ -505,7 +502,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if self.conf_sat_exp_cached_succ_absorp && has_successor_cache && !cache_absorbable {
                 self.some_rule_succ_block_not_absorbable_count += 1;
             }
-            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+            if super::sat_absorb_debug_enabled()
                 && calc_alg_context.process_context().node_count() <= 20
             {
                 eprintln!(
@@ -564,7 +561,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // filler, and the labels of the parent's EXISTING same-role
             // successors — why did the already-exists check miss them (the
             // COW duplicate-generation hunt, memory cont-12+).
-            if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+            if super::bridge_search_log_enabled() {
                 let filler_tags: Vec<i64> = concept_op_linker
                     .iter()
                     .map(|nl| {
@@ -1110,10 +1107,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     && role_matches(onto.concept(con).get_role())
                 {
                     // KM_BRIDGE_WATCH_NODE diagnostics: which ∀ matched this edge.
-                    if std::env::var("KM_BRIDGE_WATCH_NODE")
-                        .ok()
-                        .and_then(|w| w.parse::<Cint64>().ok())
-                        == Some(pc.node(*successor).individual_node_id())
+                    if super::bridge_watch_node() == Some(pc.node(*successor).individual_node_id())
                     {
                         let fillers: Vec<String> = onto
                             .concept(con)
@@ -2024,7 +2018,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_des: ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let watch = std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some();
+        let watch = super::bridge_watch_merge_enabled();
         loop {
             // --- choose rule (`qualifyMergingIndividualNodes`, cpp 15677–15816).
             // A `role`-successor whose label decides NEITHER polarity of the
@@ -2044,9 +2038,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // KM_BRIDGE_WATCH_ATMOST: identify the at-most driving a
                     // choose qualification (concept/role/bound/negate + the
                     // at-most descriptor's own track point tag).
-                    if std::env::var_os("KM_BRIDGE_WATCH_ATMOST").is_some()
-                        && self.ddb_analysis_dumps < 12
-                    {
+                    if super::bridge_watch_atmost_enabled() && self.ddb_analysis_dumps < 12 {
                         self.ddb_analysis_dumps += 1;
                         let am_tag = calc_alg_context
                             .process_context()
@@ -2287,7 +2279,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // enumerate every mergeable pair — the merge alternatives
             // (`isIndividualNodesMergeable` per pair, cpp 15071).
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
-            let pair_log = std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some();
+            let pair_log = super::bridge_search_log_enabled();
             let mut pair_verdicts: Vec<String> = Vec::new();
             for i in 0..succs.len() {
                 for j in (i + 1)..succs.len() {

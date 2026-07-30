@@ -1,0 +1,15 @@
+KM_TIMING frontend done @ 5.57s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 476482 clauses in 1.35s
+BRIDGE-ENV: 1.13s (named=168160, trigger_absorb=true)
+BRIDGE-SAT-PHASE propagation-direction: 0.01s
+BRIDGE-SATURATION-SEEDS: base=54974 extended=91620 invalid-special=36646 substitute=0 copy=54971
+BRIDGE-SAT-PHASE seeds: 0.31s
+BRIDGE-SAT-PHASE loop: 31.78s (nodes=91620)
+SAT-STATS: insufficient all=0 atmost=0 or=125746 eqcand=0 value=0 nominal=0
+BRIDGE-SATURATION-UNKNOWN: no-node=113187 insufficient=18323 unprocessed=0 eq-candidate=0
+BRIDGE-SAT-PHASE extract: 1.06s
+BRIDGE-SATURATION: 34.37s, answered 0 unsat + 36650 sat of 54973 subjects (18323 residue to probes, known-label-subjects=54971, satcache=true)
+BRIDGE-SAT-PHASE prepare-total: 398.38s (18323 subjects)
+BRIDGE-SAT-PHASE kpset-barrier: 0.79s
+BRIDGE-SAT-PHASE verify-total: 12.73s
+KM_TIMING engine block done @ 467.90s (subs_keys=54971)

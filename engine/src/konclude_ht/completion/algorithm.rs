@@ -1404,7 +1404,7 @@ impl CompletionTaskHandleAlgorithm {
             conf_semantic_branching: false,
             conf_atomic_semantic_branching: false,
             conf_branch_triggering: false,
-            conf_atmost_rest: std::env::var_os("KM_HT_ATMOST_REST").is_some(),
+            conf_atmost_rest: super::ht_atmost_rest_enabled(),
             conf_strict_indi_node_processing: false,
             conf_id_indi_priorization: false,
             conf_propagate_node_processed: false,

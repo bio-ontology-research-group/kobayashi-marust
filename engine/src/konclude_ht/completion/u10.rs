@@ -702,7 +702,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // KM_BRIDGE_SEARCH_LOG: every role-reapply re-fire — the stale-≤n
             // hunt (a reapplied concept must still be IN the node's label).
-            if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+            if super::bridge_search_log_enabled() {
                 let pc = calc_alg_context.process_context();
                 let cd = pc.con_desc(con_des);
                 let tag = calc_alg_context
@@ -1417,7 +1417,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             ));
         // KM_BRIDGE_SEARCH_LOG: pair each ARM with its branch-epoch depth so a
         // fire at a SHALLOWER depth than every arm exposes a journal miss.
-        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+        if super::bridge_search_log_enabled() {
             let tag = calc_alg_context
                 .ontology_arenas()
                 .concept(

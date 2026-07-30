@@ -950,7 +950,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let _ = indi;
         type SatF = IndividualSaturationProcessNodeStatusFlags;
-        let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+        let trace = super::sat_absorb_debug_enabled()
             && calc_alg_context.process_context().node_count() <= 20;
         if saturation_indi_node.is_none() {
             if trace {
@@ -1231,9 +1231,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             && con_sat_des.is_some()
                             && pc.con_sat_desc(con_sat_des).get_negation() == negated;
                         if !present {
-                            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
-                                && pc.node_count() <= 20
-                            {
+                            if super::sat_absorb_debug_enabled() && pc.node_count() <= 20 {
                                 eprintln!(
                                     "SAT-CACHE-VALIDATE-MISS successor={} sat={} concept-tag={} negated={}",
                                     pc.node(indi).individual_node_id(),
@@ -1377,7 +1375,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_successor_saturation_expansion_restrictions_resolving
             && exist_indi_node.is_some()
         {
-            let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+            let trace = super::sat_absorb_debug_enabled()
                 && calc_alg_context.process_context().node_count() <= 20;
             let successor_extension = calc_alg_context
                 .process_context_mut()

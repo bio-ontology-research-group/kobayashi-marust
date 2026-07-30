@@ -1631,7 +1631,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_build_dependencies
             && dependency_track_point.is_none()
             && self.ddb_analysis_dumps < 3
-            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+            && super::bridge_progress_enabled()
         {
             self.ddb_analysis_dumps += 1;
             eprintln!(
@@ -1651,83 +1651,77 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             };
         // KM_BRIDGE_WATCH_TAG=<tag>: print the call path of every POSITIVE
         // addition of that concept tag (provenance for over-derivation hunts).
-        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_TAG") {
-            if let Ok(wt) = w.parse::<Cint64>() {
-                let tag = calc_alg_context
-                    .ontology_arenas()
-                    .concept(adding_concept)
-                    .get_concept_tag();
-                if tag == wt && !negate && self.ddb_analysis_dumps < 6 {
-                    self.ddb_analysis_dumps += 1;
-                    eprintln!(
-                        "WATCH-TAG {} pos add to node {} at:\n{}",
-                        wt,
-                        calc_alg_context
-                            .process_context()
-                            .node(*process_indi)
-                            .individual_node_id(),
-                        std::backtrace::Backtrace::force_capture()
-                    );
-                }
+        if let Some(wt) = super::bridge_watch_tag() {
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(adding_concept)
+                .get_concept_tag();
+            if tag == wt && !negate && self.ddb_analysis_dumps < 6 {
+                self.ddb_analysis_dumps += 1;
+                eprintln!(
+                    "WATCH-TAG {} pos add to node {} at:\n{}",
+                    wt,
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    std::backtrace::Backtrace::force_capture()
+                );
             }
         }
         // KM_BRIDGE_WATCH_NEGTAG=<tag>: the negated-add twin of WATCH_TAG (e.g.
         // tag 1 negated = a ⊥ insertion), with the dependency track point id —
         // provenance for wrong-root-cancel hunts.
-        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_NEGTAG") {
-            if let Ok(wt) = w.parse::<Cint64>() {
-                let tag = calc_alg_context
-                    .ontology_arenas()
-                    .concept(adding_concept)
-                    .get_concept_tag();
-                if tag == wt && negate && self.ddb_analysis_dumps < 6 {
-                    self.ddb_analysis_dumps += 1;
-                    let bt = std::backtrace::Backtrace::force_capture().to_string();
-                    let frames: Vec<&str> = bt
-                        .lines()
-                        .filter(|l| l.contains("konclude_ht::completion::u"))
-                        .take(6)
-                        .collect();
-                    eprintln!(
-                        "WATCH-NEGTAG ¬{} add to node {} under tp={:?} via {}",
-                        wt,
-                        calc_alg_context
-                            .process_context()
-                            .node(*process_indi)
-                            .individual_node_id(),
-                        dependency_track_point,
-                        frames.join(" <- ")
-                    );
-                }
+        if let Some(wt) = super::bridge_watch_negtag() {
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(adding_concept)
+                .get_concept_tag();
+            if tag == wt && negate && self.ddb_analysis_dumps < 6 {
+                self.ddb_analysis_dumps += 1;
+                let bt = std::backtrace::Backtrace::force_capture().to_string();
+                let frames: Vec<&str> = bt
+                    .lines()
+                    .filter(|l| l.contains("konclude_ht::completion::u"))
+                    .take(6)
+                    .collect();
+                eprintln!(
+                    "WATCH-NEGTAG ¬{} add to node {} under tp={:?} via {}",
+                    wt,
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    dependency_track_point,
+                    frames.join(" <- ")
+                );
             }
         }
         // KM_BRIDGE_WATCH_NODE=<id>: print the first ~24 POSITIVE NAMED-tag
         // additions to that node in arrival order with a short call path —
         // catches the ENTRY POINT of an over-derivation cascade.
-        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_NODE") {
-            if let Ok(wn) = w.parse::<Cint64>() {
-                let node_id = calc_alg_context
-                    .process_context()
-                    .node(*process_indi)
-                    .individual_node_id();
-                let tag = calc_alg_context
-                    .ontology_arenas()
-                    .concept(adding_concept)
-                    .get_concept_tag();
-                if node_id == wn
-                    && !negate
-                    && (10..320).contains(&tag)
-                    && self.ddb_analysis_dumps < 24
-                {
-                    self.ddb_analysis_dumps += 1;
-                    let bt = std::backtrace::Backtrace::force_capture().to_string();
-                    let frames: Vec<&str> = bt
-                        .lines()
-                        .filter(|l| l.contains("konclude_ht::completion::u"))
-                        .take(3)
-                        .collect();
-                    eprintln!("WATCH-NODE {wn} += {tag} via {}", frames.join(" <- "));
-                }
+        if let Some(wn) = super::bridge_watch_node() {
+            let node_id = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .individual_node_id();
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(adding_concept)
+                .get_concept_tag();
+            if node_id == wn
+                && !negate
+                && (10..320).contains(&tag)
+                && self.ddb_analysis_dumps < 24
+            {
+                self.ddb_analysis_dumps += 1;
+                let bt = std::backtrace::Backtrace::force_capture().to_string();
+                let frames: Vec<&str> = bt
+                    .lines()
+                    .filter(|l| l.contains("konclude_ht::completion::u"))
+                    .take(3)
+                    .collect();
+                eprintln!("WATCH-NODE {wn} += {tag} via {}", frames.join(" <- "));
             }
         }
         // conProQueue = processIndi->getConceptProcessingQueue(true);
@@ -2001,7 +1995,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_build_dependencies
             && dependency_track_point.is_none()
             && self.ddb_analysis_dumps < 3
-            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+            && super::bridge_progress_enabled()
         {
             self.ddb_analysis_dumps += 1;
             eprintln!(
@@ -2325,11 +2319,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_concept_tag();
         let new_concept_identity =
             calc_alg_context.ontology_arenas().concept(new_concept) as *const _ as usize as Cint64;
-        let watch_insert = std::env::var("KM_BRIDGE_WATCH_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-            == Some(new_con_tag)
-            && !new_negated;
+        let watch_insert = super::bridge_watch_tag() == Some(new_con_tag) && !new_negated;
         if watch_insert {
             let dependency_track_point = calc_alg_context
                 .process_context()
@@ -2557,7 +2547,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_build_dependencies
             && dependency_track_point.is_none()
             && self.ddb_analysis_dumps < 3
-            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+            && super::bridge_progress_enabled()
         {
             self.ddb_analysis_dumps += 1;
             let tag = calc_alg_context

@@ -511,7 +511,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             };
             match remaining.len() {
                 0 => {
-                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                    if super::ht_or_trace_enabled() {
                         eprintln!("OR-EXEC clash survivors=0");
                     }
                     let clash = self.create_clashed_concept_descriptor(
@@ -525,7 +525,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 1 => {
                     let only = remaining[0];
-                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                    if super::ht_or_trace_enabled() {
                         eprintln!(
                             "OR-EXEC single tag={} negated={}",
                             calc_alg_context
@@ -599,7 +599,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
                 _ => {
-                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                    if super::ht_or_trace_enabled() {
                         eprintln!("OR-EXEC branch survivors={}", remaining.len());
                     }
                     self.start_or_branching_in_process(
@@ -934,10 +934,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(concept)
             .get_operand_count();
-        if let Some(watch_tag) = std::env::var("KM_BRIDGE_WATCH_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-        {
+        if let Some(watch_tag) = super::bridge_watch_tag() {
             let operands = calc_alg_context
                 .ontology_arenas()
                 .concept(concept)
@@ -1276,7 +1273,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // KM_BRIDGE_WATCH_TAG: when the fired head matches, dump the whole
             // implication (head + trigger linkers with polarities) so the
             // source clause is identifiable.
-            if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_TAG") {
+            if let Some(watch_tag) = super::bridge_watch_tag() {
                 let head_tag = if impl_concept.is_some() {
                     calc_alg_context
                         .ontology_arenas()
@@ -1285,7 +1282,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 } else {
                     -1
                 };
-                if w.parse::<Cint64>() == Ok(head_tag) && !imp_con_neg {
+                if watch_tag == head_tag && !imp_con_neg {
                     let source_tag = calc_alg_context
                         .ontology_arenas()
                         .concept(concept)

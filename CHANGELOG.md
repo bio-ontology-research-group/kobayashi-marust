@@ -51,6 +51,71 @@ output, and `cargo test --release` at 1779 passed / 0 failed / 8 ignored plus th
 integration suites. Numbers, commands and caveats in
 [`results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md).
 
+### Cached completion diagnostic gates restore ore_ont_3215 (2026-07-30)
+
+`ore_ont_3215` classifies again inside the benchmark contract on current main.
+IBEX job 49624875 ran the exclusive `cpu_intel_gold_6248` node at 240 seconds
+and 20 GiB: the isolated `ht_bridge` route finished in 162.2 s at 5,560,592 KB
+and the production `auto` route in 161.9 s at 5,500,480 KB. Both signatures are
+exactly equal to Konclude gold, with 3,923,171 pairs, zero missing, zero extra,
+no unsatisfiable-class difference, and the same consistency result.
+
+The 2026-07-27 full sweep reported `ore_ont_3215` as a timeout on every one of
+the 44 KM arms, and the source-bound historical rerun of the 2026-07-13 KPSet
+closure binary (job 49522590, exclusive node) timed out as well. So the cause
+was not a regression against that closure. Rebuilding `91db9fb` and current
+main from source and running both on the same host confirms it: the historical
+binary needs 397.7 s in its HT worker at 5,353,720 KB, current main 385.8 s at
+5,536,200 KB, and both produce the exact 3,923,171-pair signature. The KPSet
+design is intact; what the ontology lost was headroom.
+
+Phase instrumentation (`KM_BRIDGE_PROGRESS`, now printing per-phase seconds)
+places the cost precisely. Of the 386 s, the bridge environment takes 1.1 s,
+saturation 34.4 s (answering 36,650 subjects directly and leaving the
+documented 18,323-subject residue), the KPSet barrier 0.8 s, and verification
+12.7 s with zero pairwise subsumption tests. The remaining 340 s is the
+satisfiability phase: 18,323 synchronous completion jobs.
+
+Sampling that phase shows over a third of it inside `getenv`. The completion
+rule bodies read `KM_BRIDGE_WATCH_TAG`, `KM_BRIDGE_WATCH_NODE`,
+`KM_BRIDGE_SEARCH_LOG`, `KM_BRIDGE_DUMP_CLASH` and their siblings inline, once
+per concept addition, in `insert_concepts_to_individual_concept_set`,
+`add_concept_to_individual{,_skip_and_processing}`, `create_successor_individual`
+and the clash/OR sites, plus once per `pop_branch_epoch` in
+`ProcessContext::ht_check_dangling_satellites`. `std::env::var` also takes the
+process-wide environment lock and allocates a `String` on every call. The
+2026-07-13 closure removed exactly this cost from the saturation hot path
+(`saturation/mod.rs` cached gates); the completion layer never received the
+same treatment, and later completion work multiplied the number of call sites
+it crosses.
+
+`konclude_ht::completion` now owns cached accessors for every one of these
+CLI-only diagnostics, built from the same `OnceLock` pattern
+`saturation/mod.rs` already uses, and all 50 inline reads route through them.
+The environment is immutable for the life of a worker and no route bundle,
+orchestrator path, or test sets any of these variables, so each accessor
+returns exactly what the inline call returned. `KM_BRIDGE_WATCH_TAG=<tag>` and
+the rest behave as before. Nothing else changes: no rule fires differently, no
+derived set moves, and no Lean re-certification is required.
+
+On the same workstation the isolated `ht_bridge` route drops from 385.8 s to
+215.4 s at 5,543,772 KB, still exact. A new integration test
+(`engine/tests/completion_hot_path_env.rs`) fails the build if an inline
+`std::env::var` returns to a completion rule body or to the process-context
+epoch check, and a unit test pins every cached gate to its unconfigured
+default. Release validation is 1,813 passed, 0 failed, 8 ignored.
+
+The first family harness, job 49622765, stopped early because its comparator
+returned a nonzero status for a mismatch. Job 49625540 completed the remaining
+panel: 7581 and 9540 stayed exact, 4669 timed out, and the intermediate binary
+remained incomplete on 148. The corrected focused recheck, job 49625668, made
+11745, 3215, 9663, and 10621 exact under the 240 s / 20 GiB contract. The
+latest-source 20-case panel is job 49626062; it remains post-commit validation
+and is not used as evidence here until it completes.
+
+The evidence is in `results/benchmarks/2026-07-30-3215-restoration/` and the
+causal record in `docs/SOLVE-3215.md`.
+
 ### Exact incremental direct-HT classification (2026-07-23)
 
 Extended `IncrementalClassifier` with an explicitly selected hypertableau

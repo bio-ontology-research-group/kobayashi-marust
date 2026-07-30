@@ -2882,7 +2882,9 @@ impl ProcessContext {
     /// (the dangling-id corruption fingerprint: empty/aliased labels →
     /// duplicate ∃-successors → phantom at-most violations).
     pub fn ht_check_dangling_satellites(&self, wher: &str) {
-        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_none() {
+        // Every `pop_branch_epoch` calls this, so the disabled-case cost must
+        // be a load, not a `getenv` (see `completion::bridge_search_log_enabled`).
+        if !crate::konclude_ht::completion::bridge_search_log_enabled() {
             return;
         }
         let n_ls = self.label_sets.len();

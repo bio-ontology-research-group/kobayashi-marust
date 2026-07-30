@@ -541,7 +541,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // KM_BRIDGE_SEARCH_LOG: every rule dispatch — node, concept tag,
         // polarity, op, epoch depth (the queued-descriptor provenance trace).
-        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+        if super::bridge_search_log_enabled() {
             let tag = calc_alg_context
                 .ontology_arenas()
                 .concept(concept)
@@ -831,7 +831,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             };
             if let Some((implication, common)) = replacement {
-                if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                if super::ht_or_trace_enabled() {
                     let tags: Vec<_> = common
                         .iter()
                         .map(|link| {
@@ -898,7 +898,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 priority_offset,
                 calc_alg_context,
             );
-            if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+            if super::ht_or_trace_enabled() {
                 eprintln!(
                     "OR-DELAY-CONSIDER concept={} priority={} offset={}",
                     calc_alg_context
@@ -1519,7 +1519,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context_mut()
             .alloc_restriction_spec(rest);
 
-        if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+        if super::ht_or_trace_enabled() {
             let rest = calc_alg_context.process_context().restriction_spec(rest_id);
             eprintln!(
                 "OR-PLAN concept={} contained={} survivors={} clashes={}",

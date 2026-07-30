@@ -340,9 +340,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
-        if std::env::var("KM_BRIDGE_WATCH_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
+        if super::bridge_watch_tag()
             == Some(
                 calc_alg_context
                     .ontology_arenas()

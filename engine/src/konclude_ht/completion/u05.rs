@@ -218,16 +218,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_operand_list()
             .to_vec();
-        if let Ok(watch) = std::env::var("KM_BRIDGE_WATCH_TAG") {
-            if watch.parse::<Cint64>().ok().is_some_and(|watch_tag| {
-                concept_op_linker_it.iter().any(|operand| {
-                    calc_alg_context
-                        .ontology_arenas()
-                        .concept(operand.target)
-                        .get_concept_tag()
-                        == watch_tag
-                        && operand.negated == negate
-                })
+        if let Some(watch_tag) = super::bridge_watch_tag() {
+            if concept_op_linker_it.iter().any(|operand| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(operand.target)
+                    .get_concept_tag()
+                    == watch_tag
+                    && operand.negated == negate
             }) {
                 let operands = concept_op_linker_it
                     .iter()
@@ -431,9 +429,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 for op_link in &op_concepts {
                     let op_concept: ConceptId = op_link.target;
                     let op_con_neg: bool = op_link.negated ^ negated;
-                    if std::env::var("KM_BRIDGE_WATCH_TAG")
-                        .ok()
-                        .and_then(|value| value.parse::<Cint64>().ok())
+                    if super::bridge_watch_tag()
                         == Some(
                             calc_alg_context
                                 .ontology_arenas()
@@ -455,9 +451,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .individual_node_id(),
                             )
                         };
-                        let watch_node = std::env::var("KM_BRIDGE_WATCH_NODE")
-                            .ok()
-                            .and_then(|value| value.parse::<Cint64>().ok());
+                        let watch_node = super::bridge_watch_node();
                         if watch_node.is_none()
                             || watch_node == Some(source_id)
                             || watch_node == Some(destination_id)

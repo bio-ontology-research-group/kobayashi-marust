@@ -138,14 +138,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // disjunct; the loop then re-drives. When no open branch remains the clash is
         // genuine ⇒ INCONSISTENT. (Konclude does this with per-alternative task forks +
         // `clashedBacktracking`; see the `OrBranchPoint` KONCLUDE-PORT-NOTE.)
-        let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let progress = super::bridge_progress_enabled();
         // KM_BRIDGE_MAX_DRIVES: per-call drive cap — on overrun raise a STOP
         // (an UNKNOWN verdict; callers defer). A single pathological search
         // must never wedge a classify run.
-        let max_drives: u64 = std::env::var("KM_BRIDGE_MAX_DRIVES")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(u64::MAX);
+        let max_drives: u64 = super::bridge_max_drives();
         let mut drives: u64 = 0;
         self.ddb_root_cancelled = false;
         // cpp 783: `mOptBackendExpansionReuse =
@@ -221,7 +218,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             match calc_alg_context.pending_signal() {
                 CalcSignal::Clash(clash) => {
-                    if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+                    if super::bridge_search_log_enabled() {
                         let mut parts: Vec<String> = Vec::new();
                         let mut it = clash;
                         let mut n = 0;
@@ -344,7 +341,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         wher: &str,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) {
-        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_none() {
+        if !super::bridge_search_log_enabled() {
             return;
         }
         let owned = self
@@ -366,13 +363,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// failing mode's log against a passing mode's to find the first
     /// divergence (the COW-restore hunt).
     pub(super) fn ht_search_log(&mut self, msg: &str) {
-        if let Ok(n) = std::env::var("KM_BRIDGE_SEARCH_LOG") {
-            if let Ok(n) = n.parse::<u64>() {
-                if self.search_log_count < n {
-                    self.search_log_count += 1;
-                    eprintln!("SL {}", msg);
-                }
-            }
+        let limit = super::bridge_search_log_limit();
+        if self.search_log_count < limit {
+            self.search_log_count += 1;
+            eprintln!("SL {}", msg);
         }
     }
 
@@ -502,7 +496,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // chronological backtracking. Splits the wrong-UNSAT blame between
         // the mark-driven discard/advance (spurious becomes budget-STOP) and
         // the cancel propagation itself (spurious persists).
-        if std::env::var_os("KM_HT_DDB_NO_SKIP").is_some() {
+        if super::ht_ddb_no_skip_enabled() {
             return self.try_backtrack_or_branch(calc_alg_context);
         }
         // Scan (no mutation) from the top for the first branch point whose
@@ -656,8 +650,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // of those choices; the discarded-with-remaining branch point whose
         // choice the (wrong) verdict-deciding closure should have depended on
         // fingers the rule path that under-tracked its premises.
-        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some() && self.ddb_discard_dump_lines < 4000
-        {
+        if super::bridge_dump_clash_enabled() && self.ddb_discard_dump_lines < 4000 {
             let clash_line = {
                 let pc = calc_alg_context.process_context();
                 let onto = calc_alg_context.ontology_arenas();
@@ -747,7 +740,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // derived the clashing concept lost the taint.
             if printed_live
                 && self.ddb_walk_chain_dumps < 6
-                && std::env::var_os("KM_BRIDGE_DUMP_DEP_CHAIN").is_some()
+                && super::bridge_dump_dep_chain_enabled()
             {
                 self.ddb_walk_chain_dumps += 1;
                 eprintln!("DEP-CHAIN for walk#{}:", self.ddb_jump_count);
@@ -845,7 +838,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         self.ht_check_epoch_alignment("advance", calc_alg_context);
         // KM_BRIDGE_SEARCH_LOG: post-restore label of the advanced node — the
         // per-event state diff for the COW-restore hunt (memory cont-12).
-        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+        if super::bridge_search_log_enabled() {
             if let Some(bp) = self.or_branch_stack.last() {
                 let node = bp.node;
                 let pc = calc_alg_context.process_context();
@@ -1151,7 +1144,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         } else {
             dep_track_point
         };
-        if std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some() {
+        if super::bridge_watch_merge_enabled() {
             eprintln!(
                 "ATMOST-MERGE-ALT parent=n{} merge n{} -> n{}",
                 parent.index(),
@@ -1297,7 +1290,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         } else {
             dep_track_point
         };
-        if std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some() {
+        if super::bridge_watch_merge_enabled() {
             eprintln!(
                 "ATMOST-QUALIFY-ALT parent=n{} succ=n{} qualNeg=false",
                 parent.index(),
@@ -1525,7 +1518,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // normal operation it is never reached. On overrun we raise a stop (the drive ends
         // "not consistent" rather than silently claiming consistency).
         const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
-        let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let progress = super::bridge_progress_enabled();
         let mut drive_iters: u64 = 0;
         // CCalculationTableauCompletionTaskHandleAlgorithm.cpp 1117-1118.
         // The C++ task scheduler tests for a yield after this many applied
@@ -1708,7 +1701,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         how: &str,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_none() || self.ddb_analysis_dumps >= 8 {
+        if !super::bridge_dump_clash_enabled() || self.ddb_analysis_dumps >= 8 {
             return;
         }
         self.ddb_analysis_dumps += 1;
@@ -1774,7 +1767,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // dependency graph (tp → dep node → prev/additional tps) so a taint
         // loss (a branch-dependent derivation whose chain bottoms out at tag 0
         // without passing a non-deterministic node) is visible directly.
-        if std::env::var_os("KM_BRIDGE_DUMP_DEP_CHAIN").is_some() {
+        if super::bridge_dump_dep_chain_enabled() {
             self.ht_dump_dep_chains(clash, calc_alg_context);
         }
     }
@@ -1943,7 +1936,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // merge (phantom-merge hunts: a `from`/`into` node id that was
                 // created by an ABANDONED alternative marks the cross-branch
                 // pollution case).
-                if std::env::var_os("KM_BRIDGE_WATCH_SINGLETON").is_some() {
+                if super::bridge_watch_singleton_enabled() {
                     let ctx = calc_alg_context.process_context();
                     eprintln!(
                         "SINGLETON-MERGE tag={} into=#{}(indi {}) from=#{}(indi {}) bp_depth={} backtracks={}",
