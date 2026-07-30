@@ -107,3 +107,10 @@ equality, rule, data, and nominal constraints. The conductor also checks every
 asserted class against the final unsatisfiable set. This supports selecting the
 complete production portfolio for the certified non-EL family instead of the
 atomic bridge.
+
+Combined router source commit: `77bf385874b4fd2682aa74d3e6f230b6f7246948`.
+The complete serial release suite again passes with 1,799 tests, eight ignored,
+and zero failures. Archive SHA-256:
+`5820e9db19c8aa50e6703f8a0390813e6d0312eff5d3bbc4d9d3ea2f81722906`.
+Source-bound IBEX build `49645472` feeds exact automatic-route gate `49645473`
+for 15846, 6999, 1034, 2237, 1579, and 3377.
