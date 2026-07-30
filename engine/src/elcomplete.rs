@@ -2497,6 +2497,140 @@ pub struct ElResult {
     pub inconsistent: bool,
 }
 
+/// Decide consistency of a positive ground ABox against a pure EL++ TBox.
+///
+/// Each equality class of named individuals becomes one fresh EL concept
+/// node. Class assertions seed that node, and a ground role assertion becomes
+/// an edge between the two corresponding nodes. EL completion is the canonical
+/// ABox materialisation procedure for this fragment, so the ABox is
+/// inconsistent exactly when the TBox is inconsistent, an equality contradicts
+/// a `DifferentIndividuals` pair, or one fresh node derives `owl:Nothing`.
+///
+/// Returns `None` unless the frontend retained the whole ABox and the combined
+/// clause set is pure EL++. Negative role assertions need closed-world edge
+/// comparison and therefore decline here.
+pub fn positive_abox_consistent(
+    mut clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<bool> {
+    if !meta.complete || !meta.unsupported.is_empty() || !meta.negative_role_assertions.is_empty() {
+        return None;
+    }
+
+    let ids: std::collections::HashMap<&str, usize> = meta
+        .individuals
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| (entry.individual.as_str(), i))
+        .collect();
+    // Every retained identity/role endpoint must have a corresponding typed
+    // individual record. `complete` promises this; recheck at the consumer
+    // boundary so malformed JSON fails closed.
+    for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+        if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+            return None;
+        }
+    }
+    for edge in &meta.role_assertions {
+        if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+            return None;
+        }
+    }
+
+    let mut parent: Vec<usize> = (0..ids.len()).collect();
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+    for (left, right) in &meta.same {
+        let l = find(&mut parent, ids[left.as_str()]);
+        let r = find(&mut parent, ids[right.as_str()]);
+        if l != r {
+            parent[r] = l;
+        }
+    }
+    for (left, right) in &meta.different {
+        let l = find(&mut parent, ids[left.as_str()]);
+        let r = find(&mut parent, ids[right.as_str()]);
+        if l == r {
+            return Some(false);
+        }
+    }
+
+    let node = |root: usize| format!("__km_abox_node_{root}");
+    let var = || JTerm::Var {
+        name: "x".to_string(),
+    };
+    let concept = |name: String, term: JTerm| JAtom::Concept {
+        concept: name,
+        term,
+    };
+
+    for (index, entry) in meta.individuals.iter().enumerate() {
+        if entry.assertions.len() != entry.assertion_markers.len() {
+            return None;
+        }
+        let root = find(&mut parent, index);
+        for marker in &entry.assertion_markers {
+            clauses.push(JClause {
+                body: vec![concept(node(root), var())],
+                head: vec![concept(marker.clone(), var())],
+            });
+        }
+    }
+    for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+        let source = find(&mut parent, ids[edge.source.as_str()]);
+        let target = find(&mut parent, ids[edge.target.as_str()]);
+        let fun = JTerm::Fun {
+            function: format!("__km_abox_edge_{edge_index}"),
+            arg: Box::new(var()),
+        };
+        clauses.push(JClause {
+            body: vec![concept(node(source), var())],
+            head: vec![JAtom::Role {
+                role: edge.role.clone(),
+                source: var(),
+                target: fun.clone(),
+            }],
+        });
+        clauses.push(JClause {
+            body: vec![concept(node(source), var())],
+            head: vec![concept(node(target), fun)],
+        });
+    }
+    // Keep identity-only representatives in the completion signature.
+    for index in 0..parent.len() {
+        let root = find(&mut parent, index);
+        clauses.push(JClause {
+            body: vec![concept(node(root), var())],
+            head: vec![concept(node(root), var())],
+        });
+    }
+
+    let roots: std::collections::HashSet<String> = (0..parent.len())
+        .map(|i| node(find(&mut parent, i)))
+        .collect();
+    let result = classify(clauses)?;
+    if result.inconsistent {
+        return Some(false);
+    }
+    let node_unsat = roots.iter().any(|root| {
+        result
+            .subsumptions
+            .get(root)
+            .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
+    });
+    Some(!node_unsat)
+}
+
 /// Classify `clauses` with EL++ completion. Returns `Some(result)` when the
 /// clause set lies in EL++, or when the non-EL residual passes the
 /// canonical-model completeness certificate (the result is then exact for the
@@ -3263,6 +3397,44 @@ mod tests {
             name,
             v(t)
         )
+    }
+
+    fn positive_abox_consistency(ofn: &str) -> Option<bool> {
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |result| positive_abox_consistent(result.clauses, &result.nominal_abox),
+        )
+        .expect("test ontology parses")
+    }
+
+    #[test]
+    fn positive_abox_completion_respects_identity_and_conjunction_clashes() {
+        let consistent = r#"Ontology(
+            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
+            ClassAssertion(<A> <a>)
+            ClassAssertion(<B> <b>)
+            DifferentIndividuals(<a> <b>)
+        )"#;
+        assert_eq!(positive_abox_consistency(consistent), Some(true));
+
+        let inconsistent = r#"Ontology(
+            SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing)
+            ClassAssertion(<A> <a>)
+            ClassAssertion(<B> <b>)
+            SameIndividual(<a> <b>)
+        )"#;
+        assert_eq!(positive_abox_consistency(inconsistent), Some(false));
+    }
+
+    #[test]
+    fn positive_abox_completion_materializes_ground_role_edges() {
+        let inconsistent = r#"Ontology(
+            SubClassOf(ObjectSomeValuesFrom(<r> <B>) owl:Nothing)
+            ObjectPropertyAssertion(<r> <a> <b>)
+            ClassAssertion(<B> <b>)
+        )"#;
+        assert_eq!(positive_abox_consistency(inconsistent), Some(false));
     }
     fn cf(name: &str, f: &str, t: &str) -> String {
         format!(

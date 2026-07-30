@@ -131,6 +131,7 @@ fn collect_nominal_abox(
     }
 
     let mut different = BTreeSet::new();
+    let mut same = BTreeSet::new();
     let mut role_assertions = BTreeSet::new();
     let mut negative_role_assertions = BTreeSet::new();
     let mut unsupported = BTreeSet::new();
@@ -272,7 +273,22 @@ fn collect_nominal_abox(
             }
             Axiom::SameIndividual(left, right) => {
                 parsed_same_pairs += 1;
-                unsupported.insert(format!("SameIndividual({left},{right})"));
+                let covered =
+                    require_individual(&by_individual, &mut unsupported, left, "SameIndividual")
+                        & require_individual(
+                            &by_individual,
+                            &mut unsupported,
+                            right,
+                            "SameIndividual",
+                        );
+                if covered {
+                    let pair = if left <= right {
+                        (left.clone(), right.clone())
+                    } else {
+                        (right.clone(), left.clone())
+                    };
+                    same.insert(pair);
+                }
             }
             _ => {
                 unsupported.insert("unsupported parsed ABox axiom".to_string());
@@ -323,9 +339,9 @@ fn collect_nominal_abox(
             "{source_data_role} data-property assertion axiom(s) are unsupported"
         ));
     }
-    if source_same != 0 || parsed_same_pairs != 0 {
+    if (source_same == 0) != (parsed_same_pairs == 0) || parsed_same_pairs < source_same {
         unsupported.insert(format!(
-            "SameIndividual is unsupported ({source_same} source axiom(s), {parsed_same_pairs} normalized pair(s))"
+            "source/parsed SameIndividual mismatch ({source_same}/{parsed_same_pairs})"
         ));
     }
     // The parser expands n-ary DifferentIndividuals into every semantic pair.
@@ -362,6 +378,7 @@ fn collect_nominal_abox(
     NominalAboxMeta {
         complete: unsupported.is_empty(),
         individuals: by_individual.into_values().collect(),
+        same: same.into_iter().collect(),
         different: different.into_iter().collect(),
         role_assertions: role_assertions.into_iter().collect(),
         negative_role_assertions: negative_role_assertions.into_iter().collect(),
@@ -1062,7 +1079,7 @@ mod nominal_abox_contract_tests {
     }
 
     #[test]
-    fn identity_and_data_fail_while_negative_object_roles_are_retained() {
+    fn identity_is_retained_while_data_fails_and_negative_object_roles_are_retained() {
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
@@ -1076,11 +1093,7 @@ mod nominal_abox_contract_tests {
         ))
         .expect("unsupported ABox constructs are still profiled");
         assert!(!result.nominal_abox.complete);
-        assert!(result
-            .nominal_abox
-            .unsupported
-            .iter()
-            .any(|reason| reason.contains("SameIndividual")));
+        assert_eq!(result.nominal_abox.same.len(), 1);
         assert!(result
             .nominal_abox
             .unsupported
@@ -1151,14 +1164,16 @@ mod nominal_abox_contract_tests {
     }
 
     #[test]
-    fn unsupported_identity_data_and_builtin_roles_fail_closed() {
+    fn identity_is_complete_while_data_and_builtin_roles_fail_closed() {
+        let identity = ofn_to_clauses(&format!(
+            "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
+        ))
+        .expect("identity ABox parses")
+        .nominal_abox;
+        assert!(identity.complete);
+        assert_eq!(identity.same, vec![("a".into(), "b".into())]);
+
         for (source, expected) in [
-            (
-                format!(
-                    "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
-                ),
-                "SameIndividual",
-            ),
             (
                 format!(
                     "{PREFIX} Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) DataPropertyAssertion(:p :a \"x\"))"

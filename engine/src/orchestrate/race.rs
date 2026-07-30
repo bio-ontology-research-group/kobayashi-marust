@@ -1835,6 +1835,7 @@ mod tests {
                     assertion_markers: Vec::new(),
                 },
             ],
+            same: Vec::new(),
             different: vec![("a".into(), "b".into())],
             role_assertions: vec![NominalRoleAssertionMeta {
                 role: "r".into(),
@@ -2120,6 +2121,7 @@ mod tests {
                     assertion_markers: vec!["A".into()],
                 },
             ],
+            same: Vec::new(),
             different: vec![("a".into(), "b".into())],
             role_assertions: vec![],
             negative_role_assertions: vec![],
@@ -2196,6 +2198,7 @@ mod tests {
         let nominal_abox = NominalAboxMeta {
             complete: true,
             individuals,
+            same: Vec::new(),
             different: vec![],
             role_assertions: vec![],
             negative_role_assertions: vec![],
@@ -2424,6 +2427,7 @@ mod tests {
                     assertion_markers: vec!["A".into()],
                 },
             ],
+            same: Vec::new(),
             different: vec![("a".into(), "b".into())],
             role_assertions: vec![],
             negative_role_assertions: vec![],

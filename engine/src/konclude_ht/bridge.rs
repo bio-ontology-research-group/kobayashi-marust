@@ -12887,6 +12887,7 @@ mod tests {
                     },
                 )
                 .collect(),
+            same: Vec::new(),
             different: different
                 .into_iter()
                 .map(|(left, right)| (left.into(), right.into()))
@@ -14104,6 +14105,7 @@ mod tests {
             nominal_abox: NominalAboxMeta {
                 complete: true,
                 individuals,
+                same: Vec::new(),
                 different: Vec::new(),
                 role_assertions,
                 negative_role_assertions: Vec::new(),

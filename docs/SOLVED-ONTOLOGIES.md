@@ -30,6 +30,33 @@ reproduce the source-bound 10621 capsule.
 
 ---
 
+## Solved via exact positive-EL ABox materialization
+
+### ore_ont_1579 and ore_ont_3377 (2026-07-30)
+
+- **Symptom**: automatic routing treated every explicit individual as a
+  general nominal. Ontology 1579 exhausted about 18 GiB and 3377 failed after
+  about 201 seconds, although a nominal-free production run produced the gold
+  taxonomy quickly.
+- **Why dropping the ABox was not enough**: both TBoxes contain bottom
+  constraints. An asserted individual could therefore make the ontology
+  inconsistent, in which case the nominal-free taxonomy would be incomplete.
+- **Certificate**: the source gate accepts only positive EL++ class and role
+  assertions plus exact `SameIndividual`/`DifferentIndividuals` constraints.
+  Union-find forms equality classes and rejects an equality/inequality clash.
+  EL completion then materializes every asserted type and role edge and checks
+  whether any individual node derives bottom. Any unsupported ABox item or
+  non-EL normalized clause makes the route decline.
+- **Route**: ordinary `km classify` selects `production_all` from ontology
+  features and runs the consistency certificate before publishing. There is
+  no ontology-ID dispatch.
+- **Result**: source-bound IBEX job 49637883 matches Konclude exactly. Ontology
+  1579 returns 56,782 pairs in 12.33 seconds at 852,504 KiB. Ontology 3377
+  returns 4,490,309 pairs in 37.03 seconds at 1,971,828 KiB. Both have zero
+  missing or extra pairs and matching consistency/UNSAT sets.
+
+---
+
 ## Solved via typed source-symbol encoding
 
 ### ore_ont_3524, 15703, and 13503: OWL builtin spellings in legal source IRIs (2026-07-18)

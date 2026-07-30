@@ -187,6 +187,10 @@ pub struct NominalAboxMeta {
     pub complete: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub individuals: Vec<NominalIndividualMeta>,
+    /// Explicit source equalities. The native HT bridge currently declines
+    /// these, while the EL ABox-consistency certificate consumes them exactly.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub same: Vec<(String, String)>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub different: Vec<(String, String)>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -202,6 +206,7 @@ impl NominalAboxMeta {
     pub fn is_empty(&self) -> bool {
         !self.complete
             && self.individuals.is_empty()
+            && self.same.is_empty()
             && self.different.is_empty()
             && self.role_assertions.is_empty()
             && self.negative_role_assertions.is_empty()

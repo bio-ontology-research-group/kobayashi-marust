@@ -423,7 +423,9 @@ pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
         SemanticFragment::Rules
     } else if native_bridge_abox_eligible(profile) {
         SemanticFragment::NativeBridgeAbox
-    } else if profile.source.abox_axioms > 0 && profile.positive_abox_tbox_separable {
+    } else if profile.source.abox_axioms > 0
+        && (profile.positive_abox_tbox_separable || profile.positive_el_abox_materializable)
+    {
         SemanticFragment::PositiveAbox
     } else if profile.source.abox_axioms > 0 || profile.expressivity.nominal_individual {
         SemanticFragment::Nominal
@@ -1291,9 +1293,14 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
         assert_eq!(select(&profile), Route::ProductionAll);
 
+        profile.positive_abox_tbox_separable = false;
+        profile.positive_el_abox_materializable = true;
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
+        assert_eq!(select(&profile), Route::ProductionAll);
+
         // The exact native nominal/datatype source profile takes precedence
         // over both the generic nominal route and positive-ABox separation.
-        profile.positive_abox_tbox_separable = false;
+        profile.positive_el_abox_materializable = false;
         profile.expressivity.datatype = true;
         profile.source.abox_axioms = 86;
         profile.source.class_assertions = 85;

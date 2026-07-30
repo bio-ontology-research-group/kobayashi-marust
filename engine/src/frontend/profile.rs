@@ -220,6 +220,12 @@ pub struct OntologyProfile {
     /// `positive_abox_tbox_separable` for the fail-closed contract.
     #[serde(default)]
     pub positive_abox_tbox_separable: bool,
+    /// Source-only admission gate for exact EL++ ABox materialisation. Unlike
+    /// `positive_abox_tbox_separable`, this permits bottom constraints: the
+    /// orchestrator must run the EL canonical-model consistency certificate
+    /// before it may publish the nominal-free taxonomy.
+    #[serde(default)]
+    pub positive_el_abox_materializable: bool,
     /// Source-only certificate for the inverse-aware cardinality route. Every
     /// object role used by a number restriction (including functionality) is
     /// in a role-hierarchy component disjoint from inverse/symmetric and
@@ -289,6 +295,11 @@ pub struct SourceProfileBuilder<'a> {
     nominal_unconditional: bool,
     nominal_from_abox: bool,
     nominal_from_concept: bool,
+    /// Source identity constraints retained for the positive-ABox separation
+    /// certificate. SameIndividual is an n-ary equality; DifferentIndividuals
+    /// is pairwise inequality over every pair in one axiom.
+    same_individual_groups: Vec<Vec<&'a str>>,
+    different_individual_groups: Vec<Vec<&'a str>>,
     conditional_nominal_roles: HashSet<&'a str>,
     conditional_nominal_role: Option<&'a str>,
     union_equivalence: bool,
@@ -331,6 +342,8 @@ impl<'a> Default for SourceProfileBuilder<'a> {
             nominal_unconditional: false,
             nominal_from_abox: false,
             nominal_from_concept: false,
+            same_individual_groups: Vec::new(),
+            different_individual_groups: Vec::new(),
             conditional_nominal_roles: HashSet::new(),
             conditional_nominal_role: None,
             union_equivalence: false,
@@ -821,6 +834,8 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.nominal_unconditional = true;
                 self.nominal_from_abox = true;
                 self.expr.negation_disjunction = true;
+                self.same_individual_groups
+                    .push(args.iter().filter_map(|n| n.as_atom()).collect());
                 for n in &args {
                     self.individual_arg(Some(*n));
                 }
@@ -831,6 +846,8 @@ impl<'a> SourceProfileBuilder<'a> {
                 self.nominal_unconditional = true;
                 self.nominal_from_abox = true;
                 self.expr.negation_disjunction = true;
+                self.different_individual_groups
+                    .push(args.iter().filter_map(|n| n.as_atom()).collect());
                 for n in &args {
                     self.individual_arg(Some(*n));
                 }
@@ -857,6 +874,7 @@ impl<'a> SourceProfileBuilder<'a> {
         // map and entity sets into their owned statistics representation.
         let card_number_role_separable = self.card_number_role_separable();
         let inverse_cardinality_role_separable = self.inverse_cardinality_role_separable();
+        let identity_consistent = self.identity_constraints_consistent();
         self.stats.file_bytes = file_bytes;
         self.stats.declared_classes = self.declared_classes.len() as u64;
         self.stats.declared_object_properties = self.declared_object_properties.len() as u64;
@@ -946,16 +964,91 @@ impl<'a> SourceProfileBuilder<'a> {
             self.expr.negation_disjunction = true;
         }
         self.expr.finish();
-        let positive_abox_tbox_separable = positive_abox_tbox_separable(&self.stats, &self.expr);
+        let positive_abox_tbox_separable = positive_abox_tbox_separable(
+            &self.stats,
+            &self.expr,
+            self.nominal_from_concept,
+            identity_consistent,
+        );
+        let positive_el_abox_materializable = positive_el_abox_materializable(
+            &self.stats,
+            &self.expr,
+            self.nominal_from_concept,
+            identity_consistent,
+        );
         OntologyProfile {
             schema_version: 2,
             positive_abox_tbox_separable,
+            positive_el_abox_materializable,
             inverse_cardinality_role_separable,
             card_number_role_separable,
             expressivity: self.expr,
             source: self.stats,
             clauses: ClauseStatistics::default(),
         }
+    }
+
+    /// Decide the ground equality/inequality fragment exactly.
+    ///
+    /// Equality groups are unioned first. Every pair in each n-ary
+    /// DifferentIndividuals axiom must then have distinct representatives.
+    fn identity_constraints_consistent(&self) -> bool {
+        let mut ids: HashMap<&str, usize> = HashMap::new();
+        for group in self
+            .same_individual_groups
+            .iter()
+            .chain(self.different_individual_groups.iter())
+        {
+            for &individual in group {
+                let next = ids.len();
+                ids.entry(individual).or_insert(next);
+            }
+        }
+        let mut parent: Vec<usize> = (0..ids.len()).collect();
+
+        fn find(parent: &mut [usize], mut node: usize) -> usize {
+            let mut root = node;
+            while parent[root] != root {
+                root = parent[root];
+            }
+            while parent[node] != node {
+                let next = parent[node];
+                parent[node] = root;
+                node = next;
+            }
+            root
+        }
+
+        for group in &self.same_individual_groups {
+            let Some(first) = group.first().and_then(|name| ids.get(name)).copied() else {
+                continue;
+            };
+            for name in group.iter().skip(1) {
+                let Some(&other) = ids.get(name) else {
+                    continue;
+                };
+                let left = find(&mut parent, first);
+                let right = find(&mut parent, other);
+                if left != right {
+                    parent[right] = left;
+                }
+            }
+        }
+        for group in &self.different_individual_groups {
+            // DifferentIndividuals is pairwise inequality. Its representatives
+            // are pairwise distinct exactly when this set has no duplicate;
+            // avoid an O(n²) scan on ORE's 100k-individual identity groups.
+            let mut representatives = HashSet::with_capacity(group.len());
+            for name in group {
+                let Some(&node) = ids.get(name) else {
+                    continue;
+                };
+                if !representatives.insert(find(&mut parent, node)) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn declaration(&mut self, args: &[&Node<'a>]) {
@@ -1616,7 +1709,12 @@ impl<'a> SourceProfileBuilder<'a> {
 /// precomputation, but accepts only the syntactic case where that consistency
 /// result follows immediately. Every uncertain constructor fails closed onto
 /// KM's exact nominal/ABox calculus.
-fn positive_abox_tbox_separable(source: &SourceStatistics, expr: &ExpressivityProfile) -> bool {
+fn positive_abox_tbox_separable(
+    source: &SourceStatistics,
+    expr: &ExpressivityProfile,
+    nominal_from_concept: bool,
+    identity_consistent: bool,
+) -> bool {
     // This is deliberately a whitelist, not a blacklist. The functional-syntax
     // frontend skips several out-of-core axiom kinds soundly for ordinary TBox
     // classification. Such a skipped axiom must never accidentally become a
@@ -1649,6 +1747,11 @@ fn positive_abox_tbox_separable(source: &SourceStatistics, expr: &ExpressivityPr
         // Data ranges and data-property constraints require the concrete-domain
         // consistency procedure. Bare positive data assertions are harmless.
         "DataPropertyAssertion",
+        // Pure ground identity constraints are harmless after the exact
+        // union-find check below, provided the TBox has no equality-generating
+        // or negative constructor and no concept-level nominal.
+        "SameIndividual",
+        "DifferentIndividuals",
     ];
 
     source.abox_axioms > 0
@@ -1661,8 +1764,71 @@ fn positive_abox_tbox_separable(source: &SourceStatistics, expr: &ExpressivityPr
         && source.min_cardinalities == 0
         && source.max_cardinalities == 0
         && source.exact_cardinalities == 0
-        && !expr.nominal_individual
+        && (!expr.nominal_individual || (!nominal_from_concept && identity_consistent))
+        && (!expr.nominal_individual
+            || (source.functional_role_axioms == 0 && source.inverse_functional_role_axioms == 0))
         && !expr.universal_role
+        && !expr.datatype
+        && !expr.grounding
+        && source.imports == 0
+        && source
+            .axiom_types
+            .keys()
+            .all(|kind| SAFE_AXIOMS.contains(&kind.as_str()))
+}
+
+/// Admit the positive EL++ ABox fragment whose consistency can be decided by
+/// [`crate::elcomplete::positive_abox_consistent`].
+///
+/// This is a source whitelist. The completion consumer independently requires
+/// complete typed-ABox coverage and a pure-EL normalized clause set, so any
+/// source/profile mismatch declines instead of publishing a partial answer.
+fn positive_el_abox_materializable(
+    source: &SourceStatistics,
+    expr: &ExpressivityProfile,
+    nominal_from_concept: bool,
+    identity_consistent: bool,
+) -> bool {
+    const SAFE_AXIOMS: &[&str] = &[
+        "Declaration",
+        "Annotation",
+        "AnnotationAssertion",
+        "SubAnnotationPropertyOf",
+        "AnnotationPropertyDomain",
+        "AnnotationPropertyRange",
+        "SubClassOf",
+        "EquivalentClasses",
+        "DisjointClasses",
+        "SubObjectPropertyOf",
+        "EquivalentObjectProperties",
+        "TransitiveObjectProperty",
+        "ReflexiveObjectProperty",
+        "ObjectPropertyDomain",
+        "ObjectPropertyRange",
+        "ClassAssertion",
+        "ObjectPropertyAssertion",
+        "SameIndividual",
+        "DifferentIndividuals",
+    ];
+
+    source.abox_axioms > 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.bottom_role_occurrences == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && !nominal_from_concept
+        && identity_consistent
         && !expr.datatype
         && !expr.grounding
         && source.imports == 0
@@ -1905,11 +2071,51 @@ mod tests {
         assert_eq!(positive.source.bottom_occurrences, 0);
         assert!(positive.positive_abox_tbox_separable);
 
+        let identity_only = source(
+            r#"Ontology(
+              SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>))
+              ClassAssertion(<A> <a>)
+              SameIndividual(<a> <aa>)
+              DifferentIndividuals(<aa> <b> <c>)
+              ObjectPropertyAssertion(<r> <b> <c>)
+            )"#,
+        );
+        assert!(
+            identity_only.positive_abox_tbox_separable,
+            "consistent identity constraints do not change a positive TBox taxonomy"
+        );
+        assert!(
+            identity_only.positive_el_abox_materializable,
+            "the same positive identity ABox is materializable by EL completion"
+        );
+        let bottom_constrained = source(
+            "Ontology(SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing) ClassAssertion(<A> <a>))",
+        );
+        assert!(!bottom_constrained.positive_abox_tbox_separable);
+        assert!(
+            bottom_constrained.positive_el_abox_materializable,
+            "EL completion, rather than the full-model shortcut, decides bottom constraints"
+        );
+        let identity_clash = source(
+            "Ontology(SameIndividual(<a> <b>) DifferentIndividuals(<a> <b>) ClassAssertion(<A> <a>))",
+        );
+        assert!(
+            !identity_clash.positive_abox_tbox_separable,
+            "union-find must reject an equality/inequality clash"
+        );
+        assert!(!identity_clash.positive_el_abox_materializable);
+        let identity_with_functionality = source(
+            "Ontology(FunctionalObjectProperty(<r>) DifferentIndividuals(<a> <b>) ClassAssertion(<A> <a>))",
+        );
+        assert!(
+            !identity_with_functionality.positive_abox_tbox_separable,
+            "an equality-generating TBox remains outside the certificate"
+        );
+
         for unsafe_source in [
             "Ontology(SubClassOf(<A> owl:Nothing) ClassAssertion(<A> <a>))",
             "Ontology(DisjointClasses(<A> <B>) ClassAssertion(<A> <a>))",
             "Ontology(SubClassOf(<A> ObjectOneOf(<a>)) ClassAssertion(<A> <a>))",
-            "Ontology(DifferentIndividuals(<a> <b>) ClassAssertion(<A> <a>))",
             "Ontology(DataPropertyRange(<p> xsd:string) DataPropertyAssertion(<p> <a> \"x\"))",
             "Ontology(SubClassOf(<A> ObjectAllValuesFrom(owl:topObjectProperty <B>)) ClassAssertion(<A> <a>))",
             "Ontology(ObjectPropertyAssertion(owl:bottomObjectProperty <a> <b>))",

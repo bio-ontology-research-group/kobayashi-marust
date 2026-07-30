@@ -9,6 +9,39 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Exact positive-EL ABox materialization restores 1579 and 3377 (2026-07-30)
+
+Automatic routing now distinguishes a positive EL++ ABox from a general
+nominal ontology. The frontend retains `SameIndividual` and
+`DifferentIndividuals` exactly, checks their union-find consistency, and
+issues a source-only materialization certificate only when the TBox and ABox
+contain no disjunction, complement, number restriction, functionality,
+concept-level nominal, datatype constraint, negative assertion, rule, import,
+or bottom role.
+
+The orchestrator does not simply drop that ABox. It represents each equality
+class of individuals as a fresh EL completion node, seeds every class
+assertion, materializes each ground role assertion as an edge between the
+corresponding nodes, and checks all inequality pairs. A normalized non-EL
+clause set or incomplete typed ABox makes the certificate decline. Only a
+successful consistency decision permits the nominal-free `production_all`
+taxonomy. This is a frontend routing and EL-model certificate, not a change to
+the CB calculus, so it needs no Lean re-certification.
+
+Source-bound IBEX build job 49637596 produced binary
+`d4ccde36263f9044fc891787ad39bf543b96ab0f27a153477712fd2dadcd55c7`.
+Automatic-route exactness job 49637883 matched the complete Konclude
+signatures:
+
+- 1579: 56,782 pairs, 12.33 seconds, 852,504 KiB;
+- 3377: 4,490,309 pairs, 37.03 seconds, 1,971,828 KiB.
+
+Both have zero missing or extra pairs, identical consistency, and identical
+empty unsatisfiable-class sets. The complete release suite passes serially:
+1,826 tests passed, zero failed, eight ignored. The serial setting avoids
+pre-existing environment-variable interference between tests that configure
+different reasoning routes.
+
 ### Elide isolated tautological top-role inclusions; restore ore_ont_541 (2026-07-30)
 
 The functional-syntax frontend now removes

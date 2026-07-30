@@ -517,6 +517,36 @@ pub(crate) fn classify_with_evidence(
         });
     }
 
+    let mut consistency_certified = false;
+    // Development gate for the positive-EL ABox certificate. Automatic
+    // selection is added only after focused corpus validation proves both its
+    // semantic and resource contract.
+    if meta.profile.positive_el_abox_materializable
+        || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
+    {
+        let input: crate::json_io::JInput =
+            serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?;
+        match crate::elcomplete::positive_abox_consistent(input.clauses, &input.nominal_abox) {
+            Some(false) => {
+                return Ok(ClassificationEvidence {
+                    classification: Classification {
+                        consistent: false,
+                        subsumptions: vec![],
+                        unsatisfiable: vec![],
+                        dropped: 0,
+                    },
+                    consistency_certified: true,
+                });
+            }
+            Some(true) => consistency_certified = true,
+            None => {
+                return Err(OrchestrateError::OutOfFragment(
+                    "positive EL ABox consistency certificate declined".into(),
+                ));
+            }
+        }
+    }
+
     // SWRL DL-safe rule support (Stage 2): if the ontology has DL-safe rules, run
     // the rule-aware HT consistency check (ABox seeded as named nominal nodes;
     // rules fired over named individuals). We short-circuit ONLY on a detected
@@ -529,7 +559,6 @@ pub(crate) fn classify_with_evidence(
     // class subsumption, making the fall-through sound and complete. Inert when
     // the ontology has no rule (`rules_consistency` returns None). Opt out with
     // KM_NO_HT_RULES.
-    let mut consistency_certified = false;
     if cfg.ht_rules {
         match rules_consistency(cfg, clauses_path.path(), &meta)? {
             Some(false) => {

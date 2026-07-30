@@ -391,6 +391,7 @@ pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAbox
 
     tin.nominal_abox = meta.clone();
     let has_nominal_input = !meta.individuals.is_empty()
+        || !meta.same.is_empty()
         || !meta.different.is_empty()
         || !meta.role_assertions.is_empty()
         || !meta.negative_role_assertions.is_empty()
@@ -414,6 +415,12 @@ pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAbox
             } else {
                 meta.unsupported.join("; ")
             });
+        }
+        if !meta.same.is_empty() {
+            return Err(
+                "SameIndividual requires equality merging not implemented by the native HT bridge"
+                    .into(),
+            );
         }
 
         let mut concepts = tin.concepts.clone();
@@ -3017,6 +3024,7 @@ mod native_abox_install_tests {
                 individual("a", "__nom__a", Some("A")),
                 individual("b", "__nom__b", Some("B")),
             ],
+            same: Vec::new(),
             different: vec![("a".into(), "b".into())],
             role_assertions: vec![role.clone()],
             negative_role_assertions: vec![role],
