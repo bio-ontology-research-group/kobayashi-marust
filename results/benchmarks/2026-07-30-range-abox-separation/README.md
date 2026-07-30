@@ -27,5 +27,6 @@ Local validation:
 - a focused source-profile regression test proves that a positive role ABox
   with a range cannot claim the cert-off EL materialization certificate.
 
-The IBEX focused gate must prove exact frozen-signature equality before this
+IBEX build job `49642950` and dependent focused exactness array `49642951`
+are running. The gate must prove exact frozen-signature equality before this
 restoration is counted in production coverage.
