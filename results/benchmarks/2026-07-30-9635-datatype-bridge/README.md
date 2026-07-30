@@ -37,7 +37,8 @@ IBEX acceptance is bound to source commit `93dcec4`, archive SHA-256
 `39850e9eca2359b87ebc88d468ddc3c7f8eb6215628d210ce5fad2b781ddcb83`,
 and binary SHA-256
 `03bc9facf50cef57cbf9657952a7b34d7b94f378441cdd968c46c56ecb886f08`.
-Build job 49640672 completed. Focused exactness array 49640673 is the
-dependency gate for complete sweep 49640841; terminal audit 49640842 runs
-after the array under all outcomes. Results are added here only after the
-audit proves 592 terminal rows.
+Build job 49640672 completed. Focused exactness array 49640673 remains the
+source-bound acceptance gate. Complete sweep 49640841 and audit 49640842 were
+cancelled before any task started because the newer 6999 dateTime restoration
+superseded this source revision. The replacement full sweep uses that newer
+revision and retains 9635 in its focused regression panel.
