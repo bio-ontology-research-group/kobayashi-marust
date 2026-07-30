@@ -187,3 +187,9 @@ Complete v5 array `49649240` is source-bound to that accepted binary and waits
 on `afterok:49646978`, the strict v4 audit. This preserves an uncontended v4
 baseline before the next 592-ontology iteration begins. Dependent v5 audit
 `49649241` runs after every v5 array task reaches a terminal state.
+
+The v4 baseline next exposed 3524 as a 20-GB memout. Historical current-route
+evidence solves this 1.97-million-axiom flat taxonomy exactly with both
+`production_all` and `elc`, with `elc` fastest at about 19 seconds and 2.6 GB.
+Current-v5 route comparison array `49649529` reruns both candidates against
+the frozen Konclude signature on Gold 6248 CPUs.
