@@ -86,5 +86,7 @@ Follow-up source commit: `c6bc65d6cb0b15f87eda1be165be657ce92eeb46`.
 Its complete serial release suite passes with 1,799 tests, eight ignored, and
 zero failures. The source archive SHA-256 is
 `1a3a850c51095da64253f23feceb4fe5f9d4805669fbdf8f4c2cc788f6e0b7f8`.
-IBEX build job `49644759` and dependent five-case gate `49644760` use the
-separate `adaptive-composite-layout-v2-20260731` root.
+Initial batch jobs `49644759` / `49644760` were cancelled while still pending.
+Debug build job `49644810` and dependent five-case gate `49644811` use the
+separate `adaptive-composite-layout-v2-20260731` root; build CPU model does not
+enter benchmark measurements.
