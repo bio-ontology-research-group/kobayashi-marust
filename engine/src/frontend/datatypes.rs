@@ -1170,12 +1170,32 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
             _ => None,
         };
     }
-    if rest.starts_with("c__") || matches!(rest, "opaque" | "val") {
+    if let Some(text) = rest.strip_prefix("c__") {
+        // `DataOneOf(false,true)` is extensionally exactly xsd:boolean, not
+        // merely a finite subset of it.  Treat either source ordering as the
+        // atomic boolean family so the bridge can consume OWL ontologies that
+        // spell a data-property range as the explicit two-value enumeration.
+        // Every other complex range remains fail-closed.
+        let DRange::OneOf(values) = parse_complex(text) else {
+            return None;
+        };
+        if values.len() == 2
+            && values.iter().any(|value| matches!(value, Val::Bool(false)))
+            && values.iter().any(|value| matches!(value, Val::Bool(true)))
+        {
+            return Some("boolean");
+        }
+        return None;
+    }
+    if matches!(rest, "opaque" | "val") {
         return None;
     }
     match range_of_internal_name(rest) {
         DRange::Named(datatype)
-            if matches!(datatype.kind, "boolean" | "integer" | "string" | "float") =>
+            if matches!(
+                datatype.kind,
+                "boolean" | "int" | "integer" | "string" | "float"
+            ) =>
         {
             Some(datatype.kind)
         }
@@ -1771,11 +1791,14 @@ mod tests {
         for supported in [
             "__dt__boolean",
             "__dt__float",
+            "__dt__int",
             "__dt__integer",
             "__dt__string",
             "__dt__val__\"true\"^^xsd:boolean",
             "__dt__val__\"23\"^^xsd:integer",
             "__dt__val__\"McNeal\"^^xsd:string",
+            "__dt__c__DataOneOf(\"true\"^^xsd:boolean \"false\"^^xsd:boolean)",
+            "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)",
         ] {
             assert!(
                 bridge_exact_atomic_name(supported),
@@ -1786,6 +1809,8 @@ mod tests {
             "__dt__opaque",
             "__dt__val__opaque",
             "__dt__val__\"1.5\"^^xsd:float",
+            "__dt__c__DataOneOf(\"true\"^^xsd:boolean)",
+            "__dt__c__DataOneOf(\"true\"^^xsd:boolean \"true\"^^xsd:boolean)",
             "__dt__c__DataUnionOf(xsd:string xsd:boolean)",
             "__dt__dateTime",
         ] {

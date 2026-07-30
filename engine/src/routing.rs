@@ -425,9 +425,11 @@ fn independent_large_abox_el_candidate(profile: &OntologyProfile) -> bool {
 /// improve performance but can never authorize a partial bridge answer.
 ///
 /// Data assertions and equality are excluded because the typed object-ABox
-/// bridge does not currently represent them.  Complex role chains, the
-/// universal role, and self restrictions are excluded here as cheap source
-/// predictors for normalized bridge fences; ordinary inverse roles,
+/// bridge does not currently represent them. Datatype TBox axioms remain
+/// eligible: the converted-input bridge has an independent, fail-closed
+/// certificate for its exact atomic datatype fragment. Complex role chains,
+/// the universal role, and self restrictions are excluded here as cheap
+/// source predictors for normalized bridge fences; ordinary inverse roles,
 /// transitivity, unqualified cardinality, object nominals, role assertions,
 /// and pairwise inequality remain eligible.
 fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
@@ -448,7 +450,6 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && count("SameIndividual") == 0
         && source.role_chain_axioms == 0
         && source.has_self == 0
-        && !profile.expressivity.datatype
         && !profile.expressivity.universal_role
 }
 
@@ -1470,6 +1471,21 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(typed_object_abox_bridge_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedNominals);
+
+        let datatype_tbox = source_profile(
+            r#"Ontology(
+                ClassAssertion(<A> <a>)
+                ObjectPropertyAssertion(<r> <a> <b>)
+                SubClassOf(<A> DataSomeValuesFrom(<p> xsd:string))
+                DataPropertyRange(<p> xsd:string)
+            )"#,
+        );
+        assert!(datatype_tbox.expressivity.datatype);
+        assert!(
+            typed_object_abox_bridge_candidate(&datatype_tbox),
+            "datatype TBoxes may try the independently certified atomic bridge"
+        );
+        assert_eq!(select(&datatype_tbox), Route::CertifiedNominals);
 
         for unsupported_abox in [
             r#"DataPropertyAssertion(<p> <a> "x")"#,

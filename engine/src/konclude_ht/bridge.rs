@@ -740,7 +740,11 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
                 crate::frontend::datatypes::bridge_exact_atomic_family(sub_name)
                     == crate::frontend::datatypes::bridge_exact_atomic_family(sup_name)
             }
-            (false, false) => sub == sup,
+            (false, false) => crate::frontend::datatypes::bridge_exact_atomic_family(sub_name)
+                .zip(crate::frontend::datatypes::bridge_exact_atomic_family(
+                    sup_name,
+                ))
+                .is_some_and(|(sub_family, sup_family)| sub_family == sup_family),
             (false, true) => false,
         };
     }
@@ -930,26 +934,31 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .collect();
     let mut role_ranges: HashMap<usize, &'static str> = HashMap::new();
     let mut role_existentials: Vec<(usize, &'static str)> = Vec::new();
+    fn atomic_datatype_existential(concept: &SourceConcept) -> Option<(&str, &'static str)> {
+        let SourceConcept::Exists(SourceRole::Name(role), filler) = concept else {
+            return None;
+        };
+        let SourceConcept::Name(datatype) = filler.as_ref() else {
+            return None;
+        };
+        crate::frontend::datatypes::bridge_exact_atomic_family(datatype)
+            .map(|family| (role.as_str(), family))
+    }
     for axiom in &tin.source_axioms {
         if !source_concept_contains_internal_datatype(&axiom.left)
             && !source_concept_contains_internal_datatype(&axiom.right)
         {
             continue;
         }
-        let (role, family, is_range) = match (axiom.kind, &axiom.left, &axiom.right) {
-            (
-                crate::json_io::SourceAxiomKind::SubClass,
-                SourceConcept::Name(left),
-                SourceConcept::Exists(SourceRole::Name(role), filler),
-            ) if !left.starts_with("__dt__") => {
-                let SourceConcept::Name(datatype) = filler.as_ref() else {
+        let mut occurrences: Vec<(&str, &'static str, bool)> = Vec::new();
+        match (axiom.kind, &axiom.left, &axiom.right) {
+            (crate::json_io::SourceAxiomKind::SubClass, SourceConcept::Name(left), right)
+                if !left.starts_with("__dt__") =>
+            {
+                let Some((role, family)) = atomic_datatype_existential(right) else {
                     defer!("a datatype existential has a non-atomic filler");
                 };
-                let Some(family) = crate::frontend::datatypes::bridge_exact_atomic_family(datatype)
-                else {
-                    defer!("a datatype existential filler has no exact family");
-                };
-                (role.as_str(), family, false)
+                occurrences.push((role, family, false));
             }
             (
                 crate::json_io::SourceAxiomKind::SubClass,
@@ -963,22 +972,53 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 else {
                     defer!("a datatype range filler has no exact family");
                 };
-                (role.as_str(), family, true)
+                occurrences.push((role.as_str(), family, true));
+            }
+            // Normalization retains an exact source equivalence such as
+            // `N = M and dataHasValue(r,v)` as one source axiom. Its datatype
+            // obligation is still role-local and atomic; the remaining
+            // conjuncts stay in the ordinary source terminology. Accept every
+            // datatype-bearing top-level conjunct only when it has that exact
+            // existential shape.
+            (
+                crate::json_io::SourceAxiomKind::Equivalent,
+                SourceConcept::Name(left),
+                SourceConcept::And(conjuncts),
+            )
+            | (
+                crate::json_io::SourceAxiomKind::Equivalent,
+                SourceConcept::And(conjuncts),
+                SourceConcept::Name(left),
+            ) if !left.starts_with("__dt__") => {
+                for conjunct in conjuncts
+                    .iter()
+                    .filter(|conjunct| source_concept_contains_internal_datatype(conjunct))
+                {
+                    let Some((role, family)) = atomic_datatype_existential(conjunct) else {
+                        defer!("a datatype equivalence conjunct is not an atomic existential");
+                    };
+                    occurrences.push((role, family, false));
+                }
             }
             _ => defer!("a datatype source axiom is outside the role-local fragment"),
-        };
-        let Some(&role) = role_index.get(role) else {
-            defer!("a datatype source role is absent from TInput roles");
-        };
-        if is_range {
-            if role_ranges
-                .insert(role, family)
-                .is_some_and(|old| old != family)
-            {
-                defer!("one data role has conflicting range families");
+        }
+        if occurrences.is_empty() {
+            defer!("a datatype source axiom has no exact role-local occurrence");
+        }
+        for (role, family, is_range) in occurrences {
+            let Some(&role) = role_index.get(role) else {
+                defer!("a datatype source role is absent from TInput roles");
+            };
+            if is_range {
+                if role_ranges
+                    .insert(role, family)
+                    .is_some_and(|old| old != family)
+                {
+                    defer!("one data role has conflicting range families");
+                }
+            } else {
+                role_existentials.push((role, family));
             }
-        } else {
-            role_existentials.push((role, family));
         }
     }
     if role_existentials
@@ -997,6 +1037,39 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .iter()
         .map(|&role| tin.roles[role].as_str())
         .collect();
+    fn data_role_uses_are_safe_cardinality_only(
+        concept: &SourceConcept,
+        datatype_roles: &std::collections::HashSet<&str>,
+    ) -> bool {
+        if !source_concept_mentions_roles(concept, datatype_roles) {
+            return true;
+        }
+        match concept {
+            SourceConcept::And(conjuncts) | SourceConcept::Or(conjuncts) => conjuncts
+                .iter()
+                .all(|conjunct| data_role_uses_are_safe_cardinality_only(conjunct, datatype_roles)),
+            SourceConcept::AtLeast(0..=1, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(0..=1, SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Top) =>
+            {
+                true
+            }
+            SourceConcept::Exists(SourceRole::Name(role), filler)
+            | SourceConcept::Forall(SourceRole::Name(role), filler)
+                if !datatype_roles.contains(role.as_str()) =>
+            {
+                data_role_uses_are_safe_cardinality_only(filler, datatype_roles)
+            }
+            SourceConcept::AtLeast(_, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(_, SourceRole::Name(role), filler)
+                if !datatype_roles.contains(role.as_str()) =>
+            {
+                data_role_uses_are_safe_cardinality_only(filler, datatype_roles)
+            }
+            _ => false,
+        }
+    }
 
     // Data successors share the completion graph implementation with object
     // successors. Prove that every non-datatype source axiom holds on a fresh
@@ -1042,7 +1115,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && !source_concept_contains_internal_datatype(right)
                     && !source_concept_mentions_roles(right, &datatype_role_names)
             );
-            if !allowed_domain {
+            // Objectification preserves bounds zero and one over Top. Every
+            // admitted atomic datatype family is nonempty, so `>= 1` can pick
+            // a value; `<= 1` is functionality; and exact singleton relation
+            // clauses retain clashes between distinct fixed values. Recurse
+            // through ordinary-role fillers, but keep larger data bounds and
+            // non-Top data fillers fail-closed.
+            let allowed_safe_cardinality =
+                data_role_uses_are_safe_cardinality_only(&axiom.left, &datatype_role_names)
+                    && data_role_uses_are_safe_cardinality_only(&axiom.right, &datatype_role_names);
+            if !allowed_domain && !allowed_safe_cardinality {
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!(
                         "BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype \
@@ -1193,7 +1275,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .copied()
         .filter(|&concept| tin.concepts[concept].starts_with("__dt__val__"))
         .collect();
-    let mut ranges: HashMap<&'static str, usize> = HashMap::new();
+    let mut ranges: HashMap<&'static str, Vec<usize>> = HashMap::new();
     for &concept in datatype_ids
         .iter()
         .filter(|&&concept| !tin.concepts[concept].starts_with("__dt__val__"))
@@ -1203,9 +1285,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         else {
             defer!("a datatype range has no exact atomic family");
         };
-        if ranges.insert(family, concept).is_some() {
-            defer!("more than one datatype range symbol represents one exact family");
-        }
+        ranges.entry(family).or_default().push(concept);
     }
 
     for &value in &values {
@@ -1221,13 +1301,15 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         else {
             defer!("a datatype value has no exact atomic family");
         };
-        if let Some(&range) = ranges.get(family) {
-            if !tin
-                .clauses
-                .iter()
-                .any(|clause| positive_datatype_inclusion(clause, value, range))
-            {
-                defer!("a datatype value lacks membership in its present family range");
+        if let Some(family_ranges) = ranges.get(family) {
+            for &range in family_ranges {
+                if !tin
+                    .clauses
+                    .iter()
+                    .any(|clause| positive_datatype_inclusion(clause, value, range))
+                {
+                    defer!("a datatype value lacks membership in its present family range");
+                }
             }
         }
     }
@@ -1250,7 +1332,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
 
-    if let Some(&boolean) = ranges.get("boolean") {
+    if let Some(boolean_ranges) = ranges.get("boolean") {
         let boolean_values: BTreeSet<usize> = values
             .iter()
             .copied()
@@ -1260,18 +1342,20 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             })
             .collect();
         if boolean_values.len() != 2
-            || !tin.clauses.iter().any(|clause| {
-                let ([HAtom::Concept { neg: false, c, t }], head) =
-                    (clause.body.as_slice(), clause.head.as_slice())
-                else {
-                    return false;
-                };
-                *c == boolean
-                    && head.len() == 2
-                    && head.iter().all(|atom| {
-                        matches!(atom, HAtom::Concept { neg: false, c, t: ht }
-                            if *ht == *t && boolean_values.contains(c))
-                    })
+            || boolean_ranges.iter().any(|boolean| {
+                !tin.clauses.iter().any(|clause| {
+                    let ([HAtom::Concept { neg: false, c, t }], head) =
+                        (clause.body.as_slice(), clause.head.as_slice())
+                    else {
+                        return false;
+                    };
+                    c == boolean
+                        && head.len() == 2
+                        && head.iter().all(|atom| {
+                            matches!(atom, HAtom::Concept { neg: false, c, t: ht }
+                                if *ht == *t && boolean_values.contains(c))
+                        })
+                })
             })
         {
             defer!("the boolean family lacks an exact two-value cover");
@@ -13578,6 +13662,105 @@ mod tests {
         assert!(
             !exact_atomic_datatype_bridge_fragment(&recursive_domain, true),
             "a domain RHS that recursively uses a data role stays outside the fragment"
+        );
+    }
+
+    #[test]
+    fn exact_atomic_datatype_fragment_accepts_only_safe_data_cardinalities() {
+        use crate::frontend::syntax::{Concept as C, Role as R};
+
+        let safe_bound = C::AtMost(
+            1,
+            R::Name("integer_value".into()),
+            Box::new(C::Top),
+        );
+        let mut safe = exact_atomic_datatype_input();
+        safe.source_axioms.push(source_equivalence(
+            C::Name("A".into()),
+            C::And(
+                [
+                    C::Name("Q_guard".into()),
+                    C::AtLeast(
+                        1,
+                        R::Name("integer_value".into()),
+                        Box::new(C::Top),
+                    ),
+                    safe_bound,
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        ));
+        assert!(
+            exact_atomic_datatype_bridge_fragment(&safe, true),
+            "unit lower bounds and data-property functionality are exact under objectification"
+        );
+
+        for unsafe_bound in [
+            C::AtLeast(
+                2,
+                R::Name("integer_value".into()),
+                Box::new(C::Top),
+            ),
+            C::AtMost(
+                2,
+                R::Name("integer_value".into()),
+                Box::new(C::Top),
+            ),
+            C::AtMost(
+                1,
+                R::Name("integer_value".into()),
+                Box::new(C::Name("A".into())),
+            ),
+        ] {
+            let mut unsafe_tin = exact_atomic_datatype_input();
+            unsafe_tin.source_axioms.push(source_subclass(
+                C::Name("A".into()),
+                unsafe_bound,
+            ));
+            assert!(
+                !exact_atomic_datatype_bridge_fragment(&unsafe_tin, true),
+                "uncertified data-property cardinality must remain fail-closed"
+            );
+        }
+
+        let mut nested = exact_atomic_datatype_input();
+        nested.source_axioms.push(source_subclass(
+            C::Name("A".into()),
+            C::Forall(
+                R::Name("object_role".into()),
+                Box::new(C::And(
+                    [
+                        C::AtLeast(
+                            1,
+                            R::Name("integer_value".into()),
+                            Box::new(C::Top),
+                        ),
+                        C::AtMost(
+                            1,
+                            R::Name("integer_value".into()),
+                            Box::new(C::Top),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )),
+            ),
+        ));
+        assert!(
+            exact_atomic_datatype_bridge_fragment(&nested, true),
+            "safe data bounds remain exact inside an ordinary-role filler"
+        );
+    }
+
+    #[test]
+    fn exact_atomic_datatype_fragment_recognises_boolean_two_value_range() {
+        let mut tin = exact_atomic_datatype_input();
+        tin.concepts[2] =
+            "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)".into();
+        assert!(
+            exact_atomic_datatype_bridge_fragment(&tin, true),
+            "the complete Boolean enumeration is extensionally xsd:boolean"
         );
     }
 
