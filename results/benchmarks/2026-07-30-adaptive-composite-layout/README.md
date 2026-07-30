@@ -174,3 +174,11 @@ Follow-up source commit: `80eb1d4`. Its source archive SHA-256 is
 Source-bound build job `49648746` feeds five-case automatic-route gate
 `49648747`, covering 1481, the retained cardinality-bearing 15672 and giant
 15846 routes, and production controls 6999 and 1034.
+
+Build `49648746` produced binary SHA-256
+`2744c876b2e9d31d6b8924c5b0fe4c683e16c5421537ae9d854a36fe5e5a8127`.
+The gate confirms automatic 1481 is restored: `production_all` matches exactly
+in 0.9659 seconds at 225.69 MiB. Retained controls 15672, 6999, and 1034 also
+match exactly. Giant control 15846 retains `certified_nominals` and matches
+exactly in 177.4123 seconds at 19,100.21 MiB. Gate `49648747` therefore passes
+all five cases.
