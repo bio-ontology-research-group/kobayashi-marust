@@ -4,9 +4,11 @@
 # Every listed case is required to finish and match the Konclude signature.
 #SBATCH --job-name=km-int7499-gate
 #SBATCH --account=pi-hohndor
-#SBATCH --partition=batch
-#SBATCH --constraint=cpu_intel_gold_6248
-#SBATCH --exclusive
+# This is an exactness/termination gate, not a production timing run.  Keep it
+# eligible for any CPU node and avoid reserving an otherwise-idle whole node.
+# The dependent 592-ontology production array supplies its own fixed hardware
+# and exclusivity policy.
+#SBATCH --partition=debug
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
