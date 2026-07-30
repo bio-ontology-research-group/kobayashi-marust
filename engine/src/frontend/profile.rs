@@ -1831,6 +1831,12 @@ fn positive_el_abox_materializable(
         && identity_consistent
         && !expr.datatype
         && !expr.grounding
+        // The EL completion core treats range propagation as a residual
+        // canonical-model check, not a cert-off normal form. A positive ABox
+        // can activate a range, so keep this source certificate in lockstep
+        // with the normalized consumer. The independent ABox/TBox separation
+        // certificate can still route range-only taxonomy cases exactly.
+        && source.range_axioms == 0
         && source.imports == 0
         && source
             .axiom_types
@@ -2087,6 +2093,16 @@ mod tests {
         assert!(
             identity_only.positive_el_abox_materializable,
             "the same positive identity ABox is materializable by EL completion"
+        );
+        let ranged_role_abox = source(
+            r#"Ontology(
+              ObjectPropertyRange(<r> <B>)
+              ObjectPropertyAssertion(<r> <a> <b>)
+            )"#,
+        );
+        assert!(
+            !ranged_role_abox.positive_el_abox_materializable,
+            "the source certificate must reject range rules exactly as the cert-off normalized EL consumer does"
         );
         let bottom_constrained = source(
             "Ontology(SubClassOf(ObjectIntersectionOf(<A> <B>) owl:Nothing) ClassAssertion(<A> <a>))",

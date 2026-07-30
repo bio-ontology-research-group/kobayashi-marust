@@ -2513,7 +2513,16 @@ pub fn positive_abox_consistent(
     mut clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<bool> {
+    let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     if !meta.complete || !meta.unsupported.is_empty() || !meta.negative_role_assertions.is_empty() {
+        if debug {
+            eprintln!(
+                "KM_EL_ABOX defer: complete={} unsupported={} negative_roles={}",
+                meta.complete,
+                meta.unsupported.len(),
+                meta.negative_role_assertions.len()
+            );
+        }
         return None;
     }
 
@@ -2528,11 +2537,17 @@ pub fn positive_abox_consistent(
     // boundary so malformed JSON fails closed.
     for (left, right) in meta.same.iter().chain(meta.different.iter()) {
         if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+            if debug {
+                eprintln!("KM_EL_ABOX defer: identity endpoint absent from typed individuals");
+            }
             return None;
         }
     }
     for edge in &meta.role_assertions {
         if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+            if debug {
+                eprintln!("KM_EL_ABOX defer: role endpoint absent from typed individuals");
+            }
             return None;
         }
     }
@@ -2576,6 +2591,12 @@ pub fn positive_abox_consistent(
 
     for (index, entry) in meta.individuals.iter().enumerate() {
         if entry.assertions.len() != entry.assertion_markers.len() {
+            if debug {
+                eprintln!(
+                    "KM_EL_ABOX defer: assertion marker mismatch individual={}",
+                    entry.individual
+                );
+            }
             return None;
         }
         let root = find(&mut parent, index);
@@ -2618,7 +2639,15 @@ pub fn positive_abox_consistent(
     let roots: std::collections::HashSet<String> = (0..parent.len())
         .map(|i| node(find(&mut parent, i)))
         .collect();
-    let result = classify(clauses)?;
+    let result = match classify(clauses) {
+        Some(result) => result,
+        None => {
+            if debug {
+                eprintln!("KM_EL_ABOX defer: augmented clause set is not pure EL++");
+            }
+            return None;
+        }
+    };
     if result.inconsistent {
         return Some(false);
     }
@@ -3205,6 +3234,16 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         Vec::new()
     } else {
         if cert == CertMode::Off {
+            if debug {
+                eprintln!(
+                    "KM_ELC defer: {} non-EL residual clause(s); first={}",
+                    residual.len(),
+                    residual
+                        .first()
+                        .and_then(|clause| serde_json::to_string(clause).ok())
+                        .unwrap_or_else(|| "<unavailable>".to_string())
+                );
+            }
             return None;
         }
         match compile_residual(&residual, &mut it, &mut nfs, &skolem_filler) {
