@@ -448,12 +448,7 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && count("DataPropertyAssertion") == 0
         && count("NegativeDataPropertyAssertion") == 0
         && count("SameIndividual") == 0
-        // A complex RBox is harmless to the typed ABox admission check when
-        // the ABox has no object-property assertions: there is no asserted
-        // edge for a chain automaton to extend. The converted bridge still
-        // checks the complete normalized RBox and independently requires
-        // native_abox_role_automata_separable before it can answer.
-        && (source.role_chain_axioms == 0 || source.role_assertions == 0)
+        && source.role_chain_axioms == 0
         && source.has_self == 0
         && !profile.expressivity.universal_role
 }
@@ -1491,39 +1486,6 @@ mod tests {
             "datatype TBoxes may try the independently certified atomic bridge"
         );
         assert_eq!(select(&datatype_tbox), Route::CertifiedNominals);
-
-        let class_only_abox_with_chain = source_profile(
-            r#"Ontology(
-                ClassAssertion(<A> <a>)
-                EquivalentClasses(<N> ObjectOneOf(<a>))
-                SubObjectPropertyOf(
-                    ObjectPropertyChain(<r> <s>)
-                    <t>
-                )
-            )"#,
-        );
-        assert_eq!(class_only_abox_with_chain.source.role_assertions, 0);
-        assert!(class_only_abox_with_chain.source.role_chain_axioms > 0);
-        assert!(typed_object_abox_bridge_candidate(
-            &class_only_abox_with_chain
-        ));
-        assert_eq!(
-            select(&class_only_abox_with_chain),
-            Route::CertifiedNominals
-        );
-
-        let asserted_chain_abox = source_profile(
-            r#"Ontology(
-                ClassAssertion(<A> <a>)
-                ObjectPropertyAssertion(<r> <a> <b>)
-                SubObjectPropertyOf(
-                    ObjectPropertyChain(<r> <s>)
-                    <t>
-                )
-            )"#,
-        );
-        assert!(!typed_object_abox_bridge_candidate(&asserted_chain_abox));
-        assert_ne!(select(&asserted_chain_abox), Route::CertifiedNominals);
 
         for unsupported_abox in [
             r#"DataPropertyAssertion(<p> <a> "x")"#,
