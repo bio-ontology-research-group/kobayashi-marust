@@ -87,6 +87,24 @@ pub fn choose_comp_ind_bits(functions: u64, individuals: u64) -> Option<u32> {
     (minimum..32).find(|&bits| fits(bits))
 }
 
+/// Pick the smallest individual field that can represent a dense individual
+/// domain when the frontend did not retain an exact normalized-function count.
+///
+/// Ordinary classification intentionally omits the expensive clause-profile
+/// scan. Using the minimum lossless individual width leaves the largest
+/// possible remainder of the `u32` space for functions. It cannot make a
+/// representable `(function, individual)` pair unrepresentable: every wider
+/// split has no more function capacity. The encoded order remains function
+/// first and individual second.
+pub fn choose_comp_ind_bits_unknown_functions(individuals: u64) -> Option<u32> {
+    let minimum = if individuals == 0 {
+        1
+    } else {
+        (u64::BITS - individuals.leading_zeros()).max(1)
+    };
+    (minimum < 32).then_some(minimum)
+}
+
 #[inline]
 pub fn zvar(i: i32) -> Term {
     assert!(
@@ -835,5 +853,7 @@ mod term_encoding_tests {
         assert_eq!(choose_comp_ind_bits(20_932, 129_647), Some(17));
         assert_eq!(choose_comp_ind_bits(130_303, 18_055), Some(15));
         assert_eq!(choose_comp_ind_bits(1 << 20, 1 << 20), None);
+        assert_eq!(choose_comp_ind_bits_unknown_functions(129_647), Some(17));
+        assert_eq!(choose_comp_ind_bits_unknown_functions(18_055), Some(15));
     }
 }

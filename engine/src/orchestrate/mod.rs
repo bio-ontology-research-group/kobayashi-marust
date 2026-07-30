@@ -466,13 +466,15 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
 }
 
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
-    crate::calc::choose_comp_ind_bits(
-        profile.clauses.function_term_symbols,
-        profile
-            .clauses
-            .individual_term_symbols
-            .max(profile.source.distinct_individuals),
-    )
+    let individuals = profile
+        .clauses
+        .individual_term_symbols
+        .max(profile.source.distinct_individuals);
+    if profile.clauses.function_term_symbols == 0 {
+        crate::calc::choose_comp_ind_bits_unknown_functions(individuals)
+    } else {
+        crate::calc::choose_comp_ind_bits(profile.clauses.function_term_symbols, individuals)
+    }
 }
 
 pub(crate) fn classify_with_evidence(
@@ -1092,8 +1094,14 @@ mod tests {
     #[test]
     fn composite_layout_uses_source_individuals_before_nominal_clause_augmentation() {
         let mut profile = crate::frontend::profile::OntologyProfile::default();
-        profile.clauses.function_term_symbols = 130_303;
         profile.clauses.individual_term_symbols = 0;
+        profile.source.distinct_individuals = 18_055;
+        assert_eq!(composite_layout(&profile), Some(15));
+
+        profile.source.distinct_individuals = 129_647;
+        assert_eq!(composite_layout(&profile), Some(17));
+
+        profile.clauses.function_term_symbols = 130_303;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
     }

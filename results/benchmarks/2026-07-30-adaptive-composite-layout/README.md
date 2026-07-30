@@ -65,3 +65,19 @@ targeted at idle debug node `cn506-11-l`. It remains queued for fair-share
 priority. The older production array was briefly held after its running task
 finished, then released at 363 durable ontology results; it resumes
 independently and no completed checkpoint was removed.
+
+Array `49644382` exposed a production-only defect in the first candidate.
+Ordinary `km classify` intentionally omits detailed normalized-clause
+statistics, so the conductor observed zero function symbols, retained the
+17-bit default, and 1194 reproduced the same overflow after 13.384 seconds at
+2,800.96 MiB. This is a rejected result, not a 1194 closure. The exact controls
+1034, 2237, and 6999 matched their frozen signatures. Task 15846 stopped at the
+harness's expected-route assertion before classification, so it supplies no
+candidate evidence.
+
+The follow-up chooses the smallest lossless individual field whenever the
+ordinary-classification meta lacks an exact function count. This maximizes the
+remaining function field and cannot reduce the set of representable composite
+terms. It selects 15 bits from 1194's exact 18,055 source individuals and
+retains 17 bits for 15846's 129,647 individuals without scanning the normalized
+million-clause vector.
