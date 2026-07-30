@@ -23,7 +23,9 @@ export LC_ALL=C
 test "$(/usr/bin/sha256sum "$archive" | /usr/bin/cut -d' ' -f1)" = "$expected"
 /usr/bin/mkdir -p "$tmp_root/source"
 /usr/bin/tar -xzf "$archive" -C "$tmp_root/source"
-cd "$tmp_root/source/engine"
+source_root=$tmp_root/source/km-typed-object-abox
+test -f "$source_root/engine/Cargo.toml"
+cd "$source_root/engine"
 /usr/bin/nice -n 5 cargo build --release --locked --bin km --jobs 16
 
 binary=$CARGO_TARGET_DIR/release/km
