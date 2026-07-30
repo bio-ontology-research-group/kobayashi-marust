@@ -34,7 +34,7 @@ work=${SLURM_TMPDIR:-/tmp}/km-main592x-${SLURM_JOB_ID}
   --kind km \
   --arm km_route_auto_integrated_main_exclusive \
   --ontology "$work/$ontology" \
-  --binary "$root/km" \
+  --binary "$root/ibex_reasoner_step.sh" \
   --workers 16 \
   --timeout 240 \
   --memcap-mb 20480 \
