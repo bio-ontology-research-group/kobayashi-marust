@@ -168,3 +168,9 @@ SHOIN inputs and atomic datatype TBoxes retain `certified_nominals`; the giant
 exact nominal-aware fallback, so this changes scheduling only. The complete
 serial release suite passes with 1,801 tests, eight ignored, and zero failures.
 Current-binary forced-route control job `49647712` is pending on IBEX.
+
+Follow-up source commit: `80eb1d4`. Its source archive SHA-256 is
+`c6690d08a3ccb9163638a3d0fbd9fa64c5d4bfe0a24ab62f85f4743274b10ea4`.
+Source-bound build job `49648746` feeds five-case automatic-route gate
+`49648747`, covering 1481, the retained cardinality-bearing 15672 and giant
+15846 routes, and production controls 6999 and 1034.
