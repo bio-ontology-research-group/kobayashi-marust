@@ -27,6 +27,17 @@ Local validation:
 - a focused source-profile regression test proves that a positive role ABox
   with a range cannot claim the cert-off EL materialization certificate.
 
-IBEX build job `49642950` and dependent focused exactness array `49642951`
-are running. The gate must prove exact frozen-signature equality before this
-restoration is counted in production coverage.
+IBEX build job `49642950` completed. The resulting binary SHA-256 was
+`437ad33456fdcfe539f684f541bd6a27a36c4a585e526f5d7703ae4562545662`.
+Dependent focused exactness array `49642951` passed all five cases:
+
+- `1034`: `production_all`, 0.0406 s, 8.12 MB, exact;
+- `2237`: `production_all`, 0.0411 s, 7.61 MB, exact;
+- `1579`: `production_all`, 12.0655 s, 1,000.77 MB, 56,782 pairs, exact;
+- `3377`: `production_all`, 36.6645 s, 2,649.50 MB, 4,490,309 pairs, exact;
+- `6999`: `certified_nominals`, 0.2999 s, 92.60 MB, one unsatisfiable class,
+  exact.
+
+The focused gate is accepted. Count `1034` and `2237` as restored by this
+feature-driven route. A complete source-bound sweep remains necessary before
+updating the production headline.
