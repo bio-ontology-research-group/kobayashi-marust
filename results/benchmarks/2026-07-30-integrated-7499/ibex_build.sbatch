@@ -26,7 +26,7 @@ cd "$root/source/engine"
 /usr/bin/nice -n 5 cargo build --release --bin km --jobs 32
 
 binary=$CARGO_TARGET_DIR/release/km
-"$binary" --help >/dev/null
+"$binary" routes >/dev/null
 install -m 0755 "$binary" "$focused/km"
 install -m 0755 "$binary" "$full/km"
 sha256sum "$focused/km" "$full/km"

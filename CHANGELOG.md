@@ -110,8 +110,12 @@ returned a nonzero status for a mismatch. Job 49625540 completed the remaining
 panel: 7581 and 9540 stayed exact, 4669 timed out, and the intermediate binary
 remained incomplete on 148. The corrected focused recheck, job 49625668, made
 11745, 3215, 9663, and 10621 exact under the 240 s / 20 GiB contract. The
-latest-source 20-case panel is job 49626062; it remains post-commit validation
-and is not used as evidence here until it completes.
+latest-source 20-case panel, job 49626062, completed with 16 exact signatures.
+The exact set is 148, 3215, 4054, 4755, 7127, 7581, 8068, 8864, 9540, 9663,
+9724, 10621, 11315, 11745, 12414, and 14817. Ontologies 541, 4669, and 12653
+timed out. Ontology 7914 returned an error because that panel executable
+predates the feature-based independent-ABox route; the focused feature-router
+gate validates 7914 separately.
 
 The evidence is in `results/benchmarks/2026-07-30-3215-restoration/` and the
 causal record in `docs/SOLVE-3215.md`.
