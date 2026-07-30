@@ -35,15 +35,22 @@ lacks `GLIBC_2.39`. Every attempt exited in 0.00 seconds, the job failed, and
 the dependent full sweep remained `DependencyNeverSatisfied`. No ontology
 result from that submission is valid.
 
-The corrected source-bound chain is:
+The first corrected build, job `49627755`, compiled successfully but the
+post-build smoke command used `km --help`, whose intentional usage exit code
+made the fail-fast script stop before installation. Its dependent jobs did not
+run. The smoke command is now `km routes`.
 
-- IBEX build: job `49627755`;
-- focused exactness gate: job `49627756`, after successful build;
-- complete 592-ontology automatic sweep: job `49627757`, after successful
+The active source-bound chain is:
+
+- IBEX build: job `49628097`, completed successfully;
+- focused exactness gate: job `49628099`, after successful build;
+- complete 592-ontology automatic sweep: job `49628188`, after successful
   focused validation.
 
 The full array uses one exclusive allocation per ontology, a 240-second
 reasoner timeout, a 20,480 MiB watchdog, per-ontology profile validation,
 terminal checkpoints, atomic result publication, and exact Konclude-signature
-comparison. Results are not claimed until the jobs complete and their output
-and checkpoint counts are audited.
+comparison. The Slurm allocation is 28 GiB so the Python supervisor remains
+alive long enough to publish a terminal `memout` if the reasoner crosses the
+20,480 MiB contract. Results are not claimed until the jobs complete and their
+output and checkpoint counts are audited.
