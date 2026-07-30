@@ -40,6 +40,8 @@ fi
 
 work=${SLURM_TMPDIR:-/tmp}/km-objabox-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/focused/results" "$root/focused/failures"
+PYTHONPATH="$root" /usr/bin/python3 -c \
+  'import ore_canon, tree_watchdog; print("HARNESS_IMPORTS_OK")'
 observed_route=$("$root/km" profile "$km_root/corpus/$ontology" |
   /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["selected_route"])')
 if [[ -n $expected_route && $observed_route != "$expected_route" ]]; then

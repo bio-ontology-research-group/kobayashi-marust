@@ -36,12 +36,13 @@ IBEX acceptance campaign:
   `DATETIME_BRIDGE_BUILD_COMPLETE`;
 - resulting binary SHA-256:
   `8928277f4a7f605332633703552f57265462356e09a40da29378f33a50da4595`;
-- focused exactness array `49641506` covers 6999, 9635, 10621, 15672, and
-  9540 and is pending;
+- focused exactness array `49641506` completed: all five cases, 6999, 9635,
+  10621, 15672, and 9540, selected their expected automatic routes and matched
+  the frozen Konclude signatures exactly;
 - resumable 592-ontology array `49641693` depends on successful completion of
   that focused gate;
 - terminal audit job `49641694` runs after the complete array.
 
-The focused and full-sweep results remain provisional until their terminal
-audits pass. The production sweep uses the same binary byte-for-byte as the
-focused gate.
+The focused gate is accepted. The full-sweep headline remains provisional
+until terminal audit `49641694` proves 592 durable rows. The production sweep
+uses the same binary byte-for-byte as the focused gate.

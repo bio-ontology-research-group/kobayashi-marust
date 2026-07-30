@@ -23,7 +23,12 @@ did not run because the source archive had an extra directory level. Build
 failed before invoking KM because `ore_canon.py` was absent from the deployed
 harness. These are infrastructure failures and provide no reasoner evidence.
 
-The repaired gate deploys the canonicalizer, checks the selected route, demands
-an exact gold match for 5107, 15672, and 5184, and keeps 1481 as a terminal
-fail-closed resource control. Repaired array `49641738` is pending. Its results
+The repaired gate checks the selected route, demands an exact gold match for
+5107, 15672, and 5184, and keeps 1481 as a terminal fail-closed resource
+control.
+
+Array `49641738` exposed a second missing runner dependency,
+`tree_watchdog.py`, before KM classification began. The next submission
+deploys both Python dependencies and performs an explicit import preflight.
+That preflight passed before repaired array `49641798` was submitted. Results
 are recorded only after all four tasks emit validated terminal rows.
