@@ -25,6 +25,13 @@ ontologies=(
   ore_ont_1481.owl
 )
 ontology=${ontologies[${SLURM_ARRAY_TASK_ID:?}]}
+expected_routes=(
+  certified_nominals
+  certified_nominals
+  certified_nominals
+  ""
+)
+expected_route=${expected_routes[${SLURM_ARRAY_TASK_ID:?}]}
 cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
 if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
   echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
@@ -33,6 +40,12 @@ fi
 
 work=${SLURM_TMPDIR:-/tmp}/km-objabox-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/focused/results" "$root/focused/failures"
+observed_route=$("$root/km" profile "$km_root/corpus/$ontology" |
+  /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["selected_route"])')
+if [[ -n $expected_route && $observed_route != "$expected_route" ]]; then
+  echo "UNEXPECTED_ROUTE ontology=$ontology expected=$expected_route observed=$observed_route" >&2
+  exit 3
+fi
 
 /usr/bin/python3 "$root/full_panel_run_one.py" \
   --kind km \
@@ -61,7 +74,10 @@ if not row.get("checkpointed"):
     raise SystemExit(f"missing terminal checkpoint: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid terminal status: {row}")
+if sys.argv[2] != "ore_ont_1481.owl":
+    if row.get("status") != "ok" or row.get("verdict") != "match":
+        raise SystemExit(f"automatic route failed exactness gate: {row}")
 PY
 /usr/bin/mv "$root/focused/results/$ontology.json.tmp" \
   "$root/focused/results/$ontology.json"
-echo "TASK_COMPLETE ontology=$ontology"
+echo "TASK_COMPLETE ontology=$ontology route=$observed_route"

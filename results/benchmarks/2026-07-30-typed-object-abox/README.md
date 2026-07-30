@@ -17,8 +17,13 @@ Local release validation at commit `2062501`:
 - automatic 15672 matches Konclude exactly in 0.25 seconds;
 - automatic 5184 matches Konclude exactly in 0.29 seconds.
 
-IBEX source build job 49638992 is bound to archive SHA-256
-`230e29341b29553aa0608264b16a142c8dd7431e2edd69eaff41d2f9609bdd2a`.
-Focused automatic-route array 49638993 depends on that build. Its exactness
-results and the following complete 592-ontology sweep are recorded here once
-their audits complete.
+The first IBEX submission, build `49638992` and dependent gate `49638993`,
+did not run because the source archive had an extra directory level. Build
+`49639796` corrected that packaging error. Its focused array `49639797` then
+failed before invoking KM because `ore_canon.py` was absent from the deployed
+harness. These are infrastructure failures and provide no reasoner evidence.
+
+The repaired gate deploys the canonicalizer, checks the selected route, demands
+an exact gold match for 5107, 15672, and 5184, and keeps 1481 as a terminal
+fail-closed resource control. Repaired array `49641738` is pending. Its results
+are recorded only after all four tasks emit validated terminal rows.
