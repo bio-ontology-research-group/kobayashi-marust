@@ -71,7 +71,9 @@ if row.get("ont") != sys.argv[2]:
     raise SystemExit(f"ontology mismatch: {row}")
 if not row.get("checkpointed"):
     raise SystemExit(f"missing terminal checkpoint: {row}")
-if row.get("status") != "ok" or row.get("verdict") != "match":
+if row.get("status") != "ok" or not row.get("signature_sha256"):
+    raise SystemExit(f"automatic route produced no complete classification: {row}")
+if sys.argv[2] != "ore_ont_1194.owl" and row.get("verdict") != "match":
     raise SystemExit(f"automatic route failed exactness gate: {row}")
 PY
 /usr/bin/mv "$root/focused/results/$ontology.json.tmp" \

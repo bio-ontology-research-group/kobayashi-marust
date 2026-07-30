@@ -32,8 +32,13 @@ Local validation:
   before nominal clause augmentation.
 
 The IBEX gate must determine whether removing the representation overflow is
-sufficient for 1194 to complete within 240 seconds and 20 GB. It also checks
-15846 plus accepted routing controls.
+sufficient for 1194 to produce a complete parseable classification within 240
+seconds and 20 GB. Ontology 1194 is one of the five corpus cases without an
+authoritative Konclude gold, so it is not an exactness or 587-coverage claim.
+The gate requires frozen-signature equality for 15846 and the other accepted
+routing controls.
 
-IBEX build job `49643820` and dependent focused exactness array `49643821`
-are running.
+IBEX build job `49643820` is running. The initially submitted array `49643821`
+was cancelled before execution because its harness incorrectly required a
+Konclude-gold verdict for 1194. The corrected dependent array is recorded
+as job `49643915`.
