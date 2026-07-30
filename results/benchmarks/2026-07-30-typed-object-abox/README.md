@@ -32,3 +32,10 @@ Array `49641738` exposed a second missing runner dependency,
 deploys both Python dependencies and performs an explicit import preflight.
 That preflight passed before repaired array `49641798` was submitted. Results
 are recorded only after all four tasks emit validated terminal rows.
+
+Array `49641798` completed with all four validated terminal rows. Automatic
+`certified_nominals` matches Konclude exactly for 5107, 15672, and 5184. The
+1481 resource control selects the same route but reaches the 20 GiB process-tree
+limit after 62.22 seconds; it publishes no partial answer. This accepts the
+typed-object routing recovery while retaining 1481 as a measured memory
+residual.
