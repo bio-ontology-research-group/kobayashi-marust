@@ -472,6 +472,40 @@ fn large_nominal_portfolio_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.datatype
 }
 
+/// Source certificate for a giant taxonomy containing only flat named-class
+/// declarations and subclass edges.
+///
+/// Such a graph is inside EL regardless of noisy external expressivity labels.
+/// The size threshold is a performance gate: smaller members remain on the
+/// learned production route, while million-edge graphs avoid racing the
+/// synchronous bridge and its duplicate in-memory terminology.
+fn giant_flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
+    const GIANT_FLAT_SUBCLASS_AXIOMS: u64 = 1_000_000;
+
+    let source = &profile.source;
+    source.subclass_axioms >= GIANT_FLAT_SUBCLASS_AXIOMS
+        && source.logical_axioms == source.subclass_axioms
+        && source.abox_axioms == 0
+        && source.rbox_axioms == 0
+        && source.equivalent_class_axioms == 0
+        && source.disjoint_class_axioms == 0
+        && source.intersections == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.bottom_occurrences == 0
+        && source.bottom_role_occurrences == 0
+        && source.existentials == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.max_concept_depth <= 1
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
@@ -582,6 +616,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // rechecks the normalized RBox before admitting that arm; all inverse
         // axioms remain live. Nominal inputs stay on the exact nominal fallback
         // here until the combined certified-nominals portfolio is installed.
+        SemanticFragment::SriqCore if giant_flat_taxonomy_el_candidate(profile) => Route::Elc,
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
             if profile.inverse_cardinality_role_separable =>
         {
@@ -1581,6 +1616,42 @@ mod tests {
         assert!(typed_object_abox_bridge_candidate(&profile));
         assert!(!profile.expressivity.cardinality);
         assert_eq!(select(&profile), Route::ProductionAll);
+    }
+
+    #[test]
+    fn giant_flat_taxonomy_uses_el_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.source.subclass_axioms = 1_974_320;
+        profile.source.logical_axioms = profile.source.subclass_axioms;
+        profile.source.declarations = 123_311;
+        profile.source.declared_classes = 123_311;
+        profile.source.distinct_classes = 123_311;
+        profile.source.max_concept_depth = 1;
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(giant_flat_taxonomy_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        let invalidators: [fn(&mut OntologyProfile); 4] = [
+            |p: &mut OntologyProfile| p.source.existentials = 1,
+            |p: &mut OntologyProfile| p.source.unions = 1,
+            |p: &mut OntologyProfile| p.source.role_inclusion_axioms = 1,
+            |p: &mut OntologyProfile| p.source.abox_axioms = 1,
+        ];
+        for invalidate in invalidators {
+            let mut candidate = profile.clone();
+            invalidate(&mut candidate);
+            if candidate.source.role_inclusion_axioms > 0 {
+                candidate.source.rbox_axioms = 1;
+                candidate.source.logical_axioms += 1;
+            }
+            if candidate.source.abox_axioms > 0 {
+                candidate.source.logical_axioms += 1;
+            }
+            assert!(!giant_flat_taxonomy_el_candidate(&candidate));
+        }
     }
 
     #[test]
