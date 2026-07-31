@@ -373,6 +373,10 @@ exactly in 169.5591 seconds at 7,490.09 MiB, with 3,923,171 subsumptions and no
 unsatisfiable named classes. The result is bound to v10 binary SHA-256
 `3b5cde49b6ed3f759be585ed08ecbdec51e4327c4f31ba23427678529a129208`.
 
+Ontology 7914 is also restored automatically by the same frozen binary.
+`production_all` matches exactly in 45.8956 seconds at 1,563.54 MiB, with
+141,517 subsumptions and three unsatisfiable named classes.
+
 The same sweep shows that 6934 is not yet restored automatically. The profile
 selects `nominals`; its engine worker exits after 190.2287 seconds at
 1,517.47 MiB without a taxonomy. Current guarded `ht_features` and `ht_full`
