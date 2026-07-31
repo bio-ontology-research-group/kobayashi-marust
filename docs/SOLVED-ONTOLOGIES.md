@@ -449,6 +449,15 @@ reproduce the source-bound 10621 capsule.
 
 ### ore_ont_541 and ore_ont_12653: source terminology + isolated OR tasks (2026-07-10)
 
+- **Current automatic route for 12653 (2026-07-31)**: the exact bridge
+  certificate represents its bounded atomic numeric fragment, including
+  `positiveInteger ⊑ nonNegativeInteger ⊑ integer ⊑ decimal`, cardinalities
+  zero through two, and the fixed integer values 2, 3, and 4. Unsupported
+  datatype shapes still defer. Source-bound IBEX job 49665588 selected
+  `production_all` and matched all 10 Konclude pairs with zero missing or
+  extra entries, matching consistency, and no unsatisfiable named classes in
+  0.1012 seconds at 39.81 MiB. The tested binary SHA-256 is
+  `1c904f79ed1058e4dd3395c1028eb14f6fb41e420940c88d66f67a1dd78e1bed`.
 - **Current automatic-route restoration (2026-07-30)**: 541's only logical
   uses of `owl:topObjectProperty` are three tautological
   `R SubPropertyOf owl:topObjectProperty` axioms. The frontend now elides these

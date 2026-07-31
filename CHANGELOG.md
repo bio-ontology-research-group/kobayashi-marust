@@ -9,6 +9,30 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Exact numeric datatype bridge restores 12653 automatically (2026-07-31)
+
+The source-terminology bridge now certifies a bounded atomic numeric datatype
+fragment instead of rejecting every decimal-derived range. The certificate
+uses the frontend's OWL 2 datatype relation procedures to preserve the
+directional tower
+`positiveInteger ⊑ nonNegativeInteger ⊑ integer ⊑ decimal`. It accepts only
+atomic ranges, cardinalities from zero through two, one declared range per data
+role, and exact nested range intersections. Unknown ranges, larger
+cardinalities, conflicting role ranges, unsupported datatype clauses, and
+unrepresented interactions still defer to the complete fallback.
+
+This restores `ore_ont_12653.owl` through the normal automatic
+`production_all` route. Source-bound IBEX build job 49665164 produced binary
+SHA-256
+`1c904f79ed1058e4dd3395c1028eb14f6fb41e420940c88d66f67a1dd78e1bed`
+from source archive SHA-256
+`86b40a456258f161d673f6589826bce6ead9830dc360a2e65685578d141a2f95`.
+Exact gate job 49665588 completed on an Intel Xeon Gold 6248 in 0.1012 seconds
+at 39.81 MiB. KM and Konclude both produce ten subsumptions, no
+unsatisfiable named classes, and a consistent ontology; the signature has
+zero missing or extra entries. The complete local library suite passes with
+1,808 tests, zero failures, and eight intentional ignores.
+
 ### Exact positive-EL ABox materialization restores 1579 and 3377 (2026-07-30)
 
 Automatic routing now distinguishes a positive EL++ ABox from a general

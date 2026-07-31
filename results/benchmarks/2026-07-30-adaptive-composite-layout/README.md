@@ -422,17 +422,26 @@ Specialist sweep `49654935` found no additional ordinary route for 12653.
 The separately measured forced-HT closure remains diagnostic evidence until
 its bypassed guards have a semantic certificate.
 
-Diagnostic job `49657115` confirms why the historical bridge closure is not
-currently admissible. The conversion is lossless at the clause count level
+Diagnostic job `49657115` localized why the v11 bridge closure was not
+admissible. The conversion is lossless at the clause count level
 (`dropped=0`), but records nine exact source-side complex-domain fences plus
 an inverse+number fence. More importantly, the ontology combines inverse
 roles and qualified number restrictions with decimal, integer, and
-positive-integer data-role constraints. The current completion bridge has no
-typed data-domain object and therefore defers rather than interpreting those
-datatype fillers as ordinary object classes. Restoring the older fast answer
-requires an exact combined datatype/cardinality bridge certificate or
-implementation; simply removing the newer fence would revive a known
-fail-open path.
+positive-integer data-role constraints. The bridge therefore deferred rather
+than interpreting those datatype fillers as ordinary object classes. A valid
+restoration required an exact combined datatype/cardinality certificate;
+simply removing the fence would have revived a fail-open path.
+
+The source-bound v13 candidate resolves that datatype obligation without
+removing the fence. Its exact atomic certificate uses the frontend's OWL 2
+range-subsumption decisions for the nested decimal/integer tower and admits
+only cardinalities zero through two. Larger bounds, unknown ranges, multiple
+ranges on one data role, and unsupported relation clauses still defer.
+Commit `dcc4fe7`, built by IBEX job `49665164`, produced binary
+`1c904f79ed1058e4dd3395c1028eb14f6fb41e420940c88d66f67a1dd78e1bed`.
+Automatic correctness job `49665588` selected `production_all` for 12653 and
+matched its complete ten-pair Konclude signature in 0.1012 seconds at
+39.81 MiB, with matching consistency and no unsatisfiable-class difference.
 
 The next source-feature rule recognizes a terminology with at least 100,000
 TBox axioms and a tiny ABox containing only class assertions plus explicit
