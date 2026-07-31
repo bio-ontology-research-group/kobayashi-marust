@@ -52,7 +52,7 @@ adjudicated gold is HermiT on a cleaned core (see `CONTESTED-GOLD.md`).
 | 10906 | inconsistent | closed via the ABox/datatype precheck |
 | 13129 | consistent | consistent ✓ |
 | 12451 | consistent | — |
-| 10860 | under adjudication | **honest decline** (see below) |
+| 10860 | inconsistent | **default certificate candidate; full sweep pending** (see below) |
 
 ### ORE 10860 — the 17-shape breakdown
 
@@ -64,8 +64,8 @@ The 17 `DLSafeRule` axioms partition into:
 | 5 | Class + Role + `DifferentIndividualsAtom` | DEFERRED |
 | 4 | + `DataPropertyAtom` / `BuiltInAtom` (`greaterThan` on dates, `hasClass`, `isSubClassOf`) | DECLINED |
 
-10860 is **not closed**: 4 rules carry built-ins, so the current parser declines
-the whole ontology (`unsupported: DL-safe rules: parsed 13 of 17`). A direct
+Four rules carry built-ins, so the generic rule worker can directly encode only
+13 of 17 rules. A direct
 source audit on the frozen corpus file (SHA-256
 `480139a6018bc4eb0d35e47edf00a6d257dd87137c1d0f93a27021cf154f4a2d`)
 narrows the live obligation substantially:
@@ -98,17 +98,25 @@ The ontology already contains the ordinary supported rule with that exact
 same-section guard and the same `hasR2RRelation` head. The legacy meta-rule is
 subsumed by that rule and is provably redundant for this source.
 
-The frontend now contains a fail-closed certificate for the three inert data
+The frontend contains a fail-closed certificate for the three inert data
 rules and the subsumed legacy meta-rule. It verifies the relevant assertions,
 asserted type sets, transitive named-superclass relation, and the subsuming
 ordinary rule from the parsed source; synthetic negative controls revoke the
 certificate when a data fact is added or the section targets differ. On the
 frozen source it certifies exactly 4 rules and carries the other 13. It remains
-opt-in (`KM_RULE_REDUNDANCY_CERT=1`) because the downstream generic HT
-rule-consistency worker still exceeded a 260-second focused run. Default KM
-therefore continues to decline 10860 rather than replacing a precise diagnosis
-with a timeout. The remaining closure task is a finite materialization or
-consistency certificate for those 13 representable rules.
+opt-in (`KM_RULE_REDUNDANCY_CERT=1`) when considered alone.
+
+The ontology is nevertheless inconsistent. A supported rule has a complete
+explicit named-ABox match and derives a second `hasR2RRelation` target for a
+situation asserted to have unqualified exact cardinality one on that role. The
+existing and derived targets are explicitly different. The rule's
+`DifferentIndividualsAtom` is also forced by asserted memberships in explicitly
+disjoint classes. HermiT job `49718396` independently rejects the extracted
+core as inconsistent. Commit `4703045` adds a one-sided finite matching
+certificate that accepts only this exact shape and fails closed on unsupported
+atoms, missing body facts, absent difference evidence, and qualified
+cardinalities. Plain `km classify` returns `consistent:false` in 0.02 seconds
+locally. IBEX full sweep `49720070` remains the corpus-wide promotion gate.
 
 ## Soundness note
 

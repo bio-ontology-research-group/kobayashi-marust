@@ -1,6 +1,6 @@
 # Hard residual audit and gold-adjudication status
 
-## Current default-route status (2026-07-31)
+## Current default-route status (2026-08-01)
 
 The source-bound sweep is the current authority for one automatic
 `km classify` binary. IBEX array `49701329`, accepted by independent audit
@@ -10,7 +10,7 @@ non-completing rows are:
 
 | Ontology | Default-route result | Current obligation |
 |---|---|---|
-| `10860` | unsupported | Three unsupported data rules are inert and the sole legacy `hasClass`/`isSubClassOf` rule is proved subsumed by an ordinary rule; the exact opt-in certificate passes, while finite consistency validation of the remaining 13 rules is still required. |
+| `10860` | closing candidate | A complete explicit named-ABox match for a supported rule derives a second, provably distinct `hasR2RRelation` filler for an individual asserted to have exactly one such filler. HermiT independently rejects the extracted core as inconsistent. Commit `4703045` returns `consistent:false` through plain `km classify` in 0.02 seconds locally; full IBEX sweep `49720070` is the production promotion gate. |
 | `1194` | error | The large SRIQ ABox reaches the exact nominal CB worker's 190-second cap; the packed-term and memory boundaries are no longer blockers. |
 | `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
 
@@ -64,7 +64,7 @@ Three ontologies remain unclosed:
 | Ontology | Current state | Blocking evidence |
 |---|---|---|
 | `4669` | known incorrect bridge output now rejected; no validated sound-and-complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
-| `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain unsupported atoms. Three date/time rules are provably inert because the source has no data assertions or data-property inclusions/equivalences. Original Protégé 3.5 code proves that legacy `hasClass` reads asserted named RDF types and `isSubClassOf` follows asserted superclasses transitively. On the frozen source, the remaining meta-rule can fire only when both section variables are the same `diagnosis` individual, so an existing ordinary rule subsumes it. The remaining task is an executable fail-closed certificate plus consistency validation. |
+| `10860` | independently adjudicated inconsistent; current candidate pending corpus sweep | Four unsupported rule shapes are independently certified redundant. A supported rule has a complete explicit named-ABox grounding that derives `hasR2RRelation(S, notEqualRelation)` while the source already asserts `hasR2RRelation(S, equalRelation)`, explicitly declares the targets different, and asserts unqualified `=1 hasR2RRelation` on `S`. The rule's difference guard is discharged by asserted types in explicitly disjoint classes. HermiT job `49718396` confirms the extracted core is inconsistent. Commit `4703045` implements the fail-closed certificate. |
 | `1194` | no completion within 240 s / 20 GiB | Konclude exceeds 20 GiB and HermiT times out on the 221,086-assertion SRIQ ABox. KM's own 20 GiB wall was the per-worker clone of the million-clause arena; sharing one prepared ontology across parallel CB workers cut the 56-thread engine peak from 19.58 GiB to 4.15 GiB (2026-07-30, [`../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md)). The adaptive composite-term layout now represents this ontology losslessly. A source-current `km classify` run on 2026-07-31 selected `nominals`, finished the frontend in 8.64 seconds, and ran the exact CB worker to its 190-second central cap; it returned no taxonomy after 198.98 seconds total at 3.58 GiB peak. KM is now wall-clock bound, not term-encoding or memory bound. |
 
 The certified-EL investigation of `1194` now passes the original same-filler

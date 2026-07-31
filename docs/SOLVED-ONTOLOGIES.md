@@ -691,7 +691,7 @@ branch-open-free is.**
 | 4669 | retained production and HT executions terminate, but both outputs are unsound; logical completeness unknown | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
 | 10621 | source-bound Capsule-10 `ht_bridge`; frozen current revision returns unsupported | full-IRI exact against fresh source-built Konclude for Capsule-10 | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. Restore and revalidate this mechanism before claiming it for current main. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
-| 10860 | — | no authoritative gold | DL-safe-rule ontology; inspect ABox/rules and adjudicate directly because neither raw Konclude nor raw HermiT supplies valid gold. |
+| 10860 | automatic rule/ABox clash certificate in `4703045` | independently adjudicated inconsistent | An explicit supported-rule grounding contradicts an unqualified exact-cardinality-one assertion; HermiT job `49718396` confirms the extracted core. Local default execution completes in 0.02 seconds; IBEX sweep `49720070` is pending. |
 
 The hard-residual audit, including the previously lost closures of 10702,
 15672, and 6934 and the later source-bound closure of 10621, is maintained in

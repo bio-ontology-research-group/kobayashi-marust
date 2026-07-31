@@ -34,7 +34,9 @@ reported as empirical evidence, not as a proof of the whole executable.
   automatic sweep has 589 operational completions and 587 exact
   Konclude-signature matches among 592 ontologies. Some ontologies still time
   out, decline, or have contested consistency gold. The completed sweep
-  includes the automatic 6934, 7499, 10702, and 12653 recoveries.
+  includes the automatic 6934, 7499, 10702, and 12653 recoveries. The 10860
+  inconsistency closure is independently validated and awaiting its full-sweep
+  promotion gate.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -147,6 +149,12 @@ cases. The table below is the completed uniform 66-procedure comparison panel;
 its frozen source and hardware contract differs from the current automatic
 sweep described immediately above.
 
+Commit `4703045` additionally closes 10860 locally through a fail-closed
+rule/ABox cardinality-clash certificate. Its extracted core is independently
+inconsistent under HermiT. IBEX sweep `49720070` is running as the required
+592-ontology regression gate, so the demonstrated production total remains
+589 until that sweep completes.
+
 The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
 ontologies, for 39,072 independently limited measurements. Every procedure
 receives 240 seconds, 20 GiB summed process-tree RSS, and 16 CPU cores on the
@@ -215,8 +223,10 @@ The completed automatic sweep has three non-completing rows: `10860`, `1194`,
 and `4669`. The typed-ABox SHOIQ certificate
 now admits 6934 automatically through `nominal_ni_abox`; the production row
 matches exactly in 199.3235 seconds at 1,434.64 MiB. Ontologies 1194, 4669,
-and 10860 remain genuinely open under the standard contract. The completed
-sweep solves 6934, 9540, 10621, and 10702 exactly.
+remain open under the standard contract. Commit `4703045` closes 10860 through
+an independently adjudicated rule/ABox inconsistency certificate, subject to
+the running full-sweep promotion gate. The completed sweep solves 6934, 9540,
+10621, and 10702 exactly.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
 named classes claimed unsatisfiable have independent satisfiable witnesses.
@@ -224,8 +234,10 @@ Logical completeness of those old taxonomies is unknown. Current KM defers and
 returns no taxonomy. Source-built Konclude also fails to solve 4669, timing out
 at both 240 seconds and 3,600 seconds without an answer. See the
 [Konclude source trace and runtime verification](docs/ORE-4669-KONCLUDE-VERIFICATION.md).
-`10860` contains unsupported DL-safe rule atoms and lacks authoritative full
-gold; `1194` has no validated route within the standard resource limits.
+For `10860`, raw Konclude is not authoritative because it does not evaluate the
+source rules. KM's explicit grounding witness and HermiT's result on the
+extracted core both establish inconsistency. `1194` has no validated route
+within the standard resource limits.
 
 The earlier 28-procedure matrix remains in
 [`results/benchmarks/2026-07-16-routing-complete592/`](results/benchmarks/2026-07-16-routing-complete592/),
