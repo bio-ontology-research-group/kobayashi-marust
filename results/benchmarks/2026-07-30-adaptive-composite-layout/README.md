@@ -372,3 +372,25 @@ Specialist sweep `49654935` found no additional ordinary route for 12653.
 `cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
 The separately measured forced-HT closure remains diagnostic evidence until
 its bypassed guards have a semantic certificate.
+
+The next source-feature rule recognizes a terminology with at least 100,000
+TBox axioms and a tiny ABox containing only class assertions plus explicit
+identity constraints. It excludes imports, rules, role assertions, datatype
+constructors, data properties, and cardinality. The complete production
+portfolio retains the exact nominal-aware fallback, so this changes scheduling
+without changing a derivation. In the frozen 592-profile table it changes
+15803 and retains the already-production-routed 6722 control; it contains no
+ontology-name or fingerprint test.
+
+Source commit `bc3a9ab` passes the complete serial release suite: 1,807 library
+tests pass, eight are intentionally ignored, and every integration test passes.
+Its source archive SHA-256 is
+`6a6d10def5b48a0d8361768067ae5f000a74ef0c39b1bc75e53eb5d3840ace7f`.
+Source-bound build `49656233` produced binary SHA-256
+`cb492d92948460671c07cb08029d188b03f0c43809efe837c70918cd4b9f08c5`.
+Exact automatic gate `49656234` passed both cases:
+
+| Ontology | Selected route | Wall seconds | Peak MiB | Result |
+|---|---:|---:|---:|---:|
+| 15803 | `production_all` | 32.8165 | 2,600.87 | exact |
+| 6722 | `production_all` | 7.0989 | 1,096.98 | exact |
