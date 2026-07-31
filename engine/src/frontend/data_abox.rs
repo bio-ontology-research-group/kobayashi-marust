@@ -193,6 +193,10 @@ fn provably_in_datatype(lit: &Lit<'_>, range: &str) -> bool {
         Some(local) => local,
         None => return false,
     };
+    // rdfs:Literal is the top datatype in the OWL 2 datatype map.
+    if range_local == "Literal" {
+        return true;
+    }
     let (lex, literal_local) = match lit {
         Lit::Plain(lex) => (*lex, "string"),
         Lit::Lang(_, _) => return range_local == "Literal" || range_local == "PlainLiteral",
@@ -285,6 +289,11 @@ fn is_plain_string(l: &Lit) -> bool {
     }
 }
 
+fn is_top_data_property(property: &str) -> bool {
+    let trimmed = property.trim_start_matches('<').trim_end_matches('>');
+    trimmed == "owl:topDataProperty" || trimmed == "http://www.w3.org/2002/07/owl#topDataProperty"
+}
+
 /// Union-find over interned individual ids (path-halving).
 struct Uf {
     parent: Vec<u32>,
@@ -355,36 +364,63 @@ pub struct DataAbox<'a> {
     /// `SameIndividual` pairs
     sames: Vec<(&'a str, &'a str)>,
     overflow: bool,
-    /// A data constructor outside the positive assertion/domain/range fragment
-    /// was observed. Such an ontology cannot use the omission certificate.
-    omission_unsafe: bool,
+    /// Data properties occurring in constructors that the omission certificate
+    /// does not model. Assertions on unrelated properties remain admissible.
+    unsupported_properties: HashSet<&'a str>,
+    /// A data constructor whose affected property cannot be isolated.
+    global_omission_unsafe: bool,
 }
 
-fn contains_data_constraint(node: &Node<'_>) -> bool {
+/// Record the properties affected by data constructors that are not represented
+/// by `DataAbox`. Returns `true` when the constructor cannot be isolated to a
+/// property, in which case no positive assertion can be certified redundant.
+fn unsupported_data_constraints<'a>(node: &Node<'a>, properties: &mut HashSet<&'a str>) -> bool {
     match node {
         Node::Atom(_) => false,
         Node::List(head, args) => {
-            matches!(
-                *head,
+            let mut global = false;
+            match *head {
                 "NegativeDataPropertyAssertion"
-                    | "FunctionalDataProperty"
-                    | "SubDataPropertyOf"
-                    | "EquivalentDataProperties"
-                    | "DisjointDataProperties"
-                    | "HasKey"
-                    | "DatatypeDefinition"
-                    | "DataSomeValuesFrom"
-                    | "DataAllValuesFrom"
-                    | "DataHasValue"
-                    | "DataMinCardinality"
-                    | "DataMaxCardinality"
-                    | "DataExactCardinality"
-                    | "DataOneOf"
-                    | "DataIntersectionOf"
-                    | "DataUnionOf"
-                    | "DataComplementOf"
-                    | "DatatypeRestriction"
-            ) || args.iter().any(contains_data_constraint)
+                | "DataSomeValuesFrom"
+                | "DataAllValuesFrom"
+                | "DataHasValue" => {
+                    if let Some(p) = args.first().and_then(Node::as_atom) {
+                        properties.insert(p);
+                    } else {
+                        global = true;
+                    }
+                }
+                "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+                    if let Some(p) = args.get(1).and_then(Node::as_atom) {
+                        properties.insert(p);
+                    } else {
+                        global = true;
+                    }
+                }
+                "EquivalentDataProperties" | "DisjointDataProperties" => {
+                    let mut found = false;
+                    for p in args.iter().filter_map(Node::as_atom) {
+                        properties.insert(p);
+                        found = true;
+                    }
+                    global |= !found;
+                }
+                // Keys can connect data values to equality of named
+                // individuals. Datatype definitions and compound data ranges
+                // can affect arbitrary properties that use the defined range.
+                "HasKey"
+                | "DatatypeDefinition"
+                | "DataOneOf"
+                | "DataIntersectionOf"
+                | "DataUnionOf"
+                | "DataComplementOf"
+                | "DatatypeRestriction" => global = true,
+                _ => {}
+            }
+            global
+                | args
+                    .iter()
+                    .any(|arg| unsupported_data_constraints(arg, properties))
         }
     }
 }
@@ -409,9 +445,6 @@ impl<'a> DataAbox<'a> {
             Node::List(h, a) => (*h, a),
             Node::Atom(_) => return,
         };
-        if contains_data_constraint(node) {
-            self.omission_unsafe = true;
-        }
         match head {
             "DataPropertyRange" => {
                 let args = strip_annotations(args);
@@ -420,6 +453,8 @@ impl<'a> DataAbox<'a> {
                     args.get(1).map(|n| n.as_atom()),
                 ) {
                     self.ranges.entry(p).or_default().push(d);
+                } else {
+                    self.global_omission_unsafe = true;
                 }
             }
             "FunctionalDataProperty" => {
@@ -436,7 +471,7 @@ impl<'a> DataAbox<'a> {
                 ) {
                     self.domains.entry(p).or_default().push(c);
                 } else {
-                    self.omission_unsafe = true;
+                    self.global_omission_unsafe = true;
                 }
             }
             "SubDataPropertyOf" => {
@@ -446,6 +481,8 @@ impl<'a> DataAbox<'a> {
                     args.get(1).map(|n| n.as_atom()),
                 ) {
                     self.supers.entry(s).or_default().push(t);
+                } else {
+                    self.global_omission_unsafe = true;
                 }
             }
             "DataPropertyAssertion" => {
@@ -465,7 +502,7 @@ impl<'a> DataAbox<'a> {
                         .filter(|s| s.starts_with('@') || s.starts_with("^^"));
                     self.assertions.push((p, i, l, suffix));
                 } else {
-                    self.omission_unsafe = true;
+                    self.global_omission_unsafe = true;
                 }
             }
             "ObjectPropertyAssertion" => {
@@ -520,6 +557,8 @@ impl<'a> DataAbox<'a> {
                 ) {
                     self.odomain.entry(p).or_default().push(c);
                 }
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
             }
             "ObjectPropertyRange" => {
                 let args = strip_annotations(args);
@@ -529,16 +568,25 @@ impl<'a> DataAbox<'a> {
                 ) {
                     self.orange.entry(p).or_default().push(c);
                 }
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
             }
             "SubClassOf" => {
                 let args = strip_annotations(args);
                 let (sub, sup) = match (args.first(), args.get(1)) {
                     (Some(a), Some(b)) => (a, b),
-                    _ => return,
+                    _ => {
+                        self.global_omission_unsafe = true;
+                        return;
+                    }
                 };
                 let c = match sub.as_atom() {
                     Some(c) => c,
-                    None => return,
+                    None => {
+                        self.global_omission_unsafe |=
+                            unsupported_data_constraints(node, &mut self.unsupported_properties);
+                        return;
+                    }
                 };
                 if let Some(d) = sup.as_atom() {
                     self.csupers.entry(c).or_default().push(d);
@@ -550,6 +598,9 @@ impl<'a> DataAbox<'a> {
                     atmost1_role(sup, ["DataMaxCardinality", "DataExactCardinality"])
                 {
                     self.dmax1.push((c, p));
+                } else {
+                    self.global_omission_unsafe |=
+                        unsupported_data_constraints(node, &mut self.unsupported_properties);
                 }
             }
             "EquivalentClasses" => {
@@ -576,6 +627,8 @@ impl<'a> DataAbox<'a> {
                         }
                     }
                 }
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
             }
             "ClassAssertion" => {
                 let args = strip_annotations(args);
@@ -585,6 +638,8 @@ impl<'a> DataAbox<'a> {
                 ) {
                     self.cassert.push((c, i));
                 }
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
             }
             "DifferentIndividuals" => {
                 let args = strip_annotations(args);
@@ -600,7 +655,10 @@ impl<'a> DataAbox<'a> {
                     self.sames.push((g[k - 1], g[k]));
                 }
             }
-            _ => {}
+            _ => {
+                self.global_omission_unsafe |=
+                    unsupported_data_constraints(node, &mut self.unsupported_properties);
+            }
         }
     }
 
@@ -618,6 +676,26 @@ impl<'a> DataAbox<'a> {
                         stack.push(t);
                     }
                 }
+            }
+        }
+        // Every data property is semantically below owl:topDataProperty even
+        // when the source omits the tautological subproperty axiom. Include
+        // every spelling observed in a constraint so top-property restrictions
+        // cannot be mistaken for unrelated data.
+        let known_top = self
+            .ranges
+            .keys()
+            .chain(self.domains.keys())
+            .copied()
+            .chain(self.functional.iter().copied())
+            .chain(self.supers.keys().copied())
+            .chain(self.supers.values().flatten().copied())
+            .chain(self.dmax1.iter().map(|(_, property)| *property))
+            .chain(self.unsupported_properties.iter().copied())
+            .filter(|property| is_top_data_property(property));
+        for top in known_top {
+            if seen.insert(top) {
+                out.push(top);
             }
         }
         out
@@ -828,34 +906,77 @@ impl<'a> DataAbox<'a> {
     /// consequences represented by the native ABox.
     pub fn positive_assertions_redundant(&self) -> bool {
         if self.overflow
-            || self.omission_unsafe
+            || self.global_omission_unsafe
             || self.assertions.is_empty()
             || !self.functional.is_empty()
-            || !self.supers.is_empty()
-            || !self.dmax1.is_empty()
         {
             return false;
         }
-        self.assertions.iter().all(|&(property, individual, token, suffix)| {
-            let literal = match parse_lit(token, suffix) {
-                Some(literal) => literal,
-                None => return false,
-            };
-            let ranges_hold = self
-                .ranges
-                .get(property)
-                .is_none_or(|ranges| {
-                    ranges
+        let assertions_safe =
+            self.assertions
+                .iter()
+                .all(|&(property, individual, token, suffix)| {
+                    let literal = match parse_lit(token, suffix) {
+                        Some(literal) => literal,
+                        None => return false,
+                    };
+                    let supers = self.all_supers(property);
+                    if supers
                         .iter()
-                        .all(|range| provably_in_datatype(&literal, range))
+                        .any(|p| self.unsupported_properties.contains(p))
+                    {
+                        return false;
+                    }
+                    let ranges_hold = supers.iter().all(|p| {
+                        self.ranges.get(p).is_none_or(|ranges| {
+                            ranges
+                                .iter()
+                                .all(|range| provably_in_datatype(&literal, range))
+                        })
+                    });
+                    let domains_represented = supers.iter().all(|p| {
+                        self.domains.get(p).is_none_or(|domains| {
+                            domains
+                                .iter()
+                                .all(|domain| self.cassert.contains(&(*domain, individual)))
+                        })
+                    });
+                    ranges_hold && domains_represented
                 });
-            let domains_represented = self.domains.get(property).is_none_or(|domains| {
-                domains
+        if !assertions_safe {
+            return false;
+        }
+
+        // A functional property or applicable class-conditional ≤1 restriction
+        // is harmless only when the represented object-side equality closure
+        // leaves at most one asserted value for that individual and inherited
+        // property. This deliberately counts even equal lexical forms twice:
+        // uncertainty fails closed.
+        if self.dmax1.is_empty() {
+            return true;
+        }
+        let (ids, mut uf, mem) = match self.merged_roots() {
+            Some(parts) => parts,
+            None => return false,
+        };
+        let mut values: HashMap<(&str, u32), HashSet<(&str, Option<&str>)>> = HashMap::new();
+        for &(p, i, token, suffix) in &self.assertions {
+            let root = uf.find(ids[i]);
+            for q in self.all_supers(p) {
+                let constrained = self
+                    .dmax1
                     .iter()
-                    .all(|domain| self.cassert.contains(&(*domain, individual)))
-            });
-            ranges_hold && domains_represented
-        })
+                    .any(|&(c, dp)| dp == q && mem.get(&root).is_some_and(|m| m.contains(c)));
+                if constrained {
+                    let asserted = values.entry((q, root)).or_default();
+                    asserted.insert((token, suffix));
+                    if asserted.len() > 1 {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
     }
 
     /// `true` iff the asserted ABox provably contradicts the declared data
@@ -993,6 +1114,17 @@ mod tests {
     }
 
     #[test]
+    fn every_well_formed_literal_is_in_rdfs_literal() {
+        let da = build(&[
+            "DataPropertyRange(<http://x#p> rdfs:Literal)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"plain\")",
+            "DataPropertyAssertion(<http://x#p> <http://x#b> \"1\"^^xsd:integer)",
+            "DataPropertyAssertion(<http://x#p> <http://x#c> \"hallo\"@de)",
+        ]);
+        assert!(da.positive_assertions_redundant());
+    }
+
+    #[test]
     fn omission_certificate_rejects_missing_domain_and_data_interactions() {
         let missing_domain = build(&[
             "DataPropertyDomain(<http://x#p> <http://x#C>)",
@@ -1011,6 +1143,63 @@ mod tests {
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
         ]);
         assert!(!restriction.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn omission_certificate_accepts_safe_subproperty_and_at_most_one() {
+        let da = build(&[
+            "SubDataPropertyOf(<http://x#p> <http://x#q>)",
+            "DataPropertyRange(<http://x#q> xsd:integer)",
+            "SubClassOf(<http://x#C> DataMaxCardinality(1 <http://x#p>))",
+            "ClassAssertion(<http://x#C> <http://x#a>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
+        ]);
+        assert!(da.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn omission_certificate_rejects_two_values_under_inherited_at_most_one() {
+        let da = build(&[
+            "SubDataPropertyOf(<http://x#p> <http://x#q>)",
+            "SubClassOf(<http://x#C> DataExactCardinality(1 <http://x#q>))",
+            "ClassAssertion(<http://x#C> <http://x#a>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
+            "DataPropertyAssertion(<http://x#q> <http://x#a> \"2\"^^xsd:integer)",
+        ]);
+        assert!(!da.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn unrelated_data_restriction_does_not_poison_safe_assertions() {
+        let da = build(&[
+            "SubClassOf(<http://x#C> DataSomeValuesFrom(<http://x#other> xsd:string))",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
+        ]);
+        assert!(da.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn omission_certificate_rejects_data_constraints_in_abox_and_subclass_lhs() {
+        let lhs = build(&[
+            "SubClassOf(DataSomeValuesFrom(<http://x#p> xsd:string) <http://x#C>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+        ]);
+        assert!(!lhs.positive_assertions_redundant());
+
+        let assertion = build(&[
+            "ClassAssertion(DataSomeValuesFrom(<http://x#p> xsd:string) <http://x#a>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+        ]);
+        assert!(!assertion.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn top_data_property_constraint_applies_without_explicit_subproperty_axiom() {
+        let da = build(&[
+            "SubClassOf(<http://x#C> DataSomeValuesFrom(owl:topDataProperty xsd:string))",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
+        ]);
+        assert!(!da.positive_assertions_redundant());
     }
 
     #[test]

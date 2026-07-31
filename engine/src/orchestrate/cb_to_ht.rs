@@ -496,9 +496,6 @@ pub(crate) fn install_nominal_abox_with_same(
             for &entry_index in members {
                 let entry = &meta.individuals[entry_index];
                 individual_ids.insert(entry.individual.as_str(), native_index);
-                if entry.individual.is_empty() {
-                    return Err("empty individual name".into());
-                }
                 if entry.proxies.is_empty() {
                     return Err(format!("individual {} has no proxy", entry.individual));
                 }
@@ -532,11 +529,26 @@ pub(crate) fn install_nominal_abox_with_same(
                     proxies.push(id);
                 }
                 for marker in &entry.assertion_markers {
-                    let Some(&id) = concept_ids.get(marker) else {
-                        return Err(format!(
-                            "ClassAssertion marker {marker} for {} is unresolved",
-                            entry.individual
-                        ));
+                    let id = match concept_ids.get(marker) {
+                        Some(&id) => id,
+                        // A named class that occurs only in an ABox assertion
+                        // has no TBox clause occurrence, so conversion has not
+                        // allocated it yet. The typed frontend payload is the
+                        // authoritative occurrence and can allocate that name
+                        // exactly. Generated markers still require their
+                        // defining clauses and therefore fail closed.
+                        None if !is_internal(marker) => {
+                            let id = concepts.len();
+                            concepts.push(marker.clone());
+                            concept_ids.insert(marker.clone(), id);
+                            id
+                        }
+                        None => {
+                            return Err(format!(
+                                "ClassAssertion marker {marker} for {} is unresolved",
+                                entry.individual
+                            ));
+                        }
                     };
                     assertions.push(id);
                 }
@@ -794,17 +806,13 @@ fn normalized_inverse_cardinality_role_separable(
             .iter()
             .any(|cardinality| is_universal_object_role(&cardinality.role))
         || clauses.iter().any(|clause| {
-            clause
-                .body
-                .iter()
-                .any(|atom| {
-                    matches!(atom, JAtom::Role { role, .. }
+            clause.body.iter().any(|atom| {
+                matches!(atom, JAtom::Role { role, .. }
                     if short(role).starts_with("__inv__") || is_universal_object_role(role))
-                })
-                || clause.head.iter().any(|atom| {
-                    matches!(atom, JAtom::Role { role, .. }
+            }) || clause.head.iter().any(|atom| {
+                matches!(atom, JAtom::Role { role, .. }
                     if short(role).starts_with("__inv__"))
-                })
+            })
         })
     {
         return false;
@@ -919,9 +927,7 @@ fn normalized_inverse_cardinality_role_separable(
                 inverse_roles.insert(role);
                 saw_inverse = true;
             }
-            Some("fenced")
-                if axiom.len() >= 3 && is_clause_retained_fence(axiom[1].as_str()) =>
-            {
+            Some("fenced") if axiom.len() >= 3 && is_clause_retained_fence(axiom[1].as_str()) => {
                 // Clause-retained role constraints. `rbox.rs` records these
                 // rows because the FIRST-CLASS RBox channel cannot represent
                 // them, but `parse.rs`/`normalise.rs` still clausify the axiom
@@ -3150,6 +3156,22 @@ mod native_abox_install_tests {
     }
 
     #[test]
+    fn empty_internal_individual_name_is_valid_when_proxy_is_resolved() {
+        let mut tin = TInput::default();
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![individual("", "__nom__", Some("OnlyAbox"))],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(install_nominal_abox(&mut tin, &meta));
+        assert!(tin.native_abox.complete);
+        assert_eq!(tin.native_abox.individuals.len(), 1);
+        assert_eq!(tin.native_abox.individuals[0].assertions.len(), 1);
+        assert_eq!(tin.nominals.len(), 1);
+    }
+
+    #[test]
     fn same_individual_is_rejected_by_default_without_partial_install() {
         let mut tin = TInput {
             concepts: vec!["A".into()],
@@ -3209,7 +3231,7 @@ mod native_abox_install_tests {
         let before_native = tin.native_abox.clone();
         let meta = NominalAboxMeta {
             complete: true,
-            individuals: vec![individual("a", "__nom__new", Some("missing-marker"))],
+            individuals: vec![individual("a", "__nom__new", Some("__missing_marker"))],
             ..NominalAboxMeta::default()
         };
 

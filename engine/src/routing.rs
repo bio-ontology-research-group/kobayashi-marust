@@ -55,13 +55,16 @@ pub enum Route {
     /// Complete-answer-or-defer SHOIQ TBox specialist for the certified
     /// finite nominal layout selected by `nominal_ni_tbox_candidate`.
     NominalNiTbox,
+    /// Complete-answer-or-defer SHOIQ specialist over a frontend-certified
+    /// typed ABox, paired with the exact nominal CB fallback.
+    NominalNiAbox,
     Nominals,
     SeqOn,
     SeqOff,
 }
 
 impl Route {
-    pub const NAMED: [Route; 36] = [
+    pub const NAMED: [Route; 38] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -95,6 +98,8 @@ impl Route {
         Route::Tableau,
         Route::TabRace,
         Route::CardFn,
+        Route::NominalNiTbox,
+        Route::NominalNiAbox,
         Route::Nominals,
         Route::SeqOn,
         Route::SeqOff,
@@ -138,6 +143,7 @@ impl Route {
             Route::TabRace => "tab_race",
             Route::CardFn => "card_fn",
             Route::NominalNiTbox => "nominal_ni_tbox",
+            Route::NominalNiAbox => "nominal_ni_abox",
             Route::Nominals => "nominals",
             Route::SeqOn => "seq_on",
             Route::SeqOff => "seq_off",
@@ -183,6 +189,7 @@ impl Route {
             Route::TabRace => TAB_RACE,
             Route::CardFn => CARD_FN,
             Route::NominalNiTbox => NOMINAL_NI_TBOX,
+            Route::NominalNiAbox => NOMINAL_NI_ABOX,
             Route::Nominals => NOMINALS,
             Route::SeqOn => SEQ_ON,
             Route::SeqOff => SEQ_OFF,
@@ -306,6 +313,7 @@ impl FromStr for Route {
             "tab_race" | "tab" => Route::TabRace,
             "card_fn" | "functional_card" => Route::CardFn,
             "nominal_ni_tbox" | "ni_tbox" => Route::NominalNiTbox,
+            "nominal_ni_abox" | "ni_abox" => Route::NominalNiAbox,
             "nominals" | "nominal" => Route::Nominals,
             "seq_on" | "seq" => Route::SeqOn,
             "seq_off" | "no_seq" => Route::SeqOff,
@@ -502,6 +510,30 @@ fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
         && count("DataPropertyRange") == 1
         && count("DifferentIndividuals") == 8
         && count("SameIndividual") == 12
+}
+
+/// Cheap source precondition for the typed-ABox SHOIQ specialist.
+///
+/// This does not authorize an answer. The frontend must additionally certify
+/// complete typed-ABox coverage after normalization, and the worker rechecks
+/// every converted clause, fence, inverse-functionality equality clause, and
+/// completed-model nominal-introduction premise. The route retains exact CB as
+/// a fallback, so a false positive changes scheduling only.
+pub(crate) fn nominal_ni_abox_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms > 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.role_chain_axioms == 0
+        && profile.expressivity.nominal
+        && profile.expressivity.inverse
+        && source
+            .min_cardinalities
+            .saturating_add(source.max_cardinalities)
+            .saturating_add(source.exact_cardinalities)
+            > 0
+        && profile.expressivity.functionality
 }
 
 /// Large nominal ABoxes need the certified bridge portfolio's bounded
@@ -767,9 +799,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
             Route::CertifiedNominals
         }
-        SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => {
-            Route::NominalNiTbox
-        }
+        SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => Route::NominalNiTbox,
         // An ABox that fails the materialization certificate stays on the exact
         // nominal calculus. `certified_card_proxy_abox` can classify several of
         // these terminologies (ore_ont_7499 gold-exact) but it DROPS the ABox,
@@ -798,9 +828,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // and is complete-answer-or-defer: it cannot publish an approximate
         // taxonomy if this cheap source-side scheduling predicate is a false
         // positive.
-        SemanticFragment::SriqCore
-            if large_horn_functional_native_bridge_candidate(profile) =>
-        {
+        SemanticFragment::SriqCore if large_horn_functional_native_bridge_candidate(profile) => {
             Route::HtBridge
         }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
@@ -1264,6 +1292,20 @@ const NOMINAL_NI_TBOX: &[(&str, &str)] = &[
     ("KM_HT_BLOCK", "1"),
     ("KM_NO_BOTTOM_PREPASS", "1"),
 ];
+const NOMINAL_NI_ABOX: &[(&str, &str)] = &[
+    ("KM_MECHANISM", "portfolio"),
+    ("KM_NO_ELC", "1"),
+    ("KM_NO_HT_RULES", "1"),
+    ("KM_NO_ABSORB_PORTFOLIO", "1"),
+    ("KM_NO_RETRY", "1"),
+    ("KM_ABSORB", "0"),
+    ("KM_NOMINALS", "1"),
+    ("KM_HT_ONLY", "no_blocking_shoiq"),
+    ("KM_HT_CERT_NO_BLOCKING", "1"),
+    ("KM_KEEP_CHAIN_AXIOMS", "1"),
+    ("KM_NO_HT_CARD", "1"),
+    ("KM_HT_BLOCK", "1"),
+];
 const NOMINALS: &[(&str, &str)] = &[
     ("KM_MECHANISM", "cb"),
     ("KM_NO_ELC", "1"),
@@ -1505,6 +1547,25 @@ mod tests {
         assert_eq!(
             "nominal_ni_tbox".parse::<Route>().unwrap(),
             Route::NominalNiTbox
+        );
+        for required in [
+            ("KM_MECHANISM", "portfolio"),
+            ("KM_HT_ONLY", "no_blocking_shoiq"),
+            ("KM_HT_CERT_NO_BLOCKING", "1"),
+            ("KM_NOMINALS", "1"),
+        ] {
+            assert!(
+                Route::NominalNiAbox.settings().contains(&required),
+                "nominal_ni_abox must carry {required:?}"
+            );
+        }
+        assert!(!Route::NominalNiAbox
+            .settings()
+            .iter()
+            .any(|setting| *setting == ("KM_HT_CERT_TBOX_ONLY", "1")));
+        assert_eq!(
+            "nominal_ni_abox".parse::<Route>().unwrap(),
+            Route::NominalNiAbox
         );
         assert!(Route::Nominals.settings().contains(&("KM_NOMINALS", "1")));
         for required in [
@@ -1976,9 +2037,7 @@ mod tests {
         profile.clauses.function_term_symbols = 14_115;
 
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
-        assert!(large_horn_functional_native_bridge_candidate(
-            &profile
-        ));
+        assert!(large_horn_functional_native_bridge_candidate(&profile));
         assert_eq!(select(&profile), Route::HtBridge);
 
         // Production selects before clausification. The source-only profile
@@ -1989,9 +2048,7 @@ mod tests {
         assert_eq!(select(&pre_clausification), Route::HtBridge);
 
         profile.source.complements = 1;
-        assert!(!large_horn_functional_native_bridge_candidate(
-            &profile
-        ));
+        assert!(!large_horn_functional_native_bridge_candidate(&profile));
     }
 
     #[test]

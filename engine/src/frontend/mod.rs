@@ -506,7 +506,7 @@ fn ofn_to_clauses_requested(
     // Building the general SROIQ bottom certificate is therefore redundant on
     // an ELC-only route and can be quadratic on giant flat taxonomies with
     // many paths to owl:Nothing. Other routes retain the prepass unchanged.
-    let bottom_prepass = if route_needs_bottom_prepass(route)
+    let mut bottom_prepass = if route_needs_bottom_prepass(route)
         && std::env::var_os("KM_NO_BOTTOM_PREPASS").is_none()
     {
         Some(bottom_prepass::BottomPrepass::from_ontology(&ontology))
@@ -615,6 +615,20 @@ fn ofn_to_clauses_requested(
             .unsupported
             .retain(|reason| reason != &diagnostic);
         nominal_abox.complete = nominal_abox.unsupported.is_empty();
+    }
+    // Source routing initially keeps these ontologies on the exact nominal CB
+    // calculus because data assertions are not known to be representable until
+    // the parsed-AST certificate above has run. Once the complete typed payload
+    // is proved, add the complete-answer-or-defer SHOIQ competitor while
+    // retaining that same CB fallback.
+    if automatic
+        && route == crate::routing::Route::Nominals
+        && nominal_abox.complete
+        && crate::routing::nominal_ni_abox_candidate(&profile)
+    {
+        route = crate::routing::Route::NominalNiAbox;
+        route.apply_environment();
+        bottom_prepass = None;
     }
     // named classes with a provable asserted member: direct assertions plus
     // domain/range typing of asserted roles (`R(a,b)` + `Domain(R,C)` => `a:C`).

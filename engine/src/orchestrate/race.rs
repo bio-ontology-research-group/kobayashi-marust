@@ -846,6 +846,40 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
     })
 }
 
+/// Verify that an `inverse-functional` RBox fence is duplicated exactly by the
+/// converted equality clause `R(x,z) ∧ R(y,z) -> x = y`.
+fn inverse_functional_clause_retained(tin: &cb_to_ht::TInput, role_name: &str) -> bool {
+    let Some(role) = tin.roles.iter().position(|name| name == role_name) else {
+        return false;
+    };
+    tin.clauses.iter().any(|clause| {
+        clause.head.iter().any(|head| {
+            let cb_to_ht::HAtom::Eq { s: left, t: right } = head else {
+                return false;
+            };
+            clause.body.iter().any(|first| {
+                let cb_to_ht::HAtom::Role {
+                    r: first_role,
+                    s: first_source,
+                    t: first_target,
+                } = first
+                else {
+                    return false;
+                };
+                *first_role == role
+                    && *first_source == *left
+                    && clause.body.iter().any(|second| {
+                        matches!(
+                            second,
+                            cb_to_ht::HAtom::Role { r, s, t }
+                                if *r == role && *s == *right && *t == *first_target
+                        )
+                    })
+            })
+        })
+    })
+}
+
 /// True only for a ground/singleton clause represented independently by the
 /// complete typed ABox. This is an exact pattern filter, not a generic
 /// individual-term projection: unknown shapes remain for conversion to reject.
@@ -1034,16 +1068,18 @@ fn native_nominal_bridge_clauses<'a>(
     // payload to prove the internal marker's Top provenance.
     let universal_facts: std::collections::HashSet<&str> = clauses
         .iter()
-        .filter_map(|clause| match (clause.body.as_slice(), clause.head.as_slice()) {
-            (
-                [],
-                [crate::json_io::JAtom::Concept {
-                    concept,
-                    term: crate::json_io::JTerm::Var { .. },
-                }],
-            ) => Some(concept.as_str()),
-            _ => None,
-        })
+        .filter_map(
+            |clause| match (clause.body.as_slice(), clause.head.as_slice()) {
+                (
+                    [],
+                    [crate::json_io::JAtom::Concept {
+                        concept,
+                        term: crate::json_io::JTerm::Var { .. },
+                    }],
+                ) => Some(concept.as_str()),
+                _ => None,
+            },
+        )
         .collect();
     Cow::Owned(
         clauses
@@ -1272,7 +1308,8 @@ fn spawn_ht(
             matches!(
                 fence.reason.as_str(),
                 "inverse+number(SHIQ)" | "nominal+inverse(SHOI/SHOIQ)"
-            )
+            ) || (fence.reason == "inverse-functional"
+                && inverse_functional_clause_retained(&tin, &fence.detail))
         });
     if std::env::var_os("KM_HT_CERT_TRACE").is_some() {
         eprintln!(
@@ -1288,7 +1325,13 @@ fn spawn_ht(
             has_datatype(&cl),
             tin.fenced
                 .iter()
-                .map(|fence| fence.reason.as_str())
+                .map(|fence| {
+                    (
+                        fence.reason.as_str(),
+                        (fence.reason == "inverse-functional")
+                            .then(|| inverse_functional_clause_retained(&tin, &fence.detail)),
+                    )
+                })
                 .collect::<Vec<_>>()
         );
     }
@@ -2781,6 +2824,24 @@ mod tests {
     }
 
     #[test]
+    fn inverse_functional_fence_requires_exact_equality_clause() {
+        let mut tin = cb_to_ht::TInput {
+            roles: vec!["r".into()],
+            ..cb_to_ht::TInput::default()
+        };
+        assert!(!inverse_functional_clause_retained(&tin, "r"));
+        tin.clauses.push(cb_to_ht::HtClause {
+            body: vec![
+                cb_to_ht::HAtom::Role { r: 0, s: 0, t: 2 },
+                cb_to_ht::HAtom::Role { r: 0, s: 1, t: 2 },
+            ],
+            head: vec![cb_to_ht::HAtom::Eq { s: 0, t: 1 }],
+        });
+        assert!(inverse_functional_clause_retained(&tin, "r"));
+        assert!(!inverse_functional_clause_retained(&tin, "missing"));
+    }
+
+    #[test]
     fn card_arm_is_a_candidate_and_certified_admits_it() {
         // A reduced cardinality probe: a datatype/inverse-free TInput with a
         // single `≥2 R.C` restriction is a card candidate, and the production
@@ -2843,7 +2904,12 @@ mod tests {
         // channel cannot express while the frontend still clausifies them
         // exactly. Those markers must not cost the arm (ore_ont_7499 carries an
         // irreflexivity and a complex range), but every other reason still does.
-        for retained in ["irreflexivity", "reflexivity", "complex-domain", "complex-range"] {
+        for retained in [
+            "irreflexivity",
+            "reflexivity",
+            "complex-domain",
+            "complex-range",
+        ] {
             let mut tin = card_def_tin();
             tin.fenced.push(cb_to_ht::Fenced {
                 reason: retained.into(),
