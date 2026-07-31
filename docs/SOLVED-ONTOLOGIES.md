@@ -22,10 +22,10 @@ remains historical provenance. See the accompanying
 [`TAIL-EIGHT.md`](../results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md)
 before treating process completion as a solved ontology.
 
-The current single default route is the source-bound v16 `km classify` sweep:
-588 of 592 ontologies complete operationally, 586 match the retained full-IRI
+The current single default route is the source-bound `km classify` sweep:
+589 of 592 ontologies complete operationally, 587 match the retained full-IRI
 gold exactly, and 2669 plus 15516 are the two adjudicated consistency
-mismatches. IBEX array `49689798` and audit `49692538` are the authoritative
+mismatches. IBEX array `49701329` and audit `49710709` are the authoritative
 current-binary evidence.
 
 The uniform 2026-07-22 panel is retained as authority for its frozen historical
@@ -171,18 +171,14 @@ reproduce the source-bound 10621 capsule.
   and add the `certified_card_proxy_abox` route, which reproduces the validated
   `card_race` environment and keeps an uncertified native ABox out of the card
   input.
-- **Result**: `km classify --route certified_card_proxy_abox` returns 36,145
-  subsumptions and 0 unsatisfiable classes in 114 s of HT worker time (1 m 54 s
-  wall) at 1.04 GiB on the shared workstation. The full-IRI taxonomy fingerprint
-  is `a87bedcb6f6af4e3471686a5a6627a98e4ecd3a8fd102bd610ed38e352d22038`,
-  identical to Konclude and HermiT in the frozen sweep. The historical
-  `card_race` binary (`0d20dd1`) produced the same answer in 92.8 s at 18.5 GiB
-  while running the arm inverse-blind; the restored route keeps the
-  inverse-aware configuration and uses 15x less memory.
-- **Claim boundary**: current source selects this route automatically and its
-  local output is byte-identical to the retained exact result. The completed
-  production sweep still records 7499 as non-completing until the source-bound
-  IBEX candidate gate and full sweep finish.
+- **Result**: default `km classify` selects `certified_card_proxy_abox` and
+  returns the exact full-IRI taxonomy in 86.7359 seconds at 2,409.59 MiB. Its
+  retained signature SHA-256 is
+  `f82850c6582131358cd9ecc108888e2131734900cf687d055a7a7c0f4fece17d`.
+  Source-bound array `49701329` reproduces the result, and independent audit
+  `49710709` validates all 592 rows. The route proves the positive-role ABox
+  obligation before publishing the TBox taxonomy; otherwise it defers to the
+  exact nominal CB fallback.
 - **Correction**: the 2026-07-05 entry below reads 7499's missing pairs as a
   gold local-name collision. The full-IRI fingerprint refutes that: the pairs
   are genuinely absent from the CB answer and present in both baselines.

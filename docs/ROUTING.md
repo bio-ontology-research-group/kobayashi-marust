@@ -276,8 +276,9 @@ ORE 7499 is the corpus witness for the arm itself: its 74 asserted
 range are outside the number-role component, and
 `km classify --route certified_card_proxy_abox` returns the Konclude/HermiT
 taxonomy exactly. Current source selects the certified proxy route
-automatically; production status remains tied to the last completed v16 sweep
-until the source-bound IBEX candidate gate and complete sweep finish.
+automatically. Source-bound IBEX array `49701329` confirms the default route in
+86.7359 seconds at 2,409.59 MiB, and audit `49710709` validates all 592 terminal
+rows and route traces.
 
 ### Positive ABox separation certificate
 

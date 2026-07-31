@@ -2,10 +2,10 @@
 
 ## Current default-route status (2026-07-31)
 
-The source-bound v16 sweep is the current authority for one automatic
-`km classify` binary. IBEX array `49689798`, accepted by independent audit
-`49692538`, completes 588 of 592 ontologies: 586 exact full-IRI gold matches
-and two adjudicated consistency mismatches, 2669 and 15516. The four
+The source-bound sweep is the current authority for one automatic
+`km classify` binary. IBEX array `49701329`, accepted by independent audit
+`49710709`, completes 589 of 592 ontologies: 587 exact full-IRI gold matches
+and two adjudicated consistency mismatches, 2669 and 15516. The three
 non-completing rows are:
 
 | Ontology | Default-route result | Current obligation |
@@ -13,7 +13,11 @@ non-completing rows are:
 | `10860` | unsupported | Four DL-safe rules contain unsupported data-property or built-in atoms; establish a complete rule procedure and authoritative gold. |
 | `1194` | error | The large SRIQ ABox exceeds the current packed-term boundary or practical CB completion budget; no validated route exists within the standard contract. |
 | `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
-| `7499` | error in the completed v16 sweep | Current source adds a normalized positive-role ABox certificate and exact nominal fallback. Local automatic-route output is byte-identical in 96.84 s at 987 MiB; source-bound IBEX validation is pending, so this row is not yet added to the production count. |
+
+Ontology 7499 is no longer residual. Automatic `certified_card_proxy_abox`
+matches exactly in 86.7359 seconds at 2,409.59 MiB. The normalized
+positive-role ABox certificate proves that publishing the TBox taxonomy is
+exact and retains the nominal CB fallback when any obligation fails.
 
 Ontology 6934 is no longer residual. The post-normalization typed-ABox SHOIQ
 certificate selects `nominal_ni_abox`; it matches exactly in 199.3235 seconds

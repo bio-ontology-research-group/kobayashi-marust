@@ -9,6 +9,24 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Complete automatic sweep: 587 exact matches (2026-07-31)
+
+Source-bound IBEX array `49701329` completed all 592 default `km classify`
+tasks using the `ebe56bd` source and binary SHA-256
+`c6f3e01c67421f3ae97c5edadf59a10befea361385dcdd0912dcbb9e762f9317`.
+Independent audit job `49710709` validated every terminal row, checkpoint,
+profile/production route trace, and binary hash. The final statuses are 589
+`ok`, one `error`, one `timeout`, and one `unsupported`. Full-IRI scoring gives
+587 exact Konclude matches and the two adjudicated consistency mismatches 2669
+and 15516.
+
+The only semantic change from the accepted 592-row baseline is 7499: it moves
+from `error` to `ok/match` through automatic `certified_card_proxy_abox`, in
+86.7359 seconds at 2,409.59 MiB, with signature SHA-256
+`f82850c6582131358cd9ecc108888e2131734900cf687d055a7a7c0f4fece17d`.
+All other 591 status, verdict, signature, and selected-route rows are unchanged.
+The three remaining non-completing ontologies are 10860, 1194, and 4669.
+
 ### Complete v16 automatic sweep: 586 exact matches (2026-07-31)
 
 Source-bound IBEX array `49689798` completed all 592 default `km classify`

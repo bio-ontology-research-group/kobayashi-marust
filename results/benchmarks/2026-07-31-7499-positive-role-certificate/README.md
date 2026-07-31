@@ -1,10 +1,9 @@
 # Certified positive-role ABox route for ORE 7499
 
-This directory records the candidate that makes the existing
+This directory records the accepted implementation that makes the existing
 `certified_card_proxy_abox` route complete-answer-or-defer and gives it the
-exact nominal CB fallback. The candidate is not counted in the production
-default total until a source-bound IBEX gate and complete 592-ontology sweep
-pass.
+exact nominal CB fallback. A source-bound focused gate, complete 592-ontology
+sweep, and independent audit establish the current production result.
 
 ## Certificate contract
 
@@ -138,14 +137,25 @@ full-IRI matches: 7499, 33, 10702, 6934, and 9540. The 7499 production row was:
   `f82850c6582131358cd9ecc108888e2131734900cf687d055a7a7c0f4fece17d`.
 
 The complete resumable 592-ontology automatic sweep is array `49701329` under
-the same 240-second, 20-GiB reasoner contract. Its results remain pending and
-the production headline stays at the completed v16 count until all rows and the
-correctness comparison pass.
+the same 240-second, 20-GiB reasoner contract. It completed all 592 rows with
+one binary SHA-256:
+`c6f3e01c67421f3ae97c5edadf59a10befea361385dcdd0912dcbb9e762f9317`.
+The aggregate contains 589 `ok`, one `error`, one `timeout`, and one
+`unsupported` result. Full-IRI scoring gives 587 `match`, two adjudicated
+`consistency_mismatch`, one `error`, one `timeout`, and one `unsupported`.
 
-## Pending production gate
+Ontology 7499 completed through automatic `certified_card_proxy_abox` in
+86.7359 seconds at 2,409.59 MiB and matched signature SHA-256
+`f82850c6582131358cd9ecc108888e2131734900cf687d055a7a7c0f4fece17d`.
+A row-by-row comparison with the accepted 592-row baseline found exactly one
+change: 7499 moved from `error/error` to `ok/match`; all other statuses,
+verdicts, signatures, and selected routes were unchanged.
 
-1. Build this exact committed source revision on an IBEX compute node.
-2. Run `7499` plus exact controls under the 240-second and 20-GiB production
-   limits.
-3. Verify full-IRI identity and route selection.
-4. Run and audit all 592 default `km classify` inputs.
+## Independent production audit
+
+Audit job `49710709` validated all 592 terminal rows and checkpoints, the
+ontology-to-array mapping, source-profile and production route traces, expected
+nonmatches, and the binary hash. It recovered no rows and ended with
+`SWEEP_AUDIT_COMPLETE terminal=592`. This promotes the single default
+`km classify` result to 589 operational completions, 587 exact full-IRI
+matches, and the two adjudicated consistency cases.

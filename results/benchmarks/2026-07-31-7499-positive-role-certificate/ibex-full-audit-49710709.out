@@ -1,0 +1,2 @@
+{"counts": {"error": 1, "ok": 589, "timeout": 1, "unsupported": 1}, "nonmatches": {"ore_ont_10860.owl": ["unsupported", "unsupported"], "ore_ont_1194.owl": ["error", "error"], "ore_ont_15516.owl": ["ok", "consistency_mismatch"], "ore_ont_2669.owl": ["ok", "consistency_mismatch"], "ore_ont_4669.owl": ["timeout", "timeout"]}, "recovered": [], "verdict_counts": {"consistency_mismatch": 2, "error": 1, "match": 587, "timeout": 1, "unsupported": 1}}
+SWEEP_AUDIT_COMPLETE terminal=592
