@@ -585,7 +585,10 @@ array script, and audit script.
 Current source under the exact retained 10702 manual environment did not
 restore that ontology locally: it timed out at 240 seconds after reaching
 18,394.76 MiB. This rules out a route-label-only fix. Source-bound array
-`49663467` is dependency-gated after the complete sweep and tests all 36 named
-routes, at most five concurrently, against the exact signature. The panel
-cannot contend with the production sweep and will show whether any current
-guarded route survives before implementation work proceeds.
+`49664017` is dependency-gated after the complete sweep and tests all 36 named
+routes on each of the five gold-bearing residuals 4669, 6934, 7499, 10702, and
+12653. Its 180 tasks run at most five concurrently and compare every completed
+answer with the exact signature. The panel cannot contend with the production
+sweep and will show which current guarded routes survive before implementation
+work proceeds. The narrower pending 10702-only job `49663467` was cancelled
+before execution and contributes no evidence.
