@@ -14,7 +14,8 @@ set -euo pipefail
 
 root=/ibex/scratch/hohndor/km/routing_20260715
 km_root=/ibex/scratch/hohndor/km
-proof_root=$root/7499-positive-role-9462131
+: "${PROOF_ROOT:?submit with --export=ALL,PROOF_ROOT=/absolute/candidate/root}"
+proof_root=$PROOF_ROOT
 runner=$root/bench_one_matrix-392f90aa.py
 binary=$proof_root/km
 result_dir=$proof_root/focused-results

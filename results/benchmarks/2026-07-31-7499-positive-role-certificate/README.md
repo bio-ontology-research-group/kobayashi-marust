@@ -118,6 +118,30 @@ ground ABox clauses for the exact CB fallback. This scheduling/view correction
 does not change either procedure's derivations. A second source-bound IBEX gate
 is required before the production total changes.
 
+## Corrected source-bound IBEX gate
+
+Commit `ebe56bd` was archived as
+`108e9996997cfda6109e7bc61dcf7287a219c6263fd3782ab1957439f2e28616`.
+Build job `49700800` completed on `gpu510-32` in 3m45s, passed its smoke test,
+and published binary SHA-256
+`c6f3e01c67421f3ae97c5edadf59a10befea361385dcdd0912dcbb9e762f9317`.
+
+Focused array `49701005` passed all five automatic-route cases with exact
+full-IRI matches: 7499, 33, 10702, 6934, and 9540. The 7499 production row was:
+
+- 77.1015 seconds wall;
+- 951.91 MiB peak RSS;
+- zero missing and zero extra subsumptions;
+- zero missing and zero extra unsatisfiable classes;
+- full-IRI verdict `match`;
+- signature SHA-256
+  `f82850c6582131358cd9ecc108888e2131734900cf687d055a7a7c0f4fece17d`.
+
+The complete resumable 592-ontology automatic sweep is array `49701329` under
+the same 240-second, 20-GiB reasoner contract. Its results remain pending and
+the production headline stays at the completed v16 count until all rows and the
+correctness comparison pass.
+
 ## Pending production gate
 
 1. Build this exact committed source revision on an IBEX compute node.
