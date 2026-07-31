@@ -38,7 +38,7 @@ def load_terminal(path: Path, ontology: str, index: int) -> dict:
     return row
 
 
-def validate_profile(path: Path, ontology: str) -> None:
+def validate_profile(path: Path, ontology: str) -> str:
     with path.open(encoding="utf-8") as handle:
         row = json.load(handle)
     if row.get("ont") != ontology:
@@ -47,6 +47,7 @@ def validate_profile(path: Path, ontology: str) -> None:
         raise ValueError(f"{path}: invalid profile status: {row.get('status')!r}")
     if not row.get("selected_route"):
         raise ValueError(f"{path}: missing selected route")
+    return row["selected_route"]
 
 
 def atomic_json(path: Path, row: dict) -> None:
@@ -210,7 +211,15 @@ def main() -> int:
         except (OSError, ValueError, json.JSONDecodeError) as error:
             failures.append(f"{ontology}: invalid checkpoint: {error}")
         try:
-            validate_profile(profiles / f"{ontology}.json", ontology)
+            profiled_route = validate_profile(
+                profiles / f"{ontology}.json", ontology
+            )
+            traced_route = row.get("selected_route_trace")
+            if traced_route is not None and traced_route != profiled_route:
+                failures.append(
+                    f"{ontology}: production/profile route mismatch: "
+                    f"{traced_route!r} != {profiled_route!r}"
+                )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             failures.append(f"{ontology}: invalid profile: {error}")
         counts[row["status"]] = counts.get(row["status"], 0) + 1

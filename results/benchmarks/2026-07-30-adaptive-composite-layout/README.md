@@ -585,7 +585,10 @@ array script, and audit script.
 A synthetic 592-row audit test confirms this contract in both directions: a
 declared unsupported-before-route exception passes, while an otherwise valid
 terminal/checkpoint pair with an unlisted missing route trace fails with the
-ontology named in the diagnostic.
+ontology named in the diagnostic. A second negative test changes only the
+profiled route and confirms that disagreement with the captured production
+route also fails explicitly. The first 97 live sweep rows have no such
+production/profile mismatch.
 
 Current source under the exact retained 10702 manual environment did not
 restore that ontology locally: it timed out at 240 seconds after reaching
