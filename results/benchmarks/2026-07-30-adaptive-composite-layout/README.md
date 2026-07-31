@@ -367,6 +367,17 @@ preflights, resumable terminal checkpoints, and the full-IRI-safe path for
 feature-driven portfolio; the focused gate alone is not a corpus-wide coverage
 claim.
 
+The array produced all 592 terminal rows, and dependent audit `49655277`
+passed. An independent strict audit verified the package manifest, 592 unique
+ontology names, 592 byte-equivalent terminal/checkpoint pairs, 592 successful
+route profiles, the array-job provenance, and the deployed binary SHA-256 on
+every row. The result is 583 `ok`, five `error`, two `timeout`, one `memout`,
+and one `unsupported`; verdicts are 581 exact `match`, two independently
+adjudicated stale-gold consistency mismatches, and nine unresolved execution
+failures. The unresolved set is 1194, 4669, 6934, 7499, 9724, 10702, 10860,
+12653, and 15803. Current source separately restores 9724 and 15803, subject
+to the new source-bound gate and the next complete sweep.
+
 Its terminal row for 3215 confirms that the historical restoration is now part
 of the automatic portfolio. `production_all` matches the frozen signature
 exactly in 169.5591 seconds at 7,490.09 MiB, with 3,923,171 subsumptions and no
@@ -498,6 +509,16 @@ establish their behavior in the v11 binary. Companion source-bound panel
 9724 contract and the same dependency on v10. An exact, reproducible guarded
 HT result would provide substantially more memory headroom than
 `production_all1`; a defer or mismatch will keep it out of automatic routing.
+
+Both repeat panels completed with 10/10 exact classifications. Five
+`production_all1` trials used 10,407–10,524 MiB in 38.85–39.55 seconds.
+Five `production_all8` trials used 16,706–20,048 MiB in 39.70–56.01 seconds,
+which leaves little memory headroom. Five guarded `ht_bridge` trials used
+8,169–8,194 MiB in 37.96–39.35 seconds, and five guarded `ht_full` trials used
+8,158–8,174 MiB in 38.00–45.17 seconds. Every row has signature SHA-256
+`95d679d0ee51b14583ca4dffe419b1c7e128398d207a2bdb25ab9eaa06c03b05`.
+This establishes the guarded bridge as the reproducibly lowest-memory exact
+route in this panel.
 
 Local current-source diagnostics identified why v10's automatic 9724 route
 still used the high-memory portfolio. Automatic selection runs immediately
