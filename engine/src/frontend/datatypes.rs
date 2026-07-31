@@ -1194,10 +1194,27 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
         DRange::Named(datatype)
             if matches!(
                 datatype.kind,
-                "boolean" | "dateTime" | "int" | "integer" | "string" | "float"
+                "boolean"
+                    | "dateTime"
+                    | "decimal"
+                    | "int"
+                    | "integer"
+                    | "nonNegativeInteger"
+                    | "positiveInteger"
+                    | "string"
+                    | "float"
             ) =>
         {
-            Some(datatype.kind)
+            Some(match datatype.kind {
+                // Keep the exact range identity in `range_of_internal_name`;
+                // this return value is only the disjoint value-space family.
+                // The bridge uses `bridge_exact_atomic_subsumed` below for
+                // direction-sensitive range checks.
+                "decimal" | "int" | "integer" | "nonNegativeInteger" | "positiveInteger" => {
+                    "decimal"
+                }
+                other => other,
+            })
         }
         _ => None,
     }
@@ -1205,6 +1222,44 @@ pub(crate) fn bridge_exact_atomic_family(name: &str) -> Option<&'static str> {
 
 pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
     bridge_exact_atomic_family(name).is_some()
+}
+
+fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
+    match classify_name(name)? {
+        DtEntry::Range(_, range) => Some(range),
+        DtEntry::Value(_, value) => Some(DRange::OneOf(vec![value])),
+    }
+}
+
+/// Exact subset relation between two atomic bridge datatype symbols.
+///
+/// Unlike [`bridge_exact_atomic_family`], this preserves direction in the
+/// numeric tower (`positiveInteger <= nonNegativeInteger <= integer <=
+/// decimal`) and checks literal membership through the same OWL 2 datatype
+/// implementation that emits the frontend relation clauses.
+pub(crate) fn bridge_exact_atomic_subsumed(sub: &str, sup: &str) -> Option<bool> {
+    if !bridge_exact_atomic_name(sub) || !bridge_exact_atomic_name(sup) {
+        return None;
+    }
+    if sub == sup {
+        return Some(true);
+    }
+    range_subsumed(
+        &bridge_exact_atomic_range(sub)?,
+        &bridge_exact_atomic_range(sup)?,
+    )
+}
+
+/// Exact disjointness relation for two admitted atomic bridge datatype
+/// symbols. `None` remains a fail-closed unknown.
+pub(crate) fn bridge_exact_atomic_disjoint(left: &str, right: &str) -> Option<bool> {
+    if !bridge_exact_atomic_name(left) || !bridge_exact_atomic_name(right) {
+        return None;
+    }
+    range_disjoint(
+        &bridge_exact_atomic_range(left)?,
+        &bridge_exact_atomic_range(right)?,
+    )
 }
 
 /// Equality in the deliberately narrow literal value fragment used by exact
@@ -1791,9 +1846,12 @@ mod tests {
         for supported in [
             "__dt__boolean",
             "__dt__dateTime",
+            "__dt__decimal",
             "__dt__float",
             "__dt__int",
             "__dt__integer",
+            "__dt__nonNegativeInteger",
+            "__dt__positiveInteger",
             "__dt__string",
             "__dt__val__\"true\"^^xsd:boolean",
             "__dt__val__\"23\"^^xsd:integer",
@@ -1820,5 +1878,25 @@ mod tests {
                 "unexpected exact bridge datatype: {unsupported}"
             );
         }
+        assert_eq!(
+            bridge_exact_atomic_subsumed("__dt__positiveInteger", "__dt__nonNegativeInteger"),
+            Some(true)
+        );
+        assert_eq!(
+            bridge_exact_atomic_subsumed("__dt__nonNegativeInteger", "__dt__integer"),
+            Some(true)
+        );
+        assert_eq!(
+            bridge_exact_atomic_subsumed("__dt__integer", "__dt__decimal"),
+            Some(true)
+        );
+        assert_eq!(
+            bridge_exact_atomic_subsumed("__dt__decimal", "__dt__integer"),
+            None
+        );
+        assert_eq!(
+            bridge_exact_atomic_subsumed("__dt__val__\"2\"^^xsd:integer", "__dt__positiveInteger"),
+            Some(true)
+        );
     }
 }
