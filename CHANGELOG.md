@@ -9,6 +9,24 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Preserve distinct same-filler Skolem witnesses in the EL certificate (2026-07-31)
+
+The certified EL canonical model no longer identifies two different Skolem
+functions merely because their existential restrictions use the same filler
+concept. Each function receives an internal EL-closed witness node, and its
+NF3 edge targets that witness. The witness inherits the filler's completed
+label and existential structure through an internal subclass axiom. This
+preserves the required identity distinction for normalized `≥n R.C` clauses
+without publishing internal witness symbols.
+
+The previous collapse made `f0(x) ≈ f1(x)` true by construction whenever both
+functions had filler `C`, so a normalized `≥2 R.C` disequality clause could
+never certify. A regression test covers the exact same-filler shape in plain
+and repair certificate modes. The complete serial release suite passes 1,828
+library tests, all integration targets, and eight intentional ignores. This
+changes only the certificate model construction; the final all-residual-clause
+check remains the complete-answer gate, and no CB-calculus rule changes.
+
 ### Complete automatic sweep: 587 exact matches (2026-07-31)
 
 Source-bound IBEX array `49701329` completed all 592 default `km classify`

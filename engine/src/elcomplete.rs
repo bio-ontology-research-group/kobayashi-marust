@@ -475,7 +475,10 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
 /// against the canonical model (the completeness certificate). Returns `None`
 /// only for an orphan existential-filler half-clause (a shape we don't model
 /// at all).
-fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, HashMap<u32, u32>)> {
+fn to_nf(
+    clauses: &[JClause],
+    it: &mut Interner,
+) -> Option<(Nfs, Vec<JClause>, HashMap<u32, (u32, u32, u32)>)> {
     let mut nf1 = Vec::new();
     let mut nf2 = Vec::new();
     let mut nf3 = Vec::new();
@@ -842,11 +845,11 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
     }
 
     // assemble NF3 (A ⊑ ∃R.B) from its two half-clauses; record each skolem
-    // function's filler node for the residual certificate (the canonical
-    // model interprets `f(x)` as the constant filler node). A skolem reused
+    // function's filler concept for the residual certificate. The certificate
+    // later gives every distinct function its own EL-closed witness node. A skolem reused
     // with conflicting fillers (never emitted by the frontend) is dropped
     // from the map, so residuals mentioning it bail conservatively.
-    let mut skolem_filler: HashMap<u32, u32> = HashMap::default();
+    let mut skolem_target: HashMap<u32, (u32, u32, u32)> = HashMap::default();
     let mut skolem_ambiguous: HashSet<u32> = HashSet::default();
     for ((sub, fnid), (role, filler)) in pending_ex.into_iter() {
         match role {
@@ -860,13 +863,14 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
                     role: r,
                     filler: f,
                 });
-                match skolem_filler.entry(fnid) {
-                    std::collections::hash_map::Entry::Occupied(e) if *e.get() != f => {
+                let target = (sub, r, f);
+                match skolem_target.entry(fnid) {
+                    std::collections::hash_map::Entry::Occupied(e) if *e.get() != target => {
                         skolem_ambiguous.insert(fnid);
                     }
                     std::collections::hash_map::Entry::Occupied(_) => {}
                     std::collections::hash_map::Entry::Vacant(v) => {
-                        v.insert(f);
+                        v.insert(target);
                     }
                 }
             }
@@ -874,7 +878,7 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
         }
     }
     for fnid in skolem_ambiguous {
-        skolem_filler.remove(&fnid);
+        skolem_target.remove(&fnid);
     }
 
     Some((
@@ -891,7 +895,7 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
             role_names,
         },
         residual,
-        skolem_filler,
+        skolem_target,
     ))
 }
 
@@ -1296,12 +1300,13 @@ enum RAtom {
 
 /// A residual clause: `body -> head`, universally quantified over `nvars`
 /// variables.  Skolem terms `f(x)` are compiled to *pinned* variables, fixed
-/// to the canonical node of the skolem's NF3 filler: the canonical model
-/// interprets every skolem function as the constant map to its filler node
-/// (consistent with the NF3 edges/memberships the completion materialises),
-/// which makes ≥n witness-distinctness clauses
+/// to a dedicated canonical witness for that skolem function. Each witness is
+/// made an EL subclass of the NF3 filler, so it receives the filler's completed
+/// label and existential structure while remaining distinct from witnesses for
+/// other functions. This makes ≥n witness-distinctness clauses
 /// (`Q(x) ∧ f₀(x) ≈ f₁(x) → ⊥`) and other fun-term residuals checkable:
-/// distinct fillers are distinct domain elements.
+/// distinct skolem functions denote distinct domain elements even when they
+/// have the same filler concept.
 struct RClause {
     nvars: usize,
     body: Vec<RAtom>,
@@ -1320,7 +1325,7 @@ fn compile_residual(
     residual: &[JClause],
     it: &mut Interner,
     nfs: &mut Nfs,
-    skolem_filler: &HashMap<u32, u32>,
+    skolem_target: &HashMap<u32, (u32, u32, u32)>,
 ) -> Option<Vec<RClause>> {
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     macro_rules! bail {
@@ -1344,6 +1349,7 @@ fn compile_residual(
         vars.len() - 1
     }
     let mut out = Vec::with_capacity(residual.len());
+    let mut skolem_witness: HashMap<u32, u32> = HashMap::default();
     for c in residual {
         let mut vars: Vec<&str> = Vec::new();
         let mut pins: Vec<(usize, u32)> = Vec::new();
@@ -1359,13 +1365,33 @@ fn compile_residual(
                             bail!(c, "nested fun term");
                         }
                         let fnid = it.intern(function);
-                        let filler = match skolem_filler.get(&fnid) {
-                            Some(&f) => f,
+                        let (sub, role, filler) = match skolem_target.get(&fnid) {
+                            Some(&target) => target,
                             None => bail!(c, "fun term without NF3 filler"),
+                        };
+                        let witness = match skolem_witness.entry(fnid) {
+                            std::collections::hash_map::Entry::Occupied(e) => *e.get(),
+                            std::collections::hash_map::Entry::Vacant(e) => {
+                                let witness = it.intern(&format!("__cert_witness__{function}"));
+                                nfs.concept_names.insert(witness);
+                                nfs.nf1.push(Nf1 {
+                                    sub: witness,
+                                    sup: filler,
+                                });
+                                let nf3 = match nfs.nf3.iter_mut().find(|nf| {
+                                    nf.sub == sub && nf.role == role && nf.filler == filler
+                                }) {
+                                    Some(nf3) => nf3,
+                                    None => bail!(c, "fun term without matching NF3"),
+                                };
+                                nf3.filler = witness;
+                                e.insert(witness);
+                                witness
+                            }
                         };
                         let v = vid(&mut vars, function);
                         if !pins.iter().any(|&(pv, _)| pv == v) {
-                            pins.push((v, filler));
+                            pins.push((v, witness));
                         }
                         v
                     }
@@ -2209,8 +2235,11 @@ fn repair_certify(
                                     if debug {
                                         eprintln!(
                                             "KM_ELC_CERT repair pass {pass_label}: clause \
-                                             {rci} conflict, banning choice {:?}",
-                                            triple
+                                             {rci} conflict, banning choice {:?} \
+                                             (node={}, concept={})",
+                                            triple,
+                                            it.name(triple.0),
+                                            it.name(triple.2),
                                         );
                                     }
                                     return PassOut::Conflict(triple);
@@ -2279,8 +2308,11 @@ fn repair_certify(
                             if debug {
                                 eprintln!(
                                     "KM_ELC_CERT repair pass {pass_label}: witness {} died, \
-                                     banning choice {:?}",
-                                    c, triple
+                                     banning choice {:?} (node={}, concept={})",
+                                    c,
+                                    triple,
+                                    it.name(triple.0),
+                                    it.name(triple.2),
                                 );
                             }
                             return PassOut::Conflict(triple);
@@ -3221,7 +3253,7 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
     let mut unresolved: Vec<String> = Vec::new();
     let mut it = Interner::new();
-    let (mut nfs, residual, skolem_filler) = to_nf(&clauses, &mut it)?;
+    let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
     // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
     // `residual`; the original `clauses` (millions of `JClause`, each owning
@@ -3246,7 +3278,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             }
             return None;
         }
-        match compile_residual(&residual, &mut it, &mut nfs, &skolem_filler) {
+        match compile_residual(&residual, &mut it, &mut nfs, &skolem_target) {
             Some(r) => r,
             None => {
                 if debug {
@@ -3376,7 +3408,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     drop(nfs);
     drop(rcs);
     drop(residual);
-    drop(skolem_filler);
+    drop(skolem_target);
     let mut subsumptions = std::collections::BTreeMap::new();
     for c in 0..sub_super.len() {
         let cid = c as u32;
@@ -3795,6 +3827,35 @@ mod tests {
         let res =
             classify_inner(cs1, CertMode::Check, false).expect("functional with one successor");
         assert!(subs_of(&res, "A").is_empty() || !res.inconsistent);
+    }
+
+    #[test]
+    fn cert_keeps_distinct_skolem_witnesses_with_the_same_filler() {
+        // A ≥2 R.B normalises to two R/B witness pairs plus a constraint that
+        // rejects interpretations where the two skolem functions coincide.
+        // Their common filler concept B must not collapse the two witnesses.
+        let distinct = format!(
+            "{{\"body\":[{},{{\"kind\":\"eq\",\"left\":{{\"kind\":\"fun\",\"function\":\"f\",\"arg\":{}}},\"right\":{{\"kind\":\"fun\",\"function\":\"g\",\"arg\":{}}}}}],\"head\":[]}}",
+            c("A", "x"),
+            v("x"),
+            v("x")
+        );
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "g")]),
+            cl(&[c("A", "x")], &[cf("B", "g", "x")]),
+            distinct,
+        ));
+        let res = classify_inner(cs.clone(), CertMode::Check, false)
+            .expect("same-filler skolem witnesses remain distinct");
+        assert!(!res.inconsistent);
+        assert!(!subs_of(&res, "A").contains(&"owl:Nothing".to_string()));
+        assert!(
+            classify_inner(cs, CertMode::Repair, false).is_some(),
+            "repair mode must preserve the same witness interpretation"
+        );
     }
 
     #[test]
