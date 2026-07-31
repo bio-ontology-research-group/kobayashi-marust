@@ -15,11 +15,12 @@ set -euo pipefail
 root=/ibex/scratch/hohndor/km/adaptive-composite-layout-v12-9724-gate-20260731
 km_root=/ibex/scratch/hohndor/km
 ontology=ore_ont_9724.owl
-expected_binary=a07dcffe7b509d7cb72794b55f763ec6e72bc1305614d8404fe38acebd4a5ce8
 expected_source=b8febb611fd088867960b07fca70e75a1c59ac6922026657f02be682de274239
 
-test "$(/usr/bin/sha256sum "$root/km" | /usr/bin/cut -d' ' -f1)" = "$expected_binary"
 test "$(/usr/bin/sha256sum "$root/km-f6b2188-source.tar.gz" | /usr/bin/cut -d' ' -f1)" = "$expected_source"
+expected_binary=$(/usr/bin/cat "$root/km.sha256")
+[[ $expected_binary =~ ^[0-9a-f]{64}$ ]]
+test "$(/usr/bin/sha256sum "$root/km" | /usr/bin/cut -d' ' -f1)" = "$expected_binary"
 
 work=${SLURM_TMPDIR:-/tmp}/km-v12-9724-auto-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work/run" "$root/results" "$root/failures"

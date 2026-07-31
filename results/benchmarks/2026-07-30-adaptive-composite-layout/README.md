@@ -526,9 +526,13 @@ also exact at 8,165.19 MiB (`ht_bridge`) and 8,150.66 MiB (`ht_full`). These
 local results establish the routing mechanism and signature but do not replace
 the queued source-bound IBEX repetitions or a complete corpus sweep.
 
-Source-bound IBEX gate `49662044` packages commit `f6b2188`, binary SHA-256
-`a07dcffe7b509d7cb72794b55f763ec6e72bc1305614d8404fe38acebd4a5ce8`,
-and source-archive SHA-256
+The first IBEX gate attempts, jobs `49662044` and `49662671`, correctly
+rejected a workstation-built binary before classification because it required
+glibc 2.39 while the allocated IBEX node provided glibc 2.34. The zero-work
+runner row records this as an error with a missing route trace. The replacement
+gate builds commit `f6b2188` from source in a Slurm build job, publishes the
+cluster-compatible binary SHA-256, and makes classification depend on that
+successful build. The source-archive SHA-256 is
 `b8febb611fd088867960b07fca70e75a1c59ac6922026657f02be682de274239`.
 The measured classification must record `route=ht_bridge` and pass the
 collision-safe full-IRI comparison under the 240-second/20,480-MiB contract.
