@@ -392,6 +392,15 @@ therefore needs exact typed data-assertion/ABox handling together with the
 combined inverse/number checks; changing the feature router alone would admit
 an uncertified approximation.
 
+The v10 sweep also confirms that 7499 is not automatically restored. It selects
+`nominals` and exits after 190.3972 seconds at 2,967.96 MiB. The explicit
+`certified_card_proxy_abox` mechanism remains exact, but its certificate proves
+only number-role separation (`card_number_role_separable=true`); the ABox is
+not materializable or proven TBox-irrelevant, and complete consistency is not
+established. Automatic admission therefore requires either a complete
+ABox-irrelevance plus consistency certificate or the missing qualified
+cardinality inference in the exact CB path.
+
 Specialist sweep `49654935` found no additional ordinary route for 12653.
 `ht_full`, `ht_features`, and `elc_cert` reject its feature set.
 `cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
