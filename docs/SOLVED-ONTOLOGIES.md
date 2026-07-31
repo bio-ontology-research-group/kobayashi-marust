@@ -22,7 +22,14 @@ remains historical provenance. See the accompanying
 [`TAIL-EIGHT.md`](../results/benchmarks/2026-07-18-ore-solve-routes/TAIL-EIGHT.md)
 before treating process completion as a solved ontology.
 
-The uniform 2026-07-22 panel is the authority for one frozen current binary.
+The current single default route is the source-bound v16 `km classify` sweep:
+588 of 592 ontologies complete operationally, 586 match the retained full-IRI
+gold exactly, and 2669 plus 15516 are the two adjudicated consistency
+mismatches. IBEX array `49689798` and audit `49692538` are the authoritative
+current-binary evidence.
+
+The uniform 2026-07-22 panel is retained as authority for its frozen historical
+binary and is superseded for current-default behavior by v16 above.
 It validates 562 automatic-route answers, 575 preselected-route answers, and a
 post hoc current-route union of 579. The 589 total above is a cross-revision
 source-bound ledger. In particular, the frozen current revision does not
@@ -31,6 +38,26 @@ reproduce the source-bound 10621 capsule.
 ---
 
 ## Solved via exact positive-EL ABox materialization
+
+### ore_ont_6934 via typed-ABox SHOIQ certification (2026-07-31)
+
+- **Symptom**: source profiling selected the conservative nominal path, while
+  retained fast HT measurements had not proved a generally safe admission
+  boundary for the ontology's data assertions and cardinalities.
+- **Certificate**: after normalization, KM proves that positive data assertions
+  can be omitted without changing consistency. The proof obligation accounts
+  for inherited data properties, conditional maximum/exact cardinality one,
+  duplicate values, datatype-top semantics, and unsupported constructs on each
+  property. All uncertain shapes defer to exact CB.
+- **Mechanism**: `nominal_ni_abox` runs the no-blocking SHOIQ
+  complete-answer-or-defer worker while retaining the exact nominal CB
+  fallback. Empty-suffix individual proxies, trusted ABox-only classes, and
+  inverse-functional constraints are handled exactly.
+- **Evidence**: production array `49689798` selected `nominal_ni_abox` and
+  matched the full-IRI gold in 199.3235 seconds at 1,434.64 MiB. Signature
+  SHA-256 is
+  `5e60a794400802833a9d5785abb6320b7b13d702e48a4c810462bad6c1fc931e`;
+  audit `49692538` validates the complete 592-row sweep.
 
 ### ore_ont_1579 and ore_ont_3377 (2026-07-30)
 
@@ -667,6 +694,7 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
+| 6934 | automatic `nominal_ni_abox` | full-IRI exact | Typed normalized-ABox certificate plus complete-answer-or-defer SHOIQ worker; v16 production 199.3235 s / 1,434.64 MiB. |
 | 4669 | retained production and HT executions terminate, but both outputs are unsound; logical completeness unknown | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
 | 10621 | source-bound Capsule-10 `ht_bridge`; frozen current revision returns unsupported | full-IRI exact against fresh source-built Konclude for Capsule-10 | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. Restore and revalidate this mechanism before claiming it for current main. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |

@@ -31,10 +31,10 @@ reported as empirical evidence, not as a proof of the whole executable.
   historically selected environments, optimization stages and ablations, plus
   Konclude, HermiT, ELK, RustDL, and Sequoia.
 - **Broad but not universal production coverage.** The latest completed
-  automatic sweep has 587 operational completions and 585 exact
+  automatic sweep has 588 operational completions and 586 exact
   Konclude-signature matches among 592 ontologies. Some ontologies still time
   out, decline, or have contested consistency gold. The completed sweep
-  includes the automatic 10702 and 12653 recoveries.
+  includes the automatic 6934, 10702, and 12653 recoveries.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -196,8 +196,8 @@ correctness totals are superseded.
 ### Automatic versus explicit KM routes
 
 Plain `km classify ONTOLOGY` is equivalent to `--route auto`. In the latest
-completed, source-bound 592-ontology sweep it produces 587 operational
-completions, of which 585 match the retained Konclude full-IRI signatures
+completed, source-bound 592-ontology sweep it produces 588 operational
+completions, of which 586 match the retained Konclude full-IRI signatures
 exactly. The two other completions are contested consistency cases rather than
 accepted exact matches.
 
@@ -213,13 +213,14 @@ automatic signature in 2.5909 seconds at 21.36 MiB. Dependency-bound audit job
 49680024 verifies all 592 terminal rows, the frozen binary and source archive,
 the runners, canonicalizer, watchdog, route traces, and checksums.
 
-The completed automatic sweep has five non-completing rows: `10860`, `1194`,
-`4669`, `6934`, and `7499`. Route `certified_card_proxy_abox` closes 7499
+The completed automatic sweep has four non-completing rows: `10860`, `1194`,
+`4669`, and `7499`. Route `certified_card_proxy_abox` closes 7499
 exactly when selected explicitly, but its ABox-removal precondition is not
-certified generally enough for automatic use. A retained measurement route
-previously closed 6934, but the current router still lacks a complete admission
-certificate. Ontologies 1194, 4669, and 10860 remain genuinely open under the
-standard contract. The completed sweep solves 9540, 10621, and 10702 exactly.
+certified generally enough for automatic use. The typed-ABox SHOIQ certificate
+now admits 6934 automatically through `nominal_ni_abox`; the production row
+matches exactly in 199.3235 seconds at 1,434.64 MiB. Ontologies 1194, 4669,
+and 10860 remain genuinely open under the standard contract. The completed
+sweep solves 6934, 9540, 10621, and 10702 exactly.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
 named classes claimed unsatisfiable have independent satisfiable witnesses.

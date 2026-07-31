@@ -1,5 +1,26 @@
 # Hard residual audit and gold-adjudication status
 
+## Current default-route status (2026-07-31)
+
+The source-bound v16 sweep is the current authority for one automatic
+`km classify` binary. IBEX array `49689798`, accepted by independent audit
+`49692538`, completes 588 of 592 ontologies: 586 exact full-IRI gold matches
+and two adjudicated consistency mismatches, 2669 and 15516. The four
+non-completing rows are:
+
+| Ontology | Default-route result | Current obligation |
+|---|---|---|
+| `10860` | unsupported | Four DL-safe rules contain unsupported data-property or built-in atoms; establish a complete rule procedure and authoritative gold. |
+| `1194` | error | The large SRIQ ABox exceeds the current packed-term boundary or practical CB completion budget; no validated route exists within the standard contract. |
+| `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
+| `7499` | error | Explicit `certified_card_proxy_abox` matches exactly, but dropping its ABox is not yet certified generally enough for automatic use. |
+
+Ontology 6934 is no longer residual. The post-normalization typed-ABox SHOIQ
+certificate selects `nominal_ni_abox`; it matches exactly in 199.3235 seconds
+at 1,434.64 MiB. The remainder of this document preserves older panel and
+cross-revision evidence for provenance and must not be read as current
+default-route status.
+
 ## Current panel and cross-revision ledger status (2026-07-22)
 
 The fresh uniform panel on 2026-07-22 tests the frozen current revision across

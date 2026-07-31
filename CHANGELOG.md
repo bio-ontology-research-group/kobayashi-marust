@@ -9,6 +9,50 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Complete v16 automatic sweep: 586 exact matches (2026-07-31)
+
+Source-bound IBEX array `49689798` completed all 592 default `km classify`
+tasks with binary SHA-256
+`afdc15a00168a23f4426b0ca155f54ad6c3cb65cbad745f07e5f2eef862f0e3a`.
+Corrected independent audit `49692538` verified the frozen inputs, source,
+binary, harness, checkpoints, route traces, and all terminal rows. The final
+statuses are 588 `ok`, two `error`, one `timeout`, and one `unsupported`.
+Full-IRI scoring gives 586 exact Konclude matches and two adjudicated
+consistency mismatches. The four non-completing rows are 10860, 1194, 4669,
+and 7499.
+
+The new `nominal_ni_abox` route closes 6934 automatically and exactly in
+199.3235 seconds at 1,434.64 MiB. Its signature SHA-256 is
+`5e60a794400802833a9d5785abb6320b7b13d702e48a4c810462bad6c1fc931e`.
+The regression controls remain exact, including 15846 through
+`certified_nominals` in 219.4067 seconds at 19,036.76 MiB.
+
+The first dependent audit, job `49689799`, exposed an audit-model gap: eight
+ontologies legitimately refine the source candidate `nominals` to
+`nominal_ni_abox` only after the frontend has proved the typed normalized ABox
+certificate. The revised generic check permits that transition only when the
+serialized source profile contains the required structural candidate fields;
+it contains no ontology identifiers. Audit script SHA-256 is
+`074690b2e9f3507048315d27f04e85be4ca69469c003a6c3cda934797877a57c`.
+
+### Certify typed-ABox SHOIQ routing (2026-07-31)
+
+The frontend now refines a nominal source candidate to `nominal_ni_abox` only
+after normalization proves a complete positive-data-assertion omission
+certificate. The certificate accounts for inherited data properties,
+class-conditional maximum and exact cardinality one, duplicate values,
+`rdfs:Literal`, `owl:topDataProperty`, and unsupported constructs on each
+property. The route preserves the exact CB fallback and uses the no-blocking
+SHOIQ complete-answer-or-defer worker.
+
+The bridge also accepts a valid empty internal individual suffix when its full
+IRI proxy resolves, allocates trusted ABox-only named classes, rejects generated
+markers, and retains inverse-functional clauses exactly. No CB rule premise,
+conclusion, ordering, redundancy condition, or fixpoint changed, so this work
+does not require Lean re-certification. The serial release suite passes 1,825
+tests with zero failures and eight intentional ignores. Focused IBEX job
+`49689197` matched 6934, 10702, 15846, and 6999 exactly before the full sweep.
+
 ### Complete v15 automatic sweep: 585 exact matches (2026-07-31)
 
 Source-bound IBEX array `49680023` completed all 592 automatic `km classify`

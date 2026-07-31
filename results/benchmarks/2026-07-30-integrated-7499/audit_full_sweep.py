@@ -63,10 +63,37 @@ def production_route_matches_profile(profile_row: dict, traced_route: str) -> bo
     proposed = profile_row["selected_route"]
     if traced_route == proposed:
         return True
-    return (
+    if (
         proposed == "elc"
         and traced_route == "cb_plain16"
         and profile_row.get("el_rbox_safe") is False
+    ):
+        return True
+
+    # The stable `km profile` pass deliberately reports the source-only route.
+    # Production may refine `nominals` after parsing the complete typed ABox and
+    # proving that positive data assertions are redundant. The source-bound
+    # binary can emit this trace only after that exact frontend gate; repeat the
+    # cheap source predicate here so an unrelated route mismatch still fails.
+    profile = profile_row.get("profile") or {}
+    source = profile.get("source") or {}
+    expressivity = profile.get("expressivity") or {}
+    cardinalities = sum(
+        int(source.get(key, 0) or 0)
+        for key in ("min_cardinalities", "max_cardinalities", "exact_cardinalities")
+    )
+    return (
+        proposed == "nominals"
+        and traced_route == "nominal_ni_abox"
+        and int(source.get("abox_axioms", 0) or 0) > 0
+        and int(source.get("imports", 0) or 0) == 0
+        and int(source.get("rule_axioms", 0) or 0) == 0
+        and int(source.get("unsupported_rule_axioms", 0) or 0) == 0
+        and int(source.get("role_chain_axioms", 0) or 0) == 0
+        and expressivity.get("nominal") is True
+        and expressivity.get("inverse") is True
+        and cardinalities > 0
+        and expressivity.get("functionality") is True
     )
 
 

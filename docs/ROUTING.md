@@ -40,7 +40,10 @@ It then changes `KM_ROUTE` to `manual` so an explicit second frontend pass, such
 as the absorbed pass in the sequential portfolio, cannot be re-routed.
 
 The generated tree reads only source statistics and expressivity fields. It
-does not use an ontology identifier or post-normalisation clause counts.
+does not use an ontology identifier. A small set of conservative source
+candidates may refine after normalization when the frontend has proved a typed
+payload certificate; the selected route and certificate outcome are recorded
+in the route trace.
 
 ## Konclude-compatible expressivity
 
@@ -116,6 +119,7 @@ HT combinations, plus four external baselines:
 | `ht_rules` | DL-safe-rule consistency procedure with CB classification |
 | `card_fn` | Functional properties as first-class `≤1` restrictions; measurement-only because forcing it regresses other inputs |
 | `nominals` | Exact CB nominal/ABox calculus; the required route for every ABox outside the source-certified positive separation fragment |
+| `nominal_ni_abox` | Post-normalization typed-ABox SHOIQ specialist: a complete data-assertion omission certificate gates a no-blocking complete-answer-or-defer worker, with exact nominal CB retained as fallback |
 | `certified_card_proxy_abox` | First-class cardinality arm raced against CB for a source-certified number-role fragment, with an unmaterializable ABox kept out of the card input; sound but not complete for the whole ontology, so it is measurement-only and never automatically selected |
 | `seq_on`, `seq_off` | Force the Sequoia definer ordering on or off instead of using its internal structural gate |
 | `elk`, `hermit`, `konclude_w1`, `konclude_w16` | External baselines, with official Konclude measured at one and 16 workers |
@@ -154,6 +158,23 @@ plain-CB timeouts whenever `KM_ROUTE` was unset — the deployed harness default
 Named bundles normalize their conflicting routing keys to the same settings as
 the IBEX matrix. Diagnostic settings remain available. `manual` is the route to
 use when a caller wants complete control over individual algorithm settings.
+
+### Typed-ABox SHOIQ refinement
+
+The source tree initially labels eligible nominal/inverse/functionality inputs
+as `nominals`. After normalization, `nominal_ni_abox` is selected only if the
+frontend proves the complete positive-data-assertion omission obligation. The
+gate accounts for inherited data roles, conditional maximum and exact
+cardinality one, duplicate values, `rdfs:Literal`, top data properties, and
+unsupported constructs per property. It also requires the source-side nominal,
+inverse, functionality, ABox, import, rule, and role-chain conditions. Any
+unknown interaction leaves the route as exact `nominals`.
+
+The specialist preserves inverse-functional equality clauses, accepts only
+trusted named ABox classes and resolvable individual proxies, and rejects
+generated/internal symbols. Its SHOIQ worker may return a complete taxonomy or
+defer; defer runs the exact CB fallback. This route closed 6934 in the audited
+v16 sweep without changing the accepted results of the other 591 inputs.
 
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:

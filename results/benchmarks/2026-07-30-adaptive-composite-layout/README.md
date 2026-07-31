@@ -1,5 +1,20 @@
 # Adaptive composite-term layout candidate
 
+## v16 automatic-route result (2026-07-31)
+
+The current source-bound default-route sweep supersedes the intermediate
+baselines below. IBEX array `49689798` completed all 592 tasks with 588
+operational answers, 586 exact full-IRI gold matches, and two adjudicated
+consistency mismatches. The remaining rows are two errors (1194 and 7499), one
+timeout (4669), and one unsupported ontology (10860). Independent audit
+`49692538` passed all source, binary, harness, checkpoint, route-trace, and row
+integrity checks.
+
+The improvement over v15 is ontology 6934. The automatic
+`nominal_ni_abox` route matches exactly in 199.3235 seconds at 1,434.64 MiB.
+The focused implementation capsule is
+[`../2026-07-31-6934-ni-abox/`](../2026-07-31-6934-ni-abox/).
+
 The nominal CB calculus stores each grounded successor `f(o)` in one `u32`.
 Its established 17-bit-individual/15-bit-function split covers ORE 15846
 (129,647 individuals and 20,932 functions), but ORE 1194 has the opposite
