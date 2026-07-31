@@ -22,6 +22,11 @@ Canonical full-IRI comparison against Konclude reports:
 The same signature is reproduced by the local automatic
 `km classify` route in about 2.65 seconds.
 
+IBEX automatic-route gate job `49676814` independently selected
+`nominal_ni_tbox` from `KM_ROUTE=auto` and matched the same signature in
+2.2885 seconds at 21.72 MiB using the v14 sweep binary
+`47514b377f31b76284dab43853c6a5a2ac90133472cec37bce567ff0dcd3ca0a`.
+
 ## Mechanism
 
 The `nominal_ni_tbox` automatic route is selected from source features, not
@@ -43,10 +48,13 @@ equality merging and must not cause a false defer.
 - The routing bundle test checks every required environment setting.
 - The local automatic route selects `nominal_ni_tbox` and reproduces the
   canonical gold signature.
+- IBEX job `49676814` checks both the profile proposal and the route actually
+  executed by the production harness.
 - The source-bound full 592-ontology automatic-route sweep is IBEX job
   `49676527`, dependent on native build job `49676524`.
 - The full-sweep result is pending. Until its exact signature and route audit
   complete, the completed production benchmark total remains unchanged.
 
 `ibex_build.sbatch` and `ibex_probe.sbatch` reproduce the focused source-bound
-probe. `ibex_build_v14.sbatch` builds the full-sweep candidate.
+probe. `ibex_auto_probe_v14.sbatch` checks automatic routing with the sweep
+binary. `ibex_build_v14.sbatch` builds the full-sweep candidate.
