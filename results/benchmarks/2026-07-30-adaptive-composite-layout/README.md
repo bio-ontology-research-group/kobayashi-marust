@@ -287,3 +287,29 @@ retaining 15846 on `certified_nominals`. It also sends large Horn functional
 terminologies with at least 100,000 clauses and 10,000 function symbols to the
 one-thread production portfolio, recovering 9724 below the memory cap. Both
 changes select existing exact portfolios and do not change derivations.
+
+The scheduling source is commit `784a36e`. Its complete serial release suite
+passes, including dedicated positive and negative routing tests and the
+retained large-nominal controls. The source archive SHA-256 is
+`0a7162a46b8de15588169b93baa67cf3b528f867f943b83ae17175db12730d33`;
+source-bound build `49653229` produced binary SHA-256
+`888e2e1fa9314a87069a0b022facf4856100c7e2d210ff938567252a5634007f`.
+
+Automatic-route gate `49653230` matched the frozen Konclude signature on all
+five ordinary controls:
+
+| Ontology | Selected route | Wall seconds | Peak MiB | Result |
+|---|---:|---:|---:|---:|
+| 1481 | `production_all` | 0.9985 | 224.79 | exact |
+| 15672 | `certified_nominals` | 0.2127 | 39.81 | exact |
+| 15846 | `certified_nominals` | 178.3469 | 18,786.23 | exact |
+| 9654 | `production_all` | 12.0373 | 1,198.39 | exact |
+| 9724 | `production_all1` | 37.5402 | 16,294.18 | exact |
+
+Collision-safe automatic gate `49653231` also matched 3524's established
+full-IRI Konclude fingerprint in 19.8445 seconds at 2,582.70 MiB.
+
+Complete v9 array `49653680` and strict audit `49653681` replace the canceled,
+never-started v8 array and audit. They use the accepted v9 binary above,
+retain the collision-safe path only for 3524 and 15703, and wait for the v4
+audit so the two complete sweeps do not compete for the same Gold-6248 nodes.
