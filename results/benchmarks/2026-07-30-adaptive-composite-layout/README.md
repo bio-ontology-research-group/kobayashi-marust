@@ -312,10 +312,9 @@ five ordinary controls:
 Collision-safe automatic gate `49653231` also matched 3524's established
 full-IRI Konclude fingerprint in 19.8445 seconds at 2,582.70 MiB.
 
-Complete v9 array `49654040` and strict audit `49654041` replace the canceled,
-never-started v8 array and audit. They use the accepted v9 binary above,
-retain the full-IRI-safe path only for 3524, 13503, and 15703, and wait for the v4
-audit so the two complete sweeps do not compete for the same Gold-6248 nodes.
+Complete v9 array `49654040` and strict audit `49654041` were held before
+execution and then canceled when the exact v10 gate passed. They produced no
+benchmark rows.
 
 Full-IRI-safe gate `49654146` validates the third special case end to end.
 Automatic 13503 finishes in 0.0407 seconds at 8.37 MiB, with 113
@@ -344,3 +343,32 @@ same exact nominal-aware CB fallback, and targets 10908 without an
 ontology-name test. The predicate matches only 10908 in the frozen 592-profile
 table. Its complete serial release suite passes with 1,814 library tests, eight
 ignored, and all integration tests passing.
+
+The accepted scheduling source is commit `9ef5106`. Source-bound build
+`49654854` produced binary SHA-256
+`3b5cde49b6ed3f759be585ed08ecbdec51e4327c4f31ba23427678529a129208`;
+the source archive SHA-256 is
+`96b6adc4c1d2391f92da45bfd1d5e53ad69985e438333da6b6687e13ef7eb566`.
+Gate `49655059` passed all five automatic-route cases exactly:
+
+| Ontology | Selected route | Wall seconds | Peak MiB | Result |
+|---|---:|---:|---:|---:|
+| 10908 | `production_all` | 204.6423 | 1,016.07 | exact |
+| 9654 | `production_all` | 11.4120 | 1,199.31 | exact |
+| 9724 | `production_all1` | 35.7287 | 16,425.73 | exact |
+| 1481 | `production_all` | 0.9851 | 225.86 | exact |
+| 15846 | `certified_nominals` | 188.3523 | 18,927.86 | exact |
+
+The complete v10 production sweep is array job `49655276`, with strict
+dependent audit `49655277`. The deployed package contains the accepted binary
+and source archive, all runner dependencies, a SHA-256 manifest, import
+preflights, resumable terminal checkpoints, and the full-IRI-safe path for
+3524, 13503, and 15703. This sweep is the authoritative test of the automatic
+feature-driven portfolio; the focused gate alone is not a corpus-wide coverage
+claim.
+
+Specialist sweep `49654935` found no additional ordinary route for 12653.
+`ht_full`, `ht_features`, and `elc_cert` reject its feature set.
+`cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
+The separately measured forced-HT closure remains diagnostic evidence until
+its bypassed guards have a semantic certificate.

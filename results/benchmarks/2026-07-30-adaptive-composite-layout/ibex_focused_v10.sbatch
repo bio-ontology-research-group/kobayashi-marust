@@ -32,6 +32,8 @@ ontology=${ontologies[$index]}
 expected_route=${expected_routes[$index]}
 work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v10-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/focused/results" "$root/focused/failures"
+PYTHONPATH="$root" /usr/bin/python3 -c \
+  'import full_panel_run_one, ore_canon'
 observed_route=$("$root/km" profile "$km_root/corpus/$ontology" |
   /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["selected_route"])')
 if [[ $observed_route != "$expected_route" ]]; then
