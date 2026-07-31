@@ -406,3 +406,18 @@ Exact automatic gate `49656234` passed both cases:
 |---|---:|---:|---:|---:|
 | 15803 | `production_all` | 32.8165 | 2,600.87 | exact |
 | 6722 | `production_all` | 7.0989 | 1,096.98 | exact |
+
+The complete v11 sweep package is staged at
+`/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731`.
+It binds the binary and source archive above to the same strict runner,
+collision-safe full-IRI checks, terminal checkpoints, import preflight, and
+dependent corpus audit used by v10. `SHA256SUMS` verifies every executable,
+source, runner, canonicalizer, and audit input. The v11 array is intentionally
+not submitted until the v10 audit accepts all 592 terminal rows, so the two
+production sweeps cannot contend for the fixed benchmark nodes.
+
+The v10 sweep's 4669 timeout is expected, not a scheduling regression. Current
+KM rejects the historical bridge result because targeted satisfiability checks
+disproved that taxonomy. No validated route currently closes 4669, and it
+remains an explicit residual rather than being counted from a known-unsound
+historical output.

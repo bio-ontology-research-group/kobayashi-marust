@@ -1,0 +1,143 @@
+#!/bin/bash
+# Complete source-bound, resumable 592-ontology automatic-route sweep.
+# The deployed root must contain the accepted v11 binary, source archive,
+# fingerprint, and all production runner/audit helpers before submission.
+#SBATCH --job-name=km-adaptive-comp-v11-592
+#SBATCH --account=pi-hohndor
+#SBATCH --partition=batch
+#SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --nodelist=cn512-06-r,cn512-07-l,cn512-02-r,cn512-11-r,cn512-03-r,cn512-08-r,cn512-14-r,cn512-05-l,cn512-03-l,cn512-16-l
+#SBATCH --nodes=1
+#SBATCH --time=00:12:00
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=24G
+#SBATCH --exclusive
+#SBATCH --array=0-591%10
+#SBATCH --export=NONE
+#SBATCH --output=/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731/slurm-%A_%a.out
+
+set -euo pipefail
+root=/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731
+km_root=/ibex/scratch/hohndor/km
+ontology_list=$km_root/routing_20260715/onts.txt
+index=${SLURM_ARRAY_TASK_ID:?}
+cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
+  echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
+  exit 2
+fi
+[[ $index =~ ^([0-9]|[1-9][0-9]|[1-5][0-9][0-9])$ ]]
+(( index < 592 ))
+[[ $(/usr/bin/wc -l < "$ontology_list") -eq 592 ]]
+ontology=$(/usr/bin/sed -n "$((index + 1))p" "$ontology_list")
+[[ $ontology =~ ^ore_ont_[0-9]+\.owl$ ]]
+
+PYTHONPATH="$root" /usr/bin/python3 -c \
+  'import full_panel_fingerprint, full_panel_run_one, full_panel_run_one_collision_safe, full_panel_run_one_fulliri_only, ore_canon, tree_watchdog'
+
+if [[ -e "$root/results/$ontology.json" ]]; then
+  /usr/bin/python3 - "$root/results/$ontology.json" "$ontology" "$index" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2]:
+    raise SystemExit(f"ontology mismatch in existing row: {row}")
+if row.get("slurm_array_task_id") != str(sys.argv[3]):
+    raise SystemExit(f"task mismatch in existing row: {row}")
+if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
+    raise SystemExit(f"invalid existing terminal status: {row}")
+PY
+  echo "ALREADY_COMPLETE index=$index ontology=$ontology"
+  exit 0
+fi
+
+work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v11-592-${SLURM_JOB_ID}
+/usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
+runner=$root/full_panel_run_one.py
+if [[ $ontology == ore_ont_3524.owl || $ontology == ore_ont_13503.owl || $ontology == ore_ont_15703.owl ]]; then
+  runner=$root/full_panel_run_one_collision_safe.py
+fi
+
+/usr/bin/python3 "$runner" \
+  --kind km \
+  --arm km_route_auto_adaptive_composite_layout_v11 \
+  --ontology "$km_root/corpus/$ontology" \
+  --binary "$root/km" \
+  --workers 16 \
+  --timeout 240 \
+  --memcap-mb 20480 \
+  --gold "$km_root/cmp2/out/konclude/konclude__$ontology.sig.gz" \
+  --gold-kind konclude \
+  --workdir "$work/run" \
+  --failures-dir "$root/failures" \
+  --checkpoint "$root/results/$ontology.checkpoint.json" \
+  --env KM_ROUTE=auto \
+  > "$root/results/$ontology.json.tmp"
+
+/usr/bin/python3 - "$root/results/$ontology.json.tmp" "$ontology" "$index" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2]:
+    raise SystemExit(f"ontology mismatch: {row.get('ont')} != {sys.argv[2]}")
+if row.get("slurm_array_task_id") != str(sys.argv[3]):
+    raise SystemExit(
+        f"task mismatch: {row.get('slurm_array_task_id')} != {sys.argv[3]}"
+    )
+if not row.get("checkpointed"):
+    raise SystemExit(f"runner did not checkpoint terminal state: {row}")
+if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
+    raise SystemExit(f"invalid terminal status: {row}")
+expected_fulliri = {
+    "ore_ont_3524.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+    "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",
+    "ore_ont_15703.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+}
+if sys.argv[2] in expected_fulliri:
+    expected = expected_fulliri[sys.argv[2]]
+    if row.get("status") != "ok" or row.get("verdict") != "match":
+        raise SystemExit(f"collision-safe adjudication failed: {row}")
+    if row.get("fulliri_taxonomy_sha256") != expected:
+        raise SystemExit(f"collision-safe fingerprint mismatch: {row}")
+PY
+/usr/bin/mv "$root/results/$ontology.json.tmp" "$root/results/$ontology.json"
+
+profile_tmp="$root/profiles/$ontology.json.tmp"
+profile_err="$root/profiles/$ontology.err.tmp"
+if timeout 240 /usr/bin/prlimit --as=25769803776 -- \
+    "$root/km" profile "$km_root/corpus/$ontology" > "$profile_tmp" 2> "$profile_err" \
+  && /usr/bin/python3 - "$profile_tmp" "$ontology" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2] or row.get("status") != "ok":
+    raise SystemExit(f"invalid profile row: {row}")
+if not row.get("selected_route"):
+    raise SystemExit(f"missing selected route: {row}")
+PY
+then
+  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
+  /usr/bin/rm -f "$profile_err"
+else
+  profile_rc=$?
+  /usr/bin/python3 - "$ontology" "$profile_rc" "$profile_err" > "$profile_tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+err = pathlib.Path(sys.argv[3])
+print(json.dumps({
+    "ont": sys.argv[1],
+    "status": "error",
+    "selected_route": None,
+    "returncode": int(sys.argv[2]),
+    "error": err.read_text(errors="replace")[-4000:] if err.exists() else "",
+}))
+PY
+  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
+  /usr/bin/mv "$profile_err" "$root/profiles/$ontology.err"
+fi
+echo "TASK_COMPLETE index=$index ontology=$ontology"
