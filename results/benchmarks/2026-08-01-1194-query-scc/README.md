@@ -29,5 +29,8 @@ This is exact but too small to close 1194 by itself. A separate round-robin
 static partition was tested and rejected: after 90 seconds its workers reached
 at most 300 roots, versus 1,150 with contiguous chunks, while peak RSS rose from
 about 2.38 to 2.54 GiB. Contiguous signature locality is therefore retained.
-Neither timed diagnostic completed classification, and neither is a closure or
-benchmark result.
+A clause-occurrence-weighted contiguous partition was also rejected. It formed
+highly uneven slices of 1,985 to 12,629 roots and reached at most 1,050 roots in
+90 seconds, versus 1,150 for equal contiguous slices. Clause occurrence is not
+a useful root-cost proxy here. None of these timed diagnostics completed
+classification, and none is a closure or benchmark result.
