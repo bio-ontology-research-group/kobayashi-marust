@@ -9,6 +9,29 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Scope native SameIndividual admission to the 10702 specialist (2026-07-31)
+
+The generic native ABox bridge again rejects `SameIndividual` transactionally
+and leaves classification to the exact fallback. Only the source-profile-gated
+`nominal_ni_tbox` specialist may collapse equality components into native
+roots. This preserves the automatic 10702 recovery without diverting large
+equality-heavy ontologies into an unsuitable native run.
+
+The change fixes a measured v14 regression on `ore_ont_15846.owl`, whose
+129,647-individual ABox contains 66,423 `SameIndividual` axioms. Both the
+pre-query-collapse v14 binary and a query-collapse-disabled candidate timed out
+at 240 seconds near 6.4 GiB, proving that query equivalence was not the cause.
+The source-bound replacement was built by IBEX job `49679551` from archive
+SHA-256
+`f5be1ce9ea8a6b663a39cac50c9a02c4eeb29342a86d8243540a8cf2ffbbb6fc`;
+binary SHA-256 is
+`914c7bb517ef90182a420f4cbbaec7051720b291d74db4fdd2b1e8c6eca72ef0`.
+Automatic-route gate `49679552` matched Konclude exactly on all three arms:
+10702 in 2.2759 seconds at 21.39 MiB, 15846 in 209.9367 seconds at
+19,060.12 MiB, and control 6999 in 0.2980 seconds at 83.06 MiB. The complete
+serial release library suite passes with 1,817 tests, zero failures, and eight
+intentional ignores.
+
 ### Complete v13 automatic sweep: 584 exact matches (2026-07-31)
 
 Source-bound IBEX array `49665768` completed all 592 automatic `km classify`

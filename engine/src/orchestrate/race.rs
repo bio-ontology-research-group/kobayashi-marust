@@ -1153,14 +1153,15 @@ fn spawn_ht(
     // never add one. Every other worker keeps today's unconditional install.
     let card_proxy_abox = std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
+    let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some();
     if card_proxy_abox {
         let mut native = tin.clone();
-        cb_to_ht::install_nominal_abox(&mut native, &nominal_abox);
+        cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
         if native_abox_role_automata_separable(&native) {
             tin = native;
         }
     } else if !certified_tbox_only {
-        cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
+        cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same);
     }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(

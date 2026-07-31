@@ -387,6 +387,21 @@ fn is_false(value: &bool) -> bool {
 /// The function is intentionally fail closed: it installs no partial native
 /// state, and a nominal-bearing incomplete payload adds a route fence.
 pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAboxMeta) -> bool {
+    install_nominal_abox_with_same(tin, meta, false)
+}
+
+/// Install the typed ABox, optionally collapsing source `SameIndividual`
+/// components into one native root.
+///
+/// Equality collapsing is deliberately not part of the generic bridge
+/// contract: on large equality-heavy ABoxes it can divert classification away
+/// from the exact CB fallback. The certified nominal-NI specialist opts in
+/// explicitly after its source-profile gate has selected that route.
+pub(crate) fn install_nominal_abox_with_same(
+    tin: &mut TInput,
+    meta: &crate::json_io::NominalAboxMeta,
+    allow_same: bool,
+) -> bool {
     use std::collections::{HashMap, HashSet};
 
     tin.nominal_abox = meta.clone();
@@ -415,6 +430,12 @@ pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAbox
             } else {
                 meta.unsupported.join("; ")
             });
+        }
+        if !allow_same && !meta.same.is_empty() {
+            return Err(
+                "SameIndividual requires equality merging not implemented by the native HT bridge"
+                    .into(),
+            );
         }
         let mut concepts = tin.concepts.clone();
         let mut roles = tin.roles.clone();
@@ -3120,12 +3141,40 @@ mod native_abox_install_tests {
             ..NominalAboxMeta::default()
         };
 
-        assert!(install_nominal_abox(&mut tin, &meta));
+        assert!(install_nominal_abox_with_same(&mut tin, &meta, true));
         assert_eq!(tin.native_abox.individuals.len(), 2);
         assert_eq!(tin.native_abox.individuals[0].proxies.len(), 2);
         assert_eq!(tin.native_abox.individuals[0].assertions, vec![0, 1]);
         assert_eq!(tin.native_abox.different, vec![(0, 1)]);
         assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1)]);
+    }
+
+    #[test]
+    fn same_individual_is_rejected_by_default_without_partial_install() {
+        let mut tin = TInput {
+            concepts: vec!["A".into()],
+            ..TInput::default()
+        };
+        let before = tin.clone();
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("alias", "__nom__alias", None),
+            ],
+            same: vec![("a".into(), "alias".into())],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(!install_nominal_abox(&mut tin, &meta));
+        assert_eq!(tin.concepts, before.concepts);
+        assert_eq!(tin.roles, before.roles);
+        assert_eq!(tin.clauses, before.clauses);
+        assert_eq!(tin.nominals, before.nominals);
+        assert_eq!(tin.native_abox, before.native_abox);
+        assert_eq!(tin.fenced.len(), 1);
+        assert_eq!(tin.fenced[0].reason, "incomplete-nominal-abox");
+        assert!(tin.fenced[0].detail.contains("SameIndividual"));
     }
 
     #[test]
