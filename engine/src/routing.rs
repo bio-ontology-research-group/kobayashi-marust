@@ -505,6 +505,44 @@ fn giant_flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
         && source.max_concept_depth <= 1
 }
 
+/// Large ABoxes without number restrictions are better served by the complete
+/// production portfolio than by eagerly materializing every nominal in the CB
+/// root context. The portfolio retains the exact nominal fallback, so this is
+/// a scheduling decision even when data-property assertions prevent the
+/// narrower typed-object-ABox bridge certificate.
+fn large_no_cardinality_abox_production_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms >= 100_000
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.qualified_cardinality
+        && source.datatype_constructors == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+}
+
+/// A large Horn terminology with many functional/inverse-functional Skolem
+/// terms can exceed the process-tree cap when the production portfolio runs
+/// sixteen CB workers. Its one-thread variant computes the same fixpoint with
+/// substantially lower memory.
+fn large_horn_functional_terminology_single_thread_candidate(
+    profile: &OntologyProfile,
+) -> bool {
+    let source = &profile.source;
+    let clauses = &profile.clauses;
+    source.abox_axioms == 0
+        && clauses.clauses >= 100_000
+        && clauses.horn_clauses == clauses.clauses
+        && clauses.function_term_symbols >= 10_000
+        && (source.functional_role_axioms > 0 || source.inverse_functional_role_axioms > 0)
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.datatype_constructors == 0
+}
+
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
     if profile.source.unsupported_rule_axioms > 0 {
         SemanticFragment::UnsupportedRules
@@ -573,6 +611,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
             Route::CertifiedNominals
         }
+        SemanticFragment::Nominal if large_no_cardinality_abox_production_candidate(profile) => {
+            Route::ProductionAll
+        }
         // Typed object-ABoxes without number restrictions do not need the
         // cardinality-oriented bridge portfolio.  The complete production
         // portfolio retains the exact nominal fallback and gives its plain CB
@@ -616,6 +657,11 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // axioms remain live. Nominal inputs stay on the exact nominal fallback
         // here until the combined certified-nominals portfolio is installed.
         SemanticFragment::SriqCore if giant_flat_taxonomy_el_candidate(profile) => Route::Elc,
+        SemanticFragment::SriqCore
+            if large_horn_functional_terminology_single_thread_candidate(profile) =>
+        {
+            Route::ProductionAll1
+        }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
             if profile.inverse_cardinality_role_separable =>
         {
@@ -1655,6 +1701,57 @@ mod tests {
             }
             assert!(!giant_flat_taxonomy_el_candidate(&candidate));
         }
+    }
+
+    #[test]
+    fn large_data_assertion_abox_without_cardinality_uses_production() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 607_933;
+        profile.source.class_assertions = 382_511;
+        profile.source.role_assertions = 225_420;
+        profile.source.distinct_individuals = 116_325;
+        profile.source.declared_data_properties = 1;
+        profile.source.distinct_data_properties = 1;
+        profile.source.nominals = 19;
+        profile.source.datatype_constructors = 0;
+        profile.expressivity.nominal = true;
+        profile.expressivity.nominal_individual = true;
+        profile.expressivity.datatype = false;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(large_no_cardinality_abox_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::ProductionAll);
+
+        profile.source.min_cardinalities = 1;
+        profile.expressivity.cardinality = true;
+        assert!(!large_no_cardinality_abox_production_candidate(
+            &profile
+        ));
+    }
+
+    #[test]
+    fn large_horn_functional_terminology_uses_single_thread_production() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 37_696;
+        profile.source.tbox_axioms = 35_531;
+        profile.source.rbox_axioms = 2_165;
+        profile.source.functional_role_axioms = 337;
+        profile.source.inverse_functional_role_axioms = 337;
+        profile.clauses.clauses = 139_634;
+        profile.clauses.horn_clauses = profile.clauses.clauses;
+        profile.clauses.function_term_symbols = 14_115;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(large_horn_functional_terminology_single_thread_candidate(
+            &profile
+        ));
+        assert_eq!(select(&profile), Route::ProductionAll1);
+
+        profile.clauses.disjunctive_clauses = 1;
+        profile.clauses.horn_clauses -= 1;
+        assert!(!large_horn_functional_terminology_single_thread_candidate(
+            &profile
+        ));
     }
 
     #[test]

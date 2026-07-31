@@ -267,3 +267,23 @@ result in the terminal row, and deletes the large taxonomy. Wrapper gate
 Complete v8 array `49652271` and strict audit `49652272` replace the cancelled,
 never-started v5 array and audit. The v8 array remains held on
 `afterok:49646978` so the v4 baseline finishes without resource competition.
+
+Current-v8 residual route array `49652352` tested feature-compatible exact
+portfolios for the first failures exposed by the partial v4 baseline. It
+restored three cases:
+
+- 9654: `production_all`, exact in 10.7848 seconds at 1,198.05 MiB.
+- 9724: `production_all1`, exact in 33.0192 seconds at 10,234.14 MiB
+  (`production_all8` is also exact but slower and larger).
+- 7499: `certified_card_proxy_abox`, exact in 96.5817 seconds at 1,088.96
+  MiB. This remains an explicit measurement route because it drops the ABox
+  and does not yet carry the consistency and ABox-irrelevance certificates
+  required for safe automatic selection.
+
+The next scheduling patch sends large nominal ABoxes without cardinality or
+datatype constructors to the complete production portfolio after the earlier
+large-nominal bridge gate. This catches 9654’s data-property ABox while
+retaining 15846 on `certified_nominals`. It also sends large Horn functional
+terminologies with at least 100,000 clauses and 10,000 function symbols to the
+one-thread production portfolio, recovering 9724 below the memory cap. Both
+changes select existing exact portfolios and do not change derivations.
