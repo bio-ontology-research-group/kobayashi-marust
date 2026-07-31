@@ -825,11 +825,28 @@ impl Reasoner {
         if std::env::var_os("KM_STATIC_SCHED").is_some() || nominal_static {
             let chunk_len = queries.len().div_ceil(threads);
             let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
+            // Diagnostic scheduling gate: finish the inter-context message
+            // fixpoint periodically instead of accumulating one queue over an
+            // entire static worker slice. Reusing the same Engine preserves all
+            // contexts and clauses; run_for merely reaches the same monotone,
+            // confluent fixpoint earlier between root batches. Default is the
+            // established one-shot schedule until real-ontology A/B evidence
+            // establishes a useful batch size.
+            let query_batch = std::env::var("KM_QUERY_BATCH")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|&value| value > 0);
             let partials: Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)> = chunks
                 .par_iter()
                 .map(|chunk| {
                     let mut e = Engine::from_prepared(&prepared);
-                    e.run_for(chunk);
+                    if let Some(batch) = query_batch {
+                        for query_batch in chunk.chunks(batch) {
+                            e.run_for(query_batch);
+                        }
+                    } else {
+                        e.run_for(chunk);
+                    }
                     (
                         e.subsumptions(),
                         e.inconsistent(),
@@ -1068,6 +1085,34 @@ mod tests {
         let (representatives, groups) = probe.collapse_mutual_unit_queries(&queries);
         assert_eq!(representatives, queries);
         assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn repeated_run_for_batches_match_one_shot_fixpoint() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
+            cl(vec![c("A", vx())], vec![c("B", fx("f"))]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+            cl(
+                vec![r("R", vx(), vn("y")), c("C", vn("y"))],
+                vec![c("D", vx())],
+            ),
+            cl(vec![c("E", vx())], vec![c("A", vx())]),
+        ];
+        let reasoner = Reasoner::new(&clauses);
+        let prepared = reasoner.prepare();
+        let queries = prepared.named_queries();
+
+        let mut one_shot = Engine::from_prepared(&prepared);
+        one_shot.run_for(&queries);
+        let mut batched = Engine::from_prepared(&prepared);
+        for batch in queries.chunks(2) {
+            batched.run_for(batch);
+        }
+
+        assert_eq!(batched.subsumptions(), one_shot.subsumptions());
+        assert_eq!(batched.inconsistent(), one_shot.inconsistent());
+        assert_eq!(batched.incomplete(), one_shot.incomplete());
     }
 
     #[test]
