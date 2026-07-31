@@ -67,6 +67,17 @@ Three ontologies remain unclosed:
 | `10860` | unsupported and no authoritative full gold | Four of 17 DL-safe rules contain data-property or SWRL built-in atoms outside KM's sound rule encoding; CB bypass reaches its internal cap. |
 | `1194` | no completion within 240 s / 20 GiB | Konclude exceeds 20 GiB and HermiT times out on the 221,086-assertion SRIQ ABox. KM's own 20 GiB wall was the per-worker clone of the million-clause arena; sharing one prepared ontology across parallel CB workers cut the 56-thread engine peak from 19.58 GiB to 4.15 GiB (2026-07-30, [`../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md)). The adaptive composite-term layout now represents this ontology losslessly. A source-current `km classify` run on 2026-07-31 selected `nominals`, finished the frontend in 8.64 seconds, and ran the exact CB worker to its 190-second central cap; it returned no taxonomy after 198.98 seconds total at 3.58 GiB peak. KM is now wall-clock bound, not term-encoding or memory bound. |
 
+The certified-EL investigation of `1194` now passes the original same-filler
+Skolem-witness obstruction, but exposes the next exact model-construction gap.
+Residual concepts `Q_118720` and `Q_118721` encode the exhaustive, disjoint
+partition between at most two and at least three `connects` successors in
+`UBERON_0001075`. The current greedy repair repeatedly makes a locally
+incompatible side choice and reconstructs the full model. Setting its restart
+budget to zero was tested as a diagnostic: it declined safely after 113.92
+seconds at 5.15 GiB and emitted no taxonomy. Closing this path requires a
+cardinality-aware partition assignment that still passes every residual
+clause, not a smaller retry budget.
+
 The executable identities, full-IRI fingerprints, told-edge checks, HermiT
 counterexamples, and per-ontology commands are retained in the source-bound
 ledger above. Historical route provenance remains under

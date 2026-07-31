@@ -37,6 +37,14 @@ library tests, all integration targets, and eight intentional ignores. This
 changes only the certificate model construction; the final all-residual-clause
 check remains the complete-answer gate, and no CB-calculus rule changes.
 
+On ORE 1194 this correction reaches the next residual family rather than
+closing the ontology. `Q_118720` and `Q_118721` form the exhaustive disjoint
+partition between at most two and at least three qualified `connects`
+successors. A restart-zero diagnostic still declined, in 113.92 seconds at
+5.15 GiB, because the death-tolerant model pass encountered the same
+empty-head contradiction. The next closure step must construct a consistent
+cardinality-aware partition model; reducing the retry budget is insufficient.
+
 ### Complete automatic sweep: 587 exact matches (2026-07-31)
 
 Source-bound IBEX array `49701329` completed all 592 default `km classify`
