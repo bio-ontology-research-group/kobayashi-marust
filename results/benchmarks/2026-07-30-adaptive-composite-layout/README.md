@@ -367,6 +367,12 @@ preflights, resumable terminal checkpoints, and the full-IRI-safe path for
 feature-driven portfolio; the focused gate alone is not a corpus-wide coverage
 claim.
 
+Its terminal row for 3215 confirms that the historical restoration is now part
+of the automatic portfolio. `production_all` matches the frozen signature
+exactly in 169.5591 seconds at 7,490.09 MiB, with 3,923,171 subsumptions and no
+unsatisfiable named classes. The result is bound to v10 binary SHA-256
+`3b5cde49b6ed3f759be585ed08ecbdec51e4327c4f31ba23427678529a129208`.
+
 Specialist sweep `49654935` found no additional ordinary route for 12653.
 `ht_full`, `ht_features`, and `elc_cert` reject its feature set.
 `cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
