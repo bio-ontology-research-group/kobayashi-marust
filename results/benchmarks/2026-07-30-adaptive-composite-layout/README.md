@@ -382,6 +382,16 @@ bypasses the completion guard and is measurement evidence rather than an
 automatic route contract. v11 must therefore remain held while 6934 is either
 given a sound feature certificate or retained as an explicit regression.
 
+Source-bound trace job `49658482` localizes the missing certificate. Conversion
+drops no clauses, but records four fences: inverse functionality,
+nominal+inverse interaction, inverse+number interaction, and an incomplete
+nominal ABox because 624 data-property assertions have no typed completion
+representation. Bypassing only the outer gate runs the generic HT worker and
+returns, but it does not discharge those four obligations. A sound restoration
+therefore needs exact typed data-assertion/ABox handling together with the
+combined inverse/number checks; changing the feature router alone would admit
+an uncertified approximation.
+
 Specialist sweep `49654935` found no additional ordinary route for 12653.
 `ht_full`, `ht_features`, and `elc_cert` reject its feature set.
 `cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
