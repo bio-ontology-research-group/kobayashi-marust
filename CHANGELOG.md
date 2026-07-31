@@ -9,6 +9,16 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Revalidate the current ORE 1194 blocker (2026-07-31)
+
+A source-current default `km classify` run establishes that ORE 1194 no longer
+fails at the packed composite-term boundary. The automatic route selected
+`nominals`, completed frontend processing in 8.64 seconds, and ran the exact
+CB worker to its 190-second central cap. It emitted no taxonomy and returned
+after 198.98 seconds total at 3.58 GiB peak RSS. The remaining operational
+blocker is therefore exact-search wall time, not the former `f(o)` layout or
+the 20-GiB memory limit. The reasoner still fails closed.
+
 ### Preserve distinct same-filler Skolem witnesses in the EL certificate (2026-07-31)
 
 The certified EL canonical model no longer identifies two different Skolem
