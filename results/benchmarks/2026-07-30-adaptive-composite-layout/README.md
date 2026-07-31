@@ -582,6 +582,11 @@ route can be selected. The package manifest binds the IBEX-built binary,
 `f6b2188` source archive, runners, full-IRI wrappers, canonicalizer, watchdog,
 array script, and audit script.
 
+A synthetic 592-row audit test confirms this contract in both directions: a
+declared unsupported-before-route exception passes, while an otherwise valid
+terminal/checkpoint pair with an unlisted missing route trace fails with the
+ontology named in the diagnostic.
+
 Current source under the exact retained 10702 manual environment did not
 restore that ontology locally: it timed out at 240 seconds after reaching
 18,394.76 MiB. This rules out a route-label-only fix. Source-bound array
