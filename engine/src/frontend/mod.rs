@@ -496,16 +496,19 @@ fn ofn_to_clauses_requested(
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let mut profile = profile_builder.finish(text.len() as u64);
-    // Kept opt-in until the downstream rule-consistency worker also completes
-    // 10860 within the production contract. The certificate itself is exact,
-    // but admitting the ontology only to time out would regress the default
-    // route's explicit unsupported diagnosis.
+    // A certified rule/ABox clash makes the full ontology inconsistent before
+    // worker selection. In that case unsupported source rules cannot restore
+    // consistency, so it is safe to admit every independently certified
+    // redundant rule and return the clash. Otherwise redundancy remains an
+    // explicit opt-in until its downstream route meets the production budget.
+    let rule_abox_inconsistent = rule_certificate_scan.certified_inconsistent();
     let available_rule_certificates = rule_certificate_scan.certified_unsupported_rules();
-    let certified_unsupported_rules = if std::env::var_os("KM_RULE_REDUNDANCY_CERT").is_some() {
-        available_rule_certificates
-    } else {
-        0
-    };
+    let certified_unsupported_rules =
+        if rule_abox_inconsistent || std::env::var_os("KM_RULE_REDUNDANCY_CERT").is_some() {
+            available_rule_certificates
+        } else {
+            0
+        };
     if std::env::var_os("KM_DEBUG_RULES").is_some() {
         eprintln!(
             "KM_DEBUG_RULES: {available_rule_certificates} redundancy certificate(s) available, {certified_unsupported_rules} enabled"
@@ -626,8 +629,9 @@ fn ofn_to_clauses_requested(
     }
     // asserted-ABox inconsistency: named-disjointness clash (abox_consistency)
     // or datatype range/functionality clash (data_abox); both sound prechecks.
-    let abox_inconsistent =
-        abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false) || data_abox.is_inconsistent();
+    let abox_inconsistent = abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false)
+        || data_abox.is_inconsistent()
+        || rule_abox_inconsistent;
     if !abox_inconsistent && data_abox.positive_assertions_redundant() {
         let source_data_assertions = profile
             .source

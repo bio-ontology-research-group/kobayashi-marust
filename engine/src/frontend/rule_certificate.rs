@@ -30,6 +30,9 @@ struct Rule {
 pub(super) struct RuleCertificateScan {
     class_assertions: Vec<(String, String)>,
     role_assertions: Vec<(String, String, String)>,
+    disjoint_classes: HashSet<(String, String)>,
+    different_individuals: HashSet<(String, String)>,
+    exact_one_roles: HashSet<(String, String)>,
     named_subclasses: Vec<(String, String)>,
     rules: Vec<Rule>,
     data_assertions: u64,
@@ -100,6 +103,18 @@ impl RuleCertificateScan {
                     args.get(1).and_then(Node::as_atom),
                 ) {
                     self.class_assertions.push((i.to_string(), c.to_string()));
+                } else if let (Some(Node::List("ObjectExactCardinality", card)), Some(individual)) =
+                    (args.first(), args.get(1).and_then(Node::as_atom))
+                {
+                    // Only unqualified =1 R limits every R successor. A
+                    // qualified =1 R.C permits additional R successors outside
+                    // C and cannot support this clash certificate.
+                    if card.len() == 2 && card.first().and_then(Node::as_atom) == Some("1") {
+                        if let Some(role) = card.get(1).and_then(Node::as_atom) {
+                            self.exact_one_roles
+                                .insert((individual.to_string(), role.to_string()));
+                        }
+                    }
                 }
             }
             "ObjectPropertyAssertion" => {
@@ -119,6 +134,22 @@ impl RuleCertificateScan {
                 ) {
                     self.named_subclasses
                         .push((sub.to_string(), sup.to_string()));
+                }
+            }
+            "DisjointClasses" => {
+                let names: Vec<_> = args.iter().filter_map(Node::as_atom).collect();
+                for (i, left) in names.iter().enumerate() {
+                    for right in names.iter().skip(i + 1) {
+                        self.disjoint_classes.insert(ordered_pair(left, right));
+                    }
+                }
+            }
+            "DifferentIndividuals" => {
+                let names: Vec<_> = args.iter().filter_map(Node::as_atom).collect();
+                for (i, left) in names.iter().enumerate() {
+                    for right in names.iter().skip(i + 1) {
+                        self.different_individuals.insert(ordered_pair(left, right));
+                    }
                 }
             }
             "DataPropertyAssertion" | "NegativeDataPropertyAssertion" => self.data_assertions += 1,
@@ -155,6 +186,147 @@ impl RuleCertificateScan {
                     || self.legacy_meta_rule_is_subsumed(r)
             })
             .count() as u64
+    }
+
+    /// Certify an inconsistency using only explicit named-ABox facts, explicit
+    /// distinctness (or disjoint asserted types), one exact-cardinality axiom,
+    /// and one parsed DL-safe rule. This is a one-sided certificate: unsupported
+    /// body atoms or unbound equality tests simply produce no witness.
+    pub(super) fn certified_inconsistent(&self) -> bool {
+        if self.rules.is_empty()
+            || self.exact_one_roles.is_empty()
+            || self.role_assertions.is_empty()
+        {
+            return false;
+        }
+        for rule in &self.rules {
+            // A rule body is a conjunction. Match sparse role assertions first
+            // so they bind both endpoints before broad class scans; evaluate
+            // equality and difference guards next, then named classes. This
+            // changes only enumeration order, not the accepted substitutions.
+            let mut body: Vec<&Atom> = rule.body.iter().collect();
+            body.sort_by_key(|atom| match atom {
+                Atom::Role(..) => 0,
+                Atom::Same(..) | Atom::Diff(..) => 1,
+                Atom::Class(..) => 2,
+                Atom::Data(..) | Atom::Builtin(..) => 3,
+            });
+            for atom in &rule.head {
+                let Atom::Role(role, source_term, target_term) = atom else {
+                    continue;
+                };
+                // Work backwards from the only heads that could violate an
+                // asserted =1 restriction. Pre-binding the head source avoids
+                // enumerating the rule's unrelated named-ABox matches.
+                for (source, exact_role) in &self.exact_one_roles {
+                    if exact_role != role {
+                        continue;
+                    }
+                    let mut seed = HashMap::new();
+                    if !bind(source_term, source, &mut seed) {
+                        continue;
+                    }
+                    let mut substitutions = vec![seed];
+                    for body_atom in &body {
+                        let mut next = Vec::new();
+                        for subst in substitutions {
+                            self.extend_match(body_atom, &subst, &mut next);
+                        }
+                        substitutions = next;
+                        if substitutions.is_empty() {
+                            break;
+                        }
+                    }
+                    for subst in substitutions {
+                        let Some(target) = resolve(target_term, &subst) else {
+                            continue;
+                        };
+                        if self.role_assertions.iter().any(|(r, s, old_target)| {
+                            r == role && s == source && self.known_different(old_target, target)
+                        }) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn extend_match(
+        &self,
+        atom: &Atom,
+        subst: &HashMap<String, String>,
+        out: &mut Vec<HashMap<String, String>>,
+    ) {
+        match atom {
+            Atom::Class(concept, term) => {
+                for (individual, asserted) in &self.class_assertions {
+                    if asserted == concept {
+                        let mut candidate = subst.clone();
+                        if bind(term, individual, &mut candidate) {
+                            out.push(candidate);
+                        }
+                    }
+                }
+            }
+            Atom::Role(role, source, target) => {
+                for (asserted, left, right) in &self.role_assertions {
+                    if asserted == role {
+                        let mut candidate = subst.clone();
+                        if bind(source, left, &mut candidate) && bind(target, right, &mut candidate)
+                        {
+                            out.push(candidate);
+                        }
+                    }
+                }
+            }
+            Atom::Same(left, right) => {
+                if let (Some(left), Some(right)) = (resolve(left, subst), resolve(right, subst)) {
+                    if left == right {
+                        out.push(subst.clone());
+                    }
+                }
+            }
+            Atom::Diff(left, right) => {
+                if let (Some(left), Some(right)) = (resolve(left, subst), resolve(right, subst)) {
+                    if self.known_different(left, right) {
+                        out.push(subst.clone());
+                    }
+                }
+            }
+            Atom::Data(..) | Atom::Builtin(..) => {}
+        }
+    }
+
+    fn known_different(&self, left: &str, right: &str) -> bool {
+        if left == right {
+            return false;
+        }
+        if self
+            .different_individuals
+            .contains(&ordered_pair(left, right))
+        {
+            return true;
+        }
+        let left_types: Vec<_> = self
+            .class_assertions
+            .iter()
+            .filter(|(individual, _)| individual == left)
+            .map(|(_, class)| class.as_str())
+            .collect();
+        let right_types: Vec<_> = self
+            .class_assertions
+            .iter()
+            .filter(|(individual, _)| individual == right)
+            .map(|(_, class)| class.as_str())
+            .collect();
+        left_types.iter().any(|left_class| {
+            right_types.iter().any(|right_class| {
+                self.disjoint_classes
+                    .contains(&ordered_pair(left_class, right_class))
+            })
+        })
     }
 
     fn legacy_meta_rule_is_subsumed(&self, rule: &Rule) -> bool {
@@ -270,6 +442,34 @@ impl RuleCertificateScan {
     }
 }
 
+fn ordered_pair(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_string(), right.to_string())
+    } else {
+        (right.to_string(), left.to_string())
+    }
+}
+
+fn resolve<'a>(term: &'a Term, subst: &'a HashMap<String, String>) -> Option<&'a str> {
+    match term {
+        Term::Ind(individual) => Some(individual),
+        Term::Var(variable) => subst.get(variable).map(String::as_str),
+    }
+}
+
+fn bind(term: &Term, value: &str, subst: &mut HashMap<String, String>) -> bool {
+    match term {
+        Term::Ind(individual) => individual == value,
+        Term::Var(variable) => match subst.get(variable) {
+            Some(bound) => bound == value,
+            None => {
+                subst.insert(variable.clone(), value.to_string());
+                true
+            }
+        },
+    }
+}
+
 fn same_rule_after_identifying(source: &Rule, candidate: &Rule, left: &Term, right: &Term) -> bool {
     fn rw(t: &Term, l: &Term, r: &Term) -> Term {
         if t == l || t == r {
@@ -329,6 +529,74 @@ mod tests {
         parse::parse_axioms_observed(&mut registry, text, |node| scan.observe(node))
             .expect("synthetic functional syntax");
         scan.certified_unsupported_rules()
+    }
+
+    fn inconsistent(text: &str) -> bool {
+        let mut scan = RuleCertificateScan::default();
+        let mut registry = IriRegistry::new();
+        parse::parse_axioms_observed(&mut registry, text, |node| scan.observe(node))
+            .expect("synthetic functional syntax");
+        scan.certified_inconsistent()
+    }
+
+    const RULE_CLASH: &str = r#"
+        ClassAssertion(ObjectExactCardinality(1 <r>) <s>)
+        ObjectPropertyAssertion(<r> <s> <old>)
+        DifferentIndividuals(<old> <new>)
+        ClassAssertion(<Situation> <s>)
+        ObjectPropertyAssertion(<requestor> <s> <d>)
+        ClassAssertion(<Requestor> <d>)
+        ObjectPropertyAssertion(<department> <d> <w1>)
+        ClassAssertion(<Hospital> <w1>)
+        ObjectPropertyAssertion(<patient> <s> <p>)
+        ClassAssertion(<Patient> <p>)
+        ObjectPropertyAssertion(<clinic> <p> <w2>)
+        ClassAssertion(<Clinic> <w2>)
+        DisjointClasses(<Hospital> <Clinic>)
+        DLSafeRule(
+          Body(
+            ClassAtom(<Situation> Variable(<s>))
+            ObjectPropertyAtom(<requestor> Variable(<s>) Variable(<d>))
+            ClassAtom(<Requestor> Variable(<d>))
+            ObjectPropertyAtom(<department> Variable(<d>) Variable(<w1>))
+            ClassAtom(<Hospital> Variable(<w1>))
+            ObjectPropertyAtom(<patient> Variable(<s>) Variable(<p>))
+            ClassAtom(<Patient> Variable(<p>))
+            ObjectPropertyAtom(<clinic> Variable(<p>) Variable(<w2>))
+            ClassAtom(<Clinic> Variable(<w2>))
+            DifferentIndividualsAtom(Variable(<w1>) Variable(<w2>))
+          )
+          Head(ObjectPropertyAtom(<r> Variable(<s>) <new>))
+        )
+    "#;
+
+    #[test]
+    fn exact_one_rule_witness_certifies_inconsistency() {
+        assert!(inconsistent(&format!("Ontology({RULE_CLASH})")));
+    }
+
+    #[test]
+    fn exact_one_rule_witness_fails_closed_when_any_essential_part_is_absent() {
+        let controls = [
+            RULE_CLASH.replace(
+                "ObjectExactCardinality(1 <r>)",
+                "ObjectExactCardinality(2 <r>)",
+            ),
+            RULE_CLASH.replace(
+                "ObjectExactCardinality(1 <r>)",
+                "ObjectExactCardinality(1 <r> <Filler>)",
+            ),
+            RULE_CLASH.replace("DifferentIndividuals(<old> <new>)", ""),
+            RULE_CLASH.replace("DisjointClasses(<Hospital> <Clinic>)", ""),
+            RULE_CLASH.replace("ClassAssertion(<Patient> <p>)", ""),
+            RULE_CLASH.replace(
+                "Head(ObjectPropertyAtom(<r> Variable(<s>) <new>))",
+                "Head(ClassAtom(<Situation> Variable(<s>)))",
+            ),
+        ];
+        for control in controls {
+            assert!(!inconsistent(&format!("Ontology({control})")));
+        }
     }
 
     #[test]

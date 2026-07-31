@@ -1,0 +1,34 @@
+Ontology(
+DisjointClasses(<urn:km:HospitalizationDepartment> <urn:km:OutPatientClinic>)
+ClassAssertion(<urn:km:HospitalizationDepartment> <urn:km:InternalHospitalDepartment>)
+ClassAssertion(<urn:km:OutPatientClinic> <urn:km:InternalOutClinic>)
+
+ClassAssertion(<urn:km:DataRequestor> <urn:km:requestor>)
+ClassAssertion(<urn:km:Patient> <urn:km:patient>)
+ClassAssertion(<urn:km:Situation> <urn:km:situation>)
+ClassAssertion(<urn:km:OrganizationRelation> <urn:km:notEqualRelation>)
+
+ObjectPropertyAssertion(<urn:km:hasDataRequestor> <urn:km:situation> <urn:km:requestor>)
+ObjectPropertyAssertion(<urn:km:hasPatient> <urn:km:situation> <urn:km:patient>)
+ObjectPropertyAssertion(<urn:km:hasWorkingDepartment> <urn:km:requestor> <urn:km:InternalHospitalDepartment>)
+ObjectPropertyAssertion(<urn:km:hasSupervisionClinic> <urn:km:patient> <urn:km:InternalOutClinic>)
+
+ObjectPropertyAssertion(<urn:km:hasR2RRelation> <urn:km:situation> <urn:km:equalRelation>)
+ClassAssertion(ObjectExactCardinality(1 <urn:km:hasR2RRelation>) <urn:km:situation>)
+DifferentIndividuals(<urn:km:equalRelation> <urn:km:notEqualRelation>)
+
+DLSafeRule(
+ Body(
+  ClassAtom(<urn:km:DataRequestor> Variable(<urn:km:D>))
+  ClassAtom(<urn:km:OrganizationRelation> <urn:km:notEqualRelation>)
+  ClassAtom(<urn:km:Patient> Variable(<urn:km:P>))
+  ClassAtom(<urn:km:Situation> Variable(<urn:km:S>))
+  ObjectPropertyAtom(<urn:km:hasDataRequestor> Variable(<urn:km:S>) Variable(<urn:km:D>))
+  ObjectPropertyAtom(<urn:km:hasPatient> Variable(<urn:km:S>) Variable(<urn:km:P>))
+  ObjectPropertyAtom(<urn:km:hasSupervisionClinic> Variable(<urn:km:P>) Variable(<urn:km:W2>))
+  ObjectPropertyAtom(<urn:km:hasWorkingDepartment> Variable(<urn:km:D>) Variable(<urn:km:W1>))
+  DifferentIndividualsAtom(Variable(<urn:km:W1>) Variable(<urn:km:W2>))
+ )
+ Head(ObjectPropertyAtom(<urn:km:hasR2RRelation> Variable(<urn:km:S>) <urn:km:notEqualRelation>))
+)
+)
