@@ -373,6 +373,18 @@ Specialist sweep `49654935` found no additional ordinary route for 12653.
 The separately measured forced-HT closure remains diagnostic evidence until
 its bypassed guards have a semantic certificate.
 
+Diagnostic job `49657115` confirms why the historical bridge closure is not
+currently admissible. The conversion is lossless at the clause count level
+(`dropped=0`), but records nine exact source-side complex-domain fences plus
+an inverse+number fence. More importantly, the ontology combines inverse
+roles and qualified number restrictions with decimal, integer, and
+positive-integer data-role constraints. The current completion bridge has no
+typed data-domain object and therefore defers rather than interpreting those
+datatype fillers as ordinary object classes. Restoring the older fast answer
+requires an exact combined datatype/cardinality bridge certificate or
+implementation; simply removing the newer fence would revive a known
+fail-open path.
+
 The next source-feature rule recognizes a terminology with at least 100,000
 TBox axioms and a tiny ABox containing only class assertions plus explicit
 identity constraints. It excludes imports, rules, role assertions, datatype
