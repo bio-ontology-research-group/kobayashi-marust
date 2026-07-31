@@ -49,6 +49,11 @@ UNSUPPORTED_PATTERNS = (
     "cannot handle",
 )
 
+KM_ROUTE_TRACE_RE = re.compile(
+    r"^KM_TIMING frontend done @ [^\n]* route=([a-z0-9_]+)\s*$",
+    re.MULTILINE,
+)
+
 
 def local_name(value):
     return _ore_canon.localname(value)
@@ -231,6 +236,12 @@ def read_text(path):
         return ""
 
 
+def selected_km_route(stderr_text):
+    """Return the route selected at the production frontend boundary."""
+    matches = KM_ROUTE_TRACE_RE.findall(stderr_text)
+    return matches[-1] if matches else None
+
+
 def run(args):
     os.makedirs(args.workdir, exist_ok=True)
     tag = f"{args.arm}__{os.path.basename(args.ontology)}"
@@ -248,6 +259,14 @@ def run(args):
             raise ValueError(f"invalid --env {item!r}")
         key, value = item.split("=", 1)
         env[key] = value
+    if args.capture_km_route:
+        if args.kind != "km":
+            raise ValueError("--capture-km-route requires --kind km")
+        # The classifier emits its route immediately after the production
+        # frontend returns. This is stronger evidence than `km profile`, whose
+        # post-normalization statistics can differ from the source-only profile
+        # available when automatic routing actually runs.
+        env["KM_TIMING"] = "1"
 
     output_format = {
         "km": "json",
@@ -330,6 +349,7 @@ def run(args):
         ),
         "signature_sha256": None,
         "requested_route": env.get("KM_ROUTE"),
+        "selected_route_trace": None,
         "verdict": "ok",
         "extra": 0,
         "missing": 0,
@@ -373,6 +393,8 @@ def run(args):
             peak_mb=round(peak_bytes / 1024 / 1024, 2),
             checkpointed=True,
         )
+        if args.capture_km_route:
+            row["selected_route_trace"] = selected_km_route(read_text(stderr_path))
         checkpoint(row)
 
     active_process = [None]
@@ -460,6 +482,10 @@ def run(args):
 
     keep_failure = status != "ok" or proc.returncode != 0
     stderr_text = read_text(stderr_path)
+    if args.capture_km_route:
+        record["selected_route_trace"] = selected_km_route(stderr_text)
+        if record["selected_route_trace"] is None:
+            record["route_trace_missing"] = True
     record["stderr_sha256"] = (
         sha256_file(stderr_path) if os.path.exists(stderr_path) else None
     )
@@ -631,6 +657,11 @@ def main():
         "so a whole-cgroup OOM kill of this supervisor cannot lose it",
     )
     parser.add_argument("--env", action="append", default=[])
+    parser.add_argument(
+        "--capture-km-route",
+        action="store_true",
+        help="set KM_TIMING and record the route selected by production classify",
+    )
     args = parser.parse_args()
     if args.gold_kind == "konclude" and not args.gold:
         parser.error("--gold-kind konclude requires --gold")

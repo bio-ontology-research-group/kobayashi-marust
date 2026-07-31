@@ -24,18 +24,6 @@ test "$(/usr/bin/sha256sum "$root/km-f6b2188-source.tar.gz" | /usr/bin/cut -d' '
 work=${SLURM_TMPDIR:-/tmp}/km-v12-9724-auto-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work/run" "$root/results" "$root/failures"
 
-# Assert the route used at the real pre-clausification production boundary.
-# A post-normalization `km profile` result is insufficient for this gate.
-set +e
-/usr/bin/timeout 8s /usr/bin/env KM_ROUTE=auto KM_TIMING=1 \
-  "$root/km" classify "$km_root/corpus/$ontology" \
-  >"$work/route.stdout" 2>"$work/route.stderr"
-trace_rc=$?
-set -e
-test "$trace_rc" -eq 124
-/usr/bin/grep -F "route=ht_bridge" "$work/route.stderr"
-/usr/bin/cp "$work/route.stderr" "$root/results/route-trace.stderr"
-
 /usr/bin/python3 "$root/full_panel_run_one.py" \
   --kind km \
   --arm km_auto_source_bridge_v12 \
@@ -50,6 +38,7 @@ test "$trace_rc" -eq 124
   --workdir "$work/run" \
   --failures-dir "$root/failures" \
   --checkpoint "$root/results/$ontology.checkpoint.json" \
+  --capture-km-route \
   --env "KM_ROUTE=auto" \
   >"$root/results/$ontology.json.tmp"
 
@@ -61,6 +50,8 @@ row = json.load(open(sys.argv[1]))
 expected = sys.argv[2]
 if row.get("status") != "ok" or row.get("verdict") != "match":
     raise SystemExit(f"automatic 9724 gate did not match: {row}")
+if row.get("selected_route_trace") != "ht_bridge":
+    raise SystemExit(f"automatic 9724 selected the wrong route: {row}")
 if row.get("binary_sha256") != expected or not row.get("checkpointed"):
     raise SystemExit(f"automatic 9724 gate provenance failure: {row}")
 if row.get("extra") != 0 or row.get("missing") != 0:
