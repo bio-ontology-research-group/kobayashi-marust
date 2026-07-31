@@ -581,3 +581,11 @@ exception because its unsupported DL-safe rules stop the frontend before a
 route can be selected. The package manifest binds the IBEX-built binary,
 `f6b2188` source archive, runners, full-IRI wrappers, canonicalizer, watchdog,
 array script, and audit script.
+
+Current source under the exact retained 10702 manual environment did not
+restore that ontology locally: it timed out at 240 seconds after reaching
+18,394.76 MiB. This rules out a route-label-only fix. Source-bound array
+`49663467` is dependency-gated after the complete sweep and tests all 36 named
+routes, at most five concurrently, against the exact signature. The panel
+cannot contend with the production sweep and will show whether any current
+guarded route survives before implementation work proceeds.
