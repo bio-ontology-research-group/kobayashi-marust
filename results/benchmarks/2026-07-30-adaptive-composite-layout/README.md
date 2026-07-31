@@ -416,6 +416,13 @@ source, runner, canonicalizer, and audit input. The v11 array is intentionally
 not submitted until the v10 audit accepts all 592 terminal rows, so the two
 production sweeps cannot contend for the fixed benchmark nodes.
 
+Before submission, the v11 resume and audit contract was tightened further.
+A resumed task skips execution only when both its terminal row and route
+profile validate; an interrupted pair is rerun. The dependent audit verifies
+the package manifest, all 592 terminal/checkpoint pairs, every route profile,
+and every row's deployed-binary SHA-256. A Slurm OOM recovery now publishes
+the same independently evidenced row to both terminal locations.
+
 The v10 sweep's 4669 timeout is expected, not a scheduling regression. Current
 KM rejects the historical bridge result because targeted satisfiability checks
 disproved that taxonomy. No validated route currently closes 4669, and it

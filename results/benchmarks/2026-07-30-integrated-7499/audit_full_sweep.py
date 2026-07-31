@@ -38,6 +38,17 @@ def load_terminal(path: Path, ontology: str, index: int) -> dict:
     return row
 
 
+def validate_profile(path: Path, ontology: str) -> None:
+    with path.open(encoding="utf-8") as handle:
+        row = json.load(handle)
+    if row.get("ont") != ontology:
+        raise ValueError(f"{path}: ontology mismatch: {row.get('ont')!r}")
+    if row.get("status") != "ok":
+        raise ValueError(f"{path}: invalid profile status: {row.get('status')!r}")
+    if not row.get("selected_route"):
+        raise ValueError(f"{path}: missing selected route")
+
+
 def atomic_json(path: Path, row: dict) -> None:
     tmp = path.with_name(f"{path.name}.audit-{os.getpid()}.tmp")
     with tmp.open("w", encoding="utf-8") as handle:
@@ -102,6 +113,8 @@ def main() -> int:
         raise SystemExit("ontology list must contain 592 unique rows")
 
     results = args.root / "results"
+    profiles = args.root / "profiles"
+    binary_sha256 = sha256(args.binary)
     recovered = []
     failures = []
     counts = {}
@@ -132,7 +145,23 @@ def main() -> int:
                     log=log,
                 )
                 atomic_json(final, row)
+                atomic_json(checkpoint, row)
                 recovered.append((ontology, "slurm_oom_kill_marker"))
+        if row.get("binary_sha256") != binary_sha256:
+            failures.append(
+                f"{ontology}: binary mismatch: "
+                f"{row.get('binary_sha256')!r} != {binary_sha256!r}"
+            )
+        try:
+            checkpoint_row = load_terminal(checkpoint, ontology, index)
+            if checkpoint_row != row:
+                failures.append(f"{ontology}: final/checkpoint row mismatch")
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            failures.append(f"{ontology}: invalid checkpoint: {error}")
+        try:
+            validate_profile(profiles / f"{ontology}.json", ontology)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            failures.append(f"{ontology}: invalid profile: {error}")
         counts[row["status"]] = counts.get(row["status"], 0) + 1
 
     if failures:

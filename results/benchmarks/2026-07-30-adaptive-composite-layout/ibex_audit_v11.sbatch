@@ -17,6 +17,7 @@ km_root=/ibex/scratch/hohndor/km
 
 PYTHONPATH="$root" /usr/bin/python3 -c \
   'import audit_full_sweep, full_panel_run_one, ore_canon, tree_watchdog'
+/usr/bin/sha256sum -c "$root/SHA256SUMS"
 
 /usr/bin/python3 "$root/audit_full_sweep.py" \
   --root "$root" \

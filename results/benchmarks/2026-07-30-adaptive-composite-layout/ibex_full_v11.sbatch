@@ -36,20 +36,31 @@ PYTHONPATH="$root" /usr/bin/python3 -c \
   'import full_panel_fingerprint, full_panel_run_one, full_panel_run_one_collision_safe, full_panel_run_one_fulliri_only, ore_canon, tree_watchdog'
 
 if [[ -e "$root/results/$ontology.json" ]]; then
-  /usr/bin/python3 - "$root/results/$ontology.json" "$ontology" "$index" <<'PY'
+  if /usr/bin/python3 - \
+      "$root/results/$ontology.json" \
+      "$root/profiles/$ontology.json" \
+      "$ontology" "$index" <<'PY'
 import json
 import sys
 
 row = json.load(open(sys.argv[1]))
-if row.get("ont") != sys.argv[2]:
+if row.get("ont") != sys.argv[3]:
     raise SystemExit(f"ontology mismatch in existing row: {row}")
-if row.get("slurm_array_task_id") != str(sys.argv[3]):
+if row.get("slurm_array_task_id") != str(sys.argv[4]):
     raise SystemExit(f"task mismatch in existing row: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid existing terminal status: {row}")
+profile = json.load(open(sys.argv[2]))
+if profile.get("ont") != sys.argv[3] or profile.get("status") != "ok":
+    raise SystemExit(f"invalid existing profile: {profile}")
+if not profile.get("selected_route"):
+    raise SystemExit(f"missing selected route: {profile}")
 PY
-  echo "ALREADY_COMPLETE index=$index ontology=$ontology"
-  exit 0
+  then
+    echo "ALREADY_COMPLETE index=$index ontology=$ontology"
+    exit 0
+  fi
+  echo "INCOMPLETE_RESUME_PAIR index=$index ontology=$ontology; rerunning"
 fi
 
 work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v11-592-${SLURM_JOB_ID}
