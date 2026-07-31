@@ -21,6 +21,6 @@ array_job_id=${ARRAY_JOB_ID:?submit with --export=ALL,ARRAY_JOB_ID=...}
   --require-route-trace \
   --expected-nonmatch ore_ont_2669.owl:ok:consistency_mismatch \
   --expected-nonmatch ore_ont_15516.owl:ok:consistency_mismatch \
-  --expected-nonmatch ore_ont_10860.owl:ok:consistency_mismatch \
+  --expected-nonmatch ore_ont_10860.owl:ok:nogold \
   --expected-nonmatch ore_ont_1194.owl:error:error \
   --expected-nonmatch ore_ont_4669.owl:timeout:timeout

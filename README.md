@@ -152,7 +152,7 @@ sweep described immediately above.
 Commit `4703045` additionally closes 10860 locally through a fail-closed
 rule/ABox cardinality-clash certificate. Its extracted core is independently
 inconsistent under HermiT. IBEX sweep `49720070` is running as the required
-592-ontology regression gate (`49720157`), so the demonstrated production total remains
+592-ontology regression gate (`49721626`), so the demonstrated production total remains
 589 until that sweep completes.
 
 The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
@@ -225,7 +225,7 @@ now admits 6934 automatically through `nominal_ni_abox`; the production row
 matches exactly in 199.3235 seconds at 1,434.64 MiB. Ontologies 1194, 4669,
 remain open under the standard contract. Commit `4703045` closes 10860 through
 an independently adjudicated rule/ABox inconsistency certificate, subject to
-full-sweep promotion gate `49720157`. The completed sweep solves 6934, 9540,
+full-sweep promotion gate `49721626`. The completed sweep solves 6934, 9540,
 10621, and 10702 exactly.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
