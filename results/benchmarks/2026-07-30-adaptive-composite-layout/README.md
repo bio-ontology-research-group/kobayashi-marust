@@ -373,6 +373,15 @@ exactly in 169.5591 seconds at 7,490.09 MiB, with 3,923,171 subsumptions and no
 unsatisfiable named classes. The result is bound to v10 binary SHA-256
 `3b5cde49b6ed3f759be585ed08ecbdec51e4327c4f31ba23427678529a129208`.
 
+The same sweep shows that 6934 is not yet restored automatically. The profile
+selects `nominals`; its engine worker exits after 190.2287 seconds at
+1,517.47 MiB without a taxonomy. Current guarded `ht_features` and `ht_full`
+defer, while `certified_nominals` and `production_all` time out. The retained
+`htforce_race` classification remains exact in under one second, but it
+bypasses the completion guard and is measurement evidence rather than an
+automatic route contract. v11 must therefore remain held while 6934 is either
+given a sound feature certificate or retained as an explicit regression.
+
 Specialist sweep `49654935` found no additional ordinary route for 12653.
 `ht_full`, `ht_features`, and `elc_cert` reject its feature set.
 `cb_plain1` ended in an engine error after 190.1029 seconds at 21.77 MiB.
