@@ -525,3 +525,12 @@ seconds, and 8,184.64 MiB on `leechuck-office`. Explicit guarded controls were
 also exact at 8,165.19 MiB (`ht_bridge`) and 8,150.66 MiB (`ht_full`). These
 local results establish the routing mechanism and signature but do not replace
 the queued source-bound IBEX repetitions or a complete corpus sweep.
+
+Source-bound IBEX gate `49662044` packages commit `f6b2188`, binary SHA-256
+`a07dcffe7b509d7cb72794b55f763ec6e72bc1305614d8404fe38acebd4a5ce8`,
+and source-archive SHA-256
+`b8febb611fd088867960b07fca70e75a1c59ac6922026657f02be682de274239`.
+It first runs a bounded production timing trace and requires
+`route=ht_bridge`, then runs the collision-safe full-IRI comparison under the
+240-second/20,480-MiB contract. It depends on v10 array `49655276` to avoid
+benchmark contention.
