@@ -398,23 +398,25 @@ impl Reasoner {
     }
 
     /// Collapse named query concepts that the input clause set explicitly proves
-    /// equivalent with opposite unit implications:
+    /// equivalent through a strongly connected component of unit implications:
     ///
     /// `A(x) -> B(x)` and `B(x) -> A(x)`.
     ///
     /// Classifying one representative is exact for every member because the
-    /// two unit clauses make their interpretations equal in every model. This
-    /// is only query scheduling: the representative runs through the unchanged
-    /// calculus, and `expand_mutual_unit_aliases` restores one output row per
-    /// requested concept. Restricting the union to direct opposite edges keeps
-    /// this preprocessing linear and deliberately conservative.
+    /// every path is a valid subclass chain, and paths in both directions make
+    /// the interpretations equal in every model. This is only query scheduling:
+    /// the representative runs through the unchanged calculus, and
+    /// `expand_mutual_unit_aliases` restores one output row per requested
+    /// concept.
     fn collapse_mutual_unit_queries(&self, queries: &[Iri]) -> (Vec<Iri>, Vec<(Iri, Vec<Iri>)>) {
         if queries.len() < 2 || std::env::var_os("KM_NO_QUERY_EQUIV").is_some() {
             return (queries.to_vec(), Vec::new());
         }
 
         let query_set: HashSet<Iri> = queries.iter().copied().collect();
-        let mut edges: HashSet<(Iri, Iri)> = HashSet::new();
+        let mut forward = vec![Vec::<Iri>::new(); self.sig0.concept_names.len()];
+        let mut reverse = vec![Vec::<Iri>::new(); self.sig0.concept_names.len()];
+        let mut edge_count = 0usize;
         for clause in &self.clauses0 {
             if clause.body.len() != 1 || clause.head.len() != 1 {
                 continue;
@@ -431,44 +433,68 @@ impl Reasoner {
                 && query_set.contains(&from)
                 && query_set.contains(&to)
             {
-                edges.insert((from, to));
+                forward[from as usize].push(to);
+                reverse[to as usize].push(from);
+                edge_count += 1;
             }
         }
-        if edges.is_empty() {
+        if edge_count == 0 {
             return (queries.to_vec(), Vec::new());
         }
 
-        // A compact union-find over signature ids. Always attach the larger
-        // representative to the smaller one so output and scheduling remain
-        // deterministic across hash iteration orders.
-        let mut parent: Vec<Iri> = (0..self.sig0.concept_names.len() as Iri).collect();
-        fn find(parent: &mut [Iri], mut node: Iri) -> Iri {
-            let mut root = node;
-            while parent[root as usize] != root {
-                root = parent[root as usize];
-            }
-            while parent[node as usize] != node {
-                let next = parent[node as usize];
-                parent[node as usize] = root;
-                node = next;
-            }
-            root
-        }
-        for &(from, to) in &edges {
-            if !edges.contains(&(to, from)) {
+        // Iterative Kosaraju avoids recursion depth proportional to a large
+        // taxonomy chain. The first pass records postorder on the forward
+        // graph; the reverse pass assigns each SCC its least stable signature
+        // id as representative.
+        let mut seen = vec![false; forward.len()];
+        let mut finish = Vec::with_capacity(queries.len());
+        for &start in queries {
+            if seen[start as usize] {
                 continue;
             }
-            let a = find(&mut parent, from);
-            let b = find(&mut parent, to);
-            if a != b {
-                let (small, large) = if a < b { (a, b) } else { (b, a) };
-                parent[large as usize] = small;
+            seen[start as usize] = true;
+            let mut stack = vec![(start, 0usize)];
+            while let Some((node, next)) = stack.last_mut() {
+                if *next < forward[*node as usize].len() {
+                    let target = forward[*node as usize][*next];
+                    *next += 1;
+                    if !seen[target as usize] {
+                        seen[target as usize] = true;
+                        stack.push((target, 0));
+                    }
+                } else {
+                    finish.push(*node);
+                    stack.pop();
+                }
+            }
+        }
+
+        let mut representative = vec![Iri::MAX; forward.len()];
+        for &start in finish.iter().rev() {
+            if representative[start as usize] != Iri::MAX {
+                continue;
+            }
+            let mut component = Vec::new();
+            let mut stack = vec![start];
+            representative[start as usize] = start;
+            while let Some(node) = stack.pop() {
+                component.push(node);
+                for &target in &reverse[node as usize] {
+                    if representative[target as usize] == Iri::MAX {
+                        representative[target as usize] = start;
+                        stack.push(target);
+                    }
+                }
+            }
+            let root = component.iter().copied().min().unwrap_or(start);
+            for member in component {
+                representative[member as usize] = root;
             }
         }
 
         let mut members: BTreeMap<Iri, Vec<Iri>> = BTreeMap::new();
         for &query in queries {
-            let root = find(&mut parent, query);
+            let root = representative[query as usize];
             members.entry(root).or_default().push(query);
         }
         let groups: Vec<(Iri, Vec<Iri>)> = members
@@ -1042,8 +1068,8 @@ mod tests {
 
     #[test]
     fn mutual_unit_queries_share_one_representative_and_restore_rows() {
-        // A ≡ B, B ≡ C and C ⊑ D. Direct opposite unit pairs form one
-        // transitive union-find group. Classification runs one root for the
+        // A ≡ B, B ≡ C and C ⊑ D. The unit SCC forms one equivalence group.
+        // Classification runs one root for the
         // group, then restores the exact non-reflexive row for every alias.
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
@@ -1058,6 +1084,38 @@ mod tests {
         assert_eq!(queries.len(), 4);
         assert_eq!(representatives.len(), 2, "A/B/C plus D need two roots");
         assert_eq!(groups.len(), 1);
+
+        probe.saturate();
+        assert_eq!(
+            supers(&probe, "A"),
+            ["B", "C", "D"].into_iter().map(String::from).collect()
+        );
+        assert_eq!(
+            supers(&probe, "B"),
+            ["A", "C", "D"].into_iter().map(String::from).collect()
+        );
+        assert_eq!(
+            supers(&probe, "C"),
+            ["A", "B", "D"].into_iter().map(String::from).collect()
+        );
+    }
+
+    #[test]
+    fn cyclic_unit_paths_collapse_without_direct_opposite_edges() {
+        // No edge has its direct opposite, but A -> B -> C -> A proves all
+        // three concepts equivalent. The SCC scheduler must see that proof.
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+            cl(vec![c("C", vx())], vec![c("A", vx())]),
+            cl(vec![c("C", vx())], vec![c("D", vx())]),
+        ];
+        let mut probe = Reasoner::new(&clauses);
+        let queries = probe.prepare().named_queries();
+        let (representatives, groups) = probe.collapse_mutual_unit_queries(&queries);
+        assert_eq!(representatives.len(), 2);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].1.len(), 3);
 
         probe.saturate();
         assert_eq!(
