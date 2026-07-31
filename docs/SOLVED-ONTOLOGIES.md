@@ -179,13 +179,10 @@ reproduce the source-bound 10621 capsule.
   `card_race` binary (`0d20dd1`) produced the same answer in 92.8 s at 18.5 GiB
   while running the arm inverse-blind; the restored route keeps the
   inverse-aware configuration and uses 15x less memory.
-- **Claim boundary**: this is a solved ontology for an EXPLICITLY selected
-  route, not for the automatic policy. The route drops an ABox it cannot
-  materialize, which is an under-approximation: sound, but complete for the
-  whole ontology only if the ABox cannot change a named-class subsumption and
-  the KB is consistent. The frontend's asserted-inconsistency precheck decides
-  neither, so `auto` keeps 7499 on `nominals` until a general ABox-irrelevance
-  certificate and a complete consistency decision exist.
+- **Claim boundary**: current source selects this route automatically and its
+  local output is byte-identical to the retained exact result. The completed
+  production sweep still records 7499 as non-completing until the source-bound
+  IBEX candidate gate and full sweep finish.
 - **Correction**: the 2026-07-05 entry below reads 7499's missing pairs as a
   gold local-name collision. The full-IRI fingerprint refutes that: the pairs
   are genuinely absent from the CB answer and present in both baselines.

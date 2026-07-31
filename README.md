@@ -201,11 +201,13 @@ completions, of which 586 match the retained Konclude full-IRI signatures
 exactly. The two other completions are contested consistency cases rather than
 accepted exact matches.
 
-The complete 180-task residual route panel found one additional exact explicit
-route: `certified_card_proxy_abox` solves `ore_ont_7499.owl` in 87.2187 seconds
-at 1029.11 MiB. That route deliberately drops an uncertified ABox and therefore
-remains explicit; an exact result on this ontology does not establish a general
-automatic-routing certificate.
+The complete 180-task residual route panel found one additional exact route:
+`certified_card_proxy_abox` solves `ore_ont_7499.owl`. Current source adds a
+normalized positive-role ABox consistency/taxonomy certificate and retains the
+exact nominal CB fallback. A local automatic-route gate is byte-identical to the
+retained exact output in 96.84 seconds at 987 MiB. This candidate is not added to
+the production default total until its source-bound IBEX gate and complete sweep
+finish.
 
 The current automatic source also selects `nominal_ni_tbox` for
 `ore_ont_10702.owl`. Source-bound full sweep job 49680023 confirms an exact
@@ -213,10 +215,11 @@ automatic signature in 2.5909 seconds at 21.36 MiB. Dependency-bound audit job
 49680024 verifies all 592 terminal rows, the frozen binary and source archive,
 the runners, canonicalizer, watchdog, route traces, and checksums.
 
-The completed automatic sweep has four non-completing rows: `10860`, `1194`,
-`4669`, and `7499`. Route `certified_card_proxy_abox` closes 7499
-exactly when selected explicitly, but its ABox-removal precondition is not
-certified generally enough for automatic use. The typed-ABox SHOIQ certificate
+The completed v16 automatic sweep has four non-completing rows: `10860`, `1194`,
+`4669`, and `7499`. Current source automatically proposes the certified proxy
+route for 7499 and keeps the exact nominal fallback whenever its normalized
+certificate declines; IBEX production validation is pending. The typed-ABox
+SHOIQ certificate
 now admits 6934 automatically through `nominal_ni_abox`; the production row
 matches exactly in 199.3235 seconds at 1,434.64 MiB. Ontologies 1194, 4669,
 and 10860 remain genuinely open under the standard contract. The completed

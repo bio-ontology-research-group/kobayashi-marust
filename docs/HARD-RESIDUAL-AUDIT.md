@@ -13,7 +13,7 @@ non-completing rows are:
 | `10860` | unsupported | Four DL-safe rules contain unsupported data-property or built-in atoms; establish a complete rule procedure and authoritative gold. |
 | `1194` | error | The large SRIQ ABox exceeds the current packed-term boundary or practical CB completion budget; no validated route exists within the standard contract. |
 | `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
-| `7499` | error | Explicit `certified_card_proxy_abox` matches exactly, but dropping its ABox is not yet certified generally enough for automatic use. |
+| `7499` | error in the completed v16 sweep | Current source adds a normalized positive-role ABox certificate and exact nominal fallback. Local automatic-route output is byte-identical in 96.84 s at 987 MiB; source-bound IBEX validation is pending, so this row is not yet added to the production count. |
 
 Ontology 6934 is no longer residual. The post-normalization typed-ABox SHOIQ
 certificate selects `nominal_ni_abox`; it matches exactly in 199.3235 seconds

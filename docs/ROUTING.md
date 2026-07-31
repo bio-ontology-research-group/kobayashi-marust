@@ -120,7 +120,7 @@ HT combinations, plus four external baselines:
 | `card_fn` | Functional properties as first-class `≤1` restrictions; measurement-only because forcing it regresses other inputs |
 | `nominals` | Exact CB nominal/ABox calculus; the required route for every ABox outside the source-certified positive separation fragment |
 | `nominal_ni_abox` | Post-normalization typed-ABox SHOIQ specialist: a complete data-assertion omission certificate gates a no-blocking complete-answer-or-defer worker, with exact nominal CB retained as fallback |
-| `certified_card_proxy_abox` | First-class cardinality arm raced against CB for a source-certified number-role fragment, with an unmaterializable ABox kept out of the card input; sound but not complete for the whole ontology, so it is measurement-only and never automatically selected |
+| `certified_card_proxy_abox` | First-class cardinality arm with a normalized positive-role ABox consistency/taxonomy certificate; a failed certificate defers to the exact nominal CB fallback |
 | `seq_on`, `seq_off` | Force the Sequoia definer ordering on or off instead of using its internal structural gate |
 | `elk`, `hermit`, `konclude_w1`, `konclude_w16` | External baselines, with official Konclude measured at one and 16 workers |
 
@@ -254,31 +254,30 @@ proves no clause body, counted role, or other RBox row reads it.
 
 A profile that holds both certificates selects `certified_card_nominals`, the
 isolated HT mechanism carrying the exact typed ABox. A profile that holds only
-the number-role half keeps the exact nominal calculus: the automatic policy
-never drops an ABox.
+the number-role half selects `certified_card_proxy_abox`. The normalized worker
+input then proves whether the positive asserted-role graph can be omitted from
+the cardinality taxonomy; a failed proof uses the exact nominal calculus.
 
 The `certified_card_proxy_abox` route runs the same cardinality arm against the
-CB engine with the uncertified native ABox kept out of the card input. It is
-explicitly selectable and measurement-only. Dropping ABox axioms removes
-constraints, so every subsumption it publishes is entailed, but that is an
-under-approximation and proves soundness only. Completeness for the original
-ontology needs two further facts the route does not establish: that the ABox
-cannot change a named-class subsumption, and that the KB is consistent — an
-inconsistent KB entails every subsumption, while a dropped ABox still yields an
-ordinary taxonomy. The frontend's `abox_inconsistent` precheck does not close
-that gap: it closes asserted memberships over named subclasses, domain/range and
-`SameIndividual` and fires only on an asserted disjoint pair or a negative
-assertion clash, so `A ⊑ ⊥` with `ClassAssertion(A a)`, a cardinality clash, or a
-role-chain-derived range clash all escape it
-(`abox_consistency.rs::derived_abox_contradictions_are_not_detected`). The
-existing `positive_abox_tbox_separable` certificate is the shape a future
-automatic version would need, together with a complete consistency decision.
+exact nominal CB engine with the native ABox kept out of the card input. Before
+the cardinality result can win, the normalized certificate requires a complete
+positive object ABox with one asserted class per individual, rejects negative
+roles, inequality, equality, disjunction, existential heads and number-role
+interaction, closes the concrete asserted graph under positive role and chain
+rules, and checks every resulting public type against the exact TBox taxonomy.
+It also checks that every asserted class is satisfiable. Internal chain and
+transitivity concepts are closed as role-automaton state and removed from the
+published result. Any unsupported shape or missing entailment produces no card
+answer. `KM_NOMINALS=1` preserves the complete fallback, so a source-profile
+false positive changes scheduling only.
 
 ORE 7499 is the corpus witness for the arm itself: its 74 asserted
 `BFO_0000062` edges feed a proper role chain, its irreflexive role and complex
 range are outside the number-role component, and
 `km classify --route certified_card_proxy_abox` returns the Konclude/HermiT
-taxonomy exactly. Its automatic route remains `nominals`.
+taxonomy exactly. Current source selects the certified proxy route
+automatically; production status remains tied to the last completed v16 sweep
+until the source-bound IBEX candidate gate and complete sweep finish.
 
 ### Positive ABox separation certificate
 
