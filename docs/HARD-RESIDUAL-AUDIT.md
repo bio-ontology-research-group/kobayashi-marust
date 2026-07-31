@@ -10,7 +10,7 @@ non-completing rows are:
 
 | Ontology | Default-route result | Current obligation |
 |---|---|---|
-| `10860` | closing candidate | A complete explicit named-ABox match for a supported rule derives a second, provably distinct `hasR2RRelation` filler for an individual asserted to have exactly one such filler. HermiT independently rejects the extracted core as inconsistent. Commit `4703045` returns `consistent:false` through plain `km classify` in 0.02 seconds locally; full IBEX sweep `49720070` is the production promotion gate. |
+| `10860` | closing candidate | A complete explicit named-ABox match for a supported rule derives a second, provably distinct `hasR2RRelation` filler for an individual asserted to have exactly one such filler. HermiT independently rejects the extracted core as inconsistent. Commit `4703045` returns `consistent:false` through plain `km classify` in 0.02 seconds locally; full IBEX sweep `49720157` is the production promotion gate. |
 | `1194` | error | The large SRIQ ABox reaches the exact nominal CB worker's 190-second cap; the packed-term and memory boundaries are no longer blockers. |
 | `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
 

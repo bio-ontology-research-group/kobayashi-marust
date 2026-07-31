@@ -116,7 +116,7 @@ core as inconsistent. Commit `4703045` adds a one-sided finite matching
 certificate that accepts only this exact shape and fails closed on unsupported
 atoms, missing body facts, absent difference evidence, and qualified
 cardinalities. Plain `km classify` returns `consistent:false` in 0.02 seconds
-locally. IBEX full sweep `49720070` remains the corpus-wide promotion gate.
+locally. IBEX full sweep `49720157` remains the corpus-wide promotion gate.
 
 ## Soundness note
 
