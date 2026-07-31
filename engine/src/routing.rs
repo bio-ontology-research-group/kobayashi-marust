@@ -588,22 +588,30 @@ fn large_tbox_small_identity_abox_production_candidate(profile: &OntologyProfile
         && !profile.expressivity.qualified_cardinality
 }
 
-/// A large Horn terminology with many functional/inverse-functional Skolem
-/// terms can exceed the process-tree cap when the production portfolio runs
-/// sixteen CB workers. Its one-thread variant computes the same fixpoint with
-/// substantially lower memory.
-fn large_horn_functional_terminology_single_thread_candidate(profile: &OntologyProfile) -> bool {
+/// A large source-Horn functional terminology accepted by the exact native
+/// completion bridge.
+///
+/// Automatic routing runs before clausification, so this predicate must use
+/// source statistics only. Requiring no source union, complement, disjointness,
+/// cardinality, datatype, rule, import, or ABox axiom is the pre-normalisation
+/// Horn certificate. The bridge independently rechecks lossless converted-input
+/// coverage and returns a complete answer or explicitly defers.
+fn large_horn_functional_native_bridge_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
-    let clauses = &profile.clauses;
     source.abox_axioms == 0
-        && clauses.clauses >= 100_000
-        && clauses.horn_clauses == clauses.clauses
-        && clauses.function_term_symbols >= 10_000
+        && source.logical_axioms >= 30_000
+        && source.concept_expressions >= 100_000
         && (source.functional_role_axioms > 0 || source.inverse_functional_role_axioms > 0)
+        && source.unions == 0
+        && source.complements == 0
+        && source.disjoint_class_axioms == 0
         && source.min_cardinalities == 0
         && source.max_cardinalities == 0
         && source.exact_cardinalities == 0
         && source.datatype_constructors == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
 }
 
 pub fn semantic_fragment(profile: &OntologyProfile) -> SemanticFragment {
@@ -728,10 +736,17 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // axioms remain live. Nominal inputs stay on the exact nominal fallback
         // here until the combined certified-nominals portfolio is installed.
         SemanticFragment::SriqCore if giant_flat_taxonomy_el_candidate(profile) => Route::Elc,
+        // This large Horn SHIF shape used to select the concurrent production
+        // portfolio. Its exact bridge arm needs about 8 GiB, but racing the CB
+        // fallback can push the process-tree total above the 20 GiB contract.
+        // The atomic bridge repeats the semantic gate over the converted input
+        // and is complete-answer-or-defer: it cannot publish an approximate
+        // taxonomy if this cheap source-side scheduling predicate is a false
+        // positive.
         SemanticFragment::SriqCore
-            if large_horn_functional_terminology_single_thread_candidate(profile) =>
+            if large_horn_functional_native_bridge_candidate(profile) =>
         {
-            Route::ProductionAll1
+            Route::HtBridge
         }
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
             if profile.inverse_cardinality_role_separable =>
@@ -1859,26 +1874,33 @@ mod tests {
     }
 
     #[test]
-    fn large_horn_functional_terminology_uses_single_thread_production() {
+    fn large_horn_functional_terminology_uses_exact_atomic_bridge() {
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 37_696;
         profile.source.tbox_axioms = 35_531;
         profile.source.rbox_axioms = 2_165;
         profile.source.functional_role_axioms = 337;
         profile.source.inverse_functional_role_axioms = 337;
+        profile.source.concept_expressions = 133_419;
         profile.clauses.clauses = 139_634;
         profile.clauses.horn_clauses = profile.clauses.clauses;
         profile.clauses.function_term_symbols = 14_115;
 
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
-        assert!(large_horn_functional_terminology_single_thread_candidate(
+        assert!(large_horn_functional_native_bridge_candidate(
             &profile
         ));
-        assert_eq!(select(&profile), Route::ProductionAll1);
+        assert_eq!(select(&profile), Route::HtBridge);
 
-        profile.clauses.disjunctive_clauses = 1;
-        profile.clauses.horn_clauses -= 1;
-        assert!(!large_horn_functional_terminology_single_thread_candidate(
+        // Production selects before clausification. The source-only profile
+        // must therefore make the same decision as `km profile`, which fills
+        // clause statistics after normalisation.
+        let mut pre_clausification = profile.clone();
+        pre_clausification.clauses = Default::default();
+        assert_eq!(select(&pre_clausification), Route::HtBridge);
+
+        profile.source.complements = 1;
+        assert!(!large_horn_functional_native_bridge_candidate(
             &profile
         ));
     }

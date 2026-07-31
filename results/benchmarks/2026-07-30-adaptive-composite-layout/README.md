@@ -498,3 +498,30 @@ establish their behavior in the v11 binary. Companion source-bound panel
 9724 contract and the same dependency on v10. An exact, reproducible guarded
 HT result would provide substantially more memory headroom than
 `production_all1`; a defer or mismatch will keep it out of automatic routing.
+
+Local current-source diagnostics identified why v10's automatic 9724 route
+still used the high-memory portfolio. Automatic selection runs immediately
+after source parsing, before clause statistics exist. The old scheduling
+predicate required at least 100,000 normalized clauses and 10,000 function
+symbols, so it was unreachable during production classification even though
+the post-normalization `km profile` command reported `production_all1`. A
+timing trace confirmed the mismatch: the diagnostic profile selected
+`production_all1`, while `km classify` actually launched `production_all`.
+
+The corrected predicate uses only pre-normalization OWL features: a large
+terminology with at least 30,000 logical axioms and 100,000 concept
+expressions, functionality, and no ABox, import, rule, union, complement,
+disjointness, cardinality, or datatype construct. The frozen 592-profile table
+matches only 9724. This remains structural dispatch and contains no ontology
+name, index, or fingerprint. Its selected `ht_bridge` worker independently
+requires lossless converted-input coverage and is complete-answer-or-defer.
+
+Current-source binary SHA-256
+`a07dcffe7b509d7cb72794b55f763ec6e72bc1305614d8404fe38acebd4a5ce8`
+then selected `ht_bridge` in the production timing trace. The same binary under
+`KM_ROUTE=auto` matched the full-IRI Konclude signature exactly: 457,090
+subsumptions, no unsatisfiable named classes, zero extra/missing pairs, 40.5751
+seconds, and 8,184.64 MiB on `leechuck-office`. Explicit guarded controls were
+also exact at 8,165.19 MiB (`ht_bridge`) and 8,150.66 MiB (`ht_full`). These
+local results establish the routing mechanism and signature but do not replace
+the queued source-bound IBEX repetitions or a complete corpus sweep.
