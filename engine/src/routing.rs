@@ -554,13 +554,45 @@ fn small_class_identity_abox_production_candidate(profile: &OntologyProfile) -> 
         && !profile.expressivity.universal_role
 }
 
+/// Very large terminologies with a tiny class/identity-only ABox should let the
+/// complete production portfolio race its exact procedures instead of entering
+/// the nominal root-context engine directly. This is a scheduling gate only:
+/// `production_all` retains the same exact nominal-aware fallback.
+fn large_tbox_small_identity_abox_production_candidate(profile: &OntologyProfile) -> bool {
+    const LARGE_TBOX_LIMIT: u64 = 100_000;
+    const SMALL_ABOX_LIMIT: u64 = 100;
+
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    let represented = source
+        .class_assertions
+        .saturating_add(count("SameIndividual"))
+        .saturating_add(count("DifferentIndividuals"));
+
+    source.tbox_axioms >= LARGE_TBOX_LIMIT
+        && source.abox_axioms > 0
+        && source.abox_axioms <= SMALL_ABOX_LIMIT
+        && source.class_assertions > 0
+        && source.abox_axioms == represented
+        && source.role_assertions == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.distinct_data_properties == 0
+        && source.datatype_constructors == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && !profile.expressivity.datatype
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.qualified_cardinality
+}
+
 /// A large Horn terminology with many functional/inverse-functional Skolem
 /// terms can exceed the process-tree cap when the production portfolio runs
 /// sixteen CB workers. Its one-thread variant computes the same fixpoint with
 /// substantially lower memory.
-fn large_horn_functional_terminology_single_thread_candidate(
-    profile: &OntologyProfile,
-) -> bool {
+fn large_horn_functional_terminology_single_thread_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let clauses = &profile.clauses;
     source.abox_axioms == 0
@@ -634,6 +666,11 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::NativeBridgeAbox => Route::CertifiedNominals,
         SemanticFragment::Nominal if independent_large_abox_el_candidate(profile) => Route::Elc,
         SemanticFragment::Nominal if independent_large_abox_candidate(profile) => {
+            Route::ProductionAll
+        }
+        SemanticFragment::Nominal
+            if large_tbox_small_identity_abox_production_candidate(profile) =>
+        {
             Route::ProductionAll
         }
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
@@ -1758,9 +1795,7 @@ mod tests {
 
         profile.source.min_cardinalities = 1;
         profile.expressivity.cardinality = true;
-        assert!(!large_no_cardinality_abox_production_candidate(
-            &profile
-        ));
+        assert!(!large_no_cardinality_abox_production_candidate(&profile));
     }
 
     #[test]
@@ -1778,23 +1813,49 @@ mod tests {
         assert!(small_class_identity_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::ProductionAll);
 
-        profile.source.axiom_types.insert(
-            "ObjectPropertyAssertion".to_string(),
-            1,
-        );
+        profile
+            .source
+            .axiom_types
+            .insert("ObjectPropertyAssertion".to_string(), 1);
         profile.source.role_assertions = 1;
         profile.source.abox_axioms += 1;
-        assert!(!small_class_identity_abox_production_candidate(
-            &profile
-        ));
+        assert!(!small_class_identity_abox_production_candidate(&profile));
 
         profile.source.axiom_types.remove("ObjectPropertyAssertion");
         profile.source.role_assertions = 0;
         profile.source.abox_axioms -= 1;
         profile.source.abox_axioms = 101;
-        assert!(!small_class_identity_abox_production_candidate(
+        assert!(!small_class_identity_abox_production_candidate(&profile));
+    }
+
+    #[test]
+    fn large_tbox_small_identity_abox_uses_production_portfolio() {
+        let mut profile = source_profile(
+            r#"Ontology(
+                ClassAssertion(<A> <a>)
+                ClassAssertion(<B> <b>)
+                DifferentIndividuals(<a> <b>)
+                SubClassOf(<A> <B>)
+            )"#,
+        );
+        profile.source.tbox_axioms = 100_000;
+        profile.positive_abox_tbox_separable = false;
+        profile.positive_el_abox_materializable = false;
+        // Prevent the ordinary typed-object bridge candidate from accounting
+        // for this route in the regression fixture.
+        profile.expressivity.universal_role = true;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert!(large_tbox_small_identity_abox_production_candidate(
             &profile
         ));
+        assert_eq!(select(&profile), Route::ProductionAll);
+
+        profile.source.tbox_axioms -= 1;
+        assert!(!large_tbox_small_identity_abox_production_candidate(
+            &profile
+        ));
+        assert_eq!(select(&profile), Route::Nominals);
     }
 
     #[test]
