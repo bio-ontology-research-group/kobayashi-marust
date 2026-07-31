@@ -63,6 +63,11 @@ Repeating the route with `KM_NOMINALS=1` explicitly also exited 0 in 97.14
 seconds, used 983,116 KiB peak RSS, and was byte-identical to the retained exact
 output.
 
+After making the route automatic and adding the exact nominal fallback, plain
+`km classify` exited 0 in 97.25 seconds at 2,330,372 KiB process-tree peak RSS.
+Its output remained byte-identical with SHA-256
+`97b34a2790a442c2fe55274359fe1e46ddbc6141d62c255c690743cbc801bff2`.
+
 The preserved worker payload completed independently in 53.94 seconds and
 21,740 KiB RSS. The Rust certificate accepted its exact taxonomy in 1.69
 seconds before the indexed role-chain join was added; the end-to-end indexed
@@ -88,6 +93,30 @@ test result: ok. 1827 passed; 0 failed; 8 ignored
 All CLI and integration test targets also passed with one test thread. A
 parallel library run exposed four pre-existing process-global environment races;
 each passed alone, and the complete serial run is the authoritative result.
+
+The corrected automatic composition was followed by another complete serial
+all-target run: 1,827 library tests and every integration target passed, with 0
+failures and 8 ignored library tests.
+
+## First source-bound IBEX gate
+
+Commit `9462131` was archived as
+`125101f90a18f66e280976a667ae571c36b4c2b503750fb636bab7ffcb64c7fc`.
+Build job `49700575` compiled it on `gpu510-32` in 3m50s, passed the smoke
+classification, and published binary SHA-256
+`d6ef417e3e2c5bae5a9cac4377c68311c0120d81ee58557759e9c7f086687ddf`.
+
+Focused array `49700588` used a deliberately constrained four-CPU allocation.
+Controls 33, 10702, 6934, and 9540 all completed with exact full-IRI matches.
+Ontology 7499 timed out at 240.0304 seconds and 659.94 MiB. This was a
+scheduling failure: the exact nominal fallback saturated the cpuset while the
+serial card worker retained the route's default positive nice value.
+
+The corrected candidate sets `KM_HT_NICE=0` and projects only the card worker's
+private clause view back to the TBox. The shared clause file still contains all
+ground ABox clauses for the exact CB fallback. This scheduling/view correction
+does not change either procedure's derivations. A second source-bound IBEX gate
+is required before the production total changes.
 
 ## Pending production gate
 

@@ -1455,7 +1455,12 @@ fn spawn_ht(
         &definers,
         std::env::var_os("KM_NOMINALS").is_some()
             && (std::env::var_os("KM_TRIGGER_ABSORB").is_some()
-                || std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()),
+                || std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
+                // The exact nominal CB fallback and the proxy-card worker
+                // share one clause file. Project only the worker's view back
+                // to the TBox; the CB process still reads every ground ABox
+                // clause from the original file.
+                || std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()),
         !rules.is_empty(),
     );
     let mut tin = cb_to_ht::convert(
@@ -1506,8 +1511,9 @@ fn spawn_ht(
     }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
-            "KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s",
+            "KM_TIMING spawn_ht: read+convert {} clauses (ht_view={}) in {:.2}s",
             cl.len(),
+            nominal_bridge_view.len(),
             _tconv.elapsed().as_secs_f64()
         );
     }

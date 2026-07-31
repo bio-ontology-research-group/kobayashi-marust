@@ -1018,6 +1018,10 @@ const CERTIFIED_CARD_PROXY_ABOX: &[(&str, &str)] = &[
     ("KM_NO_HT_SHOQ", "1"),
     ("KM_NO_HT_RULES", "1"),
     ("KM_NOMINALS", "1"),
+    // The exact nominal fallback can saturate the allocation. The serial card
+    // certificate must retain one fair CPU share instead of being nice'd until
+    // the 240-second wall expires on small cpusets.
+    ("KM_HT_NICE", "0"),
 ];
 const CB_PLAIN: &[(&str, &str)] = &[
     ("KM_MECHANISM", "cb"),
@@ -1637,6 +1641,7 @@ mod tests {
             ("KM_NO_HT_QO_ROUTER", "1"),
             ("KM_NO_HT_SHOQ", "1"),
             ("KM_NOMINALS", "1"),
+            ("KM_HT_NICE", "0"),
         ] {
             assert!(
                 Route::CertifiedCardProxyAbox.settings().contains(&required),
