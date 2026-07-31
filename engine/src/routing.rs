@@ -798,6 +798,15 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
+        // The source profile proposes the first-class cardinality arm, but the
+        // normalized runtime certificate remains authoritative. It proves the
+        // positive object-ABox graph cannot add a public type beyond the exact
+        // TBox taxonomy and rejects negative roles, inequality, disjunction,
+        // equality, and number-role interaction. A failed certificate falls
+        // through to the complete nominal CB calculus carried by this route.
+        SemanticFragment::Nominal if profile.card_number_role_separable => {
+            Route::CertifiedCardProxyAbox
+        }
         SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
             Route::CertifiedNominals
         }
@@ -827,19 +836,10 @@ pub fn select(profile: &OntologyProfile) -> Route {
             Route::CertifiedNominals
         }
         SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => Route::NominalNiTbox,
-        // An ABox that fails the materialization certificate stays on the exact
-        // nominal calculus. `certified_card_proxy_abox` can classify several of
-        // these terminologies (ore_ont_7499 gold-exact) but it DROPS the ABox,
-        // and dropping is only an under-approximation: it proves soundness, not
-        // completeness. Completeness would additionally need ABox/TBox taxonomy
-        // separability AND a complete consistency decision, because an
-        // inconsistent KB entails every subsumption while a dropped ABox yields
-        // an ordinary taxonomy. The frontend's `abox_inconsistent` precheck is
-        // sound-only — it closes asserted memberships over named subclasses,
-        // domain/range and SameIndividual and fires on an ASSERTED disjoint
-        // pair, so `A ⊑ ⊥` with `ClassAssertion(A a)`, a cardinality clash, or a
-        // role-chain-derived range clash all escape it. Until such a
-        // certificate exists the route stays explicitly selectable only.
+        // Every remaining ABox stays on the exact nominal calculus. The
+        // certified proxy route above is complete-answer-or-defer and carries
+        // this same nominal fallback, so a source-profile false positive can
+        // affect scheduling but never the published result.
         SemanticFragment::Nominal => Route::Nominals,
         // A scoped inverse+cardinality ontology whose number-role component is
         // source-certified disjoint from inverse/non-simple roles must retain a
@@ -983,10 +983,9 @@ const CERTIFIED_CARD_NOMINALS: &[(&str, &str)] = &[
     ("KM_HT_SATURATION_BUDGET_S", "180"),
     ("KM_HT_NICE", "0"),
 ];
-/// MEASUREMENT-ONLY cardinality race for a scoped inverse+cardinality ontology
+/// Certified cardinality portfolio for a scoped inverse+cardinality ontology
 /// whose ABox cannot be materialized natively (`card_number_role_separable`
-/// holds, `inverse_cardinality_role_separable` does not). Never selected
-/// automatically; see the fail-closed branch in [`select`].
+/// holds, `inverse_cardinality_role_separable` does not).
 ///
 /// The source certificate proves no number restriction touches an inverse,
 /// non-simple, universal or clause-retained-constraint role, so the fast Ht's
@@ -995,18 +994,11 @@ const CERTIFIED_CARD_NOMINALS: &[(&str, &str)] = &[
 /// input (seeding it costs the whole classification and still cannot
 /// materialize chain-derived edges).
 ///
-/// **Contract: sound, NOT complete for the ontology as a whole.** Dropping ABox
-/// axioms only removes constraints, so every published subsumption is entailed.
-/// Completeness needs two further proofs this route does not have: that the
-/// ABox cannot change a named-class subsumption (nominal-free TBox, no
-/// universal role — `positive_abox_tbox_separable` is the existing certificate
-/// of that shape), and that the KB is CONSISTENT, since an inconsistent KB
-/// entails every subsumption while a dropped ABox still yields an ordinary
-/// taxonomy. `abox_inconsistent` decides only asserted-disjointness and
-/// negative-assertion clashes, so a derived contradiction (`A ⊑ ⊥` with
-/// `ClassAssertion(A a)`, a cardinality clash, a role-chain-derived range
-/// clash) is missed. Callers select this route when they have established
-/// consistency and ABox irrelevance by other means.
+/// The worker publishes its TBox taxonomy only after the normalized positive
+/// role-ABox certificate checks consistency and taxonomy preservation against
+/// that exact output. Any unsupported ABox or failed entailment declines the
+/// card answer. `KM_NOMINALS=1` keeps the concurrent CB fallback exact, so the
+/// route is complete-answer-or-defer plus a complete nominal fallback.
 ///
 /// `KM_HT_ONLY=card` admits exactly the cardinality arm — no measurement HT
 /// racer can substitute for it — and the CB engine still races in `KM_HT_MODE=
@@ -1025,6 +1017,7 @@ const CERTIFIED_CARD_PROXY_ABOX: &[(&str, &str)] = &[
     ("KM_NO_HT_QO_ROUTER", "1"),
     ("KM_NO_HT_SHOQ", "1"),
     ("KM_NO_HT_RULES", "1"),
+    ("KM_NOMINALS", "1"),
 ];
 const CB_PLAIN: &[(&str, &str)] = &[
     ("KM_MECHANISM", "cb"),
@@ -1643,13 +1636,14 @@ mod tests {
             ("KM_ABSORB", "0"),
             ("KM_NO_HT_QO_ROUTER", "1"),
             ("KM_NO_HT_SHOQ", "1"),
+            ("KM_NOMINALS", "1"),
         ] {
             assert!(
                 Route::CertifiedCardProxyAbox.settings().contains(&required),
                 "certified_card_proxy_abox must carry {required:?}"
             );
         }
-        for forbidden in ["KM_NO_HT_CARD", "KM_NO_HT_RACE", "KM_NOMINALS"] {
+        for forbidden in ["KM_NO_HT_CARD", "KM_NO_HT_RACE"] {
             assert!(
                 !Route::CertifiedCardProxyAbox
                     .settings()
@@ -1719,16 +1713,14 @@ mod tests {
             Route::CertifiedCardNominals,
             "the scoped source certificate must select the exact card+nominal portfolio"
         );
-        // The number-role half ALONE (ore_ont_7499: its asserted edges feed a
-        // proper role chain, so the native ABox cannot be materialized) must
-        // NOT pick up the ABox-dropping cardinality race. That route is sound
-        // but not complete for the whole ontology, so it stays explicit-only
-        // and the exact nominal calculus keeps the input.
+        // The number-role half alone proposes the proxy-card portfolio. Its
+        // normalized certificate either validates the positive role ABox or
+        // defers to the exact nominal calculus carried in the same route.
         profile.inverse_cardinality_role_separable = false;
         assert_eq!(
             select(&profile),
-            Route::Nominals,
-            "an unmaterializable ABox must keep the exact nominal calculus"
+            Route::CertifiedCardProxyAbox,
+            "an unmaterializable positive ABox must use the certified proxy portfolio"
         );
         profile.card_number_role_separable = false;
         assert_eq!(
@@ -2352,35 +2344,26 @@ mod tests {
         }
     }
 
-    /// The ABox-dropping cardinality race must never be reachable from the
-    /// automatic policy, whatever the profile says. Dropping an ABox is an
-    /// under-approximation: it keeps every published subsumption entailed, but
-    /// an inconsistent KB entails EVERY subsumption, and neither the source
-    /// profile nor the frontend precheck decides consistency.
+    /// The source number-role certificate may propose the proxy portfolio, but
+    /// the normalized ABox certificate remains authoritative at runtime. The
+    /// route must carry the exact nominal fallback for every defer.
     #[test]
-    fn the_abox_dropping_card_race_is_never_selected_automatically() {
+    fn certified_proxy_card_route_is_automatic_with_exact_fallback() {
         let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 223;
         profile.card_number_role_separable = true;
-        for abox_axioms in [0, 1, 223] {
-            for separable in [false, true] {
-                for positive in [false, true] {
-                    profile.source.abox_axioms = abox_axioms;
-                    profile.inverse_cardinality_role_separable = separable;
-                    profile.positive_abox_tbox_separable = positive;
-                    assert_ne!(
-                        select(&profile),
-                        Route::CertifiedCardProxyAbox,
-                        "abox={abox_axioms} separable={separable} positive={positive}"
-                    );
-                }
-            }
-        }
-        // It stays reachable by explicit request, which is how the ore_ont_7499
-        // result is reproduced.
-        assert_eq!(
-            "certified_card_proxy_abox".parse::<Route>().unwrap(),
-            Route::CertifiedCardProxyAbox
-        );
+        assert_eq!(select(&profile), Route::CertifiedCardProxyAbox);
+        assert!(Route::CertifiedCardProxyAbox
+            .settings()
+            .contains(&("KM_NOMINALS", "1")));
+
+        profile.card_number_role_separable = false;
+        assert_ne!(select(&profile), Route::CertifiedCardProxyAbox);
+
+        // The stronger native materialization certificate keeps precedence.
+        profile.card_number_role_separable = true;
+        profile.inverse_cardinality_role_separable = true;
+        assert_eq!(select(&profile), Route::CertifiedCardNominals);
     }
 
     #[test]

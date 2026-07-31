@@ -32,7 +32,7 @@ use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, Or
 /// the arm as having no answer and CB stays authoritative — rather than decode
 /// into a fail-open "consistent, nothing subsumes" verdict that would win the
 /// race and kill the CB engine.
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 struct TOutput {
     consistent: bool,
     subsumptions: Vec<Vec<String>>,
@@ -1115,6 +1115,299 @@ fn native_nominal_ht_view<'a>(
     native_nominal_bridge_clauses(clauses, nominal_abox, &[], enabled, has_rules)
 }
 
+#[derive(Clone, Debug)]
+struct ProxyAboxCertificate {
+    concepts: Vec<String>,
+    assertion_ids: Vec<usize>,
+    role_assertions: Vec<(usize, usize, usize)>,
+    relevant_clauses: Vec<cb_to_ht::HtClause>,
+    chains: Vec<(usize, usize, usize)>,
+    public_queries: std::collections::HashSet<String>,
+    extra_queries: Vec<usize>,
+}
+
+fn positive_role_proxy_abox_certificate(tin: &cb_to_ht::TInput) -> Option<ProxyAboxCertificate> {
+    use cb_to_ht::HAtom;
+    use std::collections::HashSet;
+
+    let native = &tin.native_abox;
+    if !native.complete
+        || native.individuals.is_empty()
+        || native.role_assertions.is_empty()
+        || !native.different.is_empty()
+        || !native.negative_role_assertions.is_empty()
+    {
+        return None;
+    }
+    let assertion_ids: Vec<usize> = native
+        .individuals
+        .iter()
+        .map(|individual| {
+            let mut assertions = individual.assertions.clone();
+            assertions.sort_unstable();
+            assertions.dedup();
+            (assertions.len() == 1).then_some(assertions[0])
+        })
+        .collect::<Option<_>>()?;
+    if assertion_ids
+        .iter()
+        .any(|&concept| concept >= tin.concepts.len())
+    {
+        return None;
+    }
+
+    let mut role_component = HashSet::new();
+    for &(role, source, target) in &native.role_assertions {
+        if role >= tin.roles.len()
+            || source >= native.individuals.len()
+            || target >= native.individuals.len()
+        {
+            return None;
+        }
+        role_component.insert(role);
+    }
+    loop {
+        let before = role_component.len();
+        for clause in &tin.clauses {
+            let role_implication = !clause.body.is_empty()
+                && !clause.head.is_empty()
+                && clause
+                    .body
+                    .iter()
+                    .chain(clause.head.iter())
+                    .all(|atom| matches!(atom, HAtom::Role { r, .. } if *r < tin.roles.len()));
+            if !role_implication
+                || !clause
+                    .body
+                    .iter()
+                    .any(|atom| matches!(atom, HAtom::Role { r, .. } if role_component.contains(r)))
+            {
+                continue;
+            }
+            for atom in &clause.head {
+                if let HAtom::Role { r, .. } = atom {
+                    role_component.insert(*r);
+                }
+            }
+        }
+        for &(left, right, target) in &tin.chains {
+            if left >= tin.roles.len() || right >= tin.roles.len() || target >= tin.roles.len() {
+                return None;
+            }
+            if role_component.contains(&left) || role_component.contains(&right) {
+                role_component.insert(target);
+            }
+        }
+        if role_component.len() == before {
+            break;
+        }
+    }
+    if tin
+        .card_defs
+        .iter()
+        .any(|card| role_component.contains(&card.role))
+    {
+        return None;
+    }
+
+    let public_queries: HashSet<String> = tin
+        .queries
+        .iter()
+        .filter_map(|&query| tin.concepts.get(query).cloned())
+        .collect();
+    let mut extra_queries = HashSet::new();
+    let mut relevant_clauses = Vec::new();
+    for clause in &tin.clauses {
+        let touches_component = clause
+            .body
+            .iter()
+            .any(|atom| matches!(atom, HAtom::Role { r, .. } if role_component.contains(r)));
+        if !touches_component {
+            continue;
+        }
+        // Only positive, range-restricted Horn consequences are admissible.
+        // A multi-head clause is a disjunction, while Eq and negative concepts
+        // can make adding an edge inconsistent.  Terms above 1 are not emitted
+        // by the normalized OWL role constraints covered by this certificate;
+        // declining them keeps the small grounding checker deliberately exact.
+        if clause.head.len() != 1
+            || clause.body.is_empty()
+            || clause
+                .body
+                .iter()
+                .chain(clause.head.iter())
+                .any(|atom| match atom {
+                    HAtom::Concept { neg, c, t } => *neg || *c >= tin.concepts.len() || *t > 1,
+                    HAtom::Role { r, s, t } => *r >= tin.roles.len() || *s > 1 || *t > 1,
+                    HAtom::Eq { .. } | HAtom::Exist { .. } => true,
+                })
+        {
+            return None;
+        }
+        let body_terms: HashSet<usize> = clause
+            .body
+            .iter()
+            .flat_map(|atom| match atom {
+                HAtom::Concept { t, .. } => vec![*t],
+                HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => vec![*s, *t],
+                HAtom::Exist { .. } => Vec::new(),
+            })
+            .collect();
+        let head_terms: Vec<usize> = match &clause.head[0] {
+            HAtom::Concept { t, .. } => vec![*t],
+            HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => vec![*s, *t],
+            HAtom::Exist { .. } => Vec::new(),
+        };
+        if head_terms.iter().any(|term| !body_terms.contains(term)) {
+            return None;
+        }
+        for atom in clause.body.iter().chain(clause.head.iter()) {
+            if let HAtom::Concept { c, .. } = atom {
+                extra_queries.insert(*c);
+            }
+        }
+        relevant_clauses.push(clause.clone());
+    }
+
+    Some(ProxyAboxCertificate {
+        concepts: tin.concepts.clone(),
+        assertion_ids,
+        role_assertions: native.role_assertions.clone(),
+        relevant_clauses,
+        chains: tin.chains.clone(),
+        public_queries,
+        extra_queries: extra_queries.into_iter().collect(),
+    })
+}
+
+fn proxy_abox_certificate_accepts(certificate: &ProxyAboxCertificate, output: &TOutput) -> bool {
+    use cb_to_ht::HAtom;
+    use std::collections::HashSet;
+    if !output.consistent {
+        return false;
+    }
+    let unsatisfiable: HashSet<&str> = output.unsatisfiable.iter().map(String::as_str).collect();
+    if certificate.assertion_ids.iter().any(|&assertion| {
+        certificate
+            .concepts
+            .get(assertion)
+            .is_none_or(|name| unsatisfiable.contains(name.as_str()))
+    }) {
+        return false;
+    }
+    let pairs: HashSet<(&str, &str)> = output
+        .subsumptions
+        .iter()
+        .filter_map(|pair| (pair.len() >= 2).then_some((pair[0].as_str(), pair[1].as_str())))
+        .collect();
+    let entails = |individual: usize, concept: usize| -> bool {
+        let Some(&assertion) = certificate.assertion_ids.get(individual) else {
+            return false;
+        };
+        let (Some(asserted), Some(required)) = (
+            certificate.concepts.get(assertion),
+            certificate.concepts.get(concept),
+        ) else {
+            return false;
+        };
+        asserted == required || pairs.contains(&(asserted.as_str(), required.as_str()))
+    };
+
+    let individual_count = certificate.assertion_ids.len();
+    let mut facts: HashSet<(usize, usize, usize)> =
+        certificate.role_assertions.iter().copied().collect();
+    // Ground a normalized two-variable positive Horn body.  The certificate's
+    // structural phase has already rejected every other atom/term shape.
+    let body_holds = |body: &[HAtom],
+                      x: usize,
+                      y: usize,
+                      role_facts: &HashSet<(usize, usize, usize)>,
+                      internal_facts: &HashSet<(usize, usize)>| {
+        let individual = |term: usize| if term == 0 { x } else { y };
+        body.iter().all(|atom| match atom {
+            HAtom::Concept { neg: false, c, t } => {
+                entails(individual(*t), *c) || internal_facts.contains(&(individual(*t), *c))
+            }
+            HAtom::Role { r, s, t } => role_facts.contains(&(*r, individual(*s), individual(*t))),
+            _ => false,
+        })
+    };
+
+    // Close the concrete asserted graph under every admitted Horn rule and
+    // normalized role chain. Internal chain/transitivity markers may be added
+    // on named individuals because they are implementation state, not OWL
+    // classes. Every public class consequence must already follow from that
+    // individual's asserted class in the exact TBox taxonomy. Unrelated
+    // existential witnesses can be chosen fresh in this nominal-free route, so
+    // they need not acquire an edge to a named individual.
+    let mut internal_facts: HashSet<(usize, usize)> = HashSet::new();
+    loop {
+        let mut added = Vec::new();
+        let mut added_internal = Vec::new();
+        for clause in &certificate.relevant_clauses {
+            for x in 0..individual_count {
+                for y in 0..individual_count {
+                    if !body_holds(&clause.body, x, y, &facts, &internal_facts) {
+                        continue;
+                    }
+                    let individual = |term: usize| if term == 0 { x } else { y };
+                    match clause.head[0] {
+                        HAtom::Role { r, s, t } => {
+                            added.push((r, individual(s), individual(t)));
+                        }
+                        HAtom::Concept { neg: false, c, t } => {
+                            let at = individual(t);
+                            if cb_to_ht::is_internal(&certificate.concepts[c]) {
+                                added_internal.push((at, c));
+                            } else if !entails(at, c) {
+                                return false;
+                            }
+                        }
+                        _ => return false,
+                    }
+                }
+            }
+        }
+        for &(left, right, target) in &certificate.chains {
+            let mut right_by_source: std::collections::HashMap<usize, Vec<usize>> =
+                std::collections::HashMap::new();
+            for &(role, source, end) in &facts {
+                if role == right {
+                    right_by_source.entry(source).or_default().push(end);
+                }
+            }
+            for &(role, source, middle) in &facts {
+                if role != left {
+                    continue;
+                }
+                if let Some(ends) = right_by_source.get(&middle) {
+                    for &end in ends {
+                        added.push((target, source, end));
+                    }
+                }
+            }
+        }
+        let before = (facts.len(), internal_facts.len());
+        facts.extend(added);
+        internal_facts.extend(added_internal);
+        if (facts.len(), internal_facts.len()) == before {
+            break;
+        }
+    }
+    true
+}
+
+fn proxy_abox_filter_output(certificate: &ProxyAboxCertificate, output: &mut TOutput) {
+    output.subsumptions.retain(|pair| {
+        pair.len() >= 2
+            && certificate.public_queries.contains(&pair[0])
+            && certificate.public_queries.contains(&pair[1])
+    });
+    output
+        .unsatisfiable
+        .retain(|concept| certificate.public_queries.contains(concept));
+}
+
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(
@@ -1128,6 +1421,7 @@ fn spawn_ht(
     Option<usize>,
     bool,
     bool,
+    Option<ProxyAboxCertificate>,
 )> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules): (
@@ -1177,24 +1471,35 @@ fn spawn_ht(
     );
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     // Native-ABox admission for the cardinality arm (`KM_HT_CARD_PROXY_ABOX`,
-    // set by the `certified_card_proxy_abox` route). The native ABox is exact
-    // only when every asserted role component clears the role-automata fence;
-    // handing the card arm an ABox it cannot materialize through chains adds no
-    // completeness and costs the whole classification (ore_ont_7499: the card
-    // arm does not finish in 400 s with the uncertified ABox seeded, and does
-    // finish gold-exact in ~110 s without it). Keeping it out is exactly the
-    // ABox contract the always-running CB engine has — `classify` short-circuits
-    // on the frontend's `abox_inconsistent` precheck and otherwise reasons over
-    // the TBox clause set — and dropping ABox axioms can only lose entailments,
-    // never add one. Every other worker keeps today's unconditional install.
+    // set by the `certified_card_proxy_abox` route). If the ordinary role-
+    // automata materialization gate declines, classify the TBox and retain a
+    // normalized positive-role ABox certificate. The scheduler publishes that
+    // taxonomy only when the exact result proves every asserted class
+    // satisfiable and every concrete role-derived public type already entailed.
+    // Otherwise this worker defers and the route's `KM_NOMINALS=1` CB arm stays
+    // authoritative. Seeding the uncertified ABox itself is not a fallback:
+    // ore_ont_7499 does not finish in 400 s that way.
     let card_proxy_abox = std::env::var_os("KM_HT_CARD_PROXY_ABOX").is_some()
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
+    let mut proxy_abox_certificate = None;
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some();
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
         if native_abox_role_automata_separable(&native) {
             tin = native;
+        } else {
+            if let Some(path) = std::env::var_os("KM_DUMP_PROXY_TIN") {
+                if let Ok(bytes) = serde_json::to_vec(&native) {
+                    let _ = std::fs::write(path, bytes);
+                }
+            }
+            let certificate = positive_role_proxy_abox_certificate(&native)?;
+            tin.queries
+                .extend(certificate.extra_queries.iter().copied());
+            tin.queries.sort_unstable();
+            tin.queries.dedup();
+            proxy_abox_certificate = Some(certificate);
         }
     } else if !certified_tbox_only {
         cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same);
@@ -1613,6 +1918,7 @@ fn spawn_ht(
         // speculative multi-threaded CB fallback from starving that serial,
         // certified worker without ever making the bridge authoritative.
         typed_nominal_exclusive,
+        proxy_abox_certificate,
     ))
 }
 
@@ -1624,7 +1930,9 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, out_path, _, _, _, _)) = spawn_ht(cfg, clauses_path, named) else {
+    let Some((mut child, out_path, _, _, _, _, proxy_abox_certificate)) =
+        spawn_ht(cfg, clauses_path, named)
+    else {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the selected HT mechanism's structural gate".into(),
         ));
@@ -1637,13 +1945,24 @@ pub fn run_ht_only(
         )));
     }
     let output = File::open(out_path.path())?;
-    let parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+    let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
         OrchestrateError::Worker {
             bin: "tableau/ht".into(),
             code: 0,
             stderr: format!("successful worker emitted no valid taxonomy: {error}"),
         }
     })?;
+    if proxy_abox_certificate
+        .as_ref()
+        .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &parsed))
+    {
+        return Err(OrchestrateError::OutOfFragment(
+            "proxy ABox consistency certificate failed".into(),
+        ));
+    }
+    if let Some(certificate) = &proxy_abox_certificate {
+        proxy_abox_filter_output(certificate, &mut parsed);
+    }
     Ok(tableau_to_out(parsed))
 }
 
@@ -1775,6 +2094,7 @@ where
         bridge_class_count,
         bridge_exclusive,
         typed_nominal_exclusive,
+        proxy_abox_certificate,
     ) = match spawn_ht(cfg, clauses_path, named) {
         Some(x) => x,
         None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
@@ -1813,9 +2133,17 @@ where
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
-        serde_json::from_reader::<_, TOutput>(BufReader::new(f))
-            .ok()
-            .map(tableau_to_out)
+        let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
+        if proxy_abox_certificate
+            .as_ref()
+            .is_some_and(|certificate| !proxy_abox_certificate_accepts(certificate, &output))
+        {
+            return None;
+        }
+        if let Some(certificate) = &proxy_abox_certificate {
+            proxy_abox_filter_output(certificate, &mut output);
+        }
+        Some(tableau_to_out(output))
     };
 
     // the CB result, written by the CB thread when it finishes — the analogue of
@@ -2860,6 +3188,146 @@ mod tests {
             card,
             false
         ));
+    }
+
+    fn safe_proxy_abox_tin() -> cb_to_ht::TInput {
+        use cb_to_ht::{HAtom, HtClause, NativeAboxJson, NativeIndividualJson, TInput};
+        TInput {
+            concepts: vec!["A".into(), "D".into()],
+            roles: vec!["r".into(), "s".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![HAtom::Role { r: 1, s: 0, t: 1 }],
+                },
+                HtClause {
+                    body: vec![HAtom::Role { r: 1, s: 0, t: 1 }],
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: 1,
+                        t: 0,
+                    }],
+                },
+            ],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![
+                    NativeIndividualJson {
+                        proxies: vec![10],
+                        assertions: vec![0],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![11],
+                        assertions: vec![0],
+                    },
+                ],
+                role_assertions: vec![(0, 0, 1)],
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn proxy_abox_certificate_is_fail_closed_and_taxonomy_checked() {
+        use cb_to_ht::HAtom;
+
+        let safe = safe_proxy_abox_tin();
+        let certificate = positive_role_proxy_abox_certificate(&safe).expect("safe positive role");
+        let exact = TOutput {
+            consistent: true,
+            subsumptions: vec![vec!["A".into(), "D".into()]],
+            unsatisfiable: Vec::new(),
+        };
+        assert!(proxy_abox_certificate_accepts(&certificate, &exact));
+
+        let missing_domain = TOutput {
+            subsumptions: Vec::new(),
+            ..exact.clone()
+        };
+        assert!(!proxy_abox_certificate_accepts(
+            &certificate,
+            &missing_domain
+        ));
+        let unsatisfiable = TOutput {
+            consistent: true,
+            subsumptions: vec![vec!["A".into(), "D".into()]],
+            unsatisfiable: vec!["A".into()],
+        };
+        assert!(!proxy_abox_certificate_accepts(
+            &certificate,
+            &unsatisfiable
+        ));
+
+        let mut positive_universal = safe.clone();
+        positive_universal.clauses.push(cb_to_ht::HtClause {
+            body: vec![
+                HAtom::Concept {
+                    neg: false,
+                    c: 0,
+                    t: 0,
+                },
+                HAtom::Role { r: 0, s: 0, t: 1 },
+            ],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 1,
+                t: 1,
+            }],
+        });
+        let universal_certificate = positive_role_proxy_abox_certificate(&positive_universal)
+            .expect("positive range consequence is structurally certifiable");
+        assert!(proxy_abox_certificate_accepts(
+            &universal_certificate,
+            &exact
+        ));
+        assert!(!proxy_abox_certificate_accepts(
+            &universal_certificate,
+            &missing_domain
+        ));
+
+        let mut internal_chain = safe.clone();
+        internal_chain.concepts.push("__trans__r__".into());
+        internal_chain.clauses.push(cb_to_ht::HtClause {
+            body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 2,
+                t: 0,
+            }],
+        });
+        internal_chain.clauses.push(cb_to_ht::HtClause {
+            body: vec![
+                HAtom::Concept {
+                    neg: false,
+                    c: 2,
+                    t: 0,
+                },
+                HAtom::Role { r: 0, s: 0, t: 1 },
+            ],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 1,
+                t: 0,
+            }],
+        });
+        let internal_certificate = positive_role_proxy_abox_certificate(&internal_chain)
+            .expect("internal role-automaton state is structurally certifiable");
+        assert!(proxy_abox_certificate_accepts(
+            &internal_certificate,
+            &exact
+        ));
+        assert!(!proxy_abox_certificate_accepts(
+            &internal_certificate,
+            &missing_domain
+        ));
+
+        let mut equality = safe;
+        equality.clauses.push(cb_to_ht::HtClause {
+            body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+            head: vec![HAtom::Eq { s: 0, t: 1 }],
+        });
+        assert!(positive_role_proxy_abox_certificate(&equality).is_none());
     }
 
     #[test]
