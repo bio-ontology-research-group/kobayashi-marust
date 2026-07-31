@@ -17,7 +17,8 @@
 #SBATCH --output=/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731/slurm-%A_%a.out
 
 set -euo pipefail
-root=/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731
+root=${SWEEP_ROOT:-/ibex/scratch/hohndor/km/adaptive-composite-layout-v11-full-20260731}
+arm=${SWEEP_ARM:-km_route_auto_adaptive_composite_layout_v11}
 km_root=/ibex/scratch/hohndor/km
 ontology_list=$km_root/routing_20260715/onts.txt
 index=${SLURM_ARRAY_TASK_ID:?}
@@ -55,6 +56,14 @@ if profile.get("ont") != sys.argv[3] or profile.get("status") != "ok":
     raise SystemExit(f"invalid existing profile: {profile}")
 if not profile.get("selected_route"):
     raise SystemExit(f"missing selected route: {profile}")
+if (
+    not row.get("selected_route_trace")
+    and not (
+        sys.argv[3] == "ore_ont_10860.owl"
+        and row.get("status") == "unsupported"
+    )
+):
+    raise SystemExit(f"missing production route trace: {row}")
 PY
   then
     echo "ALREADY_COMPLETE index=$index ontology=$ontology"
@@ -111,7 +120,7 @@ fi
 
 /usr/bin/python3 "$runner" \
   --kind km \
-  --arm km_route_auto_adaptive_composite_layout_v11 \
+  --arm "$arm" \
   --ontology "$km_root/corpus/$ontology" \
   --binary "$root/km" \
   --workers 16 \
@@ -122,6 +131,7 @@ fi
   --workdir "$work/run" \
   --failures-dir "$root/failures" \
   --checkpoint "$root/results/$ontology.checkpoint.json" \
+  --capture-km-route \
   --env KM_ROUTE=auto \
   > "$root/results/$ontology.json.tmp"
 
@@ -140,6 +150,14 @@ if not row.get("checkpointed"):
     raise SystemExit(f"runner did not checkpoint terminal state: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid terminal status: {row}")
+if (
+    not row.get("selected_route_trace")
+    and not (
+        sys.argv[2] == "ore_ont_10860.owl"
+        and row.get("status") == "unsupported"
+    )
+):
+    raise SystemExit(f"missing production route trace: {row}")
 expected_fulliri = {
     "ore_ont_3524.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
     "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",

@@ -107,6 +107,18 @@ def main() -> int:
     parser.add_argument("--array-job-id", required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument(
+        "--require-route-trace",
+        action="store_true",
+        help="require the route captured at the real production frontend boundary",
+    )
+    parser.add_argument(
+        "--allow-missing-route-trace",
+        action="append",
+        default=[],
+        metavar="ONTOLOGY",
+        help="explicit frontend-failure exception to --require-route-trace",
+    )
+    parser.add_argument(
         "--expected-nonmatch",
         action="append",
         default=[],
@@ -117,6 +129,15 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    allowed_missing_route_traces = set(args.allow_missing_route_trace)
+    unknown_route_trace_exceptions = allowed_missing_route_traces.difference(
+        args.ontology_list.read_text(encoding="utf-8").splitlines()
+    )
+    if unknown_route_trace_exceptions:
+        raise SystemExit(
+            "unknown --allow-missing-route-trace ontology: "
+            + ", ".join(sorted(unknown_route_trace_exceptions))
+        )
 
     expected_nonmatches = {}
     for specification in args.expected_nonmatch:
@@ -176,6 +197,12 @@ def main() -> int:
                 f"{ontology}: binary mismatch: "
                 f"{row.get('binary_sha256')!r} != {binary_sha256!r}"
             )
+        if (
+            args.require_route_trace
+            and ontology not in allowed_missing_route_traces
+            and not row.get("selected_route_trace")
+        ):
+            failures.append(f"{ontology}: missing production route trace")
         try:
             checkpoint_row = load_terminal(checkpoint, ontology, index)
             if checkpoint_row != row:
