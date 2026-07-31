@@ -36,3 +36,24 @@ echo "HT_BRIDGE_TRACE_COMPLETE rc=$rc binary_sha256=$observed"
 echo "stdout_bytes=$(/usr/bin/wc -c < "$probe/ht_bridge.stdout")"
 echo "stderr_bytes=$(/usr/bin/wc -c < "$probe/ht_bridge.stderr")"
 /usr/bin/tail -n 200 "$probe/ht_bridge.stderr"
+
+# Bypass only the outer route gate to expose the converted TInput and the
+# bridge's independent inner certificate. The resulting taxonomy is diagnostic
+# and is not promoted by this job.
+set +e
+timeout 240 /usr/bin/prlimit --as=21474836480 -- \
+  /usr/bin/env KM_ROUTE=manual KM_MECHANISM=ht KM_TRIGGER_ABSORB=1 \
+  KM_HT_FORCE=1 KM_HT_MODE=race KM_HT_NICE=0 \
+  KM_DUMP_TIN="$probe/6934.tinput.json" \
+  KM_BRIDGE_TRACE=1 KM_BRIDGE_TRACE2=1 KM_HT_TRACE=1 \
+  "$root/km" classify "$ontology" \
+  > "$probe/forced_inner.stdout.tmp" 2> "$probe/forced_inner.stderr.tmp"
+forced_rc=$?
+set -e
+/usr/bin/mv "$probe/forced_inner.stdout.tmp" "$probe/forced_inner.stdout"
+/usr/bin/mv "$probe/forced_inner.stderr.tmp" "$probe/forced_inner.stderr"
+
+echo "FORCED_INNER_TRACE_COMPLETE rc=$forced_rc"
+echo "stdout_bytes=$(/usr/bin/wc -c < "$probe/forced_inner.stdout")"
+echo "stderr_bytes=$(/usr/bin/wc -c < "$probe/forced_inner.stderr")"
+/usr/bin/tail -n 300 "$probe/forced_inner.stderr"
