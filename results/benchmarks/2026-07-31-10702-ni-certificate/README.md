@@ -52,9 +52,13 @@ equality merging and must not cause a false defer.
   executed by the production harness.
 - The source-bound full 592-ontology automatic-route sweep is IBEX job
   `49676527`, dependent on native build job `49676524`.
+- Integrity and exact-signature audit job `49676902` depends on every v14
+  array task and permits only the documented residual set.
 - The full-sweep result is pending. Until its exact signature and route audit
   complete, the completed production benchmark total remains unchanged.
 
 `ibex_build.sbatch` and `ibex_probe.sbatch` reproduce the focused source-bound
 probe. `ibex_auto_probe_v14.sbatch` checks automatic routing with the sweep
 binary. `ibex_build_v14.sbatch` builds the full-sweep candidate.
+`ibex_audit_v14.sbatch` verifies the frozen deployment, all 592
+result/profile/checkpoint triples, captured routes, and expected residuals.
