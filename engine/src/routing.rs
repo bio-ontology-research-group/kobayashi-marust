@@ -826,13 +826,6 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
             Route::CertifiedNominals
         }
-        // Positive object ABoxes receive a complete-or-defer component bridge
-        // attempt. The normalized worker independently proves disjoint-union
-        // separability and every component's consistency; exact nominal CB is
-        // retained when any proof obligation fails.
-        SemanticFragment::Nominal if component_abox_bridge_candidate(profile) => {
-            Route::CertifiedNominals
-        }
         SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => Route::NominalNiTbox,
         // An ABox that fails the materialization certificate stays on the exact
         // nominal calculus. `certified_card_proxy_abox` can classify several of
@@ -1850,7 +1843,7 @@ mod tests {
             .axiom_types
             .insert("ObjectPropertyAssertion".into(), 1);
         assert!(!independent_large_abox_candidate(&profile));
-        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert_eq!(select(&profile), Route::Nominals);
         profile.source.role_assertions = 0;
         profile.source.abox_axioms -= 1;
         profile.source.axiom_types.remove("ObjectPropertyAssertion");
@@ -1858,7 +1851,7 @@ mod tests {
         profile.source.class_assertions += 1;
         profile.source.abox_axioms += 1;
         assert!(!independent_large_abox_candidate(&profile));
-        assert_eq!(select(&profile), Route::CertifiedNominals);
+        assert_eq!(select(&profile), Route::Nominals);
         profile.source.class_assertions -= 1;
         profile.source.abox_axioms -= 1;
 
