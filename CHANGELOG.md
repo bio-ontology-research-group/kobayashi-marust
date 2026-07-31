@@ -73,9 +73,15 @@ only 2,850 of 70,231 roots in 300 seconds, created 7,378 contexts, and queued
 278,269 messages without reaching the message fixpoint; peak RSS was 1.59 GiB.
 An independent scan of its frozen 1,062,240-clause frontend payload finds
 3,426 mutual-unit groups and 5,204 removable roots. This is a measured 7.4%
-query reduction, not yet a closure claim. A source-bound IBEX candidate gate
-must establish its real wall-time effect and exact output on gold controls
-before the optimization enters a full production sweep.
+query reduction, not a closure claim. The source-bound IBEX candidate matched
+gold exactly on controls 1034, 2237, and 6999, but 1194 still failed. A
+separate scheduling gate tested periodic message-fixpoint drains every 64,
+128, and 256 roots; all three runs failed at about 198 seconds and
+3.75–3.77 GiB when the default 190-second central cap expired. Giving the
+parallel central strategy 295 seconds and disabling its late retry also did
+not close 1194: it reached the external 300.0413-second timeout at 4.17 GiB.
+Query equivalence remains an exact general optimization, but neither query
+batching nor central-budget reassignment is a route for this residual.
 
 ### NI-gated nominal specialist restores 10702 automatically (2026-07-31)
 
