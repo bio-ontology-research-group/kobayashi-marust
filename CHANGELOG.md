@@ -9,6 +9,24 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Complete v15 automatic sweep: 585 exact matches (2026-07-31)
+
+Source-bound IBEX array `49680023` completed all 592 automatic `km classify`
+tasks with binary SHA-256
+`914c7bb517ef90182a420f4cbbaec7051720b291d74db4fdd2b1e8c6eca72ef0`.
+Dependency-bound audit `49680024` exited successfully after verifying all
+terminal rows, source and binary hashes, harness components, route traces,
+checkpoints, and expected nonmatches. Terminal statuses are 587 `ok`, three
+`error`, one `timeout`, and one `unsupported`. Full-IRI scoring gives 585 exact
+Konclude matches and two contested consistency mismatches.
+
+This is one additional automatic exact match over v13: 10702 now selects
+`nominal_ni_tbox` and matches exactly in 2.5909 seconds at 21.36 MiB. The
+specialist-scoped `SameIndividual` admission preserves 15846, which matches
+exactly through `certified_nominals` in 213.1123 seconds at 19,038.13 MiB.
+The five non-completing rows are 10860, 1194, 4669, 6934, and 7499. The
+contested completed rows remain 2669 and 15516.
+
 ### Scope native SameIndividual admission to the 10702 specialist (2026-07-31)
 
 The generic native ABox bridge again rejects `SameIndividual` transactionally
