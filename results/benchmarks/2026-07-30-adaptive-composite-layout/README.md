@@ -472,3 +472,20 @@ KM rejects the historical bridge result because targeted satisfiability checks
 disproved that taxonomy. No validated route currently closes 4669, and it
 remains an explicit residual rather than being counted from a known-unsound
 historical output.
+
+The complete v10 sweep also exposes a memory-stability problem for 9724.
+The focused automatic gate completed `production_all1` exactly in 35.7287
+seconds at 16,425.73 MiB, but the same frozen binary and CPU model reached the
+20,480 MiB watchdog limit during the corpus sweep after 32.2641 seconds.
+The full-sweep row is therefore a real `memout`, not an accepted restoration.
+One successful run does not provide enough headroom to make this route a safe
+automatic choice under the benchmark contract.
+
+Repeated source-bound panel `49659468` runs five independent
+`production_all1` trials and five `production_all8` trials for 9724 using the
+v11 binary, the same Gold 6248 node set, 240-second timeout, and 20,480 MiB
+watchdog. It depends on completion of v10 array `49655276`, so it cannot
+contend with that sweep. Every trial publishes a terminal checkpoint for an
+exact, timeout, memout, error, or unsupported outcome. The panel will determine
+whether either complete production route has reproducible memory headroom; v11
+remains held until this evidence is available.
