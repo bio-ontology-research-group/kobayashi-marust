@@ -232,6 +232,13 @@ fn build_rule_clause(
         });
         inds.push(a.clone());
     }
+    // Rule authors commonly put all class guards before the relational join.
+    // The tableau matcher follows body order, so that spelling enumerates the
+    // Cartesian product of every class extension before an object-property atom
+    // can bind the variables.  Stable role-first ordering is logically inert
+    // (a rule body is a conjunction) and lets the usually sparse ABox edges bind
+    // both endpoints before the class and O-guard membership checks.
+    body.sort_by_key(|atom| if matches!(atom, HAtom::Role { .. }) { 0 } else { 1 });
     Some((HtClause { body, head }, inds))
 }
 
@@ -4330,6 +4337,24 @@ mod rule_clause_tests {
         assert_ne!(
             edge.0, edge.1,
             "distinct terms x,y stay distinct without a SameAs guard"
+        );
+    }
+
+    #[test]
+    fn sparse_role_joins_precede_class_and_nominal_guards() {
+        let rule = JRule {
+            body: vec![
+                class("C", var("x")),
+                class("E", var("y")),
+                role("r", var("x"), var("y")),
+            ],
+            head: vec![class("D", var("x"))],
+        };
+        let (cl, _) = build(&rule).expect("role-bearing rule");
+        assert!(matches!(cl.body.first(), Some(HAtom::Role { .. })));
+        assert_eq!(
+            cl.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).count(),
+            1
         );
     }
 }
