@@ -30,13 +30,12 @@ reported as empirical evidence, not as a proof of the whole executable.
   240 seconds and 20 GiB per procedure. It includes all public KM routes,
   historically selected environments, optimization stages and ablations, plus
   Konclude, HermiT, ELK, RustDL, and Sequoia.
-- **Broad but not universal production coverage.** The portfolio handles EL,
-  disjunction, quantifiers, role hierarchies and chains, inverses, nominals,
-  number restrictions, and selected rule/ABox cases. Some ontologies time out
-  or require a specialized route. Bare automatic routing validates 570 cases;
-  explicit current routes raise the observed union to 587. The older 589-route
-  ledger spans current, historical, and candidate source revisions and is not
-  a single-current-binary claim.
+- **Broad but not universal production coverage.** The latest completed
+  automatic sweep has 585 operational completions and 583 exact
+  Konclude-signature matches among 592 ontologies. Some ontologies still time
+  out, decline, or have contested consistency gold. Automatic 10702 and 12653
+  recoveries are in source-bound validation sweeps and are not included in
+  those completed totals.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -197,27 +196,23 @@ correctness totals are superseded.
 
 ### Automatic versus explicit KM routes
 
-Plain `km classify ONTOLOGY` is equivalent to `--route auto`. It does not
-reproduce every routed result. In this panel it returns 571 parseable answers,
-of which 570 are empirically sound and complete. Seventeen more ontologies have
-a validated explicit current route:
+Plain `km classify ONTOLOGY` is equivalent to `--route auto`. In the latest
+completed, source-bound 592-ontology sweep it produces 585 operational
+completions, of which 583 match the retained Konclude full-IRI signatures
+exactly. The two other completions are contested consistency cases rather than
+accepted exact matches.
 
-- `--route production_all` for `1481`, `1579`, `3377`, `3560`, `5107`,
-  `6477`, `6999`, `7914`, `9654`, `10908`, `15803`, and `15846`;
-- the documented `htforce_race` manual environment for `6934`, `7499`,
-  `9635`, `10702`, and `15672`.
+The complete 180-task residual route panel found one additional exact explicit
+route: `certified_card_proxy_abox` solves `ore_ont_7499.owl` in 87.2187 seconds
+at 1029.11 MiB. That route deliberately drops an uncertified ABox and therefore
+remains explicit; an exact result on this ontology does not establish a general
+automatic-routing certificate.
 
-This post hoc current-route union contains 587 validated answers. The exact
-`htforce_race` environment is in
-[`full-panel-contract.tsv`](results/benchmarks/2026-07-22-reproduced-route-performance/full-panel-contract.tsv),
-and each ontology row embeds all 66 measured alternatives. These are validated
-per-ontology recipes, not evidence that the automatic router selected them.
-
-The earlier ledger's 589 accepted answers remain source-bound evidence: 587
-exact full-IRI classifications plus two independently adjudicated inconsistent
-ontologies. That total spans current, historical, and candidate source
-revisions. The uniform current-binary panel does not reproduce 589, so 589 must
-not be presented as the behavior of bare `km classify` or one current binary.
+The current automatic source also selects `nominal_ni_tbox` for
+`ore_ont_10702.owl`. Focused IBEX job 49676814 confirms an exact signature in
+2.2885 seconds at 21.72 MiB. The complete no-regression sweep is job 49676527,
+with dependency-bound audit job 49676902. These pending results are not folded
+into the completed 583-match total.
 
 Five ontologies lack a validated answer from any current route: `1194`, `4669`,
 `9540`, `10621`, and `10860`. The eight rows previously reported as unknown
