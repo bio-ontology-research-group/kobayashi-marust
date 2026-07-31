@@ -257,8 +257,11 @@ The ordinary five-case v8 gate passed, including exact 15846 in 189.5256
 seconds at 18,844.32 MiB. Automatic full-IRI gate `49651898` selected ELC for
 3524 and matched exactly in 20.0688 seconds at 2,564.38 MiB.
 
-The production sweep now selects a collision-safe runner only for 3524 and
-15703. It leaves reasoner timing and process-tree RSS measurement unchanged,
+The production sweep selects a full-IRI-safe runner for 3524, 13503, and
+15703. The first and third have non-injective local-name projections; 13503
+has a legal named source class ending in `#Nothing`, which the local-name
+signature mistakes for OWL bottom. The runner leaves reasoner timing and
+process-tree RSS measurement unchanged,
 skips the non-injective local-name closure, fingerprints the retained full-IRI
 answer, compares it with the established Konclude fingerprint, records the
 result in the terminal row, and deletes the large taxonomy. Wrapper gate
@@ -309,7 +312,35 @@ five ordinary controls:
 Collision-safe automatic gate `49653231` also matched 3524's established
 full-IRI Konclude fingerprint in 19.8445 seconds at 2,582.70 MiB.
 
-Complete v9 array `49653680` and strict audit `49653681` replace the canceled,
+Complete v9 array `49654040` and strict audit `49654041` replace the canceled,
 never-started v8 array and audit. They use the accepted v9 binary above,
-retain the collision-safe path only for 3524 and 15703, and wait for the v4
+retain the full-IRI-safe path only for 3524, 13503, and 15703, and wait for the v4
 audit so the two complete sweeps do not compete for the same Gold-6248 nodes.
+
+Full-IRI-safe gate `49654146` validates the third special case end to end.
+Automatic 13503 finishes in 0.0407 seconds at 8.37 MiB, with 113
+subsumptions, one unsatisfiable named class, and exact fingerprint
+`1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b`.
+The ordinary local-name scorer's extra-bottom report is therefore a projection
+artifact.
+
+Late v4 residual probes against the accepted v9 binary recover three more
+known mechanisms:
+
+- 6934: documented `htforce_race`, exact in 0.1896 seconds at 55.46 MiB.
+- 10702: documented `htforce_race`, exact in 0.5018 seconds at 154.22 MiB.
+- 10908: `production_all`, exact in 204.5211 seconds at 1,094.00 MiB.
+
+Forced HT remains measurement evidence, not an automatic route: its bypassed
+datatype/nominal guard needs a semantic certificate before policy admission.
+Current `production_all` still times out on 12653 at 240 seconds. The ordinary
+13503 row repeats the known local-name artifact; the full-IRI-safe gate above
+is authoritative.
+
+The next scheduling candidate recognizes small ABoxes containing only class
+assertions and explicit identity constraints in a qualified-cardinality
+terminology. It selects the complete production portfolio, which retains the
+same exact nominal-aware CB fallback, and targets 10908 without an
+ontology-name test. The predicate matches only 10908 in the frozen 592-profile
+table. Its complete serial release suite passes with 1,814 library tests, eight
+ignored, and all integration tests passing.

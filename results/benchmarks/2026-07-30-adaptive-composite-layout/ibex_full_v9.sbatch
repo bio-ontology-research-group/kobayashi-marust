@@ -52,7 +52,7 @@ fi
 work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v9-592-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
 runner=$root/full_panel_run_one.py
-if [[ $ontology == ore_ont_3524.owl || $ontology == ore_ont_15703.owl ]]; then
+if [[ $ontology == ore_ont_3524.owl || $ontology == ore_ont_13503.owl || $ontology == ore_ont_15703.owl ]]; then
   runner=$root/full_panel_run_one_collision_safe.py
 fi
 
@@ -87,8 +87,13 @@ if not row.get("checkpointed"):
     raise SystemExit(f"runner did not checkpoint terminal state: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid terminal status: {row}")
-if sys.argv[2] in {"ore_ont_3524.owl", "ore_ont_15703.owl"}:
-    expected = "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a"
+expected_fulliri = {
+    "ore_ont_3524.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+    "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",
+    "ore_ont_15703.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+}
+if sys.argv[2] in expected_fulliri:
+    expected = expected_fulliri[sys.argv[2]]
     if row.get("status") != "ok" or row.get("verdict") != "match":
         raise SystemExit(f"collision-safe adjudication failed: {row}")
     if row.get("fulliri_taxonomy_sha256") != expected:

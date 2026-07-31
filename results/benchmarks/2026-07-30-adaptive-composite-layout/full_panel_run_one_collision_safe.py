@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Adjudicate the two non-injective ORE local-name cases by full IRI."""
+"""Adjudicate ORE cases whose local-name signature is not semantics-preserving."""
 
 import json
 import os
@@ -10,6 +10,9 @@ import sys
 
 EXPECTED = {
     "ore_ont_3524.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+    # A legal source class ends in #Nothing. The ORE local-name projection
+    # mistakes it for owl:Nothing and reports a false extra-unsatisfiable row.
+    "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",
     "ore_ont_15703.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
 }
 HERE = Path(__file__).resolve().parent
