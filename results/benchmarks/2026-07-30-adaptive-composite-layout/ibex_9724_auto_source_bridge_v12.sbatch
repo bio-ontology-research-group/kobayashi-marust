@@ -4,6 +4,7 @@
 #SBATCH --account=pi-hohndor
 #SBATCH --partition=batch
 #SBATCH --constraint=cpu_intel_gold_6248
+#SBATCH --nodelist=cn512-06-r,cn512-07-l,cn512-02-r,cn512-11-r,cn512-03-r,cn512-08-r,cn512-14-r,cn512-05-l,cn512-03-l,cn512-16-l
 #SBATCH --nodes=1
 #SBATCH --time=00:08:00
 #SBATCH --cpus-per-task=16
@@ -17,6 +18,11 @@ km_root=/ibex/scratch/hohndor/km
 ontology=ore_ont_9724.owl
 expected_source=b8febb611fd088867960b07fca70e75a1c59ac6922026657f02be682de274239
 
+cpu_model=$(/usr/bin/awk -F: '/model name/{sub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo)
+if [[ $cpu_model != *"Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"* ]]; then
+  echo "UNEXPECTED_CPU_MODEL model=[$cpu_model]" >&2
+  exit 2
+fi
 test "$(/usr/bin/sha256sum "$root/km-f6b2188-source.tar.gz" | /usr/bin/cut -d' ' -f1)" = "$expected_source"
 expected_binary=$(/usr/bin/cat "$root/km.sha256")
 [[ $expected_binary =~ ^[0-9a-f]{64}$ ]]
