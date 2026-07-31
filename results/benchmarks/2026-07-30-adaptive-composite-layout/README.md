@@ -590,6 +590,12 @@ profiled route and confirms that disagreement with the captured production
 route also fails explicitly. The first 97 live sweep rows have no such
 production/profile mismatch.
 
+Independent dependent audit `49664080` runs the strengthened checker after the
+complete array. Its separately staged script is bound by SHA-256
+`7e70f70bd8f4968ef541dd57a596904d0dec6fb64ae3cc34bf9f1c02dc61c044`;
+it validates the original immutable package manifest before checking all 592
+captured/profiled route pairs.
+
 Current source under the exact retained 10702 manual environment did not
 restore that ontology locally: it timed out at 240 seconds after reaching
 18,394.76 MiB. This rules out a route-label-only fix. Source-bound array
