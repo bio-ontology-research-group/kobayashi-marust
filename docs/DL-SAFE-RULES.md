@@ -64,12 +64,27 @@ The 17 `DLSafeRule` axioms partition into:
 | 5 | Class + Role + `DifferentIndividualsAtom` | DEFERRED |
 | 4 | + `DataPropertyAtom` / `BuiltInAtom` (`greaterThan` on dates, `hasClass`, `isSubClassOf`) | DECLINED |
 
-10860 is **not closed**: 4 rules carry SWRL built-ins that compare dates and do
-custom `hasClass`/`isSubClassOf` meta-reasoning — concrete-domain obligations
-with no DL encoding. Because those 4 rules decline the route, the 8 FIRED and 5
-DEFERRED rules are not partially fired: KM declines the whole ontology
-(`unsupported: DL-safe rules: parsed 13 of 17`). This is the deliberate
-policy-leaf boundary — a datatype rule is not an approximable constraint.
+10860 is **not closed**: 4 rules carry built-ins, so the current parser declines
+the whole ontology (`unsupported: DL-safe rules: parsed 13 of 17`). A direct
+source audit on the frozen corpus file (SHA-256
+`480139a6018bc4eb0d35e47edf00a6d257dd87137c1d0f93a27021cf154f4a2d`)
+narrows the live obligation substantially:
+
+- Three rules compare access/authorization dates or shift times. The ontology
+  contains zero `DataPropertyAssertion`, zero `SubDataPropertyOf`, and zero
+  `EquivalentDataProperties` axioms. No named binding can satisfy either data
+  atom in these DL-safe rule bodies, so all three rules are provably inert;
+  evaluating `swrlb:greaterThan` is unnecessary for this ontology.
+- One rule uses `abox:hasClass` twice and `tbox:isSubClassOf` once. This is the
+  sole remaining semantically live unsupported rule. Its head derives a
+  `hasR2RRelation` edge when the EHR-section class of one named individual is a
+  subclass of the class of another.
+
+The exact closure task is therefore to retain and evaluate that finite
+named-ABox meta-rule, together with all 13 already parsed rules, then check the
+materialized ABox for consistency. KM must continue to decline until that
+check is complete; inertness of the three data rules does not justify dropping
+the live meta-rule.
 
 ## Soundness note
 
