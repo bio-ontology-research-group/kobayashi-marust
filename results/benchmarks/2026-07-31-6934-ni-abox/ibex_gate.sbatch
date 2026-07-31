@@ -10,13 +10,13 @@
 #SBATCH --mem=24G
 #SBATCH --exclusive
 #SBATCH --export=NONE
-#SBATCH --output=/ibex/scratch/hohndor/km/6934-ni-abox-v1/slurm-%A_%a.out
+#SBATCH --output=/ibex/scratch/hohndor/km/6934-ni-abox-v2/slurm-%A_%a.out
 
 set -euo pipefail
 
-root=/ibex/scratch/hohndor/km/6934-ni-abox-v1
+root=/ibex/scratch/hohndor/km/6934-ni-abox-v2
 km_root=/ibex/scratch/hohndor/km
-expected_binary=cfb0c376dc6ce745e3343d66faec17b05600e7a7aaa675f948a9761f20dfb9e0
+expected_binary=afdc15a00168a23f4426b0ca155f54ad6c3cb65cbad745f07e5f2eef862f0e3a
 ontologies=(
   ore_ont_6934.owl
   ore_ont_10702.owl
