@@ -558,7 +558,12 @@ successful build. The source-archive SHA-256 is
 Build job `49662845` completed on IBEX and produced binary SHA-256
 `bac80ee342b621730cdc28d1d0a1f6616be7ee0da3fda35db2a6f69fc14806ec`.
 Gate `49663014` is pinned to the same Gold 6248 node set used by the complete
-sweeps and explicitly verifies the CPU model before classification.
+sweeps and explicitly verifies the CPU model before classification. It passed:
+production selected `ht_bridge` and matched exactly in 38.5499 seconds at
+8,169.19 MiB, with binary SHA-256
+`bac80ee342b621730cdc28d1d0a1f6616be7ee0da3fda35db2a6f69fc14806ec`
+and signature SHA-256
+`95d679d0ee51b14583ca4dffe419b1c7e128398d207a2bdb25ab9eaa06c03b05`.
 The measured classification must record `route=ht_bridge` and pass the
 collision-safe full-IRI comparison under the 240-second/20,480-MiB contract.
 The hardened runner sets `KM_TIMING`, extracts the route selected at the real
