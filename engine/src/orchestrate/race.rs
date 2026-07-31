@@ -606,6 +606,7 @@ fn specialist_route_allows(
         Some("certified") => bridge_candidate || card_candidate,
         Some("qo") => qo_candidate,
         Some("shoq") => shoq_candidate,
+        Some("no_blocking_shoiq") => shoq_candidate,
         Some("card") => card_candidate,
         Some("bridge") => bridge_candidate,
         // Composite single-worker mechanisms. The common structural gate below
@@ -950,6 +951,18 @@ fn native_nominal_clause_represented(
             }],
             [],
         ) => role_matches(&nominal_abox.negative_role_assertions, role, source, target),
+        // Source SameIndividual. The native installer collapses the complete
+        // equality component before creating named roots.
+        (
+            [],
+            [JAtom::Eq {
+                left: JTerm::Ind { name: left },
+                right: JTerm::Ind { name: right },
+            }],
+        ) => nominal_abox
+            .same
+            .iter()
+            .any(|(a, b)| (a == left && b == right) || (a == right && b == left)),
         // Pairwise parser expansion of DifferentIndividuals.
         (
             [JAtom::Eq {
@@ -1014,10 +1027,41 @@ fn native_nominal_bridge_clauses<'a>(
     {
         return Cow::Borrowed(clauses);
     }
+    // A universal fact `⊤(x) -> C(x)` independently entails every ground
+    // `C(a)` fact. Normalization uses this shape for reified owl:Thing
+    // assertions (for example the shared Q_67 marker in ORE 10702). Removing
+    // only those exact redundant ground facts avoids asking the native ABox
+    // payload to prove the internal marker's Top provenance.
+    let universal_facts: std::collections::HashSet<&str> = clauses
+        .iter()
+        .filter_map(|clause| match (clause.body.as_slice(), clause.head.as_slice()) {
+            (
+                [],
+                [crate::json_io::JAtom::Concept {
+                    concept,
+                    term: crate::json_io::JTerm::Var { .. },
+                }],
+            ) => Some(concept.as_str()),
+            _ => None,
+        })
+        .collect();
     Cow::Owned(
         clauses
             .iter()
-            .filter(|clause| !native_nominal_clause_represented(clause, nominal_abox, definers))
+            .filter(|clause| {
+                let redundant_universal_ground = matches!(
+                    (clause.body.as_slice(), clause.head.as_slice()),
+                    (
+                        [],
+                        [crate::json_io::JAtom::Concept {
+                            concept,
+                            term: crate::json_io::JTerm::Ind { .. },
+                        }]
+                    ) if universal_facts.contains(concept.as_str())
+                );
+                !redundant_universal_ground
+                    && !native_nominal_clause_represented(clause, nominal_abox, definers)
+            })
             .cloned()
             .collect(),
     )
@@ -1074,17 +1118,19 @@ fn spawn_ht(
         )
     };
     let _tconv = Instant::now();
+    let certified_tbox_only = std::env::var_os("KM_HT_CERT_TBOX_ONLY").is_some();
     let nominal_bridge_view = native_nominal_bridge_clauses(
         &cl,
         &nominal_abox,
         &definers,
         std::env::var_os("KM_NOMINALS").is_some()
-            && std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+            && (std::env::var_os("KM_TRIGGER_ABSORB").is_some()
+                || std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()),
         !rules.is_empty(),
     );
     let mut tin = cb_to_ht::convert(
         &nominal_bridge_view,
-        Some(&rbox),
+        (!certified_tbox_only).then_some(rbox.as_slice()),
         named,
         &cards,
         &definers,
@@ -1113,7 +1159,7 @@ fn spawn_ht(
         if native_abox_role_automata_separable(&native) {
             tin = native;
         }
-    } else {
+    } else if !certified_tbox_only {
         cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
     }
     if std::env::var_os("KM_TIMING").is_some() {
@@ -1207,6 +1253,44 @@ fn spawn_ht(
         && !tin.nominals.is_empty()
         && tin.native_abox.complete
         && !has_datatype(&cl);
+    // Complete-answer-or-defer SHOIQ route. The fast Ht has every rule needed
+    // by this wire representation except nominal introduction. The worker
+    // publishes only if no completed model contains a number-role blockable
+    // neighbour that is not a direct successor of its root, which is the NI
+    // premise. The automatic TBox-only use is separately restricted by the
+    // source-layout gate in routing.rs; ordinary nominal inputs retain CB.
+    let no_blocking_shoiq_candidate = cfg.ht_shoq
+        && !card_candidate
+        && tin.dropped == 0
+        && !tin.nominals.is_empty()
+        && (tin.native_abox.complete || certified_tbox_only)
+        && (tin.inverse || has_inverse_bridge(&cl))
+        && tin.number
+        && !has_datatype(&cl)
+        && tin.fenced.iter().all(|fence| {
+            matches!(
+                fence.reason.as_str(),
+                "inverse+number(SHIQ)" | "nominal+inverse(SHOI/SHOIQ)"
+            )
+        });
+    if std::env::var_os("KM_HT_CERT_TRACE").is_some() {
+        eprintln!(
+            "KM_HT_CERT_TRACE no_blocking={} card={} dropped={} nominals={} native={} tbox_only={} inverse={} inv_bridge={} datatype={} fences={:?}",
+            no_blocking_shoiq_candidate,
+            card_candidate,
+            tin.dropped,
+            tin.nominals.len(),
+            tin.native_abox.complete,
+            certified_tbox_only,
+            tin.inverse,
+            has_inverse_bridge(&cl),
+            has_datatype(&cl),
+            tin.fenced
+                .iter()
+                .map(|fence| fence.reason.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
     // KM_HT_BRIDGE route: the konclude_ht bridge (Konclude's completion kernel
     // in Rust) answers sound+complete-or-DEFER by construction (deterministic
     // read-off / pairwise-verified candidates; declines anything it cannot
@@ -1226,7 +1310,7 @@ fn spawn_ht(
     if !specialist_route_allows(
         specialist_only.as_deref(),
         qo_candidate,
-        shoq_candidate,
+        shoq_candidate || no_blocking_shoiq_candidate,
         card_candidate,
         bridge_candidate,
     ) {
@@ -1235,6 +1319,7 @@ fn spawn_ht(
     if !ht_routable(&tin)
         && !qo_candidate
         && !shoq_candidate
+        && !no_blocking_shoiq_candidate
         && !card_candidate
         && !bridge_candidate
         && std::env::var_os("KM_HT_FORCE").is_none()
@@ -1269,7 +1354,7 @@ fn spawn_ht(
         bridge_candidate,
         ht_routable(&tin),
         qo_candidate,
-        shoq_candidate,
+        shoq_candidate || no_blocking_shoiq_candidate,
         card_candidate,
     );
     if bridge_exclusive {
@@ -1336,6 +1421,20 @@ fn spawn_ht(
             ("KM_HT_NOMINALS", "1"),
             ("KM_HT_QMERGE", "1"),
             ("KM_HT_PAR", "1"),
+        ] {
+            if std::env::var_os(k).is_none() {
+                cmd.env(k, v);
+            }
+        }
+    }
+    if no_blocking_shoiq_candidate {
+        for (k, v) in [
+            ("KM_HT_FORCE", "1"),
+            ("KM_HT_NOMINALS", "1"),
+            ("KM_HT_QMERGE", "1"),
+            ("KM_HT_PAR", "1"),
+            ("KM_HT_BLOCK", "3"),
+            ("KM_HT_CERT_NO_BLOCKING", "1"),
         ] {
             if std::env::var_os(k).is_none() {
                 cmd.env(k, v);
@@ -1415,7 +1514,11 @@ fn spawn_ht(
     // KM_HT_PAR wins.
     // NB shoq_candidate forces KM_HT_PAR=1 above (parallel classify is unsound with
     // the nominal o-rule); do not override it back to all-cores here.
-    if std::env::var_os("KM_HT_PAR").is_none() && !shoq_candidate && !card_candidate {
+    if std::env::var_os("KM_HT_PAR").is_none()
+        && !shoq_candidate
+        && !no_blocking_shoiq_candidate
+        && !card_candidate
+    {
         cmd.env("KM_HT_PAR", avail_cpus().max(1).to_string());
     }
     if cfg.ht_qo {
@@ -1450,7 +1553,11 @@ fn spawn_ht(
     Some((
         child,
         out_path,
-        shoq_candidate || qo_candidate || card_candidate || bridge_candidate,
+        shoq_candidate
+            || no_blocking_shoiq_candidate
+            || qo_candidate
+            || card_candidate
+            || bridge_candidate,
         bridge_candidate.then_some(tin.queries.len()),
         // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
         // race scheduler's instant (0 s) trigger-absorb harvest apply — any

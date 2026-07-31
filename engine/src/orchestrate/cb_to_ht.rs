@@ -416,13 +416,6 @@ pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAbox
                 meta.unsupported.join("; ")
             });
         }
-        if !meta.same.is_empty() {
-            return Err(
-                "SameIndividual requires equality merging not implemented by the native HT bridge"
-                    .into(),
-            );
-        }
-
         let mut concepts = tin.concepts.clone();
         let mut roles = tin.roles.clone();
         let mut concept_ids: HashMap<String, usize> = concepts
@@ -441,64 +434,94 @@ pub fn install_nominal_abox(tin: &mut TInput, meta: &crate::json_io::NominalAbox
         let mut proxy_owner = HashMap::new();
         let mut native = NativeAboxJson::default();
 
-        for entry in &meta.individuals {
-            if entry.individual.is_empty() {
-                return Err("empty individual name".into());
-            }
-            if entry.proxies.is_empty() {
-                return Err(format!("individual {} has no proxy", entry.individual));
-            }
-            if entry.assertions.len() != entry.assertion_markers.len() {
-                return Err(format!(
-                    "individual {} has {} assertion(s) but {} marker(s)",
-                    entry.individual,
-                    entry.assertions.len(),
-                    entry.assertion_markers.len()
-                ));
-            }
-            if individual_ids.contains_key(entry.individual.as_str()) {
+        let mut entry_ids = HashMap::new();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry_ids.insert(entry.individual.as_str(), index).is_some() {
                 return Err(format!("duplicate individual {}", entry.individual));
             }
-            let index = native.individuals.len();
-            individual_ids.insert(entry.individual.as_str(), index);
+        }
+        let mut parent: Vec<usize> = (0..meta.individuals.len()).collect();
+        fn find(parent: &mut [usize], mut item: usize) -> usize {
+            while parent[item] != item {
+                parent[item] = parent[parent[item]];
+                item = parent[item];
+            }
+            item
+        }
+        for (left, right) in &meta.same {
+            let left = *entry_ids
+                .get(left.as_str())
+                .ok_or_else(|| format!("SameIndividual left {left} is unresolved"))?;
+            let right = *entry_ids
+                .get(right.as_str())
+                .ok_or_else(|| format!("SameIndividual right {right} is unresolved"))?;
+            let left_root = find(&mut parent, left);
+            let right_root = find(&mut parent, right);
+            if left_root != right_root {
+                parent[right_root] = left_root;
+            }
+        }
+        let mut groups: std::collections::BTreeMap<usize, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for index in 0..meta.individuals.len() {
+            let root = find(&mut parent, index);
+            groups.entry(root).or_default().push(index);
+        }
 
+        for members in groups.values() {
+            let native_index = native.individuals.len();
             let mut proxies = Vec::new();
-            for proxy in &entry.proxies {
-                if proxy.is_empty() {
-                    return Err(format!("individual {} has an empty proxy", entry.individual));
+            let mut assertions = Vec::new();
+            for &entry_index in members {
+                let entry = &meta.individuals[entry_index];
+                individual_ids.insert(entry.individual.as_str(), native_index);
+                if entry.individual.is_empty() {
+                    return Err("empty individual name".into());
                 }
-                if proxy_owner
-                    .insert(proxy.as_str(), entry.individual.as_str())
-                    .is_some_and(|owner| owner != entry.individual.as_str())
-                {
-                    return Err(format!("proxy {proxy} belongs to multiple individuals"));
+                if entry.proxies.is_empty() {
+                    return Err(format!("individual {} has no proxy", entry.individual));
                 }
-                let id = match concept_ids.get(proxy) {
-                    Some(&id) => id,
-                    None => {
-                        let id = concepts.len();
-                        concepts.push(proxy.clone());
-                        concept_ids.insert(proxy.clone(), id);
-                        id
+                if entry.assertions.len() != entry.assertion_markers.len() {
+                    return Err(format!(
+                        "individual {} has {} assertion(s) but {} marker(s)",
+                        entry.individual,
+                        entry.assertions.len(),
+                        entry.assertion_markers.len()
+                    ));
+                }
+                for proxy in &entry.proxies {
+                    if proxy.is_empty() {
+                        return Err(format!("individual {} has an empty proxy", entry.individual));
                     }
-                };
-                proxies.push(id);
+                    if proxy_owner
+                        .insert(proxy.as_str(), native_index)
+                        .is_some_and(|owner| owner != native_index)
+                    {
+                        return Err(format!("proxy {proxy} belongs to multiple individuals"));
+                    }
+                    let id = match concept_ids.get(proxy) {
+                        Some(&id) => id,
+                        None => {
+                            let id = concepts.len();
+                            concepts.push(proxy.clone());
+                            concept_ids.insert(proxy.clone(), id);
+                            id
+                        }
+                    };
+                    proxies.push(id);
+                }
+                for marker in &entry.assertion_markers {
+                    let Some(&id) = concept_ids.get(marker) else {
+                        return Err(format!(
+                            "ClassAssertion marker {marker} for {} is unresolved",
+                            entry.individual
+                        ));
+                    };
+                    assertions.push(id);
+                }
             }
             proxies.sort_unstable();
             proxies.dedup();
-
-            let mut assertions = Vec::new();
-            for marker in &entry.assertion_markers {
-                // Assertion markers come from normalized clauses/definers;
-                // unlike a proxy, an absent marker cannot be manufactured.
-                let Some(&id) = concept_ids.get(marker) else {
-                    return Err(format!(
-                        "ClassAssertion marker {marker} for {} is unresolved",
-                        entry.individual
-                    ));
-                };
-                assertions.push(id);
-            }
             assertions.sort_unstable();
             assertions.dedup();
             native
@@ -2189,6 +2212,13 @@ pub fn convert(
             }
         }
         if bad {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() {
+                eprintln!(
+                    "KM_HT_TRACE_DROPPED existential={} body={}",
+                    f,
+                    serde_json::to_string(&rec.body).unwrap_or_default()
+                );
+            }
             dropped += 1;
             continue;
         }
@@ -2346,6 +2376,12 @@ pub fn convert(
             }
         }
         if bad {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() {
+                eprintln!(
+                    "KM_HT_TRACE_DROPPED clause={}",
+                    serde_json::to_string(c).unwrap_or_default()
+                );
+            }
             dropped += 1;
             continue;
         }
@@ -2691,7 +2727,14 @@ pub fn convert(
                 nominal_ids.len()
             ),
         });
-        nominal_ids = Vec::new();
+        // A separate complete-answer-or-defer worker may retain the nominal
+        // roots and certify after search that it never used blocking.  The
+        // missing SHOIQ NN/NI rule is a blocking repair rule, so a finite
+        // completion that used no direct or indirect blocking has no omitted
+        // NN/NI premise.  Keep the ordinary path fail-closed.
+        if std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_none() {
+            nominal_ids = Vec::new();
+        }
     }
     // Arm the SHIQ fence for BOTH inverse encodings: the RBox `inverse`/symmetric
     // pairs (`inverse_pairs`) and concept-position `ObjectInverseOf` roles
@@ -3052,6 +3095,37 @@ mod native_abox_install_tests {
                         ]
                     )
         ));
+    }
+
+    #[test]
+    fn same_individual_component_uses_one_root_and_remaps_edges() {
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            ..TInput::default()
+        };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("alias", "__nom__alias", Some("B")),
+                individual("target", "__nom__target", None),
+            ],
+            same: vec![("a".into(), "alias".into())],
+            different: vec![("alias".into(), "target".into())],
+            role_assertions: vec![NominalRoleAssertionMeta {
+                role: "r".into(),
+                source: "alias".into(),
+                target: "target".into(),
+            }],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(install_nominal_abox(&mut tin, &meta));
+        assert_eq!(tin.native_abox.individuals.len(), 2);
+        assert_eq!(tin.native_abox.individuals[0].proxies.len(), 2);
+        assert_eq!(tin.native_abox.individuals[0].assertions, vec![0, 1]);
+        assert_eq!(tin.native_abox.different, vec![(0, 1)]);
+        assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1)]);
     }
 
     #[test]

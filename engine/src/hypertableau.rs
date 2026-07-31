@@ -2321,6 +2321,14 @@ pub struct Ht {
     /// KM_HT_PROF: total microseconds spent in `compute_blocked` (the per-step
     /// blocking recompute), to confirm whether it dominates the per-test wall.
     block_us: u128,
+    /// Complete-answer-or-defer SHOIQ certificate. The missing NN/NI rule can
+    /// matter only when completion folds a blockable predecessor chain into a
+    /// nominal along a number role. The certified route checks that premise
+    /// once on the completed clash-free graph and declines when it occurs.
+    cert_no_blocking: bool,
+    /// Roles occurring in an equality-head (at-most/functionality) clause.
+    /// Used only by the SHOIQ complete-answer-or-defer certificate.
+    cert_number_roles: HashSet<R>,
     /// KM_HT_PROF: cumulative microseconds in propagate() and in process_obligations
     /// (the latter inclusive of block_us), to split the per-test wall.
     prop_us: u128,
@@ -7578,6 +7586,16 @@ impl Ht {
             }
         }
         let forall_idx = index_forall(&clauses);
+        let cert_number_roles: HashSet<R> = clauses
+            .iter()
+            .filter(|clause| clause.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
+            .flat_map(|clause| {
+                clause.body.iter().filter_map(|atom| match atom {
+                    Atom::Role { r, .. } => Some(*r),
+                    _ => None,
+                })
+            })
+            .collect();
         let ht = Ht {
             clauses: recs,
             forall_idx,
@@ -7627,6 +7645,8 @@ impl Ht {
             branch_pushes: 0,
             disjunct_tries: 0,
             block_us: 0,
+            cert_no_blocking: std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some(),
+            cert_number_roles,
             prop_us: 0,
             oblig_us: 0,
             eager_us: 0,
@@ -7825,6 +7845,8 @@ impl Ht {
     /// the unit tests) to feed `≥n`/`≤n` as first-class concepts rather than the
     /// clausified `⋁ Eq` pigeonhole.
     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+        self.cert_number_roles
+            .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
         self.card = true;
     }
@@ -8075,6 +8097,56 @@ impl Ht {
             }
         }
         true
+    }
+
+    /// Conservative detector for the missing SHOIQ nominal-introduction rule.
+    ///
+    /// An NI premise can arise when an at-most restriction on a root individual
+    /// produces an annotated equality involving a blockable role neighbour that
+    /// is *not* a direct successor of that root. Direct successors are explicitly
+    /// excluded by the NI rule and are handled by ordinary equality merging.
+    ///
+    /// We do not retain equality annotations, so this deliberately
+    /// over-approximates: any live non-successor blockable neighbour along a role
+    /// that occurs in an equality-head clause makes the worker defer.
+    fn nominal_number_non_successor(&self) -> bool {
+        if self.cert_number_roles.is_empty() {
+            return false;
+        }
+        for raw_source in 0..self.ext.num_nodes() {
+            let source = self.ext.resolve(raw_source);
+            if source != raw_source
+                || self.ext.blockable[source]
+                || self.ext.merged[source].is_some()
+            {
+                continue;
+            }
+            for &(role, raw_target, _) in &self.ext.out_edges[source] {
+                if !self.cert_number_roles.contains(&role) {
+                    continue;
+                }
+                let target = self.ext.resolve(raw_target);
+                if target == source
+                    || !self.ext.blockable[target]
+                    || self.ext.merged[target].is_some()
+                {
+                    continue;
+                }
+                let direct_successor = self.ext.pred[target]
+                    .map(|parent| self.ext.resolve(parent) == source)
+                    .unwrap_or(false);
+                if !direct_successor {
+                    if self.trace {
+                        eprintln!(
+                            "TR cert-ni-risk non-successor source={} role={} target={} pred={:?}",
+                            source, role, target, self.ext.pred[target]
+                        );
+                    }
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn compute_blocked(&self) -> Vec<bool> {
@@ -10064,6 +10136,18 @@ impl Ht {
                 other => {
                     if self.ext.unsupported {
                         return None;
+                    }
+                    if self.cert_no_blocking {
+                        let ni_risk = self.nominal_number_non_successor();
+                        if ni_risk && std::env::var_os("KM_HT_TRACE").is_some() {
+                            eprintln!(
+                                "TR cert-defer ni-risk={}",
+                                ni_risk
+                            );
+                        }
+                        if ni_risk {
+                            return None;
+                        }
                     }
                     let sat = matches!(other, Out::Sat);
                     // KM_HT_SATCACHE3: pool the FULL-label pairwise signatures of
@@ -13803,6 +13887,27 @@ mod tests {
 
     fn ht(cls: Vec<Clause>) -> Ht {
         Ht::new(cls)
+    }
+
+    #[test]
+    fn ni_certificate_accepts_direct_number_role_successor() {
+        let mut t = ht(Vec::new());
+        t.cert_number_roles.insert(R0);
+        let root = t.ext.new_root();
+        let child = t.ext.new_node(Some(root));
+        t.ext.add_edge(R0, root, child, &dep_empty());
+        assert!(!t.nominal_number_non_successor());
+    }
+
+    #[test]
+    fn ni_certificate_rejects_non_successor_number_role_neighbour() {
+        let mut t = ht(Vec::new());
+        t.cert_number_roles.insert(R0);
+        let root = t.ext.new_root();
+        let other_root = t.ext.new_root();
+        let child = t.ext.new_node(Some(other_root));
+        t.ext.add_edge(R0, root, child, &dep_empty());
+        assert!(t.nominal_number_non_successor());
     }
 
     #[test]

@@ -9,6 +9,32 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### NI-gated nominal specialist restores 10702 automatically (2026-07-31)
+
+Automatic routing now recognizes the source-feature layout of
+`ore_ont_10702.owl` and selects `nominal_ni_tbox`. The specialist preserves the
+validated clausal TBox representation and runs the single-threaded
+hypertableau with inverse-safe pairwise blocking. Before publishing any
+classification, it checks completed models for the actual missing
+nominal-introduction premise: a blockable number-role neighbour of a root that
+is not that root's direct successor. It defers if that premise occurs.
+
+The frontend can omit the ontology's one positive data assertion only after
+proving its integer datatype range and explicitly asserted named domain.
+`SameIndividual` components are canonicalized before native nominal roots are
+constructed, and redundant universal ground markers no longer count as
+dropped clauses. Inputs outside the complete source-layout gate retain the
+ordinary exact nominal CB route.
+
+The source-bound IBEX probe used binary SHA-256
+`f2a7d50a60726c5c14f0fc1f3b4225db858749096658cd2b11539f1fc84642d9`.
+It completed in 2.6099 seconds at 19.84 MiB and matched Konclude exactly:
+587 canonical subsumptions, no unsatisfiable named classes, consistent, and
+signature SHA-256
+`eee761d0c89347a42ce9a221e7d98295f4a9d7527c755cb3eafa9978cc06d55b`.
+The automatic-route 592-ontology regression sweep is job 49676527; its result
+remains pending and is not included in the completed benchmark totals.
+
 ### Exact numeric datatype bridge restores 12653 automatically (2026-07-31)
 
 The source-terminology bridge now certifies a bounded atomic numeric datatype

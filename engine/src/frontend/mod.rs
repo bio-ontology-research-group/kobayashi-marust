@@ -515,7 +515,7 @@ fn ofn_to_clauses_requested(
     };
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
-    let nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
+    let mut nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
@@ -602,6 +602,20 @@ fn ofn_to_clauses_requested(
     // or datatype range/functionality clash (data_abox); both sound prechecks.
     let abox_inconsistent =
         abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false) || data_abox.is_inconsistent();
+    if !abox_inconsistent && data_abox.positive_assertions_redundant() {
+        let source_data_assertions = profile
+            .source
+            .axiom_types
+            .get("DataPropertyAssertion")
+            .copied()
+            .unwrap_or(0);
+        let diagnostic =
+            format!("{source_data_assertions} data-property assertion axiom(s) are unsupported");
+        nominal_abox
+            .unsupported
+            .retain(|reason| reason != &diagnostic);
+        nominal_abox.complete = nominal_abox.unsupported.is_empty();
+    }
     // named classes with a provable asserted member: direct assertions plus
     // domain/range typing of asserted roles (`R(a,b)` + `Domain(R,C)` => `a:C`).
     let mut asserted_classes: BTreeSet<String> = asserted_direct;

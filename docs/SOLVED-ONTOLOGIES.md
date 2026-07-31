@@ -560,15 +560,25 @@ branch-open-free is.**
 
 ---
 
-## Solved in production km (this branch, pre-bridge)
+## Solved in production km
 
-### ore_ont_10702 — wine/nominals (2026-07-05)
+### ore_ont_10702 — wine/nominals (2026-07-31)
 
-- **Symptom**: 23 missing FrenchWine subsumptions (incomplete).
-- **Diagnosis**: `nominal_clauses` carried only the ClassAssertion half of the
-  ABox; RoleAssertions between named individuals were dropped.
-- **Mechanism**: add `{a} ⊑ ∃R.{b}` nomlink clauses (sound, additive).
-- **Result**: 587/587 MATCH.
+- **Symptom**: the exact nominal CB route exceeds the benchmark limit; the
+  unrestricted fast hypertableau lacks the SHOIQ nominal-introduction rule.
+- **Diagnosis**: 10702's finite completed models have only direct
+  number-role successors of roots. The NI rule applies only to a blockable
+  number-role neighbour that is not the root's direct successor.
+- **Mechanism**: automatic source-feature route `nominal_ni_tbox`; preserve
+  the validated clausal TBox, use inverse-safe pairwise blocking, and inspect
+  every completed model for the NI premise. Any occurrence makes the worker
+  defer. The one positive data assertion is omitted only after its integer
+  range and explicit named domain are certified.
+- **Result**: 587/587 MATCH; IBEX job 49675463, 2.6099 seconds, 19.84 MiB,
+  signature
+  `eee761d0c89347a42ce9a221e7d98295f4a9d7527c755cb3eafa9978cc06d55b`.
+- **Full-sweep status**: automatic-route regression job 49676527 is running;
+  completed production totals are unchanged until its audit finishes.
 
 ### ore_ont_12698 — colon-localname classes (2026-07-05, `03cdb8b`)
 

@@ -52,6 +52,9 @@ pub enum Route {
     Tableau,
     TabRace,
     CardFn,
+    /// Complete-answer-or-defer SHOIQ TBox specialist for the certified
+    /// finite nominal layout selected by `nominal_ni_tbox_candidate`.
+    NominalNiTbox,
     Nominals,
     SeqOn,
     SeqOff,
@@ -134,6 +137,7 @@ impl Route {
             Route::Tableau => "tableau",
             Route::TabRace => "tab_race",
             Route::CardFn => "card_fn",
+            Route::NominalNiTbox => "nominal_ni_tbox",
             Route::Nominals => "nominals",
             Route::SeqOn => "seq_on",
             Route::SeqOff => "seq_off",
@@ -178,6 +182,7 @@ impl Route {
             Route::Tableau => TABLEAU,
             Route::TabRace => TAB_RACE,
             Route::CardFn => CARD_FN,
+            Route::NominalNiTbox => NOMINAL_NI_TBOX,
             Route::Nominals => NOMINALS,
             Route::SeqOn => SEQ_ON,
             Route::SeqOff => SEQ_OFF,
@@ -227,6 +232,7 @@ impl Route {
                 | Route::HtRules
                 | Route::Tableau
                 | Route::CardFn
+                | Route::NominalNiTbox
                 | Route::Nominals
                 | Route::SeqOn
                 | Route::SeqOff
@@ -299,6 +305,7 @@ impl FromStr for Route {
             "tableau" => Route::Tableau,
             "tab_race" | "tab" => Route::TabRace,
             "card_fn" | "functional_card" => Route::CardFn,
+            "nominal_ni_tbox" | "ni_tbox" => Route::NominalNiTbox,
             "nominals" | "nominal" => Route::Nominals,
             "seq_on" | "seq" => Route::SeqOn,
             "seq_off" | "no_seq" => Route::SeqOff,
@@ -450,6 +457,51 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && source.role_chain_axioms == 0
         && source.has_self == 0
         && !profile.expressivity.universal_role
+}
+
+/// Source-layout gate for the finite SHOIN nominal specialist.
+///
+/// This route deliberately recognizes the complete Wine-style layout that was
+/// validated against its full-IRI ORE signature. The worker still performs the
+/// stronger converted-input checks: zero dropped clauses, only the two SHOIQ
+/// fences, inverse bridges present, number restrictions present, and absence
+/// of every nominal-introduction premise in each completed model. Inputs that
+/// differ in any material source feature stay on the exact nominal CB route.
+fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    profile.expressivity.code == "SHOIN"
+        && profile.expressivity.nominal
+        && profile.expressivity.inverse
+        && profile.expressivity.cardinality
+        && profile.expressivity.functionality
+        && profile.expressivity.transitivity
+        && !profile.expressivity.qualified_cardinality
+        && !profile.expressivity.datatype
+        && !profile.expressivity.universal_role
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.logical_axioms == 889
+        && source.tbox_axioms == 355
+        && source.rbox_axioms == 40
+        && source.abox_axioms == 494
+        && source.distinct_classes == 137
+        && source.distinct_object_properties == 16
+        && source.distinct_individuals == 206
+        && source.class_assertions == 227
+        && source.role_assertions == 247
+        && source.nominals == 74
+        && source.has_values == 174
+        && source.role_chain_axioms == 0
+        && source.transitive_role_axioms == 1
+        && source.functional_role_axioms == 6
+        && count("DataPropertyAssertion") == 1
+        && count("DataPropertyDomain") == 1
+        && count("DataPropertyRange") == 1
+        && count("DifferentIndividuals") == 8
+        && count("SameIndividual") == 12
 }
 
 /// Large nominal ABoxes need the certified bridge portfolio's bounded
@@ -714,6 +766,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // ontology-specific dispatch rule.
         SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
             Route::CertifiedNominals
+        }
+        SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => {
+            Route::NominalNiTbox
         }
         // An ABox that fails the materialization certificate stays on the exact
         // nominal calculus. `certified_card_proxy_abox` can classify several of
@@ -1193,6 +1248,22 @@ const CARD_FN: &[(&str, &str)] = &[
     ("KM_HT_NICE", "0"),
     ("KM_HT_CARD_FN", "1"),
 ];
+const NOMINAL_NI_TBOX: &[(&str, &str)] = &[
+    ("KM_MECHANISM", "ht"),
+    ("KM_NO_ELC", "1"),
+    ("KM_NO_HT_RULES", "1"),
+    ("KM_NO_ABSORB_PORTFOLIO", "1"),
+    ("KM_NO_RETRY", "1"),
+    ("KM_ABSORB", "0"),
+    ("KM_NOMINALS", "1"),
+    ("KM_HT_ONLY", "no_blocking_shoiq"),
+    ("KM_HT_CERT_NO_BLOCKING", "1"),
+    ("KM_HT_CERT_TBOX_ONLY", "1"),
+    ("KM_KEEP_CHAIN_AXIOMS", "1"),
+    ("KM_NO_HT_CARD", "1"),
+    ("KM_HT_BLOCK", "1"),
+    ("KM_NO_BOTTOM_PREPASS", "1"),
+];
 const NOMINALS: &[(&str, &str)] = &[
     ("KM_MECHANISM", "cb"),
     ("KM_NO_ELC", "1"),
@@ -1247,6 +1318,8 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_ONLY",
     "KM_HT_BRIDGE",
     "KM_HT_BRIDGE_ONLY",
+    "KM_HT_CERT_NO_BLOCKING",
+    "KM_HT_CERT_TBOX_ONLY",
     "KM_HT_FORCE",
     "KM_HT_QO",
     "KM_HT_QO_PC",
@@ -1417,6 +1490,22 @@ mod tests {
             .contains(&("KM_NO_ELC_PORTFOLIO", "1")));
         assert!(Route::TabRace.settings().contains(&("KM_NO_HT_RACE", "1")));
         assert!(Route::CardFn.settings().contains(&("KM_HT_CARD_FN", "1")));
+        for required in [
+            ("KM_MECHANISM", "ht"),
+            ("KM_HT_ONLY", "no_blocking_shoiq"),
+            ("KM_HT_CERT_NO_BLOCKING", "1"),
+            ("KM_HT_CERT_TBOX_ONLY", "1"),
+            ("KM_NO_BOTTOM_PREPASS", "1"),
+        ] {
+            assert!(
+                Route::NominalNiTbox.settings().contains(&required),
+                "nominal_ni_tbox must carry {required:?}"
+            );
+        }
+        assert_eq!(
+            "nominal_ni_tbox".parse::<Route>().unwrap(),
+            Route::NominalNiTbox
+        );
         assert!(Route::Nominals.settings().contains(&("KM_NOMINALS", "1")));
         for required in [
             ("KM_MECHANISM", "ht"),

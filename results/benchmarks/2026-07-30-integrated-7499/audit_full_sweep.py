@@ -38,7 +38,7 @@ def load_terminal(path: Path, ontology: str, index: int) -> dict:
     return row
 
 
-def validate_profile(path: Path, ontology: str) -> str:
+def validate_profile(path: Path, ontology: str) -> dict:
     with path.open(encoding="utf-8") as handle:
         row = json.load(handle)
     if row.get("ont") != ontology:
@@ -47,7 +47,27 @@ def validate_profile(path: Path, ontology: str) -> str:
         raise ValueError(f"{path}: invalid profile status: {row.get('status')!r}")
     if not row.get("selected_route"):
         raise ValueError(f"{path}: missing selected route")
-    return row["selected_route"]
+    return row
+
+
+def production_route_matches_profile(profile_row: dict, traced_route: str) -> bool:
+    """Compare the source proposal with the route after exact frontend gates.
+
+    ``km profile`` intentionally reports the source-profile proposal from a
+    stable plain clausification. Production refines an ELC proposal after
+    normalization and must downgrade it to ``cb_plain16`` when the exact RBox
+    gate is unsafe. That downgrade is evidence that the second gate ran, not a
+    routing inconsistency.
+    """
+
+    proposed = profile_row["selected_route"]
+    if traced_route == proposed:
+        return True
+    return (
+        proposed == "elc"
+        and traced_route == "cb_plain16"
+        and profile_row.get("el_rbox_safe") is False
+    )
 
 
 def atomic_json(path: Path, row: dict) -> None:
@@ -211,14 +231,17 @@ def main() -> int:
         except (OSError, ValueError, json.JSONDecodeError) as error:
             failures.append(f"{ontology}: invalid checkpoint: {error}")
         try:
-            profiled_route = validate_profile(
+            profile_row = validate_profile(
                 profiles / f"{ontology}.json", ontology
             )
             traced_route = row.get("selected_route_trace")
-            if traced_route is not None and traced_route != profiled_route:
+            if traced_route is not None and not production_route_matches_profile(
+                profile_row, traced_route
+            ):
                 failures.append(
                     f"{ontology}: production/profile route mismatch: "
-                    f"{traced_route!r} != {profiled_route!r}"
+                    f"{traced_route!r} != "
+                    f"{profile_row['selected_route']!r}"
                 )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             failures.append(f"{ontology}: invalid profile: {error}")

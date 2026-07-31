@@ -96,6 +96,16 @@ fn dtype_family(tok: &str) -> Option<Family> {
     }
 }
 
+fn dtype_local(tok: &str) -> Option<&str> {
+    let t = tok.trim_start_matches('<').trim_end_matches('>');
+    t.strip_prefix(XSD_IRI)
+        .or_else(|| t.strip_prefix("xsd:"))
+        .or_else(|| t.strip_prefix(RDF_IRI))
+        .or_else(|| t.strip_prefix("rdf:"))
+        .or_else(|| t.strip_prefix(RDFS_IRI))
+        .or_else(|| t.strip_prefix("rdfs:"))
+}
+
 /// A literal split into lexical form and tag. The tokeniser ends a quoted
 /// string at its closing quote, so `"lex"@lang` / `"lex"^^dt` arrive as TWO
 /// atoms: the quoted token and a suffix atom (`@lang` / `^^dt`).
@@ -170,6 +180,56 @@ fn canon_decimal(lex: &str) -> Option<(bool, String, String)> {
     let frac_c = frac.trim_end_matches('0').to_string();
     let neg_c = neg && !(int_c.is_empty() && frac_c.is_empty()); // -0 == 0
     Some((neg_c, int_c, frac_c))
+}
+
+/// Prove that a literal denotes a value in a declared atomic datatype.
+///
+/// This is intentionally smaller than the clash check: failure to prove
+/// membership rejects the omission certificate. The integer tower is checked
+/// against its lexical/value restrictions; the other supported atomic types
+/// require the literal's own datatype to match the range exactly.
+fn provably_in_datatype(lit: &Lit<'_>, range: &str) -> bool {
+    let range_local = match dtype_local(range) {
+        Some(local) => local,
+        None => return false,
+    };
+    let (lex, literal_local) = match lit {
+        Lit::Plain(lex) => (*lex, "string"),
+        Lit::Lang(_, _) => return range_local == "Literal" || range_local == "PlainLiteral",
+        Lit::Typed(lex, datatype) => match dtype_local(datatype) {
+            Some(local) => (*lex, local),
+            None => return false,
+        },
+    };
+    if literal_local != range_local {
+        return false;
+    }
+    match range_local {
+        "string" => true,
+        "integer" | "long" | "int" | "short" | "byte" | "nonNegativeInteger"
+        | "nonPositiveInteger" | "negativeInteger" | "positiveInteger" | "unsignedLong"
+        | "unsignedInt" | "unsignedShort" | "unsignedByte" => {
+            let (negative, integer, fraction) = match canon_decimal(lex) {
+                Some(value) => value,
+                None => return false,
+            };
+            if !fraction.is_empty() {
+                return false;
+            }
+            let zero = integer.is_empty();
+            match range_local {
+                "positiveInteger" => !negative && !zero,
+                "negativeInteger" => negative && !zero,
+                "nonNegativeInteger" | "unsignedLong" | "unsignedInt" | "unsignedShort"
+                | "unsignedByte" => !negative,
+                "nonPositiveInteger" => negative || zero,
+                _ => true,
+            }
+        }
+        // Add lexical validators here as needed. Unknown or unchecked atomic
+        // datatypes fail closed.
+        _ => false,
+    }
 }
 
 /// `true` only when the two literals PROVABLY denote distinct values.
@@ -265,6 +325,8 @@ const MERGE_ITER_CAP: usize = 64;
 pub struct DataAbox<'a> {
     /// property token -> declared range datatype tokens (conjunctive)
     ranges: HashMap<&'a str, Vec<&'a str>>,
+    /// property token -> named domain classes (conjunctive)
+    domains: HashMap<&'a str, Vec<&'a str>>,
     functional: HashSet<&'a str>,
     /// SubDataPropertyOf edges: sub -> direct supers
     supers: HashMap<&'a str, Vec<&'a str>>,
@@ -293,6 +355,38 @@ pub struct DataAbox<'a> {
     /// `SameIndividual` pairs
     sames: Vec<(&'a str, &'a str)>,
     overflow: bool,
+    /// A data constructor outside the positive assertion/domain/range fragment
+    /// was observed. Such an ontology cannot use the omission certificate.
+    omission_unsafe: bool,
+}
+
+fn contains_data_constraint(node: &Node<'_>) -> bool {
+    match node {
+        Node::Atom(_) => false,
+        Node::List(head, args) => {
+            matches!(
+                *head,
+                "NegativeDataPropertyAssertion"
+                    | "FunctionalDataProperty"
+                    | "SubDataPropertyOf"
+                    | "EquivalentDataProperties"
+                    | "DisjointDataProperties"
+                    | "HasKey"
+                    | "DatatypeDefinition"
+                    | "DataSomeValuesFrom"
+                    | "DataAllValuesFrom"
+                    | "DataHasValue"
+                    | "DataMinCardinality"
+                    | "DataMaxCardinality"
+                    | "DataExactCardinality"
+                    | "DataOneOf"
+                    | "DataIntersectionOf"
+                    | "DataUnionOf"
+                    | "DataComplementOf"
+                    | "DatatypeRestriction"
+            ) || args.iter().any(contains_data_constraint)
+        }
+    }
 }
 
 /// `ObjectMaxCardinality(1 P)` / `ObjectExactCardinality(1 P)` — UNQUALIFIED
@@ -315,6 +409,9 @@ impl<'a> DataAbox<'a> {
             Node::List(h, a) => (*h, a),
             Node::Atom(_) => return,
         };
+        if contains_data_constraint(node) {
+            self.omission_unsafe = true;
+        }
         match head {
             "DataPropertyRange" => {
                 let args = strip_annotations(args);
@@ -329,6 +426,17 @@ impl<'a> DataAbox<'a> {
                 let args = strip_annotations(args);
                 if let Some(p) = args.first().and_then(|n| n.as_atom()) {
                     self.functional.insert(p);
+                }
+            }
+            "DataPropertyDomain" => {
+                let args = strip_annotations(args);
+                if let (Some(p), Some(Some(c))) = (
+                    args.first().and_then(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
+                    self.domains.entry(p).or_default().push(c);
+                } else {
+                    self.omission_unsafe = true;
                 }
             }
             "SubDataPropertyOf" => {
@@ -356,6 +464,8 @@ impl<'a> DataAbox<'a> {
                         .and_then(|n| n.as_atom())
                         .filter(|s| s.starts_with('@') || s.starts_with("^^"));
                     self.assertions.push((p, i, l, suffix));
+                } else {
+                    self.omission_unsafe = true;
                 }
             }
             "ObjectPropertyAssertion" => {
@@ -707,6 +817,47 @@ impl<'a> DataAbox<'a> {
         None
     }
 
+    /// Whether every positive data assertion is semantically redundant with
+    /// the typed object ABox used by the native nominal bridge.
+    ///
+    /// The accepted fragment has no data equality, keys, negative assertions,
+    /// data restrictions, or property hierarchy. Every asserted literal is
+    /// proved to belong to every declared range, and every named domain type is
+    /// already an explicit class assertion on the same individual. Removing
+    /// those concrete edges therefore preserves consistency and all object-side
+    /// consequences represented by the native ABox.
+    pub fn positive_assertions_redundant(&self) -> bool {
+        if self.overflow
+            || self.omission_unsafe
+            || self.assertions.is_empty()
+            || !self.functional.is_empty()
+            || !self.supers.is_empty()
+            || !self.dmax1.is_empty()
+        {
+            return false;
+        }
+        self.assertions.iter().all(|&(property, individual, token, suffix)| {
+            let literal = match parse_lit(token, suffix) {
+                Some(literal) => literal,
+                None => return false,
+            };
+            let ranges_hold = self
+                .ranges
+                .get(property)
+                .is_none_or(|ranges| {
+                    ranges
+                        .iter()
+                        .all(|range| provably_in_datatype(&literal, range))
+                });
+            let domains_represented = self.domains.get(property).is_none_or(|domains| {
+                domains
+                    .iter()
+                    .all(|domain| self.cassert.contains(&(*domain, individual)))
+            });
+            ranges_hold && domains_represented
+        })
+    }
+
     /// `true` iff the asserted ABox provably contradicts the declared data
     /// ranges, at-most-1 constraints, or `DifferentIndividuals`. Sound: every
     /// reported clash is an OWL 2 entailment; caps degrade to "not detected".
@@ -828,6 +979,38 @@ mod tests {
             "DataPropertyAssertion(<http://x#p> <http://x#b> \"plain\")",
         ]);
         assert!(!da.is_inconsistent());
+    }
+
+    #[test]
+    fn positive_integer_with_redundant_named_domain_is_omittable() {
+        let da = build(&[
+            "DataPropertyDomain(<http://x#year> <http://x#VintageYear>)",
+            "DataPropertyRange(<http://x#year> xsd:positiveInteger)",
+            "ClassAssertion(<http://x#VintageYear> <http://x#y1998>)",
+            "DataPropertyAssertion(<http://x#year> <http://x#y1998> \"1998\"^^xsd:positiveInteger)",
+        ]);
+        assert!(da.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn omission_certificate_rejects_missing_domain_and_data_interactions() {
+        let missing_domain = build(&[
+            "DataPropertyDomain(<http://x#p> <http://x#C>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:positiveInteger)",
+        ]);
+        assert!(!missing_domain.positive_assertions_redundant());
+
+        let functional = build(&[
+            "FunctionalDataProperty(<http://x#p>)",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:positiveInteger)",
+        ]);
+        assert!(!functional.positive_assertions_redundant());
+
+        let restriction = build(&[
+            "SubClassOf(<http://x#C> DataHasValue(<http://x#p> \"1\"^^xsd:integer))",
+            "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
+        ]);
+        assert!(!restriction.positive_assertions_redundant());
     }
 
     #[test]
