@@ -443,6 +443,19 @@ Automatic correctness job `49665588` selected `production_all` for 12653 and
 matched its complete ten-pair Konclude signature in 0.1012 seconds at
 39.81 MiB, with matching consistency and no unsatisfiable-class difference.
 
+The corresponding v13 full sweep, array `49665768`, completed all 592 tasks.
+Integrity audit `49665770` reports 586 operational completions, 584 exact
+Konclude matches, two contested consistency mismatches, four errors, one
+timeout, and one unsupported input. The six non-completing rows are 10702,
+10860, 1194, 4669, 6934, and 7499. This is the completed automatic baseline
+that includes 12653 and predates the focused 10702 restoration.
+
+Route audit `49665771` flags 11311 and 11745 because their source profile says
+`elc` while the normalized frontend rejects EL RBox safety and production
+falls through to `cb_plain16`. Both classifications match gold exactly. The
+current audit treats the initial source selection as terminal and therefore
+does not yet encode this valid complete-or-defer transition.
+
 The next source-feature rule recognizes a terminology with at least 100,000
 TBox axioms and a tiny ABox containing only class assertions plus explicit
 identity constraints. It excludes imports, rules, role assertions, datatype

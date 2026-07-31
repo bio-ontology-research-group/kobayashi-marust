@@ -31,11 +31,11 @@ reported as empirical evidence, not as a proof of the whole executable.
   historically selected environments, optimization stages and ablations, plus
   Konclude, HermiT, ELK, RustDL, and Sequoia.
 - **Broad but not universal production coverage.** The latest completed
-  automatic sweep has 585 operational completions and 583 exact
+  automatic sweep has 586 operational completions and 584 exact
   Konclude-signature matches among 592 ontologies. Some ontologies still time
-  out, decline, or have contested consistency gold. Automatic 10702 and 12653
-  recoveries are in source-bound validation sweeps and are not included in
-  those completed totals.
+  out, decline, or have contested consistency gold. The completed sweep
+  includes the 12653 recovery. Automatic 10702 has a focused exact result and
+  is currently undergoing its complete no-regression sweep.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -197,8 +197,8 @@ correctness totals are superseded.
 ### Automatic versus explicit KM routes
 
 Plain `km classify ONTOLOGY` is equivalent to `--route auto`. In the latest
-completed, source-bound 592-ontology sweep it produces 585 operational
-completions, of which 583 match the retained Konclude full-IRI signatures
+completed, source-bound 592-ontology sweep it produces 586 operational
+completions, of which 584 match the retained Konclude full-IRI signatures
 exactly. The two other completions are contested consistency cases rather than
 accepted exact matches.
 
@@ -212,15 +212,16 @@ The current automatic source also selects `nominal_ni_tbox` for
 `ore_ont_10702.owl`. Focused IBEX job 49676814 confirms an exact signature in
 2.2885 seconds at 21.72 MiB. The complete no-regression sweep is job 49676527,
 with dependency-bound audit job 49676902. These pending results are not folded
-into the completed 583-match total.
+into the completed 584-match total.
 
-Five ontologies lack a validated answer from any current route: `1194`, `4669`,
-`9540`, `10621`, and `10860`. The eight rows previously reported as unknown
-(`443`, `3524`, `6720`, `7052`, `8941`, `13912`, `15288`, and `15703`) are
-validated by schema v2 without rerunning a reasoner. Route `9540` times out,
-and the old `10621` `ht_bridge` recipe is rejected by the frozen current
-revision. These are the two accepted historical mechanisms that still need to
-be restored in the current binary.
+The completed automatic sweep has six non-completing rows: `10702`, `10860`,
+`1194`, `4669`, `6934`, and `7499`. The source now closes 10702 exactly in its
+focused automatic gate. Route `certified_card_proxy_abox` closes 7499 exactly
+when selected explicitly, but its ABox-removal precondition is not certified
+generally enough for automatic use. A retained measurement route previously
+closed 6934, but the current router still lacks a complete admission
+certificate. Ontologies 1194, 4669, and 10860 remain genuinely open under the
+standard contract. The completed sweep solves 9540 and 10621 exactly.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
 named classes claimed unsatisfiable have independent satisfiable witnesses.

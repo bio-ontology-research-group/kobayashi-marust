@@ -9,6 +9,24 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Complete v13 automatic sweep: 584 exact matches (2026-07-31)
+
+Source-bound IBEX array `49665768` completed all 592 automatic `km classify`
+tasks. Integrity audit `49665770` verifies the frozen binary, source archive,
+harness, canonicalizer, watchdog, and both audit programs. Terminal statuses
+are 586 `ok`, four `error`, one `timeout`, and one `unsupported`. Full-IRI
+scoring gives 584 exact Konclude matches and two contested consistency
+mismatches. The non-completing rows are 10702, 10860, 1194, 4669, 6934, and
+7499. This sweep includes the automatic 12653 recovery but predates the
+automatic 10702 specialist.
+
+Route-consistency audit `49665771` reports two metadata mismatches, 11311 and
+11745: their source profile initially selects `elc`, the normalized frontend
+sets `el_rbox_safe=false`, and production correctly falls through to
+`cb_plain16`; both final signatures match gold exactly. The audit currently
+models a selected route as terminal rather than allowing this documented ELC
+defer path. These are audit false positives, not reasoner result differences.
+
 ### Collapse explicitly equivalent CB classification roots (2026-07-31)
 
 The default CB classifier now runs one root query for each group of named
