@@ -65,6 +65,45 @@ fi
 
 work=${SLURM_TMPDIR:-/tmp}/km-adaptive-comp-v11-592-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
+profile_tmp="$root/profiles/$ontology.json.tmp"
+profile_err="$root/profiles/$ontology.err.tmp"
+if timeout 240 /usr/bin/prlimit --as=25769803776 -- \
+    "$root/km" profile "$km_root/corpus/$ontology" > "$profile_tmp" 2> "$profile_err" \
+  && /usr/bin/python3 - "$profile_tmp" "$ontology" <<'PY'
+import json
+import sys
+
+row = json.load(open(sys.argv[1]))
+if row.get("ont") != sys.argv[2] or row.get("status") != "ok":
+    raise SystemExit(f"invalid profile row: {row}")
+if not row.get("selected_route"):
+    raise SystemExit(f"missing selected route: {row}")
+PY
+then
+  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
+  /usr/bin/rm -f "$profile_err"
+else
+  profile_rc=$?
+  /usr/bin/python3 - "$ontology" "$profile_rc" "$profile_err" > "$profile_tmp" <<'PY'
+import json
+import pathlib
+import sys
+
+err = pathlib.Path(sys.argv[3])
+print(json.dumps({
+    "ont": sys.argv[1],
+    "status": "error",
+    "selected_route": None,
+    "returncode": int(sys.argv[2]),
+    "error": err.read_text(errors="replace")[-4000:] if err.exists() else "",
+}))
+PY
+  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
+  /usr/bin/mv "$profile_err" "$root/profiles/$ontology.err"
+  echo "PROFILE_FAILED index=$index ontology=$ontology" >&2
+  exit 1
+fi
+
 runner=$root/full_panel_run_one.py
 if [[ $ontology == ore_ont_3524.owl || $ontology == ore_ont_13503.owl || $ontology == ore_ont_15703.owl ]]; then
   runner=$root/full_panel_run_one_collision_safe.py
@@ -114,41 +153,4 @@ if sys.argv[2] in expected_fulliri:
         raise SystemExit(f"collision-safe fingerprint mismatch: {row}")
 PY
 /usr/bin/mv "$root/results/$ontology.json.tmp" "$root/results/$ontology.json"
-
-profile_tmp="$root/profiles/$ontology.json.tmp"
-profile_err="$root/profiles/$ontology.err.tmp"
-if timeout 240 /usr/bin/prlimit --as=25769803776 -- \
-    "$root/km" profile "$km_root/corpus/$ontology" > "$profile_tmp" 2> "$profile_err" \
-  && /usr/bin/python3 - "$profile_tmp" "$ontology" <<'PY'
-import json
-import sys
-
-row = json.load(open(sys.argv[1]))
-if row.get("ont") != sys.argv[2] or row.get("status") != "ok":
-    raise SystemExit(f"invalid profile row: {row}")
-if not row.get("selected_route"):
-    raise SystemExit(f"missing selected route: {row}")
-PY
-then
-  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
-  /usr/bin/rm -f "$profile_err"
-else
-  profile_rc=$?
-  /usr/bin/python3 - "$ontology" "$profile_rc" "$profile_err" > "$profile_tmp" <<'PY'
-import json
-import pathlib
-import sys
-
-err = pathlib.Path(sys.argv[3])
-print(json.dumps({
-    "ont": sys.argv[1],
-    "status": "error",
-    "selected_route": None,
-    "returncode": int(sys.argv[2]),
-    "error": err.read_text(errors="replace")[-4000:] if err.exists() else "",
-}))
-PY
-  /usr/bin/mv "$profile_tmp" "$root/profiles/$ontology.json"
-  /usr/bin/mv "$profile_err" "$root/profiles/$ontology.err"
-fi
 echo "TASK_COMPLETE index=$index ontology=$ontology"
