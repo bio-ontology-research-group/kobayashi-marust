@@ -106,7 +106,29 @@ def main() -> int:
     parser.add_argument("--ontology-list", type=Path, required=True)
     parser.add_argument("--array-job-id", required=True)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument(
+        "--expected-nonmatch",
+        action="append",
+        default=[],
+        metavar="ONTOLOGY:STATUS:VERDICT",
+        help=(
+            "explicitly adjudicated non-match; all unlisted non-matches fail "
+            "the audit"
+        ),
+    )
     args = parser.parse_args()
+
+    expected_nonmatches = {}
+    for specification in args.expected_nonmatch:
+        try:
+            ontology, status, verdict = specification.split(":", 2)
+        except ValueError as error:
+            raise SystemExit(
+                f"invalid --expected-nonmatch {specification!r}"
+            ) from error
+        if ontology in expected_nonmatches:
+            raise SystemExit(f"duplicate expected non-match: {ontology}")
+        expected_nonmatches[ontology] = (status, verdict)
 
     ontologies = args.ontology_list.read_text(encoding="utf-8").splitlines()
     if len(ontologies) != 592 or len(set(ontologies)) != 592:
@@ -118,6 +140,8 @@ def main() -> int:
     recovered = []
     failures = []
     counts = {}
+    verdict_counts = {}
+    observed_nonmatches = {}
     for index, ontology in enumerate(ontologies):
         final = results / f"{ontology}.json"
         checkpoint = results / f"{ontology}.checkpoint.json"
@@ -163,6 +187,24 @@ def main() -> int:
         except (OSError, ValueError, json.JSONDecodeError) as error:
             failures.append(f"{ontology}: invalid profile: {error}")
         counts[row["status"]] = counts.get(row["status"], 0) + 1
+        verdict = row.get("verdict")
+        verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+        outcome = (row.get("status"), verdict)
+        if outcome != ("ok", "match"):
+            observed_nonmatches[ontology] = outcome
+            expected = expected_nonmatches.get(ontology)
+            if expected != outcome:
+                failures.append(
+                    f"{ontology}: unexpected non-match {outcome!r}; "
+                    f"expected {expected!r}"
+                )
+
+    for ontology, expected in expected_nonmatches.items():
+        observed = observed_nonmatches.get(ontology)
+        if observed is None:
+            failures.append(
+                f"{ontology}: expected non-match {expected!r} was not observed"
+            )
 
     if failures:
         for failure in failures:
@@ -174,7 +216,17 @@ def main() -> int:
         )
         return 1
 
-    print(json.dumps({"counts": counts, "recovered": recovered}, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "counts": counts,
+                "verdict_counts": verdict_counts,
+                "nonmatches": observed_nonmatches,
+                "recovered": recovered,
+            },
+            sort_keys=True,
+        )
+    )
     print(f"SWEEP_AUDIT_COMPLETE terminal={sum(counts.values())}")
     return 0
 

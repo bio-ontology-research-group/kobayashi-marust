@@ -424,6 +424,10 @@ and every row's deployed-binary SHA-256. A Slurm OOM recovery now publishes
 the same independently evidenced row to both terminal locations. Each task
 writes and validates its feature profile before classification, so even a
 worker-level OOM cannot publish a result without its route evidence.
+The audit also requires every non-`ok`/`match` outcome to equal an explicit
+`ontology:status:verdict` adjudication supplied at submission. It reports
+status and verdict distributions plus the complete non-match map, and fails
+both unexpected regressions and expected residuals that silently change state.
 
 The v10 sweep's 4669 timeout is expected, not a scheduling regression. Current
 KM rejects the historical bridge result because targeted satisfiability checks
