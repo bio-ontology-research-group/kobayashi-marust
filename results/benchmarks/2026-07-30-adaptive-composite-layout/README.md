@@ -489,3 +489,12 @@ contend with that sweep. Every trial publishes a terminal checkpoint for an
 exact, timeout, memout, error, or unsupported outcome. The panel will determine
 whether either complete production route has reproducible memory headroom; v11
 remains held until this evidence is available.
+
+The route ledger also contains earlier exact `ht_bridge` and `ht_full`
+measurements near 8.2 GiB. Those named routes use the current structural guard
+and do not set `KM_HT_FORCE`, but the historical measurements alone do not
+establish their behavior in the v11 binary. Companion source-bound panel
+`49659697` therefore runs five trials of each guarded HT route under the same
+9724 contract and the same dependency on v10. An exact, reproducible guarded
+HT result would provide substantially more memory headroom than
+`production_all1`; a defer or mismatch will keep it out of automatic routing.
