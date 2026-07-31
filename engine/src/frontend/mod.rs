@@ -502,6 +502,12 @@ fn ofn_to_clauses_requested(
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
+    if automatic
+        && route == crate::routing::Route::CertifiedNominals
+        && crate::routing::component_abox_bridge_candidate(&profile)
+    {
+        std::env::set_var("KM_HT_COMPONENT_ABOX", "1");
+    }
     // ELC computes bottom propagation as part of its own complete fixpoint.
     // Building the general SROIQ bottom certificate is therefore redundant on
     // an ELC-only route and can be quadratic on giant flat taxonomies with

@@ -557,7 +557,7 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
     tin.fenced.iter().all(|fence| {
         matches!(
             fence.reason.as_str(),
-            "inverse+number(SHIQ)" | "inverse-functional"
+            "inverse+number(SHIQ)" | "inverse-functional" | "irreflexivity"
         ) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
             || (source_tbox
                 && tin.nominal_abox.complete
@@ -2669,7 +2669,10 @@ mod tests {
             reason: "irreflexivity".into(),
             detail: "r".into(),
         });
-        assert!(!bridge_fences_supported(&tin, true));
+        assert!(
+            bridge_fences_supported(&tin, true),
+            "irreflexivity reaches the bridge's own nonempty-role certificate"
+        );
     }
 
     #[test]

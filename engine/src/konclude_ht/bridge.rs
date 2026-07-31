@@ -3438,13 +3438,18 @@ fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool 
         && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
 }
 
-/// Large conditional-nonfull ABoxes that can be consistency-checked by one
-/// representative per asserted-type signature and then omitted from taxonomy
-/// jobs. With no nominal occurrence, cross-individual edge, inequality, or
-/// universal role, the logic is closed under disjoint unions: each independent
-/// assertion signature needs one satisfiable root, while individual identity
-/// cannot affect a TBox class subsumption.
-fn independent_large_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
+/// Nominal-free positive ABoxes that can be consistency-checked component by
+/// component and then omitted from taxonomy jobs. With no nominal occurrence,
+/// inequality, negative role assertion, or universal role in a class
+/// expression, SROIQ TBoxes are closed under disjoint unions. Every undirected
+/// component of the asserted role graph can therefore use its own model; the
+/// ABox cannot change a named TBox subsumption once all components are known
+/// satisfiable.
+fn independent_component_abox_profile(
+    tin: &TInput,
+    native_nominals: bool,
+    component_enabled: bool,
+) -> bool {
     fn coupled(concept: &SourceConcept) -> bool {
         match concept {
             SourceConcept::Nominal(_) => true,
@@ -3463,9 +3468,11 @@ fn independent_large_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
         }
     }
 
+    let legacy_large_role_free = tin.nominal_abox.individuals.len()
+        >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+        && tin.nominal_abox.role_assertions.is_empty();
     native_nominals
-        && tin.nominal_abox.individuals.len() >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT
-        && tin.nominal_abox.role_assertions.is_empty()
+        && (legacy_large_role_free || component_enabled)
         && tin.nominal_abox.negative_role_assertions.is_empty()
         && tin.nominal_abox.different.is_empty()
         && tin.source_axioms.iter().all(|axiom| {
@@ -3477,6 +3484,101 @@ fn independent_large_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
             .iter()
             .flat_map(|entry| entry.assertions.iter())
         .all(|assertion| !coupled(assertion))
+}
+
+/// Connected components of the exact numeric positive-ABox graph, expressed
+/// as native completion tags. Isolated asserted individuals are singleton
+/// components. Invalid indices fail closed.
+fn independent_abox_component_tags(tin: &TInput, bridged: &Bridged) -> Option<Vec<HashSet<Cint64>>> {
+    let count = tin.native_abox.individuals.len();
+    if count == 0 || bridged.nominal_seeds.len() != count {
+        return None;
+    }
+    let mut adjacency = vec![Vec::new(); count];
+    for &(_, source, target) in &tin.native_abox.role_assertions {
+        if source >= count || target >= count {
+            return None;
+        }
+        adjacency[source].push(target);
+        adjacency[target].push(source);
+    }
+    let mut seen = vec![false; count];
+    let mut components = Vec::new();
+    for start in 0..count {
+        if seen[start] {
+            continue;
+        }
+        let mut pending = vec![start];
+        let mut component = HashSet::new();
+        seen[start] = true;
+        while let Some(index) = pending.pop() {
+            component.insert(bridged.nominal_seeds[index].individual_tag);
+            for &next in &adjacency[index] {
+                if !seen[next] {
+                    seen[next] = true;
+                    pending.push(next);
+                }
+            }
+        }
+        components.push(component);
+    }
+    Some(components)
+}
+
+/// Conservative least set of roles that a TBox/ABox can force nonempty.
+/// Positive existential heads, generated role heads, cardinality definitions,
+/// and asserted edges seed the set. Pure role implications and chains then
+/// propagate it. Roles outside the fixpoint have an empty interpretation in a
+/// model of the remaining ontology, so an irreflexivity axiom on such a role is
+/// redundant rather than unsupported.
+fn forced_nonempty_roles(tin: &TInput) -> HashSet<usize> {
+    let mut active = HashSet::new();
+    active.extend(tin.native_abox.role_assertions.iter().map(|&(role, _, _)| role));
+    active.extend(tin.card_defs.iter().map(|card| card.role));
+    for clause in &tin.clauses {
+        for atom in clause.body.iter().chain(clause.head.iter()) {
+            if let HAtom::Exist { r, neg: false, .. } = atom {
+                active.insert(*r);
+            }
+        }
+        let concept_guard = clause
+            .body
+            .iter()
+            .any(|atom| matches!(atom, HAtom::Concept { .. }));
+        if concept_guard {
+            active.extend(clause.head.iter().filter_map(|atom| match atom {
+                HAtom::Role { r, .. } => Some(*r),
+                _ => None,
+            }));
+        }
+    }
+    loop {
+        let before = active.len();
+        for clause in &tin.clauses {
+            let body_roles: Vec<usize> = clause
+                .body
+                .iter()
+                .filter_map(|atom| match atom {
+                    HAtom::Role { r, .. } => Some(*r),
+                    _ => None,
+                })
+                .collect();
+            if !body_roles.is_empty() && body_roles.iter().all(|role| active.contains(role)) {
+                active.extend(clause.head.iter().filter_map(|atom| match atom {
+                    HAtom::Role { r, .. } => Some(*r),
+                    _ => None,
+                }));
+            }
+        }
+        for &(left, right, target) in &tin.chains {
+            if active.contains(&left) && active.contains(&right) {
+                active.insert(target);
+            }
+        }
+        if active.len() == before {
+            return active;
+        }
+    }
 }
 
 /// Select one stable representative for each logical asserted-type set.
@@ -3905,6 +4007,7 @@ fn bridge_tinput_with_trigger_absorption(
     let mut trigger_caches = TriggerCaches::default();
     let mut singleton_concepts: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
+    let forced_nonempty_roles = forced_nonempty_roles(tin);
     // Diagnostic (KM_BRIDGE_DUMP_UNSUP=N): record the shape of the first N
     // unsupported clauses so the next coverage wave can be scoped.
     let dump_unsup: usize = std::env::var("KM_BRIDGE_DUMP_UNSUP")
@@ -5111,6 +5214,17 @@ fn bridge_tinput_with_trigger_absorption(
         if body_roles.len() == 1 {
             // ---- guarded two-variable clause: R(x, y) --------------------
             let (r, s, t) = body_roles[0];
+            // Irreflexivity is encoded as R(x,x) -> bottom. If no source
+            // assertion, generating restriction, role implication, or chain
+            // can force R nonempty, choosing R empty satisfies this axiom and
+            // leaves every class consequence unchanged.
+            if s == t
+                && cl.head.is_empty()
+                && cl.body.len() == 1
+                && !forced_nonempty_roles.contains(&r)
+            {
+                continue;
+            }
             if s != 0 || t == 0 || vars.iter().any(|&v| v != s && v != t) {
                 unsupported += 1;
                 dump(cl, "guarded-var-shape");
@@ -6677,7 +6791,11 @@ fn fresh_bridge_env_with_trigger_absorption(
     // their validated legacy scheduling.
     let card_nominal_profile = native_cardinality_abox_profile(tin, bridged.has_native_nominals());
     let independent_abox_elided =
-        independent_large_abox_profile(tin, bridged.has_native_nominals());
+        independent_component_abox_profile(
+            tin,
+            bridged.has_native_nominals(),
+            std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
+        );
     algo.conf_direct_rule_preprocessing = card_nominal_profile;
     algo.conf_cache_oriented_or_ordering = card_nominal_profile;
     if card_nominal_profile {
@@ -11648,10 +11766,9 @@ fn bridged_classify_opts_with_trigger_absorption(
     if !bridge_input_guard(tin) {
         return None;
     }
-    // The bridge has neither a universal-role object nor a typed data-domain
-    // object. Decline before constructing an arena instead of treating either
-    // construct as an ordinary named symbol.
-    if has_builtin_top_role(tin) || has_fixed_datatype_object_position(tin) {
+    // The bridge has no typed data-domain object. Decline before constructing
+    // an arena instead of treating a fixed datatype as an ordinary class.
+    if has_fixed_datatype_object_position(tin) {
         return None;
     }
     let source_mode = trigger_absorb
@@ -11661,10 +11778,21 @@ fn bridged_classify_opts_with_trigger_absorption(
         return None;
     }
     let native_nominals = native_nominal_metadata_covered(tin, source_mode);
+    let independent_abox_elided = independent_component_abox_profile(
+        tin,
+        native_nominals,
+        std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
+    );
+    // A universal role used in a class expression couples every disjoint-union
+    // component and remains unsupported. A top-role name occurring only as the
+    // target of the tautology R <= top is semantically inert for the certified
+    // component-ABox path, so it need not make that path defer.
+    if has_builtin_top_role(tin) && !independent_abox_elided {
+        return None;
+    }
     if has_any_nominal_input(tin) && !native_nominals {
         return None;
     }
-    let independent_abox_elided = independent_large_abox_profile(tin, native_nominals);
     // Native ABox saturation is scheduled separately, immediately before the
     // authoritative full consistency graph. Do not feed its subject verdicts
     // into taxonomy KPSet: those labels are ABox-influenced (measured on
@@ -11737,9 +11865,10 @@ fn bridged_classify_opts_with_trigger_absorption(
         fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
     if progress {
         eprintln!(
-            "BRIDGE-ENV: {:.2}s (named={}, trigger_absorb={trigger_absorb})",
+            "BRIDGE-ENV: {:.2}s (named={}, trigger_absorb={trigger_absorb}, unsupported={}, independent_abox={independent_abox_elided})",
             t_env.elapsed().as_secs_f64(),
-            bridged.named.len()
+            bridged.named.len(),
+            bridged.unsupported,
         );
     }
     if bridged.unsupported > 0 {
@@ -11785,34 +11914,40 @@ fn bridged_classify_opts_with_trigger_absorption(
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
     if bridged.has_native_nominals() {
         if independent_abox_elided {
-            // ConditionalFull=false, role-independent ABox: one root per
-            // distinct asserted-type signature is an exact consistency task.
-            // Duplicate individuals add no constraints without nominals,
-            // inequalities, or inter-individual edges.
-            reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
-            let selected_tags = independent_abox_representative_tags(&bridged);
-            if !initialize_native_nominal_state_for_tags(
-                &mut algo,
-                &mut ctx,
-                &bridged,
-                Some(&selected_tags),
-            ) {
-                return None;
-            }
-            algo.probe_budget = Some(std::time::Duration::from_secs(
-                base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
-            ));
-            configure_production_search(&mut algo);
-            match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
-                Some(false) => {
-                    return Some(BridgedClassification {
-                        consistent: false,
-                        unsatisfiable: Vec::new(),
-                        subsumptions: Vec::new(),
-                    });
+            // Role-free duplicate assertion signatures need one root each.
+            // Otherwise decide every complete connected ABox component in a
+            // fresh task. The disjoint-union certificate above is what permits
+            // successful components to be omitted from taxonomy probes.
+            let components = if tin.native_abox.role_assertions.is_empty() {
+                vec![independent_abox_representative_tags(&bridged)]
+            } else {
+                independent_abox_component_tags(tin, &bridged)?
+            };
+            for selected_tags in components {
+                reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                if !initialize_native_nominal_state_for_tags(
+                    &mut algo,
+                    &mut ctx,
+                    &bridged,
+                    Some(&selected_tags),
+                ) {
+                    return None;
                 }
-                Some(true) => {}
-                None => return None,
+                algo.probe_budget = Some(std::time::Duration::from_secs(
+                    base_budget.saturating_mul(4u64.saturating_pow(retry_rounds)),
+                ));
+                configure_production_search(&mut algo);
+                match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+                    Some(false) => {
+                        return Some(BridgedClassification {
+                            consistent: false,
+                            unsatisfiable: Vec::new(),
+                            subsumptions: Vec::new(),
+                        });
+                    }
+                    Some(true) => {}
+                    None => return None,
+                }
             }
         } else {
         let model_certified = empty_role_nominal_model_certificate(tin, &bridged);
@@ -13204,7 +13339,7 @@ mod tests {
     }
 
     #[test]
-    fn independent_large_abox_profile_rejects_every_coupling_fence() {
+    fn independent_component_abox_profile_rejects_every_coupling_fence() {
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut clean = cached_native_role_input();
@@ -13216,29 +13351,33 @@ mod tests {
             .nominal_abox
             .individuals
             .resize(CONDITIONAL_FULL_INDIVIDUAL_LIMIT, template);
-        assert!(independent_large_abox_profile(&clean, true));
-        assert!(!independent_large_abox_profile(&clean, false));
+        assert!(independent_component_abox_profile(&clean, true, true));
+        assert!(!independent_component_abox_profile(&clean, false, true));
 
         let mut coupled = clean.clone();
         coupled.nominal_abox.individuals.pop();
-        assert!(!independent_large_abox_profile(&coupled, true));
+        assert!(independent_component_abox_profile(&coupled, true, true));
 
-        let mut coupled = clean.clone();
-        coupled
+        let mut positive_component = clean.clone();
+        positive_component
             .nominal_abox
             .role_assertions
             .push(nominal_role("r", "a", "b"));
-        assert!(!independent_large_abox_profile(&coupled, true));
+        assert!(independent_component_abox_profile(
+            &positive_component,
+            true,
+            true
+        ));
 
         let mut coupled = clean.clone();
         coupled.nominal_abox.negative_role_assertions.push(nominal_role(
             "r", "a", "b",
         ));
-        assert!(!independent_large_abox_profile(&coupled, true));
+        assert!(!independent_component_abox_profile(&coupled, true, true));
 
         let mut coupled = clean.clone();
         coupled.nominal_abox.different.push(("a".into(), "b".into()));
-        assert!(!independent_large_abox_profile(&coupled, true));
+        assert!(!independent_component_abox_profile(&coupled, true, true));
 
         for concept in [
             C::Not(Box::new(C::Nominal("a".into()))),
@@ -13250,7 +13389,7 @@ mod tests {
         ] {
             let mut coupled = clean.clone();
             coupled.source_axioms = vec![source_subclass(C::Name("A".into()), concept)];
-            assert!(!independent_large_abox_profile(&coupled, true));
+            assert!(!independent_component_abox_profile(&coupled, true, true));
         }
 
         for assertion in [
@@ -13261,7 +13400,7 @@ mod tests {
             coupled.nominal_abox.individuals[0]
                 .assertions
                 .push(assertion);
-            assert!(!independent_large_abox_profile(&coupled, true));
+            assert!(!independent_component_abox_profile(&coupled, true, true));
         }
     }
 

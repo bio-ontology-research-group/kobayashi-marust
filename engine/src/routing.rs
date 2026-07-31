@@ -536,6 +536,33 @@ pub(crate) fn nominal_ni_abox_candidate(profile: &OntologyProfile) -> bool {
         && profile.expressivity.functionality
 }
 
+/// Cheap source candidate for component-wise positive-ABox certification.
+///
+/// This authorizes only a bridge attempt. After normalization the bridge must
+/// prove complete typed coverage, absence of cross-component constructors,
+/// exact component consistency, and complete TBox encoding. A defer retains
+/// the exact nominal CB fallback, so a source false positive affects schedule
+/// but cannot authorize a partial answer.
+pub(crate) fn component_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+    source.abox_axioms > 0
+        && source.abox_axioms == source.class_assertions.saturating_add(source.role_assertions)
+        && source.class_assertions > 0
+        && source.distinct_individuals > 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.distinct_data_properties == 0
+        && source.datatype_constructors == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && count("DataPropertyAssertion") == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("SameIndividual") == 0
+        && count("DifferentIndividuals") == 0
+}
+
 /// Large nominal ABoxes need the certified bridge portfolio's bounded
 /// synchronous competitor instead of spawning the full parallel nominal CB
 /// fallback immediately. A source false positive is correctness-neutral: the
@@ -797,6 +824,13 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // SHOIN object-ABox family (including ORE 15672) without an
         // ontology-specific dispatch rule.
         SemanticFragment::Nominal if typed_object_abox_bridge_candidate(profile) => {
+            Route::CertifiedNominals
+        }
+        // Positive object ABoxes receive a complete-or-defer component bridge
+        // attempt. The normalized worker independently proves disjoint-union
+        // separability and every component's consistency; exact nominal CB is
+        // retained when any proof obligation fails.
+        SemanticFragment::Nominal if component_abox_bridge_candidate(profile) => {
             Route::CertifiedNominals
         }
         SemanticFragment::Nominal if nominal_ni_tbox_candidate(profile) => Route::NominalNiTbox,
@@ -1398,6 +1432,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_CARD_FN",
     "KM_NOMINALS",
     "KM_HT_CARD_PROXY_ABOX",
+    "KM_HT_COMPONENT_ABOX",
     "KM_SEQ_ORDER",
     "KM_NO_SEQ_ORDER",
 ];
@@ -1420,6 +1455,29 @@ mod tests {
     fn every_matrix_route_round_trips() {
         for route in Route::NAMED {
             assert_eq!(route.as_str().parse::<Route>().unwrap(), route);
+        }
+    }
+
+    #[test]
+    fn component_abox_bridge_source_gate_is_positive_object_only() {
+        let ontology = |abox: &str| {
+            source_profile(&format!(
+                "Ontology( Declaration(Class(:A)) Declaration(ObjectProperty(:r)) {abox} )"
+            ))
+        };
+        assert!(component_abox_bridge_candidate(&ontology(
+            "ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) ClassAssertion(:A :b)"
+        )));
+        for rejected in [
+            "ClassAssertion(:A :a) NegativeObjectPropertyAssertion(:r :a :b)",
+            "ClassAssertion(:A :a) SameIndividual(:a :b)",
+            "ClassAssertion(:A :a) DifferentIndividuals(:a :b)",
+            "ClassAssertion(ObjectOneOf(:a) :b)",
+        ] {
+            assert!(
+                !component_abox_bridge_candidate(&ontology(rejected)),
+                "unsafe source candidate passed: {rejected}"
+            );
         }
     }
 
@@ -1786,14 +1844,21 @@ mod tests {
         }
 
         profile.source.role_assertions = 1;
+        profile.source.abox_axioms += 1;
+        profile
+            .source
+            .axiom_types
+            .insert("ObjectPropertyAssertion".into(), 1);
         assert!(!independent_large_abox_candidate(&profile));
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
         profile.source.role_assertions = 0;
+        profile.source.abox_axioms -= 1;
+        profile.source.axiom_types.remove("ObjectPropertyAssertion");
 
         profile.source.class_assertions += 1;
         profile.source.abox_axioms += 1;
         assert!(!independent_large_abox_candidate(&profile));
-        assert_eq!(select(&profile), Route::Nominals);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
         profile.source.class_assertions -= 1;
         profile.source.abox_axioms -= 1;
 
