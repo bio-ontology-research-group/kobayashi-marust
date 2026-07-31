@@ -75,16 +75,40 @@ narrows the live obligation substantially:
   `EquivalentDataProperties` axioms. No named binding can satisfy either data
   atom in these DL-safe rule bodies, so all three rules are provably inert;
   evaluating `swrlb:greaterThan` is unnecessary for this ontology.
-- One rule uses `abox:hasClass` twice and `tbox:isSubClassOf` once. This is the
-  sole remaining semantically live unsupported rule. Its head derives a
-  `hasR2RRelation` edge when the EHR-section class of one named individual is a
-  subclass of the class of another.
+- One rule uses the legacy Protégé 3.3 built-ins `abox:hasClass` twice and
+  `tbox:isSubClassOf` once. This is not the similarly named modern SWRLAPI
+  axiom-query interface. The original Protégé 3.5 distribution and bytecode
+  establish the operative contract:
+  - `hasClass(i, C)` calls `P3OWLUtil.getOWLClassesOfIndividual`, which reads
+    `individual.getRDFTypes()` and retains named classes. It therefore ranges
+    over asserted named RDF types, not inferred memberships.
+  - `isSubClassOf(C, D)` calls `P3OWLUtil.isOWLSubClassOf(..., true)`, which
+    tests membership in `C.getSuperclasses(true)`. It follows the asserted
+    superclass graph transitively; `isDirectSubClassOf` is the separate
+    non-transitive built-in.
 
-The exact closure task is therefore to retain and evaluate that finite
-named-ABox meta-rule, together with all 13 already parsed rules, then check the
-materialized ABox for consistency. KM must continue to decline until that
-check is complete; inertness of the three data rules does not justify dropping
-the live meta-rule.
+Under that exact contract, the meta-rule adds no new firing in 10860. Every
+`hasRelatedEHRSection` assertion from a legal authorization targets the named
+individual `diagnosis`, whose asserted named type is `Diagnosis`. Among the
+asserted types of all `hasEHRSectionPart` targets, the only type below
+`Diagnosis` in the transitive asserted superclass graph is `Diagnosis` itself,
+on the same individual `diagnosis`. The rule's two section variables must
+therefore denote the same individual whenever its built-in conjunction holds.
+The ontology already contains the ordinary supported rule with that exact
+same-section guard and the same `hasR2RRelation` head. The legacy meta-rule is
+subsumed by that rule and is provably redundant for this source.
+
+The frontend now contains a fail-closed certificate for the three inert data
+rules and the subsumed legacy meta-rule. It verifies the relevant assertions,
+asserted type sets, transitive named-superclass relation, and the subsuming
+ordinary rule from the parsed source; synthetic negative controls revoke the
+certificate when a data fact is added or the section targets differ. On the
+frozen source it certifies exactly 4 rules and carries the other 13. It remains
+opt-in (`KM_RULE_REDUNDANCY_CERT=1`) because the downstream generic HT
+rule-consistency worker still exceeded a 260-second focused run. Default KM
+therefore continues to decline 10860 rather than replacing a precise diagnosis
+with a timeout. The remaining closure task is a finite materialization or
+consistency certificate for those 13 representable rules.
 
 ## Soundness note
 

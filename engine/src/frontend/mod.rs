@@ -18,6 +18,7 @@ pub mod parse;
 pub mod preprocess;
 pub mod profile;
 pub mod rbox;
+mod rule_certificate;
 pub mod sexpr;
 pub mod syntax;
 pub mod top_role;
@@ -468,9 +469,11 @@ fn ofn_to_clauses_requested(
     // heap string per token, and the AST was additionally deep-cloned for the
     // rbox/declared scans — together the 20 GB peak on 500 MB ontologies).
     let mut profile_builder = profile::SourceProfileBuilder::new();
+    let mut rule_certificate_scan = rule_certificate::RuleCertificateScan::default();
     let mut top_role_scan = top_role::TopRoleScan::default();
     let mut ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
         profile_builder.observe(node);
+        rule_certificate_scan.observe(node);
         top_role_scan.observe(node);
     })?;
     // `R ⊑ owl:topObjectProperty` is a tautology. When it is the ontology's only
@@ -493,6 +496,25 @@ fn ofn_to_clauses_requested(
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let mut profile = profile_builder.finish(text.len() as u64);
+    // Kept opt-in until the downstream rule-consistency worker also completes
+    // 10860 within the production contract. The certificate itself is exact,
+    // but admitting the ontology only to time out would regress the default
+    // route's explicit unsupported diagnosis.
+    let available_rule_certificates = rule_certificate_scan.certified_unsupported_rules();
+    let certified_unsupported_rules = if std::env::var_os("KM_RULE_REDUNDANCY_CERT").is_some() {
+        available_rule_certificates
+    } else {
+        0
+    };
+    if std::env::var_os("KM_DEBUG_RULES").is_some() {
+        eprintln!(
+            "KM_DEBUG_RULES: {available_rule_certificates} redundancy certificate(s) available, {certified_unsupported_rules} enabled"
+        );
+    }
+    profile.source.unsupported_rule_axioms = profile
+        .source
+        .unsupported_rule_axioms
+        .saturating_sub(certified_unsupported_rules);
     let automatic = requested == crate::routing::Route::Auto;
     let mut route = if automatic {
         crate::routing::select(&profile)
@@ -536,7 +558,11 @@ fn ofn_to_clauses_requested(
     // silently dropping one would make a supposedly complete policy leaf
     // incomplete.
     let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_NO_HT_RULES").is_none() {
-        collect_rules(&ontology, profile.source.rule_axioms)?
+        collect_rules(
+            &ontology,
+            profile.source.rule_axioms,
+            certified_unsupported_rules,
+        )?
     } else {
         Vec::new()
     };
@@ -920,6 +946,7 @@ mod bottom_prepass_route_tests {
 fn collect_rules(
     ontology: &syntax::Ontology,
     source_rule_count: u64,
+    certified_unsupported_rules: u64,
 ) -> Result<Vec<crate::json_io::JRule>, parse::OutOfFragment> {
     use crate::json_io::{JRule, JRuleAtom, JRuleTerm};
     use syntax::{Axiom, Concept, RuleAtom, RuleTerm};
@@ -953,9 +980,9 @@ fn collect_rules(
         })
     };
     let parsed_rule_count = ontology.rules().count() as u64;
-    if parsed_rule_count != source_rule_count {
+    if parsed_rule_count + certified_unsupported_rules != source_rule_count {
         return Err(parse::OutOfFragment(format!(
-            "DL-safe rules: parsed {parsed_rule_count} of {source_rule_count}; an atom or head shape is unsupported"
+            "DL-safe rules: parsed {parsed_rule_count} and certified {certified_unsupported_rules} of {source_rule_count}; an atom or head shape is unsupported"
         )));
     }
     let mut out = Vec::new();
@@ -988,7 +1015,10 @@ mod rule_contract_tests {
         let parsed = ontology(
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
-        assert_eq!(collect_rules(&parsed, 1).expect("supported rule").len(), 1);
+        assert_eq!(
+            collect_rules(&parsed, 1, 0).expect("supported rule").len(),
+            1
+        );
     }
 
     #[test]
@@ -996,12 +1026,12 @@ mod rule_contract_tests {
         let dropped = ontology(
             "Ontology(DLSafeRule(Body(BuiltInAtom(<p> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
-        assert!(collect_rules(&dropped, 1).is_err());
+        assert!(collect_rules(&dropped, 1, 0).is_err());
 
         let complex = ontology(
             "Ontology(DLSafeRule(Body(ClassAtom(ObjectIntersectionOf(<A> <B>) Variable(<x>))) Head(ClassAtom(<C> Variable(<x>)))))",
         );
-        assert!(collect_rules(&complex, 1).is_err());
+        assert!(collect_rules(&complex, 1, 0).is_err());
     }
 
     #[test]
@@ -1011,7 +1041,7 @@ mod rule_contract_tests {
         let parsed = ontology(
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) SameIndividualAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
-        let rules = collect_rules(&parsed, 1).expect("SameAs rule accepted");
+        let rules = collect_rules(&parsed, 1, 0).expect("SameAs rule accepted");
         assert_eq!(rules.len(), 1);
     }
 
@@ -1023,7 +1053,7 @@ mod rule_contract_tests {
         let parsed = ontology(
             "Ontology(DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentIndividualsAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
-        let rules = collect_rules(&parsed, 1).expect("Diff rule carried, route not declined");
+        let rules = collect_rules(&parsed, 1, 0).expect("Diff rule carried, route not declined");
         assert_eq!(
             rules.len(),
             1,
@@ -1036,7 +1066,10 @@ mod rule_contract_tests {
 DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))) \
 DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentIndividualsAtom(Variable(<x>) Variable(<y>))) Head(ClassAtom(<C> Variable(<x>)))))",
         );
-        assert_eq!(collect_rules(&mixed, 2).expect("mixed accepted").len(), 2);
+        assert_eq!(
+            collect_rules(&mixed, 2, 0).expect("mixed accepted").len(),
+            2
+        );
     }
 
     #[test]
@@ -1050,7 +1083,7 @@ DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))
 DLSafeRule(Body(BuiltInAtom(<gt> Variable(<x>) \"5\")) Head(ClassAtom(<C> Variable(<x>)))))",
         );
         assert!(
-            collect_rules(&parsed, 2).is_err(),
+            collect_rules(&parsed, 2, 0).is_err(),
             "a concrete-domain built-in rule declines the route wholesale"
         );
     }
