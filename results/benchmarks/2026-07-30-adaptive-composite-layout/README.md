@@ -555,10 +555,24 @@ gate builds commit `f6b2188` from source in a Slurm build job, publishes the
 cluster-compatible binary SHA-256, and makes classification depend on that
 successful build. The source-archive SHA-256 is
 `b8febb611fd088867960b07fca70e75a1c59ac6922026657f02be682de274239`.
+Build job `49662845` completed on IBEX and produced binary SHA-256
+`bac80ee342b621730cdc28d1d0a1f6616be7ee0da3fda35db2a6f69fc14806ec`.
+Gate `49663014` is pinned to the same Gold 6248 node set used by the complete
+sweeps and explicitly verifies the CPU model before classification.
 The measured classification must record `route=ht_bridge` and pass the
 collision-safe full-IRI comparison under the 240-second/20,480-MiB contract.
 The hardened runner sets `KM_TIMING`, extracts the route selected at the real
 production frontend boundary, and records it as `selected_route_trace`; this
 prevents a post-normalization diagnostic profile from being mistaken for the
-route that actually ran. It depends on v10 array `49655276` to avoid benchmark
-contention.
+route that actually ran.
+
+The next complete source-bound sweep is array `49663016`, with dependent audit
+`49663017`, under
+`/ibex/scratch/hohndor/km/adaptive-composite-layout-v12-full-20260731`.
+It depends on successful gate `49663014`. Every measured row captures the
+actual production route; resume validation and the final audit reject a row
+without that trace. Ontology 10860 is the sole explicit missing-trace
+exception because its unsupported DL-safe rules stop the frontend before a
+route can be selected. The package manifest binds the IBEX-built binary,
+`f6b2188` source archive, runners, full-IRI wrappers, canonicalizer, watchdog,
+array script, and audit script.
