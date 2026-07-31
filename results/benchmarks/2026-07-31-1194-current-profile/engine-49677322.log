@@ -1,0 +1,84 @@
+KM_STATS[phase] read=44.4ms bytes=270431799
+KM_STATS[phase] parse-cumulative=1296.8ms clauses=1062240
+KM_STATS[phase] build=629.0ms
+KM_PROF seeding query 50/70231 contexts=153 msgs_pending=3381 saturate_calls=52
+KM_PROF seeding query 100/70231 contexts=271 msgs_pending=7293 saturate_calls=102
+KM_PROF seeding query 150/70231 contexts=384 msgs_pending=10949 saturate_calls=152
+KM_PROF seeding query 200/70231 contexts=487 msgs_pending=14930 saturate_calls=202
+KM_PROF seeding query 250/70231 contexts=637 msgs_pending=19115 saturate_calls=252
+KM_PROF seeding query 300/70231 contexts=745 msgs_pending=22365 saturate_calls=302
+KM_PROF seeding query 350/70231 contexts=848 msgs_pending=26521 saturate_calls=352
+KM_PROF seeding query 400/70231 contexts=958 msgs_pending=29905 saturate_calls=402
+KM_PROF seeding query 450/70231 contexts=1054 msgs_pending=34018 saturate_calls=452
+KM_PROF seeding query 500/70231 contexts=1156 msgs_pending=37723 saturate_calls=502
+KM_PROF seeding query 550/70231 contexts=1266 msgs_pending=41051 saturate_calls=552
+KM_PROF seeding query 600/70231 contexts=1375 msgs_pending=44882 saturate_calls=602
+KM_PROF seeding query 650/70231 contexts=1464 msgs_pending=48401 saturate_calls=652
+KM_PROF seeding query 700/70231 contexts=1558 msgs_pending=52164 saturate_calls=702
+KM_PROF seeding query 750/70231 contexts=1670 msgs_pending=55602 saturate_calls=752
+KM_PROF seeding query 800/70231 contexts=1772 msgs_pending=59039 saturate_calls=802
+KM_PROF seeding query 850/70231 contexts=1917 msgs_pending=63386 saturate_calls=852
+KM_PROF seeding query 900/70231 contexts=2193 msgs_pending=68980 saturate_calls=902
+KM_PROF seeding query 950/70231 contexts=2355 msgs_pending=73720 saturate_calls=952
+KM_PROF seeding query 1000/70231 contexts=2628 msgs_pending=79542 saturate_calls=1002
+KM_PROF seeding query 1050/70231 contexts=2753 msgs_pending=84778 saturate_calls=1052
+KM_PROF seeding query 1100/70231 contexts=2886 msgs_pending=89670 saturate_calls=1102
+KM_PROF seeding query 1150/70231 contexts=2963 msgs_pending=94156 saturate_calls=1152
+KM_PROF seeding query 1200/70231 contexts=3028 msgs_pending=99009 saturate_calls=1202
+KM_PROF seeding query 1250/70231 contexts=3095 msgs_pending=105155 saturate_calls=1252
+KM_PROF seeding query 1300/70231 contexts=3164 msgs_pending=109627 saturate_calls=1302
+KM_PROF seeding query 1350/70231 contexts=3330 msgs_pending=115226 saturate_calls=1352
+KM_PROF seeding query 1400/70231 contexts=3397 msgs_pending=119964 saturate_calls=1402
+KM_PROF seeding query 1450/70231 contexts=3709 msgs_pending=126902 saturate_calls=1452
+KM_PROF seeding query 1500/70231 contexts=4209 msgs_pending=133799 saturate_calls=1502
+KM_PROF seeding query 1550/70231 contexts=4316 msgs_pending=138695 saturate_calls=1552
+KM_PROF seeding query 1600/70231 contexts=4433 msgs_pending=143228 saturate_calls=1602
+KM_PROF seeding query 1650/70231 contexts=4621 msgs_pending=149163 saturate_calls=1652
+KM_PROF seeding query 1700/70231 contexts=4699 msgs_pending=153858 saturate_calls=1702
+KM_PROF seeding query 1750/70231 contexts=4778 msgs_pending=159005 saturate_calls=1752
+KM_PROF seeding query 1800/70231 contexts=4917 msgs_pending=164197 saturate_calls=1802
+KM_PROF seeding query 1850/70231 contexts=4990 msgs_pending=170609 saturate_calls=1852
+KM_PROF seeding query 1900/70231 contexts=5114 msgs_pending=177127 saturate_calls=1902
+KM_PROF seeding query 1950/70231 contexts=5294 msgs_pending=182604 saturate_calls=1952
+KM_PROF seeding query 2000/70231 contexts=5432 msgs_pending=188007 saturate_calls=2002
+KM_PROF seeding query 2050/70231 contexts=5582 msgs_pending=193734 saturate_calls=2052
+KM_PROF seeding query 2100/70231 contexts=5713 msgs_pending=198870 saturate_calls=2102
+KM_PROF seeding query 2150/70231 contexts=5860 msgs_pending=203634 saturate_calls=2152
+KM_PROF seeding query 2200/70231 contexts=5967 msgs_pending=208639 saturate_calls=2202
+KM_PROF seeding query 2250/70231 contexts=6030 msgs_pending=214759 saturate_calls=2252
+KM_PROF seeding query 2300/70231 contexts=6102 msgs_pending=221245 saturate_calls=2302
+KM_PROF seeding query 2350/70231 contexts=6159 msgs_pending=227233 saturate_calls=2352
+KM_PROF seeding query 2400/70231 contexts=6213 msgs_pending=233231 saturate_calls=2402
+KM_PROF seeding query 2450/70231 contexts=6269 msgs_pending=237254 saturate_calls=2452
+KM_PROF seeding query 2500/70231 contexts=6329 msgs_pending=241432 saturate_calls=2502
+KM_PROF seeding query 2550/70231 contexts=6529 msgs_pending=247331 saturate_calls=2552
+KM_PROF seeding query 2600/70231 contexts=6736 msgs_pending=252292 saturate_calls=2602
+KM_PROF seeding query 2650/70231 contexts=6823 msgs_pending=256618 saturate_calls=2652
+KM_PROF seeding query 2700/70231 contexts=6936 msgs_pending=261163 saturate_calls=2702
+KM_PROF seeding query 2750/70231 contexts=7103 msgs_pending=266813 saturate_calls=2752
+KM_PROF seeding query 2800/70231 contexts=7234 msgs_pending=273140 saturate_calls=2802
+KM_PROF seeding query 2850/70231 contexts=7378 msgs_pending=278269 saturate_calls=2852
+Command exited with non-zero status 124
+	Command being timed: "timeout --signal=INT --kill-after=15s 300s env KM_NOMINALS=1 KM_THREADS=1 KM_PROF=1 KM_PROF_TIME=1 KM_CTXSPLIT=1 /ibex/scratch/hohndor/km/adaptive-composite-layout-v14-full-20260731/km engine"
+	User time (seconds): 297.79
+	System time (seconds): 1.00
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 5:00.06
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1668864
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 426496
+	Voluntary context switches: 305
+	Involuntary context switches: 147
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 240
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 124

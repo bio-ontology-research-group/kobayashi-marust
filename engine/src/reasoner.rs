@@ -2,7 +2,7 @@
 //! run the disjunctive context-calculus `Engine`, and expose subsumptions,
 //! derived clauses, and consistency.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rayon::prelude::*;
 
@@ -140,9 +140,7 @@ impl Builder {
                 // class in another namespace may legitimately have the local
                 // name `Nothing`; treating that class as bottom makes ordinary
                 // subclass axioms spuriously unsatisfiable.
-                if concept == "owl:Nothing"
-                    || concept == "http://www.w3.org/2002/07/owl#Nothing"
-                {
+                if concept == "owl:Nothing" || concept == "http://www.w3.org/2002/07/owl#Nothing" {
                     self.sig.bottom = Some(iri);
                 }
                 Some(Pred::Concept { iri, t })
@@ -396,6 +394,127 @@ impl Reasoner {
         for (a, supers) in subs {
             let set = self.subs.entry(a).or_default();
             set.extend(supers);
+        }
+    }
+
+    /// Collapse named query concepts that the input clause set explicitly proves
+    /// equivalent with opposite unit implications:
+    ///
+    /// `A(x) -> B(x)` and `B(x) -> A(x)`.
+    ///
+    /// Classifying one representative is exact for every member because the
+    /// two unit clauses make their interpretations equal in every model. This
+    /// is only query scheduling: the representative runs through the unchanged
+    /// calculus, and `expand_mutual_unit_aliases` restores one output row per
+    /// requested concept. Restricting the union to direct opposite edges keeps
+    /// this preprocessing linear and deliberately conservative.
+    fn collapse_mutual_unit_queries(&self, queries: &[Iri]) -> (Vec<Iri>, Vec<(Iri, Vec<Iri>)>) {
+        if queries.len() < 2 || std::env::var_os("KM_NO_QUERY_EQUIV").is_some() {
+            return (queries.to_vec(), Vec::new());
+        }
+
+        let query_set: HashSet<Iri> = queries.iter().copied().collect();
+        let mut edges: HashSet<(Iri, Iri)> = HashSet::new();
+        for clause in &self.clauses0 {
+            if clause.body.len() != 1 || clause.head.len() != 1 {
+                continue;
+            }
+            let Pred::Concept { iri: from, t: bt } = clause.body[0] else {
+                continue;
+            };
+            let Lit::P(Pred::Concept { iri: to, t: ht }) = clause.head[0] else {
+                continue;
+            };
+            if bt == X
+                && ht == X
+                && from != to
+                && query_set.contains(&from)
+                && query_set.contains(&to)
+            {
+                edges.insert((from, to));
+            }
+        }
+        if edges.is_empty() {
+            return (queries.to_vec(), Vec::new());
+        }
+
+        // A compact union-find over signature ids. Always attach the larger
+        // representative to the smaller one so output and scheduling remain
+        // deterministic across hash iteration orders.
+        let mut parent: Vec<Iri> = (0..self.sig0.concept_names.len() as Iri).collect();
+        fn find(parent: &mut [Iri], mut node: Iri) -> Iri {
+            let mut root = node;
+            while parent[root as usize] != root {
+                root = parent[root as usize];
+            }
+            while parent[node as usize] != node {
+                let next = parent[node as usize];
+                parent[node as usize] = root;
+                node = next;
+            }
+            root
+        }
+        for &(from, to) in &edges {
+            if !edges.contains(&(to, from)) {
+                continue;
+            }
+            let a = find(&mut parent, from);
+            let b = find(&mut parent, to);
+            if a != b {
+                let (small, large) = if a < b { (a, b) } else { (b, a) };
+                parent[large as usize] = small;
+            }
+        }
+
+        let mut members: BTreeMap<Iri, Vec<Iri>> = BTreeMap::new();
+        for &query in queries {
+            let root = find(&mut parent, query);
+            members.entry(root).or_default().push(query);
+        }
+        let groups: Vec<(Iri, Vec<Iri>)> = members
+            .into_iter()
+            .filter(|(_, group)| group.len() > 1)
+            .collect();
+        if groups.is_empty() {
+            return (queries.to_vec(), Vec::new());
+        }
+        let aliases: HashSet<Iri> = groups
+            .iter()
+            .flat_map(|(representative, group)| {
+                group
+                    .iter()
+                    .copied()
+                    .filter(move |member| member != representative)
+            })
+            .collect();
+        let representatives = queries
+            .iter()
+            .copied()
+            .filter(|query| !aliases.contains(query))
+            .collect();
+        (representatives, groups)
+    }
+
+    /// Restore output rows omitted by `collapse_mutual_unit_queries`.
+    fn expand_mutual_unit_aliases(&mut self, groups: &[(Iri, Vec<Iri>)]) {
+        for &(representative, ref members) in groups {
+            let representative_name = self.sig0.concept_names[representative as usize].clone();
+            let Some(representative_supers) = self.subs.get(&representative_name).cloned() else {
+                continue;
+            };
+            for &member in members {
+                if member == representative {
+                    continue;
+                }
+                let member_name = self.sig0.concept_names[member as usize].clone();
+                let mut supers = representative_supers.clone();
+                // Engine output omits reflexive subsumption. Translating the
+                // representative row to an alias therefore removes the alias
+                // and adds the representative.
+                supers.remove(&member_name);
+                supers.insert(representative_name.clone());
+                self.subs.insert(member_name, supers);
+            }
         }
     }
 
@@ -659,6 +778,19 @@ impl Reasoner {
             set_root_ordered(0);
             return;
         }
+        let (queries, mutual_unit_groups) = self.collapse_mutual_unit_queries(&queries);
+        if std::env::var_os("KM_PROF").is_some() && !mutual_unit_groups.is_empty() {
+            let aliases: usize = mutual_unit_groups
+                .iter()
+                .map(|(_, members)| members.len() - 1)
+                .sum();
+            eprintln!(
+                "KM_PROF query-equivalence representatives={} aliases={} groups={}",
+                queries.len(),
+                aliases,
+                mutual_unit_groups.len()
+            );
+        }
         let threads = Self::want_threads().min(queries.len().max(1));
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
@@ -672,6 +804,7 @@ impl Reasoner {
                 e.num_contexts(),
             );
             self.absorb(subs, inc, incomplete, n);
+            self.expand_mutual_unit_aliases(&mutual_unit_groups);
             return;
         }
         // Exact nominal roots all communicate through one ground context.  A
@@ -708,6 +841,7 @@ impl Reasoner {
             for (subs, inc, incomplete, n) in partials {
                 self.absorb(subs, inc, incomplete, n);
             }
+            self.expand_mutual_unit_aliases(&mutual_unit_groups);
             return;
         }
         // Dynamic work-stealing path (default): `threads` long-lived engines
@@ -770,6 +904,7 @@ impl Reasoner {
         for (subs, inc, incomplete, n) in partials.into_inner().unwrap() {
             self.absorb(subs, inc, incomplete, n);
         }
+        self.expand_mutual_unit_aliases(&mutual_unit_groups);
     }
 
     pub fn subsumptions(&self) -> BTreeMap<String, BTreeSet<String>> {
@@ -886,6 +1021,53 @@ mod tests {
         ]);
         assert!(supers(&rr, "A").contains("B"));
         assert!(supers(&rr, "A").contains("C"));
+    }
+
+    #[test]
+    fn mutual_unit_queries_share_one_representative_and_restore_rows() {
+        // A ≡ B, B ≡ C and C ⊑ D. Direct opposite unit pairs form one
+        // transitive union-find group. Classification runs one root for the
+        // group, then restores the exact non-reflexive row for every alias.
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("A", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+            cl(vec![c("C", vx())], vec![c("B", vx())]),
+            cl(vec![c("C", vx())], vec![c("D", vx())]),
+        ];
+        let mut probe = Reasoner::new(&clauses);
+        let queries = probe.prepare().named_queries();
+        let (representatives, groups) = probe.collapse_mutual_unit_queries(&queries);
+        assert_eq!(queries.len(), 4);
+        assert_eq!(representatives.len(), 2, "A/B/C plus D need two roots");
+        assert_eq!(groups.len(), 1);
+
+        probe.saturate();
+        assert_eq!(
+            supers(&probe, "A"),
+            ["B", "C", "D"].into_iter().map(String::from).collect()
+        );
+        assert_eq!(
+            supers(&probe, "B"),
+            ["A", "C", "D"].into_iter().map(String::from).collect()
+        );
+        assert_eq!(
+            supers(&probe, "C"),
+            ["A", "B", "D"].into_iter().map(String::from).collect()
+        );
+    }
+
+    #[test]
+    fn one_way_unit_implications_do_not_collapse_queries() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+        ];
+        let probe = Reasoner::new(&clauses);
+        let queries = probe.prepare().named_queries();
+        let (representatives, groups) = probe.collapse_mutual_unit_queries(&queries);
+        assert_eq!(representatives, queries);
+        assert!(groups.is_empty());
     }
 
     #[test]

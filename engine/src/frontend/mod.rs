@@ -1205,7 +1205,7 @@ mod nominal_abox_contract_tests {
     }
 
     #[test]
-    fn identity_is_complete_while_data_and_builtin_roles_fail_closed() {
+    fn identity_and_redundant_positive_data_are_complete_while_unsupported_abox_fails_closed() {
         let identity = ofn_to_clauses(&format!(
             "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
         ))
@@ -1214,10 +1214,21 @@ mod nominal_abox_contract_tests {
         assert!(identity.complete);
         assert_eq!(identity.same, vec![("a".into(), "b".into())]);
 
+        let redundant_positive_data = ofn_to_clauses(&format!(
+            "{PREFIX} Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) DataPropertyAssertion(:p :a \"x\"))"
+        ))
+        .expect("redundant positive data ABox parses")
+        .nominal_abox;
+        assert!(
+            redundant_positive_data.complete,
+            "the data-ABox certificate proves this unconstrained positive assertion redundant: {:?}",
+            redundant_positive_data.unsupported
+        );
+
         for (source, expected) in [
             (
                 format!(
-                    "{PREFIX} Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) DataPropertyAssertion(:p :a \"x\"))"
+                    "{PREFIX} Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) NegativeDataPropertyAssertion(:p :a \"x\"))"
                 ),
                 "data-property assertion",
             ),

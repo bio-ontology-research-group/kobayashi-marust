@@ -9,6 +9,33 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Collapse explicitly equivalent CB classification roots (2026-07-31)
+
+The default CB classifier now runs one root query for each group of named
+classes connected by explicit opposite unit implications
+`A(x) -> B(x)` and `B(x) -> A(x)`. Those clauses prove that the classes have
+the same interpretation in every model. KM classifies the least-id
+representative through the unchanged calculus, then restores the exact
+non-reflexive subsumption row for every group member. One-way implications are
+never collapsed. `KM_NO_QUERY_EQUIV=1` retains the prior schedule for
+differential testing, and split or ordered-resolution experimental routes
+remain unchanged.
+
+This changes query enumeration only, not rule premises, conclusions, ordering,
+redundancy, or the derived per-query fixpoint, so it requires no Lean
+re-certification. Focused tests cover transitive groups, exact output-row
+restoration, and one-way rejection. The complete serial release library suite
+passes with 1,815 tests, zero failures, and eight intentional ignores.
+
+The target profile is ORE 1194. Its current one-worker nominal route seeded
+only 2,850 of 70,231 roots in 300 seconds, created 7,378 contexts, and queued
+278,269 messages without reaching the message fixpoint; peak RSS was 1.59 GiB.
+An independent scan of its frozen 1,062,240-clause frontend payload finds
+3,426 mutual-unit groups and 5,204 removable roots. This is a measured 7.4%
+query reduction, not yet a closure claim. A source-bound IBEX candidate gate
+must establish its real wall-time effect and exact output on gold controls
+before the optimization enters a full production sweep.
+
 ### NI-gated nominal specialist restores 10702 automatically (2026-07-31)
 
 Automatic routing now recognizes the source-feature layout of
