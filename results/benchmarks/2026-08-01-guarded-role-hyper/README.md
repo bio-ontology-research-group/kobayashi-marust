@@ -56,3 +56,10 @@ the gate processed 1.66 million messages and peaked at 2,302,476 KiB; the
 retained implementation processed 2.12 million and peaked at 1,963,528 KiB.
 The experiment was removed without a commit. No `KM_PRED_ARRIVAL_SUBSUME`
 option exists in the retained source.
+
+The existing `KM_NO_BATCH_COMPLETION=1` diagnostic was also retested after the
+role index. It processed 1.26 million messages in 60 seconds, compared with
+2.12 million for batched completion, with nearly identical 1.96 GiB peaks. It
+had already moved 2.29 million clauses into `worked_off`, so earlier saturation
+did not shrink the state; it only paid the saturation overhead once per
+message. Batched completion remains the production schedule.
