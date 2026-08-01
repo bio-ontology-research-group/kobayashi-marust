@@ -26,6 +26,11 @@ ORE 1194 the corrected repair moved beyond the previously immediate
 but still timed out after 240.22 seconds at 5,443,724 KiB. This is progress in
 the candidate certificate route, not a closure.
 
+Cluster-native focus job `49725035` reproduced the 1194 timeout at 240.0628
+seconds and 5,354.42 MiB while preserving exact forced-route signatures on
+1034 and 2237. Follow-up conflict-attribution and canonical-witness-death
+experiments did not improve completion and were removed.
+
 ### Revalidate the current ORE 1194 blocker (2026-07-31)
 
 A source-current default `km classify` run establishes that ORE 1194 no longer

@@ -65,3 +65,20 @@ the formerly immediate `Q_118720`/`Q_118721` loop to later qualified-cardinality
 partitions. It did not complete: timeout was 240.22 seconds and peak RSS was
 5,443,724 KiB. This candidate improves the repair trajectory but does not close
 1194 under the benchmark contract.
+
+Cluster-native build job `49724345` compiled commit `ceb6f16`; binary SHA-256
+was `299a4c1231f0ee9f1de5d8ecb8072908309ef9b33632b02a002dc9e85d520d2b`
+for `km` and
+`84fc9e2a259b8e0e8ce50dad99fd115fd7d58f0177bab61a5262549aead55a68`
+for `elc`. Focus array `49725035` confirmed exact `elc_cert` signatures for
+1034 and 2237 in 0.0542 and 0.0569 seconds. Forced `elc_cert` correctly deferred
+on 6999; this was a poor choice of exactness control, not a default-route
+regression. The source-bound 1194 row timed out after 240.0628 seconds at
+5,354.42 MiB with terminal checkpointing.
+
+Two follow-up diagnostics were rejected and removed. Preferring discretionary
+cover choices during conflict attribution reproduced the same conflict order
+and rebuild rate. Allowing the death-tolerant pass to empty a conflicting
+canonical witness also failed to complete in 240.44 seconds and raised peak RSS
+to 11,890,776 KiB. The retained implementation is therefore only the stale-head
+recheck in `ceb6f16`.
