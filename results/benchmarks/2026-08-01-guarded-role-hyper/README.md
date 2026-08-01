@@ -45,3 +45,14 @@ signature change. Neither residual ontology is recovered. A full
 592-ontology candidate sweep is still required before promotion; it waits for
 the in-flight `4703045` promotion sweep so the two result roots cannot compete
 or be confused.
+
+## Rejected Pred-arrival antichain
+
+A follow-up diagnostic indexed received predecessor clauses by head and
+discarded an arrival when an already-received clause strengthened it. The
+criterion is fixpoint-preserving, but its index and subset checks were a net
+loss on the measured 1194 bottleneck. In the same 60-second, one-root profile,
+the gate processed 1.66 million messages and peaked at 2,302,476 KiB; the
+retained implementation processed 2.12 million and peaked at 1,963,528 KiB.
+The experiment was removed without a commit. No `KM_PRED_ARRIVAL_SUBSUME`
+option exists in the retained source.
