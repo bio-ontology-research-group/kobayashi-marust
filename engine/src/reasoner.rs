@@ -241,6 +241,26 @@ fn has_internal_definer_disjunction(sig: &Sig, clauses: &[OntologyClause]) -> bo
     })
 }
 
+/// Omit a private definitional family from canonical query roots while leaving
+/// its predicates in the ontology. Excluded concepts can still be derived as
+/// supersumers of retained roots. This changes only which subject rows are
+/// requested, not the fixpoint for any retained query. The prefix is matched
+/// against the engine's internal concept names, before output-name remapping.
+fn exclude_query_prefix(
+    sig: &Sig,
+    queries: &mut Vec<Iri>,
+    prefix: &str,
+    retained: &std::collections::HashSet<String>,
+) {
+    if prefix.is_empty() {
+        return;
+    }
+    queries.retain(|&iri| {
+        let name = &sig.concept_names[iri as usize];
+        !name.starts_with(prefix) || retained.contains(name)
+    });
+}
+
 /// A proof boundary encountered while attempting retained CB insertion.  The
 /// ordinary fresh `Reasoner` remains an exact fallback for every case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -783,6 +803,20 @@ impl Reasoner {
             let want: std::collections::HashSet<&str> = qs.split(',').collect();
             queries.retain(|&iri| want.contains(self.sig0.concept_names[iri as usize].as_str()));
         }
+        if let Ok(prefix) = std::env::var("KM_QUERY_EXCLUDE_PREFIX") {
+            let retained = std::env::var_os("KM_QUERY_RETAIN_FILE")
+                .map(|path| {
+                    std::fs::read_to_string(&path).unwrap_or_else(|err| {
+                        panic!(
+                            "KM_QUERY_RETAIN_FILE {} cannot be read: {err}",
+                            path.to_string_lossy()
+                        )
+                    })
+                })
+                .map(|text| text.lines().map(str::to_owned).collect())
+                .unwrap_or_default();
+            exclude_query_prefix(&self.sig0, &mut queries, &prefix, &retained);
+        }
         // Direction B (docs/DISJUNCTION-SPLITTING.md): split-classify when
         // KM_SPLIT is set. Gated, default OFF.
         if std::env::var_os("KM_SPLIT").is_some() {
@@ -1064,6 +1098,48 @@ mod tests {
         ]);
         assert!(supers(&rr, "A").contains("B"));
         assert!(supers(&rr, "A").contains("C"));
+    }
+
+    #[test]
+    fn private_query_prefix_filter_retains_predicates_as_conclusions() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("urn:km:private:P", vx())]),
+            cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())]),
+        ];
+        let reasoner = Reasoner::new(&clauses);
+        let prepared = reasoner.prepare();
+        let mut queries = prepared.named_queries();
+        exclude_query_prefix(
+            &reasoner.sig0,
+            &mut queries,
+            "urn:km:private:",
+            &std::collections::HashSet::new(),
+        );
+        assert_eq!(queries.len(), 2, "only A and B remain query roots");
+
+        let mut engine = Engine::from_prepared(&prepared);
+        engine.run_for(&queries);
+        let rows: BTreeMap<_, BTreeSet<_>> = engine
+            .subsumptions()
+            .into_iter()
+            .map(|(subject, supers)| (subject, supers.into_iter().collect()))
+            .collect();
+        assert!(rows["A"].contains("urn:km:private:P"));
+        assert!(rows["A"].contains("B"));
+        assert!(!rows.contains_key("urn:km:private:P"));
+    }
+
+    #[test]
+    fn private_query_prefix_filter_can_retain_selected_roots() {
+        let clauses = vec![cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())])];
+        let reasoner = Reasoner::new(&clauses);
+        let prepared = reasoner.prepare();
+        let mut queries = prepared.named_queries();
+        let retained = std::collections::HashSet::from(["urn:km:private:P".to_string()]);
+        exclude_query_prefix(&reasoner.sig0, &mut queries, "urn:km:private:", &retained);
+        assert!(queries
+            .iter()
+            .any(|&iri| { reasoner.sig0.concept_names[iri as usize] == "urn:km:private:P" }));
     }
 
     #[test]
