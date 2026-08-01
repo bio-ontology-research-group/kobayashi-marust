@@ -13,8 +13,8 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 The authoritative per-ontology acceptance ledger is
 [`../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv`](../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv).
 Its source-bound replays reproduce 587 exact full-IRI results and two additional
-adjudicated correct results. It records 4669, 10860 and 1194 as explicit
-nonclaims. The executable
+adjudicated correct results. Current automatic sweep `49721626` adds the
+independently adjudicated 10860 inconsistency closure. The executable
 [`REPRODUCIBILITY-PROOF.md`](../results/benchmarks/2026-07-21-route-confirmation/REPRODUCIBILITY-PROOF.md)
 checks the ledger and external IBEX receipt. The older
 [`ontology-solve-routes.tsv`](../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
@@ -23,9 +23,9 @@ remains historical provenance. See the accompanying
 before treating process completion as a solved ontology.
 
 The current single default route is the source-bound `km classify` sweep:
-589 of 592 ontologies complete operationally, 587 match the retained full-IRI
-gold exactly, and 2669 plus 15516 are the two adjudicated consistency
-mismatches. IBEX array `49701329` and audit `49710709` are the authoritative
+590 of 592 ontologies complete operationally, 587 match the retained full-IRI
+gold exactly, and 2669, 15516, plus 10860 are independently adjudicated
+inconsistent. IBEX array `49721626` and audit `49734184` are the authoritative
 current-binary evidence.
 
 The uniform 2026-07-22 panel is retained as authority for its frozen historical
@@ -597,8 +597,8 @@ branch-open-free is.**
 - **Result**: 587/587 MATCH; IBEX job 49675463, 2.6099 seconds, 19.84 MiB,
   signature
   `eee761d0c89347a42ce9a221e7d98295f4a9d7527c755cb3eafa9978cc06d55b`.
-- **Full-sweep status**: automatic-route regression job 49676527 is running;
-  completed production totals are unchanged until its audit finishes.
+- **Full-sweep status**: the current automatic sweep retains this exact result;
+  array `49721626` and audit `49734184` verify all 592 production rows.
 
 ### ore_ont_12698 — colon-localname classes (2026-07-05, `03cdb8b`)
 
@@ -691,7 +691,7 @@ branch-open-free is.**
 | 4669 | retained production and HT executions terminate, but both outputs are unsound; logical completeness unknown | no authoritative full taxonomy | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. No completed existing KM output is valid. |
 | 10621 | source-bound Capsule-10 `ht_bridge`; frozen current revision returns unsupported | full-IRI exact against fresh source-built Konclude for Capsule-10 | Capsule-10 completes in 118.2149 s at 1096.54 MiB. One runtime trace selects `ht_bridge`; KM and Konclude both produce 70,827 subsumptions and 33,433 unsatisfiable named classes, taxonomy SHA-256 `066b41b5f3e845110eceb3607b050627da744968ccef1ceafed50e3c3ea4468e`. Restore and revalidate this mechanism before claiming it for current main. |
 | 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
-| 10860 | automatic rule/ABox clash certificate in `4703045` | independently adjudicated inconsistent | An explicit supported-rule grounding contradicts an unqualified exact-cardinality-one assertion; HermiT job `49718396` confirms the extracted core. IBEX default-route sanity job `49721625` completes in 0.0403 seconds at 10.31 MiB; sweep `49721626` is running. |
+| 10860 | automatic rule/ABox clash certificate in `4703045` | independently adjudicated inconsistent | An explicit supported-rule grounding contradicts an unqualified exact-cardinality-one assertion; HermiT job `49718396` confirms the extracted core. IBEX default-route sweep `49721626` completes it in 0.0403 seconds at 10.31 MiB; audit `49734184` accepts all 592 rows. |
 
 The hard-residual audit, including the previously lost closures of 10702,
 15672, and 6934 and the later source-bound closure of 10621, is maintained in

@@ -30,13 +30,12 @@ reported as empirical evidence, not as a proof of the whole executable.
   240 seconds and 20 GiB per procedure. It includes all public KM routes,
   historically selected environments, optimization stages and ablations, plus
   Konclude, HermiT, ELK, RustDL, and Sequoia.
-- **Broad but not universal production coverage.** The latest completed
-  automatic sweep has 589 operational completions and 587 exact
-  Konclude-signature matches among 592 ontologies. Some ontologies still time
-  out, decline, or have contested consistency gold. The completed sweep
-  includes the automatic 6934, 7499, 10702, and 12653 recoveries. The 10860
-  inconsistency closure is independently validated and awaiting its full-sweep
-  promotion gate.
+- **Broad but not universal production coverage.** The completed automatic
+  sweep has 590 operational completions among 592 ontologies: 587 exact
+  Konclude-signature matches and three independently adjudicated inconsistent
+  cases, 2669, 15516, and 10860. Only 1194 and 4669 do not complete under the
+  standard contract. The sweep includes the automatic 6934, 7499, 10702,
+  10860, and 12653 recoveries.
 - **Measured routing rather than one universal algorithm.** `km classify`
   profiles each ontology and selects among the CB engine, EL completion, exact
   nominal handling, and gated Konclude-derived completion procedures. The
@@ -143,17 +142,19 @@ conversion, safety, and licensing contract.
 
 ## ORE 2015 benchmark status
 
-The current single-command production result is 589 operational completions:
-587 exact full-IRI matches plus the adjudicated 2669 and 15516 consistency
-cases. The table below is the completed uniform 66-procedure comparison panel;
+The current single-command production result is 590 operational completions:
+587 exact full-IRI matches plus the independently adjudicated inconsistent
+cases 2669, 15516, and 10860. The table below is the completed uniform
+66-procedure comparison panel;
 its frozen source and hardware contract differs from the current automatic
 sweep described immediately above.
 
-Commit `4703045` additionally closes 10860 locally through a fail-closed
-rule/ABox cardinality-clash certificate. Its extracted core is independently
-inconsistent under HermiT. IBEX sweep `49720070` is running as the required
-592-ontology regression gate (`49721626`), so the demonstrated production total remains
-589 until that sweep completes.
+Commit `4703045` closes 10860 through a fail-closed rule/ABox
+cardinality-clash certificate. Its extracted core is independently
+inconsistent under HermiT. IBEX array `49721626` completed all 592 production
+rows, and audit `49734184` verified every terminal result, checkpoint, route
+trace, and binary identity. Ontology 10860 completes through automatic
+`ht_rules` in 0.0403 seconds at 10.31 MiB.
 
 The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
 ontologies, for 39,072 independently limited measurements. Every procedure
@@ -201,10 +202,10 @@ correctness totals are superseded.
 ### Automatic versus explicit KM routes
 
 Plain `km classify ONTOLOGY` is equivalent to `--route auto`. In the latest
-completed, source-bound 592-ontology sweep it produces 589 operational
+completed, source-bound 592-ontology sweep it produces 590 operational
 completions, of which 587 match the retained Konclude full-IRI signatures
-exactly. The two other completions are contested consistency cases rather than
-accepted exact matches.
+exactly. The three other completions are independently adjudicated inconsistent
+cases rather than accepted exact matches.
 
 The automatic `certified_card_proxy_abox` route solves `ore_ont_7499.owl` using
 a normalized positive-role ABox consistency/taxonomy certificate while
@@ -219,14 +220,15 @@ automatic signature in 2.5909 seconds at 21.36 MiB. Dependency-bound audit job
 49680024 verifies all 592 terminal rows, the frozen binary and source archive,
 the runners, canonicalizer, watchdog, route traces, and checksums.
 
-The completed automatic sweep has three non-completing rows: `10860`, `1194`,
-and `4669`. The typed-ABox SHOIQ certificate
+The completed automatic sweep has two non-completing rows: `1194` and `4669`.
+The typed-ABox SHOIQ certificate
 now admits 6934 automatically through `nominal_ni_abox`; the production row
 matches exactly in 199.3235 seconds at 1,434.64 MiB. Ontologies 1194, 4669,
 remain open under the standard contract. Commit `4703045` closes 10860 through
-an independently adjudicated rule/ABox inconsistency certificate, subject to
-full-sweep promotion gate `49721626`. The completed sweep solves 6934, 9540,
-10621, and 10702 exactly.
+an independently adjudicated rule/ABox inconsistency certificate. Sweep
+`49721626` and audit `49734184` certify its automatic selection without a
+corpus regression. The completed sweep solves 6934, 9540, 10621, and 10702
+exactly and 10860 by independent inconsistency adjudication.
 
 For `4669`, old KM executions terminated but their taxonomies are unsound: 64
 named classes claimed unsatisfiable have independent satisfiable witnesses.

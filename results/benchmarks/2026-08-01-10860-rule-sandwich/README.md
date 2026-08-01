@@ -49,5 +49,10 @@ Unsupported data/builtin atoms and unbound equality guards produce no witness.
 Qualified cardinalities are rejected. Synthetic negative controls revoke each
 essential premise. On the full frozen 10860 source, plain default
 `km classify` returns `consistent:false` in 0.03 seconds at 10.7 MiB on the
-workstation. A complete IBEX 592-ontology regression sweep remains the
-production promotion gate.
+workstation. IBEX production array `49721626` completed all 592 ontologies.
+Audit `49734184` accepted all terminal rows, checkpoints, production route
+traces, and the frozen binary identity. The automatic 10860 row selects
+`ht_rules` and completes in 0.0403 seconds at 10.31 MiB. The final sweep has
+587 exact Konclude-signature matches, the adjudicated 2669 and 15516
+consistency mismatches, adjudicated 10860 `ok/nogold`, one 1194 error, and one
+4669 timeout. The retained audit receipt is [`audit-49734184.out`](audit-49734184.out).

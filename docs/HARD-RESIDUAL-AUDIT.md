@@ -3,16 +3,21 @@
 ## Current default-route status (2026-08-01)
 
 The source-bound sweep is the current authority for one automatic
-`km classify` binary. IBEX array `49701329`, accepted by independent audit
-`49710709`, completes 589 of 592 ontologies: 587 exact full-IRI gold matches
-and two adjudicated consistency mismatches, 2669 and 15516. The three
-non-completing rows are:
+`km classify` binary. IBEX array `49721626`, accepted by independent audit
+`49734184`, completes 590 of 592 ontologies: 587 exact full-IRI gold matches
+and three independently adjudicated inconsistent cases, 2669, 15516, and
+10860. The two non-completing rows are:
 
 | Ontology | Default-route result | Current obligation |
 |---|---|---|
-| `10860` | closing candidate | A complete explicit named-ABox match for a supported rule derives a second, provably distinct `hasR2RRelation` filler for an individual asserted to have exactly one such filler. HermiT independently rejects the extracted core as inconsistent. Commit `4703045` returns `consistent:false` through plain `km classify`; IBEX sanity job `49721625` confirms 0.0403 seconds and 10.31 MiB. Full sweep `49721626` is the production promotion gate. |
 | `1194` | error | The large SRIQ ABox reaches the exact nominal CB worker's 190-second cap; the packed-term and memory boundaries are no longer blockers. |
 | `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
+
+Ontology 10860 is no longer residual. A complete explicit named-ABox match for
+a supported rule derives a second, provably distinct `hasR2RRelation` filler
+for an individual asserted to have exactly one such filler. HermiT rejects the
+extracted core as inconsistent. Commit `4703045` returns `consistent:false`;
+the production row selects `ht_rules` in 0.0403 seconds at 10.31 MiB.
 
 Ontology 7499 is no longer residual. Automatic `certified_card_proxy_abox`
 matches exactly in 86.7359 seconds at 2,409.59 MiB. The normalized
@@ -59,12 +64,11 @@ unsatisfiable named classes. The taxonomy SHA-256 is
 The frozen current revision in the 2026-07-22 panel rejects that route, so this
 remains a source-bound cross-revision result rather than a current-binary one.
 
-Three ontologies remain unclosed:
+Two ontologies remain unclosed:
 
 | Ontology | Current state | Blocking evidence |
 |---|---|---|
 | `4669` | known incorrect bridge output now rejected; no validated sound-and-complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
-| `10860` | independently adjudicated inconsistent; current candidate pending corpus sweep | Four unsupported rule shapes are independently certified redundant. A supported rule has a complete explicit named-ABox grounding that derives `hasR2RRelation(S, notEqualRelation)` while the source already asserts `hasR2RRelation(S, equalRelation)`, explicitly declares the targets different, and asserts unqualified `=1 hasR2RRelation` on `S`. The rule's difference guard is discharged by asserted types in explicitly disjoint classes. HermiT job `49718396` confirms the extracted core is inconsistent. Commit `4703045` implements the fail-closed certificate. |
 | `1194` | no completion within 240 s / 20 GiB | Konclude exceeds 20 GiB and HermiT times out on the 221,086-assertion SRIQ ABox. KM's own 20 GiB wall was the per-worker clone of the million-clause arena; sharing one prepared ontology across parallel CB workers cut the 56-thread engine peak from 19.58 GiB to 4.15 GiB (2026-07-30, [`../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md)). The adaptive composite-term layout now represents this ontology losslessly. A source-current `km classify` run on 2026-07-31 selected `nominals`, finished the frontend in 8.64 seconds, and ran the exact CB worker to its 190-second central cap; it returned no taxonomy after 198.98 seconds total at 3.58 GiB peak. KM is now wall-clock bound, not term-encoding or memory bound. |
 
 The certified-EL investigation of `1194` now passes the original same-filler

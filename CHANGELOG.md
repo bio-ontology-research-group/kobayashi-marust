@@ -59,6 +59,20 @@ library tests, all integration targets, and eight intentional ignores. This
 changes only the certificate model construction; the final all-residual-clause
 check remains the complete-answer gate, and no CB-calculus rule changes.
 
+### Automatic production coverage: 590 of 592 (2026-08-01)
+
+IBEX array `49721626` completed all 592 default `km classify` tasks from commit
+`4703045`. Audit `49734184` verified every terminal row, checkpoint,
+profile/production route trace, and binary identity. The final statuses are 590
+`ok`, one `error`, and one `timeout`. Full-IRI scoring gives 587 exact retained
+Konclude-signature matches, the independently adjudicated inconsistent cases
+2669 and 15516, and the independently adjudicated 10860 `ok/nogold` result.
+
+Ontology 10860 automatically selects `ht_rules` and completes in 0.0403 seconds
+at 10.31 MiB. Its fail-closed explicit rule/ABox cardinality certificate is
+independently supported by HermiT on the extracted inconsistency core. The only
+remaining non-completing inputs are 1194 (`error`) and 4669 (`timeout`).
+
 On ORE 1194 this correction reaches the next residual family rather than
 closing the ontology. `Q_118720` and `Q_118721` form the exhaustive disjoint
 partition between at most two and at least three qualified `connects`

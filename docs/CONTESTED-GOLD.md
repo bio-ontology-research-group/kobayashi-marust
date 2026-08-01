@@ -80,7 +80,7 @@ witnesses above if ever lost. The 13503 identity witness is
   | 10906 | **inconsistent** | HermiT on the datatype-cleaned ont → `InconsistentOntologyException` |
   | 13129 | consistent | HermiT cleaned → `owl:Thing satisfiable` |
   | 12451 | consistent | HermiT (full parse) → `owl:Thing satisfiable` |
-| 10860 | under direct adjudication | HermiT can't parse the raw ontology; no valid Konclude gold exists |
+  | 10860 | **inconsistent** | A complete supported-rule grounding contradicts an exact-cardinality-one assertion; HermiT rejects the extracted core, and automatic sweep `49721626` returns inconsistent. |
 
   KM closes 2669/15516/10906 (correctly **inconsistent**) and 13129 (correctly
   consistent) under `KM_HT_RULES=1` (the ABox-seeded HT consistency path,

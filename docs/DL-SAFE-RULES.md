@@ -52,7 +52,7 @@ adjudicated gold is HermiT on a cleaned core (see `CONTESTED-GOLD.md`).
 | 10906 | inconsistent | closed via the ABox/datatype precheck |
 | 13129 | consistent | consistent ✓ |
 | 12451 | consistent | — |
-| 10860 | inconsistent | **default certificate candidate; full sweep pending** (see below) |
+| 10860 | inconsistent | **automatic default certificate; full sweep certified** (see below) |
 
 ### ORE 10860 — the 17-shape breakdown
 
@@ -117,7 +117,8 @@ certificate that accepts only this exact shape and fails closed on unsupported
 atoms, missing body facts, absent difference evidence, and qualified
 cardinalities. Plain `km classify` returns `consistent:false` in 0.02 seconds
 locally. IBEX sanity job `49721625` confirms 0.0403 seconds and 10.31 MiB;
-full sweep `49721626` remains the corpus-wide promotion gate.
+full sweep `49721626` and audit `49734184` certify the route across all 592
+ontologies.
 
 ## Soundness note
 
