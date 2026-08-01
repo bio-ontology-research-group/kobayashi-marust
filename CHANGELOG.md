@@ -9,6 +9,25 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Index EL backward links by exact role (2026-08-01)
+
+EL completion now stores predecessor links under the exact `(target, role)`
+key, with a first-arrival role list for rules that consume every predecessor.
+Sub-NF4 therefore visits only parents on roles named by the applicable NF4
+axioms. Bottom propagation, symmetric role-chain joins, repair merges,
+self-edges, and incremental reuse and restart retain all of their former
+inputs. This changes scheduling order but not the set of rule joins or the
+monotone fixpoint, so it needs no Lean re-certification. Eight focused
+regressions cover those consumers and input-order invariance. The complete
+release suite passes 1,943 tests with zero failures and eight intentional
+ignores.
+
+The exact ORE 1194 gate retained essentially identical saturation counts and
+still timed out after 245.29 seconds with zero output. Peak RSS fell from
+7,078,600 KiB to 6,698,628 KiB, a 5.4% reduction. This is another memory
+improvement, not a 1194 closure. The tested `elc` binary has SHA-256
+`d7468bf1a39bbdae9415fd480be0de01cb98e42df8da64eab3bd3413d0ba7c5f`.
+
 ### Iterate Edge-NF4 propagation in place (2026-08-01)
 
 EL completion no longer copies `prop[(target, role)]` into a scratch vector on
