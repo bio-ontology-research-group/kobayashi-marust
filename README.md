@@ -14,11 +14,12 @@ without using the expected answer.
 
 ## Highlights
 
-- `km classify` completes **590 of 592** ORE 2015 ontologies under the
+- `km classify` completes **591 of 592** ORE 2015 ontologies under the
   240-second, 20-GiB benchmark contract.
 - The automatic results comprise **587 exact Konclude-signature matches** and
-  three independently adjudicated inconsistent ontologies: 2669, 15516, and
-  10860. Ontologies 1194 and 4669 remain non-completing.
+  four independently adjudicated results: contested consistency cases 2669 and
+  15516, inconsistent ontology 10860, and the exact 4669 full-IRI taxonomy.
+  Ontology 1194 is the only remaining non-completing input.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle and fails
   closed when conversion, routing, or reasoning cannot produce a complete
   answer.
@@ -39,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.0`.
+are available from the repository tags; the current release is `v0.2.1`.
 
 ## Classify an ontology
 
@@ -89,19 +90,21 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Array `49721626` and independent audit `49734184`
-verified every terminal row, checkpoint, route trace, and binary identity.
-Metrics use the 590 successful rows.
+over all 592 ontologies. Array `49778149`, the isolated 4669 oracle job
+`49779419`, and the complete 592-row integrity audit verify every terminal
+row, checkpoint, route trace, and binary identity. Metrics use the 591
+successful rows from commit `994c7b3` and IBEX binary
+`44c5c9094ad49070…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | v0.2.0 behavior, certified `4703045` binary | **590** | **590** | **6.6081** | **0.2734** | **798.90** | **43.49** |
+| **KM automatic, `km classify`** | `994c7b3` (binary `44c5c9094ad4…`) | **591** | **591** | **6.5941** | **0.2792** | **833.45** | **44.96** |
 
-“Empirically correct” means 587 exact retained Konclude full-IRI signatures
-plus the three independently adjudicated inconsistency results. It is not a
-claim of 590 Konclude matches or a proof about arbitrary OWL inputs. The two
-remaining inputs are 1194, which errors without publishing a taxonomy, and
-4669, which times out without publishing a taxonomy.
+“Empirically correct” means 587 exact retained Konclude full-IRI signatures,
+three independently adjudicated consistency results, and 4669's independently
+derived 846,306-pair full-IRI oracle. It is not a claim of 591 Konclude matches
+or a proof about arbitrary OWL inputs. Ontology 1194 errors without publishing
+a taxonomy and is the only remaining input.
 
 Per-ontology routes, evidence, and special handling are recorded in:
 

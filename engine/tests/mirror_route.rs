@@ -283,6 +283,29 @@ fn an_explicit_atomic_route_is_not_intercepted() {
     );
 }
 
+#[test]
+fn the_automatic_route_emits_its_production_trace() {
+    let _watchdog = watchdog("production-trace");
+    let path = std::env::temp_dir().join(format!(
+        "km-mirror-production-trace-{}.ofn",
+        std::process::id()
+    ));
+    std::fs::write(&path, fixture()).expect("write fixture");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_km"))
+        .args(["classify", path.to_str().expect("UTF-8 temporary path")])
+        .env("KM_TIMING", "1")
+        .env("KM_ROUTE", "auto")
+        .output()
+        .expect("run km classify");
+    let _ = std::fs::remove_file(&path);
+    assert!(output.status.success(), "classification failed: {output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("UTF-8 stderr");
+    assert!(
+        stderr.contains("route=mirror_private"),
+        "missing mirror route trace: {stderr}"
+    );
+}
+
 fn pair_set(classification: &Classification) -> BTreeSet<(String, String)> {
     classification
         .subsumptions

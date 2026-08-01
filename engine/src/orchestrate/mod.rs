@@ -495,6 +495,12 @@ pub(crate) fn classify_with_evidence(
     // Preprocessing only — it classifies ordinary projections through this same
     // pipeline and fails closed (returns None) unless every premise holds.
     if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
+        if timing {
+            eprintln!(
+                "KM_TIMING frontend done @ {:.2}s route=mirror_private",
+                t_start.elapsed().as_secs_f64()
+            );
+        }
         return Ok(ClassificationEvidence {
             classification,
             consistency_certified: true,

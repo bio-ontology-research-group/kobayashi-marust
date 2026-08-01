@@ -13,8 +13,8 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 The authoritative per-ontology acceptance ledger is
 [`../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv`](../results/benchmarks/2026-07-21-route-confirmation/reproduced-route-ledger.tsv).
 Its source-bound replays reproduce 587 exact full-IRI results and two additional
-adjudicated correct results. Current automatic sweep `49721626` adds the
-independently adjudicated 10860 inconsistency closure. The executable
+adjudicated correct results. Current automatic sweep `49778149` retains those
+results; oracle job `49779419` additionally closes 4669 exactly. The executable
 [`REPRODUCIBILITY-PROOF.md`](../results/benchmarks/2026-07-21-route-confirmation/REPRODUCIBILITY-PROOF.md)
 checks the ledger and external IBEX receipt. The older
 [`ontology-solve-routes.tsv`](../results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
@@ -23,10 +23,10 @@ remains historical provenance. See the accompanying
 before treating process completion as a solved ontology.
 
 The current single default route is the source-bound `km classify` sweep:
-590 of 592 ontologies complete operationally, 587 match the retained full-IRI
-gold exactly, and 2669, 15516, plus 10860 are independently adjudicated
-inconsistent. IBEX array `49721626` and audit `49734184` are the authoritative
-current-binary evidence.
+591 of 592 ontologies complete operationally, 587 match the retained full-IRI
+gold exactly, and four results have independent adjudication. IBEX array
+`49778149`, oracle job `49779419`, and binary SHA `44c5c9094ad4…` are the
+authoritative current-binary evidence.
 
 The uniform 2026-07-22 panel is retained as authority for its frozen historical
 binary and is superseded for current-default behavior by v16 above.

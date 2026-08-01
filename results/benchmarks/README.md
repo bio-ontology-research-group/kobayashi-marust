@@ -50,3 +50,6 @@ correct where.
   stages and clean ablations, plus Konclude, HermiT, ELK, RustDL, and Sequoia.
   It retains all per-attempt time, process-tree peak RSS, and empirical
   soundness/completeness records with hash-pinned build and run provenance.
+- [`2026-08-01-994c7b3-auto/`](2026-08-01-994c7b3-auto/) — current automatic
+  `km classify` sweep: 591/592 `ok`, 587 retained-gold matches, four
+  independently adjudicated results, and one fail-closed error.

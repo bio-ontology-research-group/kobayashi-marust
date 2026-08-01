@@ -3,15 +3,23 @@
 ## Current default-route status (2026-08-01)
 
 The source-bound sweep is the current authority for one automatic
-`km classify` binary. IBEX array `49721626`, accepted by independent audit
-`49734184`, completes 590 of 592 ontologies: 587 exact full-IRI gold matches
-and three independently adjudicated inconsistent cases, 2669, 15516, and
-10860. The two non-completing rows are:
+`km classify` binary. IBEX array `49778149` plus exact 4669 oracle job
+`49779419` complete 591 of 592 ontologies: 587 exact full-IRI gold matches,
+three independently adjudicated consistency results, and the independently
+derived 4669 taxonomy. The only non-completing row is:
 
 | Ontology | Default-route result | Current obligation |
 |---|---|---|
 | `1194` | error | The large SRIQ ABox reaches the exact nominal CB worker's 190-second cap; the packed-term and memory boundaries are no longer blockers. |
-| `4669` | timeout | Previously terminating KM outputs were unsound; retain fail-closed behavior until a sound complete route exists. |
+
+Ontology 4669 is no longer residual. The automatic `mirror_private` route
+recognizes only private definitions of the form `N_F ≡ ¬∃R.F` under a
+fail-closed structural certificate, classifies positive base and proxy
+projections, and reconstructs the negative taxonomy by order reversal. On
+IBEX it returns 846,306 pairs and zero unsatisfiable classes in 68.95 seconds
+at 4,823,596 KiB. Digest
+`d02decbafe66d8a9f1afaf7385785b6937fe46c1f288a33113c83c2bbe805b96`
+matches the independent full-IRI oracle.
 
 Ontology 10860 is no longer residual. A complete explicit named-ABox match for
 a supported rule derives a second, provably distinct `hasR2RRelation` filler

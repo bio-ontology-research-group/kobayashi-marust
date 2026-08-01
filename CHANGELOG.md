@@ -9,6 +9,25 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+## [0.2.1] – 2026-08-01
+
+### Automatic production coverage: 591 of 592 (2026-08-01)
+
+Commit `994c7b3` adds a fail-closed private negative-existential mirror route
+and generic EL completion for object-property domains. IBEX array `49778149`
+and the exact 4669 oracle gate `49779419` produce 591 `ok` rows and one
+`error` row under the 240-second, 20-GiB reasoner contract. All 592 records
+carry binary SHA-256 `44c5c9094ad490702c213ae47e8a97eb113a6c66b145f98281a32606b7d73720`.
+
+Ontology 4669 completes automatically in 68.95 seconds at 4,823,596 KiB. Its
+846,306 subsumptions, zero unsatisfiable classes, and full-IRI digest
+`d02decbafe66d8a9f1afaf7385785b6937fe46c1f288a33113c83c2bbe805b96`
+match the independently derived mirror oracle. The ordinary Python benchmark
+postprocessor exceeded its task cgroup while handling this 104-MiB taxonomy,
+so the retained row records the direct reasoner measurement and the separate
+oracle adjudication explicitly. Ontology 1194 remains the sole unresolved
+input.
+
 ## [0.2.0] — 2026-08-01
 
 This release raises the single-command `km classify` result to 590 operational
