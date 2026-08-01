@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "certificate": "km-4669-zero-cross-structure-v2",
+  "passed": true,
+  "projected_sha256": "409b1d70f6a9d3077e479e94da10702b8c6c5263d8280429d273298d2b124730",
+  "candidate_tsv_sha256": "ff472c8e016c3902e3ddfac62d3ed26c3ff13c101a4440b47cd540fd5bd23ab4",
+  "base_classes": 36494,
+  "proxies": 36495,
+  "disjoint_axioms": 6,
+  "checked_gcis": 7515,
+  "definers": 6735,
+  "distinct_operands": 7453,
+  "proxy_bearing_operands": 0,
+  "roots_with_proxy_descendants": 0,
+  "candidate_pairs": 0
+}

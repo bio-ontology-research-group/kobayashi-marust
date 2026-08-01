@@ -1,0 +1,149 @@
+{
+  "base_classes": 36494,
+  "base_equivalent_top": 0,
+  "base_negative_canonical_edges": 0,
+  "base_negative_raw_edges": 0,
+  "base_unsatisfiable": 0,
+  "certificate": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/structural-certificate.json",
+  "certificate_sha256": "63e16da5a047bfeca6d4dad550e8bdfff219d103345df18a09c5a31a3e4d56f7",
+  "cross_oracle": {
+    "augmented_konclude_taxonomy": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/konclude-augmented.owl",
+    "augmented_konclude_taxonomy_sha256": "97122c8bbd7b99d646020c1c83c1018a060bc32be7a377f30ca7f85c5b7ddc43",
+    "augmented_pairs": 1057636,
+    "augmented_projection": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/ore_ont_4669-positive-projection-augmented.ofn",
+    "augmented_projection_sha256": "ca1efd2961c800a4d95891162a43d0efeffde76cb4ce981b190257de4f73ef5a",
+    "data": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-source-20260801/4669-zero-cross-candidates.tsv",
+    "data_sha256": "ff472c8e016c3902e3ddfac62d3ed26c3ff13c101a4440b47cd540fd5bd23ab4",
+    "definers": 6735,
+    "disjoint_roots": 6,
+    "kind": "konclude-augmented-zero-cross",
+    "proxies_with_edges": 0,
+    "proxy_to_definer_edges": 0,
+    "proxy_to_disjoint_root_edges": 0,
+    "sample": [],
+    "summary": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-source-20260801/4669-zero-cross-certificate.json",
+    "summary_sha256": "ffdcc8d3e728550ac015ac3715413706f6daa8595b4087486d208251b4289f6d"
+  },
+  "elk_corroboration": {
+    "extra_pairs": 0,
+    "extra_sample": [],
+    "extra_unsatisfiable": 0,
+    "missing_pairs": 54,
+    "missing_sample": [
+      [
+        "http://purl.obolibrary.org/obo/GO_0006909",
+        "urn:km:oracle:4669:positive-proxy:7a4425c94b7cc62e80ea5ff9fd4a550d3a1f5b643e1236e69ffaa8627a27e1f8"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0019065",
+        "urn:km:oracle:4669:positive-proxy:a195263849a4450f20be868da46536c6256f6482b0c6acf150ccc03358356585"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0019065",
+        "urn:km:oracle:4669:positive-proxy:b6d81dc2d80a05933257ac3879b786ecb0a81ac357331c94ae419db8978cffe3"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035037",
+        "urn:km:oracle:4669:positive-proxy:a195263849a4450f20be868da46536c6256f6482b0c6acf150ccc03358356585"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035037",
+        "urn:km:oracle:4669:positive-proxy:b6d81dc2d80a05933257ac3879b786ecb0a81ac357331c94ae419db8978cffe3"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035042",
+        "urn:km:oracle:4669:positive-proxy:a195263849a4450f20be868da46536c6256f6482b0c6acf150ccc03358356585"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035042",
+        "urn:km:oracle:4669:positive-proxy:b6d81dc2d80a05933257ac3879b786ecb0a81ac357331c94ae419db8978cffe3"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035093",
+        "urn:km:oracle:4669:positive-proxy:a195263849a4450f20be868da46536c6256f6482b0c6acf150ccc03358356585"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035093",
+        "urn:km:oracle:4669:positive-proxy:b6d81dc2d80a05933257ac3879b786ecb0a81ac357331c94ae419db8978cffe3"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0035760",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0043277",
+        "urn:km:oracle:4669:positive-proxy:7a4425c94b7cc62e80ea5ff9fd4a550d3a1f5b643e1236e69ffaa8627a27e1f8"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0043634",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0060140",
+        "urn:km:oracle:4669:positive-proxy:a195263849a4450f20be868da46536c6256f6482b0c6acf150ccc03358356585"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0060140",
+        "urn:km:oracle:4669:positive-proxy:b6d81dc2d80a05933257ac3879b786ecb0a81ac357331c94ae419db8978cffe3"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071035",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071036",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071037",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071038",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071039",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ],
+      [
+        "http://purl.obolibrary.org/obo/GO_0071040",
+        "urn:km:oracle:4669:positive-proxy:45903b3c0b1356b2642641161c72cf46cfcaeeeeb7e21620cb60e7da16bbe7ae"
+      ]
+    ],
+    "missing_unsatisfiable": 0,
+    "pairs": 852961,
+    "status": "diff",
+    "unsatisfiable": 0
+  },
+  "expected_pairs": 846306,
+  "expected_region_counts": {
+    "base_base": 402776,
+    "base_negative": 0,
+    "negative_base": 0,
+    "negative_negative": 443530
+  },
+  "expected_taxonomy_sha256": "d02decbafe66d8a9f1afaf7385785b6937fe46c1f288a33113c83c2bbe805b96",
+  "expected_tsv": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/original-public-taxonomy.oracle.tsv.gz",
+  "expected_tsv_sha256": "dfc4a6b8af00fa39eb426191575385079bc78e669567f3ac2fcfd4f639a2f554",
+  "expected_unsatisfiable": 0,
+  "konclude_taxonomy": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/konclude-projected.owl",
+  "konclude_taxonomy_sha256": "55a4111061ee9d1e88a821fa1ba27107ab120c03fad653e47347e8a609757a49",
+  "mapping": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/negative-positive-mapping.tsv",
+  "mapping_sha256": "d91a5462f0a8032578ef2fc7aafc8120201cd84a4136e34cb21fd5e576533a44",
+  "negative_classes": 36495,
+  "oracle": "km-4669-private-negative-existential-oracle-v2",
+  "owl_thing_negative_subsumers": 36494,
+  "owl_thing_proxy_subclasses": 36494,
+  "projected": "/ibex/scratch/hohndor/km/routing_20260715/4669-zero-cross-certified-v2-20260801/ore_ont_4669-positive-projection.ofn",
+  "projected_pairs": 853015,
+  "projected_sha256": "409b1d70f6a9d3077e479e94da10702b8c6c5263d8280429d273298d2b124730",
+  "projected_unsatisfiable": 0,
+  "proxy_equivalent_top": 0,
+  "proxy_unsatisfiable": 0,
+  "schema_version": 1,
+  "source": "/ibex/scratch/hohndor/km/corpus/ore_ont_4669.owl",
+  "source_public_classes": 72989,
+  "source_sha256": "2b15dc9535ed50c4dc9eae05067df4e6525b69c7bf1913192715b79ad550b3eb",
+  "status": "oracle-built"
+}

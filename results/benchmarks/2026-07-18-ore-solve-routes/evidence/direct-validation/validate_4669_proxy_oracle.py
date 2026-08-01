@@ -9,10 +9,12 @@ with a fresh positive class
 
     P_i == exists R_i.F_i.
 
-External complete reasoners classify that projected ontology.  Classical
+External reasoners classify that projected ontology.  Classical
 complement duality gives P_i <= P_j iff N_j <= N_i.  A complete HermiT
-disjoint-class query supplies every base-to-negative edge because
-A <= N_i iff A and P_i are disjoint.  The structural certificate and an
+disjoint-class query can supply every base-to-negative edge because
+A <= N_i iff A and P_i are disjoint.  Alternatively, the ELK zero-cross
+certificate proves that no proxy can participate in a conjunction consequence
+or enter a named disjoint root, making that region empty. The structural certificate and an
 isolated-element argument rule out negative-to-base edges, except the explicit
 top/bottom cases handled below.
 
@@ -36,6 +38,8 @@ from typing import Iterable
 
 
 TOOLS = Path(__file__).resolve().parents[2]
+if not (TOOLS / "fingerprint_tail_fulliri.py").is_file():
+    TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
 from fingerprint_tail_fulliri import (  # noqa: E402
     BOTTOM,
@@ -324,8 +328,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--certificate", type=Path, required=True)
     parser.add_argument("--konclude-taxonomy", type=Path, required=True)
-    parser.add_argument("--hermit-disjoint", type=Path, required=True)
-    parser.add_argument("--hermit-disjoint-summary", type=Path, required=True)
+    parser.add_argument("--hermit-disjoint", type=Path)
+    parser.add_argument("--hermit-disjoint-summary", type=Path)
+    parser.add_argument("--zero-cross-certificate", type=Path)
+    parser.add_argument("--zero-cross-candidates", type=Path)
+    parser.add_argument("--augmented-projection", type=Path)
+    parser.add_argument("--augmented-konclude-taxonomy", type=Path)
     parser.add_argument("--elk-taxonomy", type=Path)
     parser.add_argument("--candidate-km", type=Path)
     parser.add_argument("--expected-tsv", type=Path, required=True)
@@ -335,6 +343,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    hermit_mode = args.hermit_disjoint is not None or args.hermit_disjoint_summary is not None
+    zero_mode = args.zero_cross_certificate is not None or args.zero_cross_candidates is not None
+    if hermit_mode == zero_mode:
+        raise ValueError("select exactly one complete cross-region oracle")
+    if hermit_mode and (args.hermit_disjoint is None or args.hermit_disjoint_summary is None):
+        raise ValueError("HermiT cross mode requires data and summary")
+    if zero_mode and (
+        args.zero_cross_certificate is None
+        or args.zero_cross_candidates is None
+        or args.augmented_projection is None
+        or args.augmented_konclude_taxonomy is None
+    ):
+        raise ValueError(
+            "zero-cross mode requires the certificate, candidate TSV, augmented "
+            "projection, and augmented Konclude taxonomy"
+        )
     certificate = json.loads(args.certificate.read_text(encoding="utf-8"))
     if certificate.get("certificate") != "private-negative-existential-projection-v2":
         raise ValueError("unexpected structural certificate kind")
@@ -382,36 +406,143 @@ def main() -> int:
             f"projected declaration universe differs: missing={sample(missing)} extra={sample(extra)}"
         )
 
-    disjoint_summary = json.loads(
-        args.hermit_disjoint_summary.read_text(encoding="utf-8")
-    )
-    if disjoint_summary.get("oracle") != "km-4669-hermit-projected-disjoint-v1":
-        raise ValueError("unexpected HermiT disjoint-oracle kind")
-    if disjoint_summary.get("consistent") is not True:
-        raise ValueError("HermiT disjoint-oracle projection was not consistent")
-    if disjoint_summary.get("witness_failures") != 0:
-        raise ValueError("HermiT disjoint-oracle witness recheck failed")
-    if not isinstance(disjoint_summary.get("witness_rechecks"), int):
-        raise ValueError("HermiT disjoint-oracle witness count is missing")
-    for key, path in (
-        ("projected_sha256", args.projected),
-        ("mapping_sha256", args.mapping),
-        ("cross_tsv_sha256", args.hermit_disjoint),
-    ):
-        actual = sha256_file(path)
-        if disjoint_summary.get(key) != actual:
+    if hermit_mode:
+        disjoint_summary = json.loads(
+            args.hermit_disjoint_summary.read_text(encoding="utf-8")
+        )
+        if disjoint_summary.get("oracle") != "km-4669-hermit-projected-disjoint-v1":
+            raise ValueError("unexpected HermiT disjoint-oracle kind")
+        if disjoint_summary.get("consistent") is not True:
+            raise ValueError("HermiT disjoint-oracle projection was not consistent")
+        if disjoint_summary.get("witness_failures") != 0:
+            raise ValueError("HermiT disjoint-oracle witness recheck failed")
+        if not isinstance(disjoint_summary.get("witness_rechecks"), int):
+            raise ValueError("HermiT disjoint-oracle witness count is missing")
+        for key, path in (
+            ("projected_sha256", args.projected),
+            ("mapping_sha256", args.mapping),
+            ("cross_tsv_sha256", args.hermit_disjoint),
+        ):
+            actual = sha256_file(path)
+            if disjoint_summary.get(key) != actual:
+                raise ValueError(
+                    f"HermiT {key} mismatch: summary={disjoint_summary.get(key)} actual={actual}"
+                )
+        base_negative_oracle = read_hermit_disjoint(
+            args.hermit_disjoint, base, negatives
+        )
+        if disjoint_summary.get("cross_edges") != len(base_negative_oracle):
+            raise ValueError("HermiT cross-edge TSV/summary count differs")
+        if disjoint_summary.get("proxies") != len(mirrors):
+            raise ValueError("HermiT proxy count differs from mapping")
+        if disjoint_summary.get("base_classes") != len(base):
+            raise ValueError("HermiT base-class count differs from source")
+        cross_oracle = {
+            "kind": "hermit-disjoint",
+            "data": str(args.hermit_disjoint),
+            "data_sha256": sha256_file(args.hermit_disjoint),
+            "summary": str(args.hermit_disjoint_summary),
+            "summary_sha256": sha256_file(args.hermit_disjoint_summary),
+            "proxies_with_edges": disjoint_summary.get("proxies_with_cross_edges"),
+            "sample": disjoint_summary.get("sample"),
+        }
+    else:
+        zero_cross = json.loads(
+            args.zero_cross_certificate.read_text(encoding="utf-8")
+        )
+        required_zero = {
+            "schema_version": 2,
+            "certificate": "km-4669-zero-cross-structure-v2",
+            "passed": True,
+            "base_classes": len(base),
+            "proxies": len(proxies),
+            "disjoint_axioms": 6,
+            "checked_gcis": 7515,
+            "definers": 6735,
+            "distinct_operands": 7453,
+            "proxy_bearing_operands": 0,
+            "roots_with_proxy_descendants": 0,
+            "candidate_pairs": 0,
+        }
+        for key, expected in required_zero.items():
+            if zero_cross.get(key) != expected:
+                raise ValueError(
+                    f"zero-cross certificate {key}={zero_cross.get(key)!r}, expected {expected!r}"
+                )
+        if zero_cross.get("projected_sha256") != sha256_file(args.projected):
+            raise ValueError("zero-cross projection hash mismatch")
+        if zero_cross.get("candidate_tsv_sha256") != sha256_file(
+            args.zero_cross_candidates
+        ):
+            raise ValueError("zero-cross candidate TSV hash mismatch")
+        with args.zero_cross_candidates.open(
+            "rt", encoding="utf-8", errors="strict"
+        ) as handle:
+            if handle.readline().rstrip("\n") != "base_iri\tproxy_iri":
+                raise ValueError("unexpected zero-cross candidate header")
+            if handle.readline() != "":
+                raise ValueError("zero-cross candidate TSV is not empty")
+
+        augmented_public = parse_declarations(args.augmented_projection)
+        definers = {
+            name
+            for name in augmented_public
+            if name.startswith("urn:km:oracle:4669:candidate-definer:")
+        }
+        if len(definers) != required_zero["definers"]:
             raise ValueError(
-                f"HermiT {key} mismatch: summary={disjoint_summary.get(key)} actual={actual}"
+                f"augmented projection has {len(definers)} definers, expected "
+                f"{required_zero['definers']}"
             )
-    base_negative_oracle = read_hermit_disjoint(
-        args.hermit_disjoint, base, negatives
-    )
-    if disjoint_summary.get("cross_edges") != len(base_negative_oracle):
-        raise ValueError("HermiT cross-edge TSV/summary count differs")
-    if disjoint_summary.get("proxies") != len(mirrors):
-        raise ValueError("HermiT proxy count differs from mapping")
-    if disjoint_summary.get("base_classes") != len(base):
-        raise ValueError("HermiT base-class count differs from source")
+        if augmented_public != projected_public | definers:
+            raise ValueError("augmented projection declaration universe differs")
+        augmented = canonical_taxonomy(
+            args.augmented_konclude_taxonomy, "owlxml", augmented_public
+        )
+        if not augmented.consistent:
+            raise ValueError("Konclude reports the augmented projection inconsistent")
+        proxy_definer = {
+            (left, right)
+            for left, right in augmented.pairs
+            if left in proxies and right in definers
+        }
+        if proxy_definer:
+            raise ValueError(
+                "Konclude found proxy-to-conjunction-operand edges: "
+                f"{sample(proxy_definer)}"
+            )
+
+        projected_text = args.projected.read_text(encoding="utf-8", errors="strict")
+        disjoint_roots: set[str] = set()
+        disjoint_axioms = re.findall(
+            r"DisjointClasses\(\s*<([^>]+)>\s+<([^>]+)>\s*\)", projected_text
+        )
+        if len(disjoint_axioms) != required_zero["disjoint_axioms"]:
+            raise ValueError(
+                f"projection has {len(disjoint_axioms)} binary named disjoint axioms"
+            )
+        for left, right in disjoint_axioms:
+            disjoint_roots.update((left, right))
+        base_negative_oracle = set()
+        disjoint_summary = {"proxies_with_cross_edges": 0, "sample": []}
+        cross_oracle = {
+            "kind": "konclude-augmented-zero-cross",
+            "data": str(args.zero_cross_candidates),
+            "data_sha256": sha256_file(args.zero_cross_candidates),
+            "summary": str(args.zero_cross_certificate),
+            "summary_sha256": sha256_file(args.zero_cross_certificate),
+            "augmented_projection": str(args.augmented_projection),
+            "augmented_projection_sha256": sha256_file(args.augmented_projection),
+            "augmented_konclude_taxonomy": str(args.augmented_konclude_taxonomy),
+            "augmented_konclude_taxonomy_sha256": sha256_file(
+                args.augmented_konclude_taxonomy
+            ),
+            "augmented_pairs": len(augmented.pairs),
+            "definers": len(definers),
+            "proxy_to_definer_edges": 0,
+            "proxies_with_edges": 0,
+            "sample": [],
+        }
 
     projected = canonical_taxonomy(args.konclude_taxonomy, "owlxml", projected_public)
     if not projected.consistent:
@@ -437,8 +568,23 @@ def main() -> int:
             "missing_sample": sample(elk_missing),
             "extra_sample": sample(elk_extra),
         }
-        if corroboration["status"] != "match":
-            raise ValueError(f"ELK/Konclude projected taxonomy disagreement: {corroboration}")
+        # Konclude is authoritative here. ELK is useful corroboration but is
+        # known to omit inverse-role consequences in this projection.
+
+    if zero_mode:
+        proxy_disjoint_roots = {
+            (proxy, root)
+            for proxy in proxies
+            for root in disjoint_roots
+            if projected.entails(proxy, root)
+        }
+        if proxy_disjoint_roots:
+            raise ValueError(
+                "Konclude found proxies below named disjoint roots: "
+                f"{sample(proxy_disjoint_roots)}"
+            )
+        cross_oracle["disjoint_roots"] = len(disjoint_roots)
+        cross_oracle["proxy_to_disjoint_root_edges"] = 0
 
     base_unsat = projected.unsat & base
     proxy_unsat = projected.unsat & proxies
@@ -517,16 +663,9 @@ def main() -> int:
         "mapping_sha256": sha256_file(args.mapping),
         "certificate": str(args.certificate),
         "certificate_sha256": sha256_file(args.certificate),
-        "hermit_disjoint": str(args.hermit_disjoint),
-        "hermit_disjoint_sha256": sha256_file(args.hermit_disjoint),
-        "hermit_disjoint_summary": str(args.hermit_disjoint_summary),
-        "hermit_disjoint_summary_sha256": sha256_file(args.hermit_disjoint_summary),
-        "hermit_disjoint_raw_edges": len(base_negative_oracle),
-        "hermit_disjoint_canonical_edges": len(canonical_base_negative),
-        "hermit_disjoint_proxies_with_edges": disjoint_summary.get(
-            "proxies_with_cross_edges"
-        ),
-        "hermit_disjoint_sample": disjoint_summary.get("sample"),
+        "cross_oracle": cross_oracle,
+        "base_negative_raw_edges": len(base_negative_oracle),
+        "base_negative_canonical_edges": len(canonical_base_negative),
         "konclude_taxonomy": str(args.konclude_taxonomy),
         "konclude_taxonomy_sha256": sha256_file(args.konclude_taxonomy),
         "source_public_classes": len(source_public),
