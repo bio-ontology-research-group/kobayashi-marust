@@ -7,7 +7,34 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 > [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md).** Keep that file
 > updated whenever an ontology flips to solved.
 
-## [unreleased] — CB engine scaling (ORE 2015 coverage push)
+## [unreleased]
+
+## [0.2.0] — 2026-08-01
+
+This release raises the single-command `km classify` result to 590 operational
+completions on the 592-ontology ORE 2015 corpus under the standard 240-second,
+20-GiB contract. Of these, 587 exactly match retained Konclude full-IRI
+signatures. Ontologies 2669 and 15516 complete with independently investigated
+consistency results that differ from the retained Konclude results, and 10860
+completes without usable Konclude gold through a fail-closed rule/ABox route
+supported by an independently checked inconsistency core. The remaining inputs
+1194 and 4669 still fail closed without a production taxonomy.
+
+The release includes the pure-Rust multi-call CLI and automatic router,
+standard OWL syntax ingestion, exact nominal, rule, cardinality, EL++, CB, and
+gated Konclude-derived procedures, incremental reasoning, source-axiom
+explanations, the Protégé integration, the complete route matrix, and retained
+source-bound benchmark evidence. The separate Lean development remains a
+specification and proof artifact for selected abstract calculus results. It
+does not verify the complete Rust executable or production portfolio.
+
+The certified production sweep is IBEX array `49721626`, with independent
+audit `49734184`. It verified all 592 terminal records, checkpoints, route
+traces, and binary identity. The serial Rust release suite for the certified
+state passes 1,836 library tests, with zero failures and eight intentional
+ignores, plus all integration and documentation test targets.
+
+### CB engine scaling and ORE 2015 coverage push
 
 ### Recheck incremental residual repairs before choosing (2026-08-01)
 
