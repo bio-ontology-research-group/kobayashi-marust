@@ -18,12 +18,44 @@ measurements.
 
 The run is resumable per ontology. A complete ontology result is accepted only
 when all 55 ordered rows are present; otherwise that ontology is rerun. Build,
-driver, binary, source, result, and aggregation hashes are retained before the
-README headline table is replaced.
+driver, binary, source, result, and aggregation hashes are retained.
 
-Build job `49736470` is running. Resumable array `49736471` is dependency-bound
-to the successful build and will execute the 592 ontology tasks with at most 32
-concurrent tasks. The first attempted build (`49736467`) failed before doing
-work because `SLURM_TMPDIR` was absent; its blocked dependent array `49736469`
-was cancelled. The submitted scripts now use an explicit persistent scratch
-fallback when node-local `SLURM_TMPDIR` is unavailable.
+## Completed panel
+
+Cluster build job `49736470` and resumable array `49737130` produced all
+32,560 rows. The original runner reported 85 `harness_error` rows, all on
+ontologies 3524 and 15703. Both have non-injective local names, and the legacy
+canonicalizer exhausted its supervisor while retaining the full answer. This
+was a publication failure, not a reasoner result.
+
+Collision-safe array `49787943` reran all 55 procedures for both ontologies,
+fingerprinted each successful answer using full IRIs, and deleted that answer
+before starting the next procedure. Both result files contain exactly 55
+unique arms and no `harness_error`. Every one of their 81 successful rows has
+the established full-IRI digest
+`090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a`.
+The corrected panel totals are:
+
+| status | rows |
+|---|---:|
+| `ok` | 26,240 |
+| `unsupported` | 4,925 |
+| `timeout` | 821 |
+| `error` | 514 |
+| `memout` | 56 |
+| external `output_error` | 4 |
+| **total** | **32,560** |
+
+The two corrected source JSONLs are retained under
+[`evidence/collision-rerun-49787943/`](evidence/collision-rerun-49787943/).
+Task 15703's final Slurm wrapper exited after successful publication because
+its validator assumed that the shared results directory contained only one
+file and saw the concurrently completed 3524 file. Direct validation proves
+both published files complete. The retained sbatch validator now selects the
+file for its own array task and also checks arm uniqueness and full-IRI
+digests, preventing this concurrency race from recurring.
+
+The first attempted build (`49736467`) failed before doing work because
+`SLURM_TMPDIR` was absent; its blocked dependent array `49736469` was
+cancelled. The submitted scripts use an explicit persistent scratch fallback
+when node-local `SLURM_TMPDIR` is unavailable.
