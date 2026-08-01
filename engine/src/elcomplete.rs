@@ -343,6 +343,20 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                     continue;
                 }
 
+                // Domain axiom `∃R.⊤ ⊑ B`: a lone role body atom with the head
+                // on its SOURCE. `to_nf` accepts this as NF4 with filler ⊤
+                // under exactly this wiring, so the screen must too.
+                if let [JAtom::Role { source, target, .. }] = clause.body.as_slice() {
+                    if var_name(source).is_some()
+                        && var_name(target).is_some()
+                        && var_name(source) == head_var
+                        && var_name(source) != var_name(target)
+                    {
+                        continue;
+                    }
+                    return false;
+                }
+
                 // NF4: R(x,y) ∧ A(y) -> B(x). Match the same wiring that
                 // `to_nf` checks: filler variable equals the role target, the
                 // head sits on the role source, and source ≠ target (a head on
@@ -667,27 +681,44 @@ fn to_nf(
                     // either as `∃R.A ⊑ B` is UNSOUND. Mismatches fall to
                     // `residual` (cert-off: defer). The frontend's NF4 shape
                     // always has the head on the central source variable.
-                    if br.len() == 1 && bc.len() == 1 {
+                    //
+                    // With NO body concept the filler is ⊤: `R(x,y) → B(x)` is
+                    // `∃R.⊤ ⊑ B`, the clause form of ObjectPropertyDomain.
+                    // `init_state` seeds ⊤ into every satisfiable node's label,
+                    // so the same NF4 propagation decides it exactly — no new
+                    // rule, and the axiom is inside EL++. The same shape with
+                    // the head on the role TARGET is `∃R⁻.⊤ ⊑ B`, which the
+                    // wiring check below still sends to `residual`.
+                    if br.len() == 1 && bc.len() <= 1 {
                         if let JAtom::Role {
                             role,
                             source,
                             target,
                         } = br[0]
                         {
-                            let (cc_name, cc_term) = concept_of(bc[0]).unwrap();
                             if let (Tk::Var(sv), Tk::Var(ty)) = (tk(source), tk(target)) {
-                                if let Tk::Var(cv) = tk(cc_term) {
-                                    if cv == ty && hv == sv && sv != ty {
-                                        let r = addr!(role);
-                                        let f = addc!(cc_name);
-                                        let hd = addc!(hd_name);
-                                        nf4.push(Nf4 {
-                                            role: r,
-                                            filler: f,
-                                            sup: hd,
-                                        });
-                                        continue;
+                                let filler_on_target = match bc.first() {
+                                    None => true,
+                                    Some(a) => {
+                                        matches!(tk(concept_of(a).unwrap().1), Tk::Var(cv) if cv == ty)
                                     }
+                                };
+                                if filler_on_target && hv == sv && sv != ty {
+                                    let r = addr!(role);
+                                    let f = match bc.first() {
+                                        None => {
+                                            concept_names.insert(TOP);
+                                            TOP
+                                        }
+                                        Some(a) => addc!(concept_of(a).unwrap().0),
+                                    };
+                                    let hd = addc!(hd_name);
+                                    nf4.push(Nf4 {
+                                        role: r,
+                                        filler: f,
+                                        sup: hd,
+                                    });
+                                    continue;
                                 }
                             }
                         }
@@ -4074,5 +4105,53 @@ mod tests {
         ));
         let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
         assert!(!res.inconsistent);
+    }
+
+    // -----------------------------------------------------------------------
+    // ObjectPropertyDomain (`∃R.⊤ ⊑ D`) is inside EL++
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn domain_axiom_is_decided_without_a_certificate() {
+        // `∃R.⊤ ⊑ D` together with `A ⊑ ∃R.B` entails `A ⊑ D`. The clause set
+        // must screen as pure EL and the cert-off worker must answer it: this
+        // is the shape ObjectPropertyDomain normalises to, and parking it in
+        // the residual sends the whole ontology to the context engine.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[c("D", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[c("D", "x")], &[c("E", "x")]),
+        ));
+        assert!(is_pure_el_shape(&cs), "a domain axiom is inside EL++");
+        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL, no residual");
+        let a = subs_of(&res, "A");
+        assert!(a.contains(&"D".to_string()), "A ⊑ D missing: {a:?}");
+        // and the conclusion keeps flowing through the ordinary NF1 closure
+        assert!(a.contains(&"E".to_string()), "A ⊑ E missing: {a:?}");
+    }
+
+    #[test]
+    fn role_body_with_head_off_the_source_is_not_a_domain_axiom() {
+        // `R(x,y) → D(y)` is `∃R⁻.⊤ ⊑ D` and `R(x,x) → D(x)` is a self
+        // restriction. Reading either as `∃R.⊤ ⊑ D` would be unsound, so both
+        // must stay in the residual and the cert-off worker must decline.
+        for shape in [
+            cl(&[r("R", "x", "y")], &[c("D", "y")]),
+            cl(&[r("R", "x", "x")], &[c("D", "x")]),
+        ] {
+            let cs = clauses(&format!(
+                "[{},{},{}]",
+                shape,
+                cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+                cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            ));
+            assert!(!is_pure_el_shape(&cs), "{shape} must not screen as EL");
+            assert!(
+                classify_inner(cs, CertMode::Off, false).is_none(),
+                "{shape} must defer to the context engine"
+            );
+        }
     }
 }
