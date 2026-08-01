@@ -23,7 +23,25 @@ derived through the indexed join.
 
 IBEX validation is source-bound to `source-1f2f46b.tar.gz`, SHA-256
 `cbdb06566ebf5c431e524b1ec47ab426f545d31f64c410288b00ef3434f889ea`.
-The focused gate tests exact CB outputs on 9944 and 12141, both one- and
-sixteen-worker scheduling for 9944, and the current automatic route on the two
-residual ontologies 1194 and 4669. A full 592-ontology candidate sweep is
-required before promotion.
+IBEX build job `49729184` produced binary SHA-256
+`e3ad3c996135b21c87e4d57fcfb48b44c5b2428e4df873690231084171782802`.
+Focus array `49729185` recorded:
+
+- ORE 9944, forced `cb_plain16`: exact match, 9.8543 seconds and 6,483.45 MiB.
+  The historic exact route took 17.319 seconds and 6,558.71 MiB.
+- ORE 9944, forced `cb_plain1`: exact match, 55.2924 seconds and 2,701.70 MiB.
+  The historic exact route took 95.9574 seconds and 2,739.87 MiB.
+- ORE 12141, forced `cb_plain16`: worker error after 190.1598 seconds. This was
+  an unsuitable CB control because the established exact routes for 12141 are
+  HT routes; it is not a default-route regression result.
+- ORE 1194, automatic route: error at the 18 GiB adaptive memory guard after
+  29.1408 seconds, with a 18,443.50 MiB observed peak. The faster CB expansion
+  therefore exposes memory as the next limiting resource but does not close
+  the ontology.
+- ORE 4669, automatic route: timeout at 240.0228 seconds and 2,504.11 MiB.
+
+The exact 9944 controls establish a 42–43% CB wall-time reduction with no
+signature change. Neither residual ontology is recovered. A full
+592-ontology candidate sweep is still required before promotion; it waits for
+the in-flight `4703045` promotion sweep so the two result roots cannot compete
+or be confused.
