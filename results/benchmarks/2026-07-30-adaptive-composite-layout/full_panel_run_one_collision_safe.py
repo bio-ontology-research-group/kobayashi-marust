@@ -13,6 +13,10 @@ EXPECTED = {
     # A legal source class ends in #Nothing. The ORE local-name projection
     # mistakes it for owl:Nothing and reports a false extra-unsatisfiable row.
     "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",
+    # The same full-IRI SCC fingerprint over the independently adjudicated
+    # private-mirror taxonomy. Its separate pair-stream oracle digest is d02d…;
+    # the two encodings both cover 846,306 pairs and zero UNSAT names.
+    "ore_ont_4669.owl": "a482e066a22110df593bf3a4c1fdd0ef4404f7141903b2101b85aae49811cb30",
     "ore_ont_15703.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
 }
 HERE = Path(__file__).resolve().parent
@@ -92,6 +96,11 @@ def main():
             fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
             digest = fingerprint.get("taxonomy_sha256")
             exact = digest == EXPECTED[ontology]
+            correctness_basis = (
+                "same_job_fulliri_identity_to_independent_mirror_oracle"
+                if ontology == "ore_ont_4669.owl"
+                else "same_job_fulliri_identity_to_konclude"
+            )
             row.update(
                 fulliri_fingerprint_status="ok",
                 fulliri_taxonomy_sha256=digest,
@@ -100,7 +109,7 @@ def main():
                 fulliri_fingerprint_wall_s=fingerprint.get("wall_s"),
                 fulliri_fingerprint_peak_mb=fingerprint.get("peak_mb"),
                 fulliri_identity_capable=True,
-                correctness_basis="same_job_fulliri_identity_to_konclude",
+                correctness_basis=correctness_basis,
                 verdict="match" if exact else "both",
                 solved=exact,
                 signature_sha256=digest,

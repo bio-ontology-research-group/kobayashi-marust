@@ -3,8 +3,9 @@
 
 ORE ontologies 3524 and 15703 have non-injective local-name projections.
 Ontology 13503 has a legal named source class ending in ``#Nothing`` that the
-legacy projection confuses with OWL bottom. In all three cases the local-name
-signature is not semantics-preserving.
+legacy projection confuses with OWL bottom. Ontology 4669 emits a taxonomy too
+large for the legacy projection to canonicalize within the harness cgroup. In
+all four cases the full-IRI streaming path is required.
 
 This narrowly gated wrapper keeps the frozen reasoner runner and its resource
 measurement unchanged. For a successful classification it records the local
@@ -28,6 +29,7 @@ import sys
 ALLOWED_ONTOLOGIES = {
     "ore_ont_3524.owl",
     "ore_ont_13503.owl",
+    "ore_ont_4669.owl",
     "ore_ont_15703.owl",
 }
 BASE_RUNNER = Path(__file__).with_name("full_panel_run_one.py").resolve()
