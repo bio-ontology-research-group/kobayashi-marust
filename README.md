@@ -159,19 +159,21 @@ trace, and binary identity. Ontology 10860 completes through automatic
 The fresh source-bound panel runs 66 procedures on each of all 592 ORE 2015
 ontologies, for 39,072 independently limited measurements. Every procedure
 receives 240 seconds, 20 GiB summed process-tree RSS, and 16 CPU cores on the
-same IBEX CPU model. The frozen KM revision is
-`8c731f43b3c8a277f5fd7a25687e35afb4c4045e`.
+same IBEX CPU model. The tested implementations are identified in the table,
+so these measurements are not attributed to unspecified or current upstream
+builds. KM v0.2.0's newer 590-completion automatic sweep is reported above and
+is not substituted into this older uniform comparison panel.
 
-| procedure | sound yes | complete yes | both yes | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **KM, preselected current routes** | **583** | **583** | **583** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
-| KM, oracle-selected current route | 587 | 587 | 587 | 587 | 3.4696 | 0.1883 | 393.83 | 29.03 |
-| **KM, automatic route** | **570** | **570** | **570** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
-| Konclude | 589 | 587 | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
-| HermiT | 557 | 558 | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
-| ELK | 578 | 531 | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
-| RustDL, complete mode | 547 | 530 | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
-| Sequoia, strict mode | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
+| procedure | tested version or commit | sound yes | complete yes | both yes | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **KM, preselected current routes** | `8c731f43b3c8` | **583** | **583** | **583** | 583 | 5.0168 | 0.2336 | 643.16 | 37.12 |
+| KM, oracle-selected current route | `8c731f43b3c8` | 587 | 587 | 587 | 587 | 3.4696 | 0.1883 | 393.83 | 29.03 |
+| **KM, automatic route** | `8c731f43b3c8` | **570** | **570** | **570** | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
+| Konclude | `v0.7.0-1138` (`0002e8063540`) | 589 | 587 | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| HermiT | `1.4.6.519-SNAPSHOT` | 557 | 558 | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
+| ELK | `0.6.0` | 578 | 531 | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
+| RustDL, complete mode | `0.3.31` (`8c2bb1bf43d9`) | 547 | 530 | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
+| Sequoia, strict mode | `0.6.1-alpha` (`c5248ec7be30`) | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
 
 The `sound` and `complete` columns are separate empirical judgments about the
 named-class taxonomy against the cited full-IRI reference or adjudication.
