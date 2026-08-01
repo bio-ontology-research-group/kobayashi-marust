@@ -972,13 +972,26 @@ impl Idx {
 struct State {
     sub_super: Vec<HashSet<u32>>,
     edges: Vec<HashSet<(u32, u32)>>,
-    // target -> [(parent, role)]. A `Vec`, not a `HashSet`: duplicates are
-    // already excluded because an `(parent, role)` pair is appended only inside
-    // the `edges[parent].insert(...)` success branch of `add_edge`, which fires
-    // at most once per distinct edge. Storing it as a slice lets the hot NF4
-    // rule iterate predecessors with a clone-free index loop (add_sub never
-    // mutates in_edges), instead of `.collect()`-ing the set on every Sub item.
-    in_edges: Vec<Vec<(u32, u32)>>,
+    // Backward links indexed by EXACT role: `in_by_role[(d, r)]` lists the
+    // parents of `d` along `r`, in edge-creation order. A `Vec`, not a
+    // `HashSet`: duplicates are already excluded because a parent is appended
+    // only inside the `edges[parent].insert(...)` success branch of `add_edge`,
+    // which fires at most once per distinct edge.
+    //
+    // The Sub-NF4 rule wants exactly one role at a time (the role of the axiom
+    // `∃r.d ⊑ e` it is firing), so a flat `target -> [(parent, role)]` list made
+    // it scan every predecessor and reject the ones whose role does not match.
+    // Keying by the pair turns that scan into one lookup per axiom role. The map
+    // stays small because backward links concentrate (1194's saturated structure
+    // holds 43.9M links over ~203k distinct `(node, role)` keys), and the flat
+    // form's `(u32, u32)` pairs become bare `u32` parents.
+    in_by_role: HashMap<(u32, u32), Vec<u32>>,
+    // The roles a node actually has backward links along (first-arrival order),
+    // so the rules that need EVERY predecessor (⊥ back-propagation, role
+    // composition, repair merges) can still enumerate them without scanning the
+    // role signature. Append-only alongside `in_by_role`; a merge clears both
+    // for the merged-away node.
+    in_roles: Vec<Vec<u32>>,
     // ELK-style backward-link PROPAGATION store. `prop[(d, r)]` holds the NF4
     // conclusions `E` such that some filler `X ∈ label[d]` has an axiom
     // `∃r.X ⊑ E` with `r` the EXACT edge role. Role-subsumption is handled by the
@@ -1038,7 +1051,11 @@ impl State {
     #[inline]
     fn add_edge(&mut self, c: u32, r: u32, d: u32) {
         if self.edges[c as usize].insert((r, d)) {
-            self.in_edges[d as usize].push((c, r));
+            let parents = self.in_by_role.entry((d, r)).or_default();
+            if parents.is_empty() {
+                self.in_roles[d as usize].push(r);
+            }
+            parents.push(c);
             self.worklist.push_back(Item::Edge(c, r, d));
         }
     }
@@ -1050,7 +1067,8 @@ impl State {
         State {
             sub_super: self.sub_super.clone(),
             edges: self.edges.clone(),
-            in_edges: self.in_edges.clone(),
+            in_by_role: self.in_by_role.clone(),
+            in_roles: self.in_roles.clone(),
             prop: self.prop.clone(),
             worklist: VecDeque::new(),
         }
@@ -1154,7 +1172,8 @@ fn init_state(nfs: &Nfs, n: usize) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
-        in_edges: vec![Vec::new(); n],
+        in_by_role: HashMap::default(),
+        in_roles: vec![Vec::new(); n],
         prop: HashMap::default(),
         worklist: VecDeque::new(),
     };
@@ -1177,7 +1196,7 @@ struct Prof {
     nf1_scan: u64,
     nf2_scan: u64,
     nf3_scan: u64,
-    nf4_sub_scan: u64,  // (in_edge, super_role) lookups in the Sub-NF4 rule
+    nf4_sub_scan: u64,  // exact-role (backward link, axiom) pairs fired sub-side
     nf4_edge_scan: u64, // (super_role, d_super) lookups in the Edge-NF4 rule
     nf7_scan: u64,      // out-edges scanned in the NF7 rule
     botback: u64,
@@ -1197,7 +1216,8 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // `idx` is borrowed immutably throughout; `st` mutably. Because they are
     // distinct objects, a rule can scan an index slice while pushing into the
     // state. Snapshots (`.collect()`) are taken only when iterating one of the
-    // state's *own* mutated collections (sub_super[d], edges[d], in_edges[c]).
+    // state's *own* mutated collections (sub_super[d], edges[d], the backward
+    // links of c).
     while let Some(item) = st.worklist.pop_front() {
         match item {
             Item::Sub(c, d) => {
@@ -1229,27 +1249,41 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         st.add_edge(c, role, filler);
                     }
                 }
-                // R⊥-edge : C ⊑ ⊥ propagates backwards along edges into C.
-                // `add_sub` never touches `in_edges`, so iterate predecessors by
-                // index (the list length is stable across the calls) with no clone.
+                // R⊥-edge : C ⊑ ⊥ propagates backwards along edges into C. This
+                // rule needs EVERY predecessor regardless of role, so it walks
+                // the role-keyed index role by role via `in_roles[c]`.
+                // `add_sub_parts` touches only `sub_super` and the worklist,
+                // never the backward links, so both lists are iterated in place
+                // with no clone.
                 if d == BOTTOM {
-                    let mut k = 0;
-                    while k < st.in_edges[c as usize].len() {
-                        prof.botback += 1;
-                        let parent = st.in_edges[c as usize][k].0;
-                        st.add_sub(parent, BOTTOM);
-                        k += 1;
+                    let State {
+                        sub_super,
+                        in_by_role,
+                        in_roles,
+                        worklist,
+                        ..
+                    } = &mut *st;
+                    for &role in &in_roles[c as usize] {
+                        if let Some(parents) = in_by_role.get(&(c, role)) {
+                            prof.botback += parents.len() as u64;
+                            for &parent in parents {
+                                State::add_sub_parts(sub_super, worklist, parent, BOTTOM);
+                            }
+                        }
                     }
                 }
                 // R∃⁻ (NF4) + ELK propagation registration. `d` is a new subsumer
                 // of `c`; if it is an NF4 filler, each axiom `∃R.d ⊑ E` is a new
                 // propagation in context `c`: (a) record it in `prop[(c,R)]` so any
                 // FUTURE edge into `c` with exact role R fires it (edge-side), and
-                // (b) fire it now against the backward links already at `c` -- the
-                // edges into `c` whose EXACT role is R (super-role edges exist by
-                // the lift, so an `==` test suffices; no role-closure scan).
-                // `add_sub` never mutates `in_edges`, so the index loop is
-                // clone-free.
+                // (b) fire it now against the backward links already at `c` whose
+                // EXACT role is R (super-role edges exist by the lift, so the
+                // exact-role key suffices; no role-closure scan). The role-keyed
+                // backward-link index turns (b) into one lookup per axiom role
+                // group -- predecessors of `c` along roles no axiom mentions are
+                // never touched, where the flat list visited every backward link
+                // per Sub item. `add_sub_parts` never mutates `in_by_role`, so
+                // the parent slices are iterated in place, self-edges included.
                 if let Some(axs) = idx.nf4_by_filler.get(&d) {
                     for &(s, e) in axs {
                         // No dedup: each (c,s,e) propagation is pushed ~once in EL
@@ -1260,16 +1294,27 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         // edges), which ELK's join pays identically.
                         st.prop.entry((c, s)).or_default().push(e);
                     }
-                    let mut k = 0;
-                    while k < st.in_edges[c as usize].len() {
-                        let (parent, role) = st.in_edges[c as usize][k];
-                        let lo = axs.partition_point(|&(s, _)| s < role);
+                    let State {
+                        sub_super,
+                        in_by_role,
+                        worklist,
+                        ..
+                    } = &mut *st;
+                    // `axs` is role-sorted (build_idx), so each iteration handles
+                    // one contiguous exact-role group [lo..hi).
+                    let mut lo = 0;
+                    while lo < axs.len() {
+                        let role = axs[lo].0;
                         let hi = axs.partition_point(|&(s, _)| s <= role);
-                        prof.nf4_sub_scan += (hi - lo) as u64;
-                        for &(_, e) in &axs[lo..hi] {
-                            st.add_sub(parent, e);
+                        if let Some(parents) = in_by_role.get(&(c, role)) {
+                            prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
+                            for &parent in parents {
+                                for &(_, e) in &axs[lo..hi] {
+                                    State::add_sub_parts(sub_super, worklist, parent, e);
+                                }
+                            }
                         }
-                        k += 1;
+                        lo = hi;
                     }
                 }
             }
@@ -1310,7 +1355,19 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         }
                     }
                     // Symmetric: edge into c with role r0 plus this new edge.
-                    let preds: Vec<(u32, u32)> = st.in_edges[c as usize].clone();
+                    // Only the roles that actually compose with `r` are read out
+                    // of the backward-link index; predecessors along the other
+                    // roles are never materialised (the loop body was a no-op
+                    // for them anyway).
+                    let mut preds: Vec<(u32, u32)> = Vec::new();
+                    for &r0 in &st.in_roles[c as usize] {
+                        if !idx.nf7_by_pair.contains_key(&(r0, r)) {
+                            continue;
+                        }
+                        if let Some(ps) = st.in_by_role.get(&(c, r0)) {
+                            preds.extend(ps.iter().map(|&p| (p, r0)));
+                        }
+                    }
                     for (parent, r0) in preds {
                         if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
                             for &nfsup in sups {
@@ -2064,10 +2121,15 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
     for (r, d) in outs {
         st.add_edge(a, r, d);
     }
-    let ins: Vec<(u32, u32)> = std::mem::take(&mut st.in_edges[b as usize]);
-    for (src, r) in ins {
-        st.edges[src as usize].remove(&(r, b));
-        st.add_edge(src, r, a);
+    let roles: Vec<u32> = std::mem::take(&mut st.in_roles[b as usize]);
+    for r in roles {
+        let Some(srcs) = st.in_by_role.remove(&(b, r)) else {
+            continue;
+        };
+        for src in srcs {
+            st.edges[src as usize].remove(&(r, b));
+            st.add_edge(src, r, a);
+        }
     }
 }
 
@@ -2989,7 +3051,9 @@ impl IncrementalElClassifier {
         let next_len = next_interner.len();
         self.state.sub_super.resize_with(next_len, HashSet::default);
         self.state.edges.resize_with(next_len, HashSet::default);
-        self.state.in_edges.resize_with(next_len, Vec::new);
+        // `in_by_role` is a sparse global map keyed by (target, role): retained
+        // entries stay valid under new symbols and need no resizing.
+        self.state.in_roles.resize_with(next_len, Vec::new);
 
         // PROP is a derived join index, not an entailment. Rebuild it by
         // replaying every retained subsumption under the new NF4 index. Replay
@@ -3478,8 +3542,8 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         unresolved.iter().map(|s| s.as_str()).collect();
     // Everything below reads only the completed relation (`sub_super`) and the
     // interner names. The rule indexes, the normal forms, the residual, the
-    // compiled residual clauses, and the role graph (`edges` / `in_edges` /
-    // `prop`) are dead here — free them BEFORE materialising the output
+    // compiled residual clauses, and the role graph (`edges` / `in_by_role` /
+    // `in_roles` / `prop`) are dead here — free them BEFORE materialising the output
     // strings, so the string map reuses their memory instead of stacking on
     // top of the full saturation state (process peak RSS on the ORE giants
     // sits exactly at this point, the fixpoint). Destructuring `res` drops the
@@ -4236,7 +4300,8 @@ mod tests {
         State {
             sub_super: vec![HashSet::default(); n],
             edges: vec![HashSet::default(); n],
-            in_edges: vec![Vec::new(); n],
+            in_by_role: HashMap::default(),
+            in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
             worklist: VecDeque::new(),
         }
@@ -4270,7 +4335,7 @@ mod tests {
     fn edge_nf4_fires_when_propagation_arrives_after_edge() {
         // Same axioms, opposite creation order: the edge (X,R,A) is completed
         // first (nothing fires), then A ⊑ B arrives and the Sub-side backward
-        // join over in_edges[A] must produce X ⊑ E.
+        // join over the backward links of A must produce X ⊑ E.
         const R: u32 = 0;
         const A: u32 = 2;
         const B: u32 = 3;
@@ -4369,9 +4434,14 @@ mod tests {
                     // Spot-check the joint conclusions once: the lifted-edge
                     // NF4 (A ⊑ K via R ⊑ S), the plain edge-side/sub-side join
                     // (A ⊑ D, A ⊑ G), and the self-edge cascade (C ⊑ D ⊑ H).
-                    for (sub, sup) in
-                        [("A", "D"), ("A", "G"), ("A", "K"), ("C", "D"), ("C", "H"), ("B", "H")]
-                    {
+                    for (sub, sup) in [
+                        ("A", "D"),
+                        ("A", "G"),
+                        ("A", "K"),
+                        ("C", "D"),
+                        ("C", "H"),
+                        ("B", "H"),
+                    ] {
                         assert!(
                             map.get(sub).is_some_and(|s| s.contains(&sup.to_string())),
                             "{sub} ⊑ {sup} missing: {:?}",
@@ -4383,5 +4453,316 @@ mod tests {
                 Some(base) => assert_eq!(base, &map, "closure differs at rotation {rot}"),
             }
         }
+    }
+
+    // ----- Exact-role backward-link index (`in_by_role` / `in_roles`) -----
+
+    #[test]
+    fn sub_nf4_joins_only_the_exact_role_backlinks() {
+        // Four backward links into A over three roles; NF4 axioms exist for R
+        // and S but not Q. When A ⊑ B arrives, the sub-side join must fire each
+        // axiom into exactly the parents whose edge role matches it.
+        const R: u32 = 0;
+        const S: u32 = 1;
+        const Q: u32 = 2;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const ER: u32 = 4;
+        const ES: u32 = 5;
+        const X: u32 = 6;
+        const Y: u32 = 7;
+        const Z: u32 = 8;
+        const X2: u32 = 9;
+        let idx = nf4_only_idx(&[(R, B, ER), (S, B, ES)], 3);
+        let mut st = blank_state(10);
+        st.add_edge(X, R, A);
+        st.add_edge(Y, S, A);
+        st.add_edge(Z, Q, A);
+        st.add_edge(X2, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        for n in [X, Y, Z, X2] {
+            assert!(!st.sub_super[n as usize].contains(&ER));
+            assert!(!st.sub_super[n as usize].contains(&ES));
+        }
+        // The index mirrors the four edges: per-role parents in creation order,
+        // roles in first-arrival order.
+        assert_eq!(st.in_by_role.get(&(A, R)), Some(&vec![X, X2]));
+        assert_eq!(st.in_by_role.get(&(A, S)), Some(&vec![Y]));
+        assert_eq!(st.in_by_role.get(&(A, Q)), Some(&vec![Z]));
+        assert_eq!(st.in_roles[A as usize], vec![R, S, Q]);
+        st.add_sub(A, B);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(st.sub_super[X as usize].contains(&ER));
+        assert!(st.sub_super[X2 as usize].contains(&ER));
+        assert!(st.sub_super[Y as usize].contains(&ES));
+        assert!(!st.sub_super[X as usize].contains(&ES));
+        assert!(!st.sub_super[Y as usize].contains(&ER));
+        assert!(!st.sub_super[Z as usize].contains(&ER));
+        assert!(!st.sub_super[Z as usize].contains(&ES));
+    }
+
+    #[test]
+    fn sub_nf4_self_edge_backlink_joins_repeatedly() {
+        // A self-edge (A,R,A) is a backward link of A along R whose parent is A
+        // itself. Each new subsumer of A that is an NF4 filler must join over
+        // that same in-place parent slice: A ⊑ B gives A ⊑ E, whose Sub item
+        // joins again for A ⊑ F.
+        const R: u32 = 0;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const E: u32 = 4;
+        const F: u32 = 5;
+        let idx = nf4_only_idx(&[(R, B, E), (R, E, F)], 1);
+        let mut st = blank_state(6);
+        st.add_edge(A, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.sub_super[A as usize].contains(&E));
+        st.add_sub(A, B);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(st.sub_super[A as usize].contains(&E));
+        assert!(st.sub_super[A as usize].contains(&F));
+        assert_eq!(st.in_by_role.get(&(A, R)), Some(&vec![A]));
+    }
+
+    #[test]
+    fn bottom_backpropagates_across_every_incoming_role() {
+        // The ⊥ back-propagation is an all-edge consumer: once A ⊑ ⊥ is
+        // processed, every parent of A must go to ⊥ regardless of edge role,
+        // via the `in_roles` walk over the role-keyed index.
+        const R: u32 = 0;
+        const S: u32 = 1;
+        const T: u32 = 2;
+        const A: u32 = 2;
+        const X: u32 = 3;
+        const Y: u32 = 4;
+        const Z: u32 = 5;
+        let idx = nf4_only_idx(&[], 3);
+        let mut st = blank_state(6);
+        st.add_edge(X, R, A);
+        st.add_edge(Y, S, A);
+        st.add_edge(Z, T, A);
+        run(&idx, &mut st, &mut Prof::default());
+        for n in [X, Y, Z] {
+            assert!(!st.sub_super[n as usize].contains(&BOTTOM));
+        }
+        st.add_sub(A, BOTTOM);
+        run(&idx, &mut st, &mut Prof::default());
+        for n in [X, Y, Z] {
+            assert!(
+                st.sub_super[n as usize].contains(&BOTTOM),
+                "parent {n} must inherit ⊥ across its own edge role"
+            );
+        }
+    }
+
+    /// An `Idx` holding only role chains `r1 ∘ r2 ⊑ s` plus the identity role
+    /// hierarchy, for the NF7 all-edge consumers.
+    fn nf7_only_idx(chains: &[(u32, u32, u32)], nroles: u32) -> Idx {
+        let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+        for &(r1, r2, s) in chains {
+            nf7_by_pair.entry((r1, r2)).or_default().push(s);
+        }
+        let role_sub = (0..nroles)
+            .map(|r| {
+                let mut s: HashSet<u32> = HashSet::default();
+                s.insert(r);
+                s
+            })
+            .collect();
+        Idx {
+            nf1_by_sub: HashMap::default(),
+            nf2_by_sub: HashMap::default(),
+            nf3_by_sub: HashMap::default(),
+            nf4_by_filler: HashMap::default(),
+            nf5_subs: HashSet::default(),
+            nf7_by_pair,
+            role_sub,
+            reflexive_closed: HashSet::default(),
+        }
+    }
+
+    #[test]
+    fn role_chain_symmetric_join_reads_role_keyed_backlinks() {
+        // The symmetric NF7 join consumes the backward links of the new edge's
+        // SOURCE: with r1 ∘ r2 ⊑ s, the existing link (P, r1, C) plus the new
+        // edge (C, r2, D) must yield (P, s, D), while the non-composing
+        // backlink (W, q, C) contributes nothing.
+        const R1: u32 = 0;
+        const R2: u32 = 1;
+        const SS: u32 = 2;
+        const QQ: u32 = 3;
+        const P: u32 = 2;
+        const C: u32 = 3;
+        const D: u32 = 4;
+        const W: u32 = 5;
+        let idx = nf7_only_idx(&[(R1, R2, SS)], 4);
+        let mut st = blank_state(6);
+        st.add_edge(P, R1, C);
+        st.add_edge(W, QQ, C);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.edges[P as usize].contains(&(SS, D)));
+        st.add_edge(C, R2, D);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(
+            st.edges[P as usize].contains(&(SS, D)),
+            "chain edge (P, s, D) missing from the symmetric join"
+        );
+        assert_eq!(st.in_by_role.get(&(D, SS)), Some(&vec![P]));
+        assert!(st.edges[W as usize].iter().all(|&(r, _)| r == QQ));
+    }
+
+    #[test]
+    fn merge_redirects_backlinks_per_role_and_clears_merged_node() {
+        // The repair merge is an all-edge consumer: merging B into A must
+        // redirect every backward link of B (over all roles) onto A, empty B's
+        // index entries, and leave the redirected links joinable by NF4.
+        const R: u32 = 0;
+        const S: u32 = 1;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const X: u32 = 4;
+        const Y: u32 = 5;
+        const M: u32 = 6;
+        const E: u32 = 7;
+        let idx = nf4_only_idx(&[(R, M, E)], 2);
+        let mut st = blank_state(8);
+        st.add_edge(X, R, B);
+        st.add_edge(Y, S, B);
+        run(&idx, &mut st, &mut Prof::default());
+        let mut repr: Vec<u32> = (0..8).collect();
+        let mut merged: Vec<u32> = Vec::new();
+        merge_nodes(&mut st, &mut repr, &mut merged, A, B);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(st.edges[X as usize].contains(&(R, A)));
+        assert!(!st.edges[X as usize].contains(&(R, B)));
+        assert!(st.edges[Y as usize].contains(&(S, A)));
+        assert!(st.in_roles[B as usize].is_empty());
+        assert!(st.in_by_role.get(&(B, R)).is_none());
+        assert!(st.in_by_role.get(&(B, S)).is_none());
+        assert_eq!(st.in_by_role.get(&(A, R)), Some(&vec![X]));
+        assert_eq!(st.in_by_role.get(&(A, S)), Some(&vec![Y]));
+        st.add_sub(A, M);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(
+            st.sub_super[X as usize].contains(&E),
+            "redirected backlink (X, R, A) must join sub-side at the new target"
+        );
+        assert!(!st.sub_super[Y as usize].contains(&E));
+    }
+
+    #[test]
+    fn multi_role_backlinks_are_input_order_invariant() {
+        // Three roles into the same filler target, NF4 axioms on two of them:
+        // every rotation of the input clauses must reach the same closure, with
+        // each axiom fired only into its exact-role parents.
+        let parts = [
+            cl(&[c("X", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("X", "x")], &[cf("M", "f", "x")]),
+            cl(&[c("Y", "x")], &[rf("S", "x", "g")]),
+            cl(&[c("Y", "x")], &[cf("M", "g", "x")]),
+            cl(&[c("Z", "x")], &[rf("Q", "x", "h")]),
+            cl(&[c("Z", "x")], &[cf("M", "h", "x")]),
+            cl(&[c("M", "x")], &[c("B", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("ER", "x")]),
+            cl(&[r("S", "x", "y"), c("B", "y")], &[c("ES", "x")]),
+        ];
+        let n = parts.len();
+        let mut baseline: Option<std::collections::BTreeMap<String, Vec<String>>> = None;
+        for rot in 0..n {
+            let order: Vec<String> = (0..n).map(|i| parts[(i + rot) % n].clone()).collect();
+            let cs = clauses(&format!("[{}]", order.join(",")));
+            let res = classify_inner(cs, CertMode::Off, false).expect("pure EL");
+            let map: std::collections::BTreeMap<String, Vec<String>> = res
+                .subsumptions
+                .iter()
+                .map(|(k, v)| {
+                    let mut sups = v.clone();
+                    sups.sort();
+                    (k.clone(), sups)
+                })
+                .collect();
+            match &baseline {
+                None => {
+                    for (sub, sup, want) in [
+                        ("X", "ER", true),
+                        ("Y", "ES", true),
+                        ("X", "ES", false),
+                        ("Y", "ER", false),
+                        ("Z", "ER", false),
+                        ("Z", "ES", false),
+                    ] {
+                        assert_eq!(
+                            map.get(sub).is_some_and(|s| s.contains(&sup.to_string())),
+                            want,
+                            "{sub} ⊑ {sup} expected {want}: {:?}",
+                            map.get(sub)
+                        );
+                    }
+                    baseline = Some(map);
+                }
+                Some(base) => assert_eq!(base, &map, "closure differs at rotation {rot}"),
+            }
+        }
+    }
+
+    #[test]
+    fn incremental_reuse_extends_backlink_index_for_new_roles() {
+        // Retained-fixpoint additions: first a subsumption that makes an old
+        // backlink joinable (A ⊑ B activates ∃R.B ⊑ ER over the retained edge
+        // (X, R, A)), then a whole new role S into the same retained target.
+        let initial = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("X", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("X", "x")], &[cf("A", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("ER", "x")]),
+        ));
+        let mut inc = IncrementalElClassifier::new(initial).expect("pure EL snapshot");
+        assert_eq!(inc.is_subsumed_by("X", "ER"), Some(false));
+
+        let up1 = inc
+            .add_clauses(clauses(&format!(
+                "[{}]",
+                cl(&[c("A", "x")], &[c("B", "x")])
+            )))
+            .expect("monotone addition");
+        assert!(up1.reused_fixpoint, "NF1 addition must retain the fixpoint");
+        assert_eq!(inc.is_subsumed_by("X", "ER"), Some(true));
+
+        let up2 = inc
+            .add_clauses(clauses(&format!(
+                "[{},{},{}]",
+                cl(&[c("Y", "x")], &[rf("S", "x", "g")]),
+                cl(&[c("Y", "x")], &[cf("A", "g", "x")]),
+                cl(&[r("S", "x", "y"), c("B", "y")], &[c("ES", "x")]),
+            )))
+            .expect("monotone addition");
+        assert!(
+            up2.reused_fixpoint,
+            "new-role addition must retain the fixpoint"
+        );
+        assert_eq!(inc.is_subsumed_by("Y", "ES"), Some(true));
+        assert_eq!(inc.is_subsumed_by("Y", "ER"), Some(false));
+        assert_eq!(inc.is_subsumed_by("X", "ES"), Some(false));
+    }
+
+    #[test]
+    fn incremental_restart_rebuilds_backlink_index() {
+        // Completing a one-sided existential (X ⊑ ∃R.⊤ gains its filler half)
+        // rewrites an NF3, so the session must restart from Init; the rebuilt
+        // backlink index must serve the NF4 join in the fresh completion.
+        let initial = clauses(&format!("[{}]", cl(&[c("X", "x")], &[rf("R", "x", "f")]),));
+        let mut inc = IncrementalElClassifier::new(initial).expect("pure EL snapshot");
+        let up = inc
+            .add_clauses(clauses(&format!(
+                "[{},{}]",
+                cl(&[c("X", "x")], &[cf("B", "f", "x")]),
+                cl(&[r("R", "x", "y"), c("B", "y")], &[c("E", "x")]),
+            )))
+            .expect("restart addition");
+        assert!(
+            !up.reused_fixpoint,
+            "completing the existential must restart the completion"
+        );
+        assert_eq!(inc.is_subsumed_by("X", "E"), Some(true));
     }
 }
