@@ -92,3 +92,11 @@ conjunction satisfiable. The TBox-only automatic race still timed out after
 certified-EL workers both remained active without an answer. Stripping the ABox
 alone therefore does not put 1194 within contract, so no decomposition route
 was implemented.
+
+An EL-lower-bound equivalence probe measured whether a stronger sound query
+scheduler could pay for itself. Full EL saturation found 7,465 aliases in
+5,334 groups among 72,743 named concepts. This is only 2,253 aliases beyond the
+5,212 already removed by the cheap unit-implication SCC scheduler, while the
+probe itself cost 93.14 seconds and 3,100,648 KiB. The extra 3.5% root reduction
+cannot repay that preprocessing cost, so the diagnostic was removed and EL
+saturation was not added to CB query scheduling.
