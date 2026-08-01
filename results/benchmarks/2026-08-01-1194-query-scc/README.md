@@ -34,3 +34,9 @@ highly uneven slices of 1,985 to 12,629 roots and reached at most 1,050 roots in
 90 seconds, versus 1,150 for equal contiguous slices. Clause occurrence is not
 a useful root-cost proxy here. None of these timed diagnostics completed
 classification, and none is a closure or benchmark result.
+
+Periodic `KM_QUERY_BATCH=64` fixpoints were also much worse. In 90 seconds,
+workers drained 420,000 to 480,000 inter-context messages after only 64 roots
+and did not progress beyond the next small batch. Deferring the message phase
+until the full static slice has been seeded is essential for amortization on
+this ontology, so the one-shot schedule remains unchanged.
