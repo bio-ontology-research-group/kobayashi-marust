@@ -40,3 +40,11 @@ workers drained 420,000 to 480,000 inter-context messages after only 64 roots
 and did not progress beyond the next small batch. Deferring the message phase
 until the full static slice has been seeded is essential for amortization on
 this ontology, so the one-shot schedule remains unchanged.
+
+A shared query-independent engine-base experiment was also rejected. The
+prepared 1194 clause set has no CB `ground_facts` context to reuse. Calling
+`run_for(&[])` therefore began the expensive empty-core top closure before any
+query roots; after 55.54 seconds it had not reached query seeding and consumed
+1,670,236 KiB peak RSS. The ordinary static workers had already seeded hundreds
+of roots at the same point. The diagnostic gate and implementation were
+removed, leaving the production scheduler unchanged.
