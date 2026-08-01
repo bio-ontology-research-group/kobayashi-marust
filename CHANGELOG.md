@@ -9,6 +9,21 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Index exact-role NF4 backward joins (2026-08-01)
+
+EL completion now sorts each `NF4` filler bucket by role and binary-searches
+the exact-role range for every backward link. The rule fires the same axioms
+and derives the same conclusions as the previous full-bucket scan; it only
+skips entries that the former `role == axiom_role` guard rejected. A regression
+with two roles and multiple conclusions on one filler pins that behavior. The
+complete release suite passes 1,930 tests with zero failures and eight
+intentional ignores.
+
+On the exact ORE 1194 candidate gate, Sub-NF4 probes fell from about 3.32
+billion to 774,848,772. The ontology still timed out after 245.40 seconds at
+11,101,160 KiB with no output, while Edge-NF4 remained at 2,086,666,580 visits.
+This is a fixpoint-preserving performance improvement, not a 1194 closure.
+
 ## [0.2.1] – 2026-08-01
 
 ### Automatic production coverage: 591 of 592 (2026-08-01)

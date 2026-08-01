@@ -1054,6 +1054,13 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
             .or_default()
             .push((a.role, a.sup));
     }
+    // Keep each filler bucket ordered by role. The Sub-NF4 rule can then visit
+    // only the exact-role range for a backward link instead of scanning and
+    // rejecting every axiom attached to the filler. This changes index order,
+    // not the set of axioms or conclusions.
+    for axs in nf4_by_filler.values_mut() {
+        axs.sort_unstable();
+    }
     let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
     let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
     for a in &nfs.nf7 {
@@ -1223,11 +1230,11 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                     let mut k = 0;
                     while k < st.in_edges[c as usize].len() {
                         let (parent, role) = st.in_edges[c as usize][k];
-                        prof.nf4_sub_scan += axs.len() as u64;
-                        for &(s, e) in axs {
-                            if role == s {
-                                st.add_sub(parent, e);
-                            }
+                        let lo = axs.partition_point(|&(s, _)| s < role);
+                        let hi = axs.partition_point(|&(s, _)| s <= role);
+                        prof.nf4_sub_scan += (hi - lo) as u64;
+                        for &(_, e) in &axs[lo..hi] {
+                            st.add_sub(parent, e);
                         }
                         k += 1;
                     }
@@ -3736,6 +3743,31 @@ mod tests {
         let cs_no = clauses(&format!("[{},{}]", ab, nf4));
         let res_no = classify_inner(cs_no, CertMode::Off, false).expect("pure EL");
         assert!(!subs_of(&res_no, "A").contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn nf4_backward_join_selects_only_the_exact_role_bucket() {
+        // Both NF4 axioms share filler B. An R backward link must select every
+        // R conclusion and no S conclusion; an S link must do the converse.
+        // This pins the role-range index used by the Sub side of the join.
+        let a_r = cl(&[c("A", "x")], &[rf("R", "x", "fr")]);
+        let fr_b = cl(&[c("A", "x")], &[cf("B", "fr", "x")]);
+        let x_s = cl(&[c("X", "x")], &[rf("S", "x", "fs")]);
+        let fs_b = cl(&[c("X", "x")], &[cf("B", "fs", "x")]);
+        let r_c = cl(&[r("R", "x", "y"), c("B", "y")], &[c("C", "x")]);
+        let r_e = cl(&[r("R", "x", "y"), c("B", "y")], &[c("E", "x")]);
+        let s_d = cl(&[r("S", "x", "y"), c("B", "y")], &[c("D", "x")]);
+        let cs = clauses(&format!(
+            "[{},{},{},{},{},{},{}]",
+            a_r, fr_b, x_s, fs_b, r_c, r_e, s_d
+        ));
+        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL");
+        let a = subs_of(&res, "A");
+        assert!(a.contains(&"C".to_string()) && a.contains(&"E".to_string()));
+        assert!(!a.contains(&"D".to_string()));
+        let x = subs_of(&res, "X");
+        assert!(x.contains(&"D".to_string()));
+        assert!(!x.contains(&"C".to_string()) && !x.contains(&"E".to_string()));
     }
 
     #[test]
