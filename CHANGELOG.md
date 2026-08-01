@@ -26,6 +26,13 @@ timed out after 245.29 seconds with zero output. Peak RSS fell from 11,101,160
 KiB to 7,078,600 KiB, a 36.2% reduction. This is a memory improvement, not a
 1194 closure.
 
+Cluster-native build job `49796295`, gate `49796423_0`, and full array
+`49796520` validate the integrated source. The audit finds 591 `ok` rows and
+only the expected 1194 error, with no semantic changes from the preceding
+sweep. The same array now handles 4669 through streaming full-IRI
+fingerprinting, so all 592 rows complete without a manual postprocessing
+recovery job.
+
 ### Index exact-role NF4 backward joins (2026-08-01)
 
 EL completion now sorts each `NF4` filler bucket by role and binary-searches

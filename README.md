@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `49793038`, array `49793194`, streaming 4669
-job `49794816_157`, independent 4669 oracle job `49795051`, and the complete
-592-row integrity audit verify every terminal row, checkpoint, route trace,
-and binary identity. Metrics use the 591 successful rows from commit `fde093c`
-and IBEX binary `0aa78e92d327c2e…`.
+over all 592 ontologies. Build job `49796295`, gate `49796423_0`, array
+`49796520`, and the complete 592-row integrity audit verify every terminal row,
+checkpoint, route trace, profile, and binary identity. Metrics use the 591
+successful rows from reasoner commit `b442fe7` and IBEX binary
+`8c2460e2c1238487…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `fde093c` (binary `0aa78e92d327…`) | **591** | **591** | **6.6849** | **0.2788** | **833.30** | **45.18** |
+| **KM automatic, `km classify`** | `b442fe7` (binary `8c2460e2c123…`) | **591** | **591** | **6.7122** | **0.2760** | **836.03** | **44.91** |
 
 “Empirically correct” means 587 exact retained Konclude full-IRI signatures,
 three independently adjudicated consistency results, and 4669's independently
@@ -112,7 +112,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
-- [`results/benchmarks/2026-08-01-fde093c-auto/`](results/benchmarks/2026-08-01-fde093c-auto/)
+- [`results/benchmarks/2026-08-01-b442fe7-auto/`](results/benchmarks/2026-08-01-b442fe7-auto/)
 
 ### Frozen uniform comparison
 
