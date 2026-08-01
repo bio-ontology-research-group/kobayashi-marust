@@ -70,6 +70,13 @@ consequences that Konclude derives. The checker records this difference and
 uses Konclude as the authority. The augmented Konclude result independently
 settles the premise for which ELK's omissions could matter.
 
+HermiT independently adjudicates all 54 Konclude-only pairs in IBEX job
+`49738974`. It reports every subsumption entailed and every corresponding
+`sub ⊓ ¬super` counterexample unsatisfiable. The batch takes 26.07 seconds and
+2,691,264 KiB peak RSS. The retained receipt is
+`4669-hermit-konclude-only-report.json`; the tracked Java driver and extraction
+script regenerate the exact 54-pair query set without embedding expected IRIs.
+
 The structural certificate establishes the premises used by the projection
 and isolated-element arguments:
 

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "oracle": "km-4669-hermit-konclude-only-entailments-v1",
+  "status": "complete",
+  "ibex_job_id": "49738974",
+  "run_root": "/ibex/scratch/hohndor/km/routing_20260715/4669-hermit-edges-49738974",
+  "projected_ontology_sha256": "409b1d70f6a9d3077e479e94da10702b8c6c5263d8280429d273298d2b124730",
+  "pair_set_sha256": "d0a9e54990a10e4d52a47567d1fab5e9e1cafd7998ac98efad088c6630d9036b",
+  "driver_source_sha256": "d3498bc1a69baa56a1dee206284154e46b78a5193e40ab746c9117da5903f11d",
+  "rows": 54,
+  "entailed": 54,
+  "counterexample_satisfiable": 0,
+  "results_sha256": "0d23aa6de688438d9b243c8c8e2eac13fe719652532c438556e2bb748705df3c",
+  "wall_seconds": 26.07,
+  "peak_rss_kib": 2691264
+}
