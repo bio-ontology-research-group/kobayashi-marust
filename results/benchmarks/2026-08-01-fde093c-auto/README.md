@@ -80,3 +80,13 @@ reduced Edge-NF4 visits from 2,086,666,580 to 1,595,884,325 and peak RSS from
 11,101,160 to 10,379,944 KiB, but also timed out after 245.33 seconds. Its
 registration duplication rate was only 10.5%, so hash overhead consumed the
 saved scans; that candidate was not merged.
+
+The subsequently integrated in-place Edge-NF4 iteration removes the snapshot
+copy without deduplicating or changing propagation order. Its independent
+release suite passed 1,935 tests with zero failures and eight intentional
+ignores. On the same exact gate, rule counts remained effectively unchanged
+and 1194 again timed out with zero output after 245.29 seconds, but peak RSS
+fell from 11,101,160 to 7,078,600 KiB. The change is retained for this 36.2%
+memory reduction; it does not change the 591-of-592 production result recorded
+above. A new source-bound sweep is required before replacing that table with
+post-change metrics.

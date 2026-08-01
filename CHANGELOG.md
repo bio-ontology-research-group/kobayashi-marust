@@ -9,6 +9,23 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Iterate Edge-NF4 propagation in place (2026-08-01)
+
+EL completion no longer copies `prop[(target, role)]` into a scratch vector on
+every Edge-NF4 firing. It holds the immutable propagation-slice borrow while
+inserting conclusions through disjoint borrows of `sub_super` and the
+worklist. Propagation buckets can grow only when a queued `Sub` item is
+processed after the loop, so this preserves the exact conclusion and worklist
+order, including self-edges. It changes neither the calculus nor its fixpoint
+and needs no Lean re-certification. Five focused ordering and self-edge
+regressions were added. The complete release suite passes 1,935 tests with zero
+failures and eight intentional ignores.
+
+The exact ORE 1194 gate retained essentially identical rule counts and still
+timed out after 245.29 seconds with zero output. Peak RSS fell from 11,101,160
+KiB to 7,078,600 KiB, a 36.2% reduction. This is a memory improvement, not a
+1194 closure.
+
 ### Index exact-role NF4 backward joins (2026-08-01)
 
 EL completion now sorts each `NF4` filler bucket by role and binary-searches
