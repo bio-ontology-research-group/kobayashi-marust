@@ -28,6 +28,14 @@ still timed out after 245.29 seconds with zero output. Peak RSS fell from
 improvement, not a 1194 closure. The tested `elc` binary has SHA-256
 `d7468bf1a39bbdae9415fd480be0de01cb98e42df8da64eab3bd3413d0ba7c5f`.
 
+Cluster-native build job `49811241`, gate `49811822_401`, and full array
+`49811856` validate the integrated source over all 592 ontologies. The audit
+finds 591 `ok` rows and only the expected 1194 error. All statuses, verdicts,
+signature and full-IRI digests, consistency values, subsumption counts, and
+unsatisfiable-class counts are identical to the preceding sweep. Mean and
+median wall time over successful rows are 6.6750 and 0.2779 seconds; mean and
+median peak RSS are 842.06 and 44.79 MiB.
+
 ### Iterate Edge-NF4 propagation in place (2026-08-01)
 
 EL completion no longer copies `prop[(target, role)]` into a scratch vector on

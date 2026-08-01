@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `49796295`, gate `49796423_0`, array
-`49796520`, and the complete 592-row integrity audit verify every terminal row,
+over all 592 ontologies. Build job `49811241`, gate `49811822_401`, array
+`49811856`, and the complete 592-row integrity audit verify every terminal row,
 checkpoint, route trace, profile, and binary identity. Metrics use the 591
-successful rows from reasoner commit `b442fe7` and IBEX binary
-`8c2460e2c1238487…`.
+successful rows from reasoner commit `3066a14` and IBEX binary
+`8b14aa5aa026…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `b442fe7` (binary `8c2460e2c123…`) | **591** | **591** | **6.7122** | **0.2760** | **836.03** | **44.91** |
+| **KM automatic, `km classify`** | `3066a14` (binary `8b14aa5aa026…`) | **591** | **591** | **6.6750** | **0.2779** | **842.06** | **44.79** |
 
 “Empirically correct” means 587 exact retained Konclude full-IRI signatures,
 three independently adjudicated consistency results, and 4669's independently
@@ -110,9 +110,9 @@ Per-ontology routes, evidence, and special handling are recorded in:
 
 - [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
+- [`results/benchmarks/2026-08-01-3066a14-auto/`](results/benchmarks/2026-08-01-3066a14-auto/)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
-- [`results/benchmarks/2026-08-01-b442fe7-auto/`](results/benchmarks/2026-08-01-b442fe7-auto/)
 
 ### Frozen uniform comparison
 
