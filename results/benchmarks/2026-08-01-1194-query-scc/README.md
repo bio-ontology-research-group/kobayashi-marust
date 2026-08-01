@@ -82,3 +82,13 @@ and rebuild rate. Allowing the death-tolerant pass to empty a conflicting
 canonical witness also failed to complete in 240.44 seconds and raised peak RSS
 to 11,890,776 KiB. The retained implementation is therefore only the stale-head
 recheck in `ceb6f16`.
+
+A TBox/ABox decomposition probe removed all 221,086 source `ClassAssertion`
+axioms, reducing the functional-syntax input from 75 MiB to 39 MiB. This tests
+the first half of a possible exact class-only-ABox route: classify the TBox,
+then separately certify every individual's asserted class-expression
+conjunction satisfiable. The TBox-only automatic race still timed out after
+240.16 seconds and reached 18,877,480 KiB combined process-tree RSS; its CB and
+certified-EL workers both remained active without an answer. Stripping the ABox
+alone therefore does not put 1194 within contract, so no decomposition route
+was implemented.
