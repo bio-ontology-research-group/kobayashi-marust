@@ -995,11 +995,44 @@ struct State {
 }
 
 impl State {
+    /// Body of `add_sub` over the two fields it actually touches, so a rule
+    /// can add conclusions while another field of the state (e.g. `prop`) is
+    /// still immutably borrowed.
+    #[inline]
+    fn add_sub_parts(
+        sub_super: &mut [HashSet<u32>],
+        worklist: &mut VecDeque<Item>,
+        c: u32,
+        d: u32,
+    ) {
+        if sub_super[c as usize].insert(d) {
+            worklist.push_back(Item::Sub(c, d));
+        }
+    }
+
     #[inline]
     fn add_sub(&mut self, c: u32, d: u32) {
-        if self.sub_super[c as usize].insert(d) {
-            self.worklist.push_back(Item::Sub(c, d));
+        Self::add_sub_parts(&mut self.sub_super, &mut self.worklist, c, d);
+    }
+
+    /// Edge-side NF4 join, in place: fire the propagations `prop[(d,r)]` into
+    /// `c` while iterating the stored slice directly. Safe without a snapshot
+    /// copy because a new subsumption only inserts into `sub_super` and pushes
+    /// a Sub item onto the worklist; `prop` is extended only when that Sub item
+    /// is later PROCESSED (the registration in the Sub arm of `run`), so
+    /// `prop[(d,r)]` cannot grow or move during this loop -- including for a
+    /// self-edge `c == d`. Conclusions are added in the same slice order as
+    /// before, so the creation order of derived facts is unchanged. Returns the
+    /// number of conclusions scanned (for KM_ELC_PROFILE).
+    #[inline]
+    fn fire_edge_nf4(&mut self, c: u32, r: u32, d: u32) -> u64 {
+        let Some(es) = self.prop.get(&(d, r)) else {
+            return 0;
+        };
+        for &sup in es {
+            Self::add_sub_parts(&mut self.sub_super, &mut self.worklist, c, sup);
         }
+        es.len() as u64
     }
 
     #[inline]
@@ -1154,7 +1187,7 @@ struct Prof {
 /// Re-entrant: the certificate repair re-enters with extra seeded facts and the
 /// SAME `idx` (the rule set never changes), so a repaired structure is again
 /// closed under every EL rule — i.e. it stays a model of the EL clause set.
-fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
+fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // Empty fallback so an unindexed role still yields the empty super-set
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
@@ -1250,18 +1283,12 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                 // label crossed with the role closure. Super-role matches are
                 // covered because the lift below materialises a separate edge
                 // (c,super_role,d), which fires `prop[(d,super_role)]` in turn.
-                // Collect into nf4_buf first so the read of `prop` (part of `st`)
-                // ends before any `add_sub` (also `st`); snapshot-safe for a
-                // self-edge c==d. Skipped entirely when there are no NF4 axioms.
+                // The stored slice is iterated in place (no snapshot copy):
+                // see `fire_edge_nf4` for why `prop[(d,r)]` is stable across
+                // the loop, self-edge c==d included. Skipped entirely when
+                // there are no NF4 axioms.
                 if !idx.nf4_by_filler.is_empty() {
-                    if let Some(es) = st.prop.get(&(d, r)) {
-                        prof.nf4_edge_scan += es.len() as u64;
-                        nf4_buf.clear();
-                        nf4_buf.extend_from_slice(es);
-                        for &sup in nf4_buf.iter() {
-                            st.add_sub(c, sup);
-                        }
-                    }
+                    prof.nf4_edge_scan += st.fire_edge_nf4(c, r, d);
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
                 if st.sub_super[d as usize].contains(&BOTTOM) {
@@ -2111,7 +2138,6 @@ fn repair_certify(
                     tolerate_deaths: bool|
      -> PassOut {
         let mut st = base.fork();
-        let mut nf4_buf: Vec<u32> = Vec::new();
         let mut budget: u64 = 400_000_000;
         let mut adds: u64 = 0;
         let mut repr: Vec<u32> = (0..n as u32).collect();
@@ -2331,7 +2357,7 @@ fn repair_certify(
             }
             // Re-close under the EL rules: the repaired structure must again
             // be a model of the EL clause set before the next recheck.
-            run(idx, &mut st, &mut nf4_buf, &mut Prof::default());
+            run(idx, &mut st, &mut Prof::default());
             // Re-sync merged ids as mirrors of their (closed) representative,
             // so every concept's canonical witness remains in the domain with
             // exactly the representative's labels and edges.
@@ -2853,7 +2879,6 @@ pub struct IncrementalElClassifier {
     concept_ids: HashSet<u32>,
     normal_forms: HashSet<NormalFormKey>,
     state: State,
-    nf4_buf: Vec<u32>,
     revision: u64,
 }
 
@@ -2872,8 +2897,7 @@ impl IncrementalElClassifier {
         let idx = build_idx(&nfs, interner.len());
         let mut state = init_state(&nfs, interner.len());
         seed_reflexive_edges(&nfs, &idx, &mut state);
-        let mut nf4_buf = Vec::new();
-        run(&idx, &mut state, &mut nf4_buf, &mut Prof::default());
+        run(&idx, &mut state, &mut Prof::default());
         let normal_forms = normal_form_keys(&nfs);
         let concept_ids = nfs.concept_names;
 
@@ -2883,7 +2907,6 @@ impl IncrementalElClassifier {
             concept_ids,
             normal_forms,
             state,
-            nf4_buf,
             revision: 0,
         })
     }
@@ -2941,12 +2964,7 @@ impl IncrementalElClassifier {
             let next_idx = build_idx(&next_nfs, next_interner.len());
             let mut next_state = init_state(&next_nfs, next_interner.len());
             seed_reflexive_edges(&next_nfs, &next_idx, &mut next_state);
-            run(
-                &next_idx,
-                &mut next_state,
-                &mut self.nf4_buf,
-                &mut Prof::default(),
-            );
+            run(&next_idx, &mut next_state, &mut Prof::default());
             let new_subsumptions = fact_count(&next_state.sub_super);
             let new_edges = fact_count(&next_state.edges);
             self.interner = next_interner;
@@ -3003,12 +3021,7 @@ impl IncrementalElClassifier {
             }
         }
         seed_reflexive_edges(&next_nfs, &next_idx, &mut self.state);
-        run(
-            &next_idx,
-            &mut self.state,
-            &mut self.nf4_buf,
-            &mut Prof::default(),
-        );
+        run(&next_idx, &mut self.state, &mut Prof::default());
 
         self.interner = next_interner;
         self.concept_ids = next_nfs.concept_names;
@@ -3395,9 +3408,8 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         nfs.role_names = HashSet::default();
         nfs.reflexive_roles = HashSet::default();
     }
-    let mut nf4_buf: Vec<u32> = Vec::new();
     let mut prof = Prof::default();
-    run(&idx, &mut st, &mut nf4_buf, &mut prof);
+    run(&idx, &mut st, &mut prof);
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
         eprintln!(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
@@ -4184,6 +4196,192 @@ mod tests {
                 classify_inner(cs, CertMode::Off, false).is_none(),
                 "{shape} must defer to the context engine"
             );
+        }
+    }
+
+    // ----- Edge-NF4 in-place `prop` iteration (`fire_edge_nf4`) -----
+
+    /// An `Idx` holding only NF4 axioms `∃role.filler ⊑ sup` (given as
+    /// `(role, filler, sup)` triples) plus the identity role hierarchy every
+    /// edge role needs. Vectors are role-sorted, as `build_idx` guarantees for
+    /// the Sub-rule's `partition_point` join.
+    fn nf4_only_idx(nf4: &[(u32, u32, u32)], nroles: u32) -> Idx {
+        let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+        for &(role, filler, sup) in nf4 {
+            nf4_by_filler.entry(filler).or_default().push((role, sup));
+        }
+        for axs in nf4_by_filler.values_mut() {
+            axs.sort_unstable();
+        }
+        let role_sub = (0..nroles)
+            .map(|r| {
+                let mut s: HashSet<u32> = HashSet::default();
+                s.insert(r);
+                s
+            })
+            .collect();
+        Idx {
+            nf1_by_sub: HashMap::default(),
+            nf2_by_sub: HashMap::default(),
+            nf3_by_sub: HashMap::default(),
+            nf4_by_filler,
+            nf5_subs: HashSet::default(),
+            nf7_by_pair: HashMap::default(),
+            role_sub,
+            reflexive_closed: HashSet::default(),
+        }
+    }
+
+    fn blank_state(n: usize) -> State {
+        State {
+            sub_super: vec![HashSet::default(); n],
+            edges: vec![HashSet::default(); n],
+            in_edges: vec![Vec::new(); n],
+            prop: HashMap::default(),
+            worklist: VecDeque::new(),
+        }
+    }
+
+    #[test]
+    fn edge_nf4_fires_when_edge_arrives_after_propagation() {
+        // ∃R.B ⊑ E. A ⊑ B is completed FIRST, registering prop[(A,R)] = [E]
+        // with no edge present; the later edge (X,R,A) must fire the stored
+        // propagation edge-side.
+        const R: u32 = 0;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const E: u32 = 4;
+        const X: u32 = 5;
+        let idx = nf4_only_idx(&[(R, B, E)], 1);
+        let mut st = blank_state(6);
+        st.add_sub(A, B);
+        run(&idx, &mut st, &mut Prof::default());
+        assert_eq!(st.prop.get(&(A, R)), Some(&vec![E]));
+        assert!(!st.sub_super[X as usize].contains(&E));
+        st.add_edge(X, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(
+            st.sub_super[X as usize].contains(&E),
+            "edge-side join must fire the pre-registered propagation"
+        );
+    }
+
+    #[test]
+    fn edge_nf4_fires_when_propagation_arrives_after_edge() {
+        // Same axioms, opposite creation order: the edge (X,R,A) is completed
+        // first (nothing fires), then A ⊑ B arrives and the Sub-side backward
+        // join over in_edges[A] must produce X ⊑ E.
+        const R: u32 = 0;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const E: u32 = 4;
+        const X: u32 = 5;
+        let idx = nf4_only_idx(&[(R, B, E)], 1);
+        let mut st = blank_state(6);
+        st.add_edge(X, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(!st.sub_super[X as usize].contains(&E));
+        st.add_sub(A, B);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(
+            st.sub_super[X as usize].contains(&E),
+            "sub-side backward join must fire against the pre-existing edge"
+        );
+    }
+
+    #[test]
+    fn edge_nf4_self_edge_fires_bucket_that_grows_after_the_edge() {
+        // Self-edge (A,R,A) processed while prop[(A,R)] = [E1]: the in-place
+        // edge-side iteration yields A ⊑ E1, whose Sub item then grows the
+        // SAME bucket (∃R.E1 ⊑ E2) and must still reach A ⊑ E2 sub-side.
+        const R: u32 = 0;
+        const A: u32 = 2;
+        const E1: u32 = 3;
+        const E2: u32 = 4;
+        let idx = nf4_only_idx(&[(R, A, E1), (R, E1, E2)], 1);
+        let mut st = blank_state(5);
+        st.add_sub(A, A);
+        run(&idx, &mut st, &mut Prof::default());
+        assert_eq!(st.prop.get(&(A, R)), Some(&vec![E1]));
+        st.add_edge(A, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        assert!(st.sub_super[A as usize].contains(&E1));
+        assert!(st.sub_super[A as usize].contains(&E2));
+        assert_eq!(st.prop.get(&(A, R)), Some(&vec![E1, E2]));
+    }
+
+    #[test]
+    fn edge_nf4_self_edge_cascade_from_a_single_run() {
+        // Everything seeded before one `run`: the self-edge and the cascade
+        // ∃R.A ⊑ E1, ∃R.E1 ⊑ E2, ∃R.E2 ⊑ E3 interleave edge-side and
+        // sub-side firings on the growing prop[(A,R)] bucket at c == d.
+        const R: u32 = 0;
+        const A: u32 = 2;
+        const E1: u32 = 3;
+        const E2: u32 = 4;
+        const E3: u32 = 5;
+        let idx = nf4_only_idx(&[(R, A, E1), (R, E1, E2), (R, E2, E3)], 1);
+        let mut st = blank_state(6);
+        st.add_sub(A, A);
+        st.add_edge(A, R, A);
+        run(&idx, &mut st, &mut Prof::default());
+        for e in [E1, E2, E3] {
+            assert!(st.sub_super[A as usize].contains(&e), "A ⊑ {e} missing");
+        }
+        assert_eq!(st.prop.get(&(A, R)), Some(&vec![E1, E2, E3]));
+    }
+
+    #[test]
+    fn edge_nf4_closure_is_input_order_invariant() {
+        // NF1 + NF3 + NF4 + a role inclusion + a genuine self-edge (C ⊑ ∃T.C):
+        // permuting the input clauses flips which of {edge, propagation} is
+        // created first at each context, and the closure must not change.
+        let parts = [
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[c("B", "x")], &[c("C", "x")]),
+            cl(&[r("R", "x", "y"), c("C", "y")], &[c("D", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("G", "x")]),
+            cl(&[c("C", "x")], &[rf("T", "x", "g")]),
+            cl(&[c("C", "x")], &[cf("C", "g", "x")]),
+            cl(&[r("T", "x", "y"), c("C", "y")], &[c("D", "x")]),
+            cl(&[r("T", "x", "y"), c("D", "y")], &[c("H", "x")]),
+            cl(&[r("R", "x", "y")], &[r("S", "x", "y")]),
+            cl(&[r("S", "x", "y"), c("C", "y")], &[c("K", "x")]),
+        ];
+        let n = parts.len();
+        let mut baseline: Option<std::collections::BTreeMap<String, Vec<String>>> = None;
+        for rot in 0..n {
+            let order: Vec<String> = (0..n).map(|i| parts[(i + rot) % n].clone()).collect();
+            let cs = clauses(&format!("[{}]", order.join(",")));
+            let res = classify_inner(cs, CertMode::Off, false).expect("pure EL");
+            let map: std::collections::BTreeMap<String, Vec<String>> = res
+                .subsumptions
+                .iter()
+                .map(|(k, v)| {
+                    let mut sups = v.clone();
+                    sups.sort();
+                    (k.clone(), sups)
+                })
+                .collect();
+            match &baseline {
+                None => {
+                    // Spot-check the joint conclusions once: the lifted-edge
+                    // NF4 (A ⊑ K via R ⊑ S), the plain edge-side/sub-side join
+                    // (A ⊑ D, A ⊑ G), and the self-edge cascade (C ⊑ D ⊑ H).
+                    for (sub, sup) in
+                        [("A", "D"), ("A", "G"), ("A", "K"), ("C", "D"), ("C", "H"), ("B", "H")]
+                    {
+                        assert!(
+                            map.get(sub).is_some_and(|s| s.contains(&sup.to_string())),
+                            "{sub} ⊑ {sup} missing: {:?}",
+                            map.get(sub)
+                        );
+                    }
+                    baseline = Some(map);
+                }
+                Some(base) => assert_eq!(base, &map, "closure differs at rotation {rot}"),
+            }
         }
     }
 }
