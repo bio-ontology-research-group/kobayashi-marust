@@ -53,7 +53,7 @@ export CARGO_TARGET_DIR=$tmp/target
     673c7cf8d85be46213bbd3cae5f2168f03668cbf9fb4240643be5ac63f2892db ]]
 [[ $(/usr/bin/sha256sum "$build/bin/FullIriHermitOracle.class" | /usr/bin/awk '{print $1}') == \
     67858c5d94a613f28821dfb19d2170bd270af2ee0db74a1a2b9db1e759591e42 ]]
-[[ $(/usr/bin/sha256sum -L "$build/bin/sequoia" | /usr/bin/awk '{print $1}') == \
+[[ $(/usr/bin/sha256sum "$build/bin/sequoia" | /usr/bin/awk '{print $1}') == \
     a84dfc7b30cb46dfd9333ef89ac6c2b1cd3bb27025777cc02f8c84b6df7a7649 ]]
 
 /usr/bin/python3 - "$build" "$drivers" "$revision" "$SLURM_JOB_ID" <<'PY'
