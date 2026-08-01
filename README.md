@@ -175,6 +175,16 @@ is not substituted into this older uniform comparison panel.
 | RustDL, complete mode | `0.3.31` (`8c2bb1bf43d9`) | 547 | 530 | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
 | Sequoia, strict mode | `0.6.1-alpha` (`c5248ec7be30`) | 340 | 339 | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
 
+The three KM rows have different selection semantics. **Automatic route** is
+plain `km classify`: it chooses from ontology features without seeing the
+expected answer. **Preselected routes** use a fixed ontology-to-route mapping
+chosen before this panel ran. **Oracle-selected route** is a retrospective
+upper bound: after all KM procedures have run and their correctness is known,
+it selects the fastest correct procedure separately for each ontology. Oracle
+selection is not a deployable classifier for an unknown ontology and should
+not be compared with automatic routing as though both made decisions from the
+same information.
+
 The `sound` and `complete` columns are separate empirical judgments about the
 named-class taxonomy against the cited full-IRI reference or adjudication.
 They are not global proofs about a reasoner. Averages and medians use only
