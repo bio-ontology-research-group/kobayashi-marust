@@ -9,6 +9,23 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Recheck incremental residual repairs before choosing (2026-08-01)
+
+The certified-EL model repair now processes forced single-head residuals before
+covering choices and skips any violation whose head became true earlier in the
+same repair round. The previous round-start violation batch could add a forced
+cardinality consequence and then also add the opposite side of a stale
+covering disjunction, creating an avoidable clash. The final closed-model and
+all-residual checks remain unchanged, so this alters model-search order only.
+
+A regression exercises a forced inverse-position residual together with an
+exhaustive disjoint cover. The complete release suite passes 1,835 tests with
+zero failures and eight intentional ignores, plus all integration targets. On
+ORE 1194 the corrected repair moved beyond the previously immediate
+`Q_118720`/`Q_118721` conflict family and explored later cardinality partitions,
+but still timed out after 240.22 seconds at 5,443,724 KiB. This is progress in
+the candidate certificate route, not a closure.
+
 ### Revalidate the current ORE 1194 blocker (2026-07-31)
 
 A source-current default `km classify` run establishes that ORE 1194 no longer

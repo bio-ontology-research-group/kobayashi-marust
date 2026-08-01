@@ -48,3 +48,20 @@ query roots; after 55.54 seconds it had not reached query seeding and consumed
 1,670,236 KiB peak RSS. The ordinary static workers had already seeded hundreds
 of roots at the same point. The diagnostic gate and implementation were
 removed, leaving the production scheduler unchanged.
+
+## Residual-repair ordering candidate
+
+The certified-EL repair previously collected every violated residual against a
+round-start model and repaired the entire stale list. It could first add a
+forced singleton cardinality consequence and later add the opposite side of a
+covering disjunction that the singleton had already satisfied. The corrected
+search processes forced heads first and rechecks each collected head before
+choosing. The final closure and all-residual model checks are unchanged.
+
+The complete release suite passes 1,835 tests, zero failures and eight
+intentional ignores, plus all integration targets. A 1194 run with
+`KM_ELC_CERT=repair` reached the 252-clause repair phase and progressed beyond
+the formerly immediate `Q_118720`/`Q_118721` loop to later qualified-cardinality
+partitions. It did not complete: timeout was 240.22 seconds and peak RSS was
+5,443,724 KiB. This candidate improves the repair trajectory but does not close
+1194 under the benchmark contract.

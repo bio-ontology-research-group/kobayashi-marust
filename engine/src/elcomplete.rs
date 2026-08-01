@@ -2117,8 +2117,39 @@ fn repair_certify(
                 }
                 return PassOut::Fail;
             }
+            // `cert_round` reports violations against the state at the start
+            // of this repair round. Process forced (single addable-head)
+            // consequences before genuine choices, and recheck each reported
+            // head against the incrementally repaired state. Otherwise a
+            // singleton consequence can make a previously reported covering
+            // disjunction true, yet the stale report still adds its opposite
+            // disjunct and manufactures an avoidable clash. This changes only
+            // model-search order: every accepted model is still closed under
+            // EL and checked against every residual clause below.
+            viols.sort_by_key(|(rci, _)| {
+                rcs[*rci]
+                    .head
+                    .iter()
+                    .filter(|atom| !matches!(atom, RAtom::Eq { .. }))
+                    .count()
+            });
             for (rci, asg) in &viols {
                 let head = &rcs[*rci].head;
+                let already_satisfied = head.iter().any(|atom| match *atom {
+                    RAtom::C { cid, v } => {
+                        let nd = uf_find(&mut repr, asg[v]);
+                        st.sub_super[nd as usize].contains(&cid)
+                    }
+                    RAtom::R { rid, s, t } => {
+                        let sn = uf_find(&mut repr, asg[s]);
+                        let tn = uf_find(&mut repr, asg[t]);
+                        st.edges[sn as usize].contains(&(rid, tn))
+                    }
+                    RAtom::Eq { s, t } => uf_find(&mut repr, asg[s]) == uf_find(&mut repr, asg[t]),
+                });
+                if already_satisfied {
+                    continue;
+                }
                 // addable candidates in this clause's preference order
                 let cands: Vec<&RAtom> = if polv[*rci] {
                     head.iter()
@@ -4024,5 +4055,24 @@ mod tests {
         ));
         let res = classify_inner(cs, CertMode::Repair, false).expect("base model complete");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
+    }
+
+    #[test]
+    fn repair_rechecks_stale_cover_after_forced_residual() {
+        // The inverse-position singleton is residual: every R-target must be A.
+        // The same target also has the residual cover A ∨ B and A/B are
+        // disjoint. A repair round can collect both violations at once. It must
+        // apply the forced A first and then observe that the stale cover is
+        // already true, rather than adding B in the reverse-polarity pass.
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("C", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("C", "x")], &[cf("D", "f", "x")]),
+            cl(&[r("R", "x", "y")], &[c("A", "y")]),
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[]),
+        ));
+        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(!res.inconsistent);
     }
 }
