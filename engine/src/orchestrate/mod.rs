@@ -17,6 +17,7 @@ pub mod explain;
 pub mod features;
 pub mod frontend_run;
 pub mod input;
+pub mod mirror;
 pub mod race;
 pub mod tmpfile;
 
@@ -487,6 +488,18 @@ pub(crate) fn classify_with_evidence(
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
     let t_start = std::time::Instant::now();
     let timing = std::env::var_os("KM_TIMING").is_some();
+    // Certified private negative-existential mirror route: a family of private
+    // `N ≡ ¬∃R.F` definitions is a family of top-level disjunctions the CB
+    // calculus cannot absorb, but removing them leaves a positive fragment that
+    // classifies in seconds and reconstructs the original taxonomy exactly.
+    // Preprocessing only — it classifies ordinary projections through this same
+    // pipeline and fails closed (returns None) unless every premise holds.
+    if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
+        return Ok(ClassificationEvidence {
+            classification,
+            consistency_certified: true,
+        });
+    }
     let (clauses_path, meta) = frontend_run::run_ofn_split(initial_cfg, ont)?;
     let selected_route = meta
         .route
