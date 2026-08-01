@@ -737,6 +737,13 @@ struct Ontology {
     concept_body_any: HashMap<Iri, Vec<usize>>,
     /// clauses with *any* body Role(iri, _, _)
     role_body_any: HashMap<Iri, Vec<usize>>,
+    /// The overwhelmingly common absorbed-existential shape
+    /// `C(y) ∧ R(x,y) -> D(x)`, indexed by `(R,C)` instead of placing every
+    /// such clause in R's broad Hyper posting. Values are sorted `(C,clause)`
+    /// pairs, so a role side premise probes only concepts that are actually
+    /// present at its target term. This is a compact two-column join index, not
+    /// a reasoning shortcut: Hyper still applies the original clauses.
+    role_target_concept_body: HashMap<Iri, Vec<(Iri, usize)>>,
 }
 
 impl Ontology {
@@ -764,6 +771,32 @@ impl Ontology {
                 }
             }
         } else {
+            let guarded_role = if c.body.len() == 2 {
+                let pair = match (c.body[0], c.body[1]) {
+                    (
+                        Pred::Concept { iri: concept, t: ct },
+                        Pred::Role {
+                            iri: role,
+                            s,
+                            t: rt,
+                        },
+                    )
+                    | (
+                        Pred::Role {
+                            iri: role,
+                            s,
+                            t: rt,
+                        },
+                        Pred::Concept { iri: concept, t: ct },
+                    ) if ct == rt && is_central(s) && is_neighbour(rt) => {
+                        Some((role, concept))
+                    }
+                    _ => None,
+                };
+                pair
+            } else {
+                None
+            };
             if mark_nothing && c.body.len() == 1 && c.head.is_empty() {
                 if let Pred::Concept { iri, .. } = c.body[0] {
                     if (iri as usize) < sig.nothing.len() {
@@ -781,7 +814,15 @@ impl Ontology {
                         }
                     }
                     Pred::Role { iri, s, t } => {
-                        self.role_body_any.entry(iri).or_default().push(idx);
+                        match guarded_role {
+                            Some((guard_role, concept)) if iri == guard_role => {
+                                self.role_target_concept_body
+                                    .entry(iri)
+                                    .or_default()
+                                    .push((concept, idx));
+                            }
+                            _ => self.role_body_any.entry(iri).or_default().push(idx),
+                        }
                         if is_central(s) {
                             sig.forward_role_succ_trigger[iri as usize] = true;
                             self.forward_role_clauses.entry(iri).or_default().push(idx);
@@ -807,6 +848,10 @@ impl Ontology {
             v.dedup();
         }
         for v in self.role_body_any.values_mut() {
+            v.sort_unstable();
+            v.dedup();
+        }
+        for v in self.role_target_concept_body.values_mut() {
             v.sort_unstable();
             v.dedup();
         }
@@ -3155,7 +3200,64 @@ impl Engine {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
-        for &oci in self.ont.clauses_cand(&max) {
+        let role_candidates;
+        let ontology_candidates: &[usize] = if let Pred::Role { iri, s, t } = max {
+            role_candidates = {
+                let mut candidates = self.ont.clauses_cand(&max).to_vec();
+                // A guarded `C(y) ∧ R(x,y)` clause can unify with this side
+                // only when the central source x has an admissible image. Its
+                // second premise must be a maximal C(t) predicate already in
+                // the context (plus the current side in the nominal ground
+                // context, matching the existing S_v ∪ {C} semantics).
+                if is_central(s) || is_individual(s) {
+                    let mut concepts = Vec::new();
+                    if let Some(posting) = ctx.max_head_term_index.get(&t) {
+                        for &cid in posting {
+                            for (predicate, _) in arena[cid as usize].max_head_predicates() {
+                                if let Pred::Concept {
+                                    iri: concept,
+                                    t: concept_term,
+                                } = predicate
+                                {
+                                    if concept_term == t {
+                                        concepts.push(concept);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if self.ground_ctx == Some(id) {
+                        for (predicate, _) in side.max_head_predicates() {
+                            if let Pred::Concept {
+                                iri: concept,
+                                t: concept_term,
+                            } = predicate
+                            {
+                                if concept_term == t {
+                                    concepts.push(concept);
+                                }
+                            }
+                        }
+                    }
+                    concepts.sort_unstable();
+                    concepts.dedup();
+                    if let Some(guarded) = self.ont.role_target_concept_body.get(&iri) {
+                        for concept in concepts {
+                            let start = guarded.partition_point(|&(c, _)| c < concept);
+                            let end = guarded.partition_point(|&(c, _)| c <= concept);
+                            candidates.extend(guarded[start..end].iter().map(|&(_, oci)| oci));
+                        }
+                    }
+                }
+                candidates.sort_unstable();
+                candidates.dedup();
+                candidates
+            };
+            &role_candidates
+        } else {
+            self.ont.clauses_cand(&max)
+        };
+        for &oci in ontology_candidates {
             let oc = &self.ont.clauses[oci];
             let n = oc.body.len();
             // pick the first body position that can unify with `max` for the side condition
@@ -6709,6 +6811,38 @@ mod tests {
             sups
         );
         assert!(!e.inconsistent());
+    }
+
+    #[test]
+    fn guarded_role_hyper_index_preserves_absorbed_existential() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let r = sig.role("r");
+        let f = fterm(1);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(c, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f))]),
+            OntologyClause::new(
+                vec![cx(c, zvar(1)), rl(r, X, zvar(1))],
+                vec![Lit::P(cx(d, X))],
+            ),
+        ];
+        let prepared = Engine::prepare(sig, clauses, 0);
+        assert!(prepared.ont.clauses_cand(&rl(r, X, f)).is_empty());
+        assert_eq!(
+            prepared.ont.role_target_concept_body.get(&r),
+            Some(&vec![(c, 2)])
+        );
+
+        let mut engine = Engine::from_prepared(&prepared);
+        engine.run_for(&[a]);
+        let supers = supers_of(&engine, "A");
+        assert!(
+            supers.contains(&"D".to_string()),
+            "guarded role lookup lost A ⊑ D: {supers:?}"
+        );
     }
 
     /// ABox + nominal unsat: C(o) asserted, B ⊑ {o}, B ⊓ owl-disjoint with C
