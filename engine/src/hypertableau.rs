@@ -3527,6 +3527,11 @@ struct QoSat<'a> {
     /// of scanning all nodes, the O(#nodes) cost that made QoSat diverge at the
     /// 73k-node scale (the `(None, Some(tn))` case in `match_body`).
     in_edges: Vec<Vec<(R, Node)>>,
+    /// Optional membership index for the adjacency lists. The vectors remain
+    /// authoritative for traversal; this only replaces the linear duplicate
+    /// scan in `add_edge`.
+    edge_seen: HashSet<(Node, R, Node)>,
+    edge_seen_on: bool,
     /// shared node for a concept literal (pos and neg both keyed).
     concept_node: HashMap<CLit, Node>,
     /// parked disjunctions: (node, clause_id); re-evaluated as labels grow.
@@ -3937,6 +3942,8 @@ struct QoSat<'a> {
     /// `nf4_buf` pattern), so the per-edge allocation churn collapses to one alloc.
     /// Result-identical — same elements, same firing order.
     edgefast: bool,
+    /// Deduplicate ordinary NF4 propagation conclusions across one drain wave.
+    prop_batch_on: bool,
     edge_buf: Vec<CLit>,
     to_fire_buf: Vec<usize>,
     /// KM_HT_QO_EDGEPROBE: gate for the QO work-volume counters (off ⇒ the hot-path
@@ -4668,6 +4675,8 @@ impl<'a> QoSat<'a> {
             label: Vec::new(),
             out_edges: Vec::new(),
             in_edges: Vec::new(),
+            edge_seen: HashSet::new(),
+            edge_seen_on: std::env::var_os("KM_HT_QO_EDGESET").is_some(),
             concept_node: HashMap::new(),
             pending: Vec::new(),
             pending_by_node: Vec::new(),
@@ -4761,6 +4770,7 @@ impl<'a> QoSat<'a> {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3_000_000usize),
             edgefast: std::env::var_os("KM_HT_QO_EDGEFAST").is_some(),
+            prop_batch_on: std::env::var_os("KM_HT_QO_PROP_BATCH").is_some(),
             edge_buf: Vec::new(),
             to_fire_buf: Vec::new(),
             edgeprobe: std::env::var_os("KM_HT_QO_EDGEPROBE").is_some(),
@@ -5082,7 +5092,11 @@ impl<'a> QoSat<'a> {
         if self.merged_into[s].is_some() || self.merged_into[t].is_some() {
             return; // never wire an edge to/from a dead (merged) node
         }
-        if self.out_edges[s]
+        if self.edge_seen_on {
+            if !self.edge_seen.insert((s, r, t)) {
+                return;
+            }
+        } else if self.out_edges[s]
             .iter()
             .any(|(rr, tt)| *rr == r && *tt == t)
         {
@@ -5104,6 +5118,9 @@ impl<'a> QoSat<'a> {
     /// filler that `t` was). No undo is recorded: `split_mode` runs only in the
     /// non-tracing global pass (the residue DFS keeps the old defer behaviour).
     fn remove_edge(&mut self, s: Node, r: R, t: Node) {
+        if self.edge_seen_on {
+            self.edge_seen.remove(&(s, r, t));
+        }
         self.out_edges[s].retain(|&(rr, tt)| !(rr == r && tt == t));
         self.in_edges[t].retain(|&(rr, ss)| !(rr == r && ss == s));
     }
@@ -5453,6 +5470,16 @@ impl<'a> QoSat<'a> {
     /// Drain all worklists once: literal-triggered clauses, new-node globals,
     /// edge-triggered role clauses, and harvest obligations.
     fn drain_work(&mut self) {
+        // KM_HT_QO_PROP_BATCH: collect ordinary NF4 backward-link conclusions by
+        // target node for this drain wave.  Large role hierarchies can present the
+        // same `(node, literal)` through thousands of edges; calling `add_lit` for
+        // every presentation dominates the precompute even though all but the
+        // first are no-ops.  Delaying these monotone writes until the end of the
+        // wave and applying their union once preserves the fixpoint.  It is enabled
+        // only with complete role re-firing, which guarantees clauses whose guard
+        // arrives after an edge are re-anchored on that edge.
+        let prop_batch_on = self.complete_roles && self.prop_batch_on && !self.tracing;
+        let mut prop_batch: HashMap<Node, HashSet<CLit>> = HashMap::new();
         while let Some((n, lit)) = self.lit_work.pop() {
             let d = QO_DRAIN.fetch_add(1, Ordering::Relaxed);
             if self.edgeprobe && d % 5_000 == 0 {
@@ -5567,7 +5594,13 @@ impl<'a> QoSat<'a> {
                         // KPSet: an NF4 backward link across an inverse back-edge
                         // (x --r--> n) is a containment check, never a write.
                         let via_inv = self.kpset && self.inv_edges.contains(&(x, r, n));
-                        self.kp_write(x, e, via_inv);
+                        if prop_batch_on && !via_inv {
+                            if !self.label[x].contains(&e) {
+                                prop_batch.entry(x).or_default().insert(e);
+                            }
+                        } else {
+                            self.kp_write(x, e, via_inv);
+                        }
                         if self.unsupported {
                             self.prop_rule.insert(lit, rules);
                             return;
@@ -5754,11 +5787,20 @@ impl<'a> QoSat<'a> {
                 if let Some(es) = self.prop.get(&(r, t)) {
                     buf.extend_from_slice(es);
                 }
-                for &e in &buf {
-                    self.kp_write(s, e, via_inv);
-                    if self.unsupported {
-                        self.edge_buf = buf;
-                        return;
+                if prop_batch_on && !via_inv {
+                    let target = prop_batch.entry(s).or_default();
+                    for &lit in &buf {
+                        if !self.label[s].contains(&lit) {
+                            target.insert(lit);
+                        }
+                    }
+                } else {
+                    for &e in &buf {
+                        self.kp_write(s, e, via_inv);
+                        if self.unsupported {
+                            self.edge_buf = buf;
+                            return;
+                        }
                     }
                 }
                 self.edge_buf = buf;
@@ -5767,10 +5809,19 @@ impl<'a> QoSat<'a> {
                 // KPSet: if this fresh edge is an inverse back-edge, the inherited
                 // backward links are containment checks at `s`, never writes.
                 let via_inv = self.kpset && self.inv_edges.contains(&(s, r, t));
-                for e in es {
-                    self.kp_write(s, e, via_inv);
-                    if self.unsupported {
-                        return;
+                if prop_batch_on && !via_inv {
+                    let target = prop_batch.entry(s).or_default();
+                    for lit in es {
+                        if !self.label[s].contains(&lit) {
+                            target.insert(lit);
+                        }
+                    }
+                } else {
+                    for e in es {
+                        self.kp_write(s, e, via_inv);
+                        if self.unsupported {
+                            return;
+                        }
                     }
                 }
             }
@@ -5911,6 +5962,19 @@ impl<'a> QoSat<'a> {
                         self.sat_elapsed(), el, s, r, t, dbg_propn, dbg_fpropn,
                         dbg_tofire, self.label[s].len(), self.label[t].len()
                     );
+                }
+            }
+        }
+        if prop_batch_on && !prop_batch.is_empty() {
+            // Stable node/literal order keeps diagnostic runs reproducible even
+            // though the union itself is hash-based.
+            let mut nodes: Vec<(Node, HashSet<CLit>)> = prop_batch.into_iter().collect();
+            nodes.sort_unstable_by_key(|(n, _)| *n);
+            for (n, lits) in nodes {
+                let mut lits: Vec<CLit> = lits.into_iter().collect();
+                lits.sort_unstable_by_key(|l| (l.c, l.neg));
+                for lit in lits {
+                    self.add_lit(n, lit);
                 }
             }
         }
@@ -6237,6 +6301,9 @@ impl<'a> QoSat<'a> {
                     self.label[n].remove(&lit);
                 }
                 QoUndo::Edge(s, r, t) => {
+                    if self.edge_seen_on {
+                        self.edge_seen.remove(&(s, r, t));
+                    }
                     if let Some(out) = self.out_edges.get_mut(s) {
                         out.retain(|(rr, tt)| !(*rr == r && *tt == t));
                     }
@@ -14955,6 +15022,51 @@ mod tests {
             "A2 must get E via prop broadcast"
         );
         assert!(!g.label_pos[nb].contains(&E));
+    }
+
+    #[test]
+    fn qosat_prop_batch_preserves_fixpoint() {
+        // The same conclusion reaches A through two role/filler paths. The batch
+        // path must union those presentations and still trigger the downstream
+        // E -> F implication exactly as the eager schedule does.
+        const R1: R = 1;
+        const E: C = 7;
+        const F: C = 8;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R1, false, D, X)]),
+            Clause::new(
+                vec![con(false, B, y), role(R0, X, y)],
+                vec![con(false, E, X)],
+            ),
+            Clause::new(
+                vec![con(false, D, y), role(R1, X, y)],
+                vec![con(false, E, X)],
+            ),
+            Clause::new(vec![con(false, E, X)], vec![con(false, F, X)]),
+        ];
+        let recs = mk_recs(&cls);
+        let queries = [A, B, D, E, F];
+
+        let mut eager = QoSat::new(&recs);
+        eager.complete_roles = true;
+        let ge = eager.saturate_global(&queries);
+
+        let mut batched = QoSat::new(&recs);
+        batched.complete_roles = true;
+        batched.prop_batch_on = true;
+        batched.edge_seen_on = true;
+        let gb = batched.saturate_global(&queries);
+
+        assert_eq!(gb.unsupported, ge.unsupported);
+        assert_eq!(gb.node_unsat, ge.node_unsat);
+        assert_eq!(gb.sufficient, ge.sufficient);
+        assert_eq!(gb.open_disj_per_node, ge.open_disj_per_node);
+        assert_eq!(gb.label_pos, ge.label_pos);
+        let na = batched.concept_node[&CLit::pos(A)];
+        assert!(gb.label_pos[na].contains(&E));
+        assert!(gb.label_pos[na].contains(&F));
     }
 
     #[test]

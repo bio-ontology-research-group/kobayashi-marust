@@ -1393,6 +1393,8 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_QO_FPROP",
     "KM_HT_QO_SAT",
     "KM_HT_QO_KPSET",
+    "KM_HT_QO_PROP_BATCH",
+    "KM_HT_QO_EDGESET",
     "KM_HT_QO_CARD",
     "KM_HT_QO_INVCHAIN",
     "KM_HT_QO_INVONEWAY",

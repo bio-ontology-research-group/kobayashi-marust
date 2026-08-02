@@ -230,3 +230,47 @@ and inverse-check-dedup variants as 1194 closures. The next QO implementation
 target must compress the complete propagation payload itself, for example by
 sharing role/filler consequence sets rather than issuing one `add_lit` attempt
 per edge and conclusion.
+
+## 8. Batched propagation and exact edge membership
+
+The QO precompute now has two result-preserving, opt-in data-path improvements:
+
+- `KM_HT_QO_PROP_BATCH=1` unions ordinary NF4 conclusions by target node during
+  one drain wave, then applies each distinct literal once in stable order. KPSet
+  inverse-edge containment checks remain eager.
+- `KM_HT_QO_EDGESET=1` adds an exact hash membership index for edges. The
+  existing adjacency vectors remain authoritative and retain their traversal
+  order; the index only replaces the linear duplicate scan in `add_edge`.
+
+The experimental direct role-inclusion shortcut was removed before integration.
+It was unnecessary for the speedup and introduced extra risk around KPSet's
+inverse-edge checks. `cargo check`, all 90 hypertableau tests, all 24 routing
+tests, and all 110 orchestration tests pass. The focused fixpoint test compares
+the eager implementation with both improvements active, including a downstream
+consequence triggered by a batched conclusion.
+
+IBEX job `49886242` compared control and optimized runs from the same native
+binary (`0f18bf3f640c9af7000633686064e56ebabbdf33552288aacddb25b5ad9673ba`)
+under the 240-second, 20-GiB production contract. Both tasks emitted exactly two
+result rows and a `DONE` marker.
+
+| ontology | control wall / peak | batched + indexed wall / peak | exact result |
+| --- | ---: | ---: | --- |
+| 7581 | 21.1071 s / 4,321.71 MiB | 20.2926 s / 4,334.55 MiB | 1,246,911 subsumptions, signature identical |
+| 15098 | 0.1645 s / 32.72 MiB | 0.1630 s / 32.41 MiB | 951 subsumptions, signature identical |
+
+On the forced 1194 cardinality-aware QO/KPSet input, the same two improvements
+let the deterministic precompute reach its fixpoint instead of timing out:
+
+- precompute: 185.627 seconds;
+- total wall: 192.56 seconds;
+- peak RSS: 4,011,316 KiB;
+- 80,557 nodes and about 21,019,012 stored edges;
+- 483,811 parked disjunctions remained;
+- all 70,231 queried concepts were affected by the unresolved residue.
+
+The route then deferred correctly with zero output. Cardinality checks recorded
+23,026,819 KPSet misses, 38,521 insufficient nodes, and 23,944 Eq-head defers.
+This is a substantial throughput improvement, but not a closure: automatic
+coverage remains 591/592. The next target is an exact bulk treatment of the
+cardinality and covering-disjunction residue after this now-bounded precompute.

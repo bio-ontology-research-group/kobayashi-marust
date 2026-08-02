@@ -9,6 +9,19 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Batch QO propagation and index exact edge membership (2026-08-02)
+
+The QO/KPSet specialist can now union repeated ordinary NF4 conclusions per
+target and drain wave, and use a hash index for exact edge membership while
+retaining the original adjacency vectors and KPSet inverse checks. Both options
+are enabled in the automatic QO arm. All 90 hypertableau, 24 routing, and 110
+orchestration tests pass. A same-binary IBEX gate preserved exact signatures on
+7581 and 15098; 7581 improved from 21.1071 to 20.2926 seconds. The optimized
+1194 precompute now reaches its deterministic fixpoint in 185.627 seconds and
+then correctly defers on the unresolved cardinality/disjunction residue with
+zero output. Coverage remains 591/592. Evidence is in
+[`results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/`](results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/README.md#8-batched-propagation-and-exact-edge-membership).
+
 ### Profile ORE 1194 backward-subsumption mutation scans (2026-08-02)
 
 At the final 600,000-iteration checkpoint, rarest-posting selection and exact

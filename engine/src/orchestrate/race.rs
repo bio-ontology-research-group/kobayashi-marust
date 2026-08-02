@@ -1735,6 +1735,12 @@ fn spawn_ht(
             ("KM_HT_QO_FPROP", "1"),
             ("KM_HT_QO_SAT", "1"),
             ("KM_HT_QO_KPSET", "1"),
+            // Preserve the same monotone QO closure while coalescing repeated
+            // NF4 writes per drain wave and indexing exact edge membership.
+            // These are throughput/data-structure changes only; the adjacency
+            // vectors and KPSet inverse containment checks remain authoritative.
+            ("KM_HT_QO_PROP_BATCH", "1"),
+            ("KM_HT_QO_EDGESET", "1"),
             // KM_HT_QO_CARD: a functional/≤n cardinality Eq-head otherwise bails the
             // whole pass `unsupported` at the first occurrence (apply_head:4474), so
             // any SHIF/SRIQ giant (9724: 674 eq-heads) never even completes the
