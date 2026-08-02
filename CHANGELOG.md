@@ -9,6 +9,20 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Reject unconditional active-clause redundancy tries (2026-08-02)
+
+Candidate `8121fec` passed the full release suite and exact randomized
+subsumption differentials, but failed the production gates. ORE 1194 still
+failed closed at both the automatic and 2-thread/225-second caps. Its apparent
+RSS reduction represented less progress: the instrumented trie build never
+reached the first 200,000-iteration context checkpoint. A 19-ontology sentinel
+array then regressed 15846 from a 197.85-second exact completion to timeout and
+8480 from a 19.90-second exact completion to a 190.79-second error. All 17
+completed sentinel signatures remained exact. The candidate is not integrated;
+forward-subset and backward-superset traversals are being gated separately.
+Evidence is in
+[`results/benchmarks/2026-08-02-1194-active-redundancy-trie/`](results/benchmarks/2026-08-02-1194-active-redundancy-trie/README.md).
+
 ### Profile exact active-clause redundancy on ORE 1194 (2026-08-02)
 
 An instrumentation-only source-bound IBEX run splits `add_clause` into exact
