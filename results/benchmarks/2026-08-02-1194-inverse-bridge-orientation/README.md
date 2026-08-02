@@ -193,3 +193,40 @@ but fact-by-fact closure of the BFO bridge still costs minutes. The next exact
 design needs predecessor-sensitive witness contexts, symbolic edge-local
 labels, or another representation that avoids asserting inverse consequences
 on shared generic filler nodes.
+
+## 7. Existing QoSat/KPSet predecessor-sensitive route
+
+The existing hypertableau QO specialist was tested directly on the retained
+cardinality-aware TInput (`/tmp/1194-card.tin.json`, 932,183 clauses before the
+worker's transitive closure and unfolding). Direct worker invocation was
+necessary because the automatic router gives 1194 to the cardinality candidate
+before the QO candidate. Every run used the production 240-second, 20-GiB gate
+and produced zero output.
+
+| configuration | last progress at timeout | result |
+| --- | --- | --- |
+| INVCOMPOSE + FPROP + SAT + KPSET | 1,265,838 composed clauses; 10M drain steps, 89,753 nodes | timeout |
+| no composition, SAT fillers + KPSET | 26M literal steps after a 22.8M-edge wave; 186,146 nodes | timeout |
+| no composition, shared fillers + KPSET | 13M-edge wave nearly drained, then 2.9M literal events and a new 0.75M-edge wave; 80,527 nodes | timeout |
+
+The shared-filler run is the least expensive of these routes, but it still does
+not reach the deterministic precompute fixpoint. `EDGEFAST` and `FASTIMPL` save
+only a few seconds. Yielding from the edge queue every 100,000 pops is a strict
+regression: processing the intervening literal wave regenerates edges faster
+than they drain, leaving 3.8M queued edges at the wall. The schedule prototype
+was rejected.
+
+An instrumented 90-second run attributed the remaining volume: by 86 seconds it
+had attempted about 330M `kp_write`/propagation operations, 280M `add_lit`
+operations, and only 10M full body matches. A sound prototype deferred pure
+inverse-NF4 containment checks symbolically to the fixpoint and passed eager-vs-
+symbolic inert/load-bearing inverse tests, but the 1194 trace remained nearly
+identical. The counter is therefore dominated by the broader propagation
+cross-product, not duplicate inverse-check insertion alone; that prototype was
+also rejected.
+
+These measurements rule out the current compose, separate-filler, queue-yield,
+and inverse-check-dedup variants as 1194 closures. The next QO implementation
+target must compress the complete propagation payload itself, for example by
+sharing role/filler consequence sets rather than issuing one `add_lit` attempt
+per edge and conclusion.
