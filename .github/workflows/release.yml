@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - .github/workflows/release.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish source release
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.2.1' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Verify version tag
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' engine/Cargo.toml | head -n1)
+          test "v${version}" = "$RELEASE_TAG"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG is already published"
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "KM ${RELEASE_TAG}: 591/592 automatic ORE coverage" \
+            --notes-file - <<'EOF'
+          KM's single-command automatic classifier completes 591 of 592 ORE
+          2015 ontologies under the 240-second, 20-GiB benchmark contract.
+
+          The result comprises 587 exact retained Konclude-signature matches
+          and four independently adjudicated results. ORE ontology 1194 is the
+          sole remaining input and fails closed without publishing a taxonomy.
+
+          Certified benchmark evidence, route details, special-case handling,
+          and the scope of the separate Lean development are documented in the
+          tagged README, changelog, and benchmark artifacts.
+          EOF
