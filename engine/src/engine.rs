@@ -719,6 +719,371 @@ fn unify(sigma: &mut CentralSubst, body: &Pred, head: &Pred) -> bool {
     }
 }
 
+// ------------------- Hyper join: exact candidate narrowing -------------------
+//
+// Qualified at-most cardinality clauses
+//   `G(x) ∧ R(x,y1) ∧ C(y1) ∧ … ∧ R(x,yk) ∧ C(yk) → ⋁_{i<j} yi ≈ yj`
+// are the worst shape for the generic Hyper join.  Each body position gets its
+// own candidate posting — every maximal `C(·)` head for the fillers, every
+// maximal `R(x,·)` head for the edges — and those postings are built
+// INDEPENDENTLY: the filler position does not know which terms actually carry
+// an R-edge, and the edge position does not know which targets actually carry
+// C.  The backtracking join then binds `y1 … yk` from the (wide) concept
+// postings before it ever consults an edge position, so the enumeration is
+// `|C-postings|^k` even though only the R-successors that are C can appear in
+// any resolvent.  Measured on ORE 1194: raw per-firing candidate-width products
+// of 1M-12M, hundreds of firings during post-Pred context saturation.
+//
+// Two exact narrowings fix that, both of which preserve the resolvent multiset
+// AND its enumeration order (see `reduce_hyper_candidates` and the determined
+// fast path in `hyper_join`):
+//
+//   1. a *semijoin reduction* (relational arc consistency) over the candidate
+//      lists: a candidate that binds a shared body variable to a term no other
+//      position mentioning that variable can supply cannot occur in ANY
+//      unifiable combination, so it is dropped before the join.  For the
+//      cardinality shape this intersects the R-target postings with the
+//      C-filler postings and leaves exactly the witnesses of `∃R.C`;
+//   2. an *indexed lookup* at join positions whose body atom is already fully
+//      determined by the bindings made so far, replacing the linear rescan of
+//      the whole posting with a hash probe for the one instantiated predicate.
+//
+// Neither changes the calculus: the derived resolvents, the literal ordering,
+// redundancy and the Nom/ground special cases are untouched, so no Lean
+// re-certification is needed (this is candidate enumeration, not derivation).
+
+/// Cap on semijoin-reduction rounds.  Each round strictly shrinks some
+/// candidate list, so the loop terminates on its own; the cap only bounds the
+/// worst-case rescan cost of a pathological clause.  Stopping early leaves
+/// *more* candidates, never fewer, so the join result is unaffected.
+const HYPER_REDUCE_MAX_ROUNDS: usize = 8;
+
+/// Raw Cartesian width product below which the reduction is skipped: the pass
+/// is linear in the total posting length, which is not worth paying for the
+/// two- and three-candidate joins that dominate saturation.  Purely a cost
+/// gate — running or skipping it yields the identical resolvent sequence.
+const HYPER_REDUCE_MIN_PRODUCT: u128 = 1 << 10;
+
+/// Candidate-list length from which a fully determined body position builds a
+/// hash index instead of scanning the list for the instantiated predicate.
+const HYPER_DETERMINED_INDEX_MIN: usize = 16;
+
+/// `KM_NO_HYPER_NARROW`: restore the pre-patch generic Hyper join (no semijoin
+/// reduction, no determined-position index).  Both narrowings are exact, so
+/// this exists only as an A/B kill switch for corpus measurements.
+fn hyper_narrow_default() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_HYPER_NARROW").is_none())
+}
+
+thread_local! {
+    /// Per-thread narrowing state, seeded from the environment on first use.
+    /// Thread-local (like `BRANCH_ORDERED`) so the differential tests can flip
+    /// it around a single `hyper` call without an env race between tests.
+    static HYPER_NARROW: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+#[inline]
+fn hyper_narrow() -> bool {
+    HYPER_NARROW.with(|flag| match flag.get() {
+        Some(on) => on,
+        None => {
+            let on = hyper_narrow_default();
+            flag.set(Some(on));
+            on
+        }
+    })
+}
+
+/// Test hook for the on/off differential of the narrowing (see `hyper_narrow`).
+#[cfg(test)]
+fn set_hyper_narrow(on: bool) {
+    HYPER_NARROW.with(|flag| flag.set(Some(on)));
+}
+
+/// The image `unify` would force on `term`, or `None` when `term` is still a
+/// free join key (`unify` would bind it to whatever the candidate supplies).
+///
+/// This mirrors `CentralSubst::add` exactly, which is what the join tests:
+/// the central variable is keyed under `X` and, outside the ground context,
+/// is pinned to `X` even before any premise binds it; every other body term
+/// (neighbour variable, individual, function symbol) is its own key and is
+/// determined only once some premise has bound it.  Deliberately NOT
+/// `sigma.apply`, which resolves an unbound `f(x)` to `f(o)` under a grounded
+/// central — `add` does not, and the join follows `add`.
+#[inline]
+fn hyper_bound_image(term: Term, sigma: &CentralSubst) -> Option<Term> {
+    if is_central(term) {
+        return match sigma.get(X) {
+            Some(image) => Some(image),
+            // Non-ground contexts: `add(X, o)` accepts only `o == X`.
+            None => (!sigma.allow_ground).then_some(X),
+        };
+    }
+    sigma.get(term)
+}
+
+/// The single predicate a body atom can still match, when `sigma` already
+/// determines every one of its terms.  `unify(sigma, body, p)` then succeeds
+/// exactly for `p == hyper_determined_instance(body, sigma).unwrap()`, and
+/// binds nothing new (both directions follow from `hyper_bound_image` mirroring
+/// `CentralSubst::add`).  `None` when some term is still a free join key.
+#[inline]
+fn hyper_determined_instance(body: &Pred, sigma: &CentralSubst) -> Option<Pred> {
+    Some(match *body {
+        Pred::Concept { iri, t } => Pred::Concept {
+            iri,
+            t: hyper_bound_image(t, sigma)?,
+        },
+        Pred::Role { iri, s, t } => Pred::Role {
+            iri,
+            s: hyper_bound_image(s, sigma)?,
+            t: hyper_bound_image(t, sigma)?,
+        },
+    })
+}
+
+/// The term `matched` forces on join key `key`, or `None` if this body atom
+/// does not constrain that key.  A body atom mentioning the key twice
+/// (`R(y,y)`) can only have been matched by a candidate that agrees on both
+/// positions, so returning the first is exact.
+#[inline]
+fn hyper_induced_value(body: &Pred, matched: &Pred, key: Term) -> Option<Term> {
+    match (body, matched) {
+        (Pred::Concept { t, .. }, Pred::Concept { t: value, .. }) => (*t == key).then_some(*value),
+        (
+            Pred::Role { s, t, .. },
+            Pred::Role {
+                s: source,
+                t: target,
+                ..
+            },
+        ) => {
+            if *s == key {
+                Some(*source)
+            } else if *t == key {
+                Some(*target)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Exact semijoin reduction ("witness intersection") of Hyper's per-position
+/// candidate lists.  Returns `false` when a position is emptied, i.e. the
+/// clause provably has no resolvent at all for this side premise.
+///
+/// For every body term still free after the side unification, the candidates at
+/// each position mentioning it induce a *domain* of possible images.  A
+/// complete assignment must pick one image per key, consistent across every
+/// position, so any candidate whose induced image lies outside the intersection
+/// of those domains is in no unifiable combination and cannot contribute a
+/// resolvent.  Dropping it is therefore result-preserving, not an
+/// approximation; the removals are iterated because a removal can shrink a
+/// domain and expose further dead candidates.
+///
+/// The lists are filtered in place and stay SUBSEQUENCES of the originals.
+/// That, plus the caller keeping the position order keyed on the *raw* widths,
+/// is what makes the narrowed join emit exactly the generic join's resolvents
+/// in exactly the generic join's order (a dropped candidate contributes no
+/// leaf, so it contributes nothing to the sequence either).
+///
+/// On the qualified at-most cardinality shape this is precisely the direct
+/// enumeration of `(role target, filler concept)` witnesses: the filler
+/// position keeps only terms carrying an R-edge from the (already bound)
+/// central source, and the edge position keeps only edges whose target carries
+/// the filler concept.
+fn reduce_hyper_candidates(
+    oc: &OntologyClause,
+    candidates: &mut [Vec<(usize, Pred)>],
+    sigma: &CentralSubst,
+) -> bool {
+    debug_assert_eq!(candidates.len(), oc.body.len());
+    // Free join keys, with the body positions that constrain each.
+    let mut keys: SmallVec<[Term; 4]> = SmallVec::new();
+    let mut key_positions: SmallVec<[SmallVec<[usize; 4]>; 4]> = SmallVec::new();
+    for (position, atom) in oc.body.iter().enumerate() {
+        let terms: [Option<Term>; 2] = match *atom {
+            Pred::Concept { t, .. } => [Some(t), None],
+            Pred::Role { s, t, .. } => [Some(s), Some(t)],
+        };
+        for term in terms.into_iter().flatten() {
+            // Terms the side premise already pinned need no cross-position
+            // intersection: every candidate list was built by unifying against
+            // that same substitution, so all of them already agree there.
+            if hyper_bound_image(term, sigma).is_some() {
+                continue;
+            }
+            match keys.iter().position(|&key| key == term) {
+                Some(known) => {
+                    if !key_positions[known].contains(&position) {
+                        key_positions[known].push(position);
+                    }
+                }
+                None => {
+                    keys.push(term);
+                    let mut positions: SmallVec<[usize; 4]> = SmallVec::new();
+                    positions.push(position);
+                    key_positions.push(positions);
+                }
+            }
+        }
+    }
+    // A key confined to one position carries no cross-position information.
+    if !key_positions.iter().any(|positions| positions.len() >= 2) {
+        return true;
+    }
+    let mut live: SmallVec<[Vec<bool>; 8]> = candidates
+        .iter()
+        .map(|list| vec![true; list.len()])
+        .collect();
+    let mut counts: SmallVec<[usize; 8]> = candidates.iter().map(Vec::len).collect();
+    let mut allowed: Vec<Term> = Vec::new();
+    let mut domain: Vec<Term> = Vec::new();
+    let mut narrowed = false;
+    for _round in 0..HYPER_REDUCE_MAX_ROUNDS {
+        let mut changed = false;
+        for (key_index, positions) in key_positions.iter().enumerate() {
+            if positions.len() < 2 {
+                continue;
+            }
+            let key = keys[key_index];
+            allowed.clear();
+            for (slot, &position) in positions.iter().enumerate() {
+                domain.clear();
+                for (entry, &(_, matched)) in candidates[position].iter().enumerate() {
+                    if !live[position][entry] {
+                        continue;
+                    }
+                    if let Some(value) = hyper_induced_value(&oc.body[position], &matched, key) {
+                        domain.push(value);
+                    }
+                }
+                domain.sort_unstable();
+                domain.dedup();
+                if slot == 0 {
+                    allowed.clone_from(&domain);
+                } else {
+                    // `allowed` stays sorted: `retain` preserves order.
+                    allowed.retain(|value| domain.binary_search(value).is_ok());
+                }
+                if allowed.is_empty() {
+                    break;
+                }
+            }
+            for &position in positions.iter() {
+                for (entry, &(_, matched)) in candidates[position].iter().enumerate() {
+                    if !live[position][entry] {
+                        continue;
+                    }
+                    if let Some(value) = hyper_induced_value(&oc.body[position], &matched, key) {
+                        if allowed.binary_search(&value).is_err() {
+                            live[position][entry] = false;
+                            counts[position] -= 1;
+                            changed = true;
+                        }
+                    }
+                }
+                if counts[position] == 0 {
+                    return false;
+                }
+            }
+        }
+        narrowed |= changed;
+        if !changed {
+            break;
+        }
+    }
+    if narrowed {
+        for (position, list) in candidates.iter_mut().enumerate() {
+            if counts[position] == list.len() {
+                continue;
+            }
+            let keep = &live[position];
+            let mut entry = 0usize;
+            list.retain(|_| {
+                let live_entry = keep[entry];
+                entry += 1;
+                live_entry
+            });
+        }
+    }
+    true
+}
+
+/// Lazily built per-position index from an instantiated predicate to the
+/// entries of that position's candidate list carrying it, used by the join at
+/// body positions whose terms `sigma` already determines.  Entry ids stay in
+/// candidate-list order, so probing the index visits exactly the candidates a
+/// linear rescan would accept, in the same order.
+struct DeterminedIndex {
+    enabled: bool,
+    /// Per body position: how many times it has been probed, and its index once
+    /// built.  Empty until a long list is probed (see `hits`).
+    per_position: Vec<(u32, Option<HashMap<Pred, SmallVec<[u32; 2]>>>)>,
+}
+
+impl DeterminedIndex {
+    /// Allocation-free when narrowing is off or no position is ever probed.
+    fn new(enabled: bool) -> DeterminedIndex {
+        DeterminedIndex {
+            enabled,
+            per_position: Vec::new(),
+        }
+    }
+
+    /// Collect the entries of `candidates[position]` matching `wanted`.
+    ///
+    /// Short lists are scanned: an equality test per entry is cheaper than
+    /// hashing, and still strictly less work than the generic join's `unify`
+    /// per entry.  A long list is indexed, but only from its SECOND probe on —
+    /// a position probed once (typically one bound from the exact-predicate
+    /// posting, where every entry carries the same predicate anyway) would pay
+    /// a full hash build to answer a single question.  Both branches return the
+    /// same entries in the same order, so this is a pure cost choice.
+    fn hits(
+        &mut self,
+        position: usize,
+        candidates: &[Vec<(usize, Pred)>],
+        wanted: &Pred,
+        out: &mut SmallVec<[u32; 4]>,
+    ) {
+        let list = &candidates[position];
+        let scan = |out: &mut SmallVec<[u32; 4]>| {
+            for (entry, &(_, matched)) in list.iter().enumerate() {
+                if matched == *wanted {
+                    out.push(entry as u32);
+                }
+            }
+        };
+        if list.len() < HYPER_DETERMINED_INDEX_MIN {
+            scan(out);
+            return;
+        }
+        if self.per_position.len() < candidates.len() {
+            self.per_position.resize_with(candidates.len(), || (0, None));
+        }
+        let slot = &mut self.per_position[position];
+        slot.0 = slot.0.saturating_add(1);
+        if slot.0 < 2 && slot.1.is_none() {
+            scan(out);
+            return;
+        }
+        let index = slot.1.get_or_insert_with(|| {
+            let mut index: HashMap<Pred, SmallVec<[u32; 2]>> = HashMap::with_capacity(list.len());
+            for (entry, &(_, matched)) in list.iter().enumerate() {
+                index.entry(matched).or_default().push(entry as u32);
+            }
+            index
+        });
+        if let Some(entries) = index.get(wanted) {
+            out.extend_from_slice(entries);
+        }
+    }
+}
+
 // -------------------------------- ontology ---------------------------------
 
 #[derive(Clone, Default)]
@@ -3257,6 +3622,9 @@ impl Engine {
         } else {
             self.ont.clauses_cand(&max)
         };
+        // Read the narrowing state once per Hyper call, not per candidate
+        // clause (a thread-local probe in the hottest loop of saturation).
+        let narrow = hyper_narrow();
         for &oci in ontology_candidates {
             let oc = &self.ont.clauses[oci];
             let n = oc.body.len();
@@ -3361,15 +3729,34 @@ impl Engine {
             if !ok {
                 continue;
             }
+            let widths: SmallVec<[usize; 8]> = candidates.iter().map(Vec::len).collect();
+            let product = widths
+                .iter()
+                .fold(1u128, |acc, &width| acc.saturating_mul(width as u128));
+            // Exact semijoin reduction of the independently built postings (see
+            // the module block above `reduce_hyper_candidates`).  Gated on the
+            // raw product only as a cost heuristic: the narrowed lists are
+            // subsequences of the raw ones and every dropped candidate is in no
+            // unifiable combination, so running or skipping this changes
+            // nothing about what the join emits.
+            if narrow
+                && n >= 2
+                && product >= HYPER_REDUCE_MIN_PRODUCT
+                && !reduce_hyper_candidates(oc, &mut candidates, &sigma)
+            {
+                continue;
+            }
             if let Some(threshold) = hyper_product_trace_threshold() {
-                let widths: Vec<usize> = candidates.iter().map(Vec::len).collect();
-                let product = widths
-                    .iter()
-                    .fold(1u128, |acc, &width| acc.saturating_mul(width as u128));
                 if product >= threshold {
+                    let narrowed_widths: SmallVec<[usize; 8]> =
+                        candidates.iter().map(Vec::len).collect();
+                    let narrowed_product = narrowed_widths
+                        .iter()
+                        .fold(1u128, |acc, &width| acc.saturating_mul(width as u128));
                     eprintln!(
                         "KM_HYPER_PRODUCT ctx={} oci={} max={:?} side=({},{}) \
-                         widths={:?} product={} body={:?} head={:?}",
+                         widths={:?} product={} narrowed_widths={:?} narrowed_product={} \
+                         body={:?} head={:?}",
                         id,
                         oci,
                         max,
@@ -3377,6 +3764,8 @@ impl Engine {
                         side.head.len(),
                         widths,
                         product,
+                        narrowed_widths,
+                        narrowed_product,
                         oc.body,
                         oc.head,
                     );
@@ -3394,9 +3783,18 @@ impl Engine {
             // is the difference between `(#successors)^k` and the number of
             // genuinely unifiable tuples.  Positions are visited fewest-candidates
             // first so the most constraining atoms bind earliest.
+            //
+            // The order is keyed on the RAW widths, deliberately not on the
+            // narrowed ones: with the position order fixed and every narrowed
+            // list a subsequence of its raw list, the join descends through the
+            // identical leaves in the identical sequence as the generic join,
+            // so `out` is emitted element-for-element the same.  (Re-keying on
+            // the narrowed widths would only permute a join whose branching is
+            // already down to the genuine witnesses.)
             let mut order: Vec<usize> = (0..n).collect();
-            order.sort_by_key(|&i| candidates[i].len());
+            order.sort_by_key(|&i| widths[i]);
             let mut chosen = vec![0usize; n];
+            let mut determined = DeterminedIndex::new(narrow);
             // side-position variables are exempt from symmetric-group pruning
             let exempt: Vec<Term> = if oc.sym_groups.is_empty() {
                 Vec::new()
@@ -3417,6 +3815,7 @@ impl Engine {
                 &exempt,
                 &mut chosen,
                 root,
+                &mut determined,
                 &mut out,
             );
         }
@@ -3439,6 +3838,7 @@ impl Engine {
         exempt: &[Term],
         chosen: &mut Vec<usize>,
         root: bool,
+        determined: &mut DeterminedIndex,
         out: &mut Vec<ContextClause>,
     ) {
         if depth == order.len() {
@@ -3450,6 +3850,51 @@ impl Engine {
             return;
         }
         let pos = order[depth];
+        // Fast path: the premises bound so far already determine every term of
+        // this body atom, so `unify` can succeed only on the one instantiated
+        // predicate and binds nothing new.  Look those candidates up instead of
+        // rescanning (and re-unifying) the whole posting — the difference
+        // between O(posting) and O(matches) per visit of this level, which on
+        // the cardinality shape is paid once per partial filler assignment.
+        //
+        // Exactly the candidates the generic scan accepts, in the same order
+        // (`DeterminedIndex::hits` keeps candidate-list order), and the shared
+        // substitution is extended by the same single `unify` call — done once
+        // here because every hit carries the identical predicate — so both the
+        // resolvents and their sequence are unchanged.
+        if determined.enabled {
+            if let Some(wanted) = hyper_determined_instance(&oc.body[pos], sigma) {
+                let mut hits: SmallVec<[u32; 4]> = SmallVec::new();
+                determined.hits(pos, candidates, &wanted, &mut hits);
+                if hits.is_empty() {
+                    return;
+                }
+                let mark = sigma.mark();
+                if unify(sigma, &oc.body[pos], &wanted)
+                    && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, sigma))
+                {
+                    for &j in &hits {
+                        chosen[pos] = j as usize;
+                        self.hyper_join(
+                            id,
+                            side,
+                            oc,
+                            candidates,
+                            order,
+                            depth + 1,
+                            sigma,
+                            exempt,
+                            chosen,
+                            root,
+                            determined,
+                            out,
+                        );
+                    }
+                }
+                sigma.rollback(mark);
+                return;
+            }
+        }
         for (j, &(_ci, p)) in candidates[pos].iter().enumerate() {
             // Extend the shared substitution in place and undo it on backtrack
             // via the append-only trail, instead of cloning `sigma` per
@@ -3472,6 +3917,7 @@ impl Engine {
                     exempt,
                     chosen,
                     root,
+                    determined,
                     out,
                 );
             }
@@ -6493,6 +6939,525 @@ mod tests {
             // And the trail must leave the substitution empty again at the top.
             assert_eq!(sigma.mark(), 0, "trail leaked bindings at depth 0");
         }
+    }
+
+    // ---------------- Hyper join narrowing: differential harness -------------
+    //
+    // The narrowing (semijoin reduction + determined-position index) claims to
+    // emit the generic join's resolvents, in the generic join's order.  These
+    // tests hold it to that claim against a FROZEN copy of the pre-patch join.
+
+    /// The pre-patch generic Hyper join, verbatim: scan every candidate at
+    /// every level, `unify`, prune by symmetric groups, build at the leaves.
+    /// Kept here as the differential oracle — it must never be "fixed" to
+    /// track `hyper_join`, or the differential is worthless.
+    #[allow(clippy::too_many_arguments)]
+    fn generic_hyper_join(
+        engine: &Engine,
+        id: usize,
+        side: &ContextClause,
+        oc: &OntologyClause,
+        candidates: &[Vec<(usize, Pred)>],
+        order: &[usize],
+        depth: usize,
+        sigma: &mut CentralSubst,
+        exempt: &[Term],
+        chosen: &mut Vec<usize>,
+        root: bool,
+        out: &mut Vec<ContextClause>,
+    ) {
+        if depth == order.len() {
+            if let Some(c) =
+                engine.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root)
+            {
+                out.push(c);
+            }
+            return;
+        }
+        let pos = order[depth];
+        for (j, &(_ci, p)) in candidates[pos].iter().enumerate() {
+            let mark = sigma.mark();
+            if unify(sigma, &oc.body[pos], &p)
+                && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, sigma))
+            {
+                chosen[pos] = j;
+                generic_hyper_join(
+                    engine,
+                    id,
+                    side,
+                    oc,
+                    candidates,
+                    order,
+                    depth + 1,
+                    sigma,
+                    exempt,
+                    chosen,
+                    root,
+                    out,
+                );
+            }
+            sigma.rollback(mark);
+        }
+    }
+
+    /// Full content of a resolvent sequence: body, head AND the cached maximal
+    /// -literal mask, in emission order.  Comparing this compares both what the
+    /// join derived and the order it derived it in.
+    fn resolvent_trace(clauses: &[ContextClause]) -> Vec<(Vec<Pred>, Vec<Lit>, u64)> {
+        clauses
+            .iter()
+            .map(|c| (c.body.clone(), c.head.clone(), c.max_head_mask))
+            .collect()
+    }
+
+    /// Run one join over the same hand-built candidate lists both ways,
+    /// reproducing `hyper_inner`'s surroundings exactly (position order keyed
+    /// on the raw widths, side-position variables exempt from symmetric-group
+    /// pruning).  Returns `(generic, narrowed, narrowed widths)`.
+    fn join_both_ways(
+        engine: &Engine,
+        side: &ContextClause,
+        oc: &OntologyClause,
+        side_pos: usize,
+        raw: &[Vec<(usize, Pred)>],
+        sigma0: &CentralSubst,
+        root: bool,
+    ) -> (Vec<ContextClause>, Vec<ContextClause>, Vec<usize>) {
+        let n = oc.body.len();
+        let widths: Vec<usize> = raw.iter().map(Vec::len).collect();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| widths[i]);
+        let exempt: Vec<Term> = if oc.sym_groups.is_empty() {
+            Vec::new()
+        } else {
+            match oc.body[side_pos] {
+                Pred::Concept { t, .. } => vec![t],
+                Pred::Role { s, t, .. } => vec![s, t],
+            }
+        };
+        let mut generic = Vec::new();
+        let mut sigma = sigma0.clone();
+        let mut chosen = vec![0usize; n];
+        generic_hyper_join(
+            engine,
+            0,
+            side,
+            oc,
+            raw,
+            &order,
+            0,
+            &mut sigma,
+            &exempt,
+            &mut chosen,
+            root,
+            &mut generic,
+        );
+        assert_eq!(sigma.mark(), sigma0.mark(), "generic join leaked bindings");
+
+        let mut narrowed: Vec<Vec<(usize, Pred)>> = raw.to_vec();
+        let mut narrow_out = Vec::new();
+        if reduce_hyper_candidates(oc, &mut narrowed, sigma0) {
+            let mut sigma = sigma0.clone();
+            let mut chosen = vec![0usize; n];
+            let mut determined = DeterminedIndex::new(true);
+            engine.hyper_join(
+                0,
+                side,
+                oc,
+                &narrowed,
+                &order,
+                0,
+                &mut sigma,
+                &exempt,
+                &mut chosen,
+                root,
+                &mut determined,
+                &mut narrow_out,
+            );
+            assert_eq!(
+                sigma.mark(),
+                sigma0.mark(),
+                "narrowed join leaked bindings"
+            );
+        }
+        let narrowed_widths = narrowed.iter().map(Vec::len).collect();
+        (generic, narrow_out, narrowed_widths)
+    }
+
+    /// Deterministic LCG — the property test must be reproducible, and the
+    /// engine has no `rand` dependency.
+    struct JoinRng(u64);
+    impl JoinRng {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            self.0 >> 33
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// A random candidate predicate of the same shape and iri as `body` — the
+    /// only ones a head index can ever offer Hyper for that body position.
+    fn random_match(rng: &mut JoinRng, body: &Pred, terms: &[Term]) -> Pred {
+        match *body {
+            Pred::Concept { iri, .. } => Pred::Concept {
+                iri,
+                t: terms[rng.below(terms.len())],
+            },
+            Pred::Role { iri, .. } => Pred::Role {
+                iri,
+                s: terms[rng.below(terms.len())],
+                t: terms[rng.below(terms.len())],
+            },
+        }
+    }
+
+    /// Seed a non-root context with unit clauses `-> p` (the worked-off facts
+    /// Hyper's candidate indexes are built from) and return `(engine, ctx id)`.
+    fn engine_with_units(
+        sig: Sig,
+        ont: Vec<OntologyClause>,
+        units: Vec<Pred>,
+    ) -> (Engine, usize) {
+        let mut e = Engine::new(sig, ont, 0);
+        let id = e.contexts.len();
+        let mut ctx = Context::new(id, vec![], false, None);
+        for p in units {
+            let clause = ContextClause::new(vec![], vec![Lit::P(p)], false, &e.sig);
+            let cid = e.cc_arena[0].len() as u32;
+            e.cc_arena[0].push(clause);
+            ctx.worked_off.push(cid);
+            ctx.index_clause(&e.cc_arena[0], cid);
+        }
+        e.contexts.push(ctx);
+        (e, id)
+    }
+
+    /// The ORE 1194 shape, end to end through `hyper`: a qualified at-most
+    /// cardinality clause `G(x) ∧ ⋀ r(x,yi) ∧ C(yi) → ⋁ yi ≈ yj` fired against
+    /// a context holding genuine `∃r.C` witnesses PLUS the two kinds of decoy
+    /// that make the independently built postings wide — fillers with no
+    /// r-edge, and r-edges whose target is not a filler.
+    ///
+    /// The narrowed join must return the generic join's resolvent sequence
+    /// verbatim, and the resolvents must be exactly the 3-element subsets of
+    /// the genuine witnesses.
+    #[test]
+    fn hyper_narrowing_matches_generic_join_on_qualified_at_most() {
+        let mut sig = Sig::default();
+        let g = sig.concept("G");
+        let c = sig.concept("C");
+        let decoy = sig.concept("Decoy");
+        let r = sig.role("r");
+        let (z1, z2, z3) = (zvar(1), zvar(2), zvar(3));
+        let oc = OntologyClause::new(
+            vec![
+                cx(g, X),
+                rl(r, X, z1),
+                cx(c, z1),
+                rl(r, X, z2),
+                cx(c, z2),
+                rl(r, X, z3),
+                cx(c, z3),
+            ],
+            vec![Lit::eq(z1, z2), Lit::eq(z1, z3), Lit::eq(z2, z3)],
+        );
+        const WITNESSES: i32 = 5;
+        const DECOYS: i32 = 6;
+        let mut units = Vec::new();
+        for i in 1..=WITNESSES {
+            units.push(rl(r, X, fterm(i)));
+            units.push(cx(c, fterm(i)));
+        }
+        for i in 1..=DECOYS {
+            // filler with no edge, edge with no filler, and unrelated noise
+            units.push(cx(c, fterm(WITNESSES + i)));
+            units.push(rl(r, X, fterm(100 + i)));
+            units.push(cx(decoy, fterm(WITNESSES + i)));
+        }
+        let (e, id) = engine_with_units(sig, vec![oc], units);
+        let side = ContextClause::new(vec![], vec![Lit::P(cx(g, X))], false, &e.sig);
+
+        set_hyper_narrow(false);
+        let generic = e.hyper(id, &side, cx(g, X), false);
+        set_hyper_narrow(true);
+        let narrowed = e.hyper(id, &side, cx(g, X), false);
+        assert_eq!(
+            resolvent_trace(&generic),
+            resolvent_trace(&narrowed),
+            "narrowed Hyper join diverged from the generic join"
+        );
+
+        // Exactly the 3-subsets of the 5 genuine witnesses, each once (the
+        // symmetric group keeps only the term-sorted assignment).
+        let expected: Vec<Vec<Lit>> = {
+            let mut out = Vec::new();
+            for a in 1..=WITNESSES {
+                for b in (a + 1)..=WITNESSES {
+                    for d in (b + 1)..=WITNESSES {
+                        let mut head = vec![
+                            Lit::eq(fterm(a), fterm(b)),
+                            Lit::eq(fterm(a), fterm(d)),
+                            Lit::eq(fterm(b), fterm(d)),
+                        ];
+                        head.sort();
+                        out.push(head);
+                    }
+                }
+            }
+            out.sort();
+            out
+        };
+        let mut got: Vec<Vec<Lit>> = narrowed.iter().map(|res| res.head.clone()).collect();
+        got.sort();
+        assert!(
+            narrowed.iter().all(|res| res.body.is_empty()),
+            "unit premises must give body-free resolvents: {narrowed:?}"
+        );
+        assert_eq!(got, expected, "wrong witness combinations");
+    }
+
+    /// The reduction must actually narrow the cardinality shape: each filler
+    /// position keeps only the terms that carry an r-edge, and each edge
+    /// position only the edges whose target carries the filler concept.  Guards
+    /// against a refactor that silently turns the pass into a no-op (which the
+    /// differential tests alone would happily accept).
+    #[test]
+    fn reduce_hyper_candidates_keeps_exactly_the_witnesses() {
+        let mut sig = Sig::default();
+        let c = sig.concept("C");
+        let r = sig.role("r");
+        let (z1, z2) = (zvar(1), zvar(2));
+        let oc = OntologyClause::new(
+            vec![rl(r, X, z1), cx(c, z1), rl(r, X, z2), cx(c, z2)],
+            vec![Lit::eq(z1, z2)],
+        );
+        // 2 witnesses, 3 filler-only terms, 4 edge-only targets.
+        let fillers: Vec<Pred> = (1..=5).map(|i| cx(c, fterm(i))).collect();
+        let edges: Vec<Pred> = (1..=2)
+            .chain(6..=9)
+            .map(|i| rl(r, X, fterm(i)))
+            .collect();
+        let mut candidates: Vec<Vec<(usize, Pred)>> = oc
+            .body
+            .iter()
+            .map(|atom| match atom {
+                Pred::Concept { .. } => fillers.iter().map(|&p| (usize::MAX, p)).collect(),
+                Pred::Role { .. } => edges.iter().map(|&p| (usize::MAX, p)).collect(),
+            })
+            .collect();
+        let mut sigma = CentralSubst::new(false);
+        assert!(sigma.add(X, X));
+        assert!(reduce_hyper_candidates(&oc, &mut candidates, &sigma));
+        for (position, atom) in oc.body.iter().enumerate() {
+            let kept: Vec<Pred> = candidates[position].iter().map(|&(_, p)| p).collect();
+            match atom {
+                Pred::Concept { .. } => assert_eq!(
+                    kept,
+                    vec![cx(c, fterm(1)), cx(c, fterm(2))],
+                    "filler position kept a non-witness"
+                ),
+                Pred::Role { .. } => assert_eq!(
+                    kept,
+                    vec![rl(r, X, fterm(1)), rl(r, X, fterm(2))],
+                    "edge position kept a non-witness"
+                ),
+            }
+        }
+    }
+
+    /// An empty intersection means the clause has no resolvent for this side
+    /// premise at all, which the reduction reports instead of letting the join
+    /// walk the product.
+    #[test]
+    fn reduce_hyper_candidates_detects_the_empty_join() {
+        let mut sig = Sig::default();
+        let c = sig.concept("C");
+        let r = sig.role("r");
+        let z1 = zvar(1);
+        let oc = OntologyClause::new(vec![rl(r, X, z1), cx(c, z1)], vec![Lit::P(cx(c, X))]);
+        let mut candidates: Vec<Vec<(usize, Pred)>> = oc
+            .body
+            .iter()
+            .map(|atom| match atom {
+                // disjoint term sets: no filler sits at the end of an edge
+                Pred::Concept { .. } => (1..=3).map(|i| (usize::MAX, cx(c, fterm(i)))).collect(),
+                Pred::Role { .. } => (4..=6).map(|i| (usize::MAX, rl(r, X, fterm(i)))).collect(),
+            })
+            .collect();
+        let mut sigma = CentralSubst::new(false);
+        assert!(sigma.add(X, X));
+        assert!(!reduce_hyper_candidates(&oc, &mut candidates, &sigma));
+    }
+
+    /// Property test: over randomly generated clause bodies, side conditions
+    /// and candidate postings — including the grounded-central (nominal)
+    /// substitution mode — the narrowed join must emit the frozen generic
+    /// join's resolvent sequence exactly.  This is the general exactness claim;
+    /// the cardinality test above is the shape that motivated it.
+    #[test]
+    fn hyper_narrowing_matches_generic_join_property() {
+        let mut sig = Sig::default();
+        for name in ["C0", "C1", "C2"] {
+            sig.concept(name);
+        }
+        for name in ["r0", "r1"] {
+            sig.role(name);
+        }
+        let e = Engine::new(sig, vec![], 0);
+        // Candidate terms: the central variable, successors, and individuals
+        // (the grounded-Hyper images).
+        let terms = [
+            X,
+            fterm(1),
+            fterm(2),
+            fterm(3),
+            ind_term(1),
+            ind_term(2),
+            comp_term(fterm(1), ind_term(1)),
+        ];
+        let vars = [X, zvar(1), zvar(2), zvar(3)];
+        let mut rng = JoinRng(0x5eed_1194);
+        let mut compared = 0usize;
+        let mut raw_entries = 0usize;
+        let mut narrowed_entries = 0usize;
+        let mut long_postings = 0usize;
+        for case in 0..400 {
+            let allow_ground = rng.below(2) == 1;
+            let mut body = Vec::new();
+            for _ in 0..(2 + rng.below(4)) {
+                if rng.below(3) == 0 {
+                    body.push(cx(rng.below(3) as Iri, vars[rng.below(vars.len())]));
+                } else {
+                    body.push(rl(
+                        rng.below(2) as Iri,
+                        vars[rng.below(vars.len())],
+                        vars[rng.below(vars.len())],
+                    ));
+                }
+            }
+            let oc = OntologyClause::new(
+                body,
+                vec![
+                    Lit::eq(zvar(1), zvar(2)),
+                    Lit::P(cx(2, X)),
+                    Lit::P(cx(1, zvar(3))),
+                ],
+            );
+            let n = oc.body.len();
+            let side_pos = rng.below(n);
+            let max = random_match(&mut rng, &oc.body[side_pos], &terms);
+            let mut sigma = CentralSubst::new(allow_ground);
+            if !unify(&mut sigma, &oc.body[side_pos], &max) {
+                continue;
+            }
+            // Candidate lists exactly as `hyper_inner` builds them: everything
+            // the head index offers that still unifies with the side binding.
+            let mut raw: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(n);
+            let mut usable = true;
+            for i in 0..n {
+                if i == side_pos {
+                    raw.push(vec![(usize::MAX, max)]);
+                    continue;
+                }
+                let mut list = Vec::new();
+                for _ in 0..(2 + rng.below(20)) {
+                    let p = random_match(&mut rng, &oc.body[i], &terms);
+                    let mark = sigma.mark();
+                    if unify(&mut sigma, &oc.body[i], &p) {
+                        list.push((usize::MAX, p));
+                    }
+                    sigma.rollback(mark);
+                }
+                if list.is_empty() {
+                    usable = false;
+                    break;
+                }
+                if list.len() >= HYPER_DETERMINED_INDEX_MIN {
+                    long_postings += 1;
+                }
+                raw.push(list);
+            }
+            if !usable {
+                continue;
+            }
+            let side = ContextClause::new(
+                vec![cx(0, X)],
+                vec![Lit::P(max), Lit::P(cx(1, X))],
+                false,
+                &e.sig,
+            );
+            let (generic, narrowed, widths) =
+                join_both_ways(&e, &side, &oc, side_pos, &raw, &sigma, false);
+            assert_eq!(
+                resolvent_trace(&generic),
+                resolvent_trace(&narrowed),
+                "case {case}: narrowed join diverged\n body={:?}\n side_pos={side_pos} \
+                 allow_ground={allow_ground}\n candidates={raw:?}",
+                oc.body,
+            );
+            compared += 1;
+            raw_entries += raw.iter().map(Vec::len).sum::<usize>();
+            narrowed_entries += widths.iter().sum::<usize>();
+        }
+        assert!(compared >= 100, "property test degenerated: {compared} cases");
+        assert!(
+            narrowed_entries < raw_entries,
+            "reduction never removed a candidate ({narrowed_entries} of {raw_entries})"
+        );
+        assert!(
+            long_postings > 0,
+            "no posting reached the hash-indexed determined-lookup threshold"
+        );
+    }
+
+    /// Pipeline-level differential: a full saturation over a qualified at-most
+    /// cardinality ontology must produce the identical classification with the
+    /// narrowing on and off.
+    #[test]
+    fn hyper_narrowing_preserves_saturation_output() {
+        let build = || {
+            let mut sig = Sig::default();
+            let a = sig.concept("A");
+            let c = sig.concept("C");
+            let d = sig.concept("D");
+            let r = sig.role("r");
+            let (z1, z2) = (zvar(1), zvar(2));
+            let clauses = vec![
+                // A ⊑ ∃r.C ⊓ ∃r.(C ⊓ D), over distinct skolems
+                OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, fterm(1)))]),
+                OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(c, fterm(1)))]),
+                OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, fterm(2)))]),
+                OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(c, fterm(2)))]),
+                OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(d, fterm(2)))]),
+                // A ⊑ ≤1 r.C
+                OntologyClause::new(
+                    vec![cx(a, X), rl(r, X, z1), cx(c, z1), rl(r, X, z2), cx(c, z2)],
+                    vec![Lit::eq(z1, z2)],
+                ),
+                // a consumer of the merged filler
+                OntologyClause::new(vec![rl(r, X, Y), cx(d, Y)], vec![Lit::P(cx(c, X))]),
+            ];
+            (sig, clauses, a)
+        };
+        let run = |narrow: bool| {
+            let (sig, clauses, a) = build();
+            set_hyper_narrow(narrow);
+            let mut e = Engine::new(sig, clauses, 0);
+            e.run_for(&[a]);
+            let result = (e.subsumptions(), e.inconsistent());
+            set_hyper_narrow(true);
+            result
+        };
+        assert_eq!(
+            run(false),
+            run(true),
+            "Hyper join narrowing changed the saturation output"
+        );
     }
 
     /// Back-subsumption maintains the `worked_off` head index incrementally
