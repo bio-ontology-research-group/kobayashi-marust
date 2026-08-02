@@ -9,6 +9,18 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Reject active body postings after exact split gates (2026-08-02)
+
+Separate forward-only and backward-only trie gates identify generic superset
+traversal as the earlier candidate's catastrophic path; subset traversal
+preserves completion but adds no 1194 benefit. A follow-up exact rarest-posting
+candidate indexes active body atoms so empty-head strengthening clauses need
+not scan every active clause. It passes the complete release suite and keeps
+8480 and 15846 exact, but 1194 remains unchanged at both automatic and extended
+caps while both sentinels slow slightly. It is not integrated. Evidence is in
+[`results/benchmarks/2026-08-02-1194-active-body-posting/`](results/benchmarks/2026-08-02-1194-active-body-posting/README.md)
+and the split-gate section of the active-trie report.
+
 ### Reject unconditional active-clause redundancy tries (2026-08-02)
 
 Candidate `8121fec` passed the full release suite and exact randomized

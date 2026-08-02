@@ -56,3 +56,22 @@ to 15.73 seconds and 16744 from 94.64 to 107.53 seconds. The candidate is
 therefore rejected and was not integrated. Follow-up candidates isolate trie
 subset and superset lookup separately; neither may land without restoring both
 sentinel completions and preserving exact signatures.
+
+## Split traversal gates
+
+Two detached variants passed the 41-test engine differential suite and were
+built from immutable archives:
+
+| variant | commit | archive SHA-256 | build job | binary SHA-256 |
+|---|---|---|---:|---|
+| forward subset trie only | `cfe9649` | `ec3e828b233354e2607d1094c471934e531a0407cf20f6d532d3f00137435411` | `49853558` | `c2f32075898d4857d34d8247784e67731c49d03f3891766885aacbca8213d9f0` |
+| backward superset trie only | `1d5ea48` | `812289efebaf96035188ac023fdaf9e37c9719be01bee2da0a83dbbcdbf391dd` | `49853560` | `da72dd5a068b9dc5ffa27cd499e8797f5c3f7c34c0e3a52796b5df43f608cf11` |
+
+Gate arrays `49853619` and `49853620` isolate the result. Forward-only retained
+exact 8480 and 15846 answers but slowed them from 19.90 to 21.32 seconds and
+197.85 to 208.70 seconds, respectively; automatic 1194 still hit its memory
+watchdog after 30.04 seconds. Backward-only reproduced the combined failure:
+8480 errored at 190.84 seconds, 15846 timed out at 240.03 seconds, and 1194
+failed at both automatic and extended caps. Generic superset traversal is the
+source of the catastrophic slowdown, while subset traversal adds no measured
+1194 benefit. Neither split variant is integrated.
