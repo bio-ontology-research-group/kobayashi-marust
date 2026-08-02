@@ -63,6 +63,239 @@ fn vec_posting_remove<K: std::hash::Hash + Eq>(
     }
 }
 
+// --------------------- shared per-clause index facets -----------------------
+
+/// One key a worked-off clause is filed under in the per-context head indexes.
+///
+/// `index_clause` / `unindex_clause` used to re-derive this key list from the
+/// clause itself, once per (context, clause) pair.  The clause arena is
+/// content-interned, so on replication-heavy ontologies the same arena entry is
+/// worked off in many contexts at once (ORE 1194: ≈189.5k distinct interned
+/// clauses filling ≈6.3M context slots, a ≈33x replication factor), and the
+/// derivation — two maximal-head-predicate walks, a maximal-head-literal walk,
+/// a body walk, each with quadratic small-vector dedup, and the whole thing
+/// again on every back-subsumption unindex — was paid once per *slot* rather
+/// than once per *clause*.
+///
+/// A clause's key list is a pure function of its (immutable) `body` / `head` /
+/// `max_head_mask`, so it is derived once when the clause is interned and
+/// shared by every context that files it.  Filing then walks one flat slice of
+/// `Copy` keys instead of re-traversing two heap vectors.
+///
+/// Driving both directions from the same list also makes the "`unindex_clause`
+/// mirrors `index_clause` key for key" invariant structural rather than a
+/// hand-maintained duplication of two ~90-line derivations: a key that is
+/// inserted is by construction the key that is removed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Facet {
+    /// distinct concept iri among the maximal head predicates
+    HeadConcept(Iri),
+    /// distinct role iri among the maximal head predicates
+    HeadRole(Iri),
+    /// one maximal head predicate (already distinct: `head` is sorted+deduped,
+    /// so two head literals never carry the same predicate)
+    MaxPred(Pred),
+    /// maximal head role whose source endpoint is an individual or `f(o)`
+    GroundRoleSource(Iri, Term),
+    /// maximal head role whose target endpoint is an individual or `f(o)`
+    GroundRoleTarget(Iri, Term),
+    /// distinct term at a rewrite position of a maximal head literal
+    RewriteTerm(Term),
+    /// distinct ground body atom (Join rule; empty without individuals)
+    GroundBody(Pred),
+    /// `x ≈ o` bridge premise of an empty-bodied clause, keyed by `o`
+    Bridge(Term),
+    /// the head carries a merge-form literal (r-Succ side condition)
+    Merge,
+}
+
+/// Per-clause propagation-pool eligibility, the other quantity the work-off and
+/// seeding paths re-derived per (context, clause).  The `seed_*` pair is
+/// `seed_worked_off`'s test, the `sat_*` triple the saturation loop's; the two
+/// Pred/Succ tests genuinely differ (seeding predates the nominal equality and
+/// root-succ forms), so both are recorded rather than merged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ClauseFlags {
+    seed_pred: bool,
+    seed_succ: bool,
+    sat_pred: bool,
+    sat_succ: bool,
+    sat_rsucc: bool,
+}
+
+/// Flat, append-only side table of `Facet` lists and `ClauseFlags`, one entry
+/// per `cc_arena` clause and always the same length — the same mirror
+/// discipline as `cc_sig`.  Keys live in one contiguous `Vec` addressed by a
+/// prefix-offset array rather than a `Vec` per clause, so filing a clause walks
+/// a cache-resident slice and the table costs no per-clause allocation.  Size
+/// is O(distinct clauses), not O(context slots): it is ≈33x smaller than
+/// anything stored per (context, clause) on the ontology it targets.
+#[derive(Clone)]
+struct FacetTable {
+    /// `keys[starts[i] .. starts[i + 1]]` are clause `i`'s keys; `starts` always
+    /// has one more element than `flags` (it opens with the sentinel `0`).
+    starts: Vec<u32>,
+    keys: Vec<Facet>,
+    flags: Vec<ClauseFlags>,
+}
+
+impl FacetTable {
+    fn new() -> FacetTable {
+        FacetTable {
+            starts: vec![0],
+            keys: Vec::new(),
+            flags: Vec::new(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.flags.len()
+    }
+
+    #[inline]
+    fn keys_of(&self, cid: u32) -> &[Facet] {
+        let i = cid as usize;
+        &self.keys[self.starts[i] as usize..self.starts[i + 1] as usize]
+    }
+
+    #[inline]
+    fn flags_of(&self, cid: u32) -> ClauseFlags {
+        self.flags[cid as usize]
+    }
+
+    /// Append the entry for a clause being interned.  Must be called exactly
+    /// once per arena push, before or after the arena push but never
+    /// out of order: entry `i` describes arena clause `i`.
+    fn push_clause(&mut self, c: &ContextClause, sig: &Sig) {
+        facet_keys(c, &mut self.keys);
+        self.starts.push(self.keys.len() as u32);
+        self.flags.push(clause_flags(c, sig));
+    }
+}
+
+/// Derive a clause's index keys, appending them to `out`.
+///
+/// The emission order reproduces the order in which the old inline derivation
+/// pushed into the indexes.  Order across keys is in fact immaterial (distinct
+/// keys address distinct postings, and each key receives `cid` at most once per
+/// clause), but keeping it identical makes the equivalence checkable by
+/// inspection as well as by the differential tests.
+fn facet_keys(c: &ContextClause, out: &mut Vec<Facet>) {
+    let mut concept_iris: SmallVec<[Iri; 2]> = SmallVec::new();
+    let mut role_iris: SmallVec<[Iri; 1]> = SmallVec::new();
+    for (p, _) in c.max_head_predicates() {
+        match p {
+            Pred::Concept { iri, .. } => {
+                if !concept_iris.contains(&iri) {
+                    concept_iris.push(iri);
+                }
+            }
+            Pred::Role { iri, .. } => {
+                if !role_iris.contains(&iri) {
+                    role_iris.push(iri);
+                }
+            }
+        }
+    }
+    out.extend(concept_iris.into_iter().map(Facet::HeadConcept));
+    out.extend(role_iris.into_iter().map(Facet::HeadRole));
+    for (p, _) in c.max_head_predicates() {
+        out.push(Facet::MaxPred(p));
+        if let Pred::Role { iri, s, t } = p {
+            if is_individual(s) || is_comp(s) {
+                out.push(Facet::GroundRoleSource(iri, s));
+            }
+            if is_individual(t) || is_comp(t) {
+                out.push(Facet::GroundRoleTarget(iri, t));
+            }
+        }
+    }
+    let mut rewrite_terms: SmallVec<[Term; 2]> = SmallVec::new();
+    for l in c.max_head() {
+        match l {
+            Lit::P(Pred::Concept { t, .. }) => {
+                if !rewrite_terms.contains(&t) {
+                    rewrite_terms.push(t);
+                }
+            }
+            Lit::P(Pred::Role { s, t, .. }) => {
+                if !rewrite_terms.contains(&s) {
+                    rewrite_terms.push(s);
+                }
+                if !rewrite_terms.contains(&t) {
+                    rewrite_terms.push(t);
+                }
+            }
+            Lit::Eq { s, .. } | Lit::Ineq { s, .. } => {
+                if !rewrite_terms.contains(&s) {
+                    rewrite_terms.push(s);
+                }
+            }
+        }
+    }
+    out.extend(rewrite_terms.into_iter().map(Facet::RewriteTerm));
+    // `body` is sorted+deduped, so the ground atoms are already distinct; the
+    // guard mirrors the old posting-level `!contains(cid)` check so the emitted
+    // key multiset cannot depend on that assumption.
+    let ground_start = out.len();
+    for p in &c.body {
+        if p.is_ground() && !out[ground_start..].contains(&Facet::GroundBody(*p)) {
+            out.push(Facet::GroundBody(*p));
+        }
+    }
+    if c.body.is_empty() {
+        for l in c.max_head() {
+            if let Lit::Eq { s, t } = l {
+                if is_individual(s) && t == X {
+                    out.push(Facet::Bridge(s));
+                }
+            }
+        }
+    }
+    if c.head.iter().any(is_merge_lit) {
+        out.push(Facet::Merge);
+    }
+}
+
+/// Derive a clause's propagation-pool eligibility bits.
+///
+/// The only signature-dependent bit is `sat_rsucc` (`sig.rsucc` and
+/// `sig.is_reach`).  Both are stable for an already-interned clause:
+/// `insert_ontology_clauses_retained` copies `rsucc` across verbatim and
+/// asserts the concept-name prefix is preserved, and `concept_reach` is a
+/// function of the concept name alone.  Caching a signature-derived bit per
+/// interned clause is the same discipline `ContextClause::max_head_mask`
+/// already follows.
+fn clause_flags(c: &ContextClause, sig: &Sig) -> ClauseFlags {
+    ClauseFlags {
+        seed_pred: c
+            .head
+            .iter()
+            .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+        seed_succ: c
+            .max_head_predicates()
+            .any(|(p, _)| is_function(p.max_term())),
+        sat_pred: c.head.iter().all(|l| {
+            l.is_function_free()
+                && match l {
+                    Lit::P(_) => true,
+                    Lit::Eq { s, t } => {
+                        is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
+                    }
+                    Lit::Ineq { .. } => false,
+                }
+        }),
+        sat_succ: c
+            .max_head_predicates()
+            .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some()),
+        sat_rsucc: sig.rsucc
+            && c.max_head_predicates().any(|(p, _)| match p {
+                Pred::Concept { iri, t } => is_central(t) && sig.is_reach(iri),
+                _ => false,
+            }),
+    }
+}
+
 /// One component of Sequoia's context-clause redundancy-trie key.  Sequoia
 /// encodes every head literal below every body predicate (by setting the sign
 /// bit on head UIDs), then sorts the two regions.  Keeping the exact values in
@@ -1788,13 +2021,113 @@ impl Context {
         }
     }
 
-    /// Add the worked-off clause with arena id `cid` to the head-predicate
-    /// index, recording `cid` once per distinct iri appearing among its maximal
-    /// head predicates (the per-clause predicate list is re-scanned at lookup
-    /// time, so a single entry per iri reproduces the original candidate
-    /// sequence without duplicates).  Appending in work-off order keeps each
-    /// list in candidate order.
-    fn index_clause(&mut self, arena: &[ContextClause], cid: u32) {
+    /// File the worked-off clause with arena id `cid` into every head index it
+    /// belongs to, driven by its shared `Facet` list (see `Facet`): the key
+    /// derivation is done once per interned clause rather than once per
+    /// (context, clause) pair, and this walks a flat slice of `Copy` keys.
+    ///
+    /// Each key receives `cid` once, so a posting is still the ascending,
+    /// duplicate-free id list `rebuild_head_index` would produce; appending in
+    /// work-off order keeps each list in candidate order.
+    fn index_clause(&mut self, facets: &FacetTable, cid: u32) {
+        for &facet in facets.keys_of(cid) {
+            match facet {
+                Facet::HeadConcept(iri) => {
+                    self.head_concept_index.entry(iri).or_default().push(cid)
+                }
+                Facet::HeadRole(iri) => self.head_role_index.entry(iri).or_default().push(cid),
+                Facet::MaxPred(p) => self.max_head_pred_index.entry(p).or_default().push(cid),
+                Facet::GroundRoleSource(iri, s) => {
+                    let posting = self.ground_role_source_index.entry((iri, s)).or_default();
+                    if posting.last() != Some(&cid) {
+                        posting.push(cid);
+                    }
+                }
+                Facet::GroundRoleTarget(iri, t) => {
+                    let posting = self.ground_role_target_index.entry((iri, t)).or_default();
+                    if posting.last() != Some(&cid) {
+                        posting.push(cid);
+                    }
+                }
+                Facet::RewriteTerm(term) => {
+                    self.max_head_term_index.entry(term).or_default().push(cid)
+                }
+                Facet::GroundBody(p) => {
+                    let posting = self.ground_body_index.entry(p).or_default();
+                    if !posting.contains(&cid) {
+                        posting.push(cid);
+                    }
+                }
+                Facet::Bridge(o) => self.bridge_index.entry(o).or_default().push(cid),
+                Facet::Merge => self.merge_clauses.push(cid),
+            }
+        }
+    }
+
+    /// Incrementally drop one `worked_off` clause from every head index.  This
+    /// mirrors `index_clause` key-for-key — structurally so, since both walk the
+    /// same shared `Facet` list — removing `cid` from each posting it was
+    /// inserted under, so the resulting index state is identical to a full
+    /// `rebuild_head_index` over `worked_off \ {cid}` (a posting is a set of
+    /// clause ids; removing the id leaves the survivors in the same work-off
+    /// order).  Used by back-subsumption instead of rebuilding the whole index
+    /// whenever a worked-off clause is subsumed away.
+    fn unindex_clause(&mut self, facets: &FacetTable, cid: u32) {
+        for &facet in facets.keys_of(cid) {
+            match facet {
+                Facet::HeadConcept(iri) => posting_remove(&mut self.head_concept_index, iri, cid),
+                Facet::HeadRole(iri) => posting_remove(&mut self.head_role_index, iri, cid),
+                Facet::MaxPred(p) => posting_remove(&mut self.max_head_pred_index, p, cid),
+                Facet::GroundRoleSource(iri, s) => {
+                    posting_remove(&mut self.ground_role_source_index, (iri, s), cid)
+                }
+                Facet::GroundRoleTarget(iri, t) => {
+                    posting_remove(&mut self.ground_role_target_index, (iri, t), cid)
+                }
+                Facet::RewriteTerm(term) => {
+                    posting_remove(&mut self.max_head_term_index, term, cid)
+                }
+                Facet::GroundBody(p) => vec_posting_remove(&mut self.ground_body_index, p, cid),
+                Facet::Bridge(o) => vec_posting_remove(&mut self.bridge_index, o, cid),
+                Facet::Merge => self.merge_clauses.retain(|&x| x != cid),
+            }
+        }
+    }
+
+    /// Rebuild every `worked_off` index from scratch.  Back-subsumption now
+    /// maintains the head index incrementally via `unindex_clause`; this full
+    /// rebuild is retained as the reference oracle that the incremental path is
+    /// differentially tested against (`back_subsume_incremental_unindex_matches_rebuild`).
+    #[cfg(test)]
+    fn rebuild_head_index(&mut self, facets: &FacetTable) {
+        self.clear_head_indexes();
+        let worked_off = self.worked_off.clone();
+        for cid in worked_off {
+            self.index_clause(facets, cid);
+        }
+    }
+
+    #[cfg(test)]
+    fn clear_head_indexes(&mut self) {
+        self.head_concept_index.clear();
+        self.head_role_index.clear();
+        self.ground_role_source_index.clear();
+        self.ground_role_target_index.clear();
+        self.max_head_pred_index.clear();
+        self.max_head_term_index.clear();
+        self.ground_body_index.clear();
+        self.bridge_index.clear();
+        self.merge_clauses.clear();
+    }
+
+    /// Frozen pre-`Facet` reference for `index_clause`: re-derives the index
+    /// keys from the arena clause on every call, exactly as the engine did
+    /// before the key list was hoisted into the shared `FacetTable`.  Kept as
+    /// the differential oracle for `facet_indexing_matches_reference_*`; the
+    /// facet path must reproduce its index state key for key.  Never used off
+    /// the test path.
+    #[cfg(test)]
+    fn index_clause_reference(&mut self, arena: &[ContextClause], cid: u32) {
         let c = &arena[cid as usize];
         let mut concept_iris: Vec<Iri> = Vec::new();
         let mut role_iris: Vec<Iri> = Vec::new();
@@ -1861,7 +2194,6 @@ impl Context {
         for term in rewrite_terms {
             self.max_head_term_index.entry(term).or_default().push(cid);
         }
-        // nominal-calculus indexes (all empty without individuals)
         for p in &c.body {
             if p.is_ground() {
                 let e = self.ground_body_index.entry(*p).or_default();
@@ -1884,14 +2216,10 @@ impl Context {
         }
     }
 
-    /// Incrementally drop one `worked_off` clause from every head index.  This
-    /// mirrors `index_clause` key-for-key, removing `cid` from each posting it
-    /// was inserted under, so the resulting index state is identical to a full
-    /// `rebuild_head_index` over `worked_off \ {cid}` (a posting is a set of
-    /// clause ids; removing the id leaves the survivors in the same work-off
-    /// order).  Used by back-subsumption instead of rebuilding the whole index
-    /// whenever a worked-off clause is subsumed away.
-    fn unindex_clause(&mut self, arena: &[ContextClause], cid: u32) {
+    /// Frozen pre-`Facet` reference for `unindex_clause` (see
+    /// `index_clause_reference`).
+    #[cfg(test)]
+    fn unindex_clause_reference(&mut self, arena: &[ContextClause], cid: u32) {
         let c = &arena[cid as usize];
         let mut concept_iris: Vec<Iri> = Vec::new();
         let mut role_iris: Vec<Iri> = Vec::new();
@@ -1968,27 +2296,6 @@ impl Context {
         }
         if c.head.iter().any(is_merge_lit) {
             self.merge_clauses.retain(|&x| x != cid);
-        }
-    }
-
-    /// Rebuild every `worked_off` index from scratch.  Back-subsumption now
-    /// maintains the head index incrementally via `unindex_clause`; this full
-    /// rebuild is retained as the reference oracle that the incremental path is
-    /// differentially tested against (`back_subsume_incremental_unindex_matches_rebuild`).
-    #[cfg(test)]
-    fn rebuild_head_index(&mut self, arena: &[ContextClause]) {
-        self.head_concept_index.clear();
-        self.head_role_index.clear();
-        self.ground_role_source_index.clear();
-        self.ground_role_target_index.clear();
-        self.max_head_pred_index.clear();
-        self.max_head_term_index.clear();
-        self.ground_body_index.clear();
-        self.bridge_index.clear();
-        self.merge_clauses.clear();
-        let worked_off = self.worked_off.clone();
-        for cid in worked_off {
-            self.index_clause(arena, cid);
         }
     }
 
@@ -2086,9 +2393,11 @@ impl Context {
         &mut self,
         arena: &[ContextClause],
         sigs: &[ClauseSig],
+        facets: &FacetTable,
         clause: &ContextClause,
     ) {
         debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
+        debug_assert_eq!(facets.len(), arena.len(), "FacetTable mirror out of sync");
         let nb = clause.body.len();
         let nh = clause.head.len();
         let have = ClauseSig::of(clause);
@@ -2155,7 +2464,7 @@ impl Context {
             BACKSUB_REINDEX_AVOIDED.with(|c| c.set(c.get() + self.worked_off.len() as u64));
         }
         for ci in removed_worked {
-            self.unindex_clause(arena, ci);
+            self.unindex_clause(facets, ci);
         }
     }
 }
@@ -2454,6 +2763,12 @@ pub struct Engine {
     /// purpose: the subsumption scans read only this array, so keeping it flat
     /// is what makes a long posting-list walk cache-resident.
     cc_sig: [Vec<ClauseSig>; 2],
+    /// Shared per-clause index keys and pool-eligibility bits, one entry per
+    /// `cc_arena` entry and always the same length (see `Facet` / `FacetTable`).
+    /// Filing a clause into a context's head indexes reads this instead of
+    /// re-deriving the keys from the clause, so the derivation is paid once per
+    /// distinct clause rather than once per (context, clause) slot.
+    cc_facets: [FacetTable; 2],
     /// content hash -> candidate arena ids, per domain (exact-compare verified)
     cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
     pub dropped_unsupported: usize,
@@ -2670,6 +2985,7 @@ impl Engine {
             pred_intern_idx: HashMap::new(),
             cc_arena: [Vec::new(), Vec::new()],
             cc_sig: [Vec::new(), Vec::new()],
+            cc_facets: [FacetTable::new(), FacetTable::new()],
             cc_intern_idx: [HashMap::new(), HashMap::new()],
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
@@ -2957,12 +3273,28 @@ impl Engine {
     fn intern_cc_known_new(&mut self, root: bool, c: ContextClause, h: u64) -> u32 {
         let d = root as usize;
         let id = self.cc_arena[d].len() as u32;
-        // `cc_sig` is the flat mirror of `cc_arena` and must grow with it in
-        // lockstep; every subsumption scan indexes it by arena id.
+        // `cc_sig` and `cc_facets` are flat mirrors of `cc_arena` and must grow
+        // with it in lockstep; every subsumption scan indexes `cc_sig` by arena
+        // id, and every head-index filing indexes `cc_facets` by arena id.
         self.cc_sig[d].push(ClauseSig::of(&c));
+        self.cc_facets[d].push_clause(&c, &self.sig);
         self.cc_arena[d].push(c);
         self.cc_intern_idx[d].entry(h).or_default().push(id);
         id
+    }
+
+    /// Rebuild the `cc_sig` / `cc_facets` mirrors of `cc_arena[d]` from scratch.
+    /// Tests that install a hand-built arena wholesale (rather than going
+    /// through `intern_cc_known_new`) call this to restore the lockstep the
+    /// engine otherwise maintains on every intern.
+    #[cfg(test)]
+    fn rebuild_cc_mirrors(&mut self, d: usize) {
+        self.cc_sig[d] = self.cc_arena[d].iter().map(ClauseSig::of).collect();
+        let mut facets = FacetTable::new();
+        for c in &self.cc_arena[d] {
+            facets.push_clause(c, &self.sig);
+        }
+        self.cc_facets[d] = facets;
     }
 
     /// Intern a back-substituted pred clause, returning its stable id.
@@ -3299,8 +3631,9 @@ impl Engine {
             let __t = prof_time.then(std::time::Instant::now);
             let arena = &self.cc_arena[d];
             let sigs = &self.cc_sig[d];
+            let facets = &self.cc_facets[d];
             let ctx = &mut self.contexts[id];
-            ctx.back_subsume(arena, sigs, &clause);
+            ctx.back_subsume(arena, sigs, facets, &clause);
             if let Some(t) = __t {
                 prof_add(&ADD_BACKSUB_NS, t);
             }
@@ -3591,28 +3924,20 @@ impl Engine {
             // other equalities stay local, as before.  Succ-eligible: some
             // maximal head predicate is on a function term (succ-trigger
             // candidate) or is an Su^r ground form (r-Succ candidate).
-            let pred_eligible = clause.head.iter().all(|l| {
-                l.is_function_free()
-                    && match l {
-                        Lit::P(_) => true,
-                        Lit::Eq { s, t } => {
-                            is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
-                        }
-                        Lit::Ineq { .. } => false,
-                    }
-            });
-            let succ_eligible = clause
-                .max_head_predicates()
-                .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             // r-Succ: a maximal head CENTRAL reachability fact `__trans/__chain(x)`
             // is forwarded to successors as a neighbour fact (see `rsucc_pool`).
-            let rsucc_eligible = self.sig.rsucc
-                && clause.max_head_predicates().any(|(p, _)| match p {
-                    Pred::Concept { iri, t } => is_central(t) && self.sig.is_reach(iri),
-                    _ => false,
-                });
+            // All three tests are pure functions of the interned clause (and of
+            // `sig.rsucc` / `sig.is_reach`, both stable per clause), so they are
+            // read off the shared `FacetTable` rather than re-derived for each
+            // context that works this clause off.
+            let ClauseFlags {
+                sat_pred: pred_eligible,
+                sat_succ: succ_eligible,
+                sat_rsucc: rsucc_eligible,
+                ..
+            } = self.cc_facets[d].flags_of(cid);
             {
-                let arena = &self.cc_arena[d];
+                let facets = &self.cc_facets[d];
                 let ctx = &mut self.contexts[id];
                 if pred_eligible {
                     ctx.pred_pool.push(cid);
@@ -3624,7 +3949,7 @@ impl Engine {
                     ctx.rsucc_pool.push(cid);
                 }
                 ctx.worked_off.push(cid);
-                ctx.index_clause(arena, cid);
+                ctx.index_clause(facets, cid);
                 ctx.dirty = true;
             }
             // KM_EARLY_UNSAT: the empty clause (⊥) subsumes every other clause, so
@@ -5038,19 +5363,18 @@ impl Engine {
     /// had been worked off normally.
     fn seed_worked_off(&mut self, id: usize, cid: u32) {
         let d = self.contexts[id].root as usize;
-        let (pred_eligible, succ_eligible) = {
-            let clause = &self.cc_arena[d][cid as usize];
-            (
-                clause
-                    .head
-                    .iter()
-                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
-                clause
-                    .max_head_predicates()
-                    .any(|(p, _)| is_function(p.max_term())),
-            )
-        };
+        // Both eligibility tests are pure functions of the interned clause, so
+        // they come off the shared `FacetTable`.  This is the hottest instance
+        // of the per-slot re-derivation the table removes: every successor
+        // context seeds the whole shared closure, so the closure's clauses were
+        // re-analysed once per context.
+        let ClauseFlags {
+            seed_pred: pred_eligible,
+            seed_succ: succ_eligible,
+            ..
+        } = self.cc_facets[d].flags_of(cid);
         let arena = &self.cc_arena[d];
+        let facets = &self.cc_facets[d];
         let ctx = &mut self.contexts[id];
         if !ctx.clause_keys.insert(cid) {
             return;
@@ -5063,7 +5387,7 @@ impl Engine {
             ctx.succ_pool.push(cid);
         }
         ctx.worked_off.push(cid);
-        ctx.index_clause(arena, cid);
+        ctx.index_clause(facets, cid);
         ctx.dirty = true;
     }
 
@@ -6542,6 +6866,20 @@ impl Engine {
                         .map(|m| m.len() * 40 + m.values().map(|v| v.capacity() * 4).sum::<usize>())
                         .sum::<usize>(),
             );
+            // O(distinct clauses), not O(context slots): the point of the table
+            // is that this line stays ≈33x below any per-slot category.
+            add(
+                "cc_facets(engine)",
+                self.cc_facets[0].keys.len() + self.cc_facets[1].keys.len(),
+                self.cc_facets
+                    .iter()
+                    .map(|f| {
+                        f.keys.capacity() * std::mem::size_of::<Facet>()
+                            + f.starts.capacity() * 4
+                            + f.flags.capacity() * std::mem::size_of::<ClauseFlags>()
+                    })
+                    .sum::<usize>(),
+            );
             cat.sort_by(|a, b| b.2.cmp(&a.2));
             let total: usize = cat.iter().map(|e| e.2).sum();
             eprintln!(
@@ -7028,6 +7366,16 @@ mod tests {
         arena.iter().map(ClauseSig::of).collect()
     }
 
+    /// The `FacetTable` mirror of a hand-built test arena, in arena order — the
+    /// same lockstep `cc_facets` keeps with `cc_arena` in the engine.
+    fn facets_of(arena: &[ContextClause], sig: &Sig) -> FacetTable {
+        let mut table = FacetTable::new();
+        for c in arena {
+            table.push_clause(c, sig);
+        }
+        table
+    }
+
     fn supers_of(e: &Engine, name: &str) -> Vec<String> {
         e.subsumptions()
             .into_iter()
@@ -7509,9 +7857,10 @@ mod tests {
         for p in units {
             let clause = ContextClause::new(vec![], vec![Lit::P(p)], false, &e.sig);
             let cid = e.cc_arena[0].len() as u32;
+            e.cc_facets[0].push_clause(&clause, &e.sig);
             e.cc_arena[0].push(clause);
             ctx.worked_off.push(cid);
-            ctx.index_clause(&e.cc_arena[0], cid);
+            ctx.index_clause(&e.cc_facets[0], cid);
         }
         e.contexts.push(ctx);
         (e, id)
@@ -7869,14 +8218,15 @@ mod tests {
             ), // 2: A ⊓ F → B ⊔ C ⊔ G
             cc(vec![cx(a, X)], vec![Lit::P(cx(b, X))]),                   // 3: A → B (subsumer)
         ];
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], true, None);
         for cid in [0u32, 1, 2] {
             ctx.clause_keys.insert(cid);
             ctx.index_active_clause(&arena, cid);
             ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.index_clause(&facets, cid);
         }
-        ctx.back_subsume(&arena, &sigs_of(&arena), &arena[3]);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &facets, &arena[3]);
         assert_eq!(
             ctx.worked_off,
             vec![1u32],
@@ -7896,7 +8246,7 @@ mod tests {
             )
         };
         let incremental = snapshot(&ctx);
-        ctx.rebuild_head_index(&arena);
+        ctx.rebuild_head_index(&facets);
         let rebuilt = snapshot(&ctx);
         assert!(
             incremental == rebuilt,
@@ -7927,14 +8277,15 @@ mod tests {
             // 2: survivor.
             cc(vec![cx(b, X)], vec![Lit::P(cx(a, X))]),
         ];
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], true, None);
         for cid in [0u32, 2] {
             ctx.clause_keys.insert(cid);
             ctx.index_active_clause(&arena, cid);
             ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.index_clause(&facets, cid);
         }
-        ctx.back_subsume(&arena, &sigs_of(&arena), &arena[1]);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &facets, &arena[1]);
         assert_eq!(ctx.worked_off, vec![2u32], "clause 0 must be subsumed away");
         let snapshot = |ctx: &Context| {
             (
@@ -7950,12 +8301,414 @@ mod tests {
             )
         };
         let incremental = snapshot(&ctx);
-        ctx.rebuild_head_index(&arena);
+        ctx.rebuild_head_index(&facets);
         let rebuilt = snapshot(&ctx);
         assert!(
             incremental == rebuilt,
             "incremental unindex_clause (roles) diverged from full rebuild_head_index"
         );
+    }
+
+    // ---------------- shared per-clause facets (structural sharing) ---------
+
+    /// Signature for the facet population.  `rsucc` is on and a `__trans__`
+    /// reachability concept is interned so the `sat_rsucc` flag is genuinely
+    /// exercised rather than trivially false.
+    fn facet_sig() -> Sig {
+        let mut sig = Sig::default();
+        sig.rsucc = true;
+        // ids 0..: keep the interned names aligned with the iris the population
+        // uses for the reach / ordinary concepts.
+        assert_eq!(sig.concept("__trans__R__A"), 0);
+        for i in 1..24 {
+            sig.concept(&format!("C{i}"));
+        }
+        for i in 0..12 {
+            sig.role(&format!("R{i}"));
+        }
+        sig
+    }
+
+    /// A deterministic clause population that reaches every `Facet` kind and
+    /// every `ClauseFlags` bit: concept and role maximal heads, ground (`o`) and
+    /// composite (`f(o)`) role endpoints on both positions, `≈` / `≉` heads
+    /// (rewrite terms), the bridge form `o ≈ x` under an empty body, all three
+    /// merge forms, ground body atoms, function-term heads (Succ), the
+    /// reachability head (r-Succ), and iris repeated across maximal literals so
+    /// the per-clause dedup is exercised rather than only the singleton case.
+    ///
+    /// The last clause has a 70-literal head, which trips
+    /// `ContextClause::max_head_mask`'s "all maximal" fallback — the one place
+    /// where the key set is not read off the mask.
+    fn facet_population(sig: &Sig, root: bool, n: usize) -> Vec<ContextClause> {
+        let o1 = ind_term(1);
+        let o2 = ind_term(2);
+        let f1 = fterm(1);
+        let fo = comp_term(f1, o1);
+        let preds = [
+            cx(1, X),
+            cx(2, X),
+            cx(1, o1),
+            rl(7, o1, o2),
+            rl(7, X, Y),
+            cx(3, Y),
+            rl(8, X, o1),
+            cx(4, f1),
+        ];
+        let lits = [
+            Lit::P(cx(11, X)),
+            Lit::P(cx(12, X)),
+            // same iri as the previous literal on another term: exercises the
+            // `head_concept_index` per-clause iri dedup.
+            Lit::P(cx(11, Y)),
+            Lit::P(rl(7, X, o1)),
+            // same role iri, ground *source* rather than target.
+            Lit::P(rl(7, o1, Y)),
+            Lit::P(rl(9, X, fo)),
+            Lit::P(cx(13, f1)),
+            Lit::P(cx(0, X)),
+            Lit::eq(o1, X),
+            Lit::eq(o1, Y),
+            Lit::eq(X, Y),
+            Lit::ineq(o1, X),
+        ];
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        // Singleton heads are unconditionally maximal, so these pin every facet
+        // kind and pool bit into the population regardless of how the sampled
+        // clauses happen to order.  The sampled bulk then supplies the
+        // multi-literal, repeated-iri, and churn coverage.
+        let pinned = [
+            // reachability head (r-Succ pool)
+            (vec![], vec![Lit::P(cx(0, X))]),
+            // function-term head (Succ pool), and not seed-Pred-eligible
+            (vec![], vec![Lit::P(cx(13, f1))]),
+            // plain Pred-eligible clause
+            (vec![cx(1, X)], vec![Lit::P(cx(11, X))]),
+            // bridge premise `o ≈ x` under an empty body (also a merge form)
+            (vec![], vec![Lit::eq(o1, X)]),
+            // ground role *source* plus a ground body atom
+            (vec![cx(1, o1)], vec![Lit::P(rl(7, o1, Y))]),
+            // ground role *target*
+            (vec![], vec![Lit::P(rl(7, X, o1))]),
+            // composite `f(o)` endpoint
+            (vec![rl(7, o1, o2)], vec![Lit::P(rl(9, X, fo))]),
+            // merge form `x ≈ y` with a non-empty body (no bridge entry)
+            (vec![cx(2, X)], vec![Lit::eq(X, Y)]),
+        ];
+        let mut out = Vec::with_capacity(n);
+        for (body, head) in pinned {
+            out.push(ContextClause::new(body, head, root, sig));
+        }
+        for i in 0..n.saturating_sub(out.len() + 1) {
+            let (bm, hm) = (next(), next());
+            // Every fourth clause is body-free, so the bridge form (which only
+            // files under an empty body) is hit often instead of by luck.
+            let body: Vec<Pred> = if i % 4 == 0 {
+                Vec::new()
+            } else {
+                preds
+                    .iter()
+                    .enumerate()
+                    .filter(|(k, _)| (bm >> (k * 3)) % 3 == 0)
+                    .map(|(_, &p)| p)
+                    .collect()
+            };
+            let head: Vec<Lit> = lits
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| (hm >> (k * 5)) % 3 == 0)
+                .map(|(_, &l)| l)
+                .collect();
+            out.push(ContextClause::new(body, head, root, sig));
+        }
+        let wide: Vec<Lit> = (0..70u32).map(|i| Lit::P(cx(200 + i, X))).collect();
+        out.push(ContextClause::new(vec![], wide, root, sig));
+        out
+    }
+
+    type IndexSnapshot = (
+        HashMap<Iri, Posting>,
+        HashMap<Iri, Posting>,
+        HashMap<(Iri, Term), Posting>,
+        HashMap<(Iri, Term), Posting>,
+        HashMap<Pred, Posting>,
+        HashMap<Term, Posting>,
+        HashMap<Pred, Vec<u32>>,
+        HashMap<Term, Vec<u32>>,
+        Vec<u32>,
+    );
+
+    /// Every structure `index_clause` / `unindex_clause` touch, so a divergence
+    /// in any one key is caught rather than only in the concept head index.
+    fn index_snapshot(ctx: &Context) -> IndexSnapshot {
+        (
+            ctx.head_concept_index.clone(),
+            ctx.head_role_index.clone(),
+            ctx.ground_role_source_index.clone(),
+            ctx.ground_role_target_index.clone(),
+            ctx.max_head_pred_index.clone(),
+            ctx.max_head_term_index.clone(),
+            ctx.ground_body_index.clone(),
+            ctx.bridge_index.clone(),
+            ctx.merge_clauses.clone(),
+        )
+    }
+
+    /// Differential: filing a clause from its shared `Facet` list must leave the
+    /// exact index state the frozen pre-facet derivation leaves — same keys,
+    /// same posting id-sequences, no extra or missing key.  The head indexes are
+    /// what Hyper, Pred, Eq, Join, and r-Succ read to pick candidates, so any
+    /// divergence here silently changes what is derivable.
+    #[test]
+    fn facet_indexing_matches_reference_derivation() {
+        for &root in &[false, true] {
+            let sig = facet_sig();
+            let arena = facet_population(&sig, root, 320);
+            let facets = facets_of(&arena, &sig);
+            let mut shared = Context::new(0, vec![], root, None);
+            let mut reference = Context::new(0, vec![], root, None);
+            for cid in 0..arena.len() as u32 {
+                shared.worked_off.push(cid);
+                shared.index_clause(&facets, cid);
+                reference.worked_off.push(cid);
+                reference.index_clause_reference(&arena, cid);
+            }
+            assert!(
+                index_snapshot(&shared) == index_snapshot(&reference),
+                "facet-driven index_clause diverged from the frozen derivation (root={root})"
+            );
+            // The population must actually reach every facet kind, or the
+            // comparison above proves nothing about the untouched ones.
+            assert!(!shared.head_concept_index.is_empty(), "no concept heads");
+            assert!(!shared.head_role_index.is_empty(), "no role heads");
+            assert!(
+                !shared.ground_role_source_index.is_empty(),
+                "no ground role sources"
+            );
+            assert!(
+                !shared.ground_role_target_index.is_empty(),
+                "no ground role targets"
+            );
+            assert!(!shared.max_head_pred_index.is_empty(), "no maximal preds");
+            assert!(!shared.max_head_term_index.is_empty(), "no rewrite terms");
+            assert!(!shared.ground_body_index.is_empty(), "no ground body atoms");
+            assert!(!shared.bridge_index.is_empty(), "no bridge premises");
+            assert!(!shared.merge_clauses.is_empty(), "no merge clauses");
+        }
+    }
+
+    /// Differential over back-subsumption churn: removing a scattered ~40% of
+    /// the population through the facet path must leave the same index state as
+    /// the frozen derivation, and as a full rebuild over the survivors.  The
+    /// rebuild leg is the stronger oracle: it also catches a key that was
+    /// inserted but never removed (a stale posting entry pointing at a
+    /// subsumed-away clause).
+    #[test]
+    fn facet_unindexing_matches_reference_and_rebuild() {
+        for &root in &[false, true] {
+            let sig = facet_sig();
+            let arena = facet_population(&sig, root, 320);
+            let facets = facets_of(&arena, &sig);
+            let mut shared = Context::new(0, vec![], root, None);
+            let mut reference = Context::new(0, vec![], root, None);
+            for cid in 0..arena.len() as u32 {
+                shared.worked_off.push(cid);
+                shared.index_clause(&facets, cid);
+                reference.worked_off.push(cid);
+                reference.index_clause_reference(&arena, cid);
+            }
+            let dropped: Vec<u32> = (0..arena.len() as u32)
+                .filter(|cid| (cid * 7 + 3) % 5 < 2)
+                .collect();
+            assert!(dropped.len() > 100, "churn too small to be a real test");
+            for &cid in &dropped {
+                shared.unindex_clause(&facets, cid);
+                reference.unindex_clause_reference(&arena, cid);
+            }
+            shared.worked_off.retain(|cid| !dropped.contains(cid));
+            reference.worked_off.retain(|cid| !dropped.contains(cid));
+            assert!(
+                index_snapshot(&shared) == index_snapshot(&reference),
+                "facet-driven unindex_clause diverged from the frozen derivation (root={root})"
+            );
+            let mut rebuilt = shared.clone();
+            rebuilt.rebuild_head_index(&facets);
+            assert!(
+                index_snapshot(&shared) == index_snapshot(&rebuilt),
+                "incremental facet unindex diverged from a full rebuild (root={root})"
+            );
+        }
+    }
+
+    /// The insert/remove key sets are the same list walked twice, so filing then
+    /// unfiling the whole population must leave no residue at all — not even an
+    /// empty posting under a surviving key.
+    #[test]
+    fn facet_index_then_unindex_leaves_no_residue() {
+        for &root in &[false, true] {
+            let sig = facet_sig();
+            let arena = facet_population(&sig, root, 200);
+            let facets = facets_of(&arena, &sig);
+            let mut ctx = Context::new(0, vec![], root, None);
+            for cid in 0..arena.len() as u32 {
+                ctx.index_clause(&facets, cid);
+            }
+            for cid in 0..arena.len() as u32 {
+                ctx.unindex_clause(&facets, cid);
+            }
+            let empty = Context::new(0, vec![], root, None);
+            assert!(
+                index_snapshot(&ctx) == index_snapshot(&empty),
+                "facet unindex left residue in the head indexes (root={root})"
+            );
+        }
+    }
+
+    /// The cached pool-eligibility bits must equal the predicates they replaced
+    /// in `saturate` and `seed_worked_off`, verbatim.  A wrong bit does not
+    /// corrupt an index — it silently drops (or invents) a Pred / Succ / r-Succ
+    /// message, which changes the inter-context fixpoint.
+    #[test]
+    fn clause_flags_match_the_predicates_they_replaced() {
+        for &root in &[false, true] {
+            let sig = facet_sig();
+            let arena = facet_population(&sig, root, 320);
+            let facets = facets_of(&arena, &sig);
+            let (mut seen_pred, mut seen_succ, mut seen_rsucc) = (0usize, 0usize, 0usize);
+            for (i, c) in arena.iter().enumerate() {
+                let flags = facets.flags_of(i as u32);
+                assert_eq!(
+                    flags.seed_pred,
+                    c.head
+                        .iter()
+                        .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+                    "seed_pred mismatch on clause {i}"
+                );
+                assert_eq!(
+                    flags.seed_succ,
+                    c.max_head_predicates()
+                        .any(|(p, _)| is_function(p.max_term())),
+                    "seed_succ mismatch on clause {i}"
+                );
+                assert_eq!(
+                    flags.sat_pred,
+                    c.head.iter().all(|l| {
+                        l.is_function_free()
+                            && match l {
+                                Lit::P(_) => true,
+                                Lit::Eq { s, t } => {
+                                    is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
+                                }
+                                Lit::Ineq { .. } => false,
+                            }
+                    }),
+                    "sat_pred mismatch on clause {i}"
+                );
+                assert_eq!(
+                    flags.sat_succ,
+                    c.max_head_predicates()
+                        .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some()),
+                    "sat_succ mismatch on clause {i}"
+                );
+                assert_eq!(
+                    flags.sat_rsucc,
+                    sig.rsucc
+                        && c.max_head_predicates().any(|(p, _)| match p {
+                            Pred::Concept { iri, t } => is_central(t) && sig.is_reach(iri),
+                            _ => false,
+                        }),
+                    "sat_rsucc mismatch on clause {i}"
+                );
+                seen_pred += usize::from(flags.sat_pred);
+                seen_succ += usize::from(flags.sat_succ);
+                seen_rsucc += usize::from(flags.sat_rsucc);
+            }
+            assert!(
+                seen_pred > 0 && seen_succ > 0 && seen_rsucc > 0,
+                "population must exercise all three pools (root={root}): \
+                 pred={seen_pred} succ={seen_succ} rsucc={seen_rsucc}"
+            );
+        }
+    }
+
+    /// End-to-end mirror invariant: after a real classification the facet table
+    /// must still be exactly parallel to the clause arena in both ordering
+    /// domains, and every entry must equal a fresh derivation from its clause.
+    /// This is what makes the `facets.keys_of(cid)` lookups in `index_clause` /
+    /// `unindex_clause` safe — a table that drifted out of lockstep would file
+    /// clauses under another clause's keys.  The derived subsumptions are
+    /// asserted alongside, so a drift that happened to keep the table's shape
+    /// still fails.
+    #[test]
+    fn cc_facets_mirrors_cc_arena_end_to_end() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let g1 = sig.concept("G1");
+        let g2 = sig.concept("G2");
+        let r = sig.role("R");
+        let f1 = fterm(1);
+        let clauses = vec![
+            // A ⊑ ∃R.B, so the successor context and the non-root domain are used.
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            // B ⊑ C, derived inside the successor and pushed back by Pred.
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, X))]),
+            // ∃R.C ⊑ D, the Hyper firing that consumes the pushed-back clause.
+            OntologyClause::new(
+                vec![rl(r, X, zvar(1)), cx(c, zvar(1))],
+                vec![Lit::P(cx(d, X))],
+            ),
+            // A ⊑ G1 ⊔ G2 with G2 ⊑ G1 strengthens to A ⊑ G1 in the root
+            // context, so the run really drives back-subsumption (and hence
+            // `unindex_clause`) rather than only insertion.
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(g1, X)), Lit::P(cx(g2, X))]),
+            OntologyClause::new(vec![cx(g2, X)], vec![Lit::P(cx(g1, X))]),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        assert!(!e.inconsistent());
+        let sups = supers_of(&e, "A");
+        assert!(
+            sups.contains(&"D".to_string()),
+            "expected A ⊑ D across the Succ/Pred edge, got {sups:?}"
+        );
+        assert!(
+            sups.contains(&"G1".to_string()),
+            "expected A ⊑ G1 from the strengthened disjunction, got {sups:?}"
+        );
+        let mut checked = 0usize;
+        for domain in 0..2 {
+            assert_eq!(
+                e.cc_facets[domain].len(),
+                e.cc_arena[domain].len(),
+                "FacetTable is not parallel to cc_arena[{domain}]"
+            );
+            for (i, clause) in e.cc_arena[domain].iter().enumerate() {
+                let mut expect = Vec::new();
+                facet_keys(clause, &mut expect);
+                assert_eq!(
+                    e.cc_facets[domain].keys_of(i as u32),
+                    expect.as_slice(),
+                    "facet keys drifted for cc_arena[{domain}][{i}]"
+                );
+                assert_eq!(
+                    e.cc_facets[domain].flags_of(i as u32),
+                    clause_flags(clause, &e.sig),
+                    "clause flags drifted for cc_arena[{domain}][{i}]"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "the run interned no clauses");
     }
 
     /// End-to-end: a live disjunction strengthened to a unit by resolution
@@ -8378,10 +9131,11 @@ mod tests {
             ContextClause::new(vec![], vec![Lit::P(p1)], false, &sig),
             ContextClause::new(vec![], vec![Lit::P(p2)], false, &sig),
         ];
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
             ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.index_clause(&facets, cid);
         }
 
         assert_eq!(ctx.head_concept_index.get(&7).unwrap().as_slice(), &[0, 1]);
@@ -8410,10 +9164,11 @@ mod tests {
             ),
             ContextClause::new(vec![], vec![Lit::eq(f3, o)], false, &sig),
         ];
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
             ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.index_clause(&facets, cid);
         }
 
         assert_eq!(ctx.max_head_term_index[&f1].as_slice(), &[0]);
@@ -8446,13 +9201,14 @@ mod tests {
                 &sig,
             ));
         }
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
             ctx.clause_keys.insert(cid);
             ctx.index_active_clause(&arena, cid);
             if cid % 2 == 0 {
                 ctx.worked_off.push(cid);
-                ctx.index_clause(&arena, cid);
+                ctx.index_clause(&facets, cid);
             } else {
                 ctx.todo.push_back(cid);
             }
@@ -8603,13 +9359,14 @@ mod tests {
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 240);
         let sigs = sigs_of(&arena);
+        let facets = facets_of(&arena, &sig);
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
             if ctx.clause_keys.insert(cid) {
                 ctx.index_active_clause(&arena, cid);
                 if cid % 3 == 0 {
                     ctx.worked_off.push(cid);
-                    ctx.index_clause(&arena, cid);
+                    ctx.index_clause(&facets, cid);
                 } else {
                     ctx.todo.push_back(cid);
                 }
@@ -8653,6 +9410,7 @@ mod tests {
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 200);
         let sigs = sigs_of(&arena);
+        let facets = facets_of(&arena, &sig);
         let strengtheners = screen_population(&sig, false, 60);
         let mut checked = 0usize;
         for clause in &strengtheners {
@@ -8661,7 +9419,7 @@ mod tests {
                 if ctx.clause_keys.insert(cid) {
                     ctx.index_active_clause(&arena, cid);
                     ctx.worked_off.push(cid);
-                    ctx.index_clause(&arena, cid);
+                    ctx.index_clause(&facets, cid);
                 }
             }
             let before: HashSet<u32> = ctx.clause_keys.clone();
@@ -8674,7 +9432,7 @@ mod tests {
                         && !(candidate.body == clause.body && candidate.head == clause.head)
                 })
                 .collect();
-            ctx.back_subsume(&arena, &sigs, clause);
+            ctx.back_subsume(&arena, &sigs, &facets, clause);
             let removed: HashSet<u32> = before.difference(&ctx.clause_keys).copied().collect();
             assert_eq!(
                 removed, expected,
@@ -8766,9 +9524,10 @@ mod tests {
             ContextClause::new(vec![], vec![Lit::P(max)], false, &e.sig),
             ContextClause::new(vec![], vec![Lit::P(other)], false, &e.sig),
         ];
+        e.rebuild_cc_mirrors(0);
         for cid in 0..e.cc_arena[0].len() as u32 {
             e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].index_clause(&e.cc_facets[0], cid);
         }
         e.pred_interned.push(PredClause {
             body: vec![max, other],
@@ -8815,9 +9574,10 @@ mod tests {
             ContextClause::new(vec![a], vec![Lit::P(p3)], false, &e.sig),
             ContextClause::new(vec![b], vec![Lit::P(p3)], false, &e.sig),
         ];
+        e.rebuild_cc_mirrors(0);
         for cid in 0..e.cc_arena[0].len() as u32 {
             e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].index_clause(&e.cc_facets[0], cid);
         }
         let pred = PredClause {
             body: vec![p1, p2, p3],
@@ -8910,10 +9670,10 @@ mod tests {
                 }
             }
             e.cc_arena[0] = arena;
-            e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
+            e.rebuild_cc_mirrors(0);
             for cid in 0..e.cc_arena[0].len() as u32 {
                 e.contexts[0].worked_off.push(cid);
-                e.contexts[0].index_clause(&e.cc_arena[0], cid);
+                e.contexts[0].index_clause(&e.cc_facets[0], cid);
             }
 
             // A neighbour Pred clause whose body is the pinned trigger plus
@@ -8992,10 +9752,10 @@ mod tests {
             }
         }
         e.cc_arena[0] = arena;
-        e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
+        e.rebuild_cc_mirrors(0);
         for cid in 0..e.cc_arena[0].len() as u32 {
             e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].index_clause(&e.cc_facets[0], cid);
         }
         let mut body = vec![trigger];
         body.extend(premises.iter().copied());
@@ -9047,6 +9807,7 @@ mod tests {
             false,
             &e.sig,
         ));
+        e.rebuild_cc_mirrors(0);
         e.contexts[0].pred_pool.push(0);
 
         let payload = e.pred_payload(0, edge, 0);
@@ -9172,11 +9933,12 @@ mod tests {
         ctx.clause_keys.insert(0);
         ctx.clause_keys.insert(1);
         ctx.pred_pool.push(1);
-        ctx.index_clause(&arena, 1);
+        let facets = facets_of(&arena, &sig);
+        ctx.index_clause(&facets, 1);
         ctx.index_active_clause(&arena, 0);
         ctx.index_active_clause(&arena, 1);
 
-        ctx.back_subsume(&arena, &sigs_of(&arena), &strong);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &facets, &strong);
         assert!(!ctx.clause_keys.contains(&0));
         assert!(!ctx.clause_keys.contains(&1));
         assert!(ctx.todo.is_empty());
