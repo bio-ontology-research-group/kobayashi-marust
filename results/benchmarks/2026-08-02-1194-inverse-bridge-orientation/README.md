@@ -274,3 +274,18 @@ The route then deferred correctly with zero output. Cardinality checks recorded
 This is a substantial throughput improvement, but not a closure: automatic
 coverage remains 591/592. The next target is an exact bulk treatment of the
 cardinality and covering-disjunction residue after this now-bounded precompute.
+
+The existing `KM_HT_QO_CARDMERGE=1` option does not reduce this residue. A
+production-bounded replay reached the same fixpoint in 182.067 seconds and
+recorded `cardmerge_done=0`: all 23,944 Eq deferrals bind non-filler nodes, which
+the content-shared filler merge correctly refuses to conflate. A second replay
+combined separate creation-role fillers (`KM_HT_QO_SAT=1`) with `CARDMERGE`,
+batching, and the edge index. It still timed out with 186,244 nodes, 1,117,473
+parked disjunctions, 2.82 million literal events, and 2.69 million edge events
+queued at 233 seconds. Both runs emitted zero output.
+
+The complete source-bound automatic sweep at commit `f39a2fd` is IBEX job
+`49886711`. Its audit verifies 592 final/checkpoint pairs, 591 successful rows,
+one fail-closed 1194 error, and zero semantic differences from the certified
+`02a563f` sweep. Full provenance and the per-ontology table are in
+[`../2026-08-02-f39a2fd-auto/`](../2026-08-02-f39a2fd-auto/README.md).

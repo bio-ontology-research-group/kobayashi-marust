@@ -90,15 +90,14 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `49841036`, gate array `49841342`, full
-array `49841416`, and the complete 592-row integrity audit verify every
-terminal row, checkpoint, route trace, profile, and binary identity. Metrics
-use the 591 successful rows from reasoner commit `02a563f` and IBEX binary
-`1011b397da77…`.
+over all 592 ontologies. Build job `49886489`, full array `49886711`, and the
+complete 592-row integrity audit verify every terminal row, checkpoint, route
+trace, profile, and binary identity. Metrics use the 591 successful rows from
+reasoner commit `f39a2fd` and IBEX binary `4051f903dc2d…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `02a563f` (binary `1011b397da77…`) | **591** | **591** | **6.2836** | **0.2776** | **833.61** | **45.55** |
+| **KM automatic, `km classify`** | `f39a2fd` (binary `4051f903dc2d…`) | **591** | **591** | **6.3106** | **0.2791** | **835.76** | **45.23** |
 
 “Empirically correct” means 587 exact retained Konclude full-IRI signatures,
 three independently adjudicated consistency results, and 4669's independently
@@ -110,7 +109,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 
 - [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
-- [`results/benchmarks/2026-08-02-02a563f-auto/`](results/benchmarks/2026-08-02-02a563f-auto/)
+- [`results/benchmarks/2026-08-02-f39a2fd-auto/`](results/benchmarks/2026-08-02-f39a2fd-auto/)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 

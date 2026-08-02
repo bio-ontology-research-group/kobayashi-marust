@@ -19,7 +19,10 @@ orchestration tests pass. A same-binary IBEX gate preserved exact signatures on
 7581 and 15098; 7581 improved from 21.1071 to 20.2926 seconds. The optimized
 1194 precompute now reaches its deterministic fixpoint in 185.627 seconds and
 then correctly defers on the unresolved cardinality/disjunction residue with
-zero output. Coverage remains 591/592. Evidence is in
+zero output. Existing filler `CARDMERGE` performs zero merges on the non-filler
+Eq bindings, while the separate-filler combination still times out. Source-bound
+full sweep `49886711` verifies 591 successful rows and zero semantic differences
+from `02a563f`; coverage remains 591/592. Evidence is in
 [`results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/`](results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/README.md#8-batched-propagation-and-exact-edge-membership).
 
 ### Profile ORE 1194 backward-subsumption mutation scans (2026-08-02)
