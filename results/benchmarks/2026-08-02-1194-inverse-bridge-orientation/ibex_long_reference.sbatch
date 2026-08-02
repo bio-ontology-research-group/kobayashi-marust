@@ -12,6 +12,12 @@
 
 set -u
 
+if [[ "${ALLOW_UNSOUND_DIAGNOSTIC:-0}" != "1" ]]; then
+    echo "refusing: archived virtual-inverse binary fails shared-witness soundness tests" >&2
+    echo "set ALLOW_UNSOUND_DIAGNOSTIC=1 only for attribution; never use its output as a taxonomy" >&2
+    exit 2
+fi
+
 ROOT=/ibex/scratch/hohndor/km/routing_20260715/1194-long-reference
 BIN="$ROOT/elc-combined"
 INPUT="$ROOT/1194.clauses.json"

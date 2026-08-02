@@ -98,15 +98,31 @@ python3 audit_vacuous.py /tmp/1194.clauses.json
 
 ## 5. Follow-up: virtual inverse execution and bulk cover repair
 
-Two exact scheduling/representation experiments were tested against the same
-240 s / 24 GiB local gate. Neither changes the released 591/592 result.
+Two scheduling/representation experiments were tested against the same 240 s /
+24 GiB local gate. Neither changes the released 591/592 result. The complete EL
+suite later rejected virtual inverse execution on soundness grounds; the bulk
+cover batching experiment remains exact.
 
-### Virtual reciprocal roles
+### Virtual reciprocal roles (rejected: unsound lower bound)
 
 A guarded prototype represented reciprocal inverse edges virtually and fired
-their NF4 and role-hierarchy consequences without storing mirror edges. Focused
-tests covered both event arrival orders, hierarchy propagation, and fail-closed
-rejection of chain uses. The six 1194 pairs split sharply by volume:
+their NF4 and role-hierarchy consequences without storing mirror edges. Its
+focused tests covered both event arrival orders, hierarchy propagation, and
+fail-closed rejection of chain uses. The complete EL module suite then exposed
+two existing shared-witness countermodels:
+
+- `reverse_oriented_inverse_nf4_would_be_unsound`;
+- `a_reverse_rule_at_a_shared_witness_would_assert_a_named_subsumption`.
+
+A generic filler node is shared by several existential edges. Executing an
+inverse NF4 rule at that shared node can assert a named subsumption that has a
+countermodel. The prototype therefore corrupts the certificate's sound lower
+bound and is rejected, irrespective of performance. Virtual inverse execution
+must not be integrated without predecessor-sensitive witness contexts or an
+equivalent exact construction.
+
+The measurements below remain useful only as attribution of the invalid
+experiment's explosion:
 
 | virtual pairs | diagnostic at the first useful checkpoint | result |
 | --- | --- | --- |
@@ -115,10 +131,9 @@ rejection of chain uses. The six 1194 pairs split sharply by volume:
 | four low-volume pairs | base fixpoint after about 121M facts; queue peaked near 18M | reached certificate repair |
 
 The BFO pair causes the catastrophic cross-product; RO_0002202/03 is the
-secondary source. A production candidate therefore leaves pairs with more than
-10,000 mentioning clauses in the residual and virtualises only the four small
-pairs. This is a performance fence, not an approximation: rejected pairs keep
-their original bridge clauses.
+secondary source. The earlier 10,000-use performance fence does not repair the
+semantic defect: even a low-volume pair can trigger the same shared-witness
+countermodel.
 
 ### Complete-batch top-level covers
 
@@ -141,11 +156,40 @@ This establishes the next implementation target: a symbolic or projected
 treatment of the two high-volume inverse pairs. Fact-by-fact virtual closure is
 not viable under the production contract.
 
-### Long reference run
+### Cancelled long run
 
-Slurm job `49870738` runs the four-small-pair plus bulk-cover candidate on IBEX
-with a 120 GiB request and a three-hour process bound. Its purpose is to obtain
-a complete reference taxonomy and resource curve, not to claim benchmark
-closure. The resumable harness is `ibex_long_reference.sbatch`; it records input
-and binary SHA-256 values, writes output atomically, validates JSON, and creates
-a completion checkpoint only after success.
+Slurm job `49870738` ran the four-small-pair plus bulk-cover candidate on IBEX.
+It reached 102,215,204 KiB RSS while still inside repair round 13 and was
+cancelled when the complete EL suite exposed the virtual-inverse soundness
+failure. It produced no taxonomy and no completion checkpoint. The archival
+`ibex_long_reference.sbatch` harness now refuses to run unless an explicit
+diagnostic override acknowledges that its candidate is unsound; its output must
+never be used as classification or benchmark evidence.
+
+## 6. Sound upper-model compression and scheduling probes
+
+The sound follow-up keeps every inverse bridge residual. It applies inverse
+edges only inside certificate upper-model forks, so they cannot contaminate the
+EL lower bound. An adaptive concept-label set keeps ordinary labels as integer
+hash sets and converts labels above 4,096 entries to Roaring bitmaps. The full
+71-test EL module suite passes, including both shared-witness countermodels.
+
+All runs below used the 240-second, 20-GiB production gate and produced no
+taxonomy. Every run reached the first BFO inverse bridge in repair round 13.
+
+| sound candidate | wall | peak RSS KiB | result |
+| --- | ---: | ---: | --- |
+| bulk cover + adaptive labels, FIFO repair | 240.56 s | 14,256,920 | timeout |
+| plus repair-only LIFO | 240.36 s | 7,757,264 | timeout |
+| plus 4,096-edge incremental closure | 240.30 s | 7,723,088 | timeout; rejected as slower within round 13 |
+| plus base propagation-index dedup | 240.30 s | 7,630,520 | timeout |
+| plus active-premise dispatch filter | 240.35 s | 7,638,636 | timeout |
+| suppress terminal work-item enqueue | 240.34 s | 7,592,664 | timeout; rejected because it reaches round 13 later |
+
+The propagation-index pass removed 7,901,400 duplicate entries exactly. A
+separate 20-GiB diagnostic on the active-premise candidate remained inside the
+same round after 6:12 wall time. Compression therefore fixes the memory failure,
+but fact-by-fact closure of the BFO bridge still costs minutes. The next exact
+design needs predecessor-sensitive witness contexts, symbolic edge-local
+labels, or another representation that avoids asserting inverse consequences
+on shared generic filler nodes.
