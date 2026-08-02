@@ -145,6 +145,64 @@ repair round, so dropping 15 of them lets the same wall budget carry the search
 three times as far. It runs out of budget in the same place.
 
 Evidence: `results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/`.
+### Screen CB subsumption with a dense signature, and stage local Pred (2026-08-02)
+
+Two hot-path changes in the CB engine, both scheduling/redundancy-filtering
+only, plus the diagnostics that located them. Full measurements in
+[`results/benchmarks/2026-08-02-1194-cb-subsumption-screen/`](results/benchmarks/2026-08-02-1194-cb-subsumption-screen/README.md).
+
+**Where the time was.** Profiling ore_ont_1194 with the new `add_clause` phase
+split showed forward subsumption taking 65.4 s of the 70.3 s spent inserting
+clauses, and 79 % of the whole inter-context message fixpoint. The scan was
+memory-bound rather than arithmetic-bound: each posting-list candidate was
+dereferenced into the clause arena, chasing a `ContextClause`'s two heap
+vectors, only to fail a length comparison.
+
+**`ClauseSig` screen.** Both subsumption directions ask two set inclusions.
+A flat array parallel to the clause arena now holds, per clause, the two
+multiset sizes and a 64-bit Bloom signature per component. `a ⊆ b` implies
+`|a| ≤ |b|` and `sig(a) & !sig(b) == 0`, so a candidate failing either test
+provably cannot subsume and is skipped without touching the clause; survivors
+still run the exact `strengthens` check. Forward subsumption 5.47x faster,
+`add_clause` 4.35x, Pred arrival 3.42x, with the derived state bit-identical at
+the same message count.
+
+**Left-deep antichain join in local Pred.** `pred_from_neighbor` already
+computed Sequoia's Pred antichain as a left-deep join; `pred_local_inner` still
+enumerated the whole premise product and pushed every element through the
+redundancy trie. On qualified cardinality restrictions, where a `≤n R.C`
+premise set has several thousand-candidate dimensions, stack sampling caught a
+single `pred_local_inner` call spending over 100 s inside
+`RedundancyTrie::remove_supersets_from`. Local Pred now stages the same
+antichain per premise, on the same argument: if partial `P` strengthens `Q`
+then `P ∪ R` strengthens `Q ∪ R` for every choice `R` from the remaining
+premises. Products of at most 64 selections keep the direct enumeration, and
+`KM_SPLIT`'s Direction-B mode keeps it because its disjunctive-premise count is
+a property of a whole selection. At equal 900 s budget and the identical
+fixpoint point, local Pred 161.7 s → 135.5 s.
+
+Neither change alters what is derived, so no Lean re-certification applies. New
+guards in `engine.rs`: a no-false-negative property test and a selectivity test
+for the screen, oracle-equality tests against unscreened forward and backward
+subsumption, an arena/mirror drift test, and oracle-equality of the staged join
+against a retained full-product reference over 40 randomised premise
+populations. Full release suite green (1,914 lib tests).
+
+**Diagnostics added** (all gated, inert by default): `KM_MSGPROF` reports the
+heaviest Pred senders with their pool and predecessor counts plus arrival
+statistics and arena/context-slot totals; `KM_PROF_TIME` gains the `add_clause`
+phase split, the Pred sender/receiver split, a `saturate` total, and equality
+rule time.
+
+**Standing result for ore_ont_1194:** still out of reach at 240 s / 20 GiB, but
+for a measured reason. With zero query roots the run still needs more than
+900 s and 17.7 M Pred messages, so no query-side strategy can close it. Six
+top-level covering disjunctions — the excluded-middle pairs of six qualified
+max-cardinality restrictions — make every context a predecessor of the same six
+successor hubs, which alone send 56.5 % of the Pred traffic. Clause content is
+33x replicated across contexts (189,541 distinct clauses in 6.3 M context
+slots), so the next lever is structural sharing of that content, not another
+query schedule.
 
 ### Carry the repair certificate's enumeration index across rounds (2026-08-02)
 

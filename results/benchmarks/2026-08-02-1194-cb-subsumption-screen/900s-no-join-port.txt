@@ -1,0 +1,2 @@
+KM_PROF msgloop guard=18780000 contexts=1874 msgs_pending=0 saturate_calls=2237 succ=1033246 pred=17746753 ground_wo=0
+KM_PROF[time-ms] msgloop pred_payload=2040.5 pred_arrival=95190.4 propagate=33568.8 | add_clause=76164.7 (lookup=6596.3 fwdsub=50158.4 backsub=2305.6 index=8548.7) hyper=10310.6 subsume=29821.9 pred_local=161687.6 eq=49815.4 saturate=277922.3

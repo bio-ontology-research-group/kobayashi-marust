@@ -202,6 +202,24 @@ thread_local! {
     static PREDLOCAL_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static EQRULE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static PROPAGATE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Pred message delivery, split into the receiver-independent sender half
+    /// (`pred_payload`: back-substitution + intern) and the receiver half
+    /// (`apply_pred_payload`: dedup + the Pred Cartesian join + `add_clause`).
+    /// The split says whether a broadcast hub's cost is the payload it rebuilds
+    /// per predecessor or the join each predecessor runs.
+    static PREDPAYLOAD_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static PREDARRIVAL_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// `add_clause` split into its four phases, so the dominant clause-insertion
+    /// cost can be attributed to interning, forward subsumption, back
+    /// subsumption, or index maintenance.
+    static ADD_LOOKUP_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static ADD_FWDSUB_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static ADD_BACKSUB_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static ADD_INDEX_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Whole-`saturate` wall time.  Subtracting the per-rule cells from it
+    /// exposes the work-off loop's own overhead (todo pop, arena clause clone,
+    /// maximal-literal decode), which no rule cell accounts for.
+    static SATURATE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// Back-subsumption head-index maintenance (read under KM_PROF). `EVENTS`
     /// counts back-subsume calls that removed at least one worked-off clause
     /// (each such call previously triggered a full `rebuild_head_index`).
@@ -2015,20 +2033,30 @@ impl Context {
     /// Forward redundancy over the complete active set (`worked_off ∪ todo`).
     /// This has the same active semantics as Sequoia's context-clause
     /// redundancy index, including queued-clause subsumption.
+    /// Forward subsumption.  `sigs` is the dense `ClauseSig` array parallel to
+    /// `arena` (see `ClauseSig`): every candidate is screened against it before
+    /// the clause itself is touched, which keeps a long posting-list scan inside
+    /// one flat array instead of chasing each `ContextClause`'s two heap
+    /// vectors.  The screen only rejects candidates that provably cannot
+    /// subsume, so the answer is identical to scanning with `strengthens`
+    /// alone.
     fn fwd_subsumed(
         &self,
         arena: &[ContextClause],
+        sigs: &[ClauseSig],
         clause: &ContextClause,
         exclude: Option<u32>,
     ) -> bool {
-        let nb = clause.body.len();
-        let nh = clause.head.len();
+        debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
+        let want = ClauseSig::of(clause);
         for &ci in &self.active_empty_head {
             if Some(ci) == exclude {
                 continue;
             }
-            let candidate = &arena[ci as usize];
-            if candidate.body.len() <= nb && candidate.strengthens(clause) {
+            if !sigs[ci as usize].may_strengthen(&want) {
+                continue;
+            }
+            if arena[ci as usize].strengthens(clause) {
                 return true;
             }
         }
@@ -2038,11 +2066,10 @@ impl Context {
                     if Some(ci) == exclude {
                         continue;
                     }
-                    let candidate = &arena[ci as usize];
-                    if candidate.body.len() <= nb
-                        && candidate.head.len() <= nh
-                        && candidate.strengthens(clause)
-                    {
+                    if !sigs[ci as usize].may_strengthen(&want) {
+                        continue;
+                    }
+                    if arena[ci as usize].strengthens(clause) {
                         return true;
                     }
                 }
@@ -2055,9 +2082,16 @@ impl Context {
     /// strengthens, from both `worked_off` and `todo`, dropping their keys. The
     /// rarest active head posting generates candidates; exact inclusion
     /// verification preserves the same removal set as Sequoia's superset walk.
-    fn back_subsume(&mut self, arena: &[ContextClause], clause: &ContextClause) {
+    fn back_subsume(
+        &mut self,
+        arena: &[ContextClause],
+        sigs: &[ClauseSig],
+        clause: &ContextClause,
+    ) {
+        debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
         let nb = clause.body.len();
         let nh = clause.head.len();
+        let have = ClauseSig::of(clause);
         let same = |candidate: &ContextClause| {
             candidate.body == clause.body && candidate.head == clause.head
         };
@@ -2083,11 +2117,15 @@ impl Context {
         let removed: HashSet<u32> = candidates
             .into_iter()
             .filter(|&ci| {
+                // Dense screen first (see `ClauseSig`): the length and Bloom
+                // conditions are necessary for `clause.strengthens(candidate)`,
+                // so anything they reject would have failed the exact check.
+                if !have.may_strengthen(&sigs[ci as usize]) {
+                    return false;
+                }
                 let candidate = &arena[ci as usize];
-                candidate.body.len() >= nb
-                    && candidate.head.len() >= nh
-                    && clause.strengthens(candidate)
-                    && !same(candidate)
+                debug_assert!(candidate.body.len() >= nb && candidate.head.len() >= nh);
+                clause.strengthens(candidate) && !same(candidate)
             })
             .collect();
         if removed.is_empty() {
@@ -2173,6 +2211,13 @@ impl PredResultBuffer {
 fn push_nonredundant_pred_result(out: &mut PredResultBuffer, clause: ContextClause) {
     out.push_nonredundant(clause);
 }
+
+/// Below this many selections, local Pred enumerates its premise product
+/// directly instead of staging a per-premise antichain.  The staged join wins
+/// only when the product is much larger than the antichain it collapses to;
+/// for the one- and two-candidate premises that dominate ordinary ontologies
+/// the buffer-per-premise overhead would be pure loss.
+const SMALL_PRED_PRODUCT: u64 = 64;
 
 /// Content hash for interning (collisions are resolved by exact comparison,
 /// never trusted on their own).
@@ -2404,6 +2449,11 @@ pub struct Engine {
     /// the per-context copies of the seeded shared closure and of clauses
     /// re-derived across contexts.
     cc_arena: [Vec<ContextClause>; 2],
+    /// Dense subsumption pre-filter, one entry per `cc_arena` entry and always
+    /// the same length (see `ClauseSig`).  Kept out of `ContextClause` on
+    /// purpose: the subsumption scans read only this array, so keeping it flat
+    /// is what makes a long posting-list walk cache-resident.
+    cc_sig: [Vec<ClauseSig>; 2],
     /// content hash -> candidate arena ids, per domain (exact-compare verified)
     cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
     pub dropped_unsupported: usize,
@@ -2441,6 +2491,20 @@ pub struct Engine {
     stat_pred_checks: u64,
     stat_succ_scans: u64,
     stat_saturate: u64,
+    /// KM_MSGPROF diagnostic: Pred messages emitted per sender context, indexed
+    /// by context id.  Empty (and never written) unless the variable is set, so
+    /// the production path pays nothing.
+    stat_pred_out_by_ctx: Vec<u64>,
+    /// KM_MSGPROF diagnostic: arrivals that were exact duplicates of a payload
+    /// this receiver already held, arrivals whose join found no provider, the
+    /// conclusions the joins produced, and how many of those were genuinely new
+    /// clauses in the receiver.  Together they separate "the broadcast is
+    /// re-deriving what every receiver already has" from "each receiver draws a
+    /// different conclusion".
+    stat_pred_dup_arrival: u64,
+    stat_pred_empty_join: u64,
+    stat_pred_conclusions: u64,
+    stat_pred_conclusions_new: u64,
     /// Direction B (`KM_SPLIT`) increment 2: per-context-core assumed disjunct
     /// facts. When a context with a core present here is (first) created, the
     /// listed concept facts `⊤ → d(x)` are seeded into it — this is how the
@@ -2605,6 +2669,7 @@ impl Engine {
             pred_interned: Vec::new(),
             pred_intern_idx: HashMap::new(),
             cc_arena: [Vec::new(), Vec::new()],
+            cc_sig: [Vec::new(), Vec::new()],
             cc_intern_idx: [HashMap::new(), HashMap::new()],
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
@@ -2618,6 +2683,11 @@ impl Engine {
             stat_pred_checks: 0,
             stat_succ_scans: 0,
             stat_saturate: 0,
+            stat_pred_out_by_ctx: Vec::new(),
+            stat_pred_dup_arrival: 0,
+            stat_pred_empty_join: 0,
+            stat_pred_conclusions: 0,
+            stat_pred_conclusions_new: 0,
             branch_decisions: HashMap::new(),
         }
     }
@@ -2887,6 +2957,9 @@ impl Engine {
     fn intern_cc_known_new(&mut self, root: bool, c: ContextClause, h: u64) -> u32 {
         let d = root as usize;
         let id = self.cc_arena[d].len() as u32;
+        // `cc_sig` is the flat mirror of `cc_arena` and must grow with it in
+        // lockstep; every subsumption scan indexes it by arena id.
+        self.cc_sig[d].push(ClauseSig::of(&c));
         self.cc_arena[d].push(c);
         self.cc_intern_idx[d].entry(h).or_default().push(id);
         id
@@ -3199,7 +3272,12 @@ impl Engine {
         let d = root as usize;
         // Exact-duplicate check: the arena id is the canonical content key.
         // Reuse the hash lookup computes so a new clause is hashed only once.
+        let prof_time = self.prof_time;
+        let __t = prof_time.then(std::time::Instant::now);
         let (clause_hash, existing) = self.cc_lookup(root, &clause);
+        if let Some(t) = __t {
+            prof_add(&ADD_LOOKUP_NS, t);
+        }
         if let Some(cid) = existing {
             if self.contexts[id].clause_keys.contains(&cid) {
                 return false;
@@ -3208,14 +3286,24 @@ impl Engine {
         let nb = clause.body.len();
         let ctx = &self.contexts[id];
         // Forward subsumption: skip if some existing clause subsumes `clause`.
-        if ctx.fwd_subsumed(&self.cc_arena[d], &clause, None) {
+        let __t = prof_time.then(std::time::Instant::now);
+        let fwd = ctx.fwd_subsumed(&self.cc_arena[d], &self.cc_sig[d], &clause, None);
+        if let Some(t) = __t {
+            prof_add(&ADD_FWDSUB_NS, t);
+        }
+        if fwd {
             return false;
         }
         // Back-subsumption: drop existing clauses that `clause` strengthens.
         {
+            let __t = prof_time.then(std::time::Instant::now);
             let arena = &self.cc_arena[d];
+            let sigs = &self.cc_sig[d];
             let ctx = &mut self.contexts[id];
-            ctx.back_subsume(arena, &clause);
+            ctx.back_subsume(arena, sigs, &clause);
+            if let Some(t) = __t {
+                prof_add(&ADD_BACKSUB_NS, t);
+            }
         }
         // Demand-driven ground-fact seeding (nominal mode): the first clause
         // mentioning an individual brings that individual's ground ontology
@@ -3237,6 +3325,7 @@ impl Engine {
                 }
             }
         }
+        let __t = prof_time.then(std::time::Instant::now);
         let cid = match existing {
             Some(c) => c,
             None => self.intern_cc_known_new(root, clause, clause_hash),
@@ -3244,6 +3333,9 @@ impl Engine {
         let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
         ctx.index_active_clause(&self.cc_arena[d], cid);
+        if let Some(t) = __t {
+            prof_add(&ADD_INDEX_NS, t);
+        }
         // KM_TODO_UNITS_FIRST: prioritise empty-body (fact) clauses so the strong
         // subsumers are worked off first and prune the rest earlier. Pure work-off
         // ordering — saturation is confluent, so the fixpoint/output is unchanged.
@@ -3264,6 +3356,15 @@ impl Engine {
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
     fn saturate(&mut self, id: usize) {
+        if !self.prof_time {
+            return self.saturate_inner(id);
+        }
+        let t = std::time::Instant::now();
+        self.saturate_inner(id);
+        prof_add(&SATURATE_NS, t);
+    }
+
+    fn saturate_inner(&mut self, id: usize) {
         self.stat_saturate += 1;
         let trace_sat = self.trace_sat;
         let prof = self.prof;
@@ -3321,7 +3422,8 @@ impl Engine {
             {
                 let ctx = &self.contexts[id];
                 let __t_sub = self.prof_time.then(std::time::Instant::now);
-                let is_sub = ctx.fwd_subsumed(&self.cc_arena[d], &clause, Some(cid));
+                let is_sub =
+                    ctx.fwd_subsumed(&self.cc_arena[d], &self.cc_sig[d], &clause, Some(cid));
                 if let Some(t) = __t_sub {
                     prof_add(&SUBSUME_NS, t);
                 }
@@ -3364,7 +3466,11 @@ impl Engine {
                                 }
                             }
                             if self.equality {
+                                let __t = self.prof_time.then(std::time::Instant::now);
                                 let results = self.eq_from_pred(id, &clause, *max, root);
+                                if let Some(t) = __t {
+                                    prof_add(&EQRULE_NS, t);
+                                }
                                 if prof {
                                     neqp += results.len() as u64;
                                 }
@@ -3390,7 +3496,11 @@ impl Engine {
                                 }
                             }
                             if self.equality {
+                                let __t = self.prof_time.then(std::time::Instant::now);
                                 let results = self.eq_from_pred(id, &clause, *max, root);
+                                if let Some(t) = __t {
+                                    prof_add(&EQRULE_NS, t);
+                                }
                                 if prof {
                                     neqp += results.len() as u64;
                                 }
@@ -3405,7 +3515,11 @@ impl Engine {
                     Lit::Eq { .. } if self.equality => {
                         // This equality is the paramodulation source: rewrite
                         // matching literals of worked-off clauses.
+                        let __t = self.prof_time.then(std::time::Instant::now);
                         let results = self.eq_from_equation(id, &clause, *max, root);
+                        if let Some(t) = __t {
+                            prof_add(&EQRULE_NS, t);
+                        }
                         if prof {
                             neqe += results.len() as u64;
                         }
@@ -3420,7 +3534,11 @@ impl Engine {
                         // with worked-off equalities (the reverse direction, so
                         // the equality/inequality clash is found regardless of
                         // derivation order).
+                        let __t = self.prof_time.then(std::time::Instant::now);
                         let results = self.eq_from_pred(id, &clause, *max, root);
+                        if let Some(t) = __t {
+                            prof_add(&EQRULE_NS, t);
+                        }
                         if prof {
                             neqp += results.len() as u64;
                         }
@@ -3442,7 +3560,11 @@ impl Engine {
                     .count()
                     >= 2
             {
+                let __t = self.prof_time.then(std::time::Instant::now);
                 let results = self.factor(&clause, root);
+                if let Some(t) = __t {
+                    prof_add(&EQRULE_NS, t);
+                }
                 if prof {
                     nfact += results.len() as u64;
                 }
@@ -4112,6 +4234,7 @@ impl Engine {
     ) -> Vec<ContextClause> {
         let mut out = PredResultBuffer::default();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         let relevant = match ctx.neighbor_pred_body_index.get(&max) {
             Some(relevant) => relevant.as_slice(),
             None => return out.into_vec(),
@@ -4153,6 +4276,157 @@ impl Engine {
                 continue;
             }
             trace_pred_product("local", id, Some(max), pc, &ground, &candidates);
+            // Enumerate the product directly when it is small: staging an
+            // antichain buffer per premise costs more than the handful of
+            // selections it would filter, and the overwhelming majority of
+            // local Pred joins are one- or two-candidate premises.
+            //
+            // Direction B (`KM_SPLIT`) always takes this path: it counts how
+            // many premises of ONE product element carry a disjunctive head,
+            // which is a property of the whole selection and not of any prefix
+            // of it.  That mode is a gated diagnostic and never runs in the
+            // default engine.
+            let product = candidates.iter().fold(1u64, |acc, dimension| {
+                acc.saturating_mul(dimension.len() as u64)
+            });
+            if branch_ordered() || product <= SMALL_PRED_PRODUCT {
+                let n = candidates.len();
+                let mut idxs = vec![0usize; n];
+                loop {
+                    if let Some(c) =
+                        self.build_pred_resolvent(id, side, pc, &ground, &candidates, &idxs, root)
+                    {
+                        push_nonredundant_pred_result(&mut out, c);
+                    }
+                    let mut k = 0;
+                    loop {
+                        if k == n {
+                            idxs[0] = usize::MAX;
+                            break;
+                        }
+                        idxs[k] += 1;
+                        if idxs[k] < candidates[k].len() {
+                            break;
+                        }
+                        idxs[k] = 0;
+                        k += 1;
+                    }
+                    if n == 0 || idxs[0] == usize::MAX {
+                        break;
+                    }
+                }
+                continue;
+            }
+            // Left-deep antichain join, identical in form and justification to
+            // `pred_from_neighbor`: after each premise, drop the partial unions
+            // that another partial already strengthens.  If partial P
+            // strengthens Q then `P ∪ R` strengthens `Q ∪ R` for every choice R
+            // from the remaining premises, so every pruned extension has a
+            // stronger extension in the full product — the retained antichain,
+            // and therefore the context fixpoint, is unchanged.
+            //
+            // The explicit product this replaces is what stalls the qualified
+            // cardinality clauses of ontologies like ORE 1194, where one
+            // `≤n R.C` premise set has several thousand-candidate dimensions:
+            // the product was enumerated in full and every element was pushed
+            // through the redundancy trie, even though the surviving antichain
+            // after each dimension is small.
+            //
+            // A smaller dimension first normally minimizes the live antichain;
+            // dimension order cannot affect the set union represented by a
+            // complete selection from the product.
+            candidates.sort_by_key(Vec::len);
+            // `filter_head` is a per-literal filter with a single whole-head
+            // veto (a `s ≈ s` tautology), so filtering each prefix agrees with
+            // filtering the concatenation once at the end.
+            let Some(head) = self.filter_head(pc.head.clone()) else {
+                continue;
+            };
+            let mut partials = vec![ContextClause::new(ground, head, root, &self.sig)];
+            for dimension in &candidates {
+                let mut next = PredResultBuffer::default();
+                for partial in &partials {
+                    for &(ci, matched) in dimension {
+                        // The pinned position for `max` is provided by the side
+                        // clause, which has no arena id.
+                        let provider = if ci == usize::MAX { side } else { &arena[ci] };
+                        let mut body = partial.body.clone();
+                        body.extend_from_slice(&provider.body);
+                        let mut head = partial.head.clone();
+                        for &literal in &provider.head {
+                            if literal != Lit::P(matched) {
+                                head.push(literal);
+                            }
+                        }
+                        if let Some(head) = self.filter_head(head) {
+                            push_nonredundant_pred_result(
+                                &mut next,
+                                ContextClause::new(body, head, root, &self.sig),
+                            );
+                        }
+                    }
+                }
+                partials = next.into_vec();
+                if partials.is_empty() {
+                    break;
+                }
+            }
+            // Merging each premise's antichain into the shared buffer keeps the
+            // same result as pushing every product element: an element dropped
+            // as redundant is strengthened by one that was kept, so the
+            // antichain of the union is unchanged.
+            for clause in partials {
+                push_nonredundant_pred_result(&mut out, clause);
+            }
+        }
+        out.into_vec()
+    }
+
+    /// Reference implementation of local Pred: enumerate the whole Cartesian
+    /// product of premise providers and keep its strengthening antichain.  This
+    /// is what `pred_local_inner` did before the left-deep join replaced it, and
+    /// it is the oracle the join is tested against.
+    #[cfg(test)]
+    fn pred_local_full_product_reference(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Pred,
+        root: bool,
+    ) -> Vec<ContextClause> {
+        let mut out = PredResultBuffer::default();
+        let ctx = &self.contexts[id];
+        let relevant = match ctx.neighbor_pred_body_index.get(&max) {
+            Some(relevant) => relevant.as_slice(),
+            None => return out.into_vec(),
+        };
+        for &pid in relevant {
+            let pc = &self.pred_interned[pid as usize];
+            let mut ground: Vec<Pred> = Vec::new();
+            let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
+            let mut ok = true;
+            for &bp in &pc.body {
+                if bp == max {
+                    candidates.push(vec![(usize::MAX, bp)]);
+                    continue;
+                }
+                let mut v = Vec::new();
+                if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
+                    v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
+                }
+                if v.is_empty() {
+                    if bp.is_ground() {
+                        ground.push(bp);
+                        continue;
+                    }
+                    ok = false;
+                    break;
+                }
+                candidates.push(v);
+            }
+            if !ok {
+                continue;
+            }
             let n = candidates.len();
             let mut idxs = vec![0usize; n];
             loop {
@@ -5308,6 +5582,12 @@ impl Engine {
         for (e, len) in new_edge_seen {
             self.contexts[id].edge_seen.insert(e, len);
         }
+        if !self.stat_pred_out_by_ctx.is_empty() && !to_send.is_empty() {
+            if self.stat_pred_out_by_ctx.len() <= id {
+                self.stat_pred_out_by_ctx.resize(id + 1, 0);
+            }
+            self.stat_pred_out_by_ctx[id] += to_send.len() as u64;
+        }
         for (edge, pool_idx) in to_send {
             self.contexts[id]
                 .pushed_pred
@@ -5358,8 +5638,17 @@ impl Engine {
     /// resolvents. Returns `to`; the caller saturates and propagates it once at
     /// the end of the message batch (see `apply_succ`).
     fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
+        if !self.prof_time {
+            let pc = self.pred_payload(from, edge_label, pool_idx);
+            return self.apply_pred_payload(to, pc);
+        }
+        let t = std::time::Instant::now();
         let pc = self.pred_payload(from, edge_label, pool_idx);
-        self.apply_pred_payload(to, pc)
+        prof_add(&PREDPAYLOAD_NS, t);
+        let t = std::time::Instant::now();
+        let r = self.apply_pred_payload(to, pc);
+        prof_add(&PREDARRIVAL_NS, t);
+        r
     }
 
     /// The sender-side half of a Pred message: back-substitute the sender's
@@ -5407,10 +5696,14 @@ impl Engine {
     /// context `to` (plus the shared arena / intern tables). Returns `to`.
     fn apply_pred_payload(&mut self, to: usize, pc: PredClause) -> usize {
         let pid = self.intern_pred(pc);
+        let msgprof = !self.stat_pred_out_by_ctx.is_empty();
         // Duplicate arrival (same substituted clause already received, e.g. from
         // a successor's pre- and post-growth contexts): everything it could
         // contribute was already derived, so skip the re-derivation.
         if !self.contexts[to].neighbor_pred_seen.insert(pid) {
+            if msgprof {
+                self.stat_pred_dup_arrival += 1;
+            }
             return to;
         }
         self.contexts[to].neighbor_pred.push(pid);
@@ -5427,8 +5720,17 @@ impl Engine {
             let pc = &self.pred_interned[pid as usize];
             self.pred_from_neighbor(to, pc, root)
         };
+        if msgprof {
+            if results.is_empty() {
+                self.stat_pred_empty_join += 1;
+            }
+            self.stat_pred_conclusions += results.len() as u64;
+        }
         for r in results {
-            self.add_clause(to, r);
+            let fresh = self.add_clause(to, r);
+            if msgprof && fresh {
+                self.stat_pred_conclusions_new += 1;
+            }
         }
         to
     }
@@ -5525,8 +5827,58 @@ impl Engine {
     /// successor context is only an optimisation -- so classifying a subset is
     /// sound and yields identical results for those concepts.  This is what lets
     /// classification be parallelised across disjoint concept chunks.
+    /// KM_MSGPROF diagnostic: which contexts emit the Pred traffic.  Prints the
+    /// `n` heaviest senders with the shape that explains the volume
+    /// (`pool` x `preds` is the per-round upper bound on a sender's fan-out).
+    /// Inert unless `KM_MSGPROF` armed `stat_pred_out_by_ctx`.
+    fn report_pred_pressure(&self, n: usize) {
+        if self.stat_pred_out_by_ctx.is_empty() {
+            return;
+        }
+        let mut rank: Vec<(u64, usize)> = self
+            .stat_pred_out_by_ctx
+            .iter()
+            .enumerate()
+            .filter(|&(_, &v)| v > 0)
+            .map(|(i, &v)| (v, i))
+            .collect();
+        rank.sort_unstable_by(|a, b| b.cmp(a));
+        let total: u64 = rank.iter().map(|&(v, _)| v).sum();
+        eprintln!(
+            "KM_MSGPROF arrivals dup={} empty_join={} conclusions={} conclusions_new={} ({:.2}% new) | arena[succ]={} arena[root]={} pred_interned={} ctx_clause_slots={}",
+            self.stat_pred_dup_arrival,
+            self.stat_pred_empty_join,
+            self.stat_pred_conclusions,
+            self.stat_pred_conclusions_new,
+            100.0 * self.stat_pred_conclusions_new as f64
+                / self.stat_pred_conclusions.max(1) as f64,
+            self.cc_arena[0].len(),
+            self.cc_arena[1].len(),
+            self.pred_interned.len(),
+            self.contexts.iter().map(|c| c.clause_keys.len()).sum::<usize>(),
+        );
+        for &(sent, id) in rank.iter().take(n) {
+            let c = &self.contexts[id];
+            eprintln!(
+                "KM_MSGPROF sender ctx={} root={} query={:?} pred_sent={} ({:.1}%) pool={} preds={} wo={} core={}",
+                id,
+                c.root,
+                c.query,
+                sent,
+                100.0 * sent as f64 / total.max(1) as f64,
+                c.pred_pool.len(),
+                c.predecessors.len(),
+                c.worked_off.len(),
+                c.core.len(),
+            );
+        }
+    }
+
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
+        if std::env::var_os("KM_MSGPROF").is_some() && self.stat_pred_out_by_ctx.is_empty() {
+            self.stat_pred_out_by_ctx = vec![0u64; self.contexts.len().max(1)];
+        }
         // KM_CTXSPLIT: one-shot diagnostic for the shared-successor parallel
         // strategy. Splits wall time into root-seeding (per-query, parallelisable)
         // vs the inter-context message fixpoint (builds the query-independent
@@ -5641,6 +5993,28 @@ impl Engine {
                         guard, self.contexts.len(), self.msgs.len(), self.stat_saturate,
                         nsucc_msgs, npred_msgs, gwo
                     );
+                    self.report_pred_pressure(8);
+                    if self.prof_time {
+                        let ms = |cell: &'static std::thread::LocalKey<std::cell::Cell<u64>>| {
+                            cell.with(|value| value.get()) as f64 / 1e6
+                        };
+                        eprintln!(
+                            "KM_PROF[time-ms] msgloop pred_payload={:.1} pred_arrival={:.1} propagate={:.1} | add_clause={:.1} (lookup={:.1} fwdsub={:.1} backsub={:.1} index={:.1}) hyper={:.1} subsume={:.1} pred_local={:.1} eq={:.1} saturate={:.1}",
+                            ms(&PREDPAYLOAD_NS),
+                            ms(&PREDARRIVAL_NS),
+                            ms(&PROPAGATE_NS),
+                            ms(&ADDCLAUSE_NS),
+                            ms(&ADD_LOOKUP_NS),
+                            ms(&ADD_FWDSUB_NS),
+                            ms(&ADD_BACKSUB_NS),
+                            ms(&ADD_INDEX_NS),
+                            ms(&HYPER_NS),
+                            ms(&SUBSUME_NS),
+                            ms(&PREDLOCAL_NS),
+                            ms(&EQRULE_NS),
+                            ms(&SATURATE_NS),
+                        );
+                    }
                 }
                 if trace && guard % 200_000 == 0 {
                     let (mut maxb, mut totwo) = (0usize, 0usize);
@@ -6648,6 +7022,12 @@ mod tests {
         Pred::Role { iri, s, t }
     }
 
+    /// The dense `ClauseSig` mirror the engine keeps beside `cc_arena`; tests
+    /// that build a standalone arena need the same parallel array.
+    fn sigs_of(arena: &[ContextClause]) -> Vec<ClauseSig> {
+        arena.iter().map(ClauseSig::of).collect()
+    }
+
     fn supers_of(e: &Engine, name: &str) -> Vec<String> {
         e.subsumptions()
             .into_iter()
@@ -7496,7 +7876,7 @@ mod tests {
             ctx.worked_off.push(cid);
             ctx.index_clause(&arena, cid);
         }
-        ctx.back_subsume(&arena, &arena[3]);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &arena[3]);
         assert_eq!(
             ctx.worked_off,
             vec![1u32],
@@ -7554,7 +7934,7 @@ mod tests {
             ctx.worked_off.push(cid);
             ctx.index_clause(&arena, cid);
         }
-        ctx.back_subsume(&arena, &arena[1]);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &arena[1]);
         assert_eq!(ctx.worked_off, vec![2u32], "clause 0 must be subsumed away");
         let snapshot = |ctx: &Context| {
             (
@@ -8087,7 +8467,7 @@ mod tests {
                     .clause_keys
                     .iter()
                     .any(|&cid| arena[cid as usize].test_strengthening(&incoming) == -1);
-                let actual = ctx.fwd_subsumed(&arena, &incoming, None);
+                let actual = ctx.fwd_subsumed(&arena, &sigs_of(&arena), &incoming, None);
                 assert_eq!(
                     actual, expected,
                     "indexed and linear forward subsumption differ for {:?}",
@@ -8095,6 +8475,253 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Deterministic pseudo-random clause population used by the `ClauseSig`
+    /// screen tests below.  A small predicate/literal alphabet with a lot of
+    /// reuse is what makes subsumption pairs actually occur; a wide alphabet
+    /// would make almost every pair trivially incomparable and the test
+    /// vacuous.
+    fn screen_population(sig: &Sig, root: bool, n: usize) -> Vec<ContextClause> {
+        let o = ind_term(1);
+        let preds = [
+            cx(1, X),
+            cx(2, X),
+            cx(3, X),
+            cx(1, o),
+            rl(7, X, o),
+            rl(7, X, Y),
+            rl(8, X, Y),
+            cx(4, Y),
+        ];
+        let lits = [
+            Lit::P(cx(11, X)),
+            Lit::P(cx(12, X)),
+            Lit::P(cx(13, X)),
+            Lit::P(rl(7, X, o)),
+            Lit::P(rl(9, X, Y)),
+            Lit::eq(X, o),
+            Lit::ineq(X, o),
+            Lit::eq(Y, o),
+        ];
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            // Subset-heavy sampling: pick each alphabet element independently
+            // with probability ~1/3, so bodies/heads of very different sizes
+            // and genuine subset pairs both occur often.
+            let (bm, hm) = (next(), next());
+            let body: Vec<Pred> = preds
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| (bm >> (i * 3)) % 3 == 0)
+                .map(|(_, &p)| p)
+                .collect();
+            let head: Vec<Lit> = lits
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| (hm >> (i * 3)) % 3 == 0)
+                .map(|(_, &l)| l)
+                .collect();
+            out.push(ContextClause::new(body, head, root, sig));
+        }
+        out
+    }
+
+    /// Safety contract of the dense subsumption screen: it may only ever reject
+    /// a candidate that genuinely does not subsume.  A single false negative
+    /// would silently drop a redundancy elimination — forward subsumption would
+    /// admit a clause it should have skipped, back subsumption would keep a
+    /// clause it should have removed — so this is the property that makes the
+    /// screen fixpoint-preserving rather than merely fast.
+    #[test]
+    fn clause_sig_screen_never_rejects_a_genuine_subsumer() {
+        let sig = Sig::default();
+        for &root in &[false, true] {
+            let pop = screen_population(&sig, root, 400);
+            let sigs = sigs_of(&pop);
+            let mut witnessed = 0usize;
+            for (i, a) in pop.iter().enumerate() {
+                for (j, b) in pop.iter().enumerate() {
+                    if a.strengthens(b) {
+                        witnessed += 1;
+                        assert!(
+                            sigs[i].may_strengthen(&sigs[j]),
+                            "screen rejected a real subsumer: {a:?} strengthens {b:?}"
+                        );
+                    }
+                }
+            }
+            // Guard against a vacuous pass: the population must actually contain
+            // subsumption pairs beyond the reflexive ones.
+            assert!(
+                witnessed > pop.len(),
+                "population produced no non-reflexive subsumption pairs ({witnessed})"
+            );
+        }
+    }
+
+    /// The screen must also be selective enough to be worth its keep: on a
+    /// population where most pairs are incomparable it has to reject the large
+    /// majority of candidates without consulting the clause.
+    #[test]
+    fn clause_sig_screen_rejects_most_non_subsumers() {
+        let sig = Sig::default();
+        let pop = screen_population(&sig, false, 200);
+        let sigs = sigs_of(&pop);
+        let (mut pairs, mut passed, mut real) = (0usize, 0usize, 0usize);
+        for (i, a) in pop.iter().enumerate() {
+            for (j, b) in pop.iter().enumerate() {
+                pairs += 1;
+                if sigs[i].may_strengthen(&sigs[j]) {
+                    passed += 1;
+                }
+                if a.strengthens(b) {
+                    real += 1;
+                }
+            }
+        }
+        assert!(
+            passed * 2 < pairs,
+            "screen let through {passed}/{pairs} pairs ({real} real) — no filtering value"
+        );
+    }
+
+    /// Forward subsumption with the screen must return exactly what an
+    /// unscreened linear scan over the active clause set returns, for every
+    /// incoming clause drawn from the same alphabet.  This is the end-to-end
+    /// equivalence the screen has to preserve at the call site, indexes
+    /// included.
+    #[test]
+    fn screened_fwd_subsumed_matches_unscreened_linear_scan() {
+        let sig = Sig::default();
+        let arena = screen_population(&sig, false, 240);
+        let sigs = sigs_of(&arena);
+        let mut ctx = Context::new(0, vec![], false, None);
+        for cid in 0..arena.len() as u32 {
+            if ctx.clause_keys.insert(cid) {
+                ctx.index_active_clause(&arena, cid);
+                if cid % 3 == 0 {
+                    ctx.worked_off.push(cid);
+                    ctx.index_clause(&arena, cid);
+                } else {
+                    ctx.todo.push_back(cid);
+                }
+            }
+        }
+        let probes = screen_population(&sig, false, 240);
+        let mut hits = 0usize;
+        for (k, incoming) in probes.iter().enumerate() {
+            // Exercise the `exclude` path too (the work-off re-check passes the
+            // clause's own arena id).
+            let exclude = if k % 4 == 0 {
+                arena
+                    .iter()
+                    .position(|c| c.body == incoming.body && c.head == incoming.head)
+                    .map(|i| i as u32)
+            } else {
+                None
+            };
+            let expected = ctx
+                .clause_keys
+                .iter()
+                .any(|&cid| Some(cid) != exclude && arena[cid as usize].strengthens(incoming));
+            let actual = ctx.fwd_subsumed(&arena, &sigs, incoming, exclude);
+            assert_eq!(
+                actual, expected,
+                "screened and unscreened forward subsumption differ for {incoming:?}"
+            );
+            hits += expected as usize;
+        }
+        assert!(hits > 0, "no probe was subsumed — the test proves nothing");
+        assert!(hits < probes.len(), "every probe was subsumed — degenerate");
+    }
+
+    /// Back subsumption with the screen must remove exactly the clause set an
+    /// unscreened scan removes.  Removing too few leaves redundant clauses
+    /// alive (slower but sound); removing too many would drop a clause that is
+    /// NOT entailed by the survivor, which is a completeness bug — so the
+    /// removal sets are compared for equality, not inclusion.
+    #[test]
+    fn screened_back_subsume_removes_the_same_clauses() {
+        let sig = Sig::default();
+        let arena = screen_population(&sig, false, 200);
+        let sigs = sigs_of(&arena);
+        let strengtheners = screen_population(&sig, false, 60);
+        let mut checked = 0usize;
+        for clause in &strengtheners {
+            let mut ctx = Context::new(0, vec![], false, None);
+            for cid in 0..arena.len() as u32 {
+                if ctx.clause_keys.insert(cid) {
+                    ctx.index_active_clause(&arena, cid);
+                    ctx.worked_off.push(cid);
+                    ctx.index_clause(&arena, cid);
+                }
+            }
+            let before: HashSet<u32> = ctx.clause_keys.clone();
+            let expected: HashSet<u32> = before
+                .iter()
+                .copied()
+                .filter(|&cid| {
+                    let candidate = &arena[cid as usize];
+                    clause.strengthens(candidate)
+                        && !(candidate.body == clause.body && candidate.head == clause.head)
+                })
+                .collect();
+            ctx.back_subsume(&arena, &sigs, clause);
+            let removed: HashSet<u32> = before.difference(&ctx.clause_keys).copied().collect();
+            assert_eq!(
+                removed, expected,
+                "screened back subsumption removed a different set for {clause:?}"
+            );
+            checked += removed.len();
+        }
+        assert!(checked > 0, "no clause was ever back-subsumed — vacuous");
+    }
+
+    /// The dense signature array must stay in lockstep with the clause arena:
+    /// every arena id indexes a `ClauseSig` describing exactly that clause.
+    /// The subsumption scans index `cc_sig` by arena id with no bounds fallback,
+    /// so a drift here would mis-screen (or panic) rather than fail loudly.
+    #[test]
+    fn clause_sig_array_mirrors_the_clause_arena() {
+        let clauses = vec![
+            OntologyClause::new(vec![cx(1, X)], vec![Lit::P(cx(2, X))]),
+            OntologyClause::new(vec![cx(2, X)], vec![Lit::P(cx(3, X)), Lit::P(cx(4, X))]),
+            OntologyClause::new(vec![cx(3, X), cx(4, X)], vec![]),
+            OntologyClause::new(vec![cx(1, X)], vec![Lit::P(rl(5, X, fterm(1)))]),
+            OntologyClause::new(vec![cx(1, X)], vec![Lit::P(cx(2, fterm(1)))]),
+        ];
+        let mut sig = Sig::default();
+        for name in ["A", "B", "C", "D", "E", "F"] {
+            sig.concept(name);
+        }
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run();
+        for d in 0..2usize {
+            assert_eq!(
+                e.cc_sig[d].len(),
+                e.cc_arena[d].len(),
+                "cc_sig/cc_arena length drift in domain {d}"
+            );
+            for (i, c) in e.cc_arena[d].iter().enumerate() {
+                assert_eq!(
+                    e.cc_sig[d][i],
+                    ClauseSig::of(c),
+                    "cc_sig[{d}][{i}] does not describe its arena clause"
+                );
+            }
+        }
+        assert!(
+            e.cc_arena[0].len() + e.cc_arena[1].len() > 5,
+            "run derived too little to exercise the arena"
+        );
     }
 
     #[test]
@@ -8220,6 +8847,188 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         };
         assert_eq!(canonical(incremental), canonical(cartesian.into_vec()));
+    }
+
+    /// The left-deep antichain join in `pred_local_inner` must retain exactly
+    /// the antichain the full Cartesian product enumeration retained.  Anything
+    /// missing is a completeness bug (a Pred conclusion never reaches the
+    /// context); anything extra is redundant work the antichain was supposed to
+    /// remove.  The scenarios below are randomised over premise counts,
+    /// provider bodies and disjunctive heads, and include the shape that stalls
+    /// on ORE 1194: several premises each with many incomparable providers.
+    #[test]
+    fn local_pred_left_deep_join_matches_full_product_antichain() {
+        let canonical = |clauses: Vec<ContextClause>| {
+            clauses
+                .into_iter()
+                .map(|clause| (clause.body, clause.head))
+                .collect::<BTreeSet<_>>()
+        };
+        let mut state = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut compared = 0usize;
+        let mut nonempty = 0usize;
+        for scenario in 0..40usize {
+            let mut sig = Sig::default();
+            let premises: Vec<Pred> = (0..3 + scenario % 3)
+                .map(|i| cx(sig.concept(&format!("P{i}")), X))
+                .collect();
+            let guards: Vec<Pred> = (0..4)
+                .map(|i| cx(sig.concept(&format!("G{i}")), X))
+                .collect();
+            let extra: Vec<Lit> = (0..3)
+                .map(|i| Lit::P(cx(sig.concept(&format!("H{i}")), X)))
+                .collect();
+            let trigger = cx(sig.concept("T"), fterm(1));
+            let mut e = Engine::new(sig, vec![], 0);
+            e.contexts.push(Context::new(0, vec![], false, None));
+
+            // Providers: for each premise, a handful of clauses with that
+            // premise maximal in the head, with pseudo-random bodies and
+            // sometimes an extra head disjunct.
+            let mut arena: Vec<ContextClause> = Vec::new();
+            for premise in &premises {
+                let providers = 2 + (next() % 4) as usize;
+                for _ in 0..providers {
+                    let mask = next();
+                    let body: Vec<Pred> = guards
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| (mask >> (i * 5)) % 3 == 0)
+                        .map(|(_, &p)| p)
+                        .collect();
+                    let mut head = vec![Lit::P(*premise)];
+                    if mask % 7 == 0 {
+                        head.push(extra[(mask % 3) as usize]);
+                    }
+                    arena.push(ContextClause::new(body, head, false, &e.sig));
+                }
+            }
+            e.cc_arena[0] = arena;
+            e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
+            for cid in 0..e.cc_arena[0].len() as u32 {
+                e.contexts[0].worked_off.push(cid);
+                e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            }
+
+            // A neighbour Pred clause whose body is the pinned trigger plus
+            // every premise, i.e. a multi-dimension local Pred join.
+            let mut body = vec![trigger];
+            body.extend(premises.iter().copied());
+            body.sort();
+            body.dedup();
+            let head = if scenario % 2 == 0 {
+                vec![extra[0]]
+            } else {
+                vec![extra[0], extra[1]]
+            };
+            e.pred_interned.push(PredClause { body, head });
+            e.contexts[0].neighbor_pred.push(0);
+            e.contexts[0]
+                .neighbor_pred_body_index
+                .entry(trigger)
+                .or_default()
+                .push(0);
+
+            let side = ContextClause::new(
+                vec![guards[scenario % guards.len()]],
+                vec![Lit::P(trigger)],
+                false,
+                &e.sig,
+            );
+            let joined = e.pred_local_inner(0, &side, trigger, false);
+            let reference = e.pred_local_full_product_reference(0, &side, trigger, false);
+            assert_eq!(
+                canonical(joined),
+                canonical(reference),
+                "left-deep join and full product disagree in scenario {scenario}"
+            );
+            compared += 1;
+            nonempty += usize::from(!e.pred_local_inner(0, &side, trigger, false).is_empty());
+        }
+        assert_eq!(compared, 40);
+        assert!(
+            nonempty > 30,
+            "only {nonempty}/40 scenarios produced conclusions — test is near-vacuous"
+        );
+    }
+
+    /// The same equivalence on the exact shape that stalls: one premise with
+    /// many incomparable providers, so the full product is large while its
+    /// antichain is small.  This is the case where the two implementations do
+    /// wildly different amounts of work and must still agree.
+    #[test]
+    fn local_pred_join_matches_product_on_a_wide_premise_set() {
+        let mut sig = Sig::default();
+        let premises: Vec<Pred> = (0..3)
+            .map(|i| cx(sig.concept(&format!("P{i}")), X))
+            .collect();
+        let guards: Vec<Pred> = (0..12)
+            .map(|i| cx(sig.concept(&format!("G{i}")), X))
+            .collect();
+        let h = Lit::P(cx(sig.concept("H"), X));
+        let trigger = cx(sig.concept("T"), fterm(1));
+        let mut e = Engine::new(sig, vec![], 0);
+        e.contexts.push(Context::new(0, vec![], false, None));
+        // 12 pairwise-incomparable providers per premise: the full product has
+        // 12^3 = 1728 elements but its antichain is the 12 singleton bodies
+        // (picking the same guard in all three premises); every mixed body is
+        // strengthened by one of those.  That gap is exactly what the left-deep
+        // join skips and the product enumeration pays for.
+        let mut arena = Vec::new();
+        for premise in &premises {
+            for guard in &guards {
+                arena.push(ContextClause::new(
+                    vec![*guard],
+                    vec![Lit::P(*premise)],
+                    false,
+                    &e.sig,
+                ));
+            }
+        }
+        e.cc_arena[0] = arena;
+        e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
+        for cid in 0..e.cc_arena[0].len() as u32 {
+            e.contexts[0].worked_off.push(cid);
+            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+        }
+        let mut body = vec![trigger];
+        body.extend(premises.iter().copied());
+        body.sort();
+        e.pred_interned.push(PredClause {
+            body,
+            head: vec![h],
+        });
+        e.contexts[0].neighbor_pred.push(0);
+        e.contexts[0]
+            .neighbor_pred_body_index
+            .entry(trigger)
+            .or_default()
+            .push(0);
+        let side = ContextClause::new(vec![], vec![Lit::P(trigger)], false, &e.sig);
+
+        let canonical = |clauses: Vec<ContextClause>| {
+            clauses
+                .into_iter()
+                .map(|clause| (clause.body, clause.head))
+                .collect::<BTreeSet<_>>()
+        };
+        let joined = canonical(e.pred_local_inner(0, &side, trigger, false));
+        let reference = canonical(e.pred_local_full_product_reference(0, &side, trigger, false));
+        assert_eq!(joined, reference);
+        assert_eq!(
+            joined.len(),
+            guards.len(),
+            "the 1728-element product must collapse to one union per guard"
+        );
+        for (body, _) in &joined {
+            assert_eq!(body.len(), 1, "a mixed-guard body survived the antichain");
+        }
     }
 
     #[test]
@@ -8367,7 +9176,7 @@ mod tests {
         ctx.index_active_clause(&arena, 0);
         ctx.index_active_clause(&arena, 1);
 
-        ctx.back_subsume(&arena, &strong);
+        ctx.back_subsume(&arena, &sigs_of(&arena), &strong);
         assert!(!ctx.clause_keys.contains(&0));
         assert!(!ctx.clause_keys.contains(&1));
         assert!(ctx.todo.is_empty());

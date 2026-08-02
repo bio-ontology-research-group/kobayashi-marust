@@ -277,6 +277,91 @@ impl ContextClause {
     }
 }
 
+/// splitmix64 finaliser: a cheap deterministic scrambler for the small integer
+/// tuples a `Pred`/`Lit` is made of.  Only used to pick a signature bit, so
+/// collisions cost recall in the filter, never correctness.
+#[inline(always)]
+fn mix64(mut x: u64) -> u64 {
+    x ^= x >> 30;
+    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x ^= x >> 27;
+    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^= x >> 31;
+    x
+}
+
+#[inline(always)]
+fn pred_code(p: &Pred) -> u64 {
+    match *p {
+        Pred::Concept { iri, t } => mix64(((iri as u64) << 32) | (t as u64)),
+        Pred::Role { iri, s, t } => {
+            mix64(((iri as u64) << 32) | (s as u64)) ^ mix64(((t as u64) << 1) | 1)
+        }
+    }
+}
+
+#[inline(always)]
+fn lit_code(l: &Lit) -> u64 {
+    match *l {
+        Lit::P(p) => pred_code(&p),
+        Lit::Eq { s, t } => mix64(((s as u64) << 32) | (t as u64) | (1 << 63)),
+        Lit::Ineq { s, t } => mix64(((s as u64) << 32) | (t as u64)) ^ 0x5bf0_3635_ca62_9163,
+    }
+}
+
+/// Dense subsumption pre-filter for one interned context clause.
+///
+/// Both subsumption directions ask a pair of set inclusions, `c1.body ⊆
+/// c2.body` and `c1.head ⊆ c2.head`.  Each field below records a *necessary*
+/// condition for those inclusions: the multiset sizes, and a 64-bit Bloom
+/// signature (one bit per literal, `1 << (code & 63)`).  `a ⊆ b` implies
+/// `|a| <= |b|` and `sig(a) & !sig(b) == 0`, so a candidate failing either test
+/// provably cannot subsume and is skipped without touching the clause itself.
+///
+/// The point is memory locality, not arithmetic: the signatures live in a flat
+/// array parallel to the clause arena, so scanning a long posting list reads
+/// 24 dense bytes per candidate instead of chasing the two heap vectors of a
+/// `ContextClause`.  The surviving candidates still go through the exact
+/// `strengthens` check, so the accepted set — hence the derived fixpoint — is
+/// unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClauseSig {
+    pub body_len: u32,
+    pub head_len: u32,
+    pub body_sig: u64,
+    pub head_sig: u64,
+}
+
+impl ClauseSig {
+    pub fn of(c: &ContextClause) -> ClauseSig {
+        let mut body_sig = 0u64;
+        for p in &c.body {
+            body_sig |= 1u64 << (pred_code(p) & 63);
+        }
+        let mut head_sig = 0u64;
+        for l in &c.head {
+            head_sig |= 1u64 << (lit_code(l) & 63);
+        }
+        ClauseSig {
+            body_len: c.body.len() as u32,
+            head_len: c.head.len() as u32,
+            body_sig,
+            head_sig,
+        }
+    }
+
+    /// Necessary condition for `self`'s clause to strengthen `that`'s clause.
+    /// `false` means "provably does not subsume"; `true` means "must run the
+    /// exact `strengthens` check".
+    #[inline(always)]
+    pub fn may_strengthen(&self, that: &ClauseSig) -> bool {
+        self.body_len <= that.body_len
+            && self.head_len <= that.head_len
+            && self.body_sig & !that.body_sig == 0
+            && self.head_sig & !that.head_sig == 0
+    }
+}
+
 #[cfg(test)]
 mod strengthens_tests {
     use super::*;

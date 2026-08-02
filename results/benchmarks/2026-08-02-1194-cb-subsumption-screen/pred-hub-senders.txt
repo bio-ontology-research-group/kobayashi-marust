@@ -1,0 +1,8 @@
+KM_MSGPROF sender ctx=2 root=false query=None pred_sent=770232 (13.3%) pool=885 preds=2660 wo=38272 core=2
+KM_MSGPROF sender ctx=3 root=false query=None pred_sent=600032 (10.4%) pool=700 preds=2660 wo=33670 core=2
+KM_MSGPROF sender ctx=4 root=false query=None pred_sent=521784 (9.0%) pool=804 preds=2010 wo=37763 core=2
+KM_MSGPROF sender ctx=5 root=false query=None pred_sent=461064 (8.0%) pool=716 preds=2010 wo=39231 core=2
+KM_MSGPROF sender ctx=6 root=false query=None pred_sent=457432 (7.9%) pool=545 preds=2660 wo=28517 core=2
+KM_MSGPROF sender ctx=1 root=false query=None pred_sent=457432 (7.9%) pool=545 preds=2660 wo=28517 core=2
+KM_MSGPROF sender ctx=18 root=false query=None pred_sent=34320 (0.6%) pool=240 preds=266 wo=587 core=3
+KM_MSGPROF sender ctx=106 root=false query=None pred_sent=31065 (0.5%) pool=285 preds=144 wo=679 core=3
