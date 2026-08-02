@@ -9,6 +9,95 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Share the seeded closure as a base layer under a per-context delta (2026-08-02)
+
+Context clause *content* has been shared since `cc_arena` became content
+interned, but the per-context bookkeeping *about* that content was still one
+private copy per context. On ORE 1194 the CB engine holds about 189,541 distinct
+interned clauses across roughly 6.3 million context slots — each distinct clause
+is filed into about 33 contexts — and almost all of that duplication is the one
+thing every context is seeded with: the context-independent closure. Every
+successor context (and every query root, under the root ordering) received that
+closure through `seed_worked_off`, which pushed the same ids into its own
+`worked_off` list, `clause_keys` set, six head/role/term postings, active
+redundancy index, Join indexes and Pred/Succ pools. An earlier attempt to attack
+this by caching the per-clause *index key derivation* was exact but bought
+nothing (no speedup, +8.5 MiB) and was reverted: the cost is the storage and the
+scanning, not the derivation.
+
+The clause store is now split into two layers of one new type, `ClauseLayer`
+(the worked-off list, the key set, every posting index and both propagation
+pools). A context reads a shared, reference-counted **base** layer followed by
+its own **delta** layer; a context-local back-subsumption of a base clause is
+recorded in a `base_removed` mask instead of editing the shared base. The base
+for each ordering domain is built once (`Engine::shared_base`) and attached to
+every closure-seeded context, so the closure's postings exist once instead of
+once per context. `KM_NO_BASE_LAYER` restores the flat representation for A/B
+measurement.
+
+Exactness. Every read goes through a `PostingView`, which denotes
+`base \ removed` followed by `delta`. That is the same *sequence* the flat
+representation held, not merely the same set:
+
+* The base is installed at context creation, before any delta clause exists, and
+  every posting is appended to in insertion order — so in the flat store all
+  base ids already preceded all delta ids in every posting.
+* Removing an id from a flat posting leaves the survivors in their original
+  relative order, which is exactly what filtering the base segment reproduces.
+* Masking an id out of *all* base postings at once is faithful because
+  `unindex_clause`/`unindex_active_clause` remove it from exactly the postings
+  `index_clause`/`index_active_clause` inserted it into, and from no others.
+* The mask is never cleared: a clause derived again after removal re-enters via
+  the delta, i.e. at the end of every posting — precisely where the flat store
+  re-appended it.
+* The base layer is built by replaying the *same* `ClauseLayer::seed` routine
+  over the *same* closure ids in closure order that `seed_worked_off` used, so
+  it is bit-for-bit the state the per-context loop produced; a fresh context's
+  delta and mask are empty, so attaching the base is observationally identical
+  to running that loop.
+* Membership (`has_clause`), sizes, the Pred/Succ pools and every pool index
+  that crosses a context boundary in a `Msg::Pred` are all computed over
+  base-then-delta, so semi-naive high-water marks and `pushed_pred` indices keep
+  denoting the same clauses. Pool entries stay unmasked, as before, because a
+  back-subsumed clause is still context-entailed; consumers re-check
+  `has_clause` exactly where they used to re-check `clause_keys`.
+* `back_subsume`'s rarest-posting selection returns early on an empty view where
+  it used to return early on an absent key. A flat posting is never empty
+  (emptied keys are pruned), and a fully masked base view is exactly the state
+  that pruning produced, so the removal set is unchanged.
+* The shared closure is still computed before the successor context is created,
+  keeping the throwaway closure context's id — and therefore every context id —
+  identical to the flat engine's.
+
+Two deliberate, output-neutral relaxations are documented in the code: the Join
+fast-path guard `join_indexes_empty` ignores the mask (it can only *disable* a
+skip, after which the Join loops find no candidate), and the Join key
+enumeration walks base keys then delta keys rather than one map — the flat code
+iterated a `std::collections::HashMap` whose order is already unspecified, so
+only the key set was ever observable, and that is preserved exactly.
+
+`KM_SEED_FROM_SUBSET` inherits the source context's base *and* its mask and then
+replays only the source's delta, which reproduces the source's live worked-off
+sequence verbatim.
+
+Tests. `base_layer_matches_flat_representation` drives a layered and a fully
+materialised context through the same script of forward-subsumption probes,
+context-local removals, worked-off insertions, pending insertions and pending
+deactivations, comparing the worked-off sequence, key set and size, every
+posting of every index as a sequence, both pools, `todo`, and the
+`fwd_subsumed`/`back_subsume` outcomes after every step; a deterministic tail
+forces each remaining path (including a base-layer removal and the re-derivation
+of a masked base clause) so the comparison cannot pass vacuously.
+`a_masked_base_clause_reenters_at_the_end_like_the_flat_representation` pins the
+re-entry position, `inheriting_a_base_and_mask_reproduces_the_flat_seed_sequence`
+pins the `KM_SEED_FROM_SUBSET` path, and
+`shared_base_classification_matches_flat` classifies the same ontology with the
+base layer on and off and requires identical subsumptions, consistency verdict,
+context count and retained clause count.
+
+This is a storage/scanning representation change with no calculus-rule change,
+so no Lean re-certification applies. Not yet built or benchmarked.
+
 ### Narrow qualified-cardinality Hyper joins exactly (2026-08-02)
 
 The generic Hyper join built each ontology-body posting independently. For a

@@ -541,7 +541,7 @@ fn is_merge_lit(l: &Lit) -> bool {
 /// the element may itself be a nominal or merge with its predecessor, so the
 /// calculus defers to equality reasoning instead of creating the edge.
 fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &Pred) -> bool {
-    'cand: for &mi in &ctx.merge_clauses {
+    'cand: for mi in ctx.merge_clauses().iter() {
         let m = &arena[mi as usize];
         if !m.body.iter().all(|b| c.body.contains(b)) {
             continue;
@@ -1549,13 +1549,20 @@ fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap
 
 // ------------------------------- contexts ----------------------------------
 
-#[derive(Clone)]
-struct Context {
-    id: usize,
-    core: Vec<Pred>,
-    root: bool,
-    /// the query concept this root context classifies (if any)
-    query: Option<Iri>,
+/// One *layer* of a context's clause store: a worked-off id list, the active
+/// clause-key set, every posting index, and the semi-naive Pred/Succ pools —
+/// all maintained in insertion order by `index_clause` / `index_active_clause`
+/// / `seed`.
+///
+/// A context reads a shared, immutable **base** layer followed by its own
+/// **delta** layer (see `Context.base` / `Context.delta`).  Both layers are the
+/// same type and are populated by the same insertion routines, which is what
+/// makes the split exact: the base layer is *literally* the state the old
+/// per-context seeding loop produced for the shared closure, and a fresh
+/// context's delta is empty, so the concatenated view starts out identical to
+/// the fully-materialised representation.
+#[derive(Clone, Default)]
+struct ClauseLayer {
     /// Worked-off clauses, as ids into the engine-level clause arena for this
     /// context's ordering domain (root / non-root).  The arena is content-
     /// interned and append-only, so identical clauses derived in thousands of
@@ -1602,6 +1609,151 @@ struct Context {
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
     active_empty_head: Vec<u32>,
+    /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
+    /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
+    /// so a later-derived provider for that atom can resolve it.  Empty
+    /// without individuals — the rule is inert on the SRIQ fragment.
+    ground_body_index: HashMap<Pred, Vec<u32>>,
+    /// Join case 3: body-empty clauses with a maximal head literal `x ≈ o`,
+    /// keyed by the individual `o` (the bridge premise `Γ' → Δ'' ∨ x ≈ o`).
+    bridge_index: HashMap<Term, Vec<u32>>,
+    /// r-Succ side condition (*): worked-off clauses whose head contains a
+    /// merge-form literal (`x ≈ o`, `y ≈ o`, `x ≈ y`) — the candidates that
+    /// can block an r-Succ push (deferring to equality reasoning when this
+    /// context's element may itself be a nominal or merge with its
+    /// predecessor).
+    merge_clauses: Vec<u32>,
+    /// Semi-naive Pred propagation: append-only pool of worked-off clauses that
+    /// are Pred-eligible (function-free, predicate-only head).  Entries are never
+    /// removed (a clause back-subsumed out of `worked_off` is still
+    /// context-entailed, so pushing it stays sound), which lets `pred_hwm` be a
+    /// stable high-water mark despite `worked_off` reshuffling under back-subsume.
+    /// Entries are arena ids (the arena is append-only, so the referenced
+    /// clause outlives any back-subsumption).
+    pred_pool: Vec<u32>,
+    /// Semi-naive Succ propagation: append-only pool of worked-off clauses with a
+    /// function-headed (succ-trigger candidate) maximal head predicate.
+    /// Entries are arena ids.
+    succ_pool: Vec<u32>,
+}
+
+/// Approximate heap bytes of one layer's four Hyper/Pred head indexes (KM_MEM
+/// accounting only).
+fn layer_head_index_bytes(layer: &ClauseLayer, szp: usize) -> usize {
+    layer
+        .head_concept_index
+        .values()
+        .map(|v| 24 + 4 + v.capacity() * 4)
+        .sum::<usize>()
+        + layer
+            .head_role_index
+            .values()
+            .map(|v| 24 + 4 + v.capacity() * 4)
+            .sum::<usize>()
+        + layer
+            .max_head_pred_index
+            .values()
+            .map(|v| 24 + szp + v.capacity() * 4)
+            .sum::<usize>()
+        + layer
+            .max_head_term_index
+            .values()
+            .map(|v| 24 + std::mem::size_of::<Term>() + v.capacity() * 4)
+            .sum::<usize>()
+}
+
+/// Approximate heap bytes of one layer's active redundancy index (KM_MEM only).
+fn layer_redundancy_bytes(layer: &ClauseLayer) -> usize {
+    layer.active_empty_head.capacity() * 4
+        + layer
+            .active_head_lit_index
+            .values()
+            .map(|v| 24 + std::mem::size_of::<Lit>() + v.capacity() * 4)
+            .sum::<usize>()
+}
+
+/// Base-plus-delta read view of one posting list (or of a whole-layer id
+/// vector such as `worked_off`).
+///
+/// The sequence it denotes is `base \ removed` followed by `delta`.  This is
+/// exactly the id sequence the fully-materialised representation held, because:
+///
+///   * every base clause was inserted into the context before every delta
+///     clause (the base is the seeded closure, installed at context creation),
+///     and each posting is appended to in insertion order — so base ids
+///     precede delta ids in the flat posting too;
+///   * `removed` is the set of base ids dropped from *this* context by
+///     back-subsumption.  Dropping an id from a flat posting leaves the
+///     survivors in their original relative order, which is what filtering the
+///     base segment reproduces;
+///   * a base id is masked in *all* base postings at once, which is sound
+///     because `unindex_clause`/`unindex_active_clause` likewise remove it from
+///     exactly the postings `index_clause`/`index_active_clause` inserted it
+///     into, and it occurs in no other posting.
+#[derive(Clone, Copy)]
+struct PostingView<'a> {
+    base: &'a [u32],
+    delta: &'a [u32],
+    removed: &'a HashSet<u32>,
+}
+
+impl<'a> PostingView<'a> {
+    fn iter(self) -> impl Iterator<Item = u32> + 'a {
+        let removed = self.removed;
+        self.base
+            .iter()
+            .copied()
+            .filter(move |cid| !removed.contains(cid))
+            .chain(self.delta.iter().copied())
+    }
+
+    /// Number of live ids.  `removed` is empty for every context that has never
+    /// back-subsumed a base clause (the overwhelming majority), which is why the
+    /// common case stays O(1).
+    fn len(self) -> usize {
+        if self.removed.is_empty() {
+            self.base.len() + self.delta.len()
+        } else {
+            self.base
+                .iter()
+                .filter(|&cid| !self.removed.contains(cid))
+                .count()
+                + self.delta.len()
+        }
+    }
+
+    fn is_empty(self) -> bool {
+        self.len() == 0
+    }
+}
+
+#[derive(Clone)]
+struct Context {
+    id: usize,
+    core: Vec<Pred>,
+    root: bool,
+    /// the query concept this root context classifies (if any)
+    query: Option<Iri>,
+    /// Shared, immutable base layer: the fully-indexed image of the
+    /// context-independent closure for this ordering domain (see
+    /// `Engine::shared_base`).  Thousands of successor / query-root contexts
+    /// are seeded with the *identical* closure, so the closure's worked-off
+    /// list, key set, head indexes, redundancy index and propagation pools are
+    /// built once and reference-counted instead of copied per context.  `None`
+    /// for contexts that were not closure-seeded (the throwaway closure
+    /// contexts, KM_NO_SHARE, KM_NO_BASE_LAYER), which then behave exactly as
+    /// before with everything in `delta`.
+    base: Option<Arc<ClauseLayer>>,
+    /// Base-layer clause ids that back-subsumption removed *in this context*.
+    /// The base is shared and immutable, so a context-local removal is recorded
+    /// as a mask rather than an edit; every read view filters the base segment
+    /// through it.  Entries are always base ids and are never un-masked: if the
+    /// same clause is re-derived later it is (re-)inserted into `delta`, which
+    /// places it at the end of the posting — exactly where the flat
+    /// representation would have appended it after the earlier removal.
+    base_removed: HashSet<u32>,
+    /// Everything this context derived (or was seeded with) beyond the base.
+    delta: ClauseLayer,
     todo: VecDeque<u32>,
     /// pred clauses pushed in from successor contexts (already back-substituted),
     /// as ids into the engine-level `pred_interned` table.  The same substituted
@@ -1644,14 +1796,6 @@ struct Context {
     /// gets a fresh index and is resent, which the receiver's
     /// `neighbor_pred_seen` dedups.
     pushed_pred: HashMap<(usize, Term), HashSet<u32>>,
-    /// Semi-naive Pred propagation: append-only pool of worked-off clauses that
-    /// are Pred-eligible (function-free, predicate-only head).  Entries are never
-    /// removed (a clause back-subsumed out of `worked_off` is still
-    /// context-entailed, so pushing it stays sound), which lets `pred_hwm` be a
-    /// stable high-water mark despite `worked_off` reshuffling under back-subsume.
-    /// Entries are arena ids (the arena is append-only, so the referenced
-    /// clause outlives any back-subsumption).
-    pred_pool: Vec<u32>,
     /// number of `pred_pool` entries already cross-checked against every edge at
     /// that edge's `edge_seen` pushed-length in a prior `propagate`.
     pred_hwm: usize,
@@ -1661,11 +1805,8 @@ struct Context {
     /// pool against it (a previously-failed covered-check can only flip when the
     /// edge gains a pushed predicate).
     edge_seen: HashMap<(usize, Term), usize>,
-    /// Semi-naive Succ propagation: append-only pool of worked-off clauses with a
-    /// function-headed (succ-trigger candidate) maximal head predicate, and the
-    /// high-water mark of entries already scanned for Succ triggers.
-    /// Entries are arena ids.
-    succ_pool: Vec<u32>,
+    /// Semi-naive Succ propagation: the high-water mark of `succ_pool` entries
+    /// (base ++ delta) already scanned for Succ triggers.
     succ_hwm: usize,
     /// r-Succ (KM_RSUCC): append-only pool of worked-off clauses with a maximal
     /// head predicate that is a CENTRAL reachability fact (`__trans__`/`__chain__(x)`).
@@ -1717,20 +1858,6 @@ struct Context {
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
-    /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
-    /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
-    /// so a later-derived provider for that atom can resolve it.  Empty
-    /// without individuals — the rule is inert on the SRIQ fragment.
-    ground_body_index: HashMap<Pred, Vec<u32>>,
-    /// Join case 3: body-empty clauses with a maximal head literal `x ≈ o`,
-    /// keyed by the individual `o` (the bridge premise `Γ' → Δ'' ∨ x ≈ o`).
-    bridge_index: HashMap<Term, Vec<u32>>,
-    /// r-Succ side condition (*): worked-off clauses whose head contains a
-    /// merge-form literal (`x ≈ o`, `y ≈ o`, `x ≈ y`) — the candidates that
-    /// can block an r-Succ push (deferring to equality reasoning when this
-    /// context's element may itself be a nominal or merge with its
-    /// predecessor).
-    merge_clauses: Vec<u32>,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -1747,16 +1874,9 @@ impl Context {
             core,
             root,
             query,
-            worked_off: Vec::new(),
-            clause_keys: HashSet::new(),
-            head_concept_index: HashMap::new(),
-            head_role_index: HashMap::new(),
-            ground_role_source_index: HashMap::new(),
-            ground_role_target_index: HashMap::new(),
-            max_head_pred_index: HashMap::new(),
-            max_head_term_index: HashMap::new(),
-            active_head_lit_index: HashMap::new(),
-            active_empty_head: Vec::new(),
+            base: None,
+            base_removed: HashSet::new(),
+            delta: ClauseLayer::default(),
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
             neighbor_pred_seen: HashSet::new(),
@@ -1767,10 +1887,8 @@ impl Context {
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
             pushed_pred: HashMap::new(),
-            pred_pool: Vec::new(),
             pred_hwm: 0,
             edge_seen: HashMap::new(),
-            succ_pool: Vec::new(),
             succ_hwm: 0,
             rsucc_pool: Vec::new(),
             rsucc_reach: Vec::new(),
@@ -1781,11 +1899,48 @@ impl Context {
             rsucc_offered: 0,
             rsucc_edges_grew: false,
             seeded_inds: HashSet::new(),
-            ground_body_index: HashMap::new(),
-            bridge_index: HashMap::new(),
-            merge_clauses: Vec::new(),
             dirty: true,
         }
+    }
+}
+
+impl ClauseLayer {
+    /// Place an already-derived clause into this layer's worked-off set without
+    /// firing any rules: clause-key set, active redundancy index, semi-naive
+    /// Pred/Succ pools and head indexes, in exactly the order the saturation
+    /// loop's own work-off tail applies them.  Returns `false` if the layer
+    /// already held the id.
+    ///
+    /// This is the single seeding routine used both for per-context seeding
+    /// (`Engine::seed_worked_off`) and for building the shared base layer
+    /// (`Engine::ensure_shared_base`) — so the base layer is bit-for-bit the
+    /// state the old per-context loop produced.
+    fn seed(&mut self, arena: &[ContextClause], cid: u32) -> bool {
+        let (pred_eligible, succ_eligible) = {
+            let clause = &arena[cid as usize];
+            (
+                clause
+                    .head
+                    .iter()
+                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+                clause
+                    .max_head_predicates()
+                    .any(|(p, _)| is_function(p.max_term())),
+            )
+        };
+        if !self.clause_keys.insert(cid) {
+            return false;
+        }
+        self.index_active_clause(arena, cid);
+        if pred_eligible {
+            self.pred_pool.push(cid);
+        }
+        if succ_eligible {
+            self.succ_pool.push(cid);
+        }
+        self.worked_off.push(cid);
+        self.index_clause(arena, cid);
+        true
     }
 
     /// Add the worked-off clause with arena id `cid` to the head-predicate
@@ -2029,6 +2184,250 @@ impl Context {
             }
         }
     }
+}
+
+/// Read a `(base, delta)` posting pair through the context's removal mask.
+/// Written as a macro because the per-index accessors differ only in the field
+/// name and key type, and each must borrow `self` for the returned view.
+macro_rules! posting_accessor {
+    ($name:ident, $field:ident, $key:ty) => {
+        fn $name(&self, key: $key) -> PostingView<'_> {
+            PostingView {
+                base: self
+                    .base
+                    .as_deref()
+                    .and_then(|b| b.$field.get(&key))
+                    .map_or(&[][..], |posting| &posting[..]),
+                delta: self
+                    .delta
+                    .$field
+                    .get(&key)
+                    .map_or(&[][..], |posting| &posting[..]),
+                removed: &self.base_removed,
+            }
+        }
+    };
+}
+
+impl Context {
+    // ---- base-plus-delta read views -------------------------------------
+    //
+    // Every read of the clause store goes through one of these.  They return
+    // the base segment (masked by `base_removed`) followed by the delta
+    // segment, which is the same id sequence the fully-materialised
+    // representation held — see `PostingView`.
+
+    posting_accessor!(head_concept, head_concept_index, Iri);
+    posting_accessor!(head_role, head_role_index, Iri);
+    posting_accessor!(ground_role_source, ground_role_source_index, (Iri, Term));
+    posting_accessor!(ground_role_target, ground_role_target_index, (Iri, Term));
+    posting_accessor!(max_head_pred, max_head_pred_index, Pred);
+    posting_accessor!(max_head_term, max_head_term_index, Term);
+    posting_accessor!(active_head_lit, active_head_lit_index, Lit);
+    posting_accessor!(ground_body, ground_body_index, Pred);
+    posting_accessor!(bridge, bridge_index, Term);
+
+    /// `true` if `cid` is a base-layer clause that has not been masked out of
+    /// this context.  `base_removed` only ever holds base ids, so this is the
+    /// exact "the base still contributes this clause" predicate.
+    fn base_live(&self, cid: u32) -> bool {
+        self.base
+            .as_deref()
+            .is_some_and(|b| b.clause_keys.contains(&cid))
+            && !self.base_removed.contains(&cid)
+    }
+
+    /// Membership in the active clause set (`worked_off ∪ todo`) — the exact
+    /// replacement for the old `clause_keys.contains`.  A clause lives in at
+    /// most one layer of a context: `add_clause_inner` / `seed_worked_off`
+    /// refuse an id this returns `true` for, so a base clause can only reappear
+    /// in `delta` after having been masked out of the base.
+    fn has_clause(&self, cid: u32) -> bool {
+        self.delta.clause_keys.contains(&cid) || self.base_live(cid)
+    }
+
+    fn clause_keys_len(&self) -> usize {
+        self.base.as_deref().map_or(0, |b| b.clause_keys.len()) - self.base_removed.len()
+            + self.delta.clause_keys.len()
+    }
+
+    fn clause_keys_iter(&self) -> impl Iterator<Item = u32> + '_ {
+        let removed = &self.base_removed;
+        self.base
+            .as_deref()
+            .into_iter()
+            .flat_map(|b| b.clause_keys.iter().copied())
+            .filter(move |cid| !removed.contains(cid))
+            .chain(self.delta.clause_keys.iter().copied())
+    }
+
+    fn worked_off(&self) -> PostingView<'_> {
+        PostingView {
+            base: self
+                .base
+                .as_deref()
+                .map_or(&[][..], |b| b.worked_off.as_slice()),
+            delta: self.delta.worked_off.as_slice(),
+            removed: &self.base_removed,
+        }
+    }
+
+    /// O(1) live worked-off count.  Every base clause is worked off (the base
+    /// is a seeded closure), so `base_removed ⊆ base.worked_off` and the mask
+    /// size is exactly the number of masked-out base entries.
+    fn worked_off_len(&self) -> usize {
+        debug_assert!(self
+            .base_removed
+            .iter()
+            .all(|cid| self.base.as_deref().is_some_and(|b| b.clause_keys.contains(cid))));
+        self.base.as_deref().map_or(0, |b| b.worked_off.len()) - self.base_removed.len()
+            + self.delta.worked_off.len()
+    }
+
+    fn active_empty_head(&self) -> PostingView<'_> {
+        PostingView {
+            base: self
+                .base
+                .as_deref()
+                .map_or(&[][..], |b| b.active_empty_head.as_slice()),
+            delta: self.delta.active_empty_head.as_slice(),
+            removed: &self.base_removed,
+        }
+    }
+
+    fn merge_clauses(&self) -> PostingView<'_> {
+        PostingView {
+            base: self
+                .base
+                .as_deref()
+                .map_or(&[][..], |b| b.merge_clauses.as_slice()),
+            delta: self.delta.merge_clauses.as_slice(),
+            removed: &self.base_removed,
+        }
+    }
+
+    // The propagation pools are deliberately NOT masked: a clause
+    // back-subsumed out of `worked_off` is still context-entailed, so its pool
+    // entry stays (see `ClauseLayer::pred_pool`).  Consumers re-check
+    // `has_clause` where the old code re-checked `clause_keys`.
+
+    fn pred_pool_len(&self) -> usize {
+        self.base.as_deref().map_or(0, |b| b.pred_pool.len()) + self.delta.pred_pool.len()
+    }
+
+    /// Resolve a stable pool index (base entries first, then delta).  The base
+    /// is attached at context creation and never changes, and both segments are
+    /// append-only, so an index handed out to `pushed_pred` / `Msg::Pred` keeps
+    /// denoting the same clause for the life of the run.
+    fn pred_pool_at(&self, i: usize) -> u32 {
+        let nb = self.base.as_deref().map_or(0, |b| b.pred_pool.len());
+        if i < nb {
+            self.base.as_deref().expect("nb > 0 implies a base").pred_pool[i]
+        } else {
+            self.delta.pred_pool[i - nb]
+        }
+    }
+
+    fn pred_pool_iter(&self) -> impl Iterator<Item = u32> + '_ {
+        let base: &[u32] = self
+            .base
+            .as_deref()
+            .map_or(&[][..], |b| b.pred_pool.as_slice());
+        base.iter()
+            .copied()
+            .chain(self.delta.pred_pool.iter().copied())
+    }
+
+    fn succ_pool_len(&self) -> usize {
+        self.base.as_deref().map_or(0, |b| b.succ_pool.len()) + self.delta.succ_pool.len()
+    }
+
+    /// The Succ pool tail from combined index `start` (the semi-naive
+    /// `succ_hwm`), in the same order a flat pool would have yielded.
+    fn succ_pool_from(&self, start: usize) -> impl Iterator<Item = u32> + '_ {
+        let nb = self.base.as_deref().map_or(0, |b| b.succ_pool.len());
+        let base: &[u32] = self
+            .base
+            .as_deref()
+            .map_or(&[][..], |b| &b.succ_pool[start.min(nb)..]);
+        let ds = start.saturating_sub(nb).min(self.delta.succ_pool.len());
+        base.iter()
+            .copied()
+            .chain(self.delta.succ_pool[ds..].iter().copied())
+    }
+
+    /// Distinct live keys of the combined `ground_body_index` / `bridge_index`.
+    /// Base keys come first; a key present in both layers is emitted once, with
+    /// the combined view.  The flat representation iterated a single `HashMap`,
+    /// whose order is already unspecified (`RandomState`), so only the key
+    /// *set* was ever observable here — and that is preserved exactly.
+    fn ground_body_keys(&self) -> Vec<Pred> {
+        let mut keys: Vec<Pred> = Vec::new();
+        if let Some(b) = self.base.as_deref() {
+            for k in b.ground_body_index.keys() {
+                if !self.ground_body(*k).is_empty() {
+                    keys.push(*k);
+                }
+            }
+        }
+        for k in self.delta.ground_body_index.keys() {
+            if self
+                .base
+                .as_deref()
+                .is_some_and(|b| b.ground_body_index.contains_key(k))
+            {
+                continue; // already emitted by the base pass
+            }
+            keys.push(*k);
+        }
+        keys
+    }
+
+    fn bridge_keys(&self) -> Vec<Term> {
+        let mut keys: Vec<Term> = Vec::new();
+        if let Some(b) = self.base.as_deref() {
+            for k in b.bridge_index.keys() {
+                if !self.bridge(*k).is_empty() {
+                    keys.push(*k);
+                }
+            }
+        }
+        for k in self.delta.bridge_index.keys() {
+            if self
+                .base
+                .as_deref()
+                .is_some_and(|b| b.bridge_index.contains_key(k))
+            {
+                continue;
+            }
+            keys.push(*k);
+        }
+        keys
+    }
+
+    /// Fast path guard for the Join rule.  Ignores the removal mask (a base
+    /// whose every Join posting is masked still reports non-empty), which can
+    /// only *disable* the skip: the Join loops then run and find no candidate,
+    /// so the derived set is unchanged.
+    fn join_indexes_empty(&self) -> bool {
+        self.delta.ground_body_index.is_empty()
+            && self.delta.bridge_index.is_empty()
+            && self.base.as_deref().map_or(true, |b| {
+                b.ground_body_index.is_empty() && b.bridge_index.is_empty()
+            })
+    }
+
+    /// Drop one clause from this context's *active* set only (the work-off-time
+    /// forward-subsumption path: the clause is still in `todo`, so it carries
+    /// no head-index posting).  A `todo` clause is always a delta clause —
+    /// `add_clause_inner` refuses to enqueue an id `has_clause` already
+    /// accepts, and every base clause is worked off — so no mask entry is ever
+    /// needed here.
+    fn deactivate_pending(&mut self, arena: &[ContextClause], cid: u32) {
+        debug_assert!(!self.base_live(cid), "a base clause is never pending");
+        self.delta.unindex_active_clause(arena, cid);
+        self.delta.clause_keys.remove(&cid);
+    }
 
     /// Forward redundancy over the complete active set (`worked_off ∪ todo`).
     /// This has the same active semantics as Sequoia's context-clause
@@ -2049,7 +2448,7 @@ impl Context {
     ) -> bool {
         debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
         let want = ClauseSig::of(clause);
-        for &ci in &self.active_empty_head {
+        for ci in self.active_empty_head().iter() {
             if Some(ci) == exclude {
                 continue;
             }
@@ -2061,17 +2460,15 @@ impl Context {
             }
         }
         for literal in &clause.head {
-            if let Some(candidates) = self.active_head_lit_index.get(literal) {
-                for &ci in candidates {
-                    if Some(ci) == exclude {
-                        continue;
-                    }
-                    if !sigs[ci as usize].may_strengthen(&want) {
-                        continue;
-                    }
-                    if arena[ci as usize].strengthens(clause) {
-                        return true;
-                    }
+            for ci in self.active_head_lit(*literal).iter() {
+                if Some(ci) == exclude {
+                    continue;
+                }
+                if !sigs[ci as usize].may_strengthen(&want) {
+                    continue;
+                }
+                if arena[ci as usize].strengthens(clause) {
+                    return true;
                 }
             }
         }
@@ -2096,23 +2493,24 @@ impl Context {
             candidate.body == clause.body && candidate.head == clause.head
         };
         let candidates: Vec<u32> = if clause.head.is_empty() {
-            self.clause_keys.iter().copied().collect()
+            self.clause_keys_iter().collect()
         } else {
-            let mut rarest: Option<&Posting> = None;
+            // Rarest-posting selection over the base-plus-delta views.  The flat
+            // representation returned early on an *absent* key; a view is
+            // absent-or-empty in exactly the same situations, and an empty view
+            // is minimal, so it becomes `rarest` and yields no candidate — the
+            // same "no removal" outcome, reached one iteration later.
+            let mut rarest: Option<PostingView<'_>> = None;
             for literal in &clause.head {
-                match self.active_head_lit_index.get(literal) {
-                    None => {
-                        return;
-                    }
-                    Some(posting) if rarest.map_or(true, |old| posting.len() < old.len()) => {
-                        rarest = Some(posting);
-                    }
-                    Some(_) => {}
+                let posting = self.active_head_lit(*literal);
+                if posting.is_empty() {
+                    return;
+                }
+                if rarest.map_or(true, |old| posting.len() < old.len()) {
+                    rarest = Some(posting);
                 }
             }
-            rarest
-                .map(|posting| posting.iter().copied().collect())
-                .unwrap_or_default()
+            rarest.map(|posting| posting.iter().collect()).unwrap_or_default()
         };
         let removed: HashSet<u32> = candidates
             .into_iter()
@@ -2136,26 +2534,41 @@ impl Context {
         // indexed only in the active redundancy index, cleared below); collect
         // the removed worked-off ids so we can drop them from the head index
         // incrementally rather than rebuilding it from scratch.
+        //
+        // Base-layer removals are recorded in `base_removed` instead: the base
+        // is shared and immutable, and masking the id filters it out of the
+        // base segment of `worked_off`, of every head posting and of every
+        // active posting in one step — the same three effects the flat path
+        // achieves with `worked_off.retain` + `unindex_clause` +
+        // `unindex_active_clause`, because those touch exactly the postings
+        // `index_clause`/`index_active_clause` inserted the id into.
         let removed_worked: Vec<u32> = self
+            .delta
             .worked_off
             .iter()
             .copied()
             .filter(|ci| removed.contains(ci))
             .collect();
+        let mut any_base_worked = false;
         for &ci in &removed {
-            self.unindex_active_clause(arena, ci);
-            self.clause_keys.remove(&ci);
+            if self.base_live(ci) {
+                self.base_removed.insert(ci);
+                any_base_worked = true;
+            } else {
+                self.delta.unindex_active_clause(arena, ci);
+                self.delta.clause_keys.remove(&ci);
+            }
         }
-        self.worked_off.retain(|ci| !removed.contains(ci));
+        self.delta.worked_off.retain(|ci| !removed.contains(ci));
         self.todo.retain(|ci| !removed.contains(ci));
-        if !removed_worked.is_empty() {
+        if !removed_worked.is_empty() || any_base_worked {
             // Diagnostic: this call would previously have rebuilt the whole head
             // index, re-indexing every surviving worked-off clause.
             BACKSUB_UNINDEX_EVENTS.with(|c| c.set(c.get() + 1));
-            BACKSUB_REINDEX_AVOIDED.with(|c| c.set(c.get() + self.worked_off.len() as u64));
+            BACKSUB_REINDEX_AVOIDED.with(|c| c.set(c.get() + self.worked_off_len() as u64));
         }
         for ci in removed_worked {
-            self.unindex_clause(arena, ci);
+            self.delta.unindex_clause(arena, ci);
         }
     }
 }
@@ -2424,6 +2837,24 @@ pub struct Engine {
     /// (Arena ids in the non-root domain; seeding a context shares the arena
     /// entries instead of cloning the clauses.)
     shared_closure: Option<Vec<u32>>,
+    /// Fully-indexed, immutable image of the shared closure per ordering domain
+    /// (`[non-root, root]`), built once by replaying `ClauseLayer::seed` over
+    /// the corresponding closure id list.  Every closure-seeded context holds an
+    /// `Arc` of the layer for its domain as its base (see `Context.base`)
+    /// instead of copying the closure's worked-off list, key set, six head
+    /// indexes, redundancy index, Join indexes and Pred/Succ pools into its own
+    /// maps.  On ORE 1194 the ~190k distinct interned clauses occupied ~6.3M
+    /// per-context slots (~33x); the base layer collapses the shared part of
+    /// that to one copy while every read still sees the identical id sequence.
+    /// Invalidated alongside `shared_closure` on incremental ontology insert.
+    shared_base: [Option<Arc<ClauseLayer>>; 2],
+    /// KM_NO_BASE_LAYER: materialise the closure into each context's `delta`
+    /// (the pre-base-layer representation) instead of attaching the shared base.
+    /// Pure representation A/B switch — the derived fixpoint, posting order and
+    /// output are identical either way, which is what
+    /// `base_layer_matches_flat_representation` and
+    /// `shared_base_classification_matches_flat` check.
+    base_layer: bool,
     /// Same idea as `shared_closure` but under the *root* literal ordering
     /// (`root=true`): the facts+TBox closure of an empty-core root context.
     /// Seeded into every query root context (core `{A(x)}`) so the shared TBox
@@ -2665,6 +3096,8 @@ impl Engine {
             early_unsat: !std::env::var_os("KM_NO_EARLY_UNSAT").is_some(),
             shared_closure: None,
             shared_root_closure: None,
+            shared_base: [None, None],
+            base_layer: std::env::var_os("KM_NO_BASE_LAYER").is_none(),
             equality: true,
             pred_interned: Vec::new(),
             pred_intern_idx: HashMap::new(),
@@ -2762,7 +3195,7 @@ impl Engine {
     }
 
     fn retained_clause_count(&self) -> usize {
-        self.contexts.iter().map(|ctx| ctx.worked_off.len()).sum()
+        self.contexts.iter().map(|ctx| ctx.worked_off_len()).sum()
     }
 
     pub(crate) fn retained_state_counts(&self) -> RetainedInsertStats {
@@ -2881,6 +3314,11 @@ impl Engine {
         // closure lazily from the extended indexes.
         self.shared_closure = None;
         self.shared_root_closure = None;
+        // Contexts created from here on need a base built against the extended
+        // ontology.  Contexts that already hold the old base keep it: its
+        // clauses are still ontology consequences (the insert is monotone), and
+        // the Hyper replay below re-derives everything the new clauses add.
+        self.shared_base = [None, None];
         self.nominal_enumerations =
             Arc::new(detect_nominal_enumerations(&self.sig, &self.ont.clauses));
         self.nominal_shortcuts.clear();
@@ -2904,9 +3342,9 @@ impl Engine {
             // context clauses already reached a fixpoint, while every new
             // resolvent enters the ordinary full saturation loop below.
             let root = self.contexts[id].root;
-            let sides = self.contexts[id].worked_off.clone();
+            let sides: Vec<u32> = self.contexts[id].worked_off().iter().collect();
             for cid in sides {
-                if !self.contexts[id].clause_keys.contains(&cid) {
+                if !self.contexts[id].has_clause(cid) {
                     continue;
                 }
                 let side = self.cc_arena[root as usize][cid as usize].clone();
@@ -2999,11 +3437,7 @@ impl Engine {
         // top context is itself the closure, so seeding it is a no-op-equivalent
         // (it adds no core clause and derives nothing further).
         if root && std::env::var_os("KM_NO_SHARE").is_none() {
-            self.ensure_shared_root_closure();
-            let closure = self.shared_root_closure.as_ref().unwrap().clone();
-            for c in closure {
-                self.seed_worked_off(id, c);
-            }
+            self.attach_shared_base(id);
             self.add_core(id);
         } else {
             self.init_context(id);
@@ -3039,7 +3473,7 @@ impl Engine {
         self.contexts.push(ctx);
         self.init_context(id);
         self.saturate(id);
-        let closure = self.contexts[id].worked_off.clone();
+        let closure: Vec<u32> = self.contexts[id].worked_off().iter().collect();
         debug_assert_eq!(id, self.contexts.len() - 1);
         self.contexts.pop();
         self.shared_root_closure = Some(closure);
@@ -3150,7 +3584,7 @@ impl Engine {
         };
         let ground = &self.contexts[gid];
         let arena = &self.cc_arena[ground.root as usize];
-        if ground.worked_off.iter().any(|&ci| {
+        if ground.worked_off().iter().any(|ci| {
             let c = &arena[ci as usize];
             c.body.is_empty() && c.head.is_empty()
         }) {
@@ -3161,7 +3595,7 @@ impl Engine {
 
         let mut direct_types: HashMap<Term, BTreeSet<Iri>> = HashMap::new();
         let mut equal: HashMap<Term, Vec<Term>> = HashMap::new();
-        for &ci in &ground.worked_off {
+        for ci in ground.worked_off().iter() {
             let clause = &arena[ci as usize];
             if !clause.body.is_empty() || clause.head.len() != 1 {
                 continue;
@@ -3225,7 +3659,7 @@ impl Engine {
         if self.prof && completed != 0 {
             eprintln!(
                 "KM_PROF nominal-label-cache completed_queries={completed} ground_clauses={}",
-                ground.worked_off.len()
+                ground.worked_off_len()
             );
         }
     }
@@ -3279,7 +3713,7 @@ impl Engine {
             prof_add(&ADD_LOOKUP_NS, t);
         }
         if let Some(cid) = existing {
-            if self.contexts[id].clause_keys.contains(&cid) {
+            if self.contexts[id].has_clause(cid) {
                 return false;
             }
         }
@@ -3331,8 +3765,10 @@ impl Engine {
             None => self.intern_cc_known_new(root, clause, clause_hash),
         };
         let ctx = &mut self.contexts[id];
-        ctx.clause_keys.insert(cid);
-        ctx.index_active_clause(&self.cc_arena[d], cid);
+        // New to this context: it is not in the base (the `has_clause` gate
+        // above rejected those), so it enters the delta layer.
+        ctx.delta.clause_keys.insert(cid);
+        ctx.delta.index_active_clause(&self.cc_arena[d], cid);
         if let Some(t) = __t {
             prof_add(&ADD_INDEX_NS, t);
         }
@@ -3393,7 +3829,7 @@ impl Engine {
                     let ctx = &self.contexts[id];
                     eprintln!(
                         "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={} | backsub_unindex_events={} reindex_avoided={}",
-                        id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off.len(),
+                        id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off_len(),
                         nhyper, npred, neqp, neqe, nfact,
                         BACKSUB_UNINDEX_EVENTS.with(|c| c.get()),
                         BACKSUB_REINDEX_AVOIDED.with(|c| c.get())
@@ -3429,8 +3865,7 @@ impl Engine {
                 }
                 if is_sub {
                     let ctx = &mut self.contexts[id];
-                    ctx.unindex_active_clause(&self.cc_arena[d], cid);
-                    ctx.clause_keys.remove(&cid);
+                    ctx.deactivate_pending(&self.cc_arena[d], cid);
                     if prof {
                         subsumed += 1;
                     }
@@ -3615,16 +4050,16 @@ impl Engine {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
                 if pred_eligible {
-                    ctx.pred_pool.push(cid);
+                    ctx.delta.pred_pool.push(cid);
                 }
                 if succ_eligible {
-                    ctx.succ_pool.push(cid);
+                    ctx.delta.succ_pool.push(cid);
                 }
                 if rsucc_eligible {
                     ctx.rsucc_pool.push(cid);
                 }
-                ctx.worked_off.push(cid);
-                ctx.index_clause(arena, cid);
+                ctx.delta.worked_off.push(cid);
+                ctx.delta.index_clause(arena, cid);
                 ctx.dirty = true;
             }
             // KM_EARLY_UNSAT: the empty clause (⊥) subsumes every other clause, so
@@ -3639,18 +4074,18 @@ impl Engine {
             if trace_sat {
                 let c = &self.contexts[id];
                 let arena = &self.cc_arena[d];
-                let wl = c.worked_off.len();
+                let wl = c.worked_off_len();
                 if wl % 10000 == 0 {
                     let maxb = c
-                        .worked_off
+                        .worked_off()
                         .iter()
-                        .map(|&ci| arena[ci as usize].body.len())
+                        .map(|ci| arena[ci as usize].body.len())
                         .max()
                         .unwrap_or(0);
                     let maxh = c
-                        .worked_off
+                        .worked_off()
                         .iter()
-                        .map(|&ci| arena[ci as usize].head.len())
+                        .map(|ci| arena[ci as usize].head.len())
                         .max()
                         .unwrap_or(0);
                     let nctx = self.contexts.len();
@@ -3698,17 +4133,15 @@ impl Engine {
                 // context, matching the existing S_v ∪ {C} semantics).
                 if is_central(s) || is_individual(s) {
                     let mut concepts = Vec::new();
-                    if let Some(posting) = ctx.max_head_term_index.get(&t) {
-                        for &cid in posting {
-                            for (predicate, _) in arena[cid as usize].max_head_predicates() {
-                                if let Pred::Concept {
-                                    iri: concept,
-                                    t: concept_term,
-                                } = predicate
-                                {
-                                    if concept_term == t {
-                                        concepts.push(concept);
-                                    }
+                    for cid in ctx.max_head_term(t).iter() {
+                        for (predicate, _) in arena[cid as usize].max_head_predicates() {
+                            if let Pred::Concept {
+                                iri: concept,
+                                t: concept_term,
+                            } = predicate
+                            {
+                                if concept_term == t {
+                                    concepts.push(concept);
                                 }
                             }
                         }
@@ -3776,7 +4209,7 @@ impl Engine {
                     let wanted = oc.body[i].apply(&|term| sigma.apply(term));
                     let (cand, exact) = match (oc.body[i], wanted) {
                         (Pred::Concept { t, .. }, wanted) if hyper_term_determined(t, &sigma) => {
-                            (ctx.max_head_pred_index.get(&wanted), true)
+                            (ctx.max_head_pred(wanted), true)
                         }
                         (
                             Pred::Role { s, t, .. },
@@ -3789,38 +4222,36 @@ impl Engine {
                             let source_fixed = hyper_term_determined(s, &sigma);
                             let target_fixed = hyper_term_determined(t, &sigma);
                             if source_fixed && target_fixed {
-                                (ctx.max_head_pred_index.get(&wanted), true)
+                                (ctx.max_head_pred(wanted), true)
                             } else if source_fixed && (is_individual(wanted_s) || is_comp(wanted_s))
                             {
-                                (ctx.ground_role_source_index.get(&(iri, wanted_s)), false)
+                                (ctx.ground_role_source((iri, wanted_s)), false)
                             } else if target_fixed && (is_individual(wanted_t) || is_comp(wanted_t))
                             {
-                                (ctx.ground_role_target_index.get(&(iri, wanted_t)), false)
+                                (ctx.ground_role_target((iri, wanted_t)), false)
                             } else {
-                                (ctx.head_role_index.get(&iri), false)
+                                (ctx.head_role(iri), false)
                             }
                         }
-                        (Pred::Concept { iri, .. }, _) => (ctx.head_concept_index.get(&iri), false),
-                        (Pred::Role { iri, .. }, _) => (ctx.head_role_index.get(&iri), false),
+                        (Pred::Concept { iri, .. }, _) => (ctx.head_concept(iri), false),
+                        (Pred::Role { iri, .. }, _) => (ctx.head_role(iri), false),
                     };
-                    if let Some(cand) = cand {
-                        for &ci in cand {
-                            if exact {
-                                v.push((ci as usize, wanted));
-                            } else {
-                                for (p, _) in arena[ci as usize].max_head_predicates() {
-                                    // Probe compatibility with the side binding
-                                    // via the append-only trail rather than a
-                                    // clone: `add` only appends, so rolling back
-                                    // to `mark` leaves `sigma` in its exact
-                                    // pre-probe (side-bound) state for the next
-                                    // candidate.
-                                    let mark = sigma.mark();
-                                    if unify(&mut sigma, &oc.body[i], &p) {
-                                        v.push((ci as usize, p));
-                                    }
-                                    sigma.rollback(mark);
+                    for ci in cand.iter() {
+                        if exact {
+                            v.push((ci as usize, wanted));
+                        } else {
+                            for (p, _) in arena[ci as usize].max_head_predicates() {
+                                // Probe compatibility with the side binding
+                                // via the append-only trail rather than a
+                                // clone: `add` only appends, so rolling back
+                                // to `mark` leaves `sigma` in its exact
+                                // pre-probe (side-bound) state for the next
+                                // candidate.
+                                let mark = sigma.mark();
+                                if unify(&mut sigma, &oc.body[i], &p) {
+                                    v.push((ci as usize, p));
                                 }
+                                sigma.rollback(mark);
                             }
                         }
                     }
@@ -4259,9 +4690,7 @@ impl Engine {
                     continue;
                 }
                 let mut v = Vec::new();
-                if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
-                    v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
-                }
+                v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
                     if bp.is_ground() {
                         ground.push(bp);
@@ -4411,9 +4840,7 @@ impl Engine {
                     continue;
                 }
                 let mut v = Vec::new();
-                if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
-                    v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
-                }
+                v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
                     if bp.is_ground() {
                         ground.push(bp);
@@ -4577,19 +5004,15 @@ impl Engine {
             _ => {}
         }
         for (aprime, o) in variants {
-            let bridges = match ctx.bridge_index.get(&o) {
-                Some(b) => b,
-                None => continue,
-            };
+            let bridges = ctx.bridge(o);
+            if bridges.is_empty() {
+                continue;
+            }
             let cands = match aprime {
-                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
-                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                Pred::Concept { iri, .. } => ctx.head_concept(iri),
+                Pred::Role { iri, .. } => ctx.head_role(iri),
             };
-            let cands = match cands {
-                Some(c) => c,
-                None => continue,
-            };
-            for &pi in cands {
+            for pi in cands.iter() {
                 let pcl = &arena[pi as usize];
                 if !pcl.body.is_empty() {
                     continue; // Γ' = ⊤ required
@@ -4597,7 +5020,7 @@ impl Engine {
                 if !pcl.max_head_predicates().any(|(p, _)| p == aprime) {
                     continue;
                 }
-                for &bi in bridges {
+                for bi in bridges.iter() {
                     if bi == pi {
                         continue;
                     }
@@ -4620,7 +5043,7 @@ impl Engine {
     fn join(&self, id: usize, side: &ContextClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
-        if ctx.ground_body_index.is_empty() && ctx.bridge_index.is_empty() {
+        if ctx.join_indexes_empty() {
             return out;
         }
         let arena = &self.cc_arena[root as usize];
@@ -4628,11 +5051,9 @@ impl Engine {
         // ground body atom of every indexed consumer.
         for (p, _) in side.max_head_predicates() {
             if p.is_ground() {
-                if let Some(consumers) = ctx.ground_body_index.get(&p) {
-                    for &ci in consumers {
-                        if let Some(r) = self.join_resolvent(&arena[ci as usize], p, side, root) {
-                            out.push(r);
-                        }
+                for ci in ctx.ground_body(p).iter() {
+                    if let Some(r) = self.join_resolvent(&arena[ci as usize], p, side, root) {
+                        out.push(r);
                     }
                 }
             }
@@ -4641,16 +5062,14 @@ impl Engine {
         // worked-off providers with that atom maximal, or via case 3.
         for &a in side.body.iter().filter(|p| p.is_ground()) {
             let cands = match a {
-                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
-                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                Pred::Concept { iri, .. } => ctx.head_concept(iri),
+                Pred::Role { iri, .. } => ctx.head_role(iri),
             };
-            if let Some(cands) = cands {
-                for &ci in cands {
-                    let c = &arena[ci as usize];
-                    if c.max_head_predicates().any(|(p, _)| p == a) {
-                        if let Some(r) = self.join_resolvent(side, a, c, root) {
-                            out.push(r);
-                        }
+            for ci in cands.iter() {
+                let c = &arena[ci as usize];
+                if c.max_head_predicates().any(|(p, _)| p == a) {
+                    if let Some(r) = self.join_resolvent(side, a, c, root) {
+                        out.push(r);
                     }
                 }
             }
@@ -4663,20 +5082,20 @@ impl Engine {
                     Lit::Eq { s, t } if is_individual(s) && t == X => {
                         // bridge arrival: complete triples over individual s
                         let o = s;
-                        for (atom, consumers) in &ctx.ground_body_index {
+                        for atom in ctx.ground_body_keys() {
                             let mut inds: Vec<Term> = Vec::new();
-                            pred_inds(atom, &mut inds);
+                            pred_inds(&atom, &mut inds);
                             if !inds.contains(&o) {
                                 continue;
                             }
-                            for &ci in consumers {
+                            for ci in ctx.ground_body(atom).iter() {
                                 let consumer = &arena[ci as usize];
                                 // re-run case 3 for this consumer/atom against
                                 // all bridges (now including `side`, which is
                                 // not yet indexed): inline the variant loop
                                 // with `side` as the bridge.
                                 let mut variants: Vec<(Pred, Term)> = Vec::new();
-                                match *atom {
+                                match atom {
                                     Pred::Concept { iri, t } if t == o => {
                                         variants.push((Pred::Concept { iri, t: X }, o));
                                     }
@@ -4697,26 +5116,20 @@ impl Engine {
                                 }
                                 for (aprime, _) in variants {
                                     let pcands = match aprime {
-                                        Pred::Concept { iri, .. } => {
-                                            ctx.head_concept_index.get(&iri)
-                                        }
-                                        Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                                        Pred::Concept { iri, .. } => ctx.head_concept(iri),
+                                        Pred::Role { iri, .. } => ctx.head_role(iri),
                                     };
-                                    if let Some(pcands) = pcands {
-                                        for &pi in pcands {
-                                            let pcl = &arena[pi as usize];
-                                            if !pcl.body.is_empty()
-                                                || !pcl
-                                                    .max_head_predicates()
-                                                    .any(|(p, _)| p == aprime)
-                                            {
-                                                continue;
-                                            }
-                                            if let Some(r) = self.join_resolvent3(
-                                                consumer, *atom, pcl, aprime, side, o, root,
-                                            ) {
-                                                out.push(r);
-                                            }
+                                    for pi in pcands.iter() {
+                                        let pcl = &arena[pi as usize];
+                                        if !pcl.body.is_empty()
+                                            || !pcl.max_head_predicates().any(|(p, _)| p == aprime)
+                                        {
+                                            continue;
+                                        }
+                                        if let Some(r) = self.join_resolvent3(
+                                            consumer, atom, pcl, aprime, side, o, root,
+                                        ) {
+                                            out.push(r);
                                         }
                                     }
                                 }
@@ -4733,19 +5146,19 @@ impl Engine {
                         if !mentions_x {
                             continue;
                         }
-                        let bridge_os: Vec<Term> = ctx.bridge_index.keys().copied().collect();
+                        let bridge_os: Vec<Term> = ctx.bridge_keys();
                         for o in bridge_os {
                             let a = p.apply(&|t| if t == X { o } else { t });
                             if !a.is_ground() {
                                 continue;
                             }
-                            let consumers = match ctx.ground_body_index.get(&a) {
-                                Some(c) => c,
-                                None => continue,
-                            };
-                            for &bi in &ctx.bridge_index[&o] {
+                            let consumers = ctx.ground_body(a);
+                            if consumers.is_empty() {
+                                continue;
+                            }
+                            for bi in ctx.bridge(o).iter() {
                                 let bcl = &arena[bi as usize];
-                                for &ci in consumers {
+                                for ci in consumers.iter() {
                                     let consumer = &arena[ci as usize];
                                     if let Some(r) =
                                         self.join_resolvent3(consumer, a, side, p, bcl, o, root)
@@ -4815,10 +5228,8 @@ impl Engine {
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
         let mterm = max.max_term();
-        let Some(candidates) = ctx.max_head_term_index.get(&mterm) else {
-            return out;
-        };
-        for &ci in candidates {
+        let candidates = ctx.max_head_term(mterm);
+        for ci in candidates.iter() {
             let c = &arena[ci as usize];
             for l in c.max_head() {
                 if let Lit::Eq { s, t } = l {
@@ -4848,10 +5259,8 @@ impl Engine {
             Lit::Eq { s, .. } | Lit::Ineq { s, .. } => s,
             _ => return out,
         };
-        let Some(candidates) = ctx.max_head_term_index.get(&s) else {
-            return out;
-        };
-        for &ci in candidates {
+        let candidates = ctx.max_head_term(s);
+        for ci in candidates.iter() {
             let c = &arena[ci as usize];
             for l in c.max_head() {
                 if l.contains_at_rewrite_position(s) && l != max {
@@ -4946,7 +5355,12 @@ impl Engine {
             self.init_context(id);
             return id;
         }
-        self.ensure_shared_closure();
+        // Compute the shared closure (and its base layer) BEFORE creating this
+        // context: `ensure_shared_closure` pushes and pops a throwaway context
+        // at the current end of `self.contexts`, and the pre-base-layer code
+        // did this first too.  Preserving the order keeps every context id
+        // identical to the flat representation's.
+        self.prepare_shared_base(false);
         let id = self.contexts.len();
         let ctx = Context::new(id, vec![], false, None);
         self.contexts.push(ctx);
@@ -4958,10 +5372,7 @@ impl Engine {
         // hypothesis clause that arrives via the first Succ message (apply_succ)
         // then saturates against this seeded closure, deriving exactly the
         // context-specific consequences.
-        let closure = self.shared_closure.as_ref().unwrap().clone();
-        for c in closure {
-            self.seed_worked_off(id, c);
-        }
+        self.attach_shared_base(id);
         id
     }
 
@@ -4992,20 +5403,121 @@ impl Engine {
             // worked-off already includes the shared closure, so this subsumes the
             // usual seed.  Sound + fixpoint-preserving (only re-derivable clauses
             // are pre-seeded; the saturation then derives the remaining delta).
-            let wo = self.contexts[src].worked_off.clone();
-            for c in wo {
-                self.seed_worked_off(id, c);
+            //
+            // When `src` reads a shared base, inherit that base *and its removal
+            // mask* rather than flattening: `src.worked_off()` is exactly
+            // `base \ src.base_removed` followed by `src.delta.worked_off` (base
+            // clauses were all seeded before any delta clause, and `retain`
+            // preserves order), so inheriting the pair and then seeding only
+            // `src`'s delta reproduces the very sequence the flat seed loop
+            // would have pushed.
+            let inherited = if self.base_layer {
+                self.contexts[src].base.clone()
+            } else {
+                None
+            };
+            if let Some(base) = inherited {
+                let removed = self.contexts[src].base_removed.clone();
+                {
+                    let ctx = &mut self.contexts[id];
+                    ctx.base = Some(base);
+                    ctx.base_removed = removed;
+                    ctx.dirty = true;
+                }
+                let wo = self.contexts[src].delta.worked_off.clone();
+                for c in wo {
+                    self.seed_worked_off(id, c);
+                }
+            } else {
+                let wo: Vec<u32> = self.contexts[src].worked_off().iter().collect();
+                for c in wo {
+                    self.seed_worked_off(id, c);
+                }
             }
             self.add_core(id);
         } else {
-            self.ensure_shared_closure();
-            let closure = self.shared_closure.as_ref().unwrap().clone();
-            for c in closure {
-                self.seed_worked_off(id, c);
-            }
+            self.attach_shared_base(id);
             self.add_core(id);
         }
         id
+    }
+
+    /// Give context `id` the shared closure for its ordering domain.
+    ///
+    /// With the base layer on (the default) this attaches an `Arc` to the
+    /// prebuilt `ClauseLayer`; with KM_NO_BASE_LAYER it replays the old
+    /// per-context seeding loop into the context's `delta`.  The two are
+    /// observationally identical: the base layer *is* the state that loop
+    /// produces (`ensure_shared_base` runs the same `ClauseLayer::seed` over the
+    /// same ids in the same order), and a freshly created context has an empty
+    /// delta and an empty mask, so its combined view is exactly the base.
+    fn attach_shared_base(&mut self, id: usize) {
+        let root = self.contexts[id].root;
+        if !self.base_layer {
+            let closure = self.ensure_shared_closure_ids(root);
+            for c in closure {
+                self.seed_worked_off(id, c);
+            }
+            return;
+        }
+        let base = self.ensure_shared_base(root);
+        let ctx = &mut self.contexts[id];
+        debug_assert!(
+            ctx.base.is_none()
+                && ctx.delta.worked_off.is_empty()
+                && ctx.delta.clause_keys.is_empty()
+                && ctx.base_removed.is_empty(),
+            "the shared base must be attached to a pristine context"
+        );
+        ctx.base = Some(base);
+        ctx.dirty = true;
+    }
+
+    /// Force the shared closure (and, when the base layer is on, its indexed
+    /// image) for one ordering domain to exist, without attaching it anywhere.
+    fn prepare_shared_base(&mut self, root: bool) {
+        if self.base_layer {
+            self.ensure_shared_base(root);
+        } else if root {
+            self.ensure_shared_root_closure();
+        } else {
+            self.ensure_shared_closure();
+        }
+    }
+
+    /// The shared closure id list for one ordering domain, computing it on
+    /// first use.
+    fn ensure_shared_closure_ids(&mut self, root: bool) -> Vec<u32> {
+        if root {
+            self.ensure_shared_root_closure();
+            self.shared_root_closure.as_ref().unwrap().clone()
+        } else {
+            self.ensure_shared_closure();
+            self.shared_closure.as_ref().unwrap().clone()
+        }
+    }
+
+    /// Build (once per ordering domain) the fully-indexed base layer of the
+    /// shared closure.  Replaying `ClauseLayer::seed` over the closure ids in
+    /// closure order is precisely what `Engine::seed_worked_off` used to do per
+    /// context, so every posting in the resulting layer holds the same ids in
+    /// the same order the per-context copies did.
+    fn ensure_shared_base(&mut self, root: bool) -> Arc<ClauseLayer> {
+        let d = root as usize;
+        if let Some(base) = &self.shared_base[d] {
+            return Arc::clone(base);
+        }
+        let closure = self.ensure_shared_closure_ids(root);
+        let mut layer = ClauseLayer::default();
+        {
+            let arena = &self.cc_arena[d];
+            for cid in closure {
+                layer.seed(arena, cid);
+            }
+        }
+        let base = Arc::new(layer);
+        self.shared_base[d] = Some(Arc::clone(&base));
+        base
     }
 
     /// Compute the context-independent closure once: saturate a throwaway
@@ -5022,7 +5534,7 @@ impl Engine {
         self.contexts.push(ctx);
         self.init_context(id); // seeds empty-body ontology facts (no core)
         self.saturate(id);
-        let closure = self.contexts[id].worked_off.clone();
+        let closure: Vec<u32> = self.contexts[id].worked_off().iter().collect();
         // Discard the throwaway: nothing references `id` (no edges, not in
         // `successor_ctxs`/`core_index`, no query), so popping it keeps the
         // context vector and counts clean.
@@ -5038,32 +5550,17 @@ impl Engine {
     /// had been worked off normally.
     fn seed_worked_off(&mut self, id: usize, cid: u32) {
         let d = self.contexts[id].root as usize;
-        let (pred_eligible, succ_eligible) = {
-            let clause = &self.cc_arena[d][cid as usize];
-            (
-                clause
-                    .head
-                    .iter()
-                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
-                clause
-                    .max_head_predicates()
-                    .any(|(p, _)| is_function(p.max_term())),
-            )
-        };
-        let arena = &self.cc_arena[d];
-        let ctx = &mut self.contexts[id];
-        if !ctx.clause_keys.insert(cid) {
+        // Dedup against the COMBINED view: a clause the base already
+        // contributes must not be duplicated into the delta.  A base clause
+        // that this context masked out is not "present", so it is re-seeded
+        // into the delta — exactly where the flat representation would have
+        // re-appended it after the removal.
+        if self.contexts[id].has_clause(cid) {
             return;
         }
-        ctx.index_active_clause(arena, cid);
-        if pred_eligible {
-            ctx.pred_pool.push(cid);
-        }
-        if succ_eligible {
-            ctx.succ_pool.push(cid);
-        }
-        ctx.worked_off.push(cid);
-        ctx.index_clause(arena, cid);
+        let arena = &self.cc_arena[d];
+        let ctx = &mut self.contexts[id];
+        ctx.delta.seed(arena, cid);
         ctx.dirty = true;
     }
 
@@ -5073,15 +5570,13 @@ impl Engine {
     fn ctx_derives_central(&self, sid: usize, iri: Iri) -> bool {
         let ctx = &self.contexts[sid];
         let arena = &self.cc_arena[ctx.root as usize];
-        if let Some(idxs) = ctx.head_concept_index.get(&iri) {
-            for &ci in idxs {
-                let c = &arena[ci as usize];
-                if c.body.is_empty()
-                    && c.head.len() == 1
-                    && matches!(c.head[0], Lit::P(Pred::Concept { iri: i, t }) if i == iri && is_central(t))
-                {
-                    return true;
-                }
+        for ci in ctx.head_concept(iri).iter() {
+            let c = &arena[ci as usize];
+            if c.body.is_empty()
+                && c.head.len() == 1
+                && matches!(c.head[0], Lit::P(Pred::Concept { iri: i, t }) if i == iri && is_central(t))
+            {
+                return true;
             }
         }
         false
@@ -5112,11 +5607,11 @@ impl Engine {
         // by the individual.
         let mut ground_succ: Vec<(Pred, Term)> = Vec::new();
         let succ_start = self.contexts[id].succ_hwm;
-        self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
+        self.stat_succ_scans += (self.contexts[id].succ_pool_len() - succ_start) as u64;
         {
             let ctx = &self.contexts[id];
             let arena = &self.cc_arena[ctx.root as usize];
-            for &ci in &ctx.succ_pool[succ_start..] {
+            for ci in ctx.succ_pool_from(succ_start) {
                 let c = &arena[ci as usize];
                 // Core-eligibility: a trigger may enter the successor core only
                 // if it is the SOLE succ-trigger over its function term in this
@@ -5178,7 +5673,7 @@ impl Engine {
                 }
             }
         }
-        self.contexts[id].succ_hwm = self.contexts[id].succ_pool.len();
+        self.contexts[id].succ_hwm = self.contexts[id].succ_pool_len();
         if !self.central {
             // Legacy pay-as-you-go strategy: one empty-core successor per `f`.
             for (p, _) in new_succ {
@@ -5455,12 +5950,12 @@ impl Engine {
                     }
                 }
             }
-            for (i, &ci) in ctx.pred_pool.iter().enumerate() {
+            for (i, ci) in ctx.pred_pool_iter().enumerate() {
                 // Back-subsumption removes the arena id from `clause_keys`.
                 // Skipping it here is not an inference change: the retained
                 // strengthening entails the dead clause and is itself eligible
                 // for this round's Pred push.
-                if !ctx.clause_keys.contains(&ci) {
+                if !ctx.has_clause(ci) {
                     continue;
                 }
                 let c = &arena[ci as usize];
@@ -5578,7 +6073,7 @@ impl Engine {
                 .collect();
         }
         self.stat_pred_checks += pred_checks;
-        self.contexts[id].pred_hwm = self.contexts[id].pred_pool.len();
+        self.contexts[id].pred_hwm = self.contexts[id].pred_pool_len();
         for (e, len) in new_edge_seen {
             self.contexts[id].edge_seen.insert(e, len);
         }
@@ -5664,7 +6159,7 @@ impl Engine {
         // snapshot a send-time copy would have carried.
         let from_ctx = &self.contexts[from];
         let arena = &self.cc_arena[from_ctx.root as usize];
-        let clause = &arena[from_ctx.pred_pool[pool_idx as usize] as usize];
+        let clause = &arena[from_ctx.pred_pool_at(pool_idx as usize) as usize];
         let f = edge_label;
         let subst = |v: Term| backwards(f, v);
         let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
@@ -5756,9 +6251,7 @@ impl Engine {
         let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
         for &bp in &pc.body {
             let mut v = Vec::new();
-            if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
-                v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
-            }
+            v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
             if v.is_empty() {
                 if bp.is_ground() {
                     ground.push(bp);
@@ -5855,7 +6348,7 @@ impl Engine {
             self.cc_arena[0].len(),
             self.cc_arena[1].len(),
             self.pred_interned.len(),
-            self.contexts.iter().map(|c| c.clause_keys.len()).sum::<usize>(),
+            self.contexts.iter().map(|c| c.clause_keys_len()).sum::<usize>(),
         );
         for &(sent, id) in rank.iter().take(n) {
             let c = &self.contexts[id];
@@ -5866,9 +6359,9 @@ impl Engine {
                 c.query,
                 sent,
                 100.0 * sent as f64 / total.max(1) as f64,
-                c.pred_pool.len(),
+                c.pred_pool_len(),
                 c.predecessors.len(),
-                c.worked_off.len(),
+                c.worked_off_len(),
                 c.core.len(),
             );
         }
@@ -5986,7 +6479,7 @@ impl Engine {
                 if prof && guard % 20000 == 0 {
                     let gwo = self
                         .ground_ctx
-                        .map(|g| self.contexts[g].worked_off.len())
+                        .map(|g| self.contexts[g].worked_off_len())
                         .unwrap_or(0);
                     eprintln!(
                         "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={} succ={} pred={} ground_wo={}",
@@ -6025,11 +6518,11 @@ impl Engine {
                         (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
                     for c in &self.contexts {
                         let arena = &self.cc_arena[c.root as usize];
-                        totwo += c.worked_off.len();
-                        if c.worked_off.len() > topwo {
-                            topwo = c.worked_off.len();
+                        totwo += c.worked_off_len();
+                        if c.worked_off_len() > topwo {
+                            topwo = c.worked_off_len();
                         }
-                        for &ci in &c.worked_off {
+                        for ci in c.worked_off().iter() {
                             let cl = &arena[ci as usize];
                             if cl.body.len() > maxb {
                                 maxb = cl.body.len();
@@ -6103,7 +6596,7 @@ impl Engine {
             let mut succ_sizes: Vec<usize> = Vec::new();
             let mut top_succ: usize = 0;
             for c in &self.contexts {
-                let wo = c.worked_off.len();
+                let wo = c.worked_off_len();
                 let np = c.neighbor_pred.len();
                 if c.root && c.query.is_some() {
                     qroot_n += 1;
@@ -6198,10 +6691,10 @@ impl Engine {
                     ctx.query
                         .map(|i| self.sig.concept_names[i as usize].clone()),
                     core.join(", "),
-                    ctx.worked_off.len()
+                    ctx.worked_off_len()
                 );
                 let arena = &self.cc_arena[ctx.root as usize];
-                for &ci in &ctx.worked_off {
+                for ci in ctx.worked_off().iter() {
                     let c = &arena[ci as usize];
                     let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
                     let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
@@ -6263,7 +6756,7 @@ impl Engine {
             for ctx in &self.contexts {
                 let arena = &self.cc_arena[ctx.root as usize];
                 let touch = ctx.core.iter().any(&hit)
-                    || ctx.worked_off.iter().any(|&ci| {
+                    || ctx.worked_off().iter().any(|ci| {
                         let c = &arena[ci as usize];
                         c.body.iter().any(&hit)
                             || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)))
@@ -6279,7 +6772,7 @@ impl Engine {
                     ctx.query.map(|i| nm_c(i)),
                     core.join(", "),
                     ctx.predecessors.len(),
-                    ctx.worked_off.len()
+                    ctx.worked_off_len()
                 );
                 let mut succs: Vec<String> = ctx
                     .successors
@@ -6295,7 +6788,7 @@ impl Engine {
                     .collect();
                 preds.sort();
                 eprintln!("   PRED-OF: {}", preds.join(" "));
-                for &ci in &ctx.worked_off {
+                for ci in ctx.worked_off().iter() {
                     let c = &arena[ci as usize];
                     // only print clauses mentioning a needle (keeps it focused)
                     let rel = c.body.iter().any(&hit)
@@ -6328,19 +6821,19 @@ impl Engine {
                 .contexts
                 .iter()
                 .filter(|c| c.root)
-                .map(|c| c.worked_off.len())
+                .map(|c| c.worked_off_len())
                 .sum();
             let succ_wo: usize = self
                 .contexts
                 .iter()
                 .filter(|c| !c.root)
-                .map(|c| c.worked_off.len())
+                .map(|c| c.worked_off_len())
                 .sum();
             let top_wo = self
                 .contexts
                 .iter()
                 .find(|c| c.root && c.core.is_empty())
-                .map(|c| c.worked_off.len())
+                .map(|c| c.worked_off_len())
                 .unwrap_or(0);
             eprintln!(
                 "KM_STATS contexts={} roots={} succs={} root_wo_total={} succ_wo_total={} top_wo={} avg_root_wo={:.0}",
@@ -6396,54 +6889,35 @@ impl Engine {
                 add("core", ctx.core.len(), ctx.core.capacity() * szp);
                 add(
                     "worked_off(ids)",
-                    ctx.worked_off.len(),
-                    ctx.worked_off.capacity() * 4,
+                    ctx.worked_off_len(),
+                    ctx.delta.worked_off.capacity() * 4 + ctx.base_removed.len() * 12,
                 );
                 add(
                     "clause_keys(ids)",
-                    ctx.clause_keys.len(),
-                    ctx.clause_keys.len() * 12,
+                    ctx.clause_keys_len(),
+                    ctx.delta.clause_keys.len() * 12,
                 );
+                // Only the DELTA layer is charged per context: the base layer is
+                // one shared `Arc` (counted once under `shared_base(engine)`),
+                // which is the whole point of the base-plus-delta split.
                 add(
                     "head_indexes",
-                    ctx.head_concept_index.len()
-                        + ctx.head_role_index.len()
-                        + ctx.max_head_pred_index.len()
-                        + ctx.max_head_term_index.len(),
-                    ctx.head_concept_index
-                        .values()
-                        .map(|v| 24 + 4 + v.capacity() * 4)
-                        .sum::<usize>()
-                        + ctx
-                            .head_role_index
-                            .values()
-                            .map(|v| 24 + 4 + v.capacity() * 4)
-                            .sum::<usize>()
-                        + ctx
-                            .max_head_pred_index
-                            .values()
-                            .map(|v| 24 + szp + v.capacity() * 4)
-                            .sum::<usize>()
-                        + ctx
-                            .max_head_term_index
-                            .values()
-                            .map(|v| 24 + std::mem::size_of::<Term>() + v.capacity() * 4)
-                            .sum::<usize>(),
+                    ctx.delta.head_concept_index.len()
+                        + ctx.delta.head_role_index.len()
+                        + ctx.delta.max_head_pred_index.len()
+                        + ctx.delta.max_head_term_index.len(),
+                    layer_head_index_bytes(&ctx.delta, szp),
                 );
                 add(
                     "redundancy_postings",
-                    ctx.active_empty_head.len()
+                    ctx.delta.active_empty_head.len()
                         + ctx
+                            .delta
                             .active_head_lit_index
                             .values()
                             .map(|posting| posting.len())
                             .sum::<usize>(),
-                    ctx.active_empty_head.capacity() * 4
-                        + ctx
-                            .active_head_lit_index
-                            .values()
-                            .map(|v| 24 + std::mem::size_of::<Lit>() + v.capacity() * 4)
-                            .sum::<usize>(),
+                    layer_redundancy_bytes(&ctx.delta),
                 );
                 add("todo", ctx.todo.len(), ctx.todo.capacity() * 4);
                 add(
@@ -6489,18 +6963,35 @@ impl Engine {
                 );
                 add(
                     "pred_pool(ids)",
-                    ctx.pred_pool.len(),
-                    ctx.pred_pool.capacity() * 4,
+                    ctx.pred_pool_len(),
+                    ctx.delta.pred_pool.capacity() * 4,
                 );
                 add(
                     "succ_pool(ids)",
-                    ctx.succ_pool.len(),
-                    ctx.succ_pool.capacity() * 4,
+                    ctx.succ_pool_len(),
+                    ctx.delta.succ_pool.capacity() * 4,
                 );
                 add(
                     "edges_misc",
                     ctx.successors.len() + ctx.edge_seen.len(),
                     ctx.successors.len() * 24 + ctx.edge_seen.len() * 32,
+                );
+            }
+            // The shared base layers, counted once for the whole engine.  The
+            // per-context rows above deliberately exclude them; the ratio of
+            // this row to `head_indexes`/`redundancy_postings` is the sharing
+            // factor the base-plus-delta representation buys.
+            for base in self.shared_base.iter().flatten() {
+                add(
+                    "shared_base(engine)",
+                    base.worked_off.len(),
+                    base.worked_off.capacity() * 4
+                        + base.clause_keys.len() * 12
+                        + base.pred_pool.capacity() * 4
+                        + base.succ_pool.capacity() * 4
+                        + base.merge_clauses.capacity() * 4
+                        + layer_head_index_bytes(base, szp)
+                        + layer_redundancy_bytes(base),
                 );
             }
             add(
@@ -6566,9 +7057,9 @@ impl Engine {
                     ctx.id,
                     ctx.root,
                     ctx.core,
-                    ctx.worked_off.len()
+                    ctx.worked_off_len()
                 );
-                for &ci in &ctx.worked_off {
+                for ci in ctx.worked_off().iter() {
                     let c = &arena[ci as usize];
                     eprintln!("    {:?} -> {:?}", c.body, c.head);
                 }
@@ -6592,14 +7083,14 @@ impl Engine {
             };
             let arena = &self.cc_arena[ctx.root as usize];
             let mut supers: Vec<String> = Vec::new();
-            let unsat = ctx.worked_off.iter().any(|&ci| {
+            let unsat = ctx.worked_off().iter().any(|ci| {
                 let c = &arena[ci as usize];
                 c.body.is_empty() && c.head.is_empty()
             });
             if unsat {
                 supers.push("owl:Nothing".to_string());
             }
-            for &ci in &ctx.worked_off {
+            for ci in ctx.worked_off().iter() {
                 let c = &arena[ci as usize];
                 if c.body.is_empty() && c.head.len() == 1 {
                     if let Lit::P(Pred::Concept { iri, t }) = c.head[0] {
@@ -6658,7 +7149,7 @@ impl Engine {
         let top_bot = self.contexts.iter().any(|ctx| {
             ctx.root
                 && ctx.core.is_empty()
-                && ctx.worked_off.iter().any(|&ci| {
+                && ctx.worked_off().iter().any(|ci| {
                     let c = &arena[ci as usize];
                     c.body.is_empty() && c.head.is_empty()
                 })
@@ -6669,7 +7160,7 @@ impl Engine {
         if let Some(gid) = self.ground_ctx {
             let ctx = &self.contexts[gid];
             let arena = &self.cc_arena[ctx.root as usize];
-            return ctx.worked_off.iter().any(|&ci| {
+            return ctx.worked_off().iter().any(|ci| {
                 let c = &arena[ci as usize];
                 c.body.is_empty() && c.head.is_empty()
             });
@@ -6844,7 +7335,7 @@ impl Engine {
         let safe = self.chain_unique_contexts();
         for (cid, ctx) in self.contexts.iter().enumerate() {
             let arena = &self.cc_arena[ctx.root as usize];
-            for &ci in &ctx.worked_off {
+            for ci in ctx.worked_off().iter() {
                 let c = &arena[ci as usize];
                 if c.head.len() <= 1 {
                     continue;
@@ -6883,7 +7374,7 @@ impl Engine {
         // Query-context readout: units and ⊥.
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[ctx.root as usize];
-        for &ci in &ctx.worked_off {
+        for ci in ctx.worked_off().iter() {
             let c = &arena[ci as usize];
             if !c.body.is_empty() {
                 continue;
@@ -6951,7 +7442,7 @@ impl Engine {
             {
                 let ctx = &self.contexts[cid];
                 let arena = &self.cc_arena[ctx.root as usize];
-                for &ci in &ctx.worked_off {
+                for ci in ctx.worked_off().iter() {
                     let c = &arena[ci as usize];
                     if c.body.is_empty() && c.head.is_empty() {
                         unsat = true;
@@ -6998,7 +7489,7 @@ impl Engine {
                 self.run_msg_fixpoint_min();
                 let ctx = &self.contexts[rid];
                 let arena = &self.cc_arena[ctx.root as usize];
-                let closed = ctx.worked_off.iter().any(|&ci| {
+                let closed = ctx.worked_off().iter().any(|ci| {
                     let c = &arena[ci as usize];
                     c.body.is_empty() && c.head.is_empty()
                 });
@@ -7510,8 +8001,8 @@ mod tests {
             let clause = ContextClause::new(vec![], vec![Lit::P(p)], false, &e.sig);
             let cid = e.cc_arena[0].len() as u32;
             e.cc_arena[0].push(clause);
-            ctx.worked_off.push(cid);
-            ctx.index_clause(&e.cc_arena[0], cid);
+            ctx.delta.worked_off.push(cid);
+            ctx.delta.index_clause(&e.cc_arena[0], cid);
         }
         e.contexts.push(ctx);
         (e, id)
@@ -7871,32 +8362,32 @@ mod tests {
         ];
         let mut ctx = Context::new(0, vec![], true, None);
         for cid in [0u32, 1, 2] {
-            ctx.clause_keys.insert(cid);
-            ctx.index_active_clause(&arena, cid);
-            ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.delta.clause_keys.insert(cid);
+            ctx.delta.index_active_clause(&arena, cid);
+            ctx.delta.worked_off.push(cid);
+            ctx.delta.index_clause(&arena, cid);
         }
         ctx.back_subsume(&arena, &sigs_of(&arena), &arena[3]);
         assert_eq!(
-            ctx.worked_off,
+            ctx.worked_off().iter().collect::<Vec<u32>>(),
             vec![1u32],
             "clauses 0 and 2 must be back-subsumed away, exercising unindex_clause"
         );
         let snapshot = |ctx: &Context| {
             (
-                ctx.head_concept_index.clone(),
-                ctx.head_role_index.clone(),
-                ctx.ground_role_source_index.clone(),
-                ctx.ground_role_target_index.clone(),
-                ctx.max_head_pred_index.clone(),
-                ctx.max_head_term_index.clone(),
-                ctx.ground_body_index.clone(),
-                ctx.bridge_index.clone(),
-                ctx.merge_clauses.clone(),
+                ctx.delta.head_concept_index.clone(),
+                ctx.delta.head_role_index.clone(),
+                ctx.delta.ground_role_source_index.clone(),
+                ctx.delta.ground_role_target_index.clone(),
+                ctx.delta.max_head_pred_index.clone(),
+                ctx.delta.max_head_term_index.clone(),
+                ctx.delta.ground_body_index.clone(),
+                ctx.delta.bridge_index.clone(),
+                ctx.delta.merge_clauses.clone(),
             )
         };
         let incremental = snapshot(&ctx);
-        ctx.rebuild_head_index(&arena);
+        ctx.delta.rebuild_head_index(&arena);
         let rebuilt = snapshot(&ctx);
         assert!(
             incremental == rebuilt,
@@ -7929,28 +8420,32 @@ mod tests {
         ];
         let mut ctx = Context::new(0, vec![], true, None);
         for cid in [0u32, 2] {
-            ctx.clause_keys.insert(cid);
-            ctx.index_active_clause(&arena, cid);
-            ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.delta.clause_keys.insert(cid);
+            ctx.delta.index_active_clause(&arena, cid);
+            ctx.delta.worked_off.push(cid);
+            ctx.delta.index_clause(&arena, cid);
         }
         ctx.back_subsume(&arena, &sigs_of(&arena), &arena[1]);
-        assert_eq!(ctx.worked_off, vec![2u32], "clause 0 must be subsumed away");
+        assert_eq!(
+            ctx.worked_off().iter().collect::<Vec<u32>>(),
+            vec![2u32],
+            "clause 0 must be subsumed away"
+        );
         let snapshot = |ctx: &Context| {
             (
-                ctx.head_concept_index.clone(),
-                ctx.head_role_index.clone(),
-                ctx.ground_role_source_index.clone(),
-                ctx.ground_role_target_index.clone(),
-                ctx.max_head_pred_index.clone(),
-                ctx.max_head_term_index.clone(),
-                ctx.ground_body_index.clone(),
-                ctx.bridge_index.clone(),
-                ctx.merge_clauses.clone(),
+                ctx.delta.head_concept_index.clone(),
+                ctx.delta.head_role_index.clone(),
+                ctx.delta.ground_role_source_index.clone(),
+                ctx.delta.ground_role_target_index.clone(),
+                ctx.delta.max_head_pred_index.clone(),
+                ctx.delta.max_head_term_index.clone(),
+                ctx.delta.ground_body_index.clone(),
+                ctx.delta.bridge_index.clone(),
+                ctx.delta.merge_clauses.clone(),
             )
         };
         let incremental = snapshot(&ctx);
-        ctx.rebuild_head_index(&arena);
+        ctx.delta.rebuild_head_index(&arena);
         let rebuilt = snapshot(&ctx);
         assert!(
             incremental == rebuilt,
@@ -8335,23 +8830,17 @@ mod tests {
             let context = &engine.contexts[ground_id];
             let arena = &engine.cc_arena[context.root as usize];
             let has = |predicate: Pred| {
-                context.worked_off.iter().any(|&cid| {
+                context.worked_off().iter().any(|cid| {
                     let clause = &arena[cid as usize];
                     clause.body.is_empty() && clause.head == vec![Lit::P(predicate)]
                 })
             };
             assert!(has(cx(d, left)));
             assert!(has(cx(e, left)));
-            assert!(context.ground_role_target_index.contains_key(&(r, right)));
-            assert!(context.ground_role_source_index.contains_key(&(r, right)));
-            assert!(context
-                .ground_role_source_index
-                .get(&(r, left))
-                .is_some_and(|posting| posting.len() >= 2));
-            assert!(context
-                .ground_role_target_index
-                .get(&(r, right))
-                .is_some_and(|posting| posting.len() >= 2));
+            assert!(!context.ground_role_target((r, right)).is_empty());
+            assert!(!context.ground_role_source((r, right)).is_empty());
+            assert!(context.ground_role_source((r, left)).len() >= 2);
+            assert!(context.ground_role_target((r, right)).len() >= 2);
         }
 
         run(false);
@@ -8380,13 +8869,13 @@ mod tests {
         ];
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
-            ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.delta.worked_off.push(cid);
+            ctx.delta.index_clause(&arena, cid);
         }
 
-        assert_eq!(ctx.head_concept_index.get(&7).unwrap().as_slice(), &[0, 1]);
-        assert_eq!(ctx.max_head_pred_index.get(&p1).unwrap().as_slice(), &[0]);
-        assert_eq!(ctx.max_head_pred_index.get(&p2).unwrap().as_slice(), &[1]);
+        assert_eq!(ctx.delta.head_concept_index.get(&7).unwrap().as_slice(), &[0, 1]);
+        assert_eq!(ctx.delta.max_head_pred_index.get(&p1).unwrap().as_slice(), &[0]);
+        assert_eq!(ctx.delta.max_head_pred_index.get(&p2).unwrap().as_slice(), &[1]);
     }
 
     #[test]
@@ -8412,15 +8901,15 @@ mod tests {
         ];
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
-            ctx.worked_off.push(cid);
-            ctx.index_clause(&arena, cid);
+            ctx.delta.worked_off.push(cid);
+            ctx.delta.index_clause(&arena, cid);
         }
 
-        assert_eq!(ctx.max_head_term_index[&f1].as_slice(), &[0]);
-        assert_eq!(ctx.max_head_term_index[&f2].as_slice(), &[1]);
-        assert_eq!(ctx.max_head_term_index[&X].as_slice(), &[1]);
-        assert_eq!(ctx.max_head_term_index[&f3].as_slice(), &[2]);
-        assert!(!ctx.max_head_term_index.contains_key(&o));
+        assert_eq!(ctx.delta.max_head_term_index[&f1].as_slice(), &[0]);
+        assert_eq!(ctx.delta.max_head_term_index[&f2].as_slice(), &[1]);
+        assert_eq!(ctx.delta.max_head_term_index[&X].as_slice(), &[1]);
+        assert_eq!(ctx.delta.max_head_term_index[&f3].as_slice(), &[2]);
+        assert!(!ctx.delta.max_head_term_index.contains_key(&o));
     }
 
     #[test]
@@ -8448,11 +8937,11 @@ mod tests {
         }
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
-            ctx.clause_keys.insert(cid);
-            ctx.index_active_clause(&arena, cid);
+            ctx.delta.clause_keys.insert(cid);
+            ctx.delta.index_active_clause(&arena, cid);
             if cid % 2 == 0 {
-                ctx.worked_off.push(cid);
-                ctx.index_clause(&arena, cid);
+                ctx.delta.worked_off.push(cid);
+                ctx.delta.index_clause(&arena, cid);
             } else {
                 ctx.todo.push_back(cid);
             }
@@ -8464,9 +8953,8 @@ mod tests {
             for head in &heads {
                 let incoming = ContextClause::new(body.clone(), head.clone(), false, &sig);
                 let expected = ctx
-                    .clause_keys
-                    .iter()
-                    .any(|&cid| arena[cid as usize].test_strengthening(&incoming) == -1);
+                    .clause_keys_iter()
+                    .any(|cid| arena[cid as usize].test_strengthening(&incoming) == -1);
                 let actual = ctx.fwd_subsumed(&arena, &sigs_of(&arena), &incoming, None);
                 assert_eq!(
                     actual, expected,
@@ -8605,11 +9093,11 @@ mod tests {
         let sigs = sigs_of(&arena);
         let mut ctx = Context::new(0, vec![], false, None);
         for cid in 0..arena.len() as u32 {
-            if ctx.clause_keys.insert(cid) {
-                ctx.index_active_clause(&arena, cid);
+            if ctx.delta.clause_keys.insert(cid) {
+                ctx.delta.index_active_clause(&arena, cid);
                 if cid % 3 == 0 {
-                    ctx.worked_off.push(cid);
-                    ctx.index_clause(&arena, cid);
+                    ctx.delta.worked_off.push(cid);
+                    ctx.delta.index_clause(&arena, cid);
                 } else {
                     ctx.todo.push_back(cid);
                 }
@@ -8629,9 +9117,8 @@ mod tests {
                 None
             };
             let expected = ctx
-                .clause_keys
-                .iter()
-                .any(|&cid| Some(cid) != exclude && arena[cid as usize].strengthens(incoming));
+                .clause_keys_iter()
+                .any(|cid| Some(cid) != exclude && arena[cid as usize].strengthens(incoming));
             let actual = ctx.fwd_subsumed(&arena, &sigs, incoming, exclude);
             assert_eq!(
                 actual, expected,
@@ -8658,13 +9145,13 @@ mod tests {
         for clause in &strengtheners {
             let mut ctx = Context::new(0, vec![], false, None);
             for cid in 0..arena.len() as u32 {
-                if ctx.clause_keys.insert(cid) {
-                    ctx.index_active_clause(&arena, cid);
-                    ctx.worked_off.push(cid);
-                    ctx.index_clause(&arena, cid);
+                if ctx.delta.clause_keys.insert(cid) {
+                    ctx.delta.index_active_clause(&arena, cid);
+                    ctx.delta.worked_off.push(cid);
+                    ctx.delta.index_clause(&arena, cid);
                 }
             }
-            let before: HashSet<u32> = ctx.clause_keys.clone();
+            let before: HashSet<u32> = ctx.clause_keys_iter().collect();
             let expected: HashSet<u32> = before
                 .iter()
                 .copied()
@@ -8675,7 +9162,8 @@ mod tests {
                 })
                 .collect();
             ctx.back_subsume(&arena, &sigs, clause);
-            let removed: HashSet<u32> = before.difference(&ctx.clause_keys).copied().collect();
+            let after: HashSet<u32> = ctx.clause_keys_iter().collect();
+            let removed: HashSet<u32> = before.difference(&after).copied().collect();
             assert_eq!(
                 removed, expected,
                 "screened back subsumption removed a different set for {clause:?}"
@@ -8767,8 +9255,8 @@ mod tests {
             ContextClause::new(vec![], vec![Lit::P(other)], false, &e.sig),
         ];
         for cid in 0..e.cc_arena[0].len() as u32 {
-            e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].delta.worked_off.push(cid);
+            e.contexts[0].delta.index_clause(&e.cc_arena[0], cid);
         }
         e.pred_interned.push(PredClause {
             body: vec![max, other],
@@ -8816,8 +9304,8 @@ mod tests {
             ContextClause::new(vec![b], vec![Lit::P(p3)], false, &e.sig),
         ];
         for cid in 0..e.cc_arena[0].len() as u32 {
-            e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].delta.worked_off.push(cid);
+            e.contexts[0].delta.index_clause(&e.cc_arena[0], cid);
         }
         let pred = PredClause {
             body: vec![p1, p2, p3],
@@ -8912,8 +9400,8 @@ mod tests {
             e.cc_arena[0] = arena;
             e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
             for cid in 0..e.cc_arena[0].len() as u32 {
-                e.contexts[0].worked_off.push(cid);
-                e.contexts[0].index_clause(&e.cc_arena[0], cid);
+                e.contexts[0].delta.worked_off.push(cid);
+                e.contexts[0].delta.index_clause(&e.cc_arena[0], cid);
             }
 
             // A neighbour Pred clause whose body is the pinned trigger plus
@@ -8994,8 +9482,8 @@ mod tests {
         e.cc_arena[0] = arena;
         e.cc_sig[0] = e.cc_arena[0].iter().map(ClauseSig::of).collect();
         for cid in 0..e.cc_arena[0].len() as u32 {
-            e.contexts[0].worked_off.push(cid);
-            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+            e.contexts[0].delta.worked_off.push(cid);
+            e.contexts[0].delta.index_clause(&e.cc_arena[0], cid);
         }
         let mut body = vec![trigger];
         body.extend(premises.iter().copied());
@@ -9047,7 +9535,7 @@ mod tests {
             false,
             &e.sig,
         ));
-        e.contexts[0].pred_pool.push(0);
+        e.contexts[0].delta.pred_pool.push(0);
 
         let payload = e.pred_payload(0, edge, 0);
         assert_eq!(payload.body, vec![cx(a, edge)]);
@@ -9168,23 +9656,21 @@ mod tests {
         let arena = vec![weak.clone(), weak, strong.clone()];
         let mut ctx = Context::new(0, vec![], false, None);
         ctx.todo.push_back(0);
-        ctx.worked_off.push(1);
-        ctx.clause_keys.insert(0);
-        ctx.clause_keys.insert(1);
-        ctx.pred_pool.push(1);
-        ctx.index_clause(&arena, 1);
-        ctx.index_active_clause(&arena, 0);
-        ctx.index_active_clause(&arena, 1);
+        ctx.delta.worked_off.push(1);
+        ctx.delta.clause_keys.insert(0);
+        ctx.delta.clause_keys.insert(1);
+        ctx.delta.pred_pool.push(1);
+        ctx.delta.index_clause(&arena, 1);
+        ctx.delta.index_active_clause(&arena, 0);
+        ctx.delta.index_active_clause(&arena, 1);
 
         ctx.back_subsume(&arena, &sigs_of(&arena), &strong);
-        assert!(!ctx.clause_keys.contains(&0));
-        assert!(!ctx.clause_keys.contains(&1));
+        assert!(!ctx.has_clause(0));
+        assert!(!ctx.has_clause(1));
         assert!(ctx.todo.is_empty());
-        assert!(ctx.worked_off.is_empty());
+        assert!(ctx.worked_off().is_empty());
         assert!(
-            ctx.pred_pool
-                .iter()
-                .all(|cid| !ctx.clause_keys.contains(cid)),
+            ctx.pred_pool_iter().all(|cid| !ctx.has_clause(cid)),
             "a back-subsumed intermediate must not cross the Pred boundary"
         );
     }
@@ -9746,5 +10232,606 @@ mod rsucc_rolechain_tests {
             dt,
         );
         assert!(saved > 0, "gate should skip the churn rounds");
+    }
+}
+
+#[cfg(test)]
+mod base_delta_tests {
+    //! Exactness certification for the base-plus-delta context clause store.
+    //!
+    //! Thousands of successor / query-root contexts are seeded with the *same*
+    //! context-independent closure.  The store therefore reads a shared,
+    //! immutable base [`ClauseLayer`] followed by a per-context delta layer,
+    //! with context-local back-subsumption recorded as a removal mask over the
+    //! base instead of an edit to it.
+    //!
+    //! The optimization is a pure representation change, so the property that
+    //! has to hold is *observational equality with the flat representation*:
+    //! for every operation sequence, the two must agree on
+    //!
+    //!   * the worked-off id sequence (order included — it is the work-off
+    //!     order the saturation loop and every diagnostic depend on),
+    //!   * the active key set and its size,
+    //!   * every posting of every index, *as a sequence* — Hyper, Pred, Eq,
+    //!     Join and the redundancy scans all enumerate postings in order, and
+    //!     the resolvent order they produce is the order clauses reach `todo`,
+    //!   * the append-only Pred/Succ pools and hence every pool index that
+    //!     crosses a context boundary in a `Msg::Pred`,
+    //!   * `fwd_subsumed` and the removal set of `back_subsume`.
+    //!
+    //! `base_layer_matches_flat_representation` drives both representations
+    //! through the same insertion / context-local removal / pending-deactivation
+    //! script and compares all of the above after every step;
+    //! `shared_base_classification_matches_flat` closes the loop end to end by
+    //! classifying the same ontology with the base layer on and off.
+    use super::*;
+
+    fn cx(iri: Iri, t: Term) -> Pred {
+        Pred::Concept { iri, t }
+    }
+
+    fn rl(iri: Iri, s: Term, t: Term) -> Pred {
+        Pred::Role { iri, s, t }
+    }
+
+    fn sigs_of(arena: &[ContextClause]) -> Vec<ClauseSig> {
+        arena.iter().map(ClauseSig::of).collect()
+    }
+
+    /// Deterministic clause population that touches every index the layer
+    /// maintains: concept and role heads, roles with a ground endpoint (the
+    /// `ground_role_*` postings), function terms (`max_head_term`), ground body
+    /// atoms (`ground_body_index`), `x ≈ o` bridge heads (`bridge_index`) and
+    /// merge literals (`merge_clauses`), plus empty heads and empty bodies so
+    /// `active_empty_head` and the Pred/Succ pool predicates both fire.
+    fn population(sig: &Sig, n: usize, seed: u64) -> Vec<ContextClause> {
+        let o1 = ind_term(1);
+        let o2 = ind_term(2);
+        let f1 = fterm(1);
+        let concepts = [cx(1, X), cx(2, X), cx(3, X), cx(1, o1), cx(2, o2), cx(4, f1)];
+        let roles = [rl(5, X, o1), rl(5, o1, X), rl(6, X, Y), rl(6, o2, o1)];
+        let eqs = [Lit::eq(o1, X), Lit::eq(o2, X), Lit::eq(o1, o2)];
+        let mut state = seed | 1;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            let (bm, hm, em) = (next(), next(), next());
+            let mut body: Vec<Pred> = concepts
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| (bm >> (i * 3)) % 4 == 0)
+                .map(|(_, &p)| p)
+                .collect();
+            body.extend(
+                roles
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| (bm >> (24 + i * 3)) % 5 == 0)
+                    .map(|(_, &p)| p),
+            );
+            let mut head: Vec<Lit> = concepts
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| (hm >> (i * 3)) % 3 == 0)
+                .map(|(_, &p)| Lit::P(p))
+                .collect();
+            head.extend(
+                roles
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| (hm >> (24 + i * 3)) % 4 == 0)
+                    .map(|(_, &p)| Lit::P(p)),
+            );
+            head.extend(
+                eqs.iter()
+                    .enumerate()
+                    .filter(|(i, _)| (em >> (i * 5)) % 4 == 0)
+                    .map(|(_, &l)| l),
+            );
+            out.push(ContextClause::new(body, head, false, sig));
+        }
+        out
+    }
+
+    /// Collect one index as `key -> live posting sequence`, over the union of
+    /// the base and delta key sets.  Empty postings are dropped so that "key
+    /// present in the base but fully masked" compares equal to "key absent",
+    /// which is the state the flat representation reaches (`posting_remove`
+    /// prunes a key whose posting empties).
+    macro_rules! index_snapshot {
+        ($ctx:expr, $field:ident, $acc:ident) => {{
+            let mut keys: HashSet<_> = $ctx.delta.$field.keys().copied().collect();
+            if let Some(b) = $ctx.base.as_deref() {
+                keys.extend(b.$field.keys().copied());
+            }
+            let mut out: HashMap<_, Vec<u32>> = HashMap::new();
+            for k in keys {
+                let posting: Vec<u32> = $ctx.$acc(k).iter().collect();
+                if !posting.is_empty() {
+                    out.insert(k, posting);
+                }
+            }
+            out
+        }};
+    }
+
+    /// Everything a context exposes about its clause store, as owned values, so
+    /// the two representations can be compared with `==`.
+    ///
+    /// `join_indexes_empty` is deliberately absent: it is a fast-path guard
+    /// documented to over-approximate non-emptiness (a base whose Join postings
+    /// are all masked still reports non-empty), which can only run the Join
+    /// loops on a candidate set that is in fact empty.  The one direction that
+    /// matters — "reports empty ⇒ really empty" — is asserted separately.
+    #[derive(PartialEq)]
+    struct StoreSnapshot {
+        worked_off: Vec<u32>,
+        worked_off_len: usize,
+        clause_keys: BTreeSet<u32>,
+        clause_keys_len: usize,
+        todo: Vec<u32>,
+        head_concept: HashMap<Iri, Vec<u32>>,
+        head_role: HashMap<Iri, Vec<u32>>,
+        ground_role_source: HashMap<(Iri, Term), Vec<u32>>,
+        ground_role_target: HashMap<(Iri, Term), Vec<u32>>,
+        max_head_pred: HashMap<Pred, Vec<u32>>,
+        max_head_term: HashMap<Term, Vec<u32>>,
+        active_head_lit: HashMap<Lit, Vec<u32>>,
+        ground_body: HashMap<Pred, Vec<u32>>,
+        bridge: HashMap<Term, Vec<u32>>,
+        active_empty_head: Vec<u32>,
+        merge_clauses: Vec<u32>,
+        pred_pool: Vec<u32>,
+        succ_pool: Vec<u32>,
+        ground_body_keys: HashSet<Pred>,
+        bridge_keys: HashSet<Term>,
+    }
+
+    fn snapshot(ctx: &Context) -> StoreSnapshot {
+        StoreSnapshot {
+            worked_off: ctx.worked_off().iter().collect(),
+            worked_off_len: ctx.worked_off_len(),
+            clause_keys: ctx.clause_keys_iter().collect(),
+            clause_keys_len: ctx.clause_keys_len(),
+            todo: ctx.todo.iter().copied().collect(),
+            head_concept: index_snapshot!(ctx, head_concept_index, head_concept),
+            head_role: index_snapshot!(ctx, head_role_index, head_role),
+            ground_role_source: index_snapshot!(
+                ctx,
+                ground_role_source_index,
+                ground_role_source
+            ),
+            ground_role_target: index_snapshot!(
+                ctx,
+                ground_role_target_index,
+                ground_role_target
+            ),
+            max_head_pred: index_snapshot!(ctx, max_head_pred_index, max_head_pred),
+            max_head_term: index_snapshot!(ctx, max_head_term_index, max_head_term),
+            active_head_lit: index_snapshot!(ctx, active_head_lit_index, active_head_lit),
+            ground_body: index_snapshot!(ctx, ground_body_index, ground_body),
+            bridge: index_snapshot!(ctx, bridge_index, bridge),
+            active_empty_head: ctx.active_empty_head().iter().collect(),
+            merge_clauses: ctx.merge_clauses().iter().collect(),
+            pred_pool: ctx.pred_pool_iter().collect(),
+            succ_pool: ctx.succ_pool_from(0).collect(),
+            ground_body_keys: ctx.ground_body_keys().into_iter().collect(),
+            bridge_keys: ctx.bridge_keys().into_iter().collect(),
+        }
+    }
+
+    /// `Engine::seed_worked_off` at the layer level: the combined view gates the
+    /// duplicate check, the delta layer receives the clause.
+    fn work_off(ctx: &mut Context, arena: &[ContextClause], cid: u32) {
+        if ctx.has_clause(cid) {
+            return;
+        }
+        ctx.delta.seed(arena, cid);
+    }
+
+    /// `Engine::add_clause_inner`'s enqueue tail: index the clause as active and
+    /// stage it in `todo` without working it off.
+    fn enqueue(ctx: &mut Context, arena: &[ContextClause], cid: u32) {
+        if ctx.has_clause(cid) {
+            return;
+        }
+        ctx.delta.clause_keys.insert(cid);
+        ctx.delta.index_active_clause(arena, cid);
+        ctx.todo.push_back(cid);
+    }
+
+    /// `join_indexes_empty` may only ever err towards "not empty".
+    fn join_guard_is_safe(ctx: &Context) -> bool {
+        !ctx.join_indexes_empty()
+            || (ctx.ground_body_keys().is_empty() && ctx.bridge_keys().is_empty())
+    }
+
+    /// The crux: a base-plus-delta context and a fully materialised one, driven
+    /// through the same script of insertions, context-local removals and
+    /// pending deactivations, must agree on every observable after every step.
+    #[test]
+    fn base_layer_matches_flat_representation() {
+        let sig = Sig::default();
+        let arena = population(&sig, 220, 0x2545_f491_4f6c_dd1d);
+        let sigs = sigs_of(&arena);
+        let split = 70u32; // the first `split` clauses stand in for the closure
+
+        // The shared base, built exactly the way `Engine::ensure_shared_base`
+        // builds it: replay `ClauseLayer::seed` over the closure ids in closure
+        // order.
+        let mut base = ClauseLayer::default();
+        for cid in 0..split {
+            base.seed(&arena, cid);
+        }
+        let base = Arc::new(base);
+
+        // Flat: the same closure materialised into the context's own layer —
+        // the pre-base-layer representation, id for id.
+        let mut flat = Context::new(0, vec![], false, None);
+        for cid in 0..split {
+            flat.delta.seed(&arena, cid);
+        }
+
+        let mut layered = Context::new(0, vec![], false, None);
+        layered.base = Some(Arc::clone(&base));
+
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "attaching the shared base diverged from materialising the closure"
+        );
+
+        // The last three arena ids are reserved for the deterministic tail below.
+        let scripted = arena.len() as u32 - 3;
+        for cid in split..scripted {
+            let clause = &arena[cid as usize];
+
+            // 1. forward subsumption reads `active_empty_head` and the
+            //    per-literal active postings across both layers.
+            let f_flat = flat.fwd_subsumed(&arena, &sigs, clause, None);
+            let f_layered = layered.fwd_subsumed(&arena, &sigs, clause, None);
+            assert_eq!(f_flat, f_layered, "fwd_subsumed diverged at clause {cid}");
+            if f_flat {
+                continue;
+            }
+
+            // 2. context-local removal: base hits become mask entries, delta
+            //    hits are unindexed in place.
+            flat.back_subsume(&arena, &sigs, clause);
+            layered.back_subsume(&arena, &sigs, clause);
+            assert!(
+                snapshot(&flat) == snapshot(&layered),
+                "back_subsume diverged at clause {cid}"
+            );
+
+            // 3. insertion: two thirds are worked off, one third stays pending
+            //    so `todo`, the active-only postings and `deactivate_pending`
+            //    are exercised too.
+            if cid % 3 == 0 {
+                enqueue(&mut flat, &arena, cid);
+                enqueue(&mut layered, &arena, cid);
+            } else {
+                work_off(&mut flat, &arena, cid);
+                work_off(&mut layered, &arena, cid);
+            }
+            assert!(
+                snapshot(&flat) == snapshot(&layered),
+                "insertion diverged at clause {cid}"
+            );
+
+            // 4. work-off-time re-check of the oldest pending clause, which is
+            //    where a staged clause is dropped from the active index alone.
+            if cid % 7 == 0 {
+                if let (Some(pf), Some(pl)) = (flat.todo.pop_front(), layered.todo.pop_front()) {
+                    assert_eq!(pf, pl, "todo order diverged at clause {cid}");
+                    let pending = &arena[pf as usize];
+                    let s_flat = flat.fwd_subsumed(&arena, &sigs, pending, Some(pf));
+                    let s_layered = layered.fwd_subsumed(&arena, &sigs, pending, Some(pf));
+                    assert_eq!(s_flat, s_layered, "work-off re-check diverged at {pf}");
+                    if s_flat {
+                        flat.deactivate_pending(&arena, pf);
+                        layered.deactivate_pending(&arena, pf);
+                    } else {
+                        work_off(&mut flat, &arena, pf);
+                        work_off(&mut layered, &arena, pf);
+                    }
+                    assert!(
+                        snapshot(&flat) == snapshot(&layered),
+                        "pending disposal diverged at clause {pf}"
+                    );
+                }
+            }
+            assert!(join_guard_is_safe(&layered), "join guard claimed empty at {cid}");
+        }
+
+        // ---- deterministic tail -------------------------------------------
+        //
+        // The random script above is a good stress test but cannot *guarantee*
+        // that every path was taken, and an always-equal comparison over paths
+        // that never ran proves nothing.  Each remaining path is therefore
+        // forced exactly once, on arena ids the loop never touched.
+
+        // (a) a worked-off insertion and a pending insertion, on ids neither
+        //     store has seen (`has_clause` is keyed by arena id, so both are
+        //     guaranteed new).
+        work_off(&mut flat, &arena, scripted);
+        work_off(&mut layered, &arena, scripted);
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "forced work-off diverged"
+        );
+        enqueue(&mut flat, &arena, scripted + 1);
+        enqueue(&mut layered, &arena, scripted + 1);
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "forced enqueue diverged"
+        );
+
+        // (b) that pending clause dropped from the active index alone.
+        let pf = flat.todo.pop_back().expect("just enqueued");
+        let pl = layered.todo.pop_back().expect("just enqueued");
+        assert_eq!(pf, pl, "todo order diverged");
+        flat.deactivate_pending(&arena, pf);
+        layered.deactivate_pending(&arena, pf);
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "deactivate_pending diverged"
+        );
+
+        // (c) forward subsumption must fire: a live base clause with one extra
+        //     body atom and one extra head literal is strictly weaker, so the
+        //     base clause strengthens it.
+        let live_base = layered
+            .base
+            .as_deref()
+            .expect("layered has a base")
+            .worked_off
+            .iter()
+            .copied()
+            .find(|&cid| layered.base_live(cid))
+            .expect("the base must still contribute a clause");
+        let weaker = {
+            let c = &arena[live_base as usize];
+            let mut body = c.body.clone();
+            body.push(cx(3, X));
+            let mut head = c.head.clone();
+            head.push(Lit::P(cx(2, ind_term(2))));
+            ContextClause::new(body, head, false, &sig)
+        };
+        assert!(
+            flat.fwd_subsumed(&arena, &sigs, &weaker, None),
+            "the flat store must forward-subsume a weakening of a live clause"
+        );
+        assert!(
+            layered.fwd_subsumed(&arena, &sigs, &weaker, None),
+            "the layered store must forward-subsume it identically"
+        );
+
+        // (d) a base-layer clause back-subsumed away.  The empty-bodied unit
+        //     clause over one of its head literals strengthens it and is not
+        //     equal to it (its head is strictly longer), so the removal is
+        //     forced regardless of what the random script did.
+        let victim = layered
+            .base
+            .as_deref()
+            .expect("layered has a base")
+            .worked_off
+            .iter()
+            .copied()
+            .find(|&cid| layered.base_live(cid) && arena[cid as usize].head.len() >= 2)
+            .expect("the base must contribute a multi-literal-head clause");
+        let strengthener =
+            ContextClause::new(vec![], vec![arena[victim as usize].head[0]], false, &sig);
+        flat.back_subsume(&arena, &sigs, &strengthener);
+        layered.back_subsume(&arena, &sigs, &strengthener);
+        assert!(
+            layered.base_removed.contains(&victim),
+            "the forced strengthener must mask the base clause out"
+        );
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "forced base-layer removal diverged"
+        );
+        assert!(
+            layered.base_removed.len() < base.worked_off.len(),
+            "the whole base was masked away — the shared read path is untested"
+        );
+
+        // (e) and it must re-enter at the end of every posting if re-derived.
+        work_off(&mut flat, &arena, victim);
+        work_off(&mut layered, &arena, victim);
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "re-derivation of a masked base clause diverged"
+        );
+        assert!(join_guard_is_safe(&layered), "join guard claimed empty");
+    }
+
+    /// A base clause that is back-subsumed away and then derived again must
+    /// re-enter at the *end* of every posting, exactly where the flat
+    /// representation re-appends it — not back at its original base position.
+    /// Saturation never actually re-derives a clause it just subsumed away, but
+    /// the mask's "never un-mask" rule is what guarantees it could not go wrong,
+    /// so the representation is checked directly.
+    #[test]
+    fn a_masked_base_clause_reenters_at_the_end_like_the_flat_representation() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let e = sig.concept("E");
+        let cc = |body: Vec<Pred>, head: Vec<Lit>| ContextClause::new(body, head, false, &sig);
+        let arena = vec![
+            cc(vec![cx(a, X)], vec![Lit::P(cx(b, X)), Lit::P(cx(c, X))]), // 0: subsumed away
+            cc(vec![cx(d, X)], vec![Lit::P(cx(e, X))]),                   // 1: survivor
+            cc(vec![cx(a, X)], vec![Lit::P(cx(b, X))]),                   // 2: the subsumer
+        ];
+        let sigs = sigs_of(&arena);
+
+        let mut base = ClauseLayer::default();
+        base.seed(&arena, 0);
+        base.seed(&arena, 1);
+        let base = Arc::new(base);
+
+        let mut flat = Context::new(0, vec![], false, None);
+        flat.delta.seed(&arena, 0);
+        flat.delta.seed(&arena, 1);
+        let mut layered = Context::new(0, vec![], false, None);
+        layered.base = Some(Arc::clone(&base));
+
+        flat.back_subsume(&arena, &sigs, &arena[2]);
+        layered.back_subsume(&arena, &sigs, &arena[2]);
+        assert!(layered.base_removed.contains(&0), "clause 0 must be masked");
+        assert!(snapshot(&flat) == snapshot(&layered), "removal diverged");
+
+        // Force the re-derivation the mask rule has to survive.
+        work_off(&mut flat, &arena, 0);
+        work_off(&mut layered, &arena, 0);
+        assert_eq!(
+            flat.worked_off().iter().collect::<Vec<u32>>(),
+            vec![1, 0],
+            "the flat representation re-appends at the end"
+        );
+        assert!(
+            snapshot(&flat) == snapshot(&layered),
+            "re-derivation of a masked base clause diverged"
+        );
+    }
+
+    /// A context that inherits a base *and its mask* (the KM_SEED_FROM_SUBSET
+    /// path) must see exactly the worked-off sequence the flat seed loop would
+    /// have pushed, namely the source's own live worked-off list in order.
+    #[test]
+    fn inheriting_a_base_and_mask_reproduces_the_flat_seed_sequence() {
+        let sig = Sig::default();
+        let arena = population(&sig, 90, 0x9e37_79b9_7f4a_7c15);
+        let sigs = sigs_of(&arena);
+        let split = 40u32;
+
+        let mut base = ClauseLayer::default();
+        for cid in 0..split {
+            base.seed(&arena, cid);
+        }
+        let base = Arc::new(base);
+
+        // A source context: base + some delta + at least one masked base clause.
+        let mut src = Context::new(0, vec![], false, None);
+        src.base = Some(Arc::clone(&base));
+        for cid in split..arena.len() as u32 {
+            if src.fwd_subsumed(&arena, &sigs, &arena[cid as usize], None) {
+                continue;
+            }
+            src.back_subsume(&arena, &sigs, &arena[cid as usize]);
+            work_off(&mut src, &arena, cid);
+        }
+        assert!(
+            !src.base_removed.is_empty() && !src.delta.worked_off.is_empty(),
+            "the source must have both a mask and a delta for this to prove anything"
+        );
+
+        // Flat seed: replay the source's live worked-off list into a fresh
+        // context, which is what `central_successor_for_core` used to do.
+        let mut flat = Context::new(1, vec![], false, None);
+        for cid in src.worked_off().iter() {
+            work_off(&mut flat, &arena, cid);
+        }
+
+        // Inheriting seed: take the base plus the mask, then replay only the
+        // source's delta.
+        let mut inherited = Context::new(1, vec![], false, None);
+        inherited.base = Some(Arc::clone(&base));
+        inherited.base_removed = src.base_removed.clone();
+        for cid in src.delta.worked_off.clone() {
+            work_off(&mut inherited, &arena, cid);
+        }
+
+        assert_eq!(
+            flat.worked_off().iter().collect::<Vec<u32>>(),
+            src.worked_off().iter().collect::<Vec<u32>>(),
+            "the flat seed must reproduce the source's worked-off order"
+        );
+        assert!(
+            snapshot(&flat) == snapshot(&inherited),
+            "inheriting the base + mask diverged from the flat seed"
+        );
+    }
+
+    /// A small ontology exercising successor contexts (function terms), a
+    /// disjunction, a clash and several query roots — enough that both the
+    /// non-root and the root shared closure are built and seeded.
+    fn sample_ontology() -> (Sig, Vec<OntologyClause>) {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let e = sig.concept("E");
+        let g = sig.concept("G");
+        let h = sig.concept("H");
+        let k = sig.concept("K");
+        let r = sig.role("r");
+        let f = fterm(1);
+        let clauses = vec![
+            // A ⊑ ∃r.B
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f))]),
+            // B ⊑ C ⊑ D
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, X))]),
+            OntologyClause::new(vec![cx(c, X)], vec![Lit::P(cx(d, X))]),
+            // E ⊑ A, K ⊑ A
+            OntologyClause::new(vec![cx(e, X)], vec![Lit::P(cx(a, X))]),
+            OntologyClause::new(vec![cx(k, X)], vec![Lit::P(cx(a, X))]),
+            // D ⊑ G ⊔ H  (a disjunction, so contexts split)
+            OntologyClause::new(vec![cx(d, X)], vec![Lit::P(cx(g, X)), Lit::P(cx(h, X))]),
+            // G ⊑ ⊥
+            OntologyClause::new(vec![cx(g, X)], vec![]),
+            // ⊤ ⊑ D (a fact-free TBox consequence that belongs to the shared closure)
+            OntologyClause::new(vec![], vec![Lit::P(cx(d, X))]),
+            // ∃r.C ⊑ H
+            OntologyClause::new(vec![rl(r, X, Y), cx(c, Y)], vec![Lit::P(cx(h, X))]),
+        ];
+        (sig, clauses)
+    }
+
+    /// End to end: the base layer must not change a single classification
+    /// result, nor the number of contexts the run creates (the shared closure is
+    /// attached, not re-derived, so context creation is unchanged too).
+    #[test]
+    fn shared_base_classification_matches_flat() {
+        let (sig, clauses) = sample_ontology();
+        let run = |base_layer: bool, seed_from_subset: bool| {
+            let mut e = Engine::new(sig.clone(), clauses.clone(), 0);
+            e.base_layer = base_layer;
+            e.seed_from_subset = seed_from_subset;
+            e.run();
+            (
+                e.subsumptions(),
+                e.inconsistent(),
+                e.num_contexts(),
+                e.retained_clause_count(),
+            )
+        };
+        let flat = run(false, false);
+        let layered = run(true, false);
+        assert_eq!(
+            flat, layered,
+            "the shared base layer changed the classification output"
+        );
+        assert!(
+            !flat.0.is_empty(),
+            "the sample ontology produced no subsumptions — the test is vacuous"
+        );
+
+        // Same again through the base-inheriting seed path.
+        assert_eq!(
+            run(false, true),
+            run(true, true),
+            "the inherited base + mask changed the classification output"
+        );
     }
 }
