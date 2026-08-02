@@ -9,6 +9,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Profile ORE 1194 backward-subsumption mutation scans (2026-08-02)
+
+At the final 600,000-iteration checkpoint, rarest-posting selection and exact
+subsumption together consumed only 0.60 seconds. Discovering removed worked
+clauses by rescanning `worked_off` consumed 28.07 seconds, and retaining the
+surviving `worked_off`/`todo` entries consumed another 30.08 seconds. These
+repeated whole-list scans account for 58.16 seconds, 77% of the measured
+backward-subsumption phase, and select stable slots plus generation-tagged
+pending entries as the next exact representation change. Evidence is in
+[`results/benchmarks/2026-08-02-1194-backsub-mutation-profile/`](results/benchmarks/2026-08-02-1194-backsub-mutation-profile/README.md).
+
 ### Reject allocation-free backward-subsumption buffers (2026-08-02)
 
 Candidate `3339f41` directly scans the rarest active-head posting and stores
