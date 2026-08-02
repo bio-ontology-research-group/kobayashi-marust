@@ -9,6 +9,28 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Narrow qualified-cardinality Hyper joins exactly (2026-08-02)
+
+The generic Hyper join built each ontology-body posting independently. For a
+qualified at-most clause, filler postings and role-edge postings therefore
+formed million-way Cartesian products even though only terms present in both
+could reach a unifiable leaf. Hyper now applies an exact semijoin reduction on
+shared free terms and uses an exact-predicate index once the current
+substitution determines a body atom. Removed candidates cannot occur in any
+unifiable tuple; retained lists stay in their original order and every emitted
+branch still passes through the existing unifier. This changes enumeration
+cost, not the calculus, so no Lean re-certification applies.
+
+Differential tests compare complete ordered resolvent traces against a frozen
+generic join over the ORE 1194 cardinality shape and randomized ordinary and
+grounded substitutions. Separate guards cover empty joins, witness selection,
+and full-saturation output. The combined release suite passes 1,950 library
+tests and every integration suite. On ORE 1194, representative posting products
+fell from 4.32 million to 145,200 and from 2.78 million to 80,000. The exact
+single-threaded no-query gate still timed out at 245.17 seconds, so this does not
+change the standing 591/592 coverage result. Evidence is in
+[`results/benchmarks/2026-08-02-1194-hyper-narrowing/`](results/benchmarks/2026-08-02-1194-hyper-narrowing/README.md).
+
 ### Guide certificate repair with qualified-cardinality shapes (2026-08-02)
 
 The certified-EL repair search now reads two shapes off the compiled residual
