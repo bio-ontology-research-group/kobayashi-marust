@@ -168,7 +168,10 @@ impl FacetTable {
     /// out of order: entry `i` describes arena clause `i`.
     fn push_clause(&mut self, c: &ContextClause, sig: &Sig) {
         facet_keys(c, &mut self.keys);
-        self.starts.push(self.keys.len() as u32);
+        self.starts.push(
+            u32::try_from(self.keys.len())
+                .expect("per-clause facet table exceeds the u32 offset domain"),
+        );
         self.flags.push(clause_flags(c, sig));
     }
 }
