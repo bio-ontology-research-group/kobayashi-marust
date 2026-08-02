@@ -9,6 +9,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Reject allocation-free backward-subsumption buffers (2026-08-02)
+
+Candidate `3339f41` directly scans the rarest active-head posting and stores
+exact removals in an inline `SmallVec`, eliminating the candidate `Vec` and
+removal `HashSet` allocations on every backward-subsumption call. It passed the
+complete release suite and preserved exact completion of 8480 and 15846, but
+1194 remained unchanged: 31.8489 seconds on the automatic attempt and 234.5986
+seconds on the exact 2-thread/225-second route. It is not integrated, and the
+failed gate does not justify a full sweep. Evidence is in
+[`results/benchmarks/2026-08-02-1194-backsub-smallvec/`](results/benchmarks/2026-08-02-1194-backsub-smallvec/README.md).
+
 ### Profile backward-subsumption call shapes on ORE 1194 (2026-08-02)
 
 At the final 600,000-iteration checkpoint, all 3,650,589
