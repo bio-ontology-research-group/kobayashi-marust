@@ -53,6 +53,19 @@ against 6,725,988 KiB, 0.5% higher for the journal and the carried index. The
 complete release suite passes 1,949
 tests with zero failures and eight intentional ignores.
 
+Cluster-native build job `49826807`, end-to-end gate array `49826957`, and
+full resumable array `49826971` validate commit `e05b35c` over all 592
+ontologies. The integrity audit found 590 newly completed tasks and two gate
+rows correctly resumed, with no missing terminal markers or temporary files.
+The sweep has 591 `ok` rows and only the expected 1194 error. All semantic
+fields and selected-route traces are identical to the preceding complete
+sweep. Mean and median wall time over successful rows are 6.6854 and 0.2758
+seconds; mean and median peak RSS are 838.01 and 45.22 MiB. The tested IBEX
+binary has SHA-256
+`ffbd9afd129533e7fa67c1c86f726496d4e269dfc38418375c16aa033e32dd9b`.
+The complete evidence is in
+[`results/benchmarks/2026-08-02-e05b35c-auto/`](results/benchmarks/2026-08-02-e05b35c-auto/).
+
 What remains is not a constant factor. Every restart bans one disjunct at one
 node, and 1194 keeps conflicting on the same residual clause 149, first at
 `FMA_35225` and later at other nodes. An extended diagnostic reached 30
