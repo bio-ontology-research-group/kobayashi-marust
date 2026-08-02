@@ -1278,10 +1278,6 @@ fn to_nf(
 enum Item {
     Sub(u32, u32),
     Edge(u32, u32, u32),
-    /// An edge required by an inverse bridge in a certificate upper-model
-    /// fork. It participates in EL closure but is represented as the converse
-    /// of a stored edge rather than duplicated in `edges`.
-    VirtualEdge(u32, u32, u32),
 }
 
 /// Read-only indexes over the normal forms; built once, never mutated during the
@@ -1365,12 +1361,6 @@ struct State {
     // certify that every `edges[c]` iterates exactly as it did before, which is
     // what the certificate's role-keyed edge index is built from.
     edge_epoch: u64,
-    /// Repair-fork-only converse relation: a stored `source(c,d)` also denotes
-    /// every `target(d,c)` listed here. Empty in the sound EL lower bound.
-    virtual_by_source: HashMap<u32, Vec<u32>>,
-    /// Inverse lookup used by the Sub-side NF4 join: virtual target role ->
-    /// stored source roles whose outgoing edges are its predecessors.
-    virtual_sources_by_target: HashMap<u32, Vec<u32>>,
 }
 
 /// Ceiling on `State::sub_journal`. Above it the delta is no cheaper to merge
@@ -1466,53 +1456,7 @@ impl State {
             worklist: VecDeque::new(),
             sub_journal: None,
             edge_epoch: self.edge_epoch,
-            virtual_by_source: self.virtual_by_source.clone(),
-            virtual_sources_by_target: self.virtual_sources_by_target.clone(),
         }
-    }
-
-    /// Install an implicit converse relation in an upper-model fork and queue
-    /// one virtual edge event for every edge already present. Target roles are
-    /// pre-closed under role inclusion, so a virtual event needs no physical
-    /// hierarchy lift.
-    fn install_virtual_bridges(
-        &mut self,
-        pairs: &[(u32, u32)],
-        idx: &Idx,
-    ) -> usize {
-        self.virtual_by_source.clear();
-        self.virtual_sources_by_target.clear();
-        for &(source, target) in pairs {
-            for &target_super in idx.role_supers(target) {
-                let targets = self.virtual_by_source.entry(source).or_default();
-                if !targets.contains(&target_super) {
-                    targets.push(target_super);
-                }
-                let sources = self
-                    .virtual_sources_by_target
-                    .entry(target_super)
-                    .or_default();
-                if !sources.contains(&source) {
-                    sources.push(source);
-                }
-            }
-        }
-        let mut queued = 0usize;
-        for source_node in 0..self.edges.len() {
-            for &(role, target_node) in &self.edges[source_node] {
-                if let Some(target_roles) = self.virtual_by_source.get(&role) {
-                    for &target_role in target_roles {
-                        self.worklist.push_back(Item::VirtualEdge(
-                            target_node,
-                            target_role,
-                            source_node as u32,
-                        ));
-                        queued += 1;
-                    }
-                }
-            }
-        }
-        queued
     }
 
     /// Start journalling `sub_super` additions, for the duration of one repair
@@ -1634,8 +1578,6 @@ fn init_state(nfs: &Nfs, n: usize) -> State {
         worklist: VecDeque::new(),
         sub_journal: None,
         edge_epoch: 0,
-        virtual_by_source: HashMap::default(),
-        virtual_sources_by_target: HashMap::default(),
     };
     for &c in &nfs.concept_names {
         if c == BOTTOM {
@@ -1763,11 +1705,9 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     }
                     let State {
                         sub_super,
-                        edges,
                         in_by_role,
                         worklist,
                         sub_journal,
-                        virtual_sources_by_target,
                         ..
                     } = &mut *st;
                     // `axs` is role-sorted (build_idx), so each iteration handles
@@ -1779,30 +1719,6 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         if let Some(parents) = in_by_role.get(&(c, role)) {
                             prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
                             for &parent in parents {
-                                for &(_, e) in &axs[lo..hi] {
-                                    State::add_sub_parts(
-                                        sub_super,
-                                        worklist,
-                                        sub_journal,
-                                        parent,
-                                        e,
-                                    );
-                                }
-                            }
-                        }
-                        // A stored `source(c,p)` denotes the virtual converse
-                        // `role(p,c)`. Therefore `p` is also an exact-role
-                        // predecessor of `c` for this NF4 propagation.
-                        if let Some(source_roles) = virtual_sources_by_target.get(&role) {
-                            let virtual_parents: Vec<u32> = edges[c as usize]
-                                .iter()
-                                .filter_map(|&(stored_role, target)| {
-                                    source_roles.contains(&stored_role).then_some(target)
-                                })
-                                .collect();
-                            prof.nf4_sub_scan +=
-                                (virtual_parents.len() * (hi - lo)) as u64;
-                            for parent in virtual_parents {
                                 for &(_, e) in &axs[lo..hi] {
                                     State::add_sub_parts(
                                         sub_super,
@@ -1886,26 +1802,6 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         st.add_edge(c, super_role, d);
                     }
                 }
-                // A newly stored source edge also creates its implicit converse
-                // events in an upper-model fork. Clone the tiny target list so
-                // queue mutation cannot overlap the map borrow.
-                if let Some(target_roles) = st.virtual_by_source.get(&r).cloned() {
-                    for target_role in target_roles {
-                        st.worklist
-                            .push_back(Item::VirtualEdge(d, target_role, c));
-                    }
-                }
-            }
-            Item::VirtualEdge(c, r, d) => {
-                prof.edge_items += 1;
-                if !idx.nf4_by_filler.is_empty() {
-                    prof.nf4_edge_scan += st.fire_edge_nf4(c, r, d);
-                }
-                if st.sub_super[d as usize].contains(&BOTTOM) {
-                    st.add_sub(c, BOTTOM);
-                }
-                // Bridge admission rejects every role used as an NF7 premise.
-                // Role hierarchy was expanded when the virtual map was built.
             }
         }
     }
@@ -1949,7 +1845,6 @@ enum RAtom {
 /// (`Q(x) ∧ f₀(x) ≈ f₁(x) → ⊥`) and other fun-term residuals checkable:
 /// distinct skolem functions denote distinct domain elements even when they
 /// have the same filler concept.
-#[derive(Clone)]
 struct RClause {
     nvars: usize,
     body: Vec<RAtom>,
@@ -3272,85 +3167,6 @@ fn blame_choice(
         .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied())
 }
 
-fn recognize_inverse_bridge(rc: &RClause) -> Option<(u32, u32)> {
-    if rc.nvars != 2 || !rc.pins.is_empty() || rc.body.len() != 1 || rc.head.len() != 1 {
-        return None;
-    }
-    let RAtom::R {
-        rid: source,
-        s,
-        t,
-    } = rc.body[0]
-    else {
-        return None;
-    };
-    let RAtom::R {
-        rid: target,
-        s: hs,
-        t: ht,
-    } = rc.head[0]
-    else {
-        return None;
-    };
-    (s != t && hs == t && ht == s).then_some((source, target))
-}
-
-/// A fail-closed plan for representing reciprocal inverse bridges virtually in
-/// a certificate upper-model fork. Every bridge must have its reverse mate,
-/// no virtual role may be an NF7 premise, and no other residual clause may
-/// inspect one of the implicit roles. EL NF1-NF4 consumers are handled by the
-/// virtual edge and virtual predecessor joins in `run`.
-struct VirtualBridgePlan {
-    pairs: Vec<(u32, u32)>,
-    bridge_clause_ids: HashSet<usize>,
-}
-
-fn virtual_bridge_plan(rcs: &[RClause], idx: &Idx) -> Option<VirtualBridgePlan> {
-    let mut pairs = Vec::new();
-    let mut bridge_clause_ids = HashSet::default();
-    for (rci, rc) in rcs.iter().enumerate() {
-        if let Some(pair) = recognize_inverse_bridge(rc) {
-            if !pairs.contains(&pair) {
-                pairs.push(pair);
-            }
-            bridge_clause_ids.insert(rci);
-        }
-    }
-    if pairs.is_empty()
-        || pairs
-            .iter()
-            .any(|&(source, target)| !pairs.contains(&(target, source)))
-    {
-        return None;
-    }
-
-    let mut virtual_roles = HashSet::default();
-    for &(_, target) in &pairs {
-        virtual_roles.extend(idx.role_supers(target).iter().copied());
-    }
-    if idx
-        .nf7_by_pair
-        .keys()
-        .any(|(left, right)| virtual_roles.contains(left) || virtual_roles.contains(right))
-    {
-        return None;
-    }
-    for (rci, rc) in rcs.iter().enumerate() {
-        if bridge_clause_ids.contains(&rci) {
-            continue;
-        }
-        if rc.body.iter().chain(rc.head.iter()).any(|atom| {
-            matches!(atom, RAtom::R { rid, .. } if virtual_roles.contains(rid))
-        }) {
-            return None;
-        }
-    }
-    Some(VirtualBridgePlan {
-        pairs,
-        bridge_clause_ids,
-    })
-}
-
 /// Certificate verdict: `Pass` answers everything; `Partial(subjects)`
 /// answers every named subject EXCEPT the listed ones (their truth could not
 /// be pinned between the EL lower bound and the model upper bounds — the
@@ -3371,29 +3187,6 @@ fn repair_certify(
     debug: bool,
 ) -> CertOutcome {
     const MAX_ROUNDS: usize = 64;
-    let virtual_plan = std::env::var_os("KM_ELC_CERT_VIRTUAL_BRIDGES")
-        .is_some()
-        .then(|| virtual_bridge_plan(rcs, idx))
-        .flatten();
-    let filtered_rcs: Vec<RClause>;
-    let rcs = if let Some(plan) = &virtual_plan {
-        filtered_rcs = rcs
-            .iter()
-            .enumerate()
-            .filter(|(rci, _)| !plan.bridge_clause_ids.contains(rci))
-            .map(|(_, rc)| rc.clone())
-            .collect();
-        if debug {
-            eprintln!(
-                "KM_ELC_CERT virtual upper bridges: {} directed bridge rule(s), {} residual clause(s) discharged by the implicit relation",
-                plan.pairs.len(),
-                plan.bridge_clause_ids.len(),
-            );
-        }
-        filtered_rcs.as_slice()
-    } else {
-        rcs
-    };
     let n = base.sub_super.len();
     let mut is_named = vec![false; n];
     for &c in &nfs.concept_names {
@@ -3459,15 +3252,6 @@ fn repair_certify(
                     tolerate_deaths: bool|
      -> PassOut {
         let mut st = base.fork();
-        if let Some(plan) = &virtual_plan {
-            let queued = st.install_virtual_bridges(&plan.pairs, idx);
-            if debug {
-                eprintln!(
-                    "KM_ELC_CERT repair pass {pass_label}: queued {queued} virtual bridge edge event(s)"
-                );
-            }
-            run(idx, &mut st, &mut Prof::default());
-        }
         // Journal label additions and reuse one enumeration index for the whole
         // pass: every round would otherwise rescan the entire structure to
         // rebuild an index a round changes only marginally (see [`CertIdx`]).
@@ -6098,8 +5882,6 @@ mod tests {
             worklist: VecDeque::new(),
             sub_journal: None,
             edge_epoch: 0,
-            virtual_by_source: HashMap::default(),
-            virtual_sources_by_target: HashMap::default(),
         };
         for (node, ls) in labels {
             for l in *ls {
@@ -6458,8 +6240,6 @@ mod tests {
             worklist: VecDeque::new(),
             sub_journal: None,
             edge_epoch: 0,
-            virtual_by_source: HashMap::default(),
-            virtual_sources_by_target: HashMap::default(),
         }
     }
 
@@ -6508,87 +6288,6 @@ mod tests {
             st.sub_super[X as usize].contains(&E),
             "sub-side backward join must fire against the pre-existing edge"
         );
-    }
-
-    #[test]
-    fn upper_virtual_inverse_nf4_fires_when_stored_edge_arrives_last() {
-        // Stored R(X,A) denotes virtual S(A,X). Once X carries filler B,
-        // ∃S.B ⊑ E must derive E at A without storing S(A,X).
-        const R: u32 = 0;
-        const S: u32 = 1;
-        const X: u32 = 2;
-        const A: u32 = 3;
-        const B: u32 = 4;
-        const E: u32 = 5;
-        let idx = nf4_only_idx(&[(S, B, E)], 2);
-        let mut st = blank_state(6);
-        st.add_sub(X, B);
-        run(&idx, &mut st, &mut Prof::default());
-        assert_eq!(st.install_virtual_bridges(&[(R, S), (S, R)], &idx), 0);
-        st.add_edge(X, R, A);
-        run(&idx, &mut st, &mut Prof::default());
-        assert!(st.sub_super[A as usize].contains(&E));
-        assert!(!st.edges[A as usize].contains(&(S, X)));
-    }
-
-    #[test]
-    fn upper_virtual_inverse_nf4_fires_when_filler_arrives_last() {
-        const R: u32 = 0;
-        const S: u32 = 1;
-        const X: u32 = 2;
-        const A: u32 = 3;
-        const B: u32 = 4;
-        const E: u32 = 5;
-        let idx = nf4_only_idx(&[(S, B, E)], 2);
-        let mut st = blank_state(6);
-        st.add_edge(X, R, A);
-        run(&idx, &mut st, &mut Prof::default());
-        assert_eq!(st.install_virtual_bridges(&[(R, S), (S, R)], &idx), 1);
-        run(&idx, &mut st, &mut Prof::default());
-        assert!(!st.sub_super[A as usize].contains(&E));
-        st.add_sub(X, B);
-        run(&idx, &mut st, &mut Prof::default());
-        assert!(st.sub_super[A as usize].contains(&E));
-        assert!(!st.edges[A as usize].contains(&(S, X)));
-    }
-
-    #[test]
-    fn upper_virtual_bridge_plan_is_reciprocal_and_fail_closed() {
-        const R: u32 = 0;
-        const S: u32 = 1;
-        let bridge = |source, target| RClause {
-            nvars: 2,
-            body: vec![RAtom::R {
-                rid: source,
-                s: 0,
-                t: 1,
-            }],
-            head: vec![RAtom::R {
-                rid: target,
-                s: 1,
-                t: 0,
-            }],
-            pins: Vec::new(),
-        };
-        let idx = nf4_only_idx(&[], 2);
-        let reciprocal = vec![bridge(R, S), bridge(S, R)];
-        let plan = virtual_bridge_plan(&reciprocal, &idx).expect("reciprocal plan");
-        assert_eq!(plan.bridge_clause_ids.len(), 2);
-
-        assert!(virtual_bridge_plan(&[bridge(R, S)], &idx).is_none());
-
-        let mut inspected = reciprocal.clone();
-        inspected.push(RClause {
-            nvars: 2,
-            body: vec![RAtom::R { rid: S, s: 0, t: 1 }],
-            head: vec![RAtom::C { cid: 3, v: 0 }],
-            pins: Vec::new(),
-        });
-        assert!(virtual_bridge_plan(&inspected, &idx).is_none());
-
-        let mut chained_idx = nf4_only_idx(&[], 2);
-        chained_idx.nf7_by_pair.insert((S, S), vec![R]);
-        assert!(virtual_bridge_plan(&reciprocal, &chained_idx).is_none());
     }
 
     #[test]
