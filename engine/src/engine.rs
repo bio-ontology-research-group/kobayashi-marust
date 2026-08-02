@@ -5404,35 +5404,15 @@ impl Engine {
             // usual seed.  Sound + fixpoint-preserving (only re-derivable clauses
             // are pre-seeded; the saturation then derives the remaining delta).
             //
-            // When `src` reads a shared base, inherit that base *and its removal
-            // mask* rather than flattening: `src.worked_off()` is exactly
-            // `base \ src.base_removed` followed by `src.delta.worked_off` (base
-            // clauses were all seeded before any delta clause, and `retain`
-            // preserves order), so inheriting the pair and then seeding only
-            // `src`'s delta reproduces the very sequence the flat seed loop
-            // would have pushed.
-            let inherited = if self.base_layer {
-                self.contexts[src].base.clone()
-            } else {
-                None
-            };
-            if let Some(base) = inherited {
-                let removed = self.contexts[src].base_removed.clone();
-                {
-                    let ctx = &mut self.contexts[id];
-                    ctx.base = Some(base);
-                    ctx.base_removed = removed;
-                    ctx.dirty = true;
-                }
-                let wo = self.contexts[src].delta.worked_off.clone();
-                for c in wo {
-                    self.seed_worked_off(id, c);
-                }
-            } else {
-                let wo: Vec<u32> = self.contexts[src].worked_off().iter().collect();
-                for c in wo {
-                    self.seed_worked_off(id, c);
-                }
+            // Keep this path flat even when ordinary contexts use a shared base.
+            // Pred/Succ pools are append-only after back-subsumption, whereas
+            // the historical subset seed copied only the source's *live*
+            // worked-off sequence. Inheriting a base plus its removal mask would
+            // also inherit retired base pool entries and could therefore emit
+            // propagation that the flat subset seed never scheduled.
+            let wo: Vec<u32> = self.contexts[src].worked_off().iter().collect();
+            for c in wo {
+                self.seed_worked_off(id, c);
             }
             self.add_core(id);
         } else {
@@ -10703,11 +10683,11 @@ mod base_delta_tests {
         );
     }
 
-    /// A context that inherits a base *and its mask* (the KM_SEED_FROM_SUBSET
-    /// path) must see exactly the worked-off sequence the flat seed loop would
-    /// have pushed, namely the source's own live worked-off list in order.
+    /// KM_SEED_FROM_SUBSET must remain a flat replay of the source's live
+    /// worked-off sequence. A base plus removal mask is not equivalent because
+    /// the base's Pred/Succ pools deliberately retain back-subsumed entries.
     #[test]
-    fn inheriting_a_base_and_mask_reproduces_the_flat_seed_sequence() {
+    fn subset_seed_materialization_reproduces_the_flat_seed_sequence() {
         let sig = Sig::default();
         let arena = population(&sig, 90, 0x9e37_79b9_7f4a_7c15);
         let sigs = sigs_of(&arena);
@@ -10741,13 +10721,11 @@ mod base_delta_tests {
             work_off(&mut flat, &arena, cid);
         }
 
-        // Inheriting seed: take the base plus the mask, then replay only the
-        // source's delta.
-        let mut inherited = Context::new(1, vec![], false, None);
-        inherited.base = Some(Arc::clone(&base));
-        inherited.base_removed = src.base_removed.clone();
-        for cid in src.delta.worked_off.clone() {
-            work_off(&mut inherited, &arena, cid);
+        // The production subset path intentionally performs the same flat
+        // replay, even when the source itself reads a shared base.
+        let mut subset = Context::new(1, vec![], false, None);
+        for cid in src.worked_off().iter() {
+            work_off(&mut subset, &arena, cid);
         }
 
         assert_eq!(
@@ -10756,8 +10734,8 @@ mod base_delta_tests {
             "the flat seed must reproduce the source's worked-off order"
         );
         assert!(
-            snapshot(&flat) == snapshot(&inherited),
-            "inheriting the base + mask diverged from the flat seed"
+            subset.base.is_none() && snapshot(&flat) == snapshot(&subset),
+            "subset materialization diverged from the historical flat seed"
         );
     }
 
