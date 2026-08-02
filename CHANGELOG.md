@@ -9,6 +9,74 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Guide certificate repair with qualified-cardinality shapes (2026-08-02)
+
+The certified-EL repair search now reads two shapes off the compiled residual
+and uses them to order its choices. The certificate model keeps one canonical
+node per skolem function, shared across every source element, so a `≥n`
+distinctness clause `G(x) ∧ f_i(x) ≈ f_j(x) → ⊥` pins two fixed nodes apart for
+the whole model. Identifying them to satisfy an at-most bound at one node makes
+that clause false at every node carrying the guard. A qualified at-most bound
+`G(x) ∧ ⋀_{i≤n}(C(y_i) ∧ R(x,y_i)) → ⋁_{i<j} y_i ≈ y_j` is the other half: both
+recognisers match on variable wiring alone and never on concept or role
+spelling.
+
+An exhaustive disjoint partition between a `≤n R.C` definer and a `≥m R.C`
+definer with `m > n` is where this bites. Every element takes a side, and the
+at-most side at a node already carrying `m` pairwise pinned successors is
+locally unsatisfiable. The search now does two things with that. When a
+violated at-most head offers several identifications, it picks one the model
+may actually make, preferring one that does not clash with a disjointness
+axiom, instead of taking the first pair the clause enumerates. When a covering
+disjunction offers a side that a qualified at-most bound makes locally
+unsatisfiable at that node, that side leaves the preferred choice tier. Neither
+is a ban: if nothing else survives, the choice is still taken and the model is
+still validated in full. A violated at-most bound whose every identification is
+pinned apart is charged to the choice that made the node over-full, at the point
+of detection, rather than surfacing as a `⊥` several closure rounds later where
+the blame no longer reaches it.
+
+Nothing here discharges a residual clause. `cert_round`'s checking, the EL
+completion rules and the acceptance criterion are untouched, so a pass model is
+still accepted only when a full cycle finds every residual clause satisfied
+under the quotient, every base-satisfiable named witness survives, and the
+per-subject intersection criterion holds. The choice tier that consults the
+guidance sits above the three tiers that were already there and coincides with
+the first of them whenever the residual holds no cardinality partition, so an
+ontology without one searches exactly as before. A pair wrongly called pinned
+costs the search a merge it could have made, and the model it builds instead is
+still validated in full; a pinned pair the recogniser misses leaves the search
+as it was. No calculus rule changed and no Lean re-certification is needed: the
+Lean formalisation covers the CB disjunctive context calculus, which is not
+involved here.
+
+The certificate index reuse from `e05b35c` is preserved, including its
+enumeration-order invariant: the guidance is consulted after the violations are
+enumerated, never during the join.
+
+Nine focused tests cover this. Three exercise the whole certificate: a
+cardinality partition over more subjects than the restart budget that certifies
+only when the locally unsatisfiable side is avoided, an over-refusal guard
+requiring identifications that are legal to still be made, and a fail-closed
+case where both sides are impossible and the certificate has to decline rather
+than answer. Six pin the recognisers and the guidance directly, against
+near-miss shapes for both recognisers, an unguarded bound, a bound whose second
+guard does not hold, successors that fail the filler or the role, and the
+union-find quotient folding two pinned successors together. Neutralising the
+guidance turns the partition test from a pass into an outright decline, so it
+measures the mechanism rather than the ontology. The release suite passes 1,958
+tests with zero failures and eight intentional ignores.
+
+This is the cardinality half of the 2026-08-01 experiment recorded in
+[`results/benchmarks/2026-08-01-1194-cardinality-partition-repair/`](results/benchmarks/2026-08-01-1194-cardinality-partition-repair/README.md),
+where it took the 1194 repair from seven conflict-driven restarts, each
+re-deriving the same nine rounds, to zero conflicts and zero restarts in one
+monotone pass. It does not close 1194, whose remaining cost is 96.2 seconds of
+base saturation plus one EL re-closure after mirroring an inverse role bridge.
+The rotated residual scan measured alongside it is not part of this change. The
+automatic route for 1194 is `nominals`, which sets `KM_NO_ELC=1`, so no
+certificate worker runs there and the production row is unchanged.
+
 ### Carry the repair certificate's enumeration index across rounds (2026-08-02)
 
 Profiling the `KM_ELC_CERT=2` repair on ore_ont_1194 moved the bottleneck. A

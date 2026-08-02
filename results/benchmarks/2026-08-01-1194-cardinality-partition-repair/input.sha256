@@ -1,0 +1,9 @@
+72082c4ce0e5008589256eba0aa50957c04d294ff1e065b18cf014cc59b870e2  /tmp/ore_ont_1194.owl
+5c0fdb40e5252e1d3092127bbe77c4cba74abf9da27041767f5c2959c2bc7da0  1194.clauses.json (frontend payload, identical to the 2026-08-01 negative-result run)
+cd8103e3f95aafa1e0cb279ad1411e7dfbf7aebb6bc9b04112119c2d0d5e6225  elc (gate binary)
+fbecd435fc0b23ada16886314fab13f55db000f3056ab099c3746d7fe1331f02  km (gate binary)
+13e403a8f2b9b0e54aa271dbf13d5475e455dac0a80983aba4712a923f39206f  elc (in-tree gate binary)
+ee56cbff2dd2f29803b63178c995eecbcc10a804f0ea661dd1946355af708328  elc (gate binary, v2)
+d2de5abfcbe4d4d7ffb11b26f978352d607ce54704af78872b92eddcf7069aa3  km (control binary, v2)
+d98316966431045d9bbdbc5ec117872a12aa7e2cebefe4959893cddeb615fede  elc (sorted-role NF4 candidate)
+2a2e379a6f616d6b7e4b4d3e8a0899380eb94cbcbe7be5b0015019a4b0d94906  git diff (working tree, uncommitted)

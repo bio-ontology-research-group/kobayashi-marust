@@ -79,16 +79,27 @@ Two ontologies remain unclosed:
 | `4669` | known incorrect bridge output now rejected; no validated sound-and-complete route | HermiT proves eight sampled production-UNSAT classes and all 56 additional HT-UNSAT classes satisfiable. A reproducible source-built Konclude also times out after 3,600 seconds at 53,014 MB without a taxonomy. The inverse negative-existential mirror gate now makes the bridge defer before search; see the [Konclude verification and source trace](ORE-4669-KONCLUDE-VERIFICATION.md). |
 | `1194` | no completion within 240 s / 20 GiB | Konclude exceeds 20 GiB and HermiT times out on the 221,086-assertion SRIQ ABox. KM's own 20 GiB wall was the per-worker clone of the million-clause arena; sharing one prepared ontology across parallel CB workers cut the 56-thread engine peak from 19.58 GiB to 4.15 GiB (2026-07-30, [`../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/`](../results/benchmarks/2026-07-30-cb-shared-prepared-ontology/README.md)). The adaptive composite-term layout now represents this ontology losslessly. A source-current `km classify` run on 2026-07-31 selected `nominals`, finished the frontend in 8.64 seconds, and ran the exact CB worker to its 190-second central cap; it returned no taxonomy after 198.98 seconds total at 3.58 GiB peak. KM is now wall-clock bound, not term-encoding or memory bound. |
 
-The certified-EL investigation of `1194` now passes the original same-filler
-Skolem-witness obstruction, but exposes the next exact model-construction gap.
-Residual concepts `Q_118720` and `Q_118721` encode the exhaustive, disjoint
-partition between at most two and at least three `connects` successors in
-`UBERON_0001075`. The current greedy repair repeatedly makes a locally
-incompatible side choice and reconstructs the full model. Setting its restart
-budget to zero was tested as a diagnostic: it declined safely after 113.92
-seconds at 5.15 GiB and emitted no taxonomy. Closing this path requires a
-cardinality-aware partition assignment that still passes every residual
-clause, not a smaller retry budget.
+The certified-EL repair search for `1194` now makes cardinality-aware partition
+assignments. Residual concepts `Q_118720` and `Q_118721` encode the exhaustive,
+disjoint partition between at most two and at least three `connects` successors
+in `UBERON_0001075`, so every element takes a side, and the certificate model
+shares one canonical node per skolem function across every source element.
+Identifying two nodes that an at-least clause pins apart therefore contradicts
+that clause wherever its guard holds. The search now chooses an identification
+the model may actually make, and demotes a partition side that a qualified
+at-most bound makes locally unsatisfiable at that node. Both are search
+guidance: the acceptance criterion is unchanged, and a demoted side is still
+taken when nothing else survives.
+
+This takes the repair from seven conflict-driven restarts, each re-deriving the
+same nine rounds, to zero conflicts and zero restarts in one monotone pass. It
+does not close `1194`. Instrumenting the phases accounts for the full 240
+seconds: 96.2 seconds of parse and EL saturation before any certificate work,
+1.8 seconds to fork the saturated structure, 42.3 seconds of repair rounds, and
+100.5 seconds inside one incomplete round applying a role-bridge clause family
+and re-closing. The repair search is no longer the binding cost; base saturation
+and the inverse-role-bridge closure are. See
+[`../results/benchmarks/2026-08-01-1194-cardinality-partition-repair/`](../results/benchmarks/2026-08-01-1194-cardinality-partition-repair/README.md).
 
 The executable identities, full-IRI fingerprints, told-edge checks, HermiT
 counterexamples, and per-ontology commands are retained in the source-bound

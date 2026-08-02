@@ -1,0 +1,58 @@
+KM_ELC_CLOSE t=13.1s popped=20000000 queued=15880616 | sub_items=15684289 edge_items=4315710 nf1=10055213 nf2=269042094 nf3=6453589 nf4_sub=297194265 nf4_edge=58722373 nf7=0 botback=0
+KM_ELC_CLOSE t=30.4s popped=40000000 queued=17983781 | sub_items=30388420 edge_items=9611579 nf1=18004762 nf2=386403074 nf3=12082783 nf4_sub=802389474 nf4_edge=269232921 nf7=0 botback=0
+KM_ELC_CLOSE t=50.3s popped=60000000 queued=16679183 | sub_items=42535125 edge_items=17464874 nf1=25654923 nf2=476460743 nf3=16325504 nf4_sub=1406207893 nf4_edge=622678369 nf7=0 botback=0
+KM_ELC_CLOSE t=70.4s popped=80000000 queued=15042665 | sub_items=54545787 edge_items=25454212 nf1=33280996 nf2=514590090 nf3=20621959 nf4_sub=2116375356 nf4_edge=1100493220 nf7=0 botback=0
+KM_ELC_CLOSE t=88.2s popped=100000000 queued=9777266 | sub_items=66470068 edge_items=33529931 nf1=39895498 nf2=529435347 nf3=24071653 nf4_sub=2774678153 nf4_edge=1587468555 nf7=0 botback=0
+KM_ELC_CLOSE t=102.2s popped=120000000 queued=778147 | sub_items=76980531 edge_items=43019468 nf1=47167302 nf2=543733158 nf3=26238605 nf4_sub=3320505443 nf4_edge=2043321446 nf7=0 botback=0
+KM_ELC_CERT checking 252 residual clauses
+KM_ELC_CERT residual census: 252 clause(s) = 6 top-level cover(s) [violated once per node] + 14 inverse bridge(s) + 0 role inclusion(s) [once per edge] + 9 at-most bound(s) [2] + 27 forced-distinct witness pair(s) + 61 range clause(s) + 135 other
+KM_ELC_CERT repair guidance: 27 pinned witness pair(s), 9 at-most bound(s), 9 partition-side concept(s)
+KM_ELC_CERT per-source witness projection: 499902 alive node(s), 78367893 subsumption(s), 43891310 edge(s), avg label 156; full expansion = 43891310 new node(s) / 6847044360 projected fact(s); selective expansion over 36 pinned witness(es) = 148 new node(s) / 23088 projected fact(s)
+KM_ELC_CERT repair pass 0: fork 1.88s (78367893 subsumptions, 43891310 edges)
+KM_ELC_CERT repair pass 0 round 1: scan 1.66s from_clause=0 violations=100000 top_clauses=[(120, 99704), (116, 28), (119, 24), (118, 12), (0, 2), (1, 2)] (budget_left=399891258)
+KM_ELC_CERT repair pass 0 round 1: close 0.51s setup 0.00s apply 0.14s t=2.3s (adds=99966, merges=1, card_demoted=0, subsumptions=78978158, edges=44171394)
+KM_ELC_CERT repair pass 0 round 2: scan 1.69s from_clause=120 violations=100000 top_clauses=[(120, 100000)] (budget_left=399691550)
+KM_ELC_CERT repair pass 0 round 2: close 0.03s setup 0.00s apply 0.14s t=4.2s (adds=199966, merges=1, card_demoted=0, subsumptions=79078160, edges=44171394)
+KM_ELC_CERT repair pass 0 round 3: scan 1.69s from_clause=120 violations=100000 top_clauses=[(120, 100000)] (budget_left=399391841)
+KM_ELC_CERT repair pass 0 round 3: close 0.03s setup 0.00s apply 0.15s t=6.1s (adds=299966, merges=1, card_demoted=0, subsumptions=79178160, edges=44171394)
+KM_ELC_CERT repair pass 0 round 4: scan 1.71s from_clause=120 violations=100000 top_clauses=[(120, 69738), (127, 30226), (126, 24), (125, 12)] (budget_left=398990597)
+KM_ELC_CERT repair pass 0 round 4: close 0.03s setup 0.00s apply 0.15s t=7.9s (adds=399932, merges=2, card_demoted=0, subsumptions=79278125, edges=44171390)
+KM_ELC_CERT repair pass 0 round 5: scan 1.65s from_clause=127 violations=100000 top_clauses=[(127, 100000)] (budget_left=398860370)
+KM_ELC_CERT repair pass 0 round 5: close 0.03s setup 0.00s apply 0.17s t=9.8s (adds=499932, merges=2, card_demoted=0, subsumptions=79378128, edges=44171390)
+KM_ELC_CERT repair pass 0 round 6: scan 1.68s from_clause=127 violations=100000 top_clauses=[(127, 100000)] (budget_left=398630140)
+KM_ELC_CERT repair pass 0 round 6: close 0.03s setup 0.00s apply 0.15s t=11.7s (adds=599932, merges=2, card_demoted=0, subsumptions=79478128, edges=44171390)
+KM_ELC_CERT repair pass 0 round 7: scan 1.72s from_clause=127 violations=100000 top_clauses=[(127, 100000)] (budget_left=398299907)
+KM_ELC_CERT repair pass 0 round 7: close 0.03s setup 0.00s apply 0.15s t=13.6s (adds=699932, merges=2, card_demoted=0, subsumptions=79578129, edges=44171390)
+KM_ELC_CERT repair pass 0 round 8: scan 1.74s from_clause=127 violations=100000 top_clauses=[(134, 60749), (127, 39215), (133, 24), (132, 12)] (budget_left=397868320)
+KM_ELC_CERT repair pass 0 round 8: close 0.03s setup 0.00s apply 0.15s t=15.5s (adds=799897, merges=3, card_demoted=0, subsumptions=79678093, edges=44171386)
+KM_ELC_CERT repair pass 0 round 9: scan 1.68s from_clause=134 violations=100000 top_clauses=[(134, 100000)] (budget_left=397707570)
+KM_ELC_CERT repair pass 0 round 9: close 0.03s setup 0.00s apply 0.14s t=17.4s (adds=899897, merges=3, card_demoted=0, subsumptions=79778096, edges=44171386)
+KM_ELC_CERT repair pass 0 round 10: scan 1.71s from_clause=134 violations=100000 top_clauses=[(134, 100000)] (budget_left=397446815)
+KM_ELC_CERT repair pass 0 round 10: close 0.02s setup 0.00s apply 0.17s t=19.3s (adds=999897, merges=3, card_demoted=0, subsumptions=79878098, edges=44171386)
+KM_ELC_CERT repair pass 0 round 11: scan 1.75s from_clause=134 violations=100000 top_clauses=[(134, 100000)] (budget_left=397086058)
+KM_ELC_CERT repair pass 0 round 11: close 0.03s setup 0.00s apply 0.14s t=21.2s (adds=1099897, merges=3, card_demoted=0, subsumptions=79978098, edges=44171386)
+KM_ELC_CERT repair pass 0 round 12: scan 1.80s from_clause=134 violations=100000 top_clauses=[(145, 91201), (134, 8692), (143, 32), (144, 30), (140, 27), (141, 14)] (budget_left=396622914)
+KM_ELC_CERT repair pass 0 round 12: close 0.59s setup 0.00s apply 0.15s t=23.8s (adds=1199846, merges=4, card_demoted=0, subsumptions=80195731, edges=44239845)
+KM_ELC_CERT repair pass 0 round 13: scan 1.72s from_clause=145 violations=100000 top_clauses=[(145, 100000)] (budget_left=396431710)
+KM_ELC_CERT repair pass 0 round 13: close 0.03s setup 0.00s apply 0.14s t=25.7s (adds=1299846, merges=4, card_demoted=0, subsumptions=80295735, edges=44239845)
+KM_ELC_CERT repair pass 0 round 14: scan 1.79s from_clause=145 violations=100000 top_clauses=[(145, 100000)] (budget_left=396140501)
+KM_ELC_CERT repair pass 0 round 14: close 0.03s setup 0.00s apply 0.14s t=27.7s (adds=1399846, merges=4, card_demoted=0, subsumptions=80395744, edges=44239845)
+KM_ELC_CERT repair pass 0 round 15: scan 1.81s from_clause=145 violations=100000 top_clauses=[(145, 78238), (152, 19554), (151, 2106), (150, 102)] (budget_left=395430638)
+KM_ELC_CERT repair pass 0 round 15: close 2.15s setup 0.00s apply 0.14s t=31.8s (adds=1497654, merges=16, card_demoted=0, subsumptions=81911364, edges=45054383)
+KM_ELC_CERT repair pass 0 round 16: scan 1.76s from_clause=152 violations=100000 top_clauses=[(152, 100000)] (budget_left=395311077)
+KM_ELC_CERT repair pass 0 round 16: close 0.03s setup 0.00s apply 0.14s t=33.7s (adds=1597650, merges=16, card_demoted=0, subsumptions=82011848, edges=45054960)
+KM_ELC_CERT repair pass 0 round 17: scan 1.73s from_clause=152 violations=100000 top_clauses=[(152, 100000)] (budget_left=395091504)
+KM_ELC_CERT repair pass 0 round 17: close 0.03s setup 0.00s apply 0.15s t=35.7s (adds=1697649, merges=16, card_demoted=0, subsumptions=82111860, edges=45054960)
+KM_ELC_CERT repair pass 0 round 18: scan 1.77s from_clause=152 violations=100000 top_clauses=[(152, 100000)] (budget_left=394771923)
+KM_ELC_CERT repair pass 0 round 18: close 0.03s setup 0.00s apply 0.14s t=37.6s (adds=1797649, merges=16, card_demoted=0, subsumptions=82211865, edges=45054960)
+KM_ELC_CERT repair pass 0 round 19: scan 1.78s from_clause=152 violations=100000 top_clauses=[(165, 50088), (152, 49864), (164, 36), (163, 12)] (budget_left=394161940)
+KM_ELC_CERT repair pass 0 round 19: close 0.03s setup 0.00s apply 0.20s t=39.6s (adds=1897601, merges=17, card_demoted=0, subsumptions=82311818, edges=45054955)
+KM_ELC_CERT repair pass 0 round 20: scan 1.73s from_clause=165 violations=100000 top_clauses=[(165, 100000)] (budget_left=394011846)
+KM_ELC_CERT repair pass 0 round 20: close 0.03s setup 0.00s apply 0.15s t=41.6s (adds=1997601, merges=17, card_demoted=0, subsumptions=82411832, edges=45054955)
+KM_ELC_CERT repair pass 0 round 21: scan 1.76s from_clause=165 violations=100000 top_clauses=[(165, 100000)] (budget_left=393761744)
+KM_ELC_CERT repair pass 0 round 21: close 0.03s setup 0.00s apply 0.17s t=43.5s (adds=2097601, merges=17, card_demoted=0, subsumptions=82511837, edges=45054955)
+KM_ELC_CERT repair pass 0 round 22: scan 1.76s from_clause=165 violations=100000 top_clauses=[(165, 100000)] (budget_left=393411634)
+KM_ELC_CERT repair pass 0 round 22: close 0.03s setup 0.00s apply 0.14s t=45.5s (adds=2197601, merges=17, card_demoted=0, subsumptions=82611838, edges=45054955)
+KM_ELC_CERT repair pass 0 round 23: scan 1.78s from_clause=165 violations=100000 top_clauses=[(177, 80646), (165, 19338), (169, 2), (170, 2), (171, 2), (172, 2)] (budget_left=392960864)
+Command exited with non-zero status 124
+TRACE wall=300.92 rss=12410112kB

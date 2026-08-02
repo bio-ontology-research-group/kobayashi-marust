@@ -1664,9 +1664,400 @@ fn compile_residual(
     Some(out)
 }
 
+// ---------------------------------------------------------------------------
+// Cardinality-aware repair guidance
+// ---------------------------------------------------------------------------
+//
+// The recognisers below read structure back out of the compiled residual: they
+// match on variable wiring alone and never on concept or role spelling. The
+// repair search consults them through [`CardGuide`] to ORDER its choices.
+// Ordering choices cannot change an answer: a pass model is accepted only when
+// [`cert_round`] finds EVERY residual clause satisfied, and that check does not
+// consult a recogniser. A recogniser that misses a clause leaves the search
+// exactly as it was; one that fires on an unintended shape can only send the
+// search down a different branch of the same disjunction.
+
+/// A qualified-cardinality UPPER bound recovered from a residual clause.
+///
+/// The frontend normalises `G ⊑ ≤n R.C` into
+/// `G(x) ∧ ⋀_{i≤n}(C(y_i) ∧ R(x,y_i)) → ⋁_{i<j} y_i ≈ y_j`: once the guard
+/// holds at `x` and `x` carries `n+1` successors in `C`, two of them are the
+/// same element.
+#[derive(Debug, PartialEq, Eq)]
+struct AtMostBound {
+    /// concepts that must ALL hold at the source node for the bound to bite
+    guards: Vec<u32>,
+    role: u32,
+    /// concepts every counted successor carries (empty for unqualified `≤n R`)
+    fillers: Vec<u32>,
+    /// `n`: the clause enumerates `n+1` successor variables
+    bound: usize,
+}
+
+/// Recognise `≤n R.C`. Returns `None` for every other shape.
+fn recognize_at_most(rc: &RClause) -> Option<AtMostBound> {
+    if rc.head.is_empty() || !rc.pins.is_empty() {
+        return None;
+    }
+    // Head must be exactly the set of unordered pairs over one successor set.
+    let mut succ: Vec<usize> = Vec::new();
+    let mut pairs: HashSet<(usize, usize)> = HashSet::default();
+    for a in &rc.head {
+        let RAtom::Eq { s, t } = *a else { return None };
+        if s == t {
+            return None;
+        }
+        if !succ.contains(&s) {
+            succ.push(s);
+        }
+        if !succ.contains(&t) {
+            succ.push(t);
+        }
+        if !pairs.insert((s.min(t), s.max(t))) {
+            return None;
+        }
+    }
+    let k = succ.len();
+    if k < 2 || pairs.len() != k * (k - 1) / 2 {
+        return None;
+    }
+    // Body: one `R(source, y_i)` per successor, one shared role and source,
+    // identical filler concepts on every successor, guards on the source.
+    let mut role: Option<u32> = None;
+    let mut source: Option<usize> = None;
+    let mut edge_seen: HashSet<usize> = HashSet::default();
+    let mut per_succ: HashMap<usize, Vec<u32>> = HashMap::default();
+    let mut guard_atoms: Vec<(u32, usize)> = Vec::new();
+    for a in &rc.body {
+        match *a {
+            RAtom::R { rid, s, t } => {
+                if !succ.contains(&t) || succ.contains(&s) {
+                    return None;
+                }
+                match role {
+                    None => role = Some(rid),
+                    Some(r) if r == rid => {}
+                    _ => return None,
+                }
+                match source {
+                    None => source = Some(s),
+                    Some(x) if x == s => {}
+                    _ => return None,
+                }
+                if !edge_seen.insert(t) {
+                    return None;
+                }
+            }
+            RAtom::C { cid, v } => {
+                if succ.contains(&v) {
+                    per_succ.entry(v).or_default().push(cid);
+                } else {
+                    guard_atoms.push((cid, v));
+                }
+            }
+            RAtom::Eq { .. } => return None,
+        }
+    }
+    let (role, source) = (role?, source?);
+    if edge_seen.len() != k {
+        return None;
+    }
+    let mut guards: Vec<u32> = Vec::new();
+    for (cid, v) in guard_atoms {
+        if v != source {
+            return None;
+        }
+        guards.push(cid);
+    }
+    // Every successor carries the same filler set, so one count decides the
+    // bound; differing fillers are a different (unrecognised) constraint.
+    let mut fillers: Option<Vec<u32>> = None;
+    for &y in &succ {
+        let mut fs = per_succ.remove(&y).unwrap_or_default();
+        fs.sort_unstable();
+        fs.dedup();
+        match &fillers {
+            None => fillers = Some(fs),
+            Some(prev) if *prev == fs => {}
+            _ => return None,
+        }
+    }
+    Some(AtMostBound {
+        guards,
+        role,
+        fillers: fillers.unwrap_or_default(),
+        bound: k - 1,
+    })
+}
+
+/// Recognise a witness DISTINCTNESS constraint `G(x) ∧ f_i(x) ≈ f_j(x) → ⊥`,
+/// the `≥n R.C` half of a number restriction, and return the two canonical
+/// witness nodes it forces apart.
+///
+/// This is the shape that makes at-most repair delicate: the certificate model
+/// keeps ONE canonical node per skolem function, shared across every source
+/// element (see [`RClause`]), so identifying such a pair to satisfy an at-most
+/// restriction at one node contradicts this clause at every node carrying the
+/// guard.
+fn recognize_distinct_pins(rc: &RClause) -> Option<(u32, u32)> {
+    if !rc.head.is_empty() {
+        return None;
+    }
+    let mut eq: Option<(usize, usize)> = None;
+    for a in &rc.body {
+        if let RAtom::Eq { s, t } = *a {
+            if eq.is_some() {
+                return None;
+            }
+            eq = Some((s, t));
+        }
+    }
+    let (s, t) = eq?;
+    let pin = |v: usize| {
+        rc.pins
+            .iter()
+            .find(|&&(pv, _)| pv == v)
+            .map(|&(_, node)| node)
+    };
+    let (a, b) = (pin(s)?, pin(t)?);
+    if a == b {
+        return None;
+    }
+    Some((a, b))
+}
+
+/// How many qualifying successors past a bound the incompatibility probe
+/// collects before it stops looking. The probe only ever REMOVES a choice from
+/// the search's preferred tier, so stopping early costs guidance, never
+/// validity.
+const SUCC_PROBE_MARGIN: usize = 8;
+
+/// Static, ontology-independent guidance for the repair search, read off the
+/// compiled residual once per certificate.
+///
+/// An exhaustive disjoint partition between a `≤n R.C` definer and a `≥m R.C`
+/// definer with `m > n` is where the pinning bites. Every element must take a
+/// side, and taking the at-most side at a node that already carries `m`
+/// pairwise pinned successors is locally unsatisfiable. Left unrecognised, the
+/// search merges the pinned witnesses, the resulting `⊥` fires several closure
+/// rounds later, and the blame no longer reaches the side choice that caused
+/// it, so the restart re-derives the same rounds and bans a triple that was
+/// never at fault.
+///
+/// This is search guidance only. Nothing here discharges a residual clause and
+/// nothing here is consulted by [`cert_round`], which still has to find every
+/// residual clause satisfied before a pass model is accepted.
+struct CardGuide {
+    /// canonical node pairs a `≥n` clause pins apart, as stored (unordered)
+    pinned_apart: Vec<(u32, u32)>,
+    /// qualified at-most bounds recovered from the residual
+    bounds: Vec<AtMostBound>,
+    /// guard concept -> the bounds it helps activate. Only bounds with at
+    /// least one guard appear: an unguarded bound is active everywhere, so no
+    /// choice can activate it and it is not a partition side.
+    by_guard: HashMap<u32, Vec<usize>>,
+}
+
+impl CardGuide {
+    fn new(rcs: &[RClause]) -> CardGuide {
+        let mut pinned_apart: Vec<(u32, u32)> = Vec::new();
+        let mut bounds: Vec<AtMostBound> = Vec::new();
+        let mut by_guard: HashMap<u32, Vec<usize>> = HashMap::default();
+        for rc in rcs {
+            if let Some(b) = recognize_at_most(rc) {
+                let bi = bounds.len();
+                for &g in &b.guards {
+                    by_guard.entry(g).or_default().push(bi);
+                }
+                bounds.push(b);
+            } else if let Some((a, b)) = recognize_distinct_pins(rc) {
+                pinned_apart.push((a, b));
+            }
+        }
+        CardGuide {
+            pinned_apart,
+            bounds,
+            by_guard,
+        }
+    }
+
+    /// Nothing recognised: every query below is inert, so the search runs
+    /// exactly as it did before this guidance existed.
+    fn is_inert(&self) -> bool {
+        self.pinned_apart.is_empty() && self.by_guard.is_empty()
+    }
+
+    /// May the pass model identify `x` and `y`?
+    ///
+    /// Only a pinned pair is refused. Refusing is the whole point: the pin is
+    /// a residual clause of the model under construction, so merging its two
+    /// nodes makes that clause false everywhere its guard holds. Every other
+    /// pair stays available, so this cannot narrow the search below what it
+    /// could already reach.
+    fn merge_legal(&self, round: &CardRound, repr: &mut [u32], x: u32, y: u32) -> bool {
+        let (a, b) = (uf_find(repr, x), uf_find(repr, y));
+        a == b || !round.apart.contains(&(a.min(b), a.max(b)))
+    }
+
+    /// Would identifying `x` and `y` immediately drive the merged node to `⊥`
+    /// through a disjointness axiom? A soft preference only: a clashing pair
+    /// is still merged when it is the only legal one, because a node reaching
+    /// `⊥` removes it from the certificate domain rather than invalidating the
+    /// model.
+    fn merge_clashes(
+        &self,
+        st: &State,
+        disj: &HashMap<u32, HashSet<u32>>,
+        repr: &mut [u32],
+        x: u32,
+        y: u32,
+    ) -> bool {
+        let (a, b) = (uf_find(repr, x), uf_find(repr, y));
+        if a == b {
+            return false;
+        }
+        let (la, lb) = (&st.sub_super[a as usize], &st.sub_super[b as usize]);
+        let (small, large) = if la.len() <= lb.len() {
+            (la, lb)
+        } else {
+            (lb, la)
+        };
+        small.iter().any(|p| {
+            disj.get(p)
+                .is_some_and(|ds| ds.iter().any(|q| large.contains(q)))
+        })
+    }
+
+    /// Does asserting concept `cid` at `nd` activate a qualified at-most bound
+    /// this node cannot satisfy — more qualifying successors than the bound
+    /// allows, with every candidate identification pinned apart?
+    ///
+    /// A `true` verdict demotes `cid` out of the search's preferred choice
+    /// tier. It never bans the choice: if no other disjunct survives, `cid` is
+    /// still taken and the resulting model is validated in full.
+    fn locally_incompatible(
+        &self,
+        round: &mut CardRound,
+        st: &State,
+        repr: &mut [u32],
+        nd: u32,
+        cid: u32,
+    ) -> bool {
+        let Some(bis) = self.by_guard.get(&cid) else {
+            return false;
+        };
+        for &bi in bis {
+            let b = &self.bounds[bi];
+            // the bound bites only once every guard holds at the source
+            if !b
+                .guards
+                .iter()
+                .all(|&g| g == cid || st.sub_super[nd as usize].contains(&g))
+            {
+                continue;
+            }
+            if let Some(&hit) = round.memo.get(&(nd, bi)) {
+                if hit {
+                    round.demoted += 1;
+                    return true;
+                }
+                continue;
+            }
+            let bad = self.over_full_and_pinned(round, st, repr, nd, b);
+            round.memo.insert((nd, bi), bad);
+            if bad {
+                round.demoted += 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The uncached half of [`Self::locally_incompatible`]: does `nd` carry
+    /// more distinct qualifying successors than `b` allows, with every pair
+    /// among them pinned apart?
+    fn over_full_and_pinned(
+        &self,
+        round: &CardRound,
+        st: &State,
+        repr: &mut [u32],
+        nd: u32,
+        b: &AtMostBound,
+    ) -> bool {
+        let mut succ: Vec<u32> = Vec::new();
+        for &(r, t) in &st.edges[nd as usize] {
+            if r != b.role {
+                continue;
+            }
+            let tr = uf_find(repr, t);
+            if succ.contains(&tr) {
+                continue;
+            }
+            if !b
+                .fillers
+                .iter()
+                .all(|f| st.sub_super[tr as usize].contains(f))
+            {
+                continue;
+            }
+            succ.push(tr);
+            if succ.len() > b.bound + SUCC_PROBE_MARGIN {
+                break;
+            }
+        }
+        if succ.len() <= b.bound {
+            return false;
+        }
+        // over the bound: satisfiable here iff some pair may still be identified
+        for i in 0..succ.len() {
+            for j in (i + 1)..succ.len() {
+                let (u, w) = (succ[i], succ[j]);
+                if !round.apart.contains(&(u.min(w), u.max(w))) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+/// The quotient-dependent half of [`CardGuide`], valid for one repair round.
+///
+/// `apart` lifts the pinned pairs to the current union-find representatives
+/// and is rebuilt whenever the quotient changes. `memo` caches the
+/// successor-count probe for the round; it is a steering hint, so a stale
+/// entry can only send the search down a different branch of a disjunction it
+/// was free to choose either way.
+#[derive(Default)]
+struct CardRound {
+    apart: HashSet<(u32, u32)>,
+    memo: HashMap<(u32, usize), bool>,
+    /// choices demoted out of the preferred tier this round (debug reporting)
+    demoted: usize,
+}
+
+impl CardRound {
+    fn resync(&mut self, guide: &CardGuide, repr: &mut [u32]) {
+        self.apart.clear();
+        self.memo.clear();
+        for &(x, y) in &guide.pinned_apart {
+            let (a, b) = (uf_find(repr, x), uf_find(repr, y));
+            if a != b {
+                self.apart.insert((a.min(b), a.max(b)));
+            }
+        }
+    }
+}
+
 /// Hard cap on violations recorded per repair round: bounds round memory; the
 /// uncollected remainder is caught by the recheck after this round's repairs.
 const REPAIR_VIOL_CAP: usize = 100_000;
+
+/// How many conflict-driven restarts one repair pass may spend before it gives
+/// up on its polarity. Each restart re-derives the pass from the base model, so
+/// a search that charges one restart per subject cannot outrun a residual whose
+/// bad choices outnumber this.
+const REPAIR_RESTART_CAP: usize = 64;
 
 /// The body-atom enumeration index [`cert_round`] joins over, kept across the
 /// rounds of one repair pass.
@@ -2397,6 +2788,45 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
     }
 }
 
+/// Attribute a local contradiction to the repair choice that caused it: the
+/// direct choice that put a body concept at the conflicting node, else the
+/// most recent unbanned choice at a node this clause instance mentions, else
+/// the most recent unbanned choice anywhere (chronological backtracking).
+///
+/// `None` means no choice was made at all, so the contradiction is entailed by
+/// the base model and the certificate must fail rather than restart.
+fn blame_choice(
+    rc: &RClause,
+    asg: &[u32],
+    repr: &mut [u32],
+    prov: &HashMap<(u32, u32), usize>,
+    chrono: &[(u32, usize, u32)],
+    banned: &HashSet<(u32, usize, u32)>,
+) -> Option<(u32, usize, u32)> {
+    for a in &rc.body {
+        if let RAtom::C { cid, v } = *a {
+            let nd = uf_find(repr, asg[v]);
+            if let Some(&src) = prov.get(&(nd, cid)) {
+                if !banned.contains(&(nd, src, cid)) {
+                    return Some((nd, src, cid));
+                }
+            }
+        }
+    }
+    let mut conf_nodes: Vec<u32> = Vec::new();
+    for a in &rc.body {
+        if let RAtom::C { v, .. } | RAtom::R { s: v, .. } = *a {
+            conf_nodes.push(uf_find(repr, asg[v]));
+        }
+    }
+    chrono
+        .iter()
+        .rev()
+        .find(|t| conf_nodes.contains(&uf_find(repr, t.0)) && !banned.contains(*t))
+        .copied()
+        .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied())
+}
+
 /// Certificate verdict: `Pass` answers everything; `Partial(subjects)`
 /// answers every named subject EXCEPT the listed ones (their truth could not
 /// be pinned between the EL lower bound and the model upper bounds — the
@@ -2433,6 +2863,24 @@ fn repair_certify(
             disj.entry(f.sub1).or_default().insert(f.sub2);
             disj.entry(f.sub2).or_default().insert(f.sub1);
         }
+    }
+
+    // qualified-cardinality guidance: which node pairs a `≥n` clause pins
+    // apart, and which concepts activate a `≤n` bound when chosen
+    let guide = CardGuide::new(rcs);
+    if debug {
+        eprintln!(
+            "KM_ELC_CERT repair guidance: {} pinned witness pair(s), {} at-most bound(s), \
+             {} partition-side concept(s){}",
+            guide.pinned_apart.len(),
+            guide.bounds.len(),
+            guide.by_guard.len(),
+            if guide.is_inert() {
+                " (inert: choice order unchanged)"
+            } else {
+                ""
+            },
+        );
     }
 
     // base-satisfiable named nodes: a repair that drives one of these to ⊥
@@ -2478,9 +2926,14 @@ fn repair_certify(
         // the direct lookup misses (conflicting facts often arrive via the
         // closure, not directly)
         let mut chrono: Vec<(u32, usize, u32)> = Vec::new();
+        // quotient-dependent half of the cardinality guidance, re-lifted to the
+        // current union-find representatives at the head of every round and
+        // after every merge inside one
+        let mut cround = CardRound::default();
         for round in 1..=MAX_ROUNDS {
             let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
             let crep: Vec<u32> = (0..n as u32).map(|i| uf_find(&mut repr, i)).collect();
+            cround.resync(&guide, &mut repr);
             let delta = st.drain_journal();
             let epoch = st.edge_epoch;
             let clean = cert_round(
@@ -2563,31 +3016,44 @@ fn repair_certify(
                         .filter(|a| !matches!(a, RAtom::Eq { .. }))
                         .collect()
                 };
-                // choice: prefer an unbanned candidate not disjoint with
-                // the node's labels, then any unbanned one, then anything
+                // Choice tiers, most constrained first, scanned in the
+                // polarity order so the two seed passes still diverge:
+                //   0  unbanned, not disjoint with the node's labels, and not
+                //      made locally unsatisfiable by a qualified at-most bound;
+                //   1  unbanned and not disjoint with the node's labels;
+                //   2  unbanned;
+                //   3  anything.
+                // Tiers 1-3 are the previous behaviour. Tier 0 coincides with
+                // tier 1 whenever the residual holds no cardinality partition,
+                // so ontologies without one search exactly as before.
                 let mut pick: Option<&RAtom> = None;
-                for a in &cands {
-                    let ok = match **a {
-                        RAtom::C { cid, v } => {
-                            let nd = uf_find(&mut repr, asg[v]);
-                            !banned.contains(&(nd, *rci, cid))
-                                && !disj.get(&cid).is_some_and(|ds| {
-                                    ds.iter().any(|d| st.sub_super[nd as usize].contains(d))
-                                })
-                        }
-                        _ => true,
-                    };
-                    if ok {
-                        pick = Some(*a);
-                        break;
-                    }
-                }
-                if pick.is_none() {
+                for tier in 0..4u8 {
                     for a in &cands {
                         let ok = match **a {
                             RAtom::C { cid, v } => {
                                 let nd = uf_find(&mut repr, asg[v]);
-                                !banned.contains(&(nd, *rci, cid))
+                                let unbanned = !banned.contains(&(nd, *rci, cid));
+                                let free = || {
+                                    !disj.get(&cid).is_some_and(|ds| {
+                                        ds.iter().any(|d| st.sub_super[nd as usize].contains(d))
+                                    })
+                                };
+                                match tier {
+                                    0 => {
+                                        unbanned
+                                            && free()
+                                            && !guide.locally_incompatible(
+                                                &mut cround,
+                                                &st,
+                                                &mut repr,
+                                                nd,
+                                                cid,
+                                            )
+                                    }
+                                    1 => unbanned && free(),
+                                    2 => unbanned,
+                                    _ => true,
+                                }
                             }
                             _ => true,
                         };
@@ -2596,9 +3062,9 @@ fn repair_certify(
                             break;
                         }
                     }
-                }
-                if pick.is_none() {
-                    pick = cands.first().copied();
+                    if pick.is_some() {
+                        break;
+                    }
                 }
                 match pick {
                     Some(&RAtom::C { cid, v }) => {
@@ -2613,62 +3079,64 @@ fn repair_certify(
                         st.add_edge(sn, rid, tn);
                     }
                     Some(&RAtom::Eq { .. }) => unreachable!("eq filtered from cands"),
-                    None => match head.iter().find_map(|a| match *a {
-                        RAtom::Eq { s, t } => Some((s, t)),
-                        _ => None,
-                    }) {
-                        Some((s, t)) => {
-                            // an earlier merge in THIS round may already have
-                            // unified the pair (violations were enumerated
-                            // against the round-start state)
-                            if uf_find(&mut repr, asg[s]) == uf_find(&mut repr, asg[t]) {
-                                continue;
+                    None => {
+                        // Every head atom is an equality: a qualified at-most
+                        // bound bit at this node and one of the enumerated
+                        // pairs has to be identified. Choose a pair the model
+                        // may actually identify, preferring one that does not
+                        // immediately clash. Merging a pinned pair instead
+                        // makes the pinning clause false wherever its guard
+                        // holds, and the resulting ⊥ surfaces rounds later
+                        // with the blame out of reach of the choice at fault.
+                        let mut merged_now = false;
+                        let mut already = false;
+                        for prefer_clean in [true, false] {
+                            for a in head {
+                                let RAtom::Eq { s, t } = *a else { continue };
+                                let (u, w) = (asg[s], asg[t]);
+                                // an earlier merge in THIS round may already
+                                // have unified the pair (violations were
+                                // enumerated against the round-start state)
+                                if uf_find(&mut repr, u) == uf_find(&mut repr, w) {
+                                    already = true;
+                                    break;
+                                }
+                                if !guide.merge_legal(&cround, &mut repr, u, w) {
+                                    continue;
+                                }
+                                if prefer_clean && guide.merge_clashes(&st, &disj, &mut repr, u, w)
+                                {
+                                    continue;
+                                }
+                                merge_nodes(&mut st, &mut repr, &mut merged, u, w);
+                                cround.resync(&guide, &mut repr);
+                                merged_now = true;
+                                break;
                             }
-                            merge_nodes(&mut st, &mut repr, &mut merged, asg[s], asg[t]);
+                            if already || merged_now {
+                                break;
+                            }
                         }
-                        None => {
-                            // ⊥-clause violated: blame the direct repair
-                            // choice that put a body concept there; failing
-                            // that, the last choice made at the conflicting
-                            // node; failing that, the last choice globally
-                            // (chronological backtracking).
-                            let mut blame: Option<(u32, usize, u32)> = None;
-                            for a in &rcs[*rci].body {
-                                if let RAtom::C { cid, v } = *a {
-                                    let nd = uf_find(&mut repr, asg[v]);
-                                    if let Some(&src) = prov.get(&(nd, cid)) {
-                                        if !banned.contains(&(nd, src, cid)) {
-                                            blame = Some((nd, src, cid));
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                            if blame.is_none() {
-                                let mut conf_nodes: Vec<u32> = Vec::new();
-                                for a in &rcs[*rci].body {
-                                    if let RAtom::C { v, .. } | RAtom::R { s: v, .. } = *a {
-                                        conf_nodes.push(uf_find(&mut repr, asg[v]));
-                                    }
-                                }
-                                blame = chrono
-                                    .iter()
-                                    .rev()
-                                    .find(|t| {
-                                        conf_nodes.contains(&uf_find(&mut repr, t.0))
-                                            && !banned.contains(*t)
-                                    })
-                                    .copied()
-                                    .or_else(|| {
-                                        chrono.iter().rev().find(|t| !banned.contains(*t)).copied()
-                                    });
-                            }
-                            match blame {
+                        if already {
+                            continue;
+                        }
+                        if !merged_now {
+                            // Either the clause has no head at all, or every
+                            // identification it offers is pinned apart. Both
+                            // are local contradictions: charge the choice that
+                            // produced them and restart.
+                            let empty_head = head.is_empty();
+                            match blame_choice(&rcs[*rci], asg, &mut repr, &prov, &chrono, banned) {
                                 Some(triple) => {
                                     if debug {
+                                        let why = if empty_head {
+                                            "violated ⊥-clause"
+                                        } else {
+                                            "at-most bound with every pair pinned apart"
+                                        };
                                         eprintln!(
                                             "KM_ELC_CERT repair pass {pass_label}: clause \
-                                             {rci} conflict, banning choice {:?} \
+                                             {rci} conflict ({why}), banning choice {:?} \
                                              (node={}, concept={})",
                                             triple,
                                             it.name(triple.0),
@@ -2679,9 +3147,14 @@ fn repair_certify(
                                 }
                                 None => {
                                     if debug {
+                                        let why = if empty_head {
+                                            "empty head"
+                                        } else {
+                                            "at-most bound with every pair pinned apart"
+                                        };
                                         eprintln!(
                                             "KM_ELC_CERT repair pass {pass_label}: clause \
-                                             {rci} violated with empty head (no choices made \
+                                             {rci} violated ({why}, no choices made \
                                              — genuine inconsistency)"
                                         );
                                     }
@@ -2689,9 +3162,18 @@ fn repair_certify(
                                 }
                             }
                         }
-                    },
+                    }
                 }
                 adds += 1;
+            }
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair pass {pass_label} round {round}: \
+                     violations={} adds={adds} merges={} card_demoted={}",
+                    viols.len(),
+                    merged.len(),
+                    cround.demoted,
+                );
             }
             // Re-close under the EL rules: the repaired structure must again
             // be a model of the EL clause set before the next recheck.
@@ -2810,7 +3292,7 @@ fn repair_certify(
         PassOut::Fail
     };
 
-    const RESTART_CAP: usize = 64;
+    const RESTART_CAP: usize = REPAIR_RESTART_CAP;
     let mut pass_states: Vec<(State, HashMap<(u32, u32), usize>)> = Vec::new();
     let polv0 = vec![false; rcs.len()];
     let mut banned0: HashSet<(u32, usize, u32)> = HashSet::default();
@@ -3994,6 +4476,26 @@ mod tests {
         )
     }
 
+    /// `a ≈ b` over two plain variables (an at-most head).
+    fn eqv(a: &str, b: &str) -> String {
+        format!("{{\"kind\":\"eq\",\"left\":{},\"right\":{}}}", v(a), v(b))
+    }
+    /// `f(t) ≈ g(t)` over two skolem terms (the `≥n` witness-distinctness body).
+    fn eqf(f: &str, g: &str, t: &str) -> String {
+        let fun = |name: &str| {
+            format!(
+                "{{\"kind\":\"fun\",\"function\":\"{}\",\"arg\":{}}}",
+                name,
+                v(t)
+            )
+        };
+        format!(
+            "{{\"kind\":\"eq\",\"left\":{},\"right\":{}}}",
+            fun(f),
+            fun(g)
+        )
+    }
+
     fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
         res.subsumptions.get(sub).cloned().unwrap_or_default()
     }
@@ -4508,6 +5010,500 @@ mod tests {
         ));
         let res = classify_inner(cs, CertMode::Repair, false).expect("base model complete");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
+    }
+
+    // ----- cardinality-aware partition assignment -----
+
+    /// Emit an exhaustive disjoint qualified-cardinality partition in the shape
+    /// the normaliser produces: a covering disjunction between a `≤1 R.C`
+    /// definer `lo` and its complement `hi`, the two definers disjoint, and `n`
+    /// subjects each carrying two `R`-successors in `C` that a `≥2` clause pins
+    /// apart. Taking the `lo` side at such a subject is locally unsatisfiable.
+    ///
+    /// `lo_first` places the at-most definer first in the cover, which is the
+    /// order the forward-polarity pass tries first; `false` places it last,
+    /// which is the order the reverse-polarity pass tries first.
+    fn card_partition(
+        out: &mut Vec<String>,
+        tag: &str,
+        lo: &str,
+        hi: &str,
+        lo_first: bool,
+        n: usize,
+    ) {
+        let role = format!("R{tag}");
+        let (filler, fa, fb) = (format!("C{tag}"), format!("C{tag}a"), format!("C{tag}b"));
+        out.push(if lo_first {
+            cl(&[], &[c(lo, "x"), c(hi, "x")])
+        } else {
+            cl(&[], &[c(hi, "x"), c(lo, "x")])
+        });
+        out.push(cl(&[c(lo, "x"), c(hi, "x")], &[]));
+        // `lo ⊑ ≤1 R.C`
+        out.push(cl(
+            &[
+                c(lo, "x"),
+                r(&role, "x", "y1"),
+                c(&filler, "y1"),
+                r(&role, "x", "y2"),
+                c(&filler, "y2"),
+            ],
+            &[eqv("y1", "y2")],
+        ));
+        // two distinct fillers, so the two existentials stay distinct NF3 rows
+        out.push(cl(&[c(&fa, "x")], &[c(&filler, "x")]));
+        out.push(cl(&[c(&fb, "x")], &[c(&filler, "x")]));
+        for i in 0..n {
+            let (subj, sa, sb) = (
+                format!("A{tag}{i}"),
+                format!("f{tag}{i}a"),
+                format!("f{tag}{i}b"),
+            );
+            out.push(cl(&[c(&subj, "x")], &[rf(&role, "x", &sa)]));
+            out.push(cl(&[c(&subj, "x")], &[cf(&fa, &sa, "x")]));
+            out.push(cl(&[c(&subj, "x")], &[rf(&role, "x", &sb)]));
+            out.push(cl(&[c(&subj, "x")], &[cf(&fb, &sb, "x")]));
+            // `subj ⊑ ≥2 R.C`: the two canonical witnesses are pinned apart
+            out.push(cl(&[c(&subj, "x"), eqf(&sa, &sb, "x")], &[]));
+        }
+    }
+
+    #[test]
+    fn repair_assigns_cardinality_partitions_without_merging_pinned_witnesses() {
+        // Two independent partitions with opposite cover orientations, so
+        // neither polarity seed can reach a model by trying the other side
+        // first. Each partition has more subjects than the restart budget, so a
+        // search that charges one conflict-driven restart per subject runs out
+        // before it can ban them all. The assignment must instead see, at each
+        // subject, that the at-most side is locally unsatisfiable — two
+        // qualifying successors that a `≥2` clause pins apart, against a bound
+        // of one — and take the other side directly.
+        let n = REPAIR_RESTART_CAP + 6;
+        let mut parts: Vec<String> = Vec::new();
+        card_partition(&mut parts, "p", "Q_1", "Q_2", true, n);
+        card_partition(&mut parts, "q", "Q_3", "Q_4", false, n);
+        // a named EL consequence the certificate has to keep answering
+        parts.push(cl(&[c("E", "x")], &[c("F", "x")]));
+        let cs = clauses(&format!("[{}]", parts.join(",")));
+
+        // the covering disjunctions are live, so the plain check cannot pass
+        assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
+        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(subs_of(&res, "E").contains(&"F".to_string()));
+        assert!(!res.inconsistent);
+        assert!(
+            res.unresolved.is_empty(),
+            "partition assignment left residue: {:?}",
+            res.unresolved
+        );
+        // the side choices are definers and must not leak into the answer
+        for subj in [format!("Ap{}", n - 1), format!("Aq{}", n - 1)] {
+            let supers = subs_of(&res, &subj);
+            assert!(
+                !supers.iter().any(|s| s.starts_with("Q_")),
+                "definer leaked into {subj}: {supers:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn repair_still_merges_at_most_successors_that_are_not_pinned_apart() {
+        // The same `≤1 R.C` bound, but with no `≥2` clause pinning the two
+        // witnesses apart. Identifying them is legal and is the only way to
+        // satisfy the bound, so the search must still do it. This is the
+        // over-refusal guard: refusing every merge would also "avoid" conflicts
+        // and would silently cost the certificate.
+        let cs = clauses(&format!(
+            "[{},{},{},{},{},{},{},{}]",
+            cl(&[c("Ca", "x")], &[c("C", "x")]),
+            cl(&[c("Cb", "x")], &[c("C", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "fa")]),
+            cl(&[c("A", "x")], &[cf("Ca", "fa", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "fb")]),
+            cl(&[c("A", "x")], &[cf("Cb", "fb", "x")]),
+            cl(
+                &[
+                    c("A", "x"),
+                    r("R", "x", "y1"),
+                    c("C", "y1"),
+                    r("R", "x", "y2"),
+                    c("C", "y2"),
+                ],
+                &[eqv("y1", "y2")],
+            ),
+            cl(&[c("E", "x")], &[c("F", "x")]),
+        ));
+        assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
+        let res = classify_inner(cs, CertMode::Repair, false).expect("merge repair certifies");
+        assert!(subs_of(&res, "E").contains(&"F".to_string()));
+        assert!(!res.inconsistent);
+    }
+
+    #[test]
+    fn repair_fails_closed_when_both_partition_sides_are_impossible() {
+        // The at-most side is locally unsatisfiable at `A` (two pinned-apart
+        // successors against a bound of one) and the other side is
+        // unsatisfiable outright. No pass model can witness `A`, so the
+        // certificate must decline: `A` is either unresolved residue for the
+        // context engine or the whole certificate fails. It must never be
+        // answered, and the guidance must not turn "no legal choice" into a
+        // silently accepted model.
+        // `A ⊑ ≥2 R.C` with the witnesses pinned apart, plus the partition
+        let core = format!(
+            "{},{},{},{},{},{},{}",
+            cl(&[c("Ca", "x")], &[c("C", "x")]),
+            cl(&[c("Cb", "x")], &[c("C", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "fa")]),
+            cl(&[c("A", "x")], &[cf("Ca", "fa", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "fb")]),
+            cl(&[c("A", "x")], &[cf("Cb", "fb", "x")]),
+            cl(&[c("A", "x"), eqf("fa", "fb", "x")], &[]),
+        );
+        let at_most = |guard: &str| {
+            cl(
+                &[
+                    c(guard, "x"),
+                    r("R", "x", "y1"),
+                    c("C", "y1"),
+                    r("R", "x", "y2"),
+                    c("C", "y2"),
+                ],
+                &[eqv("y1", "y2")],
+            )
+        };
+        // (a) the at-most side is locally unsatisfiable, the other side is dead
+        let dead_partner = clauses(&format!(
+            "[{},{},{},{},{}]",
+            core,
+            cl(&[], &[c("Q_1", "x"), c("Q_2", "x")]),
+            cl(&[c("Q_1", "x"), c("Q_2", "x")], &[]),
+            cl(&[c("Q_2", "x")], &[]),
+            at_most("Q_1"),
+        ));
+        // (b) no partition at all: `≥2 R.C` against `≤1 R.C` on the same
+        // subject is inconsistent, and no repair choice exists to blame, so
+        // the certificate has to fail outright rather than report `A` satisfiable
+        let no_choice = clauses(&format!("[{},{}]", core, at_most("A")));
+        for cs in [dead_partner, no_choice] {
+            match classify_inner(cs, CertMode::Repair, false) {
+                None => {}
+                Some(res) => {
+                    assert!(
+                        res.unresolved.iter().any(|nm| nm == "A"),
+                        "A must be unresolved, got {:?}",
+                        res.unresolved
+                    );
+                    assert!(
+                        !res.subsumptions.contains_key("A"),
+                        "A must not be answered by the certificate"
+                    );
+                }
+            }
+        }
+    }
+
+    // ----- cardinality guidance, in isolation -----
+
+    fn rc(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>, pins: Vec<(usize, u32)>) -> RClause {
+        RClause {
+            nvars,
+            body,
+            head,
+            pins,
+        }
+    }
+
+    /// `≤1 R.C` guarded by concept `g`, over variables `x, y1, y2`.
+    fn at_most_one(g: u32, role: u32, filler: u32) -> RClause {
+        rc(
+            3,
+            vec![
+                RAtom::C { cid: g, v: 0 },
+                RAtom::R {
+                    rid: role,
+                    s: 0,
+                    t: 1,
+                },
+                RAtom::C { cid: filler, v: 1 },
+                RAtom::R {
+                    rid: role,
+                    s: 0,
+                    t: 2,
+                },
+                RAtom::C { cid: filler, v: 2 },
+            ],
+            vec![RAtom::Eq { s: 1, t: 2 }],
+            vec![],
+        )
+    }
+
+    /// `g(x) ∧ f_a(x) ≈ f_b(x) → ⊥`, pinning witness nodes `a` and `b` apart.
+    fn pin_apart(g: u32, a: u32, b: u32) -> RClause {
+        rc(
+            3,
+            vec![RAtom::C { cid: g, v: 0 }, RAtom::Eq { s: 1, t: 2 }],
+            vec![],
+            vec![(1, a), (2, b)],
+        )
+    }
+
+    /// A structure with `n` nodes, the given labels, and the given edges.
+    fn state_of(n: usize, labels: &[(u32, &[u32])], edges: &[(u32, u32, u32)]) -> State {
+        let mut st = State {
+            sub_super: vec![HashSet::default(); n],
+            edges: vec![HashSet::default(); n],
+            in_by_role: HashMap::default(),
+            in_roles: vec![Vec::new(); n],
+            prop: HashMap::default(),
+            worklist: VecDeque::new(),
+            sub_journal: None,
+            edge_epoch: 0,
+        };
+        for (node, ls) in labels {
+            for l in *ls {
+                st.sub_super[*node as usize].insert(*l);
+            }
+        }
+        for (s, r, t) in edges {
+            if st.edges[*s as usize].insert((*r, *t)) {
+                let parents = st.in_by_role.entry((*t, *r)).or_default();
+                if parents.is_empty() {
+                    st.in_roles[*t as usize].push(*r);
+                }
+                parents.push(*s);
+            }
+        }
+        st
+    }
+
+    #[test]
+    fn card_guide_reads_bounds_and_pins_off_clause_wiring() {
+        let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 11, 12)]);
+        assert_eq!(guide.bounds.len(), 1);
+        assert_eq!(guide.bounds[0].bound, 1);
+        assert_eq!(guide.bounds[0].role, 3);
+        assert_eq!(guide.bounds[0].fillers, vec![9]);
+        assert_eq!(guide.bounds[0].guards, vec![7]);
+        assert_eq!(
+            guide.by_guard.get(&7).map(Vec::as_slice),
+            Some(&[0usize][..])
+        );
+        assert_eq!(guide.pinned_apart, vec![(11, 12)]);
+        assert!(!guide.is_inert());
+
+        // an unguarded bound is active everywhere, so no choice activates it
+        let unguarded = CardGuide::new(&[rc(
+            3,
+            vec![
+                RAtom::R { rid: 3, s: 0, t: 1 },
+                RAtom::R { rid: 3, s: 0, t: 2 },
+            ],
+            vec![RAtom::Eq { s: 1, t: 2 }],
+            vec![],
+        )]);
+        assert_eq!(unguarded.bounds.len(), 1);
+        assert!(unguarded.bounds[0].fillers.is_empty());
+        assert!(unguarded.by_guard.is_empty());
+        assert!(unguarded.is_inert());
+
+        // nothing recognised at all leaves the search untouched
+        let plain = CardGuide::new(&[rc(
+            2,
+            vec![RAtom::C { cid: 1, v: 0 }],
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![],
+        )]);
+        assert!(plain.is_inert());
+    }
+
+    #[test]
+    fn recognize_at_most_rejects_near_miss_shapes() {
+        // `≤2 R.C`: three successors, all three unordered pairs in the head
+        let three = |pairs: Vec<RAtom>| {
+            rc(
+                4,
+                vec![
+                    RAtom::C { cid: 7, v: 0 },
+                    RAtom::R { rid: 3, s: 0, t: 1 },
+                    RAtom::C { cid: 9, v: 1 },
+                    RAtom::R { rid: 3, s: 0, t: 2 },
+                    RAtom::C { cid: 9, v: 2 },
+                    RAtom::R { rid: 3, s: 0, t: 3 },
+                    RAtom::C { cid: 9, v: 3 },
+                ],
+                pairs,
+                vec![],
+            )
+        };
+        let full = vec![
+            RAtom::Eq { s: 1, t: 2 },
+            RAtom::Eq { s: 1, t: 3 },
+            RAtom::Eq { s: 2, t: 3 },
+        ];
+        let b = recognize_at_most(&three(full.clone())).expect("≤2 R.C");
+        assert_eq!(
+            (b.bound, b.role, b.fillers, b.guards),
+            (2, 3, vec![9], vec![7])
+        );
+
+        // a head missing one pair is not an at-most bound: it constrains only
+        // the pairs it names, so a node over the bound need not be repairable
+        // by identifying any pair the clause happens to list
+        assert!(recognize_at_most(&three(full[..2].to_vec())).is_none());
+        // a duplicated pair, and a reflexive equality, are both malformed
+        let mut dup = full.clone();
+        dup.push(RAtom::Eq { s: 2, t: 1 });
+        assert!(recognize_at_most(&three(dup)).is_none());
+        let mut refl = full.clone();
+        refl.push(RAtom::Eq { s: 1, t: 1 });
+        assert!(recognize_at_most(&three(refl)).is_none());
+
+        let mutate = |f: &dyn Fn(&mut RClause)| {
+            let mut c = at_most_one(7, 3, 9);
+            f(&mut c);
+            recognize_at_most(&c)
+        };
+        // a pinned clause is a witness constraint, not a bound over free vars
+        assert!(mutate(&|c| c.pins.push((1, 11))).is_none());
+        // two different roles on the two successor edges
+        assert!(mutate(&|c| c.body[3] = RAtom::R { rid: 4, s: 0, t: 2 }).is_none());
+        // two different sources
+        assert!(mutate(&|c| c.body[3] = RAtom::R { rid: 3, s: 2, t: 1 }).is_none());
+        // successors with different fillers: a different constraint
+        assert!(mutate(&|c| c.body[4] = RAtom::C { cid: 10, v: 2 }).is_none());
+        // a guard on something other than the source
+        assert!(mutate(&|c| c.body[0] = RAtom::C { cid: 7, v: 3 }).is_none());
+        // an equality in the body
+        assert!(mutate(&|c| c.body.push(RAtom::Eq { s: 0, t: 1 })).is_none());
+        // a successor with no edge to the source
+        assert!(mutate(&|c| {
+            c.body.remove(3);
+        })
+        .is_none());
+        // an empty head is a ⊥-clause, not a bound
+        assert!(mutate(&|c| c.head.clear()).is_none());
+        // a concept head is a cover, not a bound
+        assert!(mutate(&|c| c.head = vec![RAtom::C { cid: 9, v: 0 }]).is_none());
+    }
+
+    #[test]
+    fn recognize_distinct_pins_rejects_near_miss_shapes() {
+        assert_eq!(
+            recognize_distinct_pins(&pin_apart(7, 11, 12)),
+            Some((11, 12))
+        );
+        let mutate = |f: &dyn Fn(&mut RClause)| {
+            let mut c = pin_apart(7, 11, 12);
+            f(&mut c);
+            recognize_distinct_pins(&c)
+        };
+        // a non-empty head does not force the equality to be false
+        assert!(mutate(&|c| c.head.push(RAtom::C { cid: 9, v: 0 })).is_none());
+        // two equalities: falsity needs only ONE of them, so neither is pinned
+        assert!(mutate(&|c| c.body.push(RAtom::Eq { s: 0, t: 1 })).is_none());
+        // an unpinned side denotes no fixed node
+        assert!(mutate(&|c| c.pins.retain(|&(v, _)| v != 2)).is_none());
+        // both sides pinned to the SAME node: already violated, pins nothing
+        assert!(mutate(&|c| c.pins = vec![(1, 11), (2, 11)]).is_none());
+        // no equality at all
+        assert!(mutate(&|c| c.body.retain(|a| !matches!(a, RAtom::Eq { .. }))).is_none());
+    }
+
+    #[test]
+    fn card_guide_refuses_pinned_merges_modulo_the_quotient() {
+        let guide = CardGuide::new(&[pin_apart(7, 11, 12)]);
+        let mut repr: Vec<u32> = (0..16).collect();
+        let mut round = CardRound::default();
+        round.resync(&guide, &mut repr);
+
+        assert!(!guide.merge_legal(&round, &mut repr, 11, 12));
+        assert!(!guide.merge_legal(&round, &mut repr, 12, 11));
+        assert!(guide.merge_legal(&round, &mut repr, 11, 13));
+        // a node already identified with itself is always mergeable
+        assert!(guide.merge_legal(&round, &mut repr, 11, 11));
+
+        // fold 13 into 11: the pin now separates 13's class from 12 as well
+        repr[13] = 11;
+        round.resync(&guide, &mut repr);
+        assert!(!guide.merge_legal(&round, &mut repr, 13, 12));
+        assert!(guide.merge_legal(&round, &mut repr, 13, 14));
+    }
+
+    #[test]
+    fn card_guide_demotes_only_over_full_all_pinned_choices() {
+        // node 0 --R--> {1, 2}, both in filler 9; bound is ≤1 R.9 guarded by 7
+        let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 1, 2)]);
+        let st = state_of(
+            8,
+            &[(1, &[9]), (2, &[9]), (4, &[9]), (5, &[9])],
+            &[(0, 3, 1), (0, 3, 2), (6, 3, 4)],
+        );
+        let mut repr: Vec<u32> = (0..8).collect();
+        let mut round = CardRound::default();
+        round.resync(&guide, &mut repr);
+
+        // two qualifying successors, pinned apart, against a bound of one
+        assert!(guide.locally_incompatible(&mut round, &st, &mut repr, 0, 7));
+        assert_eq!(round.demoted, 1);
+        // node 6 has one qualifying successor: the bound is satisfiable there
+        assert!(!guide.locally_incompatible(&mut round, &st, &mut repr, 6, 7));
+        // a concept that guards no bound is never demoted
+        assert!(!guide.locally_incompatible(&mut round, &st, &mut repr, 0, 8));
+
+        // same shape, but the successors are NOT pinned apart: identifying them
+        // satisfies the bound, so the choice stays available
+        let loose = CardGuide::new(&[at_most_one(7, 3, 9)]);
+        let mut round = CardRound::default();
+        round.resync(&loose, &mut repr);
+        assert!(!loose.locally_incompatible(&mut round, &st, &mut repr, 0, 7));
+
+        // successors that do not carry the filler are not counted
+        let unqualified = state_of(8, &[(1, &[9])], &[(0, 3, 1), (0, 3, 2)]);
+        let mut round = CardRound::default();
+        round.resync(&guide, &mut repr);
+        assert!(!guide.locally_incompatible(&mut round, &unqualified, &mut repr, 0, 7));
+
+        // successors reached by a different role are not counted either
+        let other_role = state_of(8, &[(1, &[9]), (2, &[9])], &[(0, 5, 1), (0, 5, 2)]);
+        let mut round = CardRound::default();
+        round.resync(&guide, &mut repr);
+        assert!(!guide.locally_incompatible(&mut round, &other_role, &mut repr, 0, 7));
+
+        // a second guard that does NOT hold at the node leaves the bound
+        // inactive there, so choosing the first guard demotes nothing
+        let two_guards = {
+            let mut c = at_most_one(7, 3, 9);
+            c.body.push(RAtom::C { cid: 13, v: 0 });
+            CardGuide::new(&[c, pin_apart(7, 1, 2)])
+        };
+        let mut round = CardRound::default();
+        round.resync(&two_guards, &mut repr);
+        assert!(!two_guards.locally_incompatible(&mut round, &st, &mut repr, 0, 7));
+        let guarded = state_of(
+            8,
+            &[(0, &[13]), (1, &[9]), (2, &[9])],
+            &[(0, 3, 1), (0, 3, 2)],
+        );
+        let mut round = CardRound::default();
+        round.resync(&two_guards, &mut repr);
+        assert!(two_guards.locally_incompatible(&mut round, &guarded, &mut repr, 0, 7));
+    }
+
+    #[test]
+    fn card_guide_counts_merged_successors_once() {
+        // the two successors are pinned apart, but a merge has already folded
+        // one into the other: the node is back inside its bound and the choice
+        // must not be demoted
+        let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 1, 2)]);
+        let st = state_of(8, &[(1, &[9]), (2, &[9])], &[(0, 3, 1), (0, 3, 2)]);
+        let mut repr: Vec<u32> = (0..8).collect();
+        repr[2] = 1;
+        let mut round = CardRound::default();
+        round.resync(&guide, &mut repr);
+        // the pin is already violated by the quotient, so it no longer
+        // separates anything: `cert_round` is what reports that, not the guide
+        assert!(round.apart.is_empty());
+        assert!(!guide.locally_incompatible(&mut round, &st, &mut repr, 0, 7));
     }
 
     #[test]

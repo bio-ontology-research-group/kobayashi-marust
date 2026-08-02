@@ -1,0 +1,5 @@
+KM_ELC_CERT checking 252 residual clauses
+KM_ELC_CERT residual census: 252 clause(s) = 6 top-level cover(s) [violated once per node] + 14 inverse bridge(s) + 0 role inclusion(s) [once per edge] + 9 at-most bound(s) [2] + 27 forced-distinct witness pair(s) + 61 range clause(s) + 135 other
+KM_ELC_CERT fail at residual clause 0 of 252 (budget_left=199999981)
+Command exited with non-zero status 3
+CHECKMODE wall=96.19 rss=3289536kB

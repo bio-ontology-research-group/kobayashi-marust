@@ -1,0 +1,10 @@
+KM_ELC_CERT checking 252 residual clauses
+KM_ELC_CERT residual census: 252 clause(s) = 6 top-level cover(s) [violated once per node] + 14 inverse bridge(s) + 0 role inclusion(s) [once per edge] + 9 at-most bound(s) [2] + 27 forced-distinct witness pair(s) + 61 range clause(s) + 135 other
+KM_ELC_CERT repair guidance: 27 pinned witness pair(s), 9 at-most bound(s), 9 partition-side concept(s)
+KM_ELC_CERT repair pass 0 round 1: scan 1.76s from_clause=0 violations=1000000 top_clauses=[(120, 369443), (127, 369443), (134, 260746), (116, 28), (119, 24), (126, 24)] (budget_left=398988358)
+KM_ELC_CERT repair pass 0 round 1: close 0.59s setup 0.00s apply 1.46s t=3.8s (adds=999890, merges=3, card_demoted=0, subsumptions=79878082, edges=44171386)
+KM_ELC_CERT repair pass 0 round 2: scan 1.87s from_clause=134 violations=1000000 top_clauses=[(145, 369442), (152, 369429), (165, 149842), (134, 108696), (151, 2106), (159, 204)] (budget_left=397370692)
+KM_ELC_CERT repair pass 0 round 2: close 2.70s setup 0.01s apply 1.35s t=9.7s (adds=1997333, merges=17, card_demoted=0, subsumptions=82411049, edges=45054378)
+KM_ELC_CERT repair pass 0 round 3: scan 1.82s from_clause=165 violations=1000000 top_clauses=[(177, 780396), (165, 219588), (169, 2), (170, 2), (171, 2), (172, 2)] (budget_left=396215019)
+Command exited with non-zero status 124
+GATE wall=240.81 rss=13144196kB
