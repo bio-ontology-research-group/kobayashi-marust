@@ -95,3 +95,57 @@ BIN=.../release/elc ./run_1194.sh prep-off KM_ELC_CERT=2 KM_ELC_DEBUG=1 KM_ELC_T
 python3 audit_roles.py /tmp/1194.clauses.json
 python3 audit_vacuous.py /tmp/1194.clauses.json
 ```
+
+## 5. Follow-up: virtual inverse execution and bulk cover repair
+
+Two exact scheduling/representation experiments were tested against the same
+240 s / 24 GiB local gate. Neither changes the released 591/592 result.
+
+### Virtual reciprocal roles
+
+A guarded prototype represented reciprocal inverse edges virtually and fired
+their NF4 and role-hierarchy consequences without storing mirror edges. Focused
+tests covered both event arrival orders, hierarchy propagation, and fail-closed
+rejection of chain uses. The six 1194 pairs split sharply by volume:
+
+| virtual pairs | diagnostic at the first useful checkpoint | result |
+| --- | --- | --- |
+| all six | 5.0M processed, 264.1M queued, 265.3M NF4 sub-side joins | timeout, 21.1 GiB |
+| all except BFO_0000050/51 | 25.0M processed, 56.1M queued | stopped after attribution |
+| four low-volume pairs | base fixpoint after about 121M facts; queue peaked near 18M | reached certificate repair |
+
+The BFO pair causes the catastrophic cross-product; RO_0002202/03 is the
+secondary source. A production candidate therefore leaves pairs with more than
+10,000 mentioning clauses in the residual and virtualises only the four small
+pairs. This is a performance fence, not an approximation: rejected pairs keep
+their original bridge clauses.
+
+### Complete-batch top-level covers
+
+When the 100,000-violation cap is filled entirely by one clause of the form
+`[] -> A(x) | B(x) | ...`, the prototype completes that same clause's join over
+the live domain before applying choices. It preserves node order and the
+existing per-binding choice/conflict logic; only the batching boundary changes.
+All ten certificate-repair regression tests plus a dedicated complete-domain
+test pass.
+
+On 1194, the six covers finished in 12 rounds rather than consuming the full
+round budget. The next round still hit a high-volume inverse bridge:
+
+| candidate | last progress | wall / peak RSS | output |
+| --- | --- | --- | --- |
+| bulk covers only | round 13 | 240.60 s / 17,892,576 KiB | none |
+| four virtual pairs + bulk covers | round 13 | 240.84 s / 17,710,336 KiB | none |
+
+This establishes the next implementation target: a symbolic or projected
+treatment of the two high-volume inverse pairs. Fact-by-fact virtual closure is
+not viable under the production contract.
+
+### Long reference run
+
+Slurm job `49870738` runs the four-small-pair plus bulk-cover candidate on IBEX
+with a 120 GiB request and a three-hour process bound. Its purpose is to obtain
+a complete reference taxonomy and resource curve, not to claim benchmark
+closure. The resumable harness is `ibex_long_reference.sbatch`; it records input
+and binary SHA-256 values, writes output atomically, validates JSON, and creates
+a completion checkpoint only after success.
