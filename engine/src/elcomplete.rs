@@ -6332,4 +6332,192 @@ mod tests {
         assert!(!res.inconsistent);
         assert_eq!(res.unresolved, vec!["D".to_string()]);
     }
+
+    // -----------------------------------------------------------------------
+    // Inverse-bridge canonicalisation: what the completion may and may not do
+    //
+    // The frontend emits `InverseObjectProperties(R,S)` as the swapped pair
+    // `R(x,y) → S(y,x)` and `S(x,y) → R(y,x)`. Both together entail
+    // `S ≡ R⁻`, so rewriting every `S(x,y)` to `R(y,x)` is truth-preserving and
+    // the two bridge clauses become tautologies. The tests below fix the three
+    // facts that decide whether that rewrite may be turned into a completion
+    // strategy: it is conservative as a rewrite, the reverse-oriented rules it
+    // produces cannot be run on this node space, and one-way bridges are not
+    // definitions. See docs/INVERSE-BRIDGE-CANONICALISATION.md.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn reciprocal_bridge_rewrite_is_conservative_when_the_dropped_role_is_idle() {
+        // `S` occurs only in the two bridges, so rewriting `S(x,y) := R(y,x)`
+        // deletes both clauses and leaves a pure-EL set. The rewritten set must
+        // answer exactly what the certified original answers -- the rewrite
+        // itself neither adds nor drops a named subsumption.
+        let original = clauses(&format!(
+            "[{},{},{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("G", "x")]),
+            cl(&[c("G", "x")], &[c("H", "x")]),
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+        ));
+        let rewritten = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("G", "x")]),
+            cl(&[c("G", "x")], &[c("H", "x")]),
+        ));
+        let before = classify_inner(original, CertMode::Repair, false)
+            .expect("the idle bridge pair is repairable");
+        let after = classify_inner(rewritten, CertMode::Off, false)
+            .expect("the rewritten set is pure EL");
+        assert_eq!(before.subsumptions, after.subsumptions);
+        assert!(subs_of(&after, "A").contains(&"H".to_string()));
+    }
+
+    #[test]
+    fn a_bridge_whose_body_role_is_never_derived_is_discharged_by_the_base_model() {
+        // ORE 1194 carries two bridges of this shape (`has_distal_part` and
+        // `has_proximal_part` occur in no other clause). Nothing ever adds an
+        // edge to the body role, so the clause is satisfied by the base model
+        // with no mirror at all and the plain check answers.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[r("T", "x", "y")], &[r("U", "y", "x")]),
+            cl(&[c("C", "x")], &[c("D", "x")]),
+        ));
+        let res = classify_inner(cs, CertMode::Check, false)
+            .expect("an underived bridge body is vacuously satisfied");
+        assert!(subs_of(&res, "C").contains(&"D".to_string()));
+        assert!(!res.inconsistent);
+    }
+
+    #[test]
+    fn a_reverse_rule_at_a_shared_witness_would_assert_a_named_subsumption() {
+        // The completion gives every filler concept ONE node, so the node for
+        // `B` is at once the witness of `A ⊑ ∃R.B` for every context that
+        // inherits `A`, and the named class `B` itself. Canonicalising
+        // `S := R⁻` turns `∃S.C ⊑ D` into a reverse rule that fires at that
+        // node from one predecessor, and writing `D` there is exactly the
+        // axiom `B ⊑ D`.
+        //
+        // The sharing here comes from INHERITANCE, not from a repeated axiom:
+        // ORE 1194 has 130,268 witness nodes of which only 8 carry more than
+        // one existential axiom, but 43.9 M backward links over 202,617
+        // distinct (node, role) keys.
+        //
+        // `A1 ⊑ E` is entailed; `A2 ⊑ E` is not. Counter-model:
+        //   a1: A1,A,C   b_1: B,D   R(a1,b_1)  S(b_1,a1)
+        //   a2: A2,A     b_2: B     R(a2,b_2)  S(b_2,a2)
+        // `b_2` has no C-labelled S-successor, so it is not D and `a2` is not E.
+        let el_part = format!(
+            "{},{},{},{},{},{}",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[c("A1", "x")], &[c("A", "x")]),
+            cl(&[c("A2", "x")], &[c("A", "x")]),
+            cl(&[c("A1", "x")], &[c("C", "x")]),
+            cl(&[r("R", "x", "y"), c("D", "y")], &[c("E", "x")]),
+        );
+        let with_bridges = clauses(&format!(
+            "[{},{},{},{}]",
+            el_part,
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[r("S", "x", "y"), c("C", "y")], &[c("D", "x")]),
+        ));
+        // The base model has no S-edge, so the plain certificate refuses. This
+        // is the only correct verdict available on this node space.
+        assert!(classify_inner(with_bridges, CertMode::Check, false).is_none());
+
+        // What the reverse rule would write into the node for `B`, spelled as
+        // the axiom it actually is. It leaks straight onto `A2`.
+        let as_named_axiom = clauses(&format!(
+            "[{},{}]",
+            el_part,
+            cl(&[c("B", "x")], &[c("D", "x")])
+        ));
+        let leaked = classify_inner(as_named_axiom, CertMode::Off, false)
+            .expect("the strengthened set is pure EL");
+        assert!(subs_of(&leaked, "A2").contains(&"E".to_string()));
+    }
+
+    #[test]
+    fn a_one_way_bridge_is_not_a_role_definition() {
+        // `R(x,y) → S(y,x)` alone says `R⁻ ⊑ S`, not `S ≡ R⁻`: `S` may hold
+        // where the transpose of `R` does not. Reading it as a definition adds
+        // the converse, and the converse changes the taxonomy -- here a
+        // reflexive `S` forces a reflexive `R`, which the domain axiom turns
+        // into a subsumer of everything.
+        let shared = format!(
+            "{},{},{},{}",
+            cl(&[], &[r("S", "x", "x")]),
+            cl(&[r("R", "x", "y")], &[c("Z", "x")]),
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+        );
+        let one_way = clauses(&format!("[{}]", shared));
+        let defined = clauses(&format!(
+            "[{},{}]",
+            shared,
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")])
+        ));
+        let weak = classify_inner(one_way, CertMode::Repair, false)
+            .expect("the one-way bridge is satisfied with no R-edge at all");
+        assert!(
+            !subs_of(&weak, "A").contains(&"Z".to_string()),
+            "R⁻ ⊑ S alone entails nothing about R, got {:?}",
+            subs_of(&weak, "A")
+        );
+        assert_eq!(subs_of(&weak, "A"), vec!["B".to_string()]);
+        assert!(weak.unresolved.is_empty());
+
+        // Adding the converse is what a definitional reading does. It is not
+        // free: the reflexive `S` now forces a reflexive `R`, the base model no
+        // longer satisfies the residual, and the route can publish nothing.
+        let strong = classify_inner(defined, CertMode::Repair, false)
+            .expect("the reciprocal pair is repairable");
+        assert!(
+            strong.subsumptions.is_empty() && strong.unresolved.contains(&"A".to_string()),
+            "the converse must cost the published taxonomy, got {:?} / {:?}",
+            strong.subsumptions,
+            strong.unresolved
+        );
+    }
+
+    #[test]
+    fn the_canonicalised_reverse_forms_are_outside_to_nf() {
+        // Rewriting `S := R⁻` deletes the bridge clauses but does not delete
+        // the work: `∃S.C ⊑ D` becomes `R(y,x) ∧ C(y) → D(x)`, whose head sits
+        // on the role TARGET, and `P ⊑ ∃S.C` becomes `P(x) → R(f(x),x)`, whose
+        // existential sits on the role SOURCE. Both are the wirings `to_nf`
+        // deliberately refuses, so the rewrite trades 2 bridge clauses for a
+        // reverse-oriented occurrence of every rule the dropped role carried.
+        // On ORE 1194 that trade is 55,384 rules for the smallest orientation
+        // of the `BFO_0000050`/`BFO_0000051` pair (engine/py/role_census.py).
+        let reverse_nf4 = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "y", "x"), c("C", "y")], &[c("D", "x")])
+        ));
+        assert!(!is_pure_el_shape(&reverse_nf4));
+        assert!(classify_inner(reverse_nf4, CertMode::Off, false).is_none());
+
+        // `P(x) → R(f(x), x)` plus `P(x) → C(f(x))`: an existential whose
+        // witness is the role SOURCE.
+        let back_edge = format!(
+            "{{\"kind\":\"role\",\"role\":\"R\",\"source\":{{\"kind\":\"fun\",\"function\":\"f\",\"arg\":{}}},\"target\":{}}}",
+            v("x"),
+            v("x")
+        );
+        let reverse_nf3 = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("P", "x")], &[back_edge]),
+            cl(&[c("P", "x")], &[cf("C", "f", "x")])
+        ));
+        assert!(!is_pure_el_shape(&reverse_nf3));
+        assert!(classify_inner(reverse_nf3, CertMode::Off, false).is_none());
+    }
 }

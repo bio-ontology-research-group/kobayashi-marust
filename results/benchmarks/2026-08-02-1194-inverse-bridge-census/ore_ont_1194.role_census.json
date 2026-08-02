@@ -1,0 +1,1211 @@
+{
+ "bridges": {
+  "clauses": 14,
+  "one_way": [
+   [
+    "has_distal_part",
+    "distal_part_of"
+   ],
+   [
+    "has_proximal_part",
+    "proximal_part_of"
+   ]
+  ],
+  "reciprocal_pairs": [
+   [
+    "BFO_0000050",
+    "BFO_0000051"
+   ],
+   [
+    "BSPO_0000098",
+    "BSPO_0000102"
+   ],
+   [
+    "BSPO_0000124",
+    "BSPO_0000125"
+   ],
+   [
+    "RO_0002202",
+    "RO_0002203"
+   ],
+   [
+    "distally_connected_to",
+    "proximally_connected_to"
+   ],
+   [
+    "surrounded_by__uberon",
+    "surrounds"
+   ]
+  ]
+ },
+ "clause_kinds": {
+  "domain": 35,
+  "ex_filler_half": 130303,
+  "ex_role_half": 130303,
+  "inverse_bridge": 14,
+  "nf1_nf2": 391047,
+  "nf4": 410281,
+  "nf5": 6,
+  "nf6": 48,
+  "residual": 203
+ },
+ "clauses": 1062240,
+ "gates": [
+  {
+   "chain_touch": 0,
+   "drop": "BFO_0000051",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 10256,
+    "nf4": 45127,
+    "nf6_sup": 1
+   },
+   "keep": "BFO_0000050",
+   "keep_nf3": 28826,
+   "keep_nf4": 144130,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sup": 10
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 10256,
+    "nf4": 45127,
+    "nf6_sup": 1
+   },
+   "reverse_oriented_total": 55384
+  },
+  {
+   "chain_touch": 0,
+   "drop": "BFO_0000050",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sup": 10
+   },
+   "keep": "BFO_0000051",
+   "keep_nf3": 10256,
+   "keep_nf4": 45127,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 10256,
+    "nf4": 45127,
+    "nf6_sup": 1
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sup": 10
+   },
+   "reverse_oriented_total": 172966
+  },
+  {
+   "chain_touch": 0,
+   "drop": "BSPO_0000102",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 2,
+    "nf4": 6
+   },
+   "keep": "BSPO_0000098",
+   "keep_nf3": 4,
+   "keep_nf4": 12,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 4,
+    "nf4": 12
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 2,
+    "nf4": 6
+   },
+   "reverse_oriented_total": 8
+  },
+  {
+   "chain_touch": 0,
+   "drop": "BSPO_0000098",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 4,
+    "nf4": 12
+   },
+   "keep": "BSPO_0000102",
+   "keep_nf3": 2,
+   "keep_nf4": 6,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 2,
+    "nf4": 6
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 4,
+    "nf4": 12
+   },
+   "reverse_oriented_total": 16
+  },
+  {
+   "chain_touch": 0,
+   "drop": "BSPO_0000125",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "keep": "BSPO_0000124",
+   "keep_nf3": 1,
+   "keep_nf4": 1,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "reverse_oriented_total": 3
+  },
+  {
+   "chain_touch": 0,
+   "drop": "BSPO_0000124",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "keep": "BSPO_0000125",
+   "keep_nf3": 1,
+   "keep_nf4": 1,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 1,
+    "nf4": 1,
+    "nf6_sup": 1
+   },
+   "reverse_oriented_total": 3
+  },
+  {
+   "chain_touch": 0,
+   "drop": "RO_0002203",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 102,
+    "nf4": 107
+   },
+   "keep": "RO_0002202",
+   "keep_nf3": 28826,
+   "keep_nf4": 144130,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sub": 1,
+    "nf6_sup": 1
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 102,
+    "nf4": 107
+   },
+   "reverse_oriented_total": 209
+  },
+  {
+   "chain_touch": 0,
+   "drop": "RO_0002202",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sub": 1,
+    "nf6_sup": 1
+   },
+   "keep": "RO_0002203",
+   "keep_nf3": 102,
+   "keep_nf4": 107,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 102,
+    "nf4": 107
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 28826,
+    "nf4": 144130,
+    "nf6_sub": 1,
+    "nf6_sup": 1
+   },
+   "reverse_oriented_total": 172958
+  },
+  {
+   "chain_touch": 0,
+   "drop": "proximally_connected_to",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 56,
+    "nf4": 56,
+    "nf6_sub": 3
+   },
+   "keep": "distally_connected_to",
+   "keep_nf3": 37,
+   "keep_nf4": 37,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 37,
+    "nf4": 37,
+    "nf6_sub": 3
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 56,
+    "nf4": 56,
+    "nf6_sub": 3
+   },
+   "reverse_oriented_total": 115
+  },
+  {
+   "chain_touch": 0,
+   "drop": "distally_connected_to",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 37,
+    "nf4": 37,
+    "nf6_sub": 3
+   },
+   "keep": "proximally_connected_to",
+   "keep_nf3": 56,
+   "keep_nf4": 56,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 56,
+    "nf4": 56,
+    "nf6_sub": 3
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 37,
+    "nf4": 37,
+    "nf6_sub": 3
+   },
+   "reverse_oriented_total": 77
+  },
+  {
+   "chain_touch": 0,
+   "drop": "surrounds",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 20,
+    "nf4": 20
+   },
+   "keep": "surrounded_by__uberon",
+   "keep_nf3": 32,
+   "keep_nf4": 32,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 32,
+    "nf4": 32
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 20,
+    "nf4": 20
+   },
+   "reverse_oriented_total": 40
+  },
+  {
+   "chain_touch": 0,
+   "drop": "surrounded_by__uberon",
+   "drop_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 32,
+    "nf4": 32
+   },
+   "keep": "surrounds",
+   "keep_nf3": 20,
+   "keep_nf4": 20,
+   "keep_positions": {
+    "bridge_base": 1,
+    "bridge_head": 1,
+    "nf3": 20,
+    "nf4": 20
+   },
+   "must_rewrite_ground": 0,
+   "must_rewrite_residual": 0,
+   "reverse_oriented": {
+    "nf3": 32,
+    "nf4": 32
+   },
+   "reverse_oriented_total": 64
+  }
+ ],
+ "residual_shapes": {
+  "b0c0r0e0/h2c2r0e0": 6,
+  "b1c0r1e0/h1c1r0e0": 26,
+  "b1c1r0e0/h2c2r0e0": 117,
+  "b1c1r0e0/h3c3r0e0": 11,
+  "b1c1r0e0/h4c4r0e0": 1,
+  "b2c1r0e1/h0c0r0e0": 27,
+  "b4c2r2e0/h2c1r0e1": 6,
+  "b7c4r3e0/h3c0r0e3": 9
+ },
+ "residual_shapes_by_bridged_role": {},
+ "role_positions": {
+  "BFO_0000050": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 28826,
+   "nf4": 144130,
+   "nf6_sup": 10
+  },
+  "BFO_0000051": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 10256,
+   "nf4": 45127,
+   "nf6_sup": 1
+  },
+  "BFO_0000052": {
+   "nf3": 14628,
+   "nf4": 14628,
+   "nf6_sub": 1,
+   "nf6_sup": 1
+  },
+  "BFO_0000056": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "BFO_0000057": {
+   "nf3": 38,
+   "nf4": 38
+  },
+  "BFO_0000062": {
+   "domain": 3,
+   "nf3": 6,
+   "nf4": 19,
+   "nf6_sup": 1,
+   "residual_body": 1
+  },
+  "BFO_0000066": {
+   "nf3": 4,
+   "nf4": 4
+  },
+  "BFO_0000068": {
+   "nf3": 3,
+   "nf4": 7,
+   "nf6_sup": 1
+  },
+  "BFO_0000069": {
+   "nf3": 2,
+   "nf4": 4,
+   "nf6_sup": 1
+  },
+  "BFO_0000070": {
+   "nf3": 1138,
+   "nf4": 1138,
+   "nf6_sub": 1
+  },
+  "BSPO_0000096": {
+   "nf3": 6,
+   "nf4": 18,
+   "nf6_sup": 1
+  },
+  "BSPO_0000097": {
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sup": 1
+  },
+  "BSPO_0000098": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 4,
+   "nf4": 12
+  },
+  "BSPO_0000099": {
+   "nf3": 1,
+   "nf4": 3,
+   "nf6_sup": 1
+  },
+  "BSPO_0000100": {
+   "nf6_sup": 1
+  },
+  "BSPO_0000102": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 2,
+   "nf4": 6
+  },
+  "BSPO_0000107": {
+   "nf6_sup": 1
+  },
+  "BSPO_0000120": {
+   "nf3": 3,
+   "nf4": 3,
+   "nf6_sub": 1
+  },
+  "BSPO_0000121": {
+   "nf3": 4,
+   "nf4": 4,
+   "nf6_sub": 1
+  },
+  "BSPO_0000122": {
+   "nf6_sup": 1
+  },
+  "BSPO_0000123": {
+   "nf6_sup": 1
+  },
+  "BSPO_0000124": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sup": 1
+  },
+  "BSPO_0000125": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sup": 1
+  },
+  "BSPO_0001107": {
+   "nf6_sub": 2
+  },
+  "FMA_85972": {
+   "nf3": 55,
+   "nf4": 55
+  },
+  "FMA_86003": {
+   "domain": 1,
+   "nf3": 2,
+   "nf4": 2
+  },
+  "RO_0002131": {
+   "nf3": 55,
+   "nf4": 55
+  },
+  "RO_0002160": {
+   "nf3": 14,
+   "nf4": 14,
+   "nf6_sub": 1
+  },
+  "RO_0002162": {
+   "nf6_sup": 1
+  },
+  "RO_0002181": {
+   "nf3": 35,
+   "nf4": 35
+  },
+  "RO_0002200": {
+   "nf3": 14310,
+   "nf4": 28620
+  },
+  "RO_0002202": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 28826,
+   "nf4": 144130,
+   "nf6_sub": 1,
+   "nf6_sup": 1
+  },
+  "RO_0002203": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 102,
+   "nf4": 107
+  },
+  "RO_0002207": {
+   "nf4": 3
+  },
+  "RO_0002211": {
+   "nf3": 82,
+   "nf4": 82,
+   "nf6_sup": 2
+  },
+  "RO_0002212": {
+   "nf3": 6,
+   "nf4": 6,
+   "nf6_sub": 1
+  },
+  "RO_0002213": {
+   "nf3": 42,
+   "nf4": 42,
+   "nf6_sub": 1
+  },
+  "RO_0002215": {
+   "nf3": 144,
+   "nf4": 144
+  },
+  "RO_0002220": {
+   "nf3": 95,
+   "nf4": 90,
+   "nf6_sup": 1,
+   "residual_body": 5
+  },
+  "RO_0002225": {
+   "nf3": 3,
+   "nf4": 3,
+   "nf6_sub": 1
+  },
+  "RO_0002226": {
+   "nf3": 2,
+   "nf4": 2
+  },
+  "RO_0002254": {
+   "nf3": 49,
+   "nf4": 147,
+   "nf6_sup": 1
+  },
+  "RO_0002255": {
+   "nf3": 5,
+   "nf4": 5
+  },
+  "RO_0002285": {
+   "nf3": 5,
+   "nf4": 5
+  },
+  "RO_0002314": {
+   "nf6_sup": 1
+  },
+  "UBREL_0000001": {
+   "nf3": 24,
+   "nf4": 24,
+   "nf6_sub": 1,
+   "nf6_sup": 4
+  },
+  "UBREL_0000002": {
+   "nf3": 28826,
+   "nf4": 28826,
+   "nf6_sub": 1
+  },
+  "adheres_to": {
+   "nf3": 3,
+   "nf4": 3
+  },
+  "adjacent_to": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "after": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "anterior_part_of": {
+   "nf6_sub": 1
+  },
+  "anteriorly_connected_to": {
+   "nf3": 11,
+   "nf4": 11,
+   "nf6_sub": 3
+  },
+  "arterial_supply_of": {
+   "nf3": 6,
+   "nf4": 6
+  },
+  "attaches_to": {
+   "nf3": 64,
+   "nf4": 64
+  },
+  "attaches_to__uberon": {
+   "nf3": 21,
+   "nf4": 21,
+   "nf6_sub": 1,
+   "nf6_sup": 2
+  },
+  "bounded_by": {
+   "nf3": 81,
+   "nf4": 81
+  },
+  "branch_of": {
+   "nf3": 40,
+   "nf4": 40
+  },
+  "branch_of__uberon": {
+   "nf3": 13,
+   "nf4": 13,
+   "nf6_sub": 1
+  },
+  "channel_for": {
+   "domain": 1,
+   "nf3": 7,
+   "nf4": 7,
+   "residual_body": 1
+  },
+  "channels_from": {
+   "nf3": 14,
+   "nf4": 42
+  },
+  "channels_into": {
+   "nf3": 13,
+   "nf4": 39
+  },
+  "coincides_with": {
+   "domain": 1,
+   "nf3": 6,
+   "nf4": 6,
+   "nf6_sub": 2
+  },
+  "connects": {
+   "nf3": 79,
+   "nf4": 48,
+   "nf6_sup": 1,
+   "residual_body": 34
+  },
+  "constitutional_part_of": {
+   "nf3": 569,
+   "nf4": 569,
+   "nf6_sub": 1
+  },
+  "contained_in": {
+   "nf3": 3,
+   "nf4": 3
+  },
+  "contained_in__mp-equivalent-axioms-subq": {
+   "nf3": 3,
+   "nf4": 3
+  },
+  "contains": {
+   "nf3": 2,
+   "nf4": 2
+  },
+  "correlates_with": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "decreased_in_magnitude_relative_to": {
+   "domain": 2,
+   "nf3": 1,
+   "nf4": 4,
+   "nf6_sub": 1,
+   "residual_body": 1
+  },
+  "develops_from": {
+   "nf3": 115,
+   "nf4": 115
+  },
+  "develops_from__fma": {
+   "nf3": 4,
+   "nf4": 4
+  },
+  "different_in_magnitude_relative_to": {
+   "domain": 1,
+   "nf6_sup": 2,
+   "residual_body": 1
+  },
+  "directly_associated_with": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "directly_preceded_by": {
+   "domain": 1,
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sub": 1,
+   "residual_body": 1
+  },
+  "distal_part_of": {
+   "bridge_head": 1,
+   "nf6_sub": 1
+  },
+  "distally_connected_to": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 37,
+   "nf4": 37,
+   "nf6_sub": 3
+  },
+  "during": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "during__mp-equivalent-axioms-subq": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "efferent_to": {
+   "nf3": 6,
+   "nf4": 6
+  },
+  "encloses": {
+   "nf3": 3,
+   "nf4": 3
+  },
+  "existence_ends_at": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "existence_ends_before": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "existence_ends_with": {
+   "domain": 1,
+   "nf3": 3,
+   "nf4": 3,
+   "residual_body": 1
+  },
+  "existence_starts_after": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "existence_starts_and_ends_during": {
+   "domain": 1,
+   "nf3": 2,
+   "nf4": 2,
+   "nf6_sub": 2,
+   "residual_body": 1
+  },
+  "existence_starts_at": {
+   "domain": 1,
+   "nf4": 4,
+   "residual_body": 1
+  },
+  "existence_starts_or_ends_during": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "existence_starts_with": {
+   "domain": 1,
+   "nf3": 3,
+   "nf4": 3,
+   "residual_body": 1
+  },
+  "exists_during": {
+   "nf3": 7,
+   "nf4": 7
+  },
+  "exists_during__uberon": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "finishes": {
+   "domain": 1,
+   "nf6_sub": 1,
+   "nf6_sup": 1,
+   "residual_body": 1
+  },
+  "has_central_participant": {
+   "nf3": 39,
+   "nf4": 39
+  },
+  "has_central_participant__mp-equivalent-axioms-subq": {
+   "nf3": 109,
+   "nf4": 109
+  },
+  "has_cross_section": {
+   "nf3": 4,
+   "nf4": 4
+  },
+  "has_distal_part": {
+   "bridge_base": 1
+  },
+  "has_dividend_entity": {
+   "domain": 1
+  },
+  "has_dividend_quality": {
+   "domain": 1,
+   "nf6_sub": 1,
+   "residual_body": 1
+  },
+  "has_divisor_entity": {
+   "domain": 1
+  },
+  "has_divisor_quality": {
+   "domain": 1,
+   "nf6_sub": 1,
+   "residual_body": 1
+  },
+  "has_end": {
+   "domain": 1,
+   "nf3": 1,
+   "nf4": 1,
+   "residual_body": 1
+  },
+  "has_function_in": {
+   "nf3": 30,
+   "nf4": 30
+  },
+  "has_muscle_antagonist": {
+   "nf3": 13,
+   "nf4": 13
+  },
+  "has_muscle_insertion": {
+   "nf3": 34,
+   "nf4": 34,
+   "nf6_sub": 1
+  },
+  "has_muscle_nerve": {
+   "nf3": 14,
+   "nf4": 14
+  },
+  "has_muscle_origin": {
+   "nf3": 26,
+   "nf4": 26,
+   "nf6_sub": 1
+  },
+  "has_output": {
+   "nf3": 4,
+   "nf4": 4
+  },
+  "has_proximal_part": {
+   "bridge_base": 1
+  },
+  "has_quality": {
+   "nf3": 9,
+   "nf4": 9
+  },
+  "has_quality__uberon": {
+   "nf3": 4,
+   "nf4": 4
+  },
+  "has_ratio_quality": {
+   "domain": 1,
+   "nf6_sup": 2,
+   "residual_body": 1
+  },
+  "has_start": {
+   "domain": 1,
+   "nf3": 1,
+   "nf4": 3,
+   "residual_body": 1
+  },
+  "in_deep_part_of": {
+   "nf6_sub": 1
+  },
+  "in_superficial_part_of": {
+   "nf6_sub": 1
+  },
+  "increased_in_magnitude_relative_to": {
+   "domain": 2,
+   "nf3": 1,
+   "nf4": 4,
+   "nf6_sub": 1,
+   "residual_body": 1
+  },
+  "increases_population_size_of": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "induced_by": {
+   "nf3": 16,
+   "nf4": 16
+  },
+  "inversely_associated_with": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "location_of": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "occurs_in": {
+   "nf3": 7,
+   "nf4": 7
+  },
+  "output_of": {
+   "nf3": 5,
+   "nf4": 5
+  },
+  "posterior_part_of": {
+   "nf6_sub": 1
+  },
+  "posteriorly_connected_to": {
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sub": 2
+  },
+  "preceded_by": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "proximal_part_of": {
+   "bridge_head": 1,
+   "nf6_sub": 1
+  },
+  "proximally_connected_to": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 56,
+   "nf4": 56,
+   "nf6_sub": 3
+  },
+  "receives_input_from": {
+   "nf3": 183,
+   "nf4": 183
+  },
+  "reciprocal_of": {
+   "nf3": 5,
+   "nf4": 5
+  },
+  "regional_part_of": {
+   "nf3": 714,
+   "nf4": 714,
+   "nf6_sub": 1
+  },
+  "results_from": {
+   "nf3": 3,
+   "nf4": 3
+  },
+  "results_in": {
+   "nf3": 9,
+   "nf4": 9
+  },
+  "results_in_change_to": {
+   "nf3": 1,
+   "nf4": 1
+  },
+  "results_in_complete_development_of": {
+   "nf3": 2,
+   "nf4": 2
+  },
+  "results_in_death_of": {
+   "nf3": 2,
+   "nf4": 2
+  },
+  "results_in_directed_movement_of": {
+   "nf3": 5,
+   "nf4": 5
+  },
+  "secreted_by": {
+   "nf3": 11,
+   "nf4": 11
+  },
+  "secretes": {
+   "nf3": 13,
+   "nf4": 13
+  },
+  "similar_in_magnitude_relative_to": {
+   "domain": 1,
+   "residual_body": 1
+  },
+  "site_of": {
+   "nf3": 17,
+   "nf4": 17
+  },
+  "start_of": {
+   "domain": 2,
+   "nf4": 4,
+   "residual_body": 1
+  },
+  "starts": {
+   "domain": 1,
+   "nf3": 1,
+   "nf4": 1,
+   "nf6_sub": 1,
+   "nf6_sup": 1,
+   "residual_body": 1
+  },
+  "subdivision_of": {
+   "nf3": 32,
+   "nf4": 32
+  },
+  "surrounded_by": {
+   "nf3": 13,
+   "nf4": 13
+  },
+  "surrounded_by__uberon": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 32,
+   "nf4": 32
+  },
+  "surrounds": {
+   "bridge_base": 1,
+   "bridge_head": 1,
+   "nf3": 20,
+   "nf4": 20
+  },
+  "systemic_part_of": {
+   "nf3": 121,
+   "nf4": 121,
+   "nf6_sub": 1
+  },
+  "transitively_anteriorly_connected_to": {
+   "nf6_sup": 1
+  },
+  "transitively_connected_to": {
+   "nf6_sup": 1
+  },
+  "transitively_distally_connected_to": {
+   "nf3": 1,
+   "nf4": 3,
+   "nf6_sup": 1
+  },
+  "transitively_proximally_connected_to": {
+   "nf3": 1,
+   "nf4": 3,
+   "nf6_sup": 1
+  },
+  "tributary_of": {
+   "nf3": 9,
+   "nf4": 9
+  },
+  "tributary_of__uberon": {
+   "nf3": 2,
+   "nf4": 2
+  }
+ },
+ "roles": 151,
+ "witness_sharing": {
+  "roles": {
+   "BFO_0000050": {
+    "max": 5533,
+    "mean": 28.2,
+    "median": 5,
+    "min": 3,
+    "p90": 26,
+    "sampled": 400,
+    "witness_nodes": 28826
+   },
+   "BFO_0000051": {
+    "max": 2917,
+    "mean": 43.2,
+    "median": 4,
+    "min": 3,
+    "p90": 44,
+    "sampled": 400,
+    "witness_nodes": 10256
+   },
+   "BSPO_0000098": {
+    "max": 8,
+    "mean": 5.0,
+    "median": 6,
+    "min": 3,
+    "p90": 8,
+    "sampled": 4,
+    "witness_nodes": 4
+   },
+   "BSPO_0000102": {
+    "max": 6,
+    "mean": 5.0,
+    "median": 6,
+    "min": 4,
+    "p90": 6,
+    "sampled": 2,
+    "witness_nodes": 2
+   },
+   "BSPO_0000124": {
+    "max": 7,
+    "mean": 7.0,
+    "median": 7,
+    "min": 7,
+    "p90": 7,
+    "sampled": 1,
+    "witness_nodes": 1
+   },
+   "BSPO_0000125": {
+    "max": 7,
+    "mean": 7.0,
+    "median": 7,
+    "min": 7,
+    "p90": 7,
+    "sampled": 1,
+    "witness_nodes": 1
+   },
+   "RO_0002202": {
+    "max": 9456,
+    "mean": 40.4,
+    "median": 5,
+    "min": 3,
+    "p90": 25,
+    "sampled": 400,
+    "witness_nodes": 28826
+   },
+   "RO_0002203": {
+    "max": 13,
+    "mean": 3.7,
+    "median": 3,
+    "min": 2,
+    "p90": 5,
+    "sampled": 102,
+    "witness_nodes": 102
+   },
+   "distally_connected_to": {
+    "max": 41,
+    "mean": 5.5,
+    "median": 4,
+    "min": 2,
+    "p90": 9,
+    "sampled": 37,
+    "witness_nodes": 37
+   },
+   "proximally_connected_to": {
+    "max": 41,
+    "mean": 5.1,
+    "median": 3,
+    "min": 2,
+    "p90": 9,
+    "sampled": 56,
+    "witness_nodes": 56
+   },
+   "surrounded_by__uberon": {
+    "max": 230,
+    "mean": 13.5,
+    "median": 4,
+    "min": 2,
+    "p90": 14,
+    "sampled": 32,
+    "witness_nodes": 32
+   },
+   "surrounds": {
+    "max": 24,
+    "mean": 7.4,
+    "median": 5,
+    "min": 3,
+    "p90": 18,
+    "sampled": 20,
+    "witness_nodes": 20
+   }
+  },
+  "unit_subsumption_edges": 366957
+ }
+}

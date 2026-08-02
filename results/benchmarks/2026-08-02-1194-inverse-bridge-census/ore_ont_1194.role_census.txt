@@ -1,0 +1,87 @@
+clauses: 1062240   roles: 151
+clause kinds:
+  nf4                410281
+  nf1_nf2            391047
+  ex_role_half       130303
+  ex_filler_half     130303
+  residual           203
+  nf6                48
+  domain             35
+  inverse_bridge     14
+  nf5                6
+
+inverse-bridge clauses: 14
+  reciprocal pairs: 6  (12 clauses)
+    BFO_0000050 <-> BFO_0000051
+    BSPO_0000098 <-> BSPO_0000102
+    BSPO_0000124 <-> BSPO_0000125
+    RO_0002202 <-> RO_0002203
+    distally_connected_to <-> proximally_connected_to
+    surrounded_by__uberon <-> surrounds
+  one-way bridges: 2
+    has_distal_part- <= distal_part_of   (no converse clause)
+    has_proximal_part- <= proximal_part_of   (no converse clause)
+
+canonicalisation gates (rewrite drop(x,y) := keep(y,x)):
+  keep            drop              reverse  resid ground  chain
+  BFO_0000050     BFO_0000051         55384      0      0      0
+  BFO_0000051     BFO_0000050        172966      0      0      0
+  BSPO_0000098    BSPO_0000102            8      0      0      0
+  BSPO_0000102    BSPO_0000098           16      0      0      0
+  BSPO_0000124    BSPO_0000125            3      0      0      0
+  BSPO_0000125    BSPO_0000124            3      0      0      0
+  RO_0002202      RO_0002203            209      0      0      0
+  RO_0002203      RO_0002202         172958      0      0      0
+  distally_connected_toproximally_connected_to      115      0      0      0
+  proximally_connected_todistally_connected_to       77      0      0      0
+  surrounded_by__uberonsurrounds              40      0      0      0
+  surrounds       surrounded_by__uberon       64      0      0      0
+
+per-role positions (roles with the most occurrences):
+  BFO_0000050              nf3=28826 nf4=144130 nf6_sup=10 bridge_base=1 bridge_head=1
+  RO_0002202               nf3=28826 nf4=144130 nf6_sub=1 nf6_sup=1 bridge_base=1 bridge_head=1
+  UBREL_0000002            nf3=28826 nf4=28826 nf6_sub=1
+  BFO_0000051              nf3=10256 nf4=45127 nf6_sup=1 bridge_base=1 bridge_head=1
+  RO_0002200               nf3=14310 nf4=28620
+  BFO_0000052              nf3=14628 nf4=14628 nf6_sub=1 nf6_sup=1
+  BFO_0000070              nf3=1138 nf4=1138 nf6_sub=1
+  regional_part_of         nf3=714 nf4=714 nf6_sub=1
+  constitutional_part_of   nf3=569 nf4=569 nf6_sub=1
+  receives_input_from      nf3=183 nf4=183
+  RO_0002215               nf3=144 nf4=144
+  systemic_part_of         nf3=121 nf4=121 nf6_sub=1
+  develops_from            nf3=115 nf4=115
+  has_central_participant__mp-equivalent-axioms-subq nf3=109 nf4=109
+  RO_0002203               nf3=102 nf4=107 bridge_base=1 bridge_head=1
+  RO_0002254               nf3=49 nf4=147 nf6_sup=1
+  RO_0002220               nf3=95 nf4=90 nf6_sup=1 residual_body=5
+  RO_0002211               nf3=82 nf4=82 nf6_sup=2
+  bounded_by               nf3=81 nf4=81
+  connects                 nf3=79 nf4=48 nf6_sup=1 residual_body=34
+
+witness sharing (contexts per witness node, LOWER bound from 366957 unit subsumptions):
+  role                         nodes   min  median    p90     max     mean
+  BFO_0000050                  28826     3       5     26    5533     28.2
+  BFO_0000051                  10256     3       4     44    2917     43.2
+  BSPO_0000098                     4     3       6      8       8      5.0
+  BSPO_0000102                     2     4       6      6       6      5.0
+  BSPO_0000124                     1     7       7      7       7      7.0
+  BSPO_0000125                     1     7       7      7       7      7.0
+  RO_0002202                   28826     3       5     25    9456     40.4
+  RO_0002203                     102     2       3      5      13      3.7
+  distally_connected_to           37     2       4      9      41      5.5
+  proximally_connected_to         56     2       3      9      41      5.1
+  surrounded_by__uberon           32     2       4     14     230     13.5
+  surrounds                       20     3       5     18      24      7.4
+
+residual shape histogram:
+  b1c1r0e0/h2c2r0e0            117
+  b2c1r0e1/h0c0r0e0            27
+  b1c0r1e0/h1c1r0e0            26
+  b1c1r0e0/h3c3r0e0            11
+  b7c4r3e0/h3c0r0e3            9
+  b4c2r2e0/h2c1r0e1            6
+  b0c0r0e0/h2c2r0e0            6
+  b1c1r0e0/h4c4r0e0            1
+
+wrote results/benchmarks/2026-08-02-1194-inverse-bridge-census/ore_ont_1194.role_census.json
