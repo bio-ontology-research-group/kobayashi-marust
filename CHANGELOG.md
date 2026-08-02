@@ -9,6 +9,57 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Carry the repair certificate's enumeration index across rounds (2026-08-02)
+
+Profiling the `KM_ELC_CERT=2` repair on ore_ont_1194 moved the bottleneck. A
+repair round costs 1.5 seconds, of which 1.44 seconds is rebuilding the index
+the residual join enumerates over: one pass across every label of every live
+node for `members`, one across every edge of every live node for
+`edges_by_role` — 78.4M label entries and 43.9M edges, for a round that changes
+about 0.1M facts. Re-closing the repaired structure, the presumed cost, is 20
+milliseconds a round outside the two rounds that cascade. Each conflict-driven
+restart repeats sixteen such rounds before hitting the same ⊥ clause.
+
+The index is now built once per repair pass and refreshed from the round's
+delta. That is exact rather than approximate because both halves are defined by
+an outer loop over the live-node list: a `members` bucket is the subsequence of
+that list whose label holds the concept, so its order is the node order and a
+new member merges in at its position; a `edges_by_role` bucket also runs over
+nodes outermost but follows each node's own edge-set iteration inside one node,
+which an insert may permute, so it is reused only while an edge epoch shows no
+edge was added, removed, or re-cloned anywhere, and is rebuilt in full
+otherwise. A change to the live domain rebuilds both, since a node that dies
+has to leave every bucket. `State` carries the two signals: a label-addition
+journal, switched on only for a repair pass and capped so it cannot become a
+second copy of the label relation, and the edge epoch. The witness-mirror
+re-sync assigns whole sets, so it reports its own effect, and falls back to a
+full rebuild in the case its addition journal could not describe.
+
+Every index handed to the join is therefore the one a full rebuild would
+produce, contents and order included, so the violation enumeration order, the
+repair choices, the accepted models, the budgets, the caps, and the route
+eligibility are untouched. No calculus rule changed and no Lean
+re-certification is needed. `KM_ELC_CERT_AUDIT=1` compares every reused index
+against a full rebuild; through six completed restarts of 1194, no index
+differed. Six focused regressions cover the delta merge, the edge-epoch
+rebuild, a dying node, the mirror re-sync, invalidation, and a multi-round
+repair verdict.
+
+The exact 1194 gate is still a timeout, and this does not close it. In the same
+245-second budget the repair now completes six conflict-driven restarts where
+it completed three, and the banned-choice trace is identical restart for
+restart. Wall time is 245.41 against 245.39 seconds; peak RSS is 6,692,196
+against 6,725,988 KiB, 0.5% higher for the journal and the carried index. The
+complete release suite passes 1,949
+tests with zero failures and eight intentional ignores.
+
+What remains is not a constant factor. Every restart bans one disjunct at one
+node, and 1194 keeps conflicting on the same residual clause 149, first at
+`FMA_35225` and later at other nodes. An extended diagnostic reached 30
+restarts against a restart cap of 64 without the pass converging before it was
+stopped. Closing 1194 through this route needs the conflict analysis to
+generalise a banned choice, not faster restarts.
+
 ### Index EL backward links by exact role (2026-08-01)
 
 EL completion now stores predecessor links under the exact `(target, role)`

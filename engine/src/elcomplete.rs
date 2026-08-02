@@ -1005,27 +1005,63 @@ struct State {
     // 400k-node giant pays only for the contexts that actually carry fillers.
     prop: HashMap<(u32, u32), Vec<u32>>,
     worklist: VecDeque<Item>,
+    // ----- certificate-repair bookkeeping (inert during base saturation) -----
+    // Journal of the `sub_super` entries added since it was last drained, so the
+    // certificate's enumeration index can be refreshed from the delta instead of
+    // rescanning every label. `None` (the base-saturation setting) records
+    // nothing: the journal is switched on only for the duration of a repair pass,
+    // where the per-round delta is four orders of magnitude smaller than the
+    // saturated state. Capped at [`SUB_JOURNAL_CAP`] so a runaway round cannot
+    // turn the journal into a second copy of the label relation; a full journal
+    // reads back as "no delta", i.e. one full rescan.
+    sub_journal: Option<Vec<(u32, u32)>>,
+    // Bumped on every structural change to `edges` (a successful insert, the
+    // explicit removals in `merge_nodes`, and a witness-mirror re-sync that
+    // actually changes the target's iteration sequence). Equal epochs therefore
+    // certify that every `edges[c]` iterates exactly as it did before, which is
+    // what the certificate's role-keyed edge index is built from.
+    edge_epoch: u64,
 }
 
+/// Ceiling on `State::sub_journal`. Above it the delta is no cheaper to merge
+/// than the labels are to rescan, so the journal stops recording and the
+/// certificate index falls back to a full rebuild.
+const SUB_JOURNAL_CAP: usize = 8_000_000;
+
 impl State {
-    /// Body of `add_sub` over the two fields it actually touches, so a rule
-    /// can add conclusions while another field of the state (e.g. `prop`) is
-    /// still immutably borrowed.
+    /// Body of `add_sub` over the fields it actually touches, so a rule can add
+    /// conclusions while another field of the state (e.g. `prop`) is still
+    /// immutably borrowed.
     #[inline]
     fn add_sub_parts(
         sub_super: &mut [HashSet<u32>],
         worklist: &mut VecDeque<Item>,
+        journal: &mut Option<Vec<(u32, u32)>>,
         c: u32,
         d: u32,
     ) {
         if sub_super[c as usize].insert(d) {
             worklist.push_back(Item::Sub(c, d));
+            if let Some(j) = journal {
+                // A round that adds more than this is cheaper to re-index by a
+                // full rescan than by a merge, so the journal stops at the cap
+                // and the reader treats a full journal as "rebuild".
+                if j.len() < SUB_JOURNAL_CAP {
+                    j.push((c, d));
+                }
+            }
         }
     }
 
     #[inline]
     fn add_sub(&mut self, c: u32, d: u32) {
-        Self::add_sub_parts(&mut self.sub_super, &mut self.worklist, c, d);
+        Self::add_sub_parts(
+            &mut self.sub_super,
+            &mut self.worklist,
+            &mut self.sub_journal,
+            c,
+            d,
+        );
     }
 
     /// Edge-side NF4 join, in place: fire the propagations `prop[(d,r)]` into
@@ -1043,7 +1079,13 @@ impl State {
             return 0;
         };
         for &sup in es {
-            Self::add_sub_parts(&mut self.sub_super, &mut self.worklist, c, sup);
+            Self::add_sub_parts(
+                &mut self.sub_super,
+                &mut self.worklist,
+                &mut self.sub_journal,
+                c,
+                sup,
+            );
         }
         es.len() as u64
     }
@@ -1051,6 +1093,7 @@ impl State {
     #[inline]
     fn add_edge(&mut self, c: u32, r: u32, d: u32) {
         if self.edges[c as usize].insert((r, d)) {
+            self.edge_epoch += 1;
             let parents = self.in_by_role.entry((d, r)).or_default();
             if parents.is_empty() {
                 self.in_roles[d as usize].push(r);
@@ -1071,7 +1114,24 @@ impl State {
             in_roles: self.in_roles.clone(),
             prop: self.prop.clone(),
             worklist: VecDeque::new(),
+            sub_journal: None,
+            edge_epoch: self.edge_epoch,
         }
+    }
+
+    /// Start journalling `sub_super` additions, for the duration of one repair
+    /// pass. Off everywhere else, including in the base saturation this forks.
+    fn start_journal(&mut self) {
+        self.sub_journal = Some(Vec::new());
+    }
+
+    /// Take the additions journalled since the last drain, leaving journalling
+    /// on. `None` means "no usable delta" — journalling is off, or the round
+    /// overran [`SUB_JOURNAL_CAP`] and the journal is no longer complete.
+    fn drain_journal(&mut self) -> Option<Vec<(u32, u32)>> {
+        self.sub_journal
+            .replace(Vec::new())
+            .filter(|j| j.len() < SUB_JOURNAL_CAP)
     }
 }
 
@@ -1176,6 +1236,8 @@ fn init_state(nfs: &Nfs, n: usize) -> State {
         in_roles: vec![Vec::new(); n],
         prop: HashMap::default(),
         worklist: VecDeque::new(),
+        sub_journal: None,
+        edge_epoch: 0,
     };
     for &c in &nfs.concept_names {
         if c == BOTTOM {
@@ -1261,13 +1323,20 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         in_by_role,
                         in_roles,
                         worklist,
+                        sub_journal,
                         ..
                     } = &mut *st;
                     for &role in &in_roles[c as usize] {
                         if let Some(parents) = in_by_role.get(&(c, role)) {
                             prof.botback += parents.len() as u64;
                             for &parent in parents {
-                                State::add_sub_parts(sub_super, worklist, parent, BOTTOM);
+                                State::add_sub_parts(
+                                    sub_super,
+                                    worklist,
+                                    sub_journal,
+                                    parent,
+                                    BOTTOM,
+                                );
                             }
                         }
                     }
@@ -1298,6 +1367,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                         sub_super,
                         in_by_role,
                         worklist,
+                        sub_journal,
                         ..
                     } = &mut *st;
                     // `axs` is role-sorted (build_idx), so each iteration handles
@@ -1310,7 +1380,13 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                             prof.nf4_sub_scan += (parents.len() * (hi - lo)) as u64;
                             for &parent in parents {
                                 for &(_, e) in &axs[lo..hi] {
-                                    State::add_sub_parts(sub_super, worklist, parent, e);
+                                    State::add_sub_parts(
+                                        sub_super,
+                                        worklist,
+                                        sub_journal,
+                                        parent,
+                                        e,
+                                    );
                                 }
                             }
                         }
@@ -1592,6 +1668,216 @@ fn compile_residual(
 /// uncollected remainder is caught by the recheck after this round's repairs.
 const REPAIR_VIOL_CAP: usize = 100_000;
 
+/// The body-atom enumeration index [`cert_round`] joins over, kept across the
+/// rounds of one repair pass.
+///
+/// Built from scratch a round costs one pass over every label of every live
+/// node (`members`) plus one over every edge of every live node
+/// (`edges_by_role`). On ore_ont_1194 that is 78M label entries and 44M edges,
+/// 1.4 s of the 1.5 s a repair round takes — paid again for all 16 rounds of
+/// every conflict-driven restart, even though a round changes ~0.1M facts.
+/// Refreshing from the round's delta is EXACT, not an approximation, because
+/// both indexes are defined by an outer loop over `nodes`:
+///
+/// * `members[s]` is the subsequence of `nodes` whose label contains `s`. Its
+///   order is `nodes` order — the inner `sub_super[c]` iteration only decides
+///   which bucket an entry lands in, never its position within one — so a new
+///   member merged in at its `nodes` position gives a bucket bit-identical to
+///   a rebuild.
+/// * `edges_by_role[r]` also runs over `nodes` outermost, but within a node it
+///   follows `edges[c]`'s own iteration order, which an insert may permute.
+///   It is therefore reused only while `State::edge_epoch` is unchanged (no
+///   edge added, removed, or re-cloned anywhere) and rebuilt in full otherwise.
+///
+/// A change to the live domain invalidates both — a node that dies has to
+/// leave every bucket — so those rounds rebuild from scratch as well. Every
+/// index this hands to the join is thus the one a full rebuild would produce,
+/// which is what keeps the violation enumeration order, and with it the repair
+/// choices and the accepted models, unchanged.
+#[derive(Default)]
+struct CertIdx {
+    alive: Vec<bool>,
+    nodes: Vec<u32>,
+    /// position of each node in `nodes`; `u32::MAX` for everything else
+    npos: Vec<u32>,
+    needed_c: HashSet<u32>,
+    needed_r: HashSet<u32>,
+    members: HashMap<u32, Vec<u32>>,
+    edges_by_role: HashMap<u32, Vec<(u32, u32)>>,
+    /// `State::edge_epoch` when `edges_by_role` was last built
+    edge_epoch: u64,
+    built: bool,
+}
+
+/// A caller's offer to refresh [`CertIdx`] incrementally: the index itself, the
+/// `sub_super` additions since it was last refreshed (`None` forces a full
+/// rebuild) and the state's current edge epoch.
+struct CertReuse<'a> {
+    idx: &'a mut CertIdx,
+    delta: Option<&'a [(u32, u32)]>,
+    edge_epoch: u64,
+}
+
+impl CertIdx {
+    /// Discard everything: the next refresh rebuilds from the structure. For
+    /// the callers that mutate the structure in a way no delta can describe.
+    fn invalidate(&mut self) {
+        self.built = false;
+    }
+
+    fn build_members(&mut self, sub_super: &[HashSet<u32>]) {
+        self.members = HashMap::default();
+        for &c in &self.nodes {
+            for &s in &sub_super[c as usize] {
+                if self.needed_c.contains(&s) {
+                    self.members.entry(s).or_default().push(c);
+                }
+            }
+        }
+    }
+
+    fn build_edges(&mut self, edges: &[HashSet<(u32, u32)>]) {
+        self.edges_by_role = HashMap::default();
+        for &c in &self.nodes {
+            for &(r, d) in &edges[c as usize] {
+                if self.needed_r.contains(&r) && self.alive[d as usize] {
+                    self.edges_by_role.entry(r).or_default().push((c, d));
+                }
+            }
+        }
+    }
+
+    /// Merge the round's new memberships into the existing buckets at their
+    /// `nodes` positions. Entries already present are dropped, so the result is
+    /// the same list `build_members` would produce over the new labels.
+    fn merge_members(&mut self, delta: &[(u32, u32)]) {
+        let CertIdx {
+            npos,
+            needed_c,
+            members,
+            ..
+        } = self;
+        let mut fresh: HashMap<u32, Vec<u32>> = HashMap::default();
+        for &(c, s) in delta {
+            if needed_c.contains(&s) && npos[c as usize] != u32::MAX {
+                fresh.entry(s).or_default().push(c);
+            }
+        }
+        for (s, mut add) in fresh {
+            add.sort_unstable_by_key(|&c| npos[c as usize]);
+            add.dedup();
+            let bucket = members.entry(s).or_default();
+            let mut out: Vec<u32> = Vec::with_capacity(bucket.len() + add.len());
+            let (mut i, mut j) = (0usize, 0usize);
+            while i < bucket.len() && j < add.len() {
+                let (pi, pj) = (npos[bucket[i] as usize], npos[add[j] as usize]);
+                match pi.cmp(&pj) {
+                    std::cmp::Ordering::Less => {
+                        out.push(bucket[i]);
+                        i += 1;
+                    }
+                    std::cmp::Ordering::Greater => {
+                        out.push(add[j]);
+                        j += 1;
+                    }
+                    std::cmp::Ordering::Equal => {
+                        out.push(bucket[i]);
+                        i += 1;
+                        j += 1;
+                    }
+                }
+            }
+            out.extend_from_slice(&bucket[i..]);
+            out.extend_from_slice(&add[j..]);
+            *bucket = out;
+        }
+    }
+
+    fn refresh(
+        &mut self,
+        rcs: &[RClause],
+        concept_names: &HashSet<u32>,
+        sub_super: &[HashSet<u32>],
+        edges: &[HashSet<(u32, u32)>],
+        delta: Option<&[(u32, u32)]>,
+        edge_epoch: u64,
+    ) {
+        let n = sub_super.len();
+        if !self.built {
+            for rc in rcs {
+                for a in &rc.body {
+                    match a {
+                        RAtom::C { cid, .. } => {
+                            self.needed_c.insert(*cid);
+                        }
+                        RAtom::R { rid, .. } => {
+                            self.needed_r.insert(*rid);
+                        }
+                        RAtom::Eq { .. } => {}
+                    }
+                }
+            }
+        }
+        // domain: satisfiable concept nodes
+        let mut alive = vec![false; n];
+        let mut nodes: Vec<u32> = Vec::new();
+        for &cn in concept_names {
+            if cn != BOTTOM && !sub_super[cn as usize].contains(&BOTTOM) {
+                alive[cn as usize] = true;
+                nodes.push(cn);
+            }
+        }
+        if !self.built || self.nodes != nodes {
+            self.npos = vec![u32::MAX; n];
+            for (i, &c) in nodes.iter().enumerate() {
+                self.npos[c as usize] = i as u32;
+            }
+            self.alive = alive;
+            self.nodes = nodes;
+            self.build_members(sub_super);
+            self.build_edges(edges);
+            self.edge_epoch = edge_epoch;
+            self.built = true;
+            return;
+        }
+        match delta {
+            Some(d) => self.merge_members(d),
+            None => self.build_members(sub_super),
+        }
+        if self.edge_epoch != edge_epoch {
+            self.build_edges(edges);
+            self.edge_epoch = edge_epoch;
+        }
+        if cert_audit() {
+            self.audit(sub_super, edges);
+        }
+    }
+
+    /// `KM_ELC_CERT_AUDIT=1`: assert that the refreshed index is the one a full
+    /// rebuild would have produced, bucket contents and order included. Costs a
+    /// full rebuild per round, so it is opt-in — it exists to check the reuse
+    /// against the real repair traces, not to run in production.
+    fn audit(&mut self, sub_super: &[HashSet<u32>], edges: &[HashSet<(u32, u32)>]) {
+        let members = std::mem::take(&mut self.members);
+        let edges_by_role = std::mem::take(&mut self.edges_by_role);
+        self.build_members(sub_super);
+        self.build_edges(edges);
+        assert_eq!(
+            members, self.members,
+            "KM_ELC_CERT_AUDIT: reused `members` differs from a rebuild"
+        );
+        assert_eq!(
+            edges_by_role, self.edges_by_role,
+            "KM_ELC_CERT_AUDIT: reused `edges_by_role` differs from a rebuild"
+        );
+    }
+}
+
+fn cert_audit() -> bool {
+    static AUDIT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AUDIT.get_or_init(|| std::env::var_os("KM_ELC_CERT_AUDIT").is_some())
+}
+
 /// One certificate round over the structure `(sub_super, edges)`.
 ///
 /// With `collect == None` this is the plain check: `true` iff every residual
@@ -1615,49 +1901,24 @@ fn cert_round(
     budget: &mut u64,
     mut collect: Option<&mut Vec<(usize, Vec<u32>)>>,
     debug: bool,
+    // the caller's cross-round enumeration index; `None` builds a throwaway one
+    reuse: Option<CertReuse<'_>>,
 ) -> bool {
-    let n = sub_super.len();
-    // domain: satisfiable concept nodes
-    let mut alive = vec![false; n];
-    let mut nodes: Vec<u32> = Vec::new();
-    for &cn in concept_names {
-        if cn != BOTTOM && !sub_super[cn as usize].contains(&BOTTOM) {
-            alive[cn as usize] = true;
-            nodes.push(cn);
-        }
-    }
-    // enumeration indexes for the body atoms
-    let mut needed_c: HashSet<u32> = HashSet::default();
-    let mut needed_r: HashSet<u32> = HashSet::default();
-    for rc in rcs {
-        for a in &rc.body {
-            match a {
-                RAtom::C { cid, .. } => {
-                    needed_c.insert(*cid);
-                }
-                RAtom::R { rid, .. } => {
-                    needed_r.insert(*rid);
-                }
-                RAtom::Eq { .. } => {}
-            }
-        }
-    }
-    let mut members: HashMap<u32, Vec<u32>> = HashMap::default();
-    for &c in &nodes {
-        for &s in &sub_super[c as usize] {
-            if needed_c.contains(&s) {
-                members.entry(s).or_default().push(c);
-            }
-        }
-    }
-    let mut edges_by_role: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
-    for &c in &nodes {
-        for &(r, d) in &edges[c as usize] {
-            if needed_r.contains(&r) && alive[d as usize] {
-                edges_by_role.entry(r).or_default().push((c, d));
-            }
-        }
-    }
+    // enumeration indexes for the body atoms, over the domain of satisfiable
+    // concept nodes
+    let mut scratch = CertIdx::default();
+    let (idx, delta, epoch) = match reuse {
+        Some(r) => (r.idx, r.delta, r.edge_epoch),
+        None => (&mut scratch, None, 0),
+    };
+    idx.refresh(rcs, concept_names, sub_super, edges, delta, epoch);
+    let CertIdx {
+        alive,
+        nodes,
+        members,
+        edges_by_role,
+        ..
+    } = &*idx;
     let empty_m: Vec<u32> = Vec::new();
     let empty_e: Vec<(u32, u32)> = Vec::new();
 
@@ -2007,13 +2268,13 @@ fn cert_round(
             &order,
             0,
             &mut asg,
-            &nodes,
-            &alive,
+            nodes,
+            alive,
             sub_super,
             edges,
             repr,
-            &members,
-            &edges_by_role,
+            members,
+            edges_by_role,
             &empty_m,
             &empty_e,
             budget,
@@ -2064,6 +2325,7 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> boo
         &mut budget,
         None,
         debug,
+        None,
     )
 }
 
@@ -2127,7 +2389,9 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
             continue;
         };
         for src in srcs {
-            st.edges[src as usize].remove(&(r, b));
+            if st.edges[src as usize].remove(&(r, b)) {
+                st.edge_epoch += 1;
+            }
             st.add_edge(src, r, a);
         }
     }
@@ -2200,6 +2464,11 @@ fn repair_certify(
                     tolerate_deaths: bool|
      -> PassOut {
         let mut st = base.fork();
+        // Journal label additions and reuse one enumeration index for the whole
+        // pass: every round would otherwise rescan the entire structure to
+        // rebuild an index a round changes only marginally (see [`CertIdx`]).
+        st.start_journal();
+        let mut cidx = CertIdx::default();
         let mut budget: u64 = 400_000_000;
         let mut adds: u64 = 0;
         let mut repr: Vec<u32> = (0..n as u32).collect();
@@ -2212,6 +2481,8 @@ fn repair_certify(
         for round in 1..=MAX_ROUNDS {
             let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
             let crep: Vec<u32> = (0..n as u32).map(|i| uf_find(&mut repr, i)).collect();
+            let delta = st.drain_journal();
+            let epoch = st.edge_epoch;
             let clean = cert_round(
                 rcs,
                 &nfs.concept_names,
@@ -2221,6 +2492,11 @@ fn repair_certify(
                 &mut budget,
                 Some(&mut viols),
                 false,
+                Some(CertReuse {
+                    idx: &mut cidx,
+                    delta: delta.as_deref(),
+                    edge_epoch: epoch,
+                }),
             );
             if clean {
                 if adds == 0 {
@@ -2426,8 +2702,46 @@ fn repair_certify(
             for &b in &merged {
                 let a = uf_find(&mut repr, b);
                 if a != b {
+                    // The re-sync itself is unchanged; what is added is the
+                    // record of whether it actually moved the mirror. An
+                    // assignment that reproduces the sequence the mirror already
+                    // iterates leaves both certificate indexes exactly as they
+                    // were, and so is not reported.
+                    let subs_moved = !st.sub_super[b as usize]
+                        .iter()
+                        .eq(st.sub_super[a as usize].iter());
+                    if subs_moved
+                        && st.sub_super[b as usize]
+                            .iter()
+                            .any(|s| !st.sub_super[a as usize].contains(s))
+                    {
+                        // The mirror only ever GAINS labels: `merge_nodes` folds
+                        // b's label into a's, b keeps no backward links, and
+                        // every rule that fires on b fires on a over the mirrored
+                        // edges, so at fixpoint label(b) ⊆ label(a). Were that
+                        // ever to fail, this assignment would also delete from
+                        // the mirror — which an addition journal cannot express —
+                        // so drop the index and rebuild instead of patching it.
+                        cidx.invalidate();
+                    }
                     st.sub_super[b as usize] = st.sub_super[a as usize].clone();
+                    if subs_moved {
+                        let State {
+                            sub_super,
+                            sub_journal,
+                            ..
+                        } = &mut st;
+                        if let Some(j) = sub_journal.as_mut() {
+                            for &s in &sub_super[b as usize] {
+                                j.push((b, s));
+                            }
+                        }
+                    }
+                    let edges_moved = !st.edges[b as usize].iter().eq(st.edges[a as usize].iter());
                     st.edges[b as usize] = st.edges[a as usize].clone();
+                    if edges_moved {
+                        st.edge_epoch += 1;
+                    }
                 }
             }
             // a repair choice cascaded a base-satisfiable named witness to ⊥:
@@ -4304,6 +4618,8 @@ mod tests {
             in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
             worklist: VecDeque::new(),
+            sub_journal: None,
+            edge_epoch: 0,
         }
     }
 
@@ -4764,5 +5080,260 @@ mod tests {
             "completing the existential must restart the completion"
         );
         assert_eq!(inc.is_subsumed_by("X", "E"), Some(true));
+    }
+
+    // -----------------------------------------------------------------------
+    // Cross-round reuse of the certificate's enumeration index
+    // -----------------------------------------------------------------------
+
+    /// `body -> head` over `nvars` unpinned variables.
+    fn rcl(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>) -> RClause {
+        RClause {
+            nvars,
+            body,
+            head,
+            pins: Vec::new(),
+        }
+    }
+
+    /// The index a round would build from scratch over the current structure.
+    fn rebuilt_idx(rcs: &[RClause], names: &HashSet<u32>, st: &State) -> CertIdx {
+        let mut idx = CertIdx::default();
+        idx.refresh(rcs, names, &st.sub_super, &st.edges, None, st.edge_epoch);
+        idx
+    }
+
+    /// Everything the join reads out of the index, order included.
+    fn assert_same_idx(reused: &CertIdx, rebuilt: &CertIdx) {
+        assert_eq!(reused.nodes, rebuilt.nodes, "domain differs");
+        assert_eq!(reused.alive, rebuilt.alive, "alive flags differ");
+        assert_eq!(reused.members, rebuilt.members, "`members` differs");
+        assert_eq!(
+            reused.edges_by_role, rebuilt.edges_by_role,
+            "`edges_by_role` differs"
+        );
+    }
+
+    /// Residual shape exercising both index halves: a concept body atom and a
+    /// role body atom, over four named nodes.
+    fn idx_fixture() -> (Vec<RClause>, HashSet<u32>, State) {
+        const R: u32 = 1;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const P: u32 = 4;
+        const Q: u32 = 5;
+        const S: u32 = 6;
+        let rcs = vec![
+            rcl(
+                1,
+                vec![RAtom::C { cid: A, v: 0 }],
+                vec![RAtom::C { cid: B, v: 0 }],
+            ),
+            rcl(
+                2,
+                vec![RAtom::R { rid: R, s: 0, t: 1 }, RAtom::C { cid: B, v: 1 }],
+                vec![RAtom::C { cid: A, v: 0 }],
+            ),
+        ];
+        let names: HashSet<u32> = [P, Q, S, A, B].into_iter().collect();
+        let mut st = blank_state(8);
+        for &n in &[P, Q, S, A, B] {
+            st.add_sub(n, n);
+        }
+        st.add_edge(P, R, Q);
+        st.add_edge(Q, R, S);
+        st.worklist.clear();
+        (rcs, names, st)
+    }
+
+    #[test]
+    fn cert_index_reuse_matches_a_rebuild_after_new_labels() {
+        // The repair's own additions are the common case: labels grow, the
+        // domain and the edges do not. The delta-merged `members` must be the
+        // list a rebuild produces, in `nodes` order and without duplicates —
+        // that order is what fixes which violations the round's cap collects.
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const P: u32 = 4;
+        const Q: u32 = 5;
+        const S: u32 = 6;
+        let (rcs, names, mut st) = idx_fixture();
+        let mut idx = CertIdx::default();
+        idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+
+        st.start_journal();
+        // out of `nodes` order on purpose, and one addition already present
+        for (n, l) in [(S, A), (P, A), (Q, B), (P, A), (S, B), (A, A)] {
+            st.add_sub(n, l);
+        }
+        let delta = st.drain_journal().expect("journalling is on");
+        idx.refresh(
+            &rcs,
+            &names,
+            &st.sub_super,
+            &st.edges,
+            Some(&delta),
+            st.edge_epoch,
+        );
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+        assert!(idx.members[&A].len() >= 3, "the new members must be indexed");
+    }
+
+    #[test]
+    fn cert_index_reuse_rebuilds_the_edge_half_when_an_edge_arrives() {
+        // A new edge can permute `edges[c]`'s iteration order, so the role
+        // index cannot be patched — the epoch must force it to be rebuilt.
+        const R: u32 = 1;
+        const B: u32 = 3;
+        const P: u32 = 4;
+        const S: u32 = 6;
+        let (rcs, names, mut st) = idx_fixture();
+        let mut idx = CertIdx::default();
+        idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+        let before = st.edge_epoch;
+
+        st.start_journal();
+        st.add_edge(P, R, S);
+        st.add_sub(S, B);
+        assert_ne!(st.edge_epoch, before, "a new edge must move the epoch");
+        let delta = st.drain_journal().expect("journalling is on");
+        idx.refresh(
+            &rcs,
+            &names,
+            &st.sub_super,
+            &st.edges,
+            Some(&delta),
+            st.edge_epoch,
+        );
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+    }
+
+    #[test]
+    fn cert_index_reuse_rebuilds_both_halves_when_a_node_dies() {
+        // A node driven to ⊥ leaves the domain, so it has to leave every
+        // `members` bucket and every edge pair that mentions it. That is not a
+        // delta the merge can express: the refresh must fall back to a rebuild.
+        const A: u32 = 2;
+        const Q: u32 = 5;
+        let (rcs, names, mut st) = idx_fixture();
+        let mut idx = CertIdx::default();
+        idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+
+        st.start_journal();
+        st.add_sub(Q, A);
+        st.add_sub(Q, BOTTOM);
+        let delta = st.drain_journal().expect("journalling is on");
+        idx.refresh(
+            &rcs,
+            &names,
+            &st.sub_super,
+            &st.edges,
+            Some(&delta),
+            st.edge_epoch,
+        );
+        assert!(!idx.nodes.contains(&Q), "the dead node must leave the domain");
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+    }
+
+    #[test]
+    fn cert_index_reuse_tracks_a_witness_mirror_resync() {
+        // The repair's merge re-syncs a merged-away node as a mirror of its
+        // representative by wholesale assignment, which bypasses `add_sub` and
+        // `add_edge`. The pass records that itself; here we check the two
+        // signals it relies on — a moved label set is journalled, a moved edge
+        // set moves the epoch — reproduce a rebuild.
+        const R: u32 = 1;
+        const A: u32 = 2;
+        const B: u32 = 3;
+        const P: u32 = 4;
+        const Q: u32 = 5;
+        const S: u32 = 6;
+        let (rcs, names, mut st) = idx_fixture();
+        st.add_sub(P, A);
+        st.add_sub(P, B);
+        st.add_edge(P, R, S);
+        st.worklist.clear();
+        let mut idx = CertIdx::default();
+        idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+
+        st.start_journal();
+        // exactly the mirror re-sync the repair pass performs for Q -> P
+        let subs_moved = !st.sub_super[Q as usize].iter().eq(st.sub_super[P as usize].iter());
+        st.sub_super[Q as usize] = st.sub_super[P as usize].clone();
+        if subs_moved {
+            let State {
+                sub_super,
+                sub_journal,
+                ..
+            } = &mut st;
+            if let Some(j) = sub_journal.as_mut() {
+                for &s in &sub_super[Q as usize] {
+                    j.push((Q, s));
+                }
+            }
+        }
+        let edges_moved = !st.edges[Q as usize].iter().eq(st.edges[P as usize].iter());
+        st.edges[Q as usize] = st.edges[P as usize].clone();
+        if edges_moved {
+            st.edge_epoch += 1;
+        }
+        let delta = st.drain_journal().expect("journalling is on");
+        idx.refresh(
+            &rcs,
+            &names,
+            &st.sub_super,
+            &st.edges,
+            Some(&delta),
+            st.edge_epoch,
+        );
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+    }
+
+    #[test]
+    fn cert_index_invalidation_discards_a_stale_delta() {
+        // The escape hatch the mirror re-sync uses when it would DELETE from a
+        // label: after `invalidate` the next refresh must ignore whatever delta
+        // it is handed and rebuild from the structure.
+        const A: u32 = 2;
+        const P: u32 = 4;
+        const S: u32 = 6;
+        let (rcs, names, mut st) = idx_fixture();
+        let mut idx = CertIdx::default();
+        idx.refresh(&rcs, &names, &st.sub_super, &st.edges, None, st.edge_epoch);
+
+        // a label change the delta does not mention
+        st.sub_super[P as usize].insert(A);
+        idx.invalidate();
+        let stale = vec![(S, A)];
+        idx.refresh(
+            &rcs,
+            &names,
+            &st.sub_super,
+            &st.edges,
+            Some(&stale),
+            st.edge_epoch,
+        );
+        assert_same_idx(&idx, &rebuilt_idx(&rcs, &names, &st));
+    }
+
+    #[test]
+    fn cert_index_reuse_keeps_the_multi_round_repair_verdict() {
+        // End to end over a repair that needs more than one round: the same
+        // clause set the stale-cover test uses, which forces a residual, then
+        // re-checks the cover against the incrementally repaired state. The
+        // index is now carried across those rounds, so the verdict pins that
+        // the carried index still drives the same choices.
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("C", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("C", "x")], &[cf("D", "f", "x")]),
+            cl(&[r("R", "x", "y")], &[c("A", "y")]),
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[]),
+        ));
+        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(!res.inconsistent);
+        assert_eq!(res.unresolved, vec!["D".to_string()]);
     }
 }
