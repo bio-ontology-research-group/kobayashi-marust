@@ -1,0 +1,34 @@
+KM_ELC_TIMING read=0.19s (257 MB)
+KM_ELC_TIMING parse=2.95s (1062240 clauses)
+KM_ELC_CERT inverse pair BFO_0000050/BFO_0000051: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT inverse pair BSPO_0000098/BSPO_0000102: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT inverse pair BSPO_0000124/BSPO_0000125: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT inverse pair RO_0002202/RO_0002203: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT inverse pair distally_connected_to/proximally_connected_to: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT inverse pair surrounded_by__uberon/surrounds: neither orientation is exact (both sides carry EL rules); bridges kept in the residual
+KM_ELC_CERT bridge prep: 52 clause(s) removed (1062240 -> 1062188), 25 head-free role(s), 0 inverse pair(s) oriented
+KM_ELC_CERT checking 202 residual clauses
+Command exited with non-zero status 124
+	Command being timed: "/usr/bin/timeout --signal=INT --kill-after=10s 240 env KM_ELC_CERT=2 KM_ELC_DEBUG=1 KM_ELC_TIMING=1 /home/leechuck/km-frontend/kobayashi-marust/engine/target/release/elc"
+	User time (seconds): 224.96
+	System time (seconds): 15.43
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:00.43
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 6270692
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 7190606
+	Voluntary context switches: 4
+	Involuntary context switches: 989
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 124

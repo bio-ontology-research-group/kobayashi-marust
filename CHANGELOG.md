@@ -76,6 +76,75 @@ base saturation plus one EL re-closure after mirroring an inverse role bridge.
 The rotated residual scan measured alongside it is not part of this change. The
 automatic route for 1194 is `nominals`, which sets `KM_NO_ELC=1`, so no
 certificate worker runs there and the production row is unchanged.
+### Exact inverse-bridge preprocessing, and why orienting a pair is unsound (2026-08-02)
+
+`InverseObjectProperties(R S)` clausifies to the bridge pair `R(x,y) → S(y,x)`
+and `S(x,y) → R(y,x)`. Neither is an EL normal form, so both reach the residual
+and the certificate has to satisfy them over the canonical model, which means
+mirroring a role graph that on ore_ont_1194 holds 44.2M edges. The standing plan
+was to remove them by substitution: the two bridges pin `S = R⁻`, so rewrite
+every `S(a,b)` as `R(b,a)`, drop the bridges as tautologies, and teach the
+completion the reverse-oriented NF3/NF4 the rewrite produces.
+
+**The reverse-oriented half of that plan is unsound, and the countermodel is now
+a test.** Take `C ⊑ ∃R.D`, `C ⊑ A`, `S = R⁻`, `∃S.A ⊑ E`. The substitution turns
+the last axiom into `R(y,x) ∧ A(y) → E(x)`, which fires along the edge
+`C —R→ D` and derives `D ⊑ E`. That subsumption fails in the one-element
+interpretation `Δ = {d}`, `D = {d}`, everything else empty. The cause is
+structural rather than a slip in any particular rewrite: a node here denotes
+*the* generic instance of a concept name, so every `X ⊑ ∃R.D` shares the single
+successor node `D`, and a reverse-oriented rule concludes at that shared
+successor from one of its predecessors. It asserts of all `D` instances what
+holds only of the `D` instances that have an `A` predecessor. Soundness needs
+the successor to carry `∃R⁻.A` as part of its identity, which is a context
+(concept-set) calculus, so it is the CB engine and not this completion.
+`reverse_oriented_inverse_nf4_would_be_unsound` pins it.
+
+What is left is exact and is now applied before `to_nf`, on the certificate
+routes only (cert-off classify declines on its first residual anyway, and
+leaving that path alone keeps `is_pure_el_shape`, the router's screen, in step
+with what cert-off `classify` accepts):
+
+- **Vacuous-role elimination.** A role occurring in no clause head can be given
+  the empty extension, which satisfies every clause mentioning it only in a
+  body. All such clauses are deleted, to a fixpoint, since deleting one can
+  leave a further role head-free. `O` and the pruned `O'` have the same
+  concept-name entailments and are equiconsistent. No rule can add such an edge
+  either, so the canonical model already satisfies each deleted clause.
+- **Mutual-inverse substitution**, admitted only when it leaves no completion
+  rule reversed: no clause mentioning the eliminated role, apart from the two
+  bridges, may be orientation-sensitive (a role atom in a head, or a single-role
+  body under a single concept head). Residual clauses are exempt because a
+  swapped role atom there is evaluated against the finished model, not fired.
+  An ambiguous inverse graph, a one-way inclusion `R ⊑ S⁻`, symmetry and
+  reflexivity are all refused.
+
+On ore_ont_1194 the prep removes 52 clauses across 25 head-free roles. Fifteen
+of them were residual, so the certificate now checks 202 clauses against the
+model instead of 217, and it correctly refuses all six mutual pairs
+(`BFO_0000050`/`BFO_0000051`,
+`BSPO_0000098`/`BSPO_0000102`, `BSPO_0000124`/`BSPO_0000125`,
+`RO_0002202`/`RO_0002203`, `distally_connected_to`/`proximally_connected_to`,
+`surrounded_by__uberon`/`surrounds`): every one of those roles carries both NF3
+and NF4 axioms in both directions, so no orientation is forward-only. The two
+one-way bridges (`has_distal_part`, `has_proximal_part`) go, because those roles
+occur in no head.
+
+1194 stays open. Under 240 s / 24 GiB the certified-EL route still times out
+with no output, and the repair search is spent on covering disjunctions and the
+conflict restarts they drive, never on a bridge. A same-binary A/B over
+`KM_ELC_NO_BRIDGE_PREP=1`, both runs at 240 s:
+
+| | residual clauses | peak RSS | conflict restarts reached |
+| --- | --- | --- | --- |
+| prep off | 217 | 6.73 GiB | 5 |
+| prep on | 202 | 6.27 GiB | 15 |
+
+Each residual clause costs a join over a 499,904-node, 44.2M-edge model per
+repair round, so dropping 15 of them lets the same wall budget carry the search
+three times as far. It runs out of budget in the same place.
+
+Evidence: `results/benchmarks/2026-08-02-1194-inverse-bridge-orientation/`.
 
 ### Carry the repair certificate's enumeration index across rounds (2026-08-02)
 

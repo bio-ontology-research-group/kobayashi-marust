@@ -482,6 +482,346 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
     pending_ex.values().all(|(role, _filler)| *role)
 }
 
+// ---------------------------------------------------------------------------
+// Inverse-role bridge preprocessing
+// ---------------------------------------------------------------------------
+//
+// A frontend that clausifies `InverseObjectProperties(R S)` emits the pair of
+// *bridge* clauses `R(x,y) → S(y,x)` and `S(x,y) → R(y,x)`. Neither is an EL
+// normal form, so both land in the residual and the certificate has to satisfy
+// them over the canonical model — which means mirroring the whole role graph.
+// On a role with tens of millions of edges that is the dominant cost.
+//
+// Two exact rewrites are applied here, and one tempting rewrite is deliberately
+// NOT applied.
+//
+// 1. VACUOUS-ROLE ELIMINATION. If a role `R` occurs in no clause head, then no
+//    completion rule and no assertion can ever put a pair into `R`. Setting
+//    `R^I = ∅` therefore satisfies every clause that mentions `R` only in its
+//    body, and it satisfies them under *any* interpretation of the rest. So all
+//    such clauses may be deleted outright: `O` and the pruned `O'` have the same
+//    concept-name entailments (see `prune_vacuous_role_clauses`). This removes
+//    one-way bridges `R(x,y) → S(y,x)` whose `R` is otherwise unused, and with
+//    them the range/domain clauses those roles carry.
+//
+// 2. MUTUAL-INVERSE SUBSTITUTION. Both bridges together pin `S = R⁻` in every
+//    model, so replacing each atom `S(a,b)` by `R(b,a)` is model-preserving:
+//    from a model of the rewritten set, defining `S^I := (R^I)⁻` recovers a
+//    model of the original with identical concept extensions, and conversely.
+//    The bridges then read `R(x,y) → R(x,y)` and are dropped as tautologies.
+//    Applied ONLY when the substitution leaves no EL completion rule reversed
+//    (`inverse_substitution_is_exact`); otherwise the pair is left alone and the
+//    residual keeps both bridges, so the certificate still has to discharge them
+//    and fails closed if it cannot.
+//
+// 3. NOT APPLIED: extending the completion with reverse-oriented NF3/NF4 so that
+//    a pair can always be oriented. That is unsound in this calculus, and
+//    `reverse_oriented_inverse_nf4_would_be_unsound` is the countermodel. A node
+//    here denotes *the* generic instance of a concept name and every
+//    `X ⊑ ∃R.D` shares the one successor node `D`, so a reverse-oriented rule
+//    concludes at that shared successor from one of its predecessors and asserts
+//    of all `D` instances what holds only of the `D` instances that have such a
+//    predecessor. Making it sound requires the successor to carry `∃R⁻.X` as
+//    part of its identity, i.e. a context (concept-set) calculus, which is the
+//    CB engine and not this completion.
+
+fn atom_eq(a: &JAtom, b: &JAtom) -> bool {
+    fn term_eq(a: &JTerm, b: &JTerm) -> bool {
+        match (a, b) {
+            (JTerm::Var { name: x }, JTerm::Var { name: y }) => x == y,
+            (JTerm::Ind { name: x }, JTerm::Ind { name: y }) => x == y,
+            (
+                JTerm::Fun {
+                    function: f,
+                    arg: x,
+                },
+                JTerm::Fun {
+                    function: g,
+                    arg: y,
+                },
+            ) => f == g && term_eq(x, y),
+            (JTerm::Aux { root: r1, label: l1 }, JTerm::Aux { root: r2, label: l2 }) => {
+                r1 == r2 && l1 == l2
+            }
+            _ => false,
+        }
+    }
+    match (a, b) {
+        (
+            JAtom::Concept {
+                concept: c1,
+                term: t1,
+            },
+            JAtom::Concept {
+                concept: c2,
+                term: t2,
+            },
+        ) => c1 == c2 && term_eq(t1, t2),
+        (
+            JAtom::Role {
+                role: r1,
+                source: s1,
+                target: t1,
+            },
+            JAtom::Role {
+                role: r2,
+                source: s2,
+                target: t2,
+            },
+        ) => r1 == r2 && term_eq(s1, s2) && term_eq(t1, t2),
+        (JAtom::Eq { left: l1, right: r1 }, JAtom::Eq { left: l2, right: r2 }) => {
+            term_eq(l1, l2) && term_eq(r1, r2)
+        }
+        _ => false,
+    }
+}
+
+/// A clause with a head disjunct that already appears in its body holds in every
+/// interpretation and can be deleted.
+fn is_tautology(c: &JClause) -> bool {
+    c.head.iter().any(|h| c.body.iter().any(|b| atom_eq(b, h)))
+}
+
+fn mentions_role(c: &JClause, role: &str) -> bool {
+    c.body
+        .iter()
+        .chain(c.head.iter())
+        .any(|a| matches!(a, JAtom::Role { role: r, .. } if r == role))
+}
+
+/// Delete every clause whose body mentions a role that occurs in no clause head.
+///
+/// Soundness. Let `R` occur in no head of `O`, and let `O'` be `O` minus the
+/// clauses whose body mentions `R`. Every clause of `O'` is `R`-free (a clause
+/// keeping `R` would have it in a head, and there are none). Given `I' ⊨ O'`,
+/// let `I` agree with `I'` everywhere except `R^I = ∅`. Then `I ⊨ O'` still, and
+/// every deleted clause has an unsatisfiable body under `I`, so `I ⊨ O`. `I` and
+/// `I'` agree on all concept names, so `O` and `O'` entail exactly the same
+/// concept-name subsumptions and are equiconsistent. Iterated to a fixpoint,
+/// since deleting a clause can leave a further role head-free.
+///
+/// This also keeps the certificate honest rather than merely cheaper: no rule
+/// can add an `R` edge either, so the canonical model already has `R^I = ∅` and
+/// satisfies every deleted clause.
+fn prune_vacuous_role_clauses(clauses: &mut Vec<JClause>) -> (usize, usize) {
+    let mut removed_clauses = 0usize;
+    let mut removed_roles: HashSet<String> = HashSet::default();
+    loop {
+        let mut head_roles: HashSet<&str> = HashSet::default();
+        for c in clauses.iter() {
+            for a in &c.head {
+                if let JAtom::Role { role, .. } = a {
+                    head_roles.insert(role.as_str());
+                }
+            }
+        }
+        let vacuous: HashSet<String> = clauses
+            .iter()
+            .flat_map(|c| c.body.iter())
+            .filter_map(|a| match a {
+                JAtom::Role { role, .. } if !head_roles.contains(role.as_str()) => {
+                    Some(role.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        if vacuous.is_empty() {
+            break;
+        }
+        let before = clauses.len();
+        clauses.retain(|c| {
+            !c.body
+                .iter()
+                .any(|a| matches!(a, JAtom::Role { role, .. } if vacuous.contains(role)))
+        });
+        removed_clauses += before - clauses.len();
+        removed_roles.extend(vacuous);
+    }
+    (removed_clauses, removed_roles.len())
+}
+
+/// The bridge shape `R(x,y) → S(y,x)` over two distinct roles and two distinct
+/// variables, returned as `(R, S)`.
+fn as_inverse_bridge(c: &JClause) -> Option<(&str, &str)> {
+    let ([b], [h]) = (c.body.as_slice(), c.head.as_slice()) else {
+        return None;
+    };
+    let (
+        JAtom::Role {
+            role: r,
+            source: rs,
+            target: rt,
+        },
+        JAtom::Role {
+            role: s,
+            source: ss,
+            target: st,
+        },
+    ) = (b, h)
+    else {
+        return None;
+    };
+    let (
+        JTerm::Var { name: rx },
+        JTerm::Var { name: ry },
+        JTerm::Var { name: sx },
+        JTerm::Var { name: sy },
+    ) = (rs, rt, ss, st)
+    else {
+        return None;
+    };
+    (r != s && rx != ry && rx == sy && ry == sx).then_some((r.as_str(), s.as_str()))
+}
+
+/// Pairs `(R, S)` for which BOTH bridges are present, so `S = R⁻` holds in every
+/// model. Fails closed on an ambiguous inverse graph: a role with more than one
+/// reciprocal partner is skipped rather than quotiented, because collapsing a
+/// whole signed component is a different (and order-sensitive) rewrite.
+fn mutual_inverse_pairs(clauses: &[JClause]) -> Vec<(String, String)> {
+    let mut implies: HashMap<&str, HashSet<&str>> = HashMap::default();
+    for c in clauses {
+        if let Some((r, s)) = as_inverse_bridge(c) {
+            implies.entry(r).or_default().insert(s);
+        }
+    }
+    let mut pairs = Vec::new();
+    for (&r, partners) in &implies {
+        if partners.len() != 1 {
+            continue;
+        }
+        let s = *partners.iter().next().unwrap();
+        if r >= s {
+            continue; // emit each pair once, from its lexicographically smaller side
+        }
+        if implies
+            .get(s)
+            .is_some_and(|back| back.len() == 1 && back.contains(r))
+        {
+            pairs.push((r.to_string(), s.to_string()));
+        }
+    }
+    pairs.sort();
+    pairs
+}
+
+/// Would `to_nf` file this clause as an EL completion rule (as opposed to a
+/// residual constraint)? Conservative in the safe direction: it may say `true`
+/// for a clause `to_nf` would actually residualise, never the converse.
+///
+/// The shapes that matter are the ones whose meaning depends on the ORIENTATION
+/// of a role atom, because that is exactly what the inverse substitution flips:
+/// a role atom in the head (NF3 `A ⊑ ∃R.f(x)`, a role inclusion, a chain
+/// conclusion), and a single-role body with a single concept head (NF4
+/// `∃R.C ⊑ D`, and the domain form with an implicit `⊤` filler). Everything else
+/// is checked as a first-order constraint over the finished model, where a
+/// swapped role atom is evaluated, not fired, and the rewrite is exact.
+fn clause_is_orientation_sensitive(c: &JClause) -> bool {
+    let head_roles = c
+        .head
+        .iter()
+        .filter(|a| matches!(a, JAtom::Role { .. }))
+        .count();
+    if head_roles > 0 {
+        return true;
+    }
+    let body_roles = c
+        .body
+        .iter()
+        .filter(|a| matches!(a, JAtom::Role { .. }))
+        .count();
+    body_roles == 1 && c.head.len() == 1 && matches!(c.head[0], JAtom::Concept { .. })
+}
+
+/// May every `victim` atom be replaced by a `canonical` atom with swapped
+/// endpoints?
+///
+/// The rewrite itself is model-preserving for any proven mutual pair. The extra
+/// condition here is about what the rewritten clauses are then USED for: a
+/// swapped role atom inside an EL normal form turns that normal form into a
+/// reverse-oriented rule, which this completion cannot run soundly (see the
+/// module note and `reverse_oriented_inverse_nf4_would_be_unsound`). So the
+/// substitution is admitted only when no clause mentioning `victim` — other
+/// than the two bridges, which become tautologies — is orientation-sensitive.
+fn inverse_substitution_is_exact(clauses: &[JClause], victim: &str) -> bool {
+    clauses.iter().all(|c| {
+        !mentions_role(c, victim)
+            || as_inverse_bridge(c).is_some_and(|(r, s)| r == victim || s == victim)
+            || !clause_is_orientation_sensitive(c)
+    })
+}
+
+fn substitute_inverse(clauses: &mut [JClause], victim: &str, canonical: &str) {
+    for c in clauses.iter_mut() {
+        for a in c.body.iter_mut().chain(c.head.iter_mut()) {
+            if let JAtom::Role {
+                role,
+                source,
+                target,
+            } = a
+            {
+                if role == victim {
+                    *role = canonical.to_string();
+                    std::mem::swap(source, target);
+                }
+            }
+        }
+    }
+}
+
+/// Apply the two exact rewrites above, to a fixpoint. Returns
+/// `(clauses_removed, roles_eliminated)` for diagnostics.
+fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, usize) {
+    let start = clauses.len();
+    let (mut pruned, mut vacuous_roles) = prune_vacuous_role_clauses(clauses);
+    let mut eliminated: Vec<(String, String)> = Vec::new();
+    for (r, s) in mutual_inverse_pairs(clauses) {
+        // Either side may be the one eliminated; prefer whichever keeps the
+        // completion forward-oriented. Both, neither, or exactly one may work.
+        let victim = if inverse_substitution_is_exact(clauses, &s) {
+            Some((s.clone(), r.clone()))
+        } else if inverse_substitution_is_exact(clauses, &r) {
+            Some((r.clone(), s.clone()))
+        } else {
+            None
+        };
+        let Some((victim, canonical)) = victim else {
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT inverse pair {r}/{s}: neither orientation is exact \
+                     (both sides carry EL rules); bridges kept in the residual"
+                );
+            }
+            continue;
+        };
+        substitute_inverse(clauses, &victim, &canonical);
+        eliminated.push((victim, canonical));
+    }
+    if !eliminated.is_empty() {
+        let before = clauses.len();
+        clauses.retain(|c| !is_tautology(c));
+        pruned += before - clauses.len();
+        let (again, roles) = prune_vacuous_role_clauses(clauses);
+        pruned += again;
+        vacuous_roles += roles;
+    }
+    if debug && (pruned > 0 || !eliminated.is_empty()) {
+        eprintln!(
+            "KM_ELC_CERT bridge prep: {} clause(s) removed ({} -> {}), {} head-free role(s), \
+             {} inverse pair(s) oriented{}",
+            pruned,
+            start,
+            clauses.len(),
+            vacuous_roles,
+            eliminated.len(),
+            eliminated
+                .iter()
+                .map(|(v, c)| format!(" [{v} := {c}⁻]"))
+                .collect::<String>()
+        );
+    }
+    (pruned, eliminated.len())
+}
+
 /// Map the clause set onto EL++ normal forms. Clauses outside EL++
 /// (disjunctive head, equality/number atom, nominal `ind` term, unsupported
 /// shape) are collected into the returned *residual* list instead of aborting:
@@ -4194,6 +4534,15 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// parallel test threads).
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
     let mut unresolved: Vec<String> = Vec::new();
+    // Exact residual-shrinking rewrites, certificate routes only. Cert-off
+    // classify declines on the first residual clause anyway, and leaving that
+    // path byte-identical keeps `is_pure_el_shape` (the router's screen) in
+    // step with what cert-off `classify` accepts.
+    let mut clauses = clauses;
+    if cert != CertMode::Off && std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+        prepare_inverse_bridges(&mut clauses, debug);
+    }
+    let clauses = clauses;
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
@@ -4548,6 +4897,281 @@ mod tests {
         ));
         assert!(!is_pure_el_shape(&equality));
         assert!(classify_inner(equality, CertMode::Off, false).is_none());
+    }
+
+    fn rr(role: &str, s: &str, t: &str) -> String {
+        format!(
+            "{{\"kind\":\"role\",\"role\":\"{}\",\"source\":{{\"kind\":\"fun\",\"function\":\"{}\",\"arg\":{}}},\"target\":{}}}",
+            role, s, v(t), v(t)
+        )
+    }
+
+    /// POSITIVE: a mutual pair whose eliminated side carries no EL rule is
+    /// substituted away, the bridges go with it, and the residual constraint
+    /// over the eliminated role is still enforced — against the real edges of
+    /// the canonical role, with no mirror edge materialised.
+    #[test]
+    fn exact_inverse_substitution_removes_bridges_and_keeps_the_constraint() {
+        // A ⊑ ∃R.F, ∃R.F ⊑ D, S = R⁻, and the residual ⊥-clause
+        // `S(x,y) ∧ G(y) → ⊥` (an empty head keeps it out of the normal forms).
+        // `S` occurs only there and in the bridges.
+        let mut cs = clauses(&format!(
+            "[{},{},{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("F", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("F", "y")], &[c("D", "x")]),
+            cl(&[r("S", "x", "y"), c("G", "y")], &[]),
+        ));
+        assert_eq!(mutual_inverse_pairs(&cs), vec![("R".into(), "S".into())]);
+        assert!(inverse_substitution_is_exact(&cs, "S"));
+        let (removed, oriented) = prepare_inverse_bridges(&mut cs, false);
+        assert_eq!(oriented, 1);
+        assert_eq!(removed, 2, "both bridges become tautologies");
+        assert!(cs.iter().all(|c| !mentions_role(c, "S")));
+        // The surviving constraint reads `R(y,x) ∧ G(y) → ⊥`.
+        let kept = cs.iter().find(|c| c.head.is_empty()).expect("⊥ clause");
+        assert!(mentions_role(kept, "R"));
+        // A ⊑ D still classifies, and A is not driven to ⊥ (no G anywhere).
+        let res = classify_inner(cs, CertMode::Repair, false).expect("certifies");
+        assert!(subs_of(&res, "A").contains(&"D".to_string()));
+        assert!(!subs_of(&res, "A").contains(&"owl:Nothing".to_string()));
+    }
+
+    /// NEGATIVE / ADVERSARIAL ORIENTATION: when BOTH sides of the pair carry an
+    /// EL rule, no orientation is exact, so nothing is rewritten and both
+    /// bridges stay in the residual for the certificate to discharge. This is
+    /// the ORE-1194 shape (`BFO_0000050`/`BFO_0000051`, each with its own NF3
+    /// and NF4 axioms).
+    #[test]
+    fn inverse_pair_with_el_rules_on_both_sides_is_left_alone() {
+        let mut cs = clauses(&format!(
+            "[{},{},{},{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("F", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("F", "y")], &[c("D", "x")]),
+            cl(&[c("B", "x")], &[rf("S", "x", "g")]),
+            cl(&[r("S", "x", "y"), c("F", "y")], &[c("E", "x")]),
+        ));
+        assert_eq!(mutual_inverse_pairs(&cs), vec![("R".into(), "S".into())]);
+        assert!(!inverse_substitution_is_exact(&cs, "R"));
+        assert!(!inverse_substitution_is_exact(&cs, "S"));
+        let before = cs.len();
+        let (_, oriented) = prepare_inverse_bridges(&mut cs, false);
+        assert_eq!(oriented, 0);
+        assert_eq!(cs.len(), before, "no clause deleted");
+        assert!(cs.iter().filter(|c| as_inverse_bridge(c).is_some()).count() == 2);
+    }
+
+    /// A one-way inclusion `R ⊑ S⁻` is not an equivalence and must never be
+    /// substituted. It IS deletable when `R` occurs in no head, by the
+    /// vacuous-role argument.
+    #[test]
+    fn one_way_bridge_is_never_substituted_but_may_be_vacuous() {
+        let one_way = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[c("A", "x")], &[rf("S", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("F", "f", "x")]),
+        ));
+        assert!(mutual_inverse_pairs(&one_way).is_empty());
+        let mut cs = one_way.clone();
+        // `R` is head-free, so the bridge goes.
+        let (removed, oriented) = prepare_inverse_bridges(&mut cs, false);
+        assert_eq!((removed, oriented), (1, 0));
+        assert!(cs.iter().all(|c| !mentions_role(c, "R")));
+
+        // With `R` occurring in a head that survives, the bridge is NOT vacuous
+        // and must stay: `R ⊑ S⁻` is a real constraint the certificate owes.
+        let mut constrained = one_way;
+        constrained.extend(clauses(&format!(
+            "[{},{}]",
+            cl(&[c("B", "x")], &[rf("R", "x", "g")]),
+            cl(&[c("B", "x")], &[cf("G", "g", "x")]),
+        )));
+        let (removed, oriented) = prepare_inverse_bridges(&mut constrained, false);
+        assert_eq!((removed, oriented), (0, 0));
+        assert!(constrained.iter().any(|c| as_inverse_bridge(c).is_some()));
+    }
+
+    /// ADVERSARIAL: an ambiguous inverse graph (`R` reciprocated by two distinct
+    /// roles) is skipped rather than quotiented.
+    #[test]
+    fn ambiguous_inverse_graph_is_refused() {
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[r("R", "x", "y")], &[r("T", "y", "x")]),
+            cl(&[r("T", "x", "y")], &[r("R", "y", "x")]),
+        ));
+        assert!(mutual_inverse_pairs(&cs).is_empty());
+
+        // Same-variable and same-role shapes are not bridges either: `R(x,x)` is
+        // reflexivity and `R(x,y) → R(y,x)` is symmetry.
+        let reflexive = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x")], &[r("S", "x", "x")])
+        ));
+        assert!(as_inverse_bridge(&reflexive[0]).is_none());
+        let symmetric = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "y")], &[r("R", "y", "x")])
+        ));
+        assert!(as_inverse_bridge(&symmetric[0]).is_none());
+    }
+
+    /// ROLE INCLUSION and CHAIN clauses are orientation-sensitive, so a pair
+    /// whose eliminated side appears in one is refused. Substituting into
+    /// `S ⊑ T` would produce the reverse inclusion `R⁻ ⊑ T`, which this
+    /// completion has no normal form for.
+    #[test]
+    fn orientation_sensitive_role_inclusions_and_chains_block_substitution() {
+        let inclusion = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("T", "x", "y")]),
+        ));
+        assert!(!inverse_substitution_is_exact(&inclusion, "S"));
+
+        let chain = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[r("S", "x", "y"), r("T", "y", "z")], &[r("U", "x", "z")]),
+        ));
+        assert!(!inverse_substitution_is_exact(&chain, "S"));
+    }
+
+    /// FUN TERM: a skolem-bearing residual is rewritten in place (the swap moves
+    /// `f(x)` from target to source) and stays checkable, and the NF3 that
+    /// introduces the witness is untouched because it belongs to the canonical
+    /// role.
+    #[test]
+    fn substitution_rewrites_fun_term_residuals() {
+        let mut cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("F", "f", "x")]),
+            // residual (disjunctive head, so not a normal form):
+            // `S(f(x),x) → D(x) ⊔ E(x)`
+            format!(
+                "{{\"body\":[{}],\"head\":[{},{}]}}",
+                rr("S", "f", "x"),
+                c("D", "x"),
+                c("E", "x")
+            ),
+        ));
+        assert!(inverse_substitution_is_exact(&cs, "S"));
+        prepare_inverse_bridges(&mut cs, false);
+        let rewritten = cs
+            .iter()
+            .find(|c| c.head.len() == 2)
+            .expect("residual survives");
+        // The `S(f(x),x)` atom is now `R(x,f(x))`: source is the variable.
+        let JAtom::Role {
+            role,
+            source,
+            target,
+        } = &rewritten.body[0]
+        else {
+            panic!("role atom")
+        };
+        assert_eq!(role, "R");
+        assert!(matches!(source, JTerm::Var { .. }));
+        assert!(matches!(target, JTerm::Fun { .. }));
+    }
+
+    /// The vacuous-role rule is a fixpoint: deleting a clause can leave a
+    /// further role head-free.
+    #[test]
+    fn vacuous_role_pruning_reaches_a_fixpoint() {
+        let mut cs = clauses(&format!(
+            "[{},{},{}]",
+            // U is head-free; deleting `U ⊑ T` makes T head-free; then `T ⊑ S`.
+            cl(&[r("U", "x", "y")], &[r("T", "x", "y")]),
+            cl(&[r("T", "x", "y")], &[r("S", "x", "y")]),
+            cl(&[c("A", "x")], &[c("B", "x")]),
+        ));
+        let (removed, roles) = prune_vacuous_role_clauses(&mut cs);
+        assert_eq!((removed, roles), (2, 2));
+        assert_eq!(cs.len(), 1);
+    }
+
+    /// CERTIFICATE: pruning must not change any answer. A head-free role
+    /// carrying a range clause is deleted, and the classification is identical
+    /// to the one the certificate produces with the clause retained but with the
+    /// role explicitly emptied.
+    #[test]
+    fn vacuous_prune_preserves_the_certified_classification() {
+        let base = format!(
+            "{},{},{}",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("F", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("F", "y")], &[c("D", "x")]),
+        );
+        // `V` occurs only in bodies: a range clause and a ⊥ clause.
+        let with_vacuous = clauses(&format!(
+            "[{},{},{}]",
+            base,
+            cl(&[r("V", "x", "y")], &[c("G", "y")]),
+            cl(&[r("V", "x", "y"), c("G", "y")], &[]),
+        ));
+        let without = clauses(&format!("[{}]", base));
+        let a = classify_inner(with_vacuous, CertMode::Repair, false).expect("certifies");
+        let b = classify_inner(without, CertMode::Repair, false).expect("certifies");
+        assert_eq!(a.subsumptions, b.subsumptions);
+        assert_eq!(a.inconsistent, b.inconsistent);
+        assert!(subs_of(&a, "A").contains(&"D".to_string()));
+    }
+
+    /// Orienting a proven inverse pair onto one canonical role and running the
+    /// rewritten axioms as EL normal forms is UNSOUND in this completion, and
+    /// this is the witness.
+    ///
+    /// `C ⊑ ∃R.D`, `C ⊑ A`, `S = R⁻`, `∃S.A ⊑ E`. Substituting `S := R⁻` turns
+    /// `∃S.A ⊑ E` into `R(y,x) ∧ A(y) → E(x)`: a *reverse*-oriented NF4 that
+    /// fires along the edge `C —R→ D` and writes `E` at node `D`, i.e. derives
+    /// `D ⊑ E`. That subsumption does not hold: the one-element interpretation
+    /// `Δ = {d}`, `D = {d}`, every other name empty, satisfies all four axioms
+    /// (`C`, `R`, `S` are empty) and `d ∉ E`.
+    ///
+    /// The cause is structural, not a bug in any particular rewrite. A node
+    /// here denotes *the* generic instance of a concept name, and every
+    /// `X ⊑ ∃R.D` shares the single successor node `D`. A reverse-oriented rule
+    /// concludes at that shared successor from ONE of its predecessors, so it
+    /// asserts of every `D` instance what holds only of the `D` instances that
+    /// have an `A` predecessor. Soundness needs the successor to carry
+    /// `∃R⁻.A` as part of its identity, which is a context (concept-set)
+    /// calculus — the CB engine — not single-name EL completion.
+    #[test]
+    fn reverse_oriented_inverse_nf4_would_be_unsound() {
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[r("S", "x", "y")], &[r("R", "y", "x")]),
+            cl(&[c("C", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("C", "x")], &[cf("D", "f", "x")]),
+            cl(&[c("C", "x")], &[c("A", "x")]),
+        ));
+        let mut cs = cs;
+        cs.extend(clauses(&format!(
+            "[{}]",
+            cl(&[r("S", "x", "y"), c("A", "y")], &[c("E", "x")])
+        )));
+        // Whatever the route does with the bridges, `D ⊑ E` must never appear.
+        if let Some(res) = classify_inner(cs, CertMode::Repair, false) {
+            assert!(
+                !subs_of(&res, "D").contains(&"E".to_string()),
+                "unsound: derived D ⊑ E, which has a countermodel"
+            );
+        }
     }
 
     /// Regression: the NF recognizers accepted clauses whose VARIABLE WIRING

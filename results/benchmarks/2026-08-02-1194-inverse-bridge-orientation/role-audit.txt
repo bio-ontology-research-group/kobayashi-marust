@@ -1,0 +1,71 @@
+clauses: 1062240
+
+=== bridges ===
+mutual pairs (6):
+  BFO_0000050 <-> BFO_0000051
+  BSPO_0000098 <-> BSPO_0000102
+  BSPO_0000124 <-> BSPO_0000125
+  RO_0002202 <-> RO_0002203
+  distally_connected_to <-> proximally_connected_to
+  surrounded_by__uberon <-> surrounds
+one-way (2):
+  has_distal_part -> distal_part_of^-
+  has_proximal_part -> proximal_part_of^-
+
+=== positional use of bridge roles ===
+role                                   nf3_head     nf4_body nf4_body_rev       domain        range   chain_body    role_head   other_body  bridge_body  bridge_head
+BFO_0000050                               28826       144130            0            0            0            0           10            0            1            1
+BFO_0000051                               10256        45127            0            0            0            0            1            0            1            1
+BSPO_0000098                                  4           12            0            0            0            0            0            0            1            1
+BSPO_0000102                                  2            6            0            0            0            0            0            0            1            1
+BSPO_0000124                                  1            1            0            0            0            0            1            0            1            1
+BSPO_0000125                                  1            1            0            0            0            0            1            0            1            1
+RO_0002202                                28826       144130            0            0            0            0            1            1            1            1
+RO_0002203                                  102          107            0            0            0            0            0            0            1            1
+distal_part_of                                0            0            0            0            0            0            0            1            0            1
+distally_connected_to                        37           37            0            0            0            0            0            3            1            1
+has_distal_part                               0            0            0            0            0            0            0            0            1            0
+has_proximal_part                             0            0            0            0            0            0            0            0            1            0
+proximal_part_of                              0            0            0            0            0            0            0            1            0            1
+proximally_connected_to                      56           56            0            0            0            0            0            3            1            1
+surrounded_by__uberon                        32           32            0            0            0            0            0            0            1            1
+surrounds                                    20           20            0            0            0            0            0            0            1            1
+
+=== top roles overall ===
+      172968  BFO_0000050  {'nf3_head': 28826, 'nf4_body': 144130, 'bridge_body': 1, 'bridge_head': 1, 'role_head': 10}
+      172960  RO_0002202  {'nf3_head': 28826, 'nf4_body': 144130, 'other_body': 1, 'bridge_body': 1, 'bridge_head': 1, 'role_head': 1}
+       57653  UBREL_0000002  {'nf3_head': 28826, 'nf4_body': 28826, 'other_body': 1}
+       55386  BFO_0000051  {'nf3_head': 10256, 'nf4_body': 45127, 'bridge_head': 1, 'bridge_body': 1, 'role_head': 1}
+       42930  RO_0002200  {'nf3_head': 14310, 'nf4_body': 28620}
+       29258  BFO_0000052  {'nf3_head': 14628, 'nf4_body': 14628, 'other_body': 1, 'role_head': 1}
+        2277  BFO_0000070  {'nf3_head': 1138, 'nf4_body': 1138, 'other_body': 1}
+        1429  regional_part_of  {'nf3_head': 714, 'nf4_body': 714, 'other_body': 1}
+        1139  constitutional_part_of  {'nf3_head': 569, 'nf4_body': 569, 'other_body': 1}
+         366  receives_input_from  {'nf3_head': 183, 'nf4_body': 183}
+         288  RO_0002215  {'nf3_head': 144, 'nf4_body': 144}
+         243  systemic_part_of  {'nf3_head': 121, 'nf4_body': 121, 'other_body': 1}
+         230  develops_from  {'nf3_head': 115, 'nf4_body': 115}
+         218  has_central_participant__mp-equivalent-axioms-subq  {'nf3_head': 109, 'nf4_body': 109}
+         211  RO_0002203  {'nf3_head': 102, 'nf4_body': 107, 'bridge_head': 1, 'bridge_body': 1}
+
+=== clause shapes ===
+      497260  b1c1r0/h1c1r0
+      410281  b2c1r1/h1c1r0
+      130303  b1c1r0/h1c0r1
+       14965  b2c2r0/h1c1r0
+        7808  b3c3r0/h1c1r0
+        1134  b4c4r0/h1c1r0
+         146  b5c5r0/h1c1r0
+         117  b1c1r0/h2c2r0
+          61  b1c0r1/h1c1r0
+          48  b1c0r1/h1c0r1
+          34  b6c6r0/h1c1r0
+          27  b2c1r0/h0c0r0
+          11  b1c1r0/h3c3r0
+           9  b7c4r3/h3c0r0
+           6  b4c2r2/h2c1r0
+           6  b0c0r0/h2c2r0
+           6  b2c2r0/h0c0r0
+           1  b11c11r0/h1c1r0
+           1  b1c1r0/h4c4r0
+           1  b0c0r0/h1c1r0
