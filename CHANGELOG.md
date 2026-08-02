@@ -1,5 +1,16 @@
 # Changelog
 
+### Reject eager physical inverse-bridge batching for ORE 1194 (2026-08-03)
+
+An exact certified-EL upper-model prototype batched every forced inverse-role
+bridge before one re-closure. It added 22,853,033 required edges. Replacing its
+temporary candidate hash set with a flat batch moved closure startup from about
+177 seconds to 139 seconds, while the upper-model compression reduced peak RSS
+to 17,120,788 KiB. The production-bounded run still timed out at 240.74 seconds
+with zero output. No production route changed and coverage remains 591/592.
+Evidence and the soundness boundary are documented in
+[`results/benchmarks/2026-08-03-1194-eager-bridge-batching/`](results/benchmarks/2026-08-03-1194-eager-bridge-batching/README.md).
+
 All notable changes to the kobayashi-marust reasoner. Newest first.
 
 > **How each once-failing ontology was solved — diagnosis, mechanism,
