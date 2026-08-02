@@ -9,6 +9,19 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Profile exact active-clause redundancy on ORE 1194 (2026-08-02)
+
+An instrumentation-only source-bound IBEX run splits `add_clause` into exact
+lookup, forward-subsumption, backward-subsumption, and index phases. At 600,000
+iterations in the dominant context, backward subsumption consumed 75.41
+seconds and forward subsumption 47.84 seconds, versus 25.24 seconds for Hyper
+generation and 3.90 seconds for arena lookup. The checkpointed automatic run
+failed closed after 234.3947 seconds at 12,902.94 MiB. This evidence selects
+cross-call exact subset/superset indexing as the next optimization target; it
+does not change the standing 591/592 result. Full identities and measurements
+are in
+[`results/benchmarks/2026-08-02-1194-add-clause-profile/`](results/benchmarks/2026-08-02-1194-add-clause-profile/README.md).
+
 ### Share the seeded closure as a base layer under a per-context delta (2026-08-02)
 
 Context clause *content* has been shared since `cc_arena` became content
