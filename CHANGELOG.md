@@ -9,6 +9,18 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Profile backward-subsumption call shapes on ORE 1194 (2026-08-02)
+
+At the final 600,000-iteration checkpoint, all 3,650,589
+backward-subsumption calls had empty bodies and non-empty heads. They visited
+21,716,431 candidates, performed 976,023 exact checks, removed 776,522 clauses,
+and consumed 75.27 seconds. A body posting cannot help this workload; the
+rarest head posting averages only 5.95 candidates and the removal set averages
+0.21 clauses, identifying per-call temporary allocation as the next exact
+optimization target. The instrumentation-only run failed closed and leaves
+coverage at 591/592. Evidence is in
+[`results/benchmarks/2026-08-02-1194-backsub-shapes/`](results/benchmarks/2026-08-02-1194-backsub-shapes/README.md).
+
 ### Reject active body postings after exact split gates (2026-08-02)
 
 Separate forward-only and backward-only trie gates identify generic superset
