@@ -237,6 +237,28 @@ times out at 240 seconds with zero output. A hybrid must therefore compute the
 subjects affected by *all* violated residuals, not assume that the 303
 disjunction-affected subjects are the entire exact tail.
 
+A one-round census with a one-million-violation ceiling confirms that this tail
+is not small. It reaches the cap after touching 72,107 canonical nodes and
+28,174 named concepts; 144 residual clauses have already been violated at that
+point. One clause accounts for 997,025 of the first million violations:
+`BFO_0000050(x,y) -> BFO_0000051(y,x)`, one direction of a mutual inverse-role
+pair. The next largest residual contributes only 2,106 violations. The census
+finishes in 84.73 seconds at 3,756,508 KiB peak RSS, so this concentration is a
+measured property of the completed lower-bound model rather than a timeout
+sample.
+
+An opt-in prototype scheduled all twelve forced inverse implications from the
+six retained mutual pairs directly on EL edge creation. This is the bulk form
+of the role-head additions that certificate repair otherwise performs one
+violating assignment at a time. Focused tests confirmed exact swapped-wiring
+recognition and terminating reciprocal closure. On the no-cover 1194 lower
+bound, however, the reciprocal edges activate enough downstream EL propagation
+to time out at 240.51 seconds, peak at 23,373,876 KiB RSS, and emit zero bytes.
+Materialising the inverse closure is therefore rejected. A useful successor
+must treat the dominant BFO pair symbolically or avoid completing irrelevant
+inverse consequences; merely batching the same edge set exceeds both benchmark
+limits.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
