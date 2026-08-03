@@ -94,6 +94,14 @@ far too little for the remaining closure. Prototype commit `574d9c3` on branch
 materialised `(role,source,conclusion)` forward links left the marker unchanged
 at 44.2 seconds and raised short-profile RSS to about 1.77 GiB. Most links are
 fresh, so linear duplicate checks are not the bottleneck; the index is rejected.
+The independent grouping change was also combined cleanly with the retained
+16,384-item FPROP batches and virtual role relations, with the focused
+eager/batched/virtual fixpoint test passing. The gains are not additive: the
+full 70,231-query exact gate reached eight million events in 45.3 seconds and
+18 million in 174.8 seconds, versus 45.3 and 174.3 seconds for the virtual
+baseline. It timed out at 240.14 seconds, peaked at 2,150,300 KiB RSS, and
+emitted zero bytes. The aggregate is preserved on
+`codex/1194-aggregate-retained` but is not merged.
 A true role-grouped bulk-union prototype ORed each guard's whole positive and
 negative conclusion bitmaps into every current successor batch. The naive form
 replayed conclusions already present in node labels: it reached two million
