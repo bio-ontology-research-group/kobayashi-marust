@@ -109,6 +109,33 @@ eager/hash/bitmap fixpoint comparison, but are rejected as substantially slower.
 The uncommitted experiment remains isolated in worktree/branch
 `codex/1194-fprop-bulkor`; no Roaring dependency or source change is merged.
 
+## Virtual role relations
+
+An edge-role census at four million literal events found 2,575,019 stored
+edges. Three roles accounted for 2,326,114 of them (90.3%): `BFO_0000050`
+(role 0, 932,811 edges), `RO_0002202` (role 8, 701,364), and
+`UBREL_0000002` (role 40, 691,939). Their remaining clauses after NF4 capture
+were only simple role inclusions plus the inverse bridge already handled by
+`INVCOMPOSE`; none was a cardinality consumer.
+
+The opt-in `KM_HT_QO_VIRTUAL_EDGES` prototype stores roles with no residual
+generic consumer as compressed incoming source bitmaps plus compact outgoing
+target lists. It applies captured `prop`/`fprop` links directly and recursively
+materialises exact same-orientation role-super aliases. Role-chain participants,
+FCHECK, and PSPLIT remain physical. A focused eager/physical/virtual fixpoint
+test passes. Capturing the role aliases made roles 0, 8, and 40 virtual: at eight
+million literal events only 11,491 physical edges remained, versus 2.58 million
+at four million events on the hash-microbatch route.
+
+Eager inheritance over the compressed relation exposed 379 million duplicate
+`add_lit` presentations by 60 seconds. A bounded 16,384-item node-major virtual
+inheritance batch reduced this to 14.1 million (27-fold) and moved the
+eight-million-event marker from 55.2 to 45.3 seconds. The exact 240-second gate
+still timed out, emitted zero bytes, and remained near 2.0 GiB RSS late in the
+run. Prototype commit `6b02747` is preserved on branch
+`codex/1194-sat-share`; it is not merged pending broader semantic controls and
+an actual 1194 closure.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
