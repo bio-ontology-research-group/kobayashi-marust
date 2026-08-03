@@ -41,6 +41,11 @@ literal/edge waves; at 231.7 seconds it retained 2,817,004 literal events and
   literal-major fair schedule delayed edge feedback and regressed closure
   progress. The prototype is preserved at `23bd927` on branch
   `codex/1194-qo-dense` and is not enabled in production.
+- Transposing those deduplicated bitmap pairs back into the established
+  node-major application order also passed the fixpoint test. Under the exact
+  predecessor-local route it timed out at 240.33 seconds, peaked at 6.68 GiB,
+  and emitted zero bytes. It only delayed allocation relative to the 6.69 GiB
+  node-major baseline, so it is rejected as neutral.
 
 ## Decision
 
