@@ -192,6 +192,13 @@ flush raises the literal queue from 11,798 to 1,195,980 at about 55 seconds.
 This establishes a useful routing boundary: normalized easy queries can be
 batched, while the hard seeds require a separate reduction of the virtual NF4
 inheritance wave.
+The flush is not passive output payload. A consumer census over the isolated
+hard-seed trace observed 432 full virtual micro-batches containing 7,115,533
+distinct node/literal pairs in total. Every pair's literal keys a downstream
+concept, propagation, role-guard, or disjunction consumer. The late queue jump
+therefore accumulates genuine eventful NF4 closure. Shared passive labels or a
+container-only rewrite cannot remove it; the next prototype must compose or
+quotient trigger chains before those pairs are materialised.
 
 ## Decision
 
