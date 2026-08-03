@@ -338,6 +338,19 @@ alone therefore does not close 1194. A successor must prune or compose that
 join by relevance to the target label rather than enumerate every virtual NF4
 consequence. The prototype remains unmerged.
 
+A grouped symbolic seed then unioned all NF4 supers per active source before
+touching the completed labels. This measured **188,496,961** virtual
+edge/conclusion presentations but only **2,857,789** distinct source/conclusion
+pairs, a 66-fold reduction. The union itself completed immediately after the
+base phase, confirming that duplicate presentation dominated the raw join.
+Inserting and closing those 2.86 million genuine facts still exceeded the
+remaining benchmark budget: the gate timed out at 240.34 seconds and peaked at
+7,876,216 KiB before reaching residual branching. This narrows the next step
+again. Batching can remove presentation multiplicity, but a complete target
+route must avoid materialising facts that cannot contribute to the root's
+named label, using backward rule relevance or an equivalent demand-driven
+closure. The grouped prototype is also unmerged.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
