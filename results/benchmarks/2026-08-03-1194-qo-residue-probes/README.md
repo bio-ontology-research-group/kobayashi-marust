@@ -573,9 +573,25 @@ BFO family is cheap and consistently certifiable, commonly selecting 1--80
 seeds and producing 102 labels with no role edges. The RO family is the current
 cost center: each separate goal selects about 533,000 seeds and repeats about
 533,000 labels and edges. Caching previously derived root labels did not improve
-the 240-second frontier and is rejected. One union batch of 61 plain RO goals
-also timed out at 240 seconds and 8,259,924 KiB, so unrestricted family union is
-too coarse.
+the 240-second frontier and is rejected.
+
+The initial RO union and grouping experiments were invalid because they also
+set `KM_ELC_TARGET_ROOT_ONLY=1`. That option belongs only to quotient
+materialisation and suppresses the repaired base needed by the proof route.
+With the corrected flags, a depth-three union of all 61 plain `RO_0002202`
+candidates proves all 61 in 131.00 seconds at 3,915,076 KiB peak RSS. It selects
+534,310 symbolic seed facts and closes with 545,575 labels and 533,012 edges.
+This supersedes the earlier apparent 240-second union failure.
+
+The same corrected union route was applied to all 1,248 quotient extras. Depth
+three proves 1,191 in 168.53 seconds at 3,924,968 KiB. A depth-four run over the
+57 residuals proves another 28 in 125.77 seconds at 3,910,072 KiB. Depth five
+over the remaining 29 proves another 19 in 122.21 seconds at 3,924,164 KiB.
+Ten coarse-upper candidates remain. Applying depth six directly to those ten is
+not viable: it timed out at 240.40 seconds and reached 9,306,912 KiB without
+finishing. The productive route is therefore staged 3--5 positive proof search
+over one shared base, followed by a sharper sound upper bound for the final ten,
+not unrestricted depth-six expansion.
 
 Exact demand-signature grouping was tested next and rejected. Retaining full
 guards reached 7,677,508 KiB after 144 seconds before closure began. A streaming
@@ -586,19 +602,19 @@ representative `UBERON_0000924-RO_0002202` goal. These results show that the
 cost lies in constructing and traversing the broad RO proof guard, not merely
 in duplicated root answers or an unlucky queue order.
 
-The next implementation target is persistent incremental guarded closure. It
-will retain the complete first RO delta, widen the guard for subsequent goals,
-and requeue only facts whose permitted conclusions changed. This differs from
-the rejected root cache because it shares the approximately 533,000 labels and
-edges that dominate each RO proof. Every emitted positive still requires an
-ordinary finite NF1--NF5 derivation. The residue still requires a global model
-or a tighter sound upper certificate before absence can be reported as
-non-entailment.
+The next implementation target is a staged guarded closure that constructs the
+base and transposed demand plan once, proves the full candidate union at depth
+three, and reruns only the unproved residuals at depths four and five. Every
+emitted positive still requires an ordinary finite NF1--NF5 derivation. The ten
+remaining candidates require a tighter sound upper certificate before absence
+can be reported as non-entailment; increasing the demand depth is both slower
+and less memory-efficient.
 
 ## Decision
 
 None of these routes yet closes ontology 1194. Automatic coverage remains
-591/592. Positive proof search now fits the production resource contract for
-two distinct consequence shapes. Completion requires proving every candidate
-or excluding it with a sound global certificate, then emitting and comparing
-the complete taxonomy under the 240-second/20-GB production contract.
+591/592. Constructive positive proofs now cover 1,238 of the 1,248 consequences
+introduced by the coarse quotient upper bound. Completion requires excluding
+the final ten with a sharper sound upper certificate (or finding cheaper
+constructive proofs), then emitting and comparing the complete taxonomy under
+the 240-second/20-GB production contract.
