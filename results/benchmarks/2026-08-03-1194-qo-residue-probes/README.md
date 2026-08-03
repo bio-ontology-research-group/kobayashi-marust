@@ -81,6 +81,11 @@ at only 2.08 GiB. A 180-second trace showed genuine closure volume remained:
 99,592 literal events and 4.20 million edges were queued at 174.6 seconds after
 a later node-growth wave. The opt-in prototype is preserved at `9d99a68` on
 branch `codex/1194-fprop-batch`; it is not enabled or merged into production.
+A transient-bitmap variant kept only each current 16,384-item micro-batch in
+positive/negative Roaring bitmaps. It preserved the focused fixpoint but reached
+four million literal pops at 46.6 seconds, versus 45.4 seconds for the hash
+micro-batch at the same model state. Bitmap container overhead therefore loses
+at this bounded wave size; the variant is rejected and not preserved.
 
 ## Decision
 
