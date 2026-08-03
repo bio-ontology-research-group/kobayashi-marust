@@ -481,6 +481,28 @@ evaluate inverse/NF4 consequences on demand for the queried root, seeded from
 the 4,752 inverse edges found by its clean repair, rather than materialising the
 full descendant inverse closure.
 
+A context-batched backward demand implementation replaced pair-at-a-time hash
+insertion with per-context Roaring pending sets. On the known positive
+`HP_0000001`, it processed 401,184 demands where the earlier implementation did
+not reach 100,000 in 180 seconds. Round-based parallel evaluation then exposed
+the true fixpoint shape: after five small rounds, one inverse expansion created
+a 368,058-context frontier; round six expanded the single goal to about
+3.80 billion context/concept demands across 369,446 contexts. An unbounded
+48-worker version and a four-worker version exceeded 20 GiB because workers
+materialised target maps, and both were terminated by exact PID. Compact worker
+summaries restored memory safety, but the context-major fixpoint itself still
+crossed the contract once the 3.80-billion-fact round completed.
+
+The same test on an actual quotient-only extra,
+`CHEBI_24431-BFO_0000050`, also expanded broadly: 369,409 contexts and 953,946
+demands by round four, followed by a 240.57-second timeout at 8,912,872 KiB.
+Candidate-by-candidate context-major demand therefore does not avoid the inverse
+frontier. The next representation must transpose the relation to context sets
+per demanded concept. The broad frontiers are close to dense context sets, so
+Roaring run compression can represent them without storing billions of
+context-local concept entries. NF1/NF2 become context-bitmap unions and NF4
+becomes a role-relation image over a context bitmap.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
