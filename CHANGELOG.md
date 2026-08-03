@@ -1,5 +1,19 @@
 # Changelog
 
+### Reject virtual inverse upper-model closure for ORE 1194 (2026-08-03)
+
+A fail-closed prototype represented 12 reciprocal inverse-bridge directions
+only in the certificate upper model, leaving the sound EL lower bound
+unchanged. In-place initial joins and LIFO repair scheduling reduced the
+240-second peak from 17.35 GiB to 7.39 GiB, but neither that run nor a
+600-second diagnostic completed. A progress profile showed the upper queue
+still growing after 70 million items, to 18.4 million pending entries. Fresh
+concurrent lower/upper saturation and dormant virtual-event suppression also
+failed the production gate. Every run emitted zero bytes. The prototype is not
+enabled, and automatic coverage remains 591/592. Evidence and exact binary
+hashes are in
+[`results/benchmarks/2026-08-03-1194-virtual-upper-closure/`](results/benchmarks/2026-08-03-1194-virtual-upper-closure/README.md).
+
 ### Reject eager physical inverse-bridge batching for ORE 1194 (2026-08-03)
 
 An exact certified-EL upper-model prototype batched every forced inverse-role
