@@ -135,6 +135,14 @@ still timed out, emitted zero bytes, and remained near 2.0 GiB RSS late in the
 run. Prototype commit `6b02747` is preserved on branch
 `codex/1194-sat-share`; it is not merged pending broader semantic controls and
 an actual 1194 closure.
+A 180-second trace confirms the remaining work is a genuine large fixpoint:
+18 million distinct literal events had completed at 174.3 seconds, with 81,307
+nodes, 41,670 physical edges, and 127,321 literals still queued. Increasing the
+virtual batch threshold from 16,384 to 65,536 delayed the eight-million-event
+marker from 45.3 to 53.1 seconds, so feedback starvation returns at the larger
+wave. Replacing immutable trigger-posting remove/reinsert operations with `Rc`
+postings left the 45.3-second marker and model state exactly unchanged; that
+constant-factor variant was discarded.
 
 ## Decision
 
