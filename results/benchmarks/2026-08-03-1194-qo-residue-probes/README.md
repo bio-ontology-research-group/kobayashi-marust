@@ -144,6 +144,15 @@ wave. Replacing immutable trigger-posting remove/reinsert operations with `Rc`
 postings left the 45.3-second marker and model state exactly unchanged; that
 constant-factor variant was discarded.
 
+Naive query sharding does not isolate this closure. A round-robin quarter of
+the 70,231 query seeds still timed out at 240 seconds and grew to roughly the
+same 2 GiB range, because lazy clause expansion recreates most of the shared
+model. A one-query diagnostic reduced the precompute to about 6,400 nodes, but
+then accumulated 38,529 parked disjunctions at 53 seconds and was still cycling
+through later saturation/residue waves at the 120-second cutoff. Parallel
+output-query shards would therefore duplicate the expensive closure rather than
+divide it; only a true clause-dependency component split could help.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
