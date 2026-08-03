@@ -408,6 +408,30 @@ therefore uses the clean root-local repair as a lower bound and a sound quotient
 of the forward cone as an upper bound. Equality of their named root labels would
 certify the result without constructing the full descendant continuation.
 
+The first quotient gates preserve the root as a singleton and merge all other
+forward-cone contexts by capped BFS depth. The repaired lower bound contains
+217 named root consequences. A two-level quotient produced 1,465 named upper
+consequences, leaving 1,248 extras in 269.03 seconds at 3,965,676 KiB. Raising
+the partition to four depth levels produced 1,462 upper consequences, leaving
+1,245 extras in 294.08 seconds at 3,963,760 KiB. Three removed extras do not
+justify further depth refinement: most logically different descendants remain
+in the final depth bucket.
+
+A finer probe split descendants by depth, their complete EL label, and their
+incoming and outgoing role sets. It stayed below the memory contract but did
+not finish in 420.17 seconds, peaking at 4,386,160 KiB. Exact label signatures
+therefore discard too much sharing. A middle partition used depth plus incoming
+and outgoing role sets without the label vector. It produced 511 blocks and
+finished in 354.63 seconds at 4,033,732 KiB, but still left 1,107 extras (1,324
+upper versus 217 lower). Role position explains 141 of the original extras but
+is not discriminating enough. The next partition retains role position and only
+those labels that can trigger NF1, NF2, NF3, NF4, or bottom propagation. It is
+designed to prevent the cross-context rule firings introduced by label union
+without retaining irrelevant completed-output labels. Every such refinement is
+still a sound EL upper quotient: splitting blocks cannot remove a fact from the
+corresponding coarser abstraction, while unioning labels and edges within each
+remaining block continues to overapproximate positive consequences.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
