@@ -219,6 +219,24 @@ exact 240-second cutoff and exited 124 with zero output. The current EL
 certificate therefore cannot supply a certified taxonomy or partial seed under
 the benchmark contract.
 
+The EL saturation itself is nevertheless a useful lower bound. With profiling
+enabled it completes in 83–84 seconds and derives 78,387,044 subsumption facts
+plus 43,893,622 role edges. Its original residue marks all 499,871 concepts
+insufficient only because the same six top-level cover clauses touch every
+canonical node. Omitting those six covers and their matching disjointness
+clauses from the EL *lower-bound input* is sound (it removes axioms rather than
+asserting an approximation). The resulting EL completion is unchanged, while
+the disjunction residue falls to 303 subjects after common-disjunct hoisting,
+from 499,871 before omission.
+
+This lower bound is not yet a certified partial classification. Plain
+certificate checking still fails at the first of 196 residual clauses after
+85 seconds. Repair reaches the residual phase but records the 100,000-violation
+collection cap in its first round (`97,373` additions and `17` merges), then
+times out at 240 seconds with zero output. A hybrid must therefore compute the
+subjects affected by *all* violated residuals, not assume that the 303
+disjunction-affected subjects are the entire exact tail.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
