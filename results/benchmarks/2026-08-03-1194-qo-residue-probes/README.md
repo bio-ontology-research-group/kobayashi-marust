@@ -316,11 +316,27 @@ Q_126534(x) -> UBERON_0003898(x) or UBERON_0003899(x)       (1 instance)
 Q_128321(x) -> UBERON_0002323(x) or UBERON_0004457(x)       (8 instances)
 ```
 
-The result rules out physical active-cone inverse closure. The next candidate
-must represent the mutual inverse-role pairs symbolically and compose them with
-their NF4 consumers, then run the two opposite policies and compare their root
-label intersection with the sound projected lower bound. No projection source
-change is enabled or merged into production.
+The result rules out physical active-cone inverse closure. A follow-up therefore
+represented the mutual inverse-role pairs symbolically and composed them with
+their NF4 consumers. For an
+implication `R(x,y) -> S(y,x)`, it feeds a physical `R(c,d)` edge directly to
+the NF4 consumers of the logical `S(d,c)` edge. Edge-first and label-first
+focused tests produce the same consequence without storing the reverse edge.
+The implementation screens each implication separately and leaves any inverse
+role with outgoing hierarchy, reflexivity, or role-chain consumers in the
+residual. It activates only after the target projection, so base completion is
+unchanged.
+
+The exact target gate still timed out. An initial version scanned all
+43,893,622 physical edges after projection and reached the 240-second cutoff at
+5,142,880 KiB. Replacing that scan with the exact-role predecessor index also
+timed out before entering the branch phase, at 7,368,552 KiB. Fewer than ten
+million ordinary worklist items were processed after projection; the cost is
+the direct inverse-to-NF4 seed join over the active nodes and their incoming
+relations, not reverse-edge storage or queue dispatch. Symbolic representation
+alone therefore does not close 1194. A successor must prune or compose that
+join by relevance to the target label rather than enumerate every virtual NF4
+consequence. The prototype remains unmerged.
 
 ## Decision
 
