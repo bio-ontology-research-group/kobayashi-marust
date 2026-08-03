@@ -548,10 +548,43 @@ goal needs round five, so combining both at the deeper frontier imports the
 CHEBI inverse wave unnecessarily. Candidate evaluation must instead share the
 immutable base and indexes while keeping adaptive per-goal demand depths.
 
+That adaptive reuse is now implemented experimentally. A `DemandPlan` owns the
+immutable transposed base membership, symbolic-seed sources, taint closure, and
+reverse NF1/NF2/NF3/NF4 indexes. Each candidate receives a separate increasing
+depth search and guarded delta overlay while sharing that plan. In one process,
+the route proved `HP_0000001` at depth four and
+`CHEBI_24431-BFO_0000050` at depth three in 113.08 seconds total at 3,826,444
+KiB peak RSS. The final proof overlays needed one selected symbolic seed each,
+20 and 102 labels respectively, and no new role edges. Three focused tests pass:
+the transposed and context-major backward closures agree, the delta overlay
+matches full NF1--NF5 reclosure, and symbolic-inverse NF4 reclosure agrees.
+
+The next classification step is finite candidate closure, not another broad
+forward saturation. The existing two-level quotient gives a sound but coarse
+upper set with 1,248 extras over the current lower taxonomy. A corrected
+root-filtered quotient run persisted the complete unique list in 275.32 seconds
+at 3,967,056 KiB peak RSS. It contains 42 synthetic conjunction labels. Earlier
+360- and 600-second failures accidentally enabled the symbolic seed route and
+therefore do not measure this quotient computation.
+
+An exact transposed seed index preserves the source-major selected fact set and
+roughly doubles candidate throughput. A fixed depth-three sweep shows that the
+BFO family is cheap and consistently certifiable, commonly selecting 1--80
+seeds and producing 102 labels with no role edges. The RO family is the current
+cost center: each separate goal selects about 533,000 seeds and repeats about
+533,000 labels and edges. Caching previously derived root labels did not improve
+the 240-second frontier and is rejected. One union batch of 61 plain RO goals
+also timed out at 240 seconds and 8,259,924 KiB, so unrestricted family union is
+too coarse. The next implementation groups RO goals by identical transposed
+demand signature and shares one guarded closure per signature. Adaptive proof
+search can then remove certified positives; the residue still requires a global
+model or a tighter sound upper certificate before absence can be reported as
+non-entailment.
+
 ## Decision
 
-None of these routes closes ontology 1194. Automatic coverage remains 591/592.
-The next QO change must reduce the actual predecessor-local NF3/NF4 closure
-volume, now localized to the late virtual-inheritance wave of hard seeds such
-as `CL_0000071`, while retaining the productive node-major schedule. Container
-swaps and the existing residue brancher do not address the blocker.
+None of these routes yet closes ontology 1194. Automatic coverage remains
+591/592. Positive proof search now fits the production resource contract for
+two distinct consequence shapes. Completion requires proving every candidate
+or excluding it with a sound global certificate, then emitting and comparing
+the complete taxonomy under the 240-second/20-GB production contract.
