@@ -200,6 +200,25 @@ therefore accumulates genuine eventful NF4 closure. Shared passive labels or a
 container-only rewrite cannot remove it; the next prototype must compose or
 quotient trigger chains before those pairs are materialised.
 
+A direct index for pure `C(X) -> exists R.F(X)` clauses passed a focused
+generic-versus-fast fixpoint comparison and reduced generic `apply_head` calls
+on the isolated hard seed from about 2.98 million to 202,000 by the late wave.
+It did not move any wall-time, event, node, or queue marker: eight million
+literal pops remained at 46.7 seconds and the 1.20-million-item late queue
+appeared at 55.3 seconds. Suppressing existential-only literal events and
+creating their edges eagerly also preserved the focused fixpoint, but regressed
+the productive schedule: two million pops moved from 6.8 to 11.9 seconds and
+`add_lit` presentations reached 19.1 million by 53.7 seconds. Both variants are
+rejected; generic head dispatch is not the bottleneck.
+
+The retained 1194 frontend clause set was also tested against the existing
+near-EL certificate routes. Ordinary EL completion deferred in four seconds.
+`KM_ELC_CERT=1` performed substantive completion but declined with exit 3 after
+85 seconds and emitted no output. `KM_ELC_CERT=2` was still repairing at the
+exact 240-second cutoff and exited 124 with zero output. The current EL
+certificate therefore cannot supply a certified taxonomy or partial seed under
+the benchmark contract.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
