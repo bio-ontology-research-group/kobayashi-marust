@@ -285,6 +285,43 @@ output. The target route therefore needs a reduction or acceleration of the
 post-repair NF3/NF4 wave. It does not need global inverse materialisation,
 cardinality branching, or disjunction search for this seed.
 
+### Target dependency projection
+
+An opt-in projection restricted post-repair EL conclusions to the forward
+dependency cone of `CL_0000071`. The base model contains 1,790 nodes and
+780,883 role edges reachable from that root, while only the root lies in both
+its forward and backward cones. Two focused regressions verify that inactive
+sources cannot enqueue conclusions and that an edge from an active source
+activates its target before downstream NF4 propagation.
+
+With residual checking still pinned to assignments containing the root, the
+projected repair completed in three rounds. It added 245, 3,701, and 806 forced
+role edges, respectively, reached a clean root-local check in 164.63 seconds,
+and peaked at 3,836,280 KiB. The root label grew from 806 to 2,743 interned
+concepts. This is a sound derivation probe, not a completeness certificate:
+residual consequences at a descendant can still change a label that later
+propagates back to the root.
+
+The conservative follow-up checked every residual assignment touching any
+active node. It completed the same base phase and first 245-edge repair, then
+hit the 100,000-violation collection cap. Materialising that batch expanded the
+active inverse-connected region and recreated the NF4 avalanche. Two opposite
+disjunction policies run concurrently both timed out at 240 seconds before
+reaching their first choice, at roughly 9 GiB RSS each. The only non-singleton
+heads encountered before that expansion were nine unary instances from two
+clauses:
+
+```text
+Q_126534(x) -> UBERON_0003898(x) or UBERON_0003899(x)       (1 instance)
+Q_128321(x) -> UBERON_0002323(x) or UBERON_0004457(x)       (8 instances)
+```
+
+The result rules out physical active-cone inverse closure. The next candidate
+must represent the mutual inverse-role pairs symbolically and compose them with
+their NF4 consumers, then run the two opposite policies and compare their root
+label intersection with the sound projected lower bound. No projection source
+change is enabled or merged into production.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
