@@ -153,6 +153,17 @@ through later saturation/residue waves at the 120-second cutoff. Parallel
 output-query shards would therefore duplicate the expensive closure rather than
 divide it; only a true clause-dependency component split could help.
 
+Eagerly closing pure unary concept implications while suppressing worklist
+events for literals without another indexed consumer also regressed. The
+prototype preserved label insertion, clashes, role-guard re-fire, and events
+for concept, propagation, and disjunction consumers. It nevertheless converted
+the useful interleaved schedule into a large initial burst: at 59.2 seconds it
+still held 2,984,821 literal events, versus 106,905 for the virtual-relation
+baseline at 59.3 seconds. It reached eight million processed events at 43.0
+seconds versus 45.3 seconds, but only by eagerly creating 8.33 million label
+presentations and advancing to a different, larger intermediate model. This is
+not a closure reduction and is rejected rather than integrated.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
