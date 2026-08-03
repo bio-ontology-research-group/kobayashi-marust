@@ -1,5 +1,17 @@
 # Changelog
 
+### Reject QO residue and propagation-layout probes for ORE 1194 (2026-08-03)
+
+The optimized shared-filler QO/KPSet precompute converged in 185.67 seconds but
+left all 70,231 queries affected by 483,811 parked disjunction instances and
+38,521 insufficient nodes. The diagnostic residue bypass could not build even
+one supported completion. Predecessor-local successors retained about 5.5
+million events near the production cutoff. Dense node batches were neutral;
+consequence-indexed Roaring batches reduced peak memory from 6.69 GiB to 4.71
+GiB but regressed closure scheduling. All runs emitted zero bytes, no candidate
+is enabled, and coverage remains 591/592. Evidence is in
+[`results/benchmarks/2026-08-03-1194-qo-residue-probes/`](results/benchmarks/2026-08-03-1194-qo-residue-probes/README.md).
+
 ### Reject virtual inverse upper-model closure for ORE 1194 (2026-08-03)
 
 A fail-closed prototype represented 12 reciprocal inverse-bridge directions
