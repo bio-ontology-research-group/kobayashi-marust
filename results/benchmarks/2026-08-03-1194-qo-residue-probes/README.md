@@ -164,10 +164,39 @@ seconds versus 45.3 seconds, but only by eagerly creating 8.33 million label
 presentations and advancing to a different, larger intermediate model. This is
 not a closure reduction and is rejected rather than integrated.
 
+Positive unary-implication SCC quotienting found 53,836 nontrivial components
+covering 111,745 of 382,846 concepts; 59,081 of 70,231 query concepts belong to
+one of them, but the largest component has only 14 members. Representative
+remapping reduced the unique query roots to 64,986 and moved the eight-million
+event marker from 45.3 to 42.9 seconds. The exact combined route still exited
+at the 240-second cutoff with zero output, so quotienting alone is insufficient.
+
+The one-query residue was much more concentrated than its raw size suggested.
+Six global binary disjunctions each parked on all 6,420 live nodes at the phase
+change, accounting for 38,520 of 38,529 parked instances. Each cover clause
+`P or N` has a matching disjointness clause `P and N -> bottom`; the fresh `N`
+concept occurs only in concept-literal positions. Rewriting `N` as signed
+`not P` and removing those twelve tautological cover/disjoint clauses is
+therefore exact. It makes the original easy one-query diagnostic certify over
+eight nodes immediately instead of expanding to 6,435 nodes, but the complete
+70,231-query run, with and without SCC quotienting, still timed out at exactly
+240 seconds and emitted zero bytes.
+
+Complement elimination changes the earlier sharding result. Prefixes of 10,
+100, 250, 375, 437, 468, and 476 queries certified with nonempty output in 5,
+5, 5, 6, 29, 36, and 36 seconds, respectively; prefixes of 500 and 1,000 timed
+out. The first isolated hard seed is query position 477, `CL_0000071`: it times
+out alone at 60 seconds, while adjacent isolated queries 476 and 483 certify in
+five seconds. Its trace reaches 6,125 nodes, then a late virtual-inheritance
+flush raises the literal queue from 11,798 to 1,195,980 at about 55 seconds.
+This establishes a useful routing boundary: normalized easy queries can be
+batched, while the hard seeds require a separate reduction of the virtual NF4
+inheritance wave.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
 The next QO change must reduce the actual predecessor-local NF3/NF4 closure
-volume, especially the inverse KPSet containment workload, while retaining the
-productive node-major schedule. Container swaps and the existing residue
-brancher do not address the blocker.
+volume, now localized to the late virtual-inheritance wave of hard seeds such
+as `CL_0000071`, while retaining the productive node-major schedule. Container
+swaps and the existing residue brancher do not address the blocker.
