@@ -522,6 +522,25 @@ contract. The remaining target is the role-image operation itself: cache or
 incrementally update exact relation images across the 382 source bitmaps rather
 than rescanning their shared context sets.
 
+The useful frontier is shallower than the complete demand fixpoint. At round
+five for `HP_0000001`, only 10,942 of 2,320,144 fresh inverse seed facts were
+demanded. An edge-aware magic-set continuation restricted both derived labels
+and NF3 edges to that demand relation and stopped as soon as the root goal was
+derived. It proved `CL_0000071 ⊑ HP_0000001` in 114.45 seconds at 3,836,112
+KiB peak RSS. The continuation materialised 330,139 labels and 10,863 edges;
+the unrestricted selected-seed continuation had instead exceeded 18 GiB and
+timed out.
+
+This was not specific to the first goal. The actual quotient-only candidate
+`CHEBI_24431-BFO_0000050` has a different demand shape: round four requested
+214,738 seed facts across 369,409 contexts. The same guarded continuation proved
+`CL_0000071 ⊑ CHEBI_24431-BFO_0000050` in 116.83 seconds at 3,853,724 KiB,
+with 584,037 labels and 214,737 edges. Extending this from positive witnesses to
+classification still requires an exact upper-bound argument for candidates
+that are not proved. The immediate engineering target is to reuse one base
+completion and its transposed indexes across the finite candidate set, rather
+than paying the roughly 100-second base cost for every candidate.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
