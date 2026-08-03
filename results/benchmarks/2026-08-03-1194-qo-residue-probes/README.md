@@ -94,6 +94,20 @@ far too little for the remaining closure. Prototype commit `574d9c3` on branch
 materialised `(role,source,conclusion)` forward links left the marker unchanged
 at 44.2 seconds and raised short-profile RSS to about 1.77 GiB. Most links are
 fresh, so linear duplicate checks are not the bottleneck; the index is rejected.
+A true role-grouped bulk-union prototype ORed each guard's whole positive and
+negative conclusion bitmaps into every current successor batch. The naive form
+replayed conclusions already present in node labels: it reached two million
+literal pops at 7.3 seconds, then inflated `add_lit` from 5.5 million at eight
+seconds to 20.2 million at 54.6 seconds without reaching four million pops. A
+second form maintained an exact positive/negative bitmap mirror of every node
+label and subtracted it after each union. That removed the replay, but bitmap
+maintenance on every genuine label insertion dominated instead: after 55.1
+seconds it had processed only two to four million literal pops, 2.20 million
+edges, and 4.46 million `add_lit` calls. It did not reach the hash route's
+four-million-pop marker at 45.4 seconds. Both forms passed the focused
+eager/hash/bitmap fixpoint comparison, but are rejected as substantially slower.
+The uncommitted experiment remains isolated in worktree/branch
+`codex/1194-fprop-bulkor`; no Roaring dependency or source change is merged.
 
 ## Decision
 
