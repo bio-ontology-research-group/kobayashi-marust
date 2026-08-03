@@ -57,6 +57,12 @@ literal/edge waves; at 231.7 seconds it retained 2,817,004 literal events and
   schedule. It nevertheless timed out at 240.26 seconds, peaked at 7.25 GiB,
   and emitted zero bytes. Retaining vectors and the parallel bitmap index cost
   more than the avoided hash insertions, so this layout is also rejected.
+- Deferring inverse-edge KPSet checks into the same per-node bitmap union also
+  preserved labels and the insufficiency result on a focused load-bearing
+  inverse control. On 1194 it still timed out at 240.20 seconds, peaked at
+  7.16 GiB, and emitted zero bytes. Avoiding repeated containment lookups is not
+  enough while the route still materialises the predecessor-local inverse-role
+  consequence volume.
 
 ## Decision
 
