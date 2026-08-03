@@ -575,10 +575,24 @@ cost center: each separate goal selects about 533,000 seeds and repeats about
 533,000 labels and edges. Caching previously derived root labels did not improve
 the 240-second frontier and is rejected. One union batch of 61 plain RO goals
 also timed out at 240 seconds and 8,259,924 KiB, so unrestricted family union is
-too coarse. The next implementation groups RO goals by identical transposed
-demand signature and shares one guarded closure per signature. Adaptive proof
-search can then remove certified positives; the residue still requires a global
-model or a tighter sound upper certificate before absence can be reported as
+too coarse.
+
+Exact demand-signature grouping was tested next and rejected. Retaining full
+guards reached 7,677,508 KiB after 144 seconds before closure began. A streaming
+seed-signature probe discarded each guard but still timed out before completing
+the first RO signature at 8,258,564 KiB. Negative memoization, an NF1-first
+top-down search, and root-first symbolic-seed scheduling each timed out on the
+representative `UBERON_0000924-RO_0002202` goal. These results show that the
+cost lies in constructing and traversing the broad RO proof guard, not merely
+in duplicated root answers or an unlucky queue order.
+
+The next implementation target is persistent incremental guarded closure. It
+will retain the complete first RO delta, widen the guard for subsequent goals,
+and requeue only facts whose permitted conclusions changed. This differs from
+the rejected root cache because it shares the approximately 533,000 labels and
+edges that dominate each RO proof. Every emitted positive still requires an
+ordinary finite NF1--NF5 derivation. The residue still requires a global model
+or a tighter sound upper certificate before absence can be reported as
 non-entailment.
 
 ## Decision
