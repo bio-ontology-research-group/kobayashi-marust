@@ -424,13 +424,62 @@ therefore discard too much sharing. A middle partition used depth plus incoming
 and outgoing role sets without the label vector. It produced 511 blocks and
 finished in 354.63 seconds at 4,033,732 KiB, but still left 1,107 extras (1,324
 upper versus 217 lower). Role position explains 141 of the original extras but
-is not discriminating enough. The next partition retains role position and only
-those labels that can trigger NF1, NF2, NF3, NF4, or bottom propagation. It is
-designed to prevent the cross-context rule firings introduced by label union
-without retaining irrelevant completed-output labels. Every such refinement is
-still a sound EL upper quotient: splitting blocks cannot remove a fact from the
-corresponding coarser abstraction, while unioning labels and edges within each
-remaining block continues to overapproximate positive consequences.
+is not discriminating enough. A first rule-behavior partition retained role
+position and every label that could trigger NF1, NF2, NF3, NF4, or bottom
+propagation. It produced 1,574 blocks, almost the unquotiented 1,790 contexts,
+so the run was stopped after the partition census rather than spending the full
+gate on a predictably noncompetitive closure. The refined behavior key retains
+only NF2 premises. Union preserves unary label closure; NF2 conjunction is the
+label rule that can combine premises contributed by different block members.
+This targets cross-context rule firings without retaining unary completed-output
+labels. Every such refinement is still a sound EL upper quotient: splitting
+blocks cannot remove a fact from the corresponding coarser abstraction, while
+unioning labels and edges within each remaining block continues to
+overapproximate positive consequences.
+
+The NF2-premise partition produced 1,112 blocks and stayed within 4,179,304 KiB,
+but full quotient replay timed out at 420.17 seconds before reporting its named
+upper label. Inspection showed that quotient construction queued every fact
+from the already-saturated member contexts, forcing ordinary completion to
+repeat their unary closure. An incremental quotient prototype now installs the
+unioned closed facts directly and seeds only operations newly enabled by a
+merge: NF2 cross-premises, NF4 edge/label joins, NF7 joins across merged
+intermediates, bottom back-propagation, and forced inverse edges. A focused
+control obtains the same labels and edges as full replay on a quotient that
+exercises NF2 and NF4. NF7 and forced-inverse controls remain required before
+this can become certificate code.
+
+The first incremental 1,112-block run also timed out at 420.16 seconds and
+4,180,284 KiB before queueing the delta. The seed scan still crossed every
+quotient edge with every outgoing edge of its target to discover NF7 role-chain
+joins. The revised seed builds an outgoing `(context, role)` index and visits
+only right-hand roles paired with the edge's left-hand role in an NF7 axiom. It
+also reports phase timings and seed cardinalities so another timeout identifies
+the exact remaining operation rather than only the outer quotient phase.
+
+The indexed seed reduced construction to 1.735 seconds for the 1,112-block
+partition: 722,246 edges, 30,394 propagation buckets, 1,165,635 candidate
+subsumptions, 440,309 candidate edges, and 613,686 deduplicated queued items.
+The subsequent semantic closure still timed out at 420.16 seconds and
+4,185,968 KiB. A profiled 511-block control localized the wave. At ten million
+processed quotient items it had scanned only 583,757 NF2 candidates but about
+1.84 billion NF4 sub-side pairs and 1.90 billion NF4 edge-side pairs, with
+1,186,986 items still queued. NF7 remained zero. The next behavior key therefore
+adds the compact NF4 propagation effect `(role, conclusion)` to the NF2 premise
+profile. Contexts with the same effect can share a block without creating the
+cross-context NF4 products that dominate the coarser quotient.
+
+That NF2+NF4 behavior key produced 1,571 blocks. Incremental construction still
+finished in 3.280 seconds, indexing 1,389,343 edges and queueing 890,734 new
+items. The closure then reproduced the NF4 wave despite the near-exact
+partition. After ten million processed items, 10,377,628 remained queued and
+the engine had scanned about 1.34 billion NF4 sub-side pairs and 2.36 billion
+edge-side pairs. The run was stopped by exact PID. This rules out quotient
+precision as the main remedy: the forced inverse edges create genuinely new
+NF4 combinations even when very few contexts share a block. The next route must
+evaluate inverse/NF4 consequences on demand for the queried root, seeded from
+the 4,752 inverse edges found by its clean repair, rather than materialising the
+full descendant inverse closure.
 
 ## Decision
 
