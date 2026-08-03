@@ -64,6 +64,24 @@ literal/edge waves; at 231.7 seconds it retained 2,817,004 literal events and
   enough while the route still materialises the predecessor-local inverse-role
   consequence volume.
 
+## Composed-forward FPROP micro-batches
+
+The alternative `INVCOMPOSE + FPROP + SAT + KPSET` representation removes most
+reversed edges. Its eager profile made 77.5 million `fprop_emit` calls and 81.4
+million `add_lit` calls by 35 seconds while keeping about 70,000 literal events
+live. A result-preserving FPROP batch reduced these repeated presentations, but
+an end-of-wave batch starved forward feedback and grew the model to 186,000
+nodes and 8.6 million queued edges.
+
+Bounded micro-batches retained feedback. Thresholds 4,096, 16,384, 32,768, and
+65,536 were profiled; 16,384 gave the best measured balance. At about 35 seconds
+it held 91,259 nodes and 2.23 million edges with only 4.55 million `add_lit`
+calls. The exact 240-second gate still timed out, emitted zero bytes, and peaked
+at only 2.08 GiB. A 180-second trace showed genuine closure volume remained:
+99,592 literal events and 4.20 million edges were queued at 174.6 seconds after
+a later node-growth wave. The opt-in prototype is preserved at `9d99a68` on
+branch `codex/1194-fprop-batch`; it is not enabled or merged into production.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
