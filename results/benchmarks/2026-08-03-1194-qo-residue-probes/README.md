@@ -541,6 +541,13 @@ that are not proved. The immediate engineering target is to reuse one base
 completion and its transposed indexes across the finite candidate set, rather
 than paying the roughly 100-second base cost for every candidate.
 
+Naively batching the two goals at round five is not that reuse strategy. Their
+union requested 569,194 seed facts and expanded to 10,649,089,374 demands, then
+timed out at 240 seconds. The CHEBI goal succeeds at round four while the HP
+goal needs round five, so combining both at the deeper frontier imports the
+CHEBI inverse wave unnecessarily. Candidate evaluation must instead share the
+immutable base and indexes while keeping adaptive per-goal demand depths.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
