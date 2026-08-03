@@ -351,6 +351,33 @@ route must avoid materialising facts that cannot contribute to the root's
 named label, using backward rule relevance or an equivalent demand-driven
 closure. The grouped prototype is also unmerged.
 
+A sparse continuation prototype then kept the saturated base immutable and
+stored only new labels in Roaring bitmaps, new NF3 edges in sparse sets, and new
+NF4 propagations in a delta index. It fails closed for role chains and reflexive
+roles. Two focused controls compared the base-plus-delta union with ordinary
+full reclosure and matched exactly for combined NF1–NF5 behavior and
+symbolic-inverse NF4.
+
+The compact representation did not make full projected materialisation viable:
+
+| continuation schedule | terminal evidence | peak RSS KiB | result |
+|---|---:|---:|---|
+| per-fact sparse delta | 240.19 s | 7,191,620 | timeout before closure |
+| direct Roaring seed | 240.38 s | 8,327,828 | timeout before one million delta items |
+| cloned grouped NF4 map | stopped at 123.89 s | 11,591,816 | duplicate grouped relation growing rapidly |
+| all-target pending union | stopped at 146.95 s | 12,312,260 | pending target relation growing rapidly |
+| one grouped NF4 bucket at a time | stopped at 151.17 s | 17,948,372 | semantic target labels approached the cap |
+
+The last three runs were deliberately terminated by exact PID before the
+20-GiB contract was endangered. None emitted `closure_complete` or a taxonomy.
+The evidence separates representation overhead from the remaining semantic
+volume: an exact compact overlay still cannot eagerly materialise the full
+inverse-connected NF3/NF4 continuation. The next route must evaluate only
+consequences relevant to the requested named root label, or construct an
+equivalent demand-driven certificate, rather than building the projected model.
+The overlay remains isolated on `codex/1194-sat-share` and is not production
+code.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
