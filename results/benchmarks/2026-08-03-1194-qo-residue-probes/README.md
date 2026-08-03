@@ -259,6 +259,24 @@ must treat the dominant BFO pair symbolically or avoid completing irrelevant
 inverse consequences; merely batching the same edge set exceeds both benchmark
 limits.
 
+The first isolated hypertableau-hard query, `CL_0000071`, is not itself in the
+post-hoist disjunction residue. Its EL lower-bound label contains 80 reported
+superconcepts, and the target name occurs in none of the 196 normalized
+residual clauses. A stronger assignment-level scan is not clean, however: 245
+violated residual instances bind the target node. They come from only three
+forced inverse-role implications: 101 instances of the forward BFO bridge, 14
+of its converse, and 130 of the forward RO bridge. The complete scan and EL
+base finish in 87.13 seconds at 3,726,544 KiB, with 1,976,651,773 of the
+two-billion extension budget remaining and no collection-cap hit.
+
+A target-local prototype added those 245 forced singleton role heads and
+re-entered the unchanged EL fixpoint. This avoids the million-edge global
+repair and remains memory-safe, but the consequences still do not close by the
+240-second production cutoff: 240.41 seconds, 8,352,092 KiB peak RSS, and zero
+output. The target route therefore needs a reduction or acceleration of the
+post-repair NF3/NF4 wave. It does not need global inverse materialisation,
+cardinality branching, or disjunction search for this seed.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
