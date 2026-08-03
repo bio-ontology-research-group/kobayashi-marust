@@ -46,10 +46,22 @@ literal/edge waves; at 231.7 seconds it retained 2,817,004 literal events and
   predecessor-local route it timed out at 240.33 seconds, peaked at 6.68 GiB,
   and emitted zero bytes. It only delayed allocation relative to the 6.69 GiB
   node-major baseline, so it is rejected as neutral.
+- A path-level trace found 265.5 million ordinary NF4 propagation presentations
+  by 111 seconds. Only 18.8 million were unique pending writes, 115.8 million
+  already existed in node labels, and about 130.9 million were duplicate
+  presentations within the wave. The same run had already performed 329.6
+  million inverse-edge KPSet containment checks. This identifies both sources
+  of repeated work rather than attributing the timeout to container overhead.
+- A persistent `(role,target)` consequence bitmap plus per-source bulk bitmap OR
+  preserved the tested eager/hash-batch fixpoint and the node-major application
+  schedule. It nevertheless timed out at 240.26 seconds, peaked at 7.25 GiB,
+  and emitted zero bytes. Retaining vectors and the parallel bitmap index cost
+  more than the avoided hash insertions, so this layout is also rejected.
 
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
 The next QO change must reduce the actual predecessor-local NF3/NF4 closure
-volume while retaining the productive node-major schedule. Container swaps and
-the existing residue brancher do not address the blocker.
+volume, especially the inverse KPSet containment workload, while retaining the
+productive node-major schedule. Container swaps and the existing residue
+brancher do not address the blocker.
