@@ -503,6 +503,25 @@ Roaring run compression can represent them without storing billions of
 context-local concept entries. NF1/NF2 become context-bitmap unions and NF4
 becomes a role-relation image over a context bitmap.
 
+The concept-major implementation passed an exact synthetic equivalence test
+against the context-major closure, including reverse NF2 and a symbolic
+inverse/NF4 crossing. On the known positive `HP_0000001`, its first direct
+implementation reached the former 3.80-billion-pair frontier at about 4 GiB
+rather than exceeding 20 GiB, but repeated role images timed out. Exact bitmap
+equality then reduced round six from 10,462 `(role, filler)` images to 29
+distinct source bitmaps. Transposing the base labels removed the remaining
+per-pair freshness probes.
+
+With both changes, the exact closure completed round six and represented
+3,797,362,501 demands, then completed round seven with 14,989,732,319 demands
+over 369,446 contexts. Round seven contained 20,919 `(role, filler)` images,
+382 distinct source bitmaps, and 651,940,023 raw relation hits. The 240-second
+run timed out in round eight at 9,850,388 KiB peak RSS. This establishes that
+concept-major compression solves the memory failure, but not yet the runtime
+contract. The remaining target is the role-image operation itself: cache or
+incrementally update exact relation images across the 382 source bitmaps rather
+than rescanning their shared context sets.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
