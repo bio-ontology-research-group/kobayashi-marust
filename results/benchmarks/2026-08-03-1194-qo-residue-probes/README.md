@@ -378,6 +378,36 @@ equivalent demand-driven certificate, rather than building the projected model.
 The overlay remains isolated on `codex/1194-sat-share` and is not production
 code.
 
+Backward relevance was then measured before building another continuation.
+A conservative concept-level slice starting from named conclusions retained
+2,304,600 of the 2,320,144 genuinely fresh seed facts, so concept identity alone
+does not separate the useful wave. A context-sensitive magic-set census was
+also too broad. Its instrumented 180-second run reached 31,411,167 demanded
+pairs over 369,446 contexts after processing only 300,000 pairs. Restricting
+root goals to seed-tainted named concepts produced essentially the same growth:
+31,815,491 demanded pairs after 300,000 processed. Both runs remained near
+4 GiB because their Roaring demand sets were compact, but neither approached a
+fixpoint within the time contract.
+
+A memoized top-down Horn prover tested existential witnesses as alternatives
+instead of enqueueing all of them. On the observed new root consequence
+`HP_0000001`, unbounded recursion overflowed the ordinary process stack at
+109.81 seconds and 5,777,816 KiB. A 64-MiB-stack diagnostic also overflowed and
+peaked at 21,779,380 KiB, outside the benchmark contract. Reordering immediate
+base/seed witnesses first still overflowed. A positive-only, depth-512 variant
+avoided stack growth but timed out at 180.14 seconds and 3,584,800 KiB without
+finding a proof. These are search-control diagnostics, not evidence that the
+consequence is absent. No top-down implementation is merged.
+
+The retained base graph gives a different certification opportunity. For
+`CL_0000071`, the forward cone has 1,790 nodes and 780,883 edges; the backward
+cone has 52 nodes and 245 edges; their intersection contains only the root.
+This does not by itself certify root-local repair because NF4 can propagate a
+changed descendant label back along an outgoing root edge. The next exact route
+therefore uses the clean root-local repair as a lower bound and a sound quotient
+of the forward cone as an upper bound. Equality of their named root labels would
+certify the result without constructing the full descendant continuation.
+
 ## Decision
 
 None of these routes closes ontology 1194. Automatic coverage remains 591/592.
