@@ -86,6 +86,14 @@ positive/negative Roaring bitmaps. It preserved the focused fixpoint but reached
 four million literal pops at 46.6 seconds, versus 45.4 seconds for the hash
 micro-batch at the same model state. Bitmap container overhead therefore loses
 at this bounded wave size; the variant is rejected and not preserved.
+Grouping each guard's FPROP rules by role removed repeated scans and allocations
+of the same source successor list. It preserved the exact trace state and moved
+the four-million-literal marker from 45.4 to 44.2 seconds, only a 2.6% gain and
+far too little for the remaining closure. Prototype commit `574d9c3` on branch
+`codex/1194-fprop-grouped` is not merged. Adding an exact membership set for
+materialised `(role,source,conclusion)` forward links left the marker unchanged
+at 44.2 seconds and raised short-profile RSS to about 1.77 GiB. Most links are
+fresh, so linear duplicate checks are not the bottleneck; the index is rejected.
 
 ## Decision
 
