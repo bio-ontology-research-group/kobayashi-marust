@@ -61,6 +61,15 @@ increased by 26,188 KiB (0.48%), and all six output streams were byte-identical.
 Evidence is in
 [`results/benchmarks/2026-08-04-grouped-output-sort/`](results/benchmarks/2026-08-04-grouped-output-sort/README.md).
 
+Source-bound build `50024711`, sanity job `50024712`, and exclusive IBEX array
+`50024713` completed the production gate. All 592 ontology rows, profiles,
+checkpoints, logs, binary identities, and collision-sensitive fingerprints
+passed the terminal audit. Coverage remained 591/592, and comparison with
+`df5bb5b` found zero semantic or route differences. Across the 591 paired
+successes, mean wall improved from 6.1991 to 5.9744 seconds (3.63%), median wall
+from 0.2766 to 0.2703 seconds, and mean peak moved from 844.44 to 845.61 MiB.
+The alternating ORE 9674 pairs remain the source-isolated performance evidence.
+
 ### Use fast deterministic hashing for exact-checked content interning (2026-08-04)
 
 Context-core and Pred-clause interning now use KM's deterministic FxHash-style

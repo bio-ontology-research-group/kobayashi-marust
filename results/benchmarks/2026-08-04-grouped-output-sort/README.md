@@ -56,5 +56,45 @@ its required GLIBC 2.39. No result from that failed attempt is included above.
 - [`ibex_9674_pair.sbatch`](ibex_9674_pair.sbatch) runs the alternating paired
   benchmark and validates output identity.
 
-The complete 592-ontology production sweep is the acceptance gate for landing
-the optimization in the released automatic route.
+## Complete production sweep
+
+Commit `6600efe` was archived with SHA-256
+`aefde41c675d7b1d9159fdb19db56f34152ea423cfa2a4410192abed749007ef`.
+IBEX build job `50024711` reproduced binary SHA-256 `537779a49e73…`.
+Sanity job `50024712` completed ORE 10860 and wrote a resumable checkpoint;
+exclusive array `50024713` then completed all 592 indices.
+
+The strict terminal audit verified 592 unique result rows, profiles,
+checkpoints, and full-array logs; exact ontology and index coverage; the pinned
+binary on every row; valid terminal or resume markers; no temporary or partial
+artifacts; and the expected retained diagnostic-artifact set. Collision-safe
+full-IRI fingerprints passed for ORE 3524, 13503, 4669, and 15703. Comparison
+with the complete `df5bb5b` sweep found zero differences in status, verdict,
+signature, consistency, answer counts, route, incompleteness, or gold-difference
+counts.
+
+The sweep retained 591 `ok` rows and the sole expected ORE 1194 error. Verdicts
+were 588 exact matches, two established consistency mismatches, one no-gold
+case, and one error. Across the 591 paired successful rows:
+
+| measure | `df5bb5b` | `6600efe` |
+|---|---:|---:|
+| mean wall | 6.1991 s | 5.9744 s |
+| median wall | 0.2766 s | 0.2703 s |
+| mean peak | 844.44 MB | 845.61 MB |
+| median peak | 45.23 MB | 45.00 MB |
+
+The observed corpus mean wall improved by 3.63%, while mean peak increased by
+0.14%. The 5%-trimmed paired mean improved by 0.0822 seconds. Because unrelated
+routes also moved between arrays, the alternating ORE 9674 experiment above is
+the source-isolated evidence for the optimization itself: 9.86% faster at a
+0.48% peak-RSS cost. In the production sweep, ORE 9674 improved from 54.9113 to
+48.1639 seconds with the same signature.
+
+The authoritative per-ontology table is
+[`automatic-results.tsv`](automatic-results.tsv), SHA-256
+`1d9d4e3eed6d79b0a708aebbacab652d8449098ddbf5f0b92d12924501b628cd`.
+The production build and arrays are reproduced by
+[`ibex_build_6600efe.sbatch`](ibex_build_6600efe.sbatch),
+[`ibex_sanity_6600efe.sbatch`](ibex_sanity_6600efe.sbatch), and
+[`ibex_sweep_6600efe.sbatch`](ibex_sweep_6600efe.sbatch).
