@@ -96,6 +96,26 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Reuse serial hypertableau models and counterexamples (2026-08-05)
+
+The default `km classify` route now enables two existing sound serial
+hypertableau optimizations. A completed model can witness satisfiability for
+every named concept in its node labels, avoiding redundant phase-1 tests. A
+satisfiable `A ∧ ¬B` model also eliminates every concept absent from its root
+label as a candidate subsumer of `A`, avoiding redundant phase-2 tests. The
+parallel classifier already performs model-based pruning internally. No
+hypertableau rule, routing decision, or output construction changed.
+
+The complete release suite passed. A source-bound 70-ontology IBEX panel
+covered every currently successful serial-hypertableau-related automatic
+route. Its strict audit verified 70 exact output pairs, 140 zero exits, all
+indices and completion markers, and every timing and digest receipt. Total wall
+fell from 675.60 to 571.84 seconds (15.36%), while mean peak RSS fell 0.80%.
+ORE7499 improved 59.73%, ORE10702 improved 55.67%, and ORE6934 improved
+31.11%. The complete 592-ontology production sweep remains the final promotion
+gate. Evidence is in
+[`results/benchmarks/2026-08-05-ht-model-reuse/`](results/benchmarks/2026-08-05-ht-model-reuse/README.md).
+
 ### Stream final classification JSON directly to stdout (2026-08-04)
 
 The `km classify` CLI now writes the final classification through its existing
