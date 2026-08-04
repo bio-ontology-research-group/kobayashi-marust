@@ -60,3 +60,29 @@ keyed by `(role, fixed target)` with a bitmap of sources. It must:
 
 This is a measured structural requirement, not a claim that ontology 1194 is
 closed. Production automatic coverage remains 591/592.
+
+## Virtual-relation checkpoint
+
+The first implementation of that design is preserved at `7438703` on the
+isolated `codex/fable-1194-cardinality` branch. It adds:
+
+- fixed-target NF3 relations with Roaring source bitmaps;
+- exact role-hierarchy lifting;
+- ordinary and reciprocal NF4 closure over virtual pairs;
+- a compact physical-label transpose for reciprocal intersections;
+- selective virtual-label transposition only at actual NF3 targets;
+- residual role membership and dense domain/range checks over the overlay;
+- fail-closed rejection when role chains are present.
+
+The focused virtual NF3/NF4 test passes. The production-contract gate still
+times out and emits zero bytes, so the checkpoint is not eligible for `main`.
+At 240.81 seconds it had processed 3,000 virtual concept keys, represented
+644,535,890 role pairs, and peaked at 14,438,252 KiB. This is a large advance
+over physical materialisation, which exhausted 20 GiB after 328.6 million
+missing edges, but closure still does not drain within the benchmark limit.
+
+The next optimization should share the repeated dense source bitmap across
+virtual concept and role buckets, then batch the thousands of NF4 conclusions
+that receive that same source set. The current implementation keeps each
+bitmap independently, so its CPU and memory costs grow with the number of
+logically identical extensions even though their contents are compressed.
