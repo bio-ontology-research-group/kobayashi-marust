@@ -593,6 +593,30 @@ finishing. The productive route is therefore staged 3--5 positive proof search
 over one shared base, followed by a sharper sound upper bound for the final ten,
 not unrestricted depth-six expansion.
 
+A role-signature quotient then separates the residual. It excludes all six
+`UBREL_0000002` candidates from a sound upper model. The other four nested
+BFO/RO candidates each have a constructive depth-six proof; one union of those
+four also proves all four in 132.12 seconds at 4,106,068 KiB. The failed
+ten-goal depth-six run was therefore caused by unioning the false candidates'
+demand guards, not by inaccessible proofs for the four entailed candidates.
+
+A single-process staged prototype constructs the base and transposed indexes
+once, then runs candidate unions at depths three, four, and five followed by
+depth six for the four upper-retained residuals. It proves all 1,242 entailed
+extras in 205.97 seconds at 4,143,952 KiB, leaving exactly the six
+role-signature-excluded candidates. The stage counts are 1,191, 28, 19, and 4.
+
+Candidate generation no longer needs the slow generic quotient state. A compact
+two-context abstract interpreter represents each role relation in four bits and
+applies the same NF1--NF7, forced-inverse, and bottom-propagation closure. On
+1194 its abstract phase takes 0.639 seconds and reproduces the complete 1,248
+candidate set exactly. A unit test also compares its root label exactly with the
+generic quotient on an NF2/NF4 crossing. A first compact negative-certificate
+refinement split the base cone by `UBREL_0000002` role presence, but merging
+fresh quotient-induced NF3 fillers was too coarse and retained all six false
+candidates. That refinement is rejected; fresh filler identities must be
+preserved.
+
 Exact demand-signature grouping was tested next and rejected. Retaining full
 guards reached 7,677,508 KiB after 144 seconds before closure began. A streaming
 seed-signature probe discarded each guard but still timed out before completing
@@ -613,8 +637,10 @@ and less memory-efficient.
 ## Decision
 
 None of these routes yet closes ontology 1194. Automatic coverage remains
-591/592. Constructive positive proofs now cover 1,238 of the 1,248 consequences
-introduced by the coarse quotient upper bound. Completion requires excluding
-the final ten with a sharper sound upper certificate (or finding cheaper
-constructive proofs), then emitting and comparing the complete taxonomy under
-the 240-second/20-GB production contract.
+591/592. Every candidate is now decided: 1,242 have constructive proofs and six
+are excluded by a sound role-signature upper model. The complete positive
+staged proof takes 205.97 seconds, and compact candidate generation adds less
+than one second when integrated over the same base. Completion now requires a
+compact negative certificate that preserves fresh filler identities, followed
+by full taxonomy emission and signature comparison under the 240-second/20-GB
+production contract.
