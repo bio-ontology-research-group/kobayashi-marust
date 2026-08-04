@@ -13,10 +13,34 @@ not change calculus rules or scheduling and requires no Lean re-certification.
 
 The source archive has SHA-256
 `91f2e84a36637e65755333412aabdf7b1938677e168a6eac4ac3dc7c97c8a4fc`.
-IBEX build job `50050792` is producing the source-bound candidate. Alternating
-ORE6934 pair job `50050793` is dependency-queued behind that build and the
-`07b8526` corpus sweep. The pair must demonstrate exact output and useful
-performance before this change advances to a corpus gate.
+IBEX build job `50050792` produced candidate binary SHA-256
+`a16f97f899854c5153ff20ef0f318a813a3be159d269efb13e16d9594dcf62d2`.
+Alternating ORE6934 pair job `50050793` compared it with the source-bound
+`07b8526` baseline binary, SHA-256
+`631af3586f0aac6ec5f4025ea70e9b818f2e8cba64e1417ad69fbdafa74d5439`,
+on one exclusive Intel Xeon Gold 6248 node.
+
+| Arm | Wall seconds | Peak KiB |
+|---|---:|---:|
+| Baseline 1 | 114.85 | 3,347,396 |
+| Candidate 1 | 113.24 | 3,348,456 |
+| Baseline 2 | 115.34 | 3,347,204 |
+| Candidate 2 | 111.24 | 3,330,688 |
+| Baseline 3 | 116.54 | 3,345,140 |
+| Candidate 3 | 113.56 | 3,349,512 |
+| **Baseline mean** | **115.577** | **3,346,580** |
+| **Candidate mean** | **112.680** | **3,342,885** |
+
+Mean wall improved by 2.897 seconds, or 2.51%, and mean peak RSS fell by
+3,695 KiB (0.11%). All six outputs had SHA-256
+`9d58abe4db62956241a0de0b0cf6bad39d48fc36c1afc07a07bcf8b19981e0a2`.
+The strict audit checked both binary identities, all six timing receipts and
+zero exit codes, and all six output digests.
+
+Sanity job `50051037` and source-bound production arrays `50051038` and
+`50051039` use [`ibex_sweep_5bd9489.sbatch`](ibex_sweep_5bd9489.sbatch).
+The arrays are gated on the sanity result. A complete strictly audited
+592-ontology result remains required before release.
 
 [`ibex_build_5bd9489.sbatch`](ibex_build_5bd9489.sbatch) and
-[`ibex_6934_pair.sbatch`](ibex_6934_pair.sbatch) reproduce the staged test.
+[`ibex_6934_pair.sbatch`](ibex_6934_pair.sbatch) reproduce the build and pair.

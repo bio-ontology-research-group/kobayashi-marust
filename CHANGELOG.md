@@ -1,5 +1,17 @@
 # Changelog
 
+### Avoid temporary blocking-key vectors (2026-08-05)
+
+Incremental subset blocking now borrows a node's concept map separately from
+the mutable posting-list fields and registers keys directly. This removes one
+temporary key-vector allocation per unblocked node while inserting the same
+keys in the same order. The complete release suite passed. Three alternating
+source-bound ORE6934 pairs were byte-identical and improved mean wall from
+115.577 to 112.680 seconds (2.51%); mean peak RSS fell 0.11%. A complete corpus
+sweep remains required before release. Evidence and reproduction scripts are
+in
+[`results/benchmarks/2026-08-05-i2-key-borrow/`](results/benchmarks/2026-08-05-i2-key-borrow/README.md).
+
 ### Truncate stale blocking posting-list tails (2026-08-05)
 
 Incremental subset blocking now uses the posting lists' increasing node-ID
