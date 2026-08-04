@@ -482,7 +482,10 @@ fn classify_cmd(rest: &[String]) {
             if lines {
                 let _ = writeln!(w, "{}", res.to_lines());
             } else {
-                let _ = w.write_all(&res.to_json());
+                if let Err(error) = res.write_json(&mut w) {
+                    eprintln!("classification serialise error: {error}");
+                    exit(1);
+                }
                 let _ = w.write_all(b"\n");
             }
             let _ = w.flush();

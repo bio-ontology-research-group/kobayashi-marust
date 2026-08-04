@@ -46,6 +46,22 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Stream final classification JSON directly to stdout (2026-08-04)
+
+The `km classify` CLI now writes the final classification through its existing
+Python-compatible JSON formatter directly to locked stdout instead of first
+materialising a second whole-output byte vector. The allocation-returning API
+delegates to the same writer, and a regression test pins byte identity. This is
+an output-representation change only; reasoning and the fixpoint are unchanged.
+The complete release suite passes with 1,949 library tests, eight ignored
+library tests, and every integration suite passing.
+
+On ORE 9674, three source-bound alternating IBEX pairs reduced mean wall from
+46.490 to 44.733 seconds (3.78%) and mean peak RSS from 5,479,932 to 4,016,495
+KiB, a 1.396 GiB (26.7%) reduction. All six output streams were byte-identical.
+Evidence is in
+[`results/benchmarks/2026-08-04-streamed-output/`](results/benchmarks/2026-08-04-streamed-output/README.md).
+
 ### Order dense final taxonomies by grouped full-IRI rows (2026-08-04)
 
 The automatic classifier now sorts mapped superclass IRIs within each mapped

@@ -1053,13 +1053,20 @@ impl serde_json::ser::Formatter for PyFmt {
 }
 
 impl Classification {
+    /// Write `json.dumps(res)`-compatible bytes directly to a stream.
+    ///
+    /// The CLI uses this path so a dense taxonomy does not coexist with a
+    /// second, whole-output byte vector. `to_json` remains the convenient
+    /// allocation-returning API and delegates here to pin byte identity.
+    pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
+        let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
+        serde::Serialize::serialize(self, &mut ser)
+    }
+
     /// `json.dumps(res)`-compatible bytes.
     pub fn to_json(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        {
-            let mut ser = serde_json::Serializer::with_formatter(&mut buf, PyFmt);
-            serde::Serialize::serialize(self, &mut ser).expect("serialise Classification");
-        }
+        self.write_json(&mut buf).expect("serialise Classification");
         buf
     }
 
@@ -1086,6 +1093,20 @@ mod tests {
         use_elc_portfolio,
     };
     use crate::reasoner::Reasoner;
+
+    #[test]
+    fn streamed_classification_json_matches_allocating_api() {
+        let classification = super::Classification {
+            consistent: true,
+            subsumptions: vec![["http://example.org/A".into(), "owl:Thing".into()]],
+            unsatisfiable: vec!["http://example.org/B".into()],
+            dropped: 0,
+        };
+        let expected = classification.to_json();
+        let mut streamed = Vec::new();
+        classification.write_json(&mut streamed).unwrap();
+        assert_eq!(streamed, expected);
+    }
 
     /// Regression: the in-process CB fast path published a resource-truncated
     /// (incomplete) closure as a complete taxonomy — the forked worker declines
