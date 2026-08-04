@@ -10,7 +10,12 @@ complete release suite passed with 1,951 library tests, eight ignored library
 tests, and every integration and documentation test passing. Three alternating
 source-bound ORE9674 pairs were byte-identical and improved mean wall from
 42.200 to 41.547 seconds (1.55%); mean peak RSS was measurement-neutral at
-2,227,104 versus 2,228,337 KiB. The complete corpus sweep is dependency-queued.
+2,227,104 versus 2,228,337 KiB. Source-bound arrays `50048480` and `50048481`
+passed the full 592-ontology correctness gate with 591 successes, the existing
+ORE1194 error, and zero semantic or route differences from `abe2759`. The
+independently scheduled corpus sweep was 3.24% slower in mean wall and 0.36%
+higher in mean peak RSS, so it does not provide corpus-wide performance
+evidence; the alternating pair remains the source-isolated performance result.
 Evidence and reproduction scripts are in
 [`results/benchmarks/2026-08-04-compact-taxonomy-ids/`](results/benchmarks/2026-08-04-compact-taxonomy-ids/README.md).
 

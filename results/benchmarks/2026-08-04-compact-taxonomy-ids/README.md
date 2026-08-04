@@ -41,10 +41,24 @@ representation therefore improves integer sorting and traversal but does not
 lower this process's peak high-water mark.
 
 The scripts in this directory reproduce the exact source build and paired run.
-The complete 592-ontology production sweep is staged at
+The complete 592-ontology production sweep is stored at
 `/ibex/scratch/hohndor/km/release-9ee269e-auto-20260804`. Sanity job `50048451`
-passed with the expected binary hash, terminal checkpoint, production route,
-and result root. Production arrays `50048480` and `50048481` are running.
+and production arrays `50048480` and `50048481` used the expected binary.
+The strict audit verified all 592 terminal rows, checkpoints, profiles,
+production route traces, task-to-ontology identities, completion logs, and
+collision-sensitive full-IRI fingerprints, with no temporary artifacts. It
+found zero route or semantic differences from the accepted `abe2759` sweep.
+Coverage remained 591/592: 591 successful rows and the existing ORE1194 error.
+Verdicts remained 588 matches, the established consistency disagreements on
+ORE2669 and ORE15516, one no-gold row (ORE10860), and ORE1194's error.
+
+Across the 591 paired successful rows, mean wall increased from 5.8196 to
+6.0082 seconds (3.24%) and median wall increased from 0.2495 to 0.2523 seconds
+(1.12%). Mean peak RSS increased from 820.36 to 823.32 MiB (0.36%), while the
+median fell from 43.04 to 42.13 MiB (2.11%). These independently scheduled
+corpus runs are noisier than the alternating source-isolated pair, so they do
+not establish a corpus-wide speed improvement. The complete result table is
+[`automatic-results.tsv`](automatic-results.tsv).
 
 An initial submission used a copied sweep script whose hard-coded root still
 named `229ad77`. Its tasks only recognized that sweep's existing rows as
