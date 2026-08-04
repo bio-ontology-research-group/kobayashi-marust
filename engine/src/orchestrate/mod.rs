@@ -138,6 +138,9 @@ pub struct Classification {
 /// Internal oracle provenance kept out of the stable classification shape.
 pub(crate) struct ClassificationEvidence {
     pub classification: Classification,
+    /// Final full-IRI rows retained in grouped form for the JSON-only CLI.
+    /// Library and explanation callers keep the established flat API.
+    grouped_subsumptions: Option<BTreeMap<String, Vec<String>>>,
     /// An exact consistency mechanism covered the complete source even when a
     /// later taxonomy-only fall-through could not retain every clause.
     pub consistency_certified: bool,
@@ -485,6 +488,68 @@ pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, Orch
     classify_with_evidence(initial_cfg, ont).map(|evidence| evidence.classification)
 }
 
+/// A JSON-only classification result that may retain taxonomy rows in grouped
+/// form until serialization. This keeps the public [`Classification`] shape
+/// unchanged while avoiding one cloned subject `String` per pair in the CLI.
+pub struct JsonClassification {
+    classification: Classification,
+    grouped_subsumptions: Option<BTreeMap<String, Vec<String>>>,
+}
+
+impl JsonClassification {
+    pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
+        let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
+        serde::Serialize::serialize(self, &mut ser)
+    }
+}
+
+impl serde::Serialize for JsonClassification {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+
+        struct GroupedPairs<'a>(&'a BTreeMap<String, Vec<String>>);
+        impl serde::Serialize for GroupedPairs<'_> {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeSeq;
+                let len = self.0.values().map(Vec::len).sum();
+                let mut seq = serializer.serialize_seq(Some(len))?;
+                for (subject, supers) in self.0 {
+                    for superclass in supers {
+                        seq.serialize_element(&(subject, superclass))?;
+                    }
+                }
+                seq.end()
+            }
+        }
+
+        let mut state = serializer.serialize_struct("Classification", 4)?;
+        state.serialize_field("consistent", &self.classification.consistent)?;
+        if let Some(grouped) = &self.grouped_subsumptions {
+            state.serialize_field("subsumptions", &GroupedPairs(grouped))?;
+        } else {
+            state.serialize_field("subsumptions", &self.classification.subsumptions)?;
+        }
+        state.serialize_field("unsatisfiable", &self.classification.unsatisfiable)?;
+        state.serialize_field("dropped", &self.classification.dropped)?;
+        state.end()
+    }
+}
+
+/// Classify for the normal JSON CLI without forcing grouped taxonomy rows into
+/// the flat public representation first.
+pub fn classify_json(
+    initial_cfg: &Config,
+    ont: &Path,
+) -> Result<JsonClassification, OrchestrateError> {
+    classify_with_evidence_mode(initial_cfg, ont, true).map(|evidence| JsonClassification {
+        classification: evidence.classification,
+        grouped_subsumptions: evidence.grouped_subsumptions,
+    })
+}
+
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
     let individuals = profile
         .clauses
@@ -500,6 +565,14 @@ fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Opti
 pub(crate) fn classify_with_evidence(
     initial_cfg: &Config,
     ont: &Path,
+) -> Result<ClassificationEvidence, OrchestrateError> {
+    classify_with_evidence_mode(initial_cfg, ont, false)
+}
+
+fn classify_with_evidence_mode(
+    initial_cfg: &Config,
+    ont: &Path,
+    retain_grouped_output: bool,
 ) -> Result<ClassificationEvidence, OrchestrateError> {
     // Route selection changes process-wide KM_* keys because the frontend and
     // worker subprocesses share the established environment contract. Restore
@@ -522,6 +595,7 @@ pub(crate) fn classify_with_evidence(
         }
         return Ok(ClassificationEvidence {
             classification,
+            grouped_subsumptions: None,
             consistency_certified: true,
         });
     }
@@ -566,6 +640,7 @@ pub(crate) fn classify_with_evidence(
                 unsatisfiable: vec![],
                 dropped: 0,
             },
+            grouped_subsumptions: None,
             consistency_certified: true,
         });
     }
@@ -588,6 +663,7 @@ pub(crate) fn classify_with_evidence(
                         unsatisfiable: vec![],
                         dropped: 0,
                     },
+                    grouped_subsumptions: None,
                     consistency_certified: true,
                 });
             }
@@ -628,6 +704,7 @@ pub(crate) fn classify_with_evidence(
                         unsatisfiable: vec![],
                         dropped: 0,
                     },
+                    grouped_subsumptions: None,
                     consistency_certified: true,
                 });
             }
@@ -884,10 +961,18 @@ pub(crate) fn classify_with_evidence(
                 unsatisfiable: vec![],
                 dropped: out.dropped,
             },
+            grouped_subsumptions: None,
             consistency_certified: consistency_certified || out.dropped == 0,
         });
     }
-    let subs = flatten_grouped_subsumptions(grouped_subs);
+    let (subs, grouped_subsumptions) = if retain_grouped_output {
+        for supers in grouped_subs.values_mut() {
+            supers.sort_unstable();
+        }
+        (Vec::new(), Some(grouped_subs))
+    } else {
+        (flatten_grouped_subsumptions(grouped_subs), None)
+    };
     let unsat = unsat_set.into_iter().collect();
     Ok(ClassificationEvidence {
         classification: Classification {
@@ -896,6 +981,7 @@ pub(crate) fn classify_with_evidence(
             unsatisfiable: unsat,
             dropped: out.dropped,
         },
+        grouped_subsumptions,
         consistency_certified: consistency_certified || out.dropped == 0,
     })
 }
@@ -1106,6 +1192,40 @@ mod tests {
         let mut streamed = Vec::new();
         classification.write_json(&mut streamed).unwrap();
         assert_eq!(streamed, expected);
+    }
+
+    #[test]
+    fn grouped_json_classification_matches_flat_bytes() {
+        let grouped = std::collections::BTreeMap::from([
+            (
+                "http://a.example/A".to_string(),
+                vec!["S1".to_string(), "S1".to_string(), "S2".to_string()],
+            ),
+            (
+                "http://z.example/A".to_string(),
+                vec!["S1".to_string(), "S3".to_string()],
+            ),
+        ]);
+        let flat = super::flatten_grouped_subsumptions(grouped.clone());
+        let classification = super::Classification {
+            consistent: true,
+            subsumptions: flat,
+            unsatisfiable: vec!["http://example.org/B".into()],
+            dropped: 2,
+        };
+        let expected = classification.to_json();
+        let grouped = super::JsonClassification {
+            classification: super::Classification {
+                consistent: true,
+                subsumptions: Vec::new(),
+                unsatisfiable: vec!["http://example.org/B".into()],
+                dropped: 2,
+            },
+            grouped_subsumptions: Some(grouped),
+        };
+        let mut actual = Vec::new();
+        grouped.write_json(&mut actual).unwrap();
+        assert_eq!(actual, expected);
     }
 
     /// Regression: the in-process CB fast path published a resource-truncated

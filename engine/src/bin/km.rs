@@ -474,6 +474,30 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let cfg = Config::from_env();
+    if !lines {
+        match orchestrate::classify_json(&cfg, Path::new(ontology)) {
+            Ok(res) => {
+                use std::io::{BufWriter, Write};
+                let stdout = std::io::stdout();
+                let mut w = BufWriter::new(stdout.lock());
+                if let Err(error) = res.write_json(&mut w) {
+                    eprintln!("classification serialise error: {error}");
+                    exit(1);
+                }
+                let _ = w.write_all(b"\n");
+                let _ = w.flush();
+                return;
+            }
+            Err(OrchestrateError::OutOfFragment(e)) => {
+                eprintln!("unsupported: {e}");
+                exit(3);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                exit(1);
+            }
+        }
+    }
     match orchestrate::classify(&cfg, Path::new(ontology)) {
         Ok(res) => {
             use std::io::{BufWriter, Write};
@@ -482,15 +506,7 @@ fn classify_cmd(rest: &[String]) {
             // remains fast when stdout is a network-backed harness file, while
             // still avoiding a whole-classification byte vector.
             let mut w = BufWriter::new(stdout.lock());
-            if lines {
-                let _ = writeln!(w, "{}", res.to_lines());
-            } else {
-                if let Err(error) = res.write_json(&mut w) {
-                    eprintln!("classification serialise error: {error}");
-                    exit(1);
-                }
-                let _ = w.write_all(b"\n");
-            }
+            let _ = writeln!(w, "{}", res.to_lines());
             let _ = w.flush();
         }
         // honest decline: outside the supported fragment (datatypes)
