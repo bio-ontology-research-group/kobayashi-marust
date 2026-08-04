@@ -41,5 +41,8 @@ representation therefore improves integer sorting and traversal but does not
 lower this process's peak high-water mark.
 
 The scripts in this directory reproduce the exact source build and paired run.
-The complete 592-ontology production sweep is dependency-queued behind the
-`abe2759` sweep.
+The complete 592-ontology production sweep is staged at
+`/ibex/scratch/hohndor/km/release-9ee269e-auto-20260804`. Sanity job `50040967`
+depends on both `abe2759` arrays; production arrays `50040968` and `50040969`
+depend on that sanity gate. The staged binary hash matches the paired candidate
+exactly.
