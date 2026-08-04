@@ -59,8 +59,11 @@ On the completing 4669 base workload, output remained byte-identical while wall
 time fell from 30.99 to 22.27 seconds and peak RSS from 1,871,776 to 1,842,588
 KiB. At the identical 6,000,000-message ORE 1194 checkpoint, cumulative Pred
 arrival fell from 35.68 to 27.69 seconds and clause insertion from 24.53 to
-18.72 seconds. A full source-bound ORE sweep is still required before this
-becomes a release result. Evidence is in
+18.72 seconds. Source-bound IBEX array `49995966` verified 591/592 successful
+automatic classifications with zero semantic differences from `1ef8ee1`.
+Across the 591 paired successes, mean wall fell from 6.3539 to 6.1310 seconds,
+median wall moved from 0.2738 to 0.2794 seconds, mean peak RSS moved from 844.18
+to 844.50 MiB, and median peak RSS fell from 45.23 to 44.19 MiB. Evidence is in
 [`results/benchmarks/2026-08-04-cb-fxhash/`](results/benchmarks/2026-08-04-cb-fxhash/README.md).
 
 ### Batch QO propagation and index exact edge membership (2026-08-02)

@@ -90,26 +90,27 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `49886489`, full array `49886711`, and the
-complete 592-row integrity audit verify every terminal row, checkpoint, route
-trace, profile, and binary identity. Metrics use the 591 successful rows from
-reasoner commit `f39a2fd` and IBEX binary `4051f903dc2d…`.
+over all 592 ontologies. Build job `49995963`, sanity array `49995965`, full
+array `49995966`, and the complete 592-row integrity audit verify every terminal
+row, checkpoint, route trace, profile, and binary identity. Metrics use the 591
+successful rows from reasoner commit `a4eb829` and IBEX binary
+`2dd549fbf983…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `f39a2fd` (binary `4051f903dc2d…`) | **591** | **591** | **6.3106** | **0.2791** | **835.76** | **45.23** |
+| **KM automatic, `km classify`** | `a4eb829` (binary `2dd549fbf983…`) | **591** | **591** | **6.1310** | **0.2794** | **844.50** | **44.19** |
 
-“Empirically correct” means 587 exact retained Konclude full-IRI signatures,
-three independently adjudicated consistency results, and 4669's independently
-derived 846,306-pair full-IRI oracle. It is not a claim of 591 Konclude matches
-or a proof about arbitrary OWL inputs. Ontology 1194 errors without publishing
-a taxonomy and is the only remaining input.
+“Empirically correct” means 588 exact retained or independently derived
+full-IRI signatures, two independently adjudicated consistency results, and one
+independently adjudicated no-gold result. It is not a claim of 591 Konclude
+matches or a proof about arbitrary OWL inputs. Ontology 1194 errors without
+publishing a taxonomy and is the only remaining input.
 
 Per-ontology routes, evidence, and special handling are recorded in:
 
 - [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
-- [`results/benchmarks/2026-08-02-f39a2fd-auto/`](results/benchmarks/2026-08-02-f39a2fd-auto/)
+- [`results/benchmarks/2026-08-04-cb-fxhash/`](results/benchmarks/2026-08-04-cb-fxhash/)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 
