@@ -99,6 +99,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Consume fixed hypertableau output pairs (2026-08-05)
+
+The automatic classifier now deserializes hypertableau taxonomy relations as
+fixed two-string arrays and moves their strings directly into grouped output
+rows. This rejects malformed variable-length worker rows and removes two string
+clones per relation without changing reasoning, routing, or output bytes. The
+complete release suite passed. Three alternating source-bound ORE3215 pairs
+were byte-identical and improved mean wall from 150.160 to 148.000 seconds
+(1.44%); mean peak RSS was measurement-neutral. Evidence is in
+[`results/benchmarks/2026-08-04-ht-output-handoff/`](results/benchmarks/2026-08-04-ht-output-handoff/README.md).
+
 ### Reuse serial hypertableau models and counterexamples (2026-08-05)
 
 The default `km classify` route now enables two existing sound serial
