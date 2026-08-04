@@ -46,8 +46,28 @@ every pair. It achieved the same memory reduction but increased mean wall by
 1.25%, so it was not pushed. Precomputing the local-name-to-Arc table removed
 that regression and produced the accepted result above.
 
-The complete 592-ontology production sweep is queued behind the preceding
-source-bound sweeps and remains pending.
+## Full automatic-route sweep
+
+Source-bound arrays `50037480` and `50037481` completed all 592 ontology
+indices. The strict audit verified 592 terminal rows, checkpoints, profiles,
+and execution records; exact index and ontology coverage; the pinned binary on
+every row; production route traces; no temporary artifacts; and zero semantic
+or route changes from the accepted `229ad77` sweep. The generic audit script
+also found one known profile/production presentation difference on ORE4669:
+the stable source profile reports `production_all`, while the exact production
+gate selects its certified `mirror_private` route. Both sweeps make the same
+selection and emit the same taxonomy.
+
+Coverage remained 591/592: 591 `ok` rows and the existing ORE1194 error. The
+verdicts remained 588 matches, the established consistency disagreements on
+ORE2669 and ORE15516, one no-gold row (ORE10860), and ORE1194's error.
+
+Across 591 paired successes, mean wall fell from 5.8558 to 5.8196 seconds
+(0.62%) and median wall from 0.2523 to 0.2495 seconds (1.11%). Mean peak RSS
+fell from 823.95 to 820.36 MiB (0.44%); median peak moved from 41.79 to 43.04
+MiB. The alternating ORE9674 pair remains the source-isolated evidence for the
+dense-output memory improvement. The complete result table is
+[`automatic-results.tsv`](automatic-results.tsv).
 
 ## Reproduction
 
@@ -60,6 +80,4 @@ source-bound sweeps and remains pending.
   full-IRI-hash variant.
 - The parameterized
   [`../2026-08-04-grouped-json-output/ibex_sweep_229ad77.sbatch`](../2026-08-04-grouped-json-output/ibex_sweep_229ad77.sbatch)
-  is the production runner. The submitted arrays set `KM_SWEEP_ROOT`,
-  `KM_SWEEP_ARM`, and `KM_SWEEP_LABEL` explicitly and override the Slurm output
-  path, while the script's defaults exactly reproduce the `229ad77` sweep.
+  is the production runner used for the complete sweep.

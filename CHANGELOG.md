@@ -24,8 +24,11 @@ with 1,951 library tests, eight ignored library tests, and every integration and
 documentation test passing. On ORE9674, three alternating source-bound pairs
 were byte-identical, improved mean wall from 42.597 to 42.180 seconds, and
 reduced mean peak RSS from 2,882,256 to 2,231,001 KiB, a 636 MiB or 22.60%
-reduction. The complete corpus sweep is queued. Evidence and reproduction
-scripts are in
+reduction. Source-bound arrays `50037480` and `50037481` then passed the full
+592-ontology gate with 591 successes, the existing ORE1194 error, and zero
+semantic or route differences from `229ad77`. Across 591 paired successes,
+mean wall improved 0.62%, median wall improved 1.11%, and mean peak RSS improved
+0.44%. Evidence and reproduction scripts are in
 [`results/benchmarks/2026-08-04-json-iri-intern/`](results/benchmarks/2026-08-04-json-iri-intern/README.md).
 
 ### Serialize grouped taxonomy rows directly (2026-08-04)
