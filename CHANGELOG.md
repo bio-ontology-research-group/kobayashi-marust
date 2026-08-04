@@ -1,5 +1,19 @@
 # Changelog
 
+### Store grouped taxonomy relations as compact IDs (2026-08-04)
+
+The JSON-only classifier now stores taxonomy subjects and superclasses as
+`u32` IDs into one lexicographically ordered full-IRI dictionary. This removes
+per-relation shared-string handles and makes final row sorting integer-based
+without changing reasoning, routing, aliases, duplicates, or output bytes. The
+complete release suite passed with 1,951 library tests, eight ignored library
+tests, and every integration and documentation test passing. Three alternating
+source-bound ORE9674 pairs were byte-identical and improved mean wall from
+42.200 to 41.547 seconds (1.55%); mean peak RSS was measurement-neutral at
+2,227,104 versus 2,228,337 KiB. The complete corpus sweep is dependency-queued.
+Evidence and reproduction scripts are in
+[`results/benchmarks/2026-08-04-compact-taxonomy-ids/`](results/benchmarks/2026-08-04-compact-taxonomy-ids/README.md).
+
 ### Intern repeated full IRIs in grouped JSON output (2026-08-04)
 
 The JSON-only classifier now interns each mapped full IRI once as `Arc<str>`
