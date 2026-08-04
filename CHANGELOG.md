@@ -1,5 +1,18 @@
 # Changelog
 
+### Serialize grouped taxonomy rows directly (2026-08-04)
+
+The normal JSON CLI now retains mapped full-IRI taxonomy rows in grouped form
+through serialization instead of flattening them into one owned subject string
+per pair. The public `Classification` API, `--lines`, explanation, and mirror
+paths retain their flat representation. This changes neither reasoning nor JSON
+bytes. The complete release suite passed. On ORE9674, three alternating
+source-bound pairs against `c3c3d24` were byte-identical, improved mean wall
+from 42.817 to 42.360 seconds, and reduced mean peak RSS from 4,016,389 to
+2,882,389 KiB (minus 1.081 GiB, 28.23%). The corpus sweep remains pending.
+Evidence and reproduction scripts are in
+[`results/benchmarks/2026-08-04-grouped-json-output/`](results/benchmarks/2026-08-04-grouped-json-output/README.md).
+
 ### Reject QO residue and propagation-layout probes for ORE 1194 (2026-08-03)
 
 The optimized shared-filler QO/KPSet precompute converged in 185.67 seconds but
