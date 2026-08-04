@@ -1854,12 +1854,24 @@ fn spawn_ht(
     // obligations of currently-unblocked, not-yet-discharged nodes instead of every
     // accumulated obligation. Result-identical to the flat scan; on 5303 it cut the
     // obligation loop 11x (240M→3M iterations), standalone 25s→10s single-threaded.
+    // WITREUSE: a named concept carried by any node in a completed phase-1 model
+    // already has a satisfiability witness. Reuse that node's label as the
+    // concept's candidate subsumer set; phase 2 still confirms every retained
+    // candidate. MODELPRUNE: every satisfiable A∧¬B phase-2 model witnesses all
+    // concepts absent from its root label as non-subsumers and removes them from
+    // A's remaining candidate set. Both preserve the exhaustive classifier's
+    // result and only reduce independent SAT calls. The parallel classifier
+    // already performs model-based candidate pruning internally and does not use
+    // these sequential, order-dependent caches, so the flags affect only serial
+    // workers.
     for (k, v) in [
         ("KM_HT_EAGER", "1"),
         ("KM_HT_NEGTRIED", "1"),
         ("KM_HT_ORD", "1"),
         ("KM_HT_INCRBLOCK2", "1"),
         ("KM_HT_INCROBLIG", "1"),
+        ("KM_HT_WITREUSE", "1"),
+        ("KM_HT_MODELPRUNE", "1"),
     ] {
         if std::env::var_os(k).is_none() {
             cmd.env(k, v);

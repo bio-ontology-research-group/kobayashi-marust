@@ -10960,7 +10960,9 @@ impl Ht {
         // already appear in some prior model skip their (often identical) witness
         // rebuild — the redundant hard witnesses (5303: many concepts give
         // byte-identical 8.8 s searches) collapse to one. Sound + result-identical;
-        // only the number of Phase-1 sat-tests changes. Gated (default off).
+        // only the number of Phase-1 sat-tests changes. The orchestrator enables
+        // it for production workers; direct worker users can still select it with
+        // the environment flag.
         let witreuse = std::env::var_os("KM_HT_WITREUSE").is_some();
         let mut wit: HashMap<C, Vec<C>> = HashMap::new();
         let mut wit_hits = 0u64;
@@ -11130,7 +11132,9 @@ impl Ht {
             // un-pruned run; it only changes which/how-many tests fire. Gated
             // KM_HT_MODELPRUNE for clean A/B. `tests` counts Phase-2 SAT calls so
             // KM_HT_STATS can report the per-classify test count (the HermiT
-            // metric: O(classes), not O(classes^2)).
+            // metric: O(classes), not O(classes^2)). The orchestrator enables it
+            // for production workers; direct worker users can still select it
+            // with the environment flag.
             let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
             let mut tests: u64 = 0;
             for (a0, lab) in &labels {
@@ -11263,8 +11267,8 @@ impl Ht {
     /// `Vec<Clause>` (Send, no `Rc`) crosses a thread boundary; the `Rc`-backed
     /// `Ext` is created and dropped inside one thread. Result set-identical to the
     /// sequential path (see `classify`). Always non-naive, model-based pruning;
-    /// the sequential modelprune/witreuse/etc. paths are not mirrored (off in
-    /// production and either inert or order-dependent under parallelism).
+    /// the sequential modelprune/witreuse/etc. paths are not mirrored because
+    /// they are either inert or order-dependent under parallelism.
     fn classify_parallel(&self, queries: &[C], par: usize) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let qset: HashSet<C> = queries.iter().copied().collect();
