@@ -92,10 +92,14 @@ Evidence is in
 
 A second file-backed alternating benchmark of the buffered implementation
 reduced mean wall from 44.213 to 43.593 seconds (1.40%) and again removed 1.396
-GiB of peak RSS with byte-identical output. A partial production sweep was
-cancelled conservatively after 116 terminals when scheduler elapsed was
-mistaken for reasoner wall; its completed ORE 9674 row was correct and took
-45.2206 seconds at 3,923.18 MiB. It is not used as corpus-wide evidence.
+GiB of peak RSS with byte-identical output. Source-bound build `50029950`,
+sanity job `50029951`, and exclusive arrays `50029952` and `50029953` then
+completed the production gate. The strict audit passed all 592 terminals,
+checkpoints, profiles, logs, binary identities, route traces, and
+collision-sensitive fingerprints. Coverage remained 591/592 with zero semantic
+differences from `6600efe`. Across 591 paired successes, mean wall improved
+from 5.9744 to 5.8301 seconds, median wall from 0.2703 to 0.2526 seconds, mean
+peak RSS from 845.61 to 830.96 MiB, and median peak from 45.00 to 43.07 MiB.
 
 ### Order dense final taxonomies by grouped full-IRI rows (2026-08-04)
 

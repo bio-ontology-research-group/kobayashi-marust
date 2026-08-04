@@ -57,12 +57,42 @@ it, matching the production redirection shape more closely.
 Mean wall improved by 1.40%, while mean peak RSS again fell by 1.396 GiB
 (26.7%). All outputs retained the same SHA-256 as the pipe-backed experiment.
 
-An initial production sweep was conservatively cancelled after 116 unique
-terminals because scheduler elapsed for ORE 9674 exceeded three minutes. Its
-completed row showed the reasoner itself took 45.2206 seconds at 3,923.18 MiB
-with the correct signature; the remaining task time was canonicalisation of
-14,809,043 pairs, not reasoner serialization. No result from the cancelled
-partial sweep is used as a corpus-wide claim.
+## Complete production sweep
+
+Commit `c3c3d24` was archived with SHA-256
+`b01764d009aac6301a108a2e175438e87a00f8528a314fedde2c72dae3e6ebed`.
+IBEX build job `50029950` produced binary SHA-256
+`a0400ac6678755c08d2478daddcf1c2e7341eae82e5a39ff7d6e0da9ab15c736`.
+Sanity job `50029951` completed ORE10860, and exclusive arrays `50029952` and
+`50029953` completed all 592 indices with resumable per-ontology checkpoints.
+
+The strict audit verified exact ontology and index coverage; 592 matching
+terminal rows, checkpoints, profiles, and logs; the pinned binary on every row;
+valid production route traces; no temporary artifacts; the expected diagnostic
+artifact set; and collision-safe full-IRI fingerprints for ORE3524, 13503,
+4669, and 15703. Comparison with the complete `6600efe` sweep found zero
+differences in status, verdict, signature, consistency, answer counts, route,
+incompleteness, or gold-difference counts.
+
+The sweep retained 591 `ok` rows and the sole expected ORE1194 error. Verdicts
+were 588 exact matches, two established consistency mismatches, one no-gold
+case, and one error. Across the 591 paired successful rows:
+
+| measure | `6600efe` | `c3c3d24` |
+|---|---:|---:|
+| mean wall | 5.9744 s | 5.8301 s |
+| median wall | 0.2703 s | 0.2526 s |
+| mean peak | 845.61 MiB | 830.96 MiB |
+| median peak | 45.00 MiB | 43.07 MiB |
+
+Mean wall improved by 2.42%, and mean peak RSS fell by 1.73%. The 5%-trimmed
+paired wall delta was minus 0.0570 seconds. ORE9674 completed in 43.6561 seconds
+at 3,923.45 MiB with the same signature, compared with 48.1639 seconds and
+5,352.88 MiB in the preceding sweep.
+
+The authoritative per-ontology table is
+[`automatic-results.tsv`](automatic-results.tsv), SHA-256
+`f1b388ab25bf8479534b77ae0d3615eac47d6998bd75948fae57b7d9e7b7aef3`.
 
 Reproduction files:
 
@@ -70,5 +100,6 @@ Reproduction files:
 - [`ibex_9674_pair.sbatch`](ibex_9674_pair.sbatch)
 - [`ibex_build_buffered_candidate.sbatch`](ibex_build_buffered_candidate.sbatch)
 - [`ibex_9674_buffered_file_pair.sbatch`](ibex_9674_buffered_file_pair.sbatch)
-
-The complete 592-ontology production sweep remains the acceptance gate.
+- [`ibex_build_c3c3d24.sbatch`](ibex_build_c3c3d24.sbatch)
+- [`ibex_sanity_c3c3d24.sbatch`](ibex_sanity_c3c3d24.sbatch)
+- [`ibex_sweep_c3c3d24.sbatch`](ibex_sweep_c3c3d24.sbatch)
