@@ -16,8 +16,9 @@
 #SBATCH --output=/ibex/scratch/hohndor/km/release-229ad77-auto-20260804/slurm-%A_%a.out
 
 set -euo pipefail
-root=/ibex/scratch/hohndor/km/release-229ad77-auto-20260804
-arm=km_route_auto_229ad77
+root=${KM_SWEEP_ROOT:-/ibex/scratch/hohndor/km/release-229ad77-auto-20260804}
+arm=${KM_SWEEP_ARM:-km_route_auto_229ad77}
+label=${KM_SWEEP_LABEL:-229ad77}
 km_root=/ibex/scratch/hohndor/km
 ontology_list=$km_root/routing_20260715/onts.txt
 index=${SLURM_ARRAY_TASK_ID:?}
@@ -71,7 +72,7 @@ PY
   echo "INCOMPLETE_RESUME_PAIR index=$index ontology=$ontology; rerunning"
 fi
 
-work=${SLURM_TMPDIR:-/tmp}/km-auto-229ad77-592-${SLURM_JOB_ID}
+work=${SLURM_TMPDIR:-/tmp}/km-auto-${label}-592-${SLURM_JOB_ID}
 /usr/bin/mkdir -p "$work" "$root/results" "$root/profiles" "$root/failures"
 profile_tmp="$root/profiles/$ontology.json.tmp"
 profile_err="$root/profiles/$ontology.err.tmp"
@@ -172,4 +173,3 @@ if sys.argv[2] in expected_fulliri:
 PY
 /usr/bin/mv "$root/results/$ontology.json.tmp" "$root/results/$ontology.json"
 echo "TASK_COMPLETE index=$index ontology=$ontology"
-

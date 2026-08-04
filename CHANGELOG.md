@@ -1,5 +1,19 @@
 # Changelog
 
+### Intern repeated full IRIs in grouped JSON output (2026-08-04)
+
+The JSON-only classifier now interns each mapped full IRI once as `Arc<str>`
+and reuses it across grouped taxonomy rows. A precomputed ordered local-name
+table avoids hashing long full IRIs in the per-pair loop. Public APIs, output
+bytes, routing, and reasoning are unchanged. The complete release suite passed
+with 1,951 library tests, eight ignored library tests, and every integration and
+documentation test passing. On ORE9674, three alternating source-bound pairs
+were byte-identical, improved mean wall from 42.597 to 42.180 seconds, and
+reduced mean peak RSS from 2,882,256 to 2,231,001 KiB, a 636 MiB or 22.60%
+reduction. The complete corpus sweep is queued. Evidence and reproduction
+scripts are in
+[`results/benchmarks/2026-08-04-json-iri-intern/`](results/benchmarks/2026-08-04-json-iri-intern/README.md).
+
 ### Serialize grouped taxonomy rows directly (2026-08-04)
 
 The normal JSON CLI now retains mapped full-IRI taxonomy rows in grouped form
