@@ -15,13 +15,66 @@
 //! extension implements Join, r-Succ, r-Pred, and Nom; its soundness lemmas and
 //! finite covering bound live in `lean/ContextCalculus/Nominals.lean`.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
 use smallvec::SmallVec;
 
 use crate::calc::*;
 use crate::clause::*;
+
+// The CB state is dominated by maps and sets keyed by compact interned ids,
+// predicates, terms, and small tuples of those values. SipHash's collision
+// resistance is unnecessary for these trusted, internally generated keys and
+// costs several rounds per lookup. Use the same deterministic FxHash-style
+// multiply-rotate hasher as the EL completion engine.
+#[derive(Default)]
+struct FxHasher {
+    hash: u64,
+}
+
+const FX_SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+impl FxHasher {
+    #[inline]
+    fn add(&mut self, value: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ value).wrapping_mul(FX_SEED);
+    }
+}
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.add(byte as u64);
+        }
+    }
+
+    #[inline]
+    fn write_u32(&mut self, value: u32) {
+        self.add(value as u64);
+    }
+
+    #[inline]
+    fn write_u64(&mut self, value: u64) {
+        self.add(value);
+    }
+
+    #[inline]
+    fn write_usize(&mut self, value: usize) {
+        self.add(value as u64);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
+type FxBuild = BuildHasherDefault<FxHasher>;
+type HashMap<K, V> = std::collections::HashMap<K, V, FxBuild>;
+type HashSet<T> = std::collections::HashSet<T, FxBuild>;
 
 /// Posting list for the per-context head indexes.  Most head keys in a context
 /// resolve to a single clause id (unit heads dominate), so inlining up to two
@@ -1090,7 +1143,8 @@ impl DeterminedIndex {
             return;
         }
         let index = slot.1.get_or_insert_with(|| {
-            let mut index: HashMap<Pred, SmallVec<[u32; 2]>> = HashMap::with_capacity(list.len());
+            let mut index: HashMap<Pred, SmallVec<[u32; 2]>> =
+                HashMap::with_capacity_and_hasher(list.len(), FxBuild::default());
             for (entry, &(_, matched)) in list.iter().enumerate() {
                 index.entry(matched).or_default().push(entry as u32);
             }
@@ -1393,7 +1447,7 @@ fn merge_asserted_ground_equalities(
         }
     };
     let mut merged: Vec<OntologyClause> = Vec::with_capacity(clauses.len());
-    let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut index: HashMap<u64, Vec<usize>> = HashMap::default();
     for clause in clauses {
         let body: Vec<Pred> = clause
             .body
@@ -1441,11 +1495,11 @@ fn merge_asserted_ground_equalities(
 /// auxiliary names.  This is the certificate used by the nominal-label reuse
 /// path: if any direction is absent, the query stays on ordinary CB saturation.
 fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap<Iri, Vec<Term>> {
-    let mut nominal_individual: HashMap<Iri, Term> = HashMap::new();
-    let mut nominal_facts: HashSet<(Iri, Term)> = HashSet::new();
-    let mut edges: HashSet<(Iri, Iri)> = HashSet::new();
-    let mut forward: HashMap<Iri, Vec<Iri>> = HashMap::new();
-    let mut reverse: HashMap<Iri, Vec<Iri>> = HashMap::new();
+    let mut nominal_individual: HashMap<Iri, Term> = HashMap::default();
+    let mut nominal_facts: HashSet<(Iri, Term)> = HashSet::default();
+    let mut edges: HashSet<(Iri, Iri)> = HashSet::default();
+    let mut forward: HashMap<Iri, Vec<Iri>> = HashMap::default();
+    let mut reverse: HashMap<Iri, Vec<Iri>> = HashMap::default();
 
     for clause in clauses {
         if clause.body.is_empty() && clause.head.len() == 1 {
@@ -1487,7 +1541,7 @@ fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap
     }
 
     let reachable = |start: Iri, graph: &HashMap<Iri, Vec<Iri>>| {
-        let mut seen = HashSet::from([start]);
+        let mut seen: HashSet<_> = [start].into_iter().collect();
         let mut todo = vec![start];
         while let Some(node) = todo.pop() {
             if let Some(next) = graph.get(&node) {
@@ -1501,7 +1555,7 @@ fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap
         seen
     };
 
-    let mut out: HashMap<Iri, Vec<Term>> = HashMap::new();
+    let mut out: HashMap<Iri, Vec<Term>> = HashMap::default();
     for clause in clauses {
         if clause.body.len() != 1 || clause.head.is_empty() {
             continue;
@@ -1875,30 +1929,30 @@ impl Context {
             root,
             query,
             base: None,
-            base_removed: HashSet::new(),
+            base_removed: HashSet::default(),
             delta: ClauseLayer::default(),
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
-            neighbor_pred_seen: HashSet::new(),
-            neighbor_pred_body_index: HashMap::new(),
-            successors: HashMap::new(),
-            trigger_sets: HashMap::new(),
-            fact_trigger_sets: HashMap::new(),
-            predecessors: HashMap::new(),
-            pushed_succ: HashSet::new(),
-            pushed_pred: HashMap::new(),
+            neighbor_pred_seen: HashSet::default(),
+            neighbor_pred_body_index: HashMap::default(),
+            successors: HashMap::default(),
+            trigger_sets: HashMap::default(),
+            fact_trigger_sets: HashMap::default(),
+            predecessors: HashMap::default(),
+            pushed_succ: HashSet::default(),
+            pushed_pred: HashMap::default(),
             pred_hwm: 0,
-            edge_seen: HashMap::new(),
+            edge_seen: HashMap::default(),
             succ_hwm: 0,
             rsucc_pool: Vec::new(),
             rsucc_reach: Vec::new(),
-            rsucc_reach_set: HashSet::new(),
+            rsucc_reach_set: HashSet::default(),
             rsucc_hwm: 0,
-            pushed_rsucc: HashSet::new(),
-            rsucc_pair_reach_hwm: HashMap::new(),
+            pushed_rsucc: HashSet::default(),
+            rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
-            seeded_inds: HashSet::new(),
+            seeded_inds: HashSet::default(),
             dirty: true,
         }
     }
@@ -3070,13 +3124,13 @@ impl Engine {
             sig: Arc::clone(&prepared.sig),
             ont: Arc::clone(&prepared.ont),
             contexts: Vec::new(),
-            core_index: HashMap::new(),
+            core_index: HashMap::default(),
             ground_ctx: None,
             nominal_enumerations: Arc::clone(&prepared.nominal_enumerations),
-            nominal_shortcuts: HashMap::new(),
+            nominal_shortcuts: HashMap::default(),
             msgs: VecDeque::new(),
-            successor_ctxs: HashMap::new(),
-            central_index: HashMap::new(),
+            successor_ctxs: HashMap::default(),
+            central_index: HashMap::default(),
             central: std::env::var_os("KM_NO_CENTRAL").is_none(),
             // Portfolio candidate flags (cached once; default OFF/inert).
             core_cap: std::env::var("KM_CORE_CAP")
@@ -3100,14 +3154,14 @@ impl Engine {
             base_layer: std::env::var_os("KM_NO_BASE_LAYER").is_none(),
             equality: true,
             pred_interned: Vec::new(),
-            pred_intern_idx: HashMap::new(),
+            pred_intern_idx: HashMap::default(),
             cc_arena: [Vec::new(), Vec::new()],
             cc_sig: [Vec::new(), Vec::new()],
-            cc_intern_idx: [HashMap::new(), HashMap::new()],
+            cc_intern_idx: [HashMap::default(), HashMap::default()],
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
             nom_k: prepared.nom_k,
-            nom_table: std::cell::RefCell::new(HashMap::new()),
+            nom_table: std::cell::RefCell::new(HashMap::default()),
             nom_next: std::cell::Cell::new(prepared.nom_first),
             nom_base: ind_term(prepared.nom_first),
             nom_budget,
@@ -3121,7 +3175,7 @@ impl Engine {
             stat_pred_empty_join: 0,
             stat_pred_conclusions: 0,
             stat_pred_conclusions_new: 0,
-            branch_decisions: HashMap::new(),
+            branch_decisions: HashMap::default(),
         }
     }
 
@@ -3367,8 +3421,11 @@ impl Engine {
 
     /// Install the Direction-B per-core assumed-disjunct decisions (see
     /// `branch_decisions`). Called by the splitting driver before a branch run.
-    pub fn set_branch_decisions(&mut self, d: HashMap<Vec<Pred>, Vec<Iri>>) {
-        self.branch_decisions = d;
+    pub fn set_branch_decisions<S: BuildHasher>(
+        &mut self,
+        d: std::collections::HashMap<Vec<Pred>, Vec<Iri>, S>,
+    ) {
+        self.branch_decisions = d.into_iter().collect();
     }
 
     /// Find the arena id of a clause with this exact (body, head) content in
@@ -3593,8 +3650,8 @@ impl Engine {
             return;
         }
 
-        let mut direct_types: HashMap<Term, BTreeSet<Iri>> = HashMap::new();
-        let mut equal: HashMap<Term, Vec<Term>> = HashMap::new();
+        let mut direct_types: HashMap<Term, BTreeSet<Iri>> = HashMap::default();
+        let mut equal: HashMap<Term, Vec<Term>> = HashMap::default();
         for ci in ground.worked_off().iter() {
             let clause = &arena[ci as usize];
             if !clause.body.is_empty() || clause.head.len() != 1 {
@@ -3618,7 +3675,7 @@ impl Engine {
 
         let types_for = |individual: Term| {
             let mut types = BTreeSet::new();
-            let mut seen = HashSet::from([individual]);
+            let mut seen: HashSet<_> = [individual].into_iter().collect();
             let mut todo = vec![individual];
             while let Some(o) = todo.pop() {
                 if let Some(found) = direct_types.get(&o) {
@@ -5684,7 +5741,7 @@ impl Engine {
             // earlier back-pushed consequences remain sound because apply_pred
             // conditions them on that context's own core.
             let mut grew: Vec<Term> = Vec::new();
-            let mut new_by_f: HashMap<Term, Vec<Pred>> = HashMap::new();
+            let mut new_by_f: HashMap<Term, Vec<Pred>> = HashMap::default();
             {
                 // Redundant-trigger skip (KM_NO_TRIGSKIP to disable): a concept
                 // trigger `C(f)` whose successor context for `f` already derives
@@ -6438,7 +6495,7 @@ impl Engine {
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
             let mut touched: Vec<usize> = Vec::new();
-            let mut seen: HashSet<usize> = HashSet::new();
+            let mut seen: HashSet<usize> = HashSet::default();
             for msg in batch {
                 guard += 1;
                 if guard > msg_cap {
@@ -7201,7 +7258,7 @@ impl Engine {
     /// element is the unique successor along a functional chain from the query
     /// root, so a shared split is exactly a case analysis on that one element.
     fn chain_unique_contexts(&self) -> HashSet<usize> {
-        let mut safe: HashSet<usize> = HashSet::new();
+        let mut safe: HashSet<usize> = HashSet::default();
         loop {
             let mut changed = false;
             for (id, ctx) in self.contexts.iter().enumerate() {
@@ -7243,7 +7300,7 @@ impl Engine {
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
             let mut touched: Vec<usize> = Vec::new();
-            let mut seen: HashSet<usize> = HashSet::new();
+            let mut seen: HashSet<usize> = HashSet::default();
             for msg in batch {
                 guard += 1;
                 if prof && guard % 50000 == 0 {
@@ -7401,7 +7458,10 @@ impl Engine {
     /// is backed by a derived empty clause, i.e. `O + guards ⊨ A ⊓ NotB ⊑ ⊥`,
     /// and the guards are jointly conservative (interpret each `NotB` as the
     /// complement of `B`), so `O ⊨ A ⊑ B`.
-    pub fn ordered_residue_repair(&mut self, not_of: &HashMap<Iri, Iri>) -> Vec<(Iri, Iri)> {
+    pub fn ordered_residue_repair<S: BuildHasher>(
+        &mut self,
+        not_of: &std::collections::HashMap<Iri, Iri, S>,
+    ) -> Vec<(Iri, Iri)> {
         let mut out = Vec::new();
         let roots: Vec<(usize, Iri)> = self
             .contexts
@@ -7416,7 +7476,7 @@ impl Engine {
             })
             .collect();
         for (cid, q) in roots {
-            let mut units: HashSet<Iri> = HashSet::new();
+            let mut units: HashSet<Iri> = HashSet::default();
             let mut unsat = false;
             let mut cands: BTreeSet<Iri> = BTreeSet::new();
             {
@@ -7583,7 +7643,7 @@ mod tests {
             ];
 
             let mut subst = CentralSubst::new(allow_ground);
-            let mut oracle: HashMap<Term, Term> = HashMap::new();
+            let mut oracle: HashMap<Term, Term> = HashMap::default();
 
             for (i, o) in inserts {
                 let got = subst.add(i, o);
@@ -9708,7 +9768,7 @@ mod rsucc_rolechain_tests {
         // every propagate.
         let full = {
             let mut acc = Vec::new();
-            let mut set = HashSet::new();
+            let mut set = HashSet::default();
             fold_reach_unique(&mut acc, &mut set, rsucc_reach_tail(&arena, &pool, &sig));
             acc
         };
@@ -9722,7 +9782,7 @@ mod rsucc_rolechain_tests {
         // (append-only pool ⇒ scanning [..k] then [k..] equals scanning all).
         for k in 0..=pool.len() {
             let mut acc = Vec::new();
-            let mut set = HashSet::new();
+            let mut set = HashSet::default();
             fold_reach_unique(
                 &mut acc,
                 &mut set,
@@ -9739,7 +9799,7 @@ mod rsucc_rolechain_tests {
         // Per-entry arrival (the real propagate cadence: pool grows one worked-off
         // clause at a time across rounds).
         let mut acc = Vec::new();
-        let mut set = HashSet::new();
+        let mut set = HashSet::default();
         for i in 0..pool.len() {
             fold_reach_unique(
                 &mut acc,
@@ -9986,10 +10046,10 @@ mod rsucc_rolechain_tests {
             fired
         }
 
-        let mut full_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut full_pushed: HashSet<(Term, usize, Pred)> = HashSet::default();
         let mut full_fired: Vec<(Term, usize, Pred)> = Vec::new();
-        let mut delta_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
-        let mut delta_hwm: HashMap<(Term, usize), usize> = HashMap::new();
+        let mut delta_pushed: HashSet<(Term, usize, Pred)> = HashSet::default();
+        let mut delta_hwm: HashMap<(Term, usize), usize> = HashMap::default();
         let mut delta_fired: Vec<(Term, usize, Pred)> = Vec::new();
         for (succ, reach) in &rounds {
             full_fired.extend(full_round(succ, reach, &mut full_pushed));
@@ -10044,21 +10104,21 @@ mod rsucc_rolechain_tests {
         usize,
     ) {
         // Shared successor-map evolution (both paths see identical edges).
-        let mut succ_map: HashMap<Term, usize> = HashMap::new();
+        let mut succ_map: HashMap<Term, usize> = HashMap::default();
         // Gated path state.
         let mut g_reach: Vec<Pred> = Vec::new();
-        let mut g_seen: HashSet<Pred> = HashSet::new();
-        let mut g_hwm: HashMap<(Term, usize), usize> = HashMap::new();
-        let mut g_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut g_seen: HashSet<Pred> = HashSet::default();
+        let mut g_hwm: HashMap<(Term, usize), usize> = HashMap::default();
+        let mut g_pushed: HashSet<(Term, usize, Pred)> = HashSet::default();
         let mut g_fired: Vec<(Term, usize, Pred)> = Vec::new();
         let mut edges_grew = false;
         let mut offered: usize = 0;
         let mut gated_runs = 0usize;
         // Unconditional (reference) path state.
         let mut u_reach: Vec<Pred> = Vec::new();
-        let mut u_seen: HashSet<Pred> = HashSet::new();
-        let mut u_hwm: HashMap<(Term, usize), usize> = HashMap::new();
-        let mut u_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut u_seen: HashSet<Pred> = HashSet::default();
+        let mut u_hwm: HashMap<(Term, usize), usize> = HashMap::default();
+        let mut u_pushed: HashSet<(Term, usize, Pred)> = HashSet::default();
         let mut u_fired: Vec<(Term, usize, Pred)> = Vec::new();
 
         for (inserts, new_reach) in schedule {
@@ -10329,7 +10389,7 @@ mod base_delta_tests {
             if let Some(b) = $ctx.base.as_deref() {
                 keys.extend(b.$field.keys().copied());
             }
-            let mut out: HashMap<_, Vec<u32>> = HashMap::new();
+            let mut out: HashMap<_, Vec<u32>> = HashMap::default();
             for k in keys {
                 let posting: Vec<u32> = $ctx.$acc(k).iter().collect();
                 if !posting.is_empty() {

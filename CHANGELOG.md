@@ -46,6 +46,23 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Use fast deterministic hashing in the CB saturation state (2026-08-04)
+
+The CB engine now uses the same FxHash-style multiply-rotate hasher as the EL
+completion engine for its trusted, internally generated integer, predicate,
+term, and tuple keys. This changes only hash-table representation and traversal
+order. Exact membership, subsumption, rule, and redundancy checks are unchanged.
+The complete release suite passes with 1,947 library tests, eight ignored tests,
+and every integration suite passing.
+
+On the completing 4669 base workload, output remained byte-identical while wall
+time fell from 30.99 to 22.27 seconds and peak RSS from 1,871,776 to 1,842,588
+KiB. At the identical 6,000,000-message ORE 1194 checkpoint, cumulative Pred
+arrival fell from 35.68 to 27.69 seconds and clause insertion from 24.53 to
+18.72 seconds. A full source-bound ORE sweep is still required before this
+becomes a release result. Evidence is in
+[`results/benchmarks/2026-08-04-cb-fxhash/`](results/benchmarks/2026-08-04-cb-fxhash/README.md).
+
 ### Batch QO propagation and index exact edge membership (2026-08-02)
 
 The QO/KPSet specialist can now union repeated ordinary NF4 conclusions per
