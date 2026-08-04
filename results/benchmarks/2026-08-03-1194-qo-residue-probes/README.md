@@ -579,32 +579,36 @@ The initial RO union and grouping experiments were invalid because they also
 set `KM_ELC_TARGET_ROOT_ONLY=1`. That option belongs only to quotient
 materialisation and suppresses the repaired base needed by the proof route.
 With the corrected flags, a depth-three union of all 61 plain `RO_0002202`
-candidates proves all 61 in 131.00 seconds at 3,915,076 KiB peak RSS. It selects
+candidates derives all 61 in the repaired structure in 131.00 seconds at
+3,915,076 KiB peak RSS. It selects
 534,310 symbolic seed facts and closes with 545,575 labels and 533,012 edges.
 This supersedes the earlier apparent 240-second union failure.
 
 The same corrected union route was applied to all 1,248 quotient extras. Depth
-three proves 1,191 in 168.53 seconds at 3,924,968 KiB. A depth-four run over the
-57 residuals proves another 28 in 125.77 seconds at 3,910,072 KiB. Depth five
-over the remaining 29 proves another 19 in 122.21 seconds at 3,924,164 KiB.
+three derives 1,191 in 168.53 seconds at 3,924,968 KiB. A depth-four run over
+the 57 residuals derives another 28 in 125.77 seconds at 3,910,072 KiB. Depth
+five over the remaining 29 derives another 19 in 122.21 seconds at 3,924,164
+KiB.
 Ten coarse-upper candidates remain. Applying depth six directly to those ten is
 not viable: it timed out at 240.40 seconds and reached 9,306,912 KiB without
 finishing. The productive route is therefore staged 3--5 positive proof search
 over one shared base, followed by a sharper sound upper bound for the final ten,
 not unrestricted depth-six expansion.
 
-A role-signature quotient then separates the residual. It excludes all six
-`UBREL_0000002` candidates from a sound upper model. The other four nested
-BFO/RO candidates each have a constructive depth-six proof; one union of those
-four also proves all four in 132.12 seconds at 4,106,068 KiB. The failed
-ten-goal depth-six run was therefore caused by unioning the false candidates'
-demand guards, not by inaccessible proofs for the four entailed candidates.
+A role-signature quotient then separates the residual. It omits all six
+`UBREL_0000002` candidates. The other four nested BFO/RO candidates are derived
+at depth six; one union derives all four in 132.12 seconds at 4,106,068 KiB.
+This separation is not an entailment decision. The same role-signature quotient
+also omits `MP_0002949` and `MP_0009845`, which the symbolic-seed continuation
+derives at depth three. Derivability in the repaired structure has not yet been
+shown to be canonical, so quotient absence cannot be combined with those
+derivations as an exact lower/upper certificate.
 
 A single-process staged prototype constructs the base and transposed indexes
 once, then runs candidate unions at depths three, four, and five followed by
-depth six for the four upper-retained residuals. It proves all 1,242 entailed
-extras in 205.97 seconds at 4,143,952 KiB, leaving exactly the six
-role-signature-excluded candidates. The stage counts are 1,191, 28, 19, and 4.
+depth six for the four selected residuals. It derives 1,242 extras in 205.97
+seconds at 4,143,952 KiB, leaving six. The stage counts are 1,191, 28, 19, and
+4. This is a fast repaired-model closure, not yet a subsumption proof.
 
 Candidate generation no longer needs the slow generic quotient state. A compact
 two-context abstract interpreter represents each role relation in four bits and
@@ -615,7 +619,12 @@ generic quotient on an NF2/NF4 crossing. A first compact negative-certificate
 refinement split the base cone by `UBREL_0000002` role presence, but merging
 fresh quotient-induced NF3 fillers was too coarse and retained all six false
 candidates. That refinement is rejected; fresh filler identities must be
-preserved.
+preserved. A sparse identity-preserving implementation reached 1,366 contexts,
+3.90 million labels, and 330,097 edges by round four; that round alone took
+34.4 seconds and the run did not finish by 300 seconds. A query-derived compact
+partition completed in 4.237 seconds with 11 contexts and 774 edges, but omitted
+two depth-three derivations as well as five disputed candidates. This confirms
+the same lower/upper mismatch rather than resolving it.
 
 Exact demand-signature grouping was tested next and rejected. Retaining full
 guards reached 7,677,508 KiB after 144 seconds before closure began. A streaming
@@ -626,21 +635,19 @@ representative `UBERON_0000924-RO_0002202` goal. These results show that the
 cost lies in constructing and traversing the broad RO proof guard, not merely
 in duplicated root answers or an unlucky queue order.
 
-The next implementation target is a staged guarded closure that constructs the
-base and transposed demand plan once, proves the full candidate union at depth
-three, and reruns only the unproved residuals at depths four and five. Every
-emitted positive still requires an ordinary finite NF1--NF5 derivation. The ten
-remaining candidates require a tighter sound upper certificate before absence
-can be reported as non-entailment; increasing the demand depth is both slower
-and less memory-efficient.
+The next implementation target is to establish whether the repaired symbolic
+seed is canonical for concept subsumption, or replace it with a calculus-level
+derivation whose positive results hold in every model. Refined quotient absence
+cannot be used as a negative certificate while it conflicts with those positive
+derivations. Increasing demand depth does not resolve that semantic gap.
 
 ## Decision
 
 None of these routes yet closes ontology 1194. Automatic coverage remains
-591/592. Every candidate is now decided: 1,242 have constructive proofs and six
-are excluded by a sound role-signature upper model. The complete positive
-staged proof takes 205.97 seconds, and compact candidate generation adds less
-than one second when integrated over the same base. Completion now requires a
-compact negative certificate that preserves fresh filler identities, followed
-by full taxonomy emission and signature comparison under the 240-second/20-GB
-production contract.
+591/592. The staged repaired-model closure derives 1,242 of 1,248 coarse-upper
+candidates in 205.97 seconds, and compact candidate generation adds less than
+one second over the same base. These are not yet exact taxonomy results because
+the refined quotient and symbolic continuation disagree on at least two
+additional candidates. Completion requires resolving that canonicality gap,
+then emitting and independently checking the full taxonomy under the
+240-second/20-GB production contract.
