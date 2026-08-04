@@ -1,5 +1,18 @@
 # Changelog
 
+### Truncate stale blocking posting-list tails (2026-08-05)
+
+Incremental subset blocking now uses the posting lists' increasing node-ID
+order to find a stale suffix with `partition_point` and discard it with
+`truncate`, instead of scanning and copying the stable prefix with `retain`.
+The retained blocker candidates and blocking result are unchanged. The complete
+release suite passed. Three alternating source-bound ORE6934 pairs were
+byte-identical and improved mean wall from 124.623 to 115.447 seconds (7.36%);
+mean peak RSS was measurement-neutral at 3,347,608 versus 3,348,468 KiB. A
+complete corpus sweep remains required before release. Evidence and
+reproduction scripts are in
+[`results/benchmarks/2026-08-05-i2-tail-truncate/`](results/benchmarks/2026-08-05-i2-tail-truncate/README.md).
+
 ### Store grouped taxonomy relations as compact IDs (2026-08-04)
 
 The JSON-only classifier now stores taxonomy subjects and superclasses as
