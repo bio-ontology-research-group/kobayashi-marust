@@ -53,5 +53,7 @@ small relative to scheduler noise and did not change output or memory.
 
 The complete per-ontology measurements and output digests are in
 [`panel-results.tsv`](panel-results.tsv). The array script and exact ontology
-list in this directory reproduce the panel. A complete source-bound
-592-ontology production sweep remains the final promotion gate.
+list in this directory reproduce the panel. The subsequent source-bound
+`02e6200` production sweep completed all 592 rows with zero semantic or route
+differences; its evidence is in
+[`../2026-08-05-default-performance/`](../2026-08-05-default-performance/README.md).

@@ -144,8 +144,11 @@ route. Its strict audit verified 70 exact output pairs, 140 zero exits, all
 indices and completion markers, and every timing and digest receipt. Total wall
 fell from 675.60 to 571.84 seconds (15.36%), while mean peak RSS fell 0.80%.
 ORE7499 improved 59.73%, ORE10702 improved 55.67%, and ORE6934 improved
-31.11%. The complete 592-ontology production sweep remains the final promotion
-gate. Evidence is in
+31.11%. Source-bound production arrays `50048482` and `50048483` subsequently
+passed the complete 592-ontology gate with 591 successes, the existing ORE1194
+error, and zero semantic or route differences from `9ee269e`. Across 591 paired
+successes, mean wall improved 3.46% and mean peak RSS improved 0.41%. Evidence
+is in
 [`results/benchmarks/2026-08-05-ht-model-reuse/`](results/benchmarks/2026-08-05-ht-model-reuse/README.md).
 
 ### Stream final classification JSON directly to stdout (2026-08-04)
