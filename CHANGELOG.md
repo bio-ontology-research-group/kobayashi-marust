@@ -37,7 +37,16 @@ paths retain their flat representation. This changes neither reasoning nor JSON
 bytes. The complete release suite passed. On ORE9674, three alternating
 source-bound pairs against `c3c3d24` were byte-identical, improved mean wall
 from 42.817 to 42.360 seconds, and reduced mean peak RSS from 4,016,389 to
-2,882,389 KiB (minus 1.081 GiB, 28.23%). The corpus sweep remains pending.
+2,882,389 KiB (minus 1.081 GiB, 28.23%). Source-bound production arrays
+`50033013` and `50033014` then passed the complete 592-ontology gate: 591
+successful rows, the existing ORE1194 error, and zero semantic or route
+differences from `c3c3d24`. The strict audit covered every terminal,
+checkpoint, profile, completion log, binary identity, route trace, expected
+failure capture, and collision-sensitive full-IRI fingerprint. Across 591
+paired successes, mean peak RSS fell from 830.96 to 823.95 MiB and median peak
+from 43.07 to 41.79 MiB. Corpus wall time was scheduler-noisy at +0.44% mean
+and -0.12% median, so the alternating pair remains the source-isolated speed
+evidence.
 Evidence and reproduction scripts are in
 [`results/benchmarks/2026-08-04-grouped-json-output/`](results/benchmarks/2026-08-04-grouped-json-output/README.md).
 
