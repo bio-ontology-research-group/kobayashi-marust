@@ -60,6 +60,15 @@ ORE 1194 check preserved its zero-output timeout and memory profile. Evidence
 is in
 [`results/benchmarks/2026-08-04-content-fxhash/`](results/benchmarks/2026-08-04-content-fxhash/README.md).
 
+Source-bound exclusive IBEX array `50014326` completed all 592 production
+tasks: 591 succeeded and ORE 1194 remained the sole error. The strict terminal
+audit found zero semantic differences from `a4eb829`, complete checkpoint and
+route evidence, and valid collision-safe fingerprints. Across paired successes,
+median wall improved from 0.2794 to 0.2766 seconds and mean peak memory moved
+from 844.50 to 844.44 MiB. Mean wall was 1.1% slower overall, while the affected
+`nominals` and `cb_plain16` routes improved by 2.82% and 2.54%; the 5%-trimmed
+corpus mean delta was effectively neutral at +0.0021 seconds.
+
 ### Use fast deterministic hashing in the CB saturation state (2026-08-04)
 
 The CB engine now uses the same FxHash-style multiply-rotate hasher as the EL
