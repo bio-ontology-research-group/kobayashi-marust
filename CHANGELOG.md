@@ -46,6 +46,21 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Order dense final taxonomies by grouped full-IRI rows (2026-08-04)
+
+The automatic classifier now sorts mapped superclass IRIs within each mapped
+full-subject-IRI row and flattens rows in subject order, instead of globally
+sorting every materialised pair. This is exactly the same lexicographic output
+order, including aliases and duplicate pairs, and does not alter reasoning or
+the saturation fixpoint. The complete release suite passes with 1,948 library
+tests, eight ignored library tests, and every integration suite passing.
+
+On ORE 9674's 14,809,043-pair taxonomy, three source-bound alternating IBEX
+pairs reduced mean wall from 51.697 to 46.600 seconds (9.86%). Mean peak RSS
+increased by 26,188 KiB (0.48%), and all six output streams were byte-identical.
+Evidence is in
+[`results/benchmarks/2026-08-04-grouped-output-sort/`](results/benchmarks/2026-08-04-grouped-output-sort/README.md).
+
 ### Use fast deterministic hashing for exact-checked content interning (2026-08-04)
 
 Context-core and Pred-clause interning now use KM's deterministic FxHash-style

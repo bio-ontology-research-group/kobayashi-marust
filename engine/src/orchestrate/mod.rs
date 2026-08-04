@@ -40,6 +40,25 @@ fn is_bottom(s: &str) -> bool {
         || s == "\u{22A5}"
 }
 
+/// Flatten full-IRI rows into the same lexicographic order as sorting all
+/// `[subject, superclass]` pairs globally, but compare each repeated subject
+/// only at row granularity.
+fn flatten_grouped_subsumptions(
+    grouped: BTreeMap<String, Vec<String>>,
+) -> Vec<[String; 2]> {
+    let pair_count: usize = grouped.values().map(Vec::len).sum();
+    let mut pairs = Vec::with_capacity(pair_count);
+    for (subject, mut supers) in grouped {
+        supers.sort_unstable();
+        pairs.extend(
+            supers
+                .into_iter()
+                .map(|superclass| [subject.clone(), superclass]),
+        );
+    }
+    pairs
+}
+
 // ---------------------------------------------------------------------------
 // errors (hand-rolled; no extra dependency)
 // ---------------------------------------------------------------------------
@@ -824,23 +843,37 @@ pub(crate) fn classify_with_evidence(
             .cloned()
             .unwrap_or_else(|| n.to_string())
     };
-    let mut subs: Vec<[String; 2]> = Vec::new();
-    let mut unsat: Vec<String> = Vec::new();
+    // Preserve Python's lexicographic pair ordering without globally sorting
+    // every materialised pair.  Worker output is already grouped by subject;
+    // grouping again by the mapped full IRI, sorting each (much smaller)
+    // super-row, and then flattening BTreeMap order is exactly equivalent to
+    // `Vec<[String; 2]>::sort()`.  This avoids repeatedly comparing the same
+    // potentially long subject IRI on dense taxonomies.
+    let mut grouped_subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut unsat_set: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
     for (a, sups) in &out.subsumptions {
         if is_internal(a) {
             continue;
         }
         let fa = full_iri(a);
+        let mut mapped_supers = Vec::with_capacity(sups.len());
         for s in sups {
             if is_bottom(s) {
-                if !unsat.iter().any(|u| u == &fa) {
-                    unsat.push(fa.clone());
+                // Preserve the previous first-full-IRI-representative
+                // behaviour when multiple local aliases map to one class.
+                if unsat_set.insert(fa.clone()) {
                     unsat_names.insert(a.as_str());
                 }
             } else if !is_internal(s) && s != a {
-                subs.push([fa.clone(), full_iri(s)]);
+                mapped_supers.push(full_iri(s));
             }
+        }
+        if !mapped_supers.is_empty() {
+            // Moving `fa` here avoids cloning the same subject once per
+            // superclass. Aliases that map to one full IRI merge into one row.
+            grouped_subs.entry(fa).or_default().extend(mapped_supers);
         }
     }
     if unsat_names.iter().any(|n| asserted.contains(*n)) {
@@ -854,8 +887,8 @@ pub(crate) fn classify_with_evidence(
             consistency_certified: consistency_certified || out.dropped == 0,
         });
     }
-    subs.sort();
-    unsat.sort();
+    let subs = flatten_grouped_subsumptions(grouped_subs);
+    let unsat = unsat_set.into_iter().collect();
     Ok(ClassificationEvidence {
         classification: Classification {
             consistent: !out.inconsistent,
@@ -1048,7 +1081,10 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
-    use super::{composite_layout, inproc_engine_out, is_bottom, use_elc_portfolio};
+    use super::{
+        composite_layout, flatten_grouped_subsumptions, inproc_engine_out, is_bottom,
+        use_elc_portfolio,
+    };
     use crate::reasoner::Reasoner;
 
     /// Regression: the in-process CB fast path published a resource-truncated
@@ -1108,6 +1144,35 @@ mod tests {
         assert!(is_bottom("\u{22A5}"));
         assert!(!is_bottom("Nothing"));
         assert!(!is_bottom("http://example.org#Nothing"));
+    }
+
+    #[test]
+    fn grouped_subsumption_order_matches_global_pair_sort() {
+        use std::collections::BTreeMap;
+
+        // One row represents aliases that mapped to the same full subject;
+        // duplicates must be retained because the previous global sort kept
+        // them too.
+        let grouped = BTreeMap::from([
+            (
+                "http://z.example/A".to_string(),
+                vec!["S3".to_string(), "S1".to_string()],
+            ),
+            (
+                "http://a.example/A".to_string(),
+                vec!["S2".to_string(), "S1".to_string(), "S1".to_string()],
+            ),
+        ]);
+        let mut global: Vec<[String; 2]> = grouped
+            .iter()
+            .flat_map(|(subject, supers)| {
+                supers
+                    .iter()
+                    .map(|superclass| [subject.clone(), superclass.clone()])
+            })
+            .collect();
+        global.sort();
+        assert_eq!(flatten_grouped_subsumptions(grouped), global);
     }
 
     #[test]
