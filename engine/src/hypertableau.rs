@@ -748,7 +748,13 @@ impl Ext {
             self.i2_touched.clear();
         } else {
             for &e in &self.i2_touched {
-                self.i2_lists[e].retain(|&x| x < lo);
+                // Nodes are registered by the forward pass in strictly increasing
+                // id order. Entries invalidated by a suffix recomputation therefore
+                // form one contiguous tail; find its boundary instead of scanning
+                // and copying the stable prefix on every blocking pass.
+                debug_assert!(self.i2_lists[e].is_sorted());
+                let keep = self.i2_lists[e].partition_point(|&x| x < lo);
+                self.i2_lists[e].truncate(keep);
             }
         }
         // Keep blocked[0..lo]; reset and recompute [lo..nn].
