@@ -60,29 +60,103 @@ fn flatten_grouped_subsumptions(
     pairs
 }
 
-type GroupedJsonTaxonomy = BTreeMap<Arc<str>, Vec<Arc<str>>>;
+struct GroupedJsonTaxonomy {
+    iris: Vec<Arc<str>>,
+    rows: BTreeMap<u32, Vec<u32>>,
+}
 
-fn intern_iri(pool: &mut HashSet<Arc<str>>, iri: &str) -> Arc<str> {
-    if let Some(existing) = pool.get(iri) {
-        return Arc::clone(existing);
+struct JsonIriIds<'a> {
+    local_ids: BTreeMap<&'a str, u32>,
+    by_iri: BTreeMap<Arc<str>, u32>,
+    iris: Vec<Arc<str>>,
+    appended_fallback: bool,
+}
+
+impl<'a> JsonIriIds<'a> {
+    fn new(map: &'a BTreeMap<String, String>) -> Self {
+        let distinct: std::collections::BTreeSet<&str> =
+            map.values().map(String::as_str).collect();
+        let mut by_iri = BTreeMap::new();
+        let mut iris = Vec::with_capacity(distinct.len());
+        for iri in distinct {
+            let id = iris.len() as u32;
+            let iri: Arc<str> = Arc::from(iri);
+            by_iri.insert(Arc::clone(&iri), id);
+            iris.push(iri);
+        }
+        let local_ids = map
+            .iter()
+            .map(|(local, full)| {
+                (
+                    local.as_str(),
+                    *by_iri
+                        .get(full.as_str())
+                        .expect("frontend IRI value was indexed"),
+                )
+            })
+            .collect();
+        Self {
+            local_ids,
+            by_iri,
+            iris,
+            appended_fallback: false,
+        }
     }
-    let iri: Arc<str> = Arc::from(iri);
-    pool.insert(Arc::clone(&iri));
-    iri
+
+    fn id(&mut self, local: &str) -> u32 {
+        if let Some(&id) = self.local_ids.get(&local) {
+            return id;
+        }
+        if let Some(&id) = self.by_iri.get(local) {
+            return id;
+        }
+        let id = self.iris.len() as u32;
+        let iri: Arc<str> = Arc::from(local);
+        self.by_iri.insert(Arc::clone(&iri), id);
+        self.iris.push(iri);
+        self.appended_fallback = true;
+        id
+    }
+
+    fn finish(self, mut rows: BTreeMap<u32, Vec<u32>>) -> GroupedJsonTaxonomy {
+        if !self.appended_fallback {
+            for supers in rows.values_mut() {
+                supers.sort_unstable();
+            }
+            return GroupedJsonTaxonomy {
+                iris: self.iris,
+                rows,
+            };
+        }
+
+        // Fallback names are rare and were appended after the frontend map.
+        // Restore lexicographic id order once, then sort compact integer rows.
+        let mut remap = vec![0u32; self.iris.len()];
+        let mut iris = Vec::with_capacity(self.iris.len());
+        for (new, (iri, old)) in self.by_iri.into_iter().enumerate() {
+            remap[old as usize] = new as u32;
+            iris.push(iri);
+        }
+        let mut remapped = BTreeMap::new();
+        for (subject, mut supers) in rows {
+            for superclass in &mut supers {
+                *superclass = remap[*superclass as usize];
+            }
+            supers.sort_unstable();
+            remapped
+                .entry(remap[subject as usize])
+                .or_insert_with(Vec::new)
+                .extend(supers);
+        }
+        GroupedJsonTaxonomy {
+            iris,
+            rows: remapped,
+        }
+    }
 }
 
 fn mapped_iri<'a>(map: &'a BTreeMap<String, String>, iri: &'a str) -> &'a str {
     map.get(iri).map_or(iri, String::as_str)
-}
-
-fn mapped_iri_arc(
-    map: &BTreeMap<&str, Arc<str>>,
-    pool: &mut HashSet<Arc<str>>,
-    iri: &str,
-) -> Arc<str> {
-    map.get(&iri)
-        .map(Arc::clone)
-        .unwrap_or_else(|| intern_iri(pool, iri))
 }
 
 // ---------------------------------------------------------------------------
@@ -540,11 +614,14 @@ impl serde::Serialize for JsonClassification {
                 serializer: S,
             ) -> Result<S::Ok, S::Error> {
                 use serde::ser::SerializeSeq;
-                let len = self.0.values().map(Vec::len).sum();
+                let len = self.0.rows.values().map(Vec::len).sum();
                 let mut seq = serializer.serialize_seq(Some(len))?;
-                for (subject, supers) in self.0 {
+                for (subject, supers) in &self.0.rows {
                     for superclass in supers {
-                        seq.serialize_element(&(subject.as_ref(), superclass.as_ref()))?;
+                        seq.serialize_element(&(
+                            self.0.iris[*subject as usize].as_ref(),
+                            self.0.iris[*superclass as usize].as_ref(),
+                        ))?;
                     }
                 }
                 seq.end()
@@ -947,19 +1024,10 @@ fn classify_with_evidence_mode(
     // `Vec<[String; 2]>::sort()`.  This avoids repeatedly comparing the same
     // potentially long subject IRI on dense taxonomies.
     let mut grouped_subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut grouped_json: GroupedJsonTaxonomy = BTreeMap::new();
-    let mut iri_pool: HashSet<Arc<str>> = HashSet::new();
-    // Intern each frontend-mapped full IRI once up front. The dense-taxonomy
-    // path then pays the same ordered local-name lookup as before and only
-    // clones an Arc per pair; it does not hash a long full IRI per pair.
-    let iri_arcs: BTreeMap<&str, Arc<str>> = if retain_grouped_output {
-        meta.iri_map
-            .iter()
-            .map(|(local, full)| (local.as_str(), intern_iri(&mut iri_pool, full.as_str())))
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
+    let mut grouped_json: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
+    // The JSON-only path stores one compact id per pair. Full IRIs remain in a
+    // sorted dictionary and are borrowed only while serializing.
+    let mut iri_ids = retain_grouped_output.then(|| JsonIriIds::new(&meta.iri_map));
     let mut unsat_set: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
@@ -969,6 +1037,7 @@ fn classify_with_evidence_mode(
         }
         let fa = mapped_iri(&meta.iri_map, a);
         if retain_grouped_output {
+            let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
             let mut mapped_supers = Vec::with_capacity(sups.len());
             for s in sups {
                 if is_bottom(s) {
@@ -978,12 +1047,14 @@ fn classify_with_evidence_mode(
                         unsat_names.insert(a.as_str());
                     }
                 } else if !is_internal(s) && s != a {
-                    mapped_supers.push(mapped_iri_arc(&iri_arcs, &mut iri_pool, s));
+                    mapped_supers.push(iri_ids.id(s));
                 }
             }
             if !mapped_supers.is_empty() {
-                let fa = mapped_iri_arc(&iri_arcs, &mut iri_pool, a);
-                grouped_json.entry(fa).or_default().extend(mapped_supers);
+                grouped_json
+                    .entry(iri_ids.id(a))
+                    .or_default()
+                    .extend(mapped_supers);
             }
         } else {
             let mut mapped_supers = Vec::with_capacity(sups.len());
@@ -1021,10 +1092,14 @@ fn classify_with_evidence_mode(
         });
     }
     let (subs, grouped_subsumptions) = if retain_grouped_output {
-        for supers in grouped_json.values_mut() {
-            supers.sort_unstable();
-        }
-        (Vec::new(), Some(grouped_json))
+        (
+            Vec::new(),
+            Some(
+                iri_ids
+                    .expect("JSON IRI ids are initialized")
+                    .finish(grouped_json),
+            ),
+        )
     } else {
         (flatten_grouped_subsumptions(grouped_subs), None)
     };
@@ -1262,15 +1337,19 @@ mod tests {
             ),
         ]);
         let flat = super::flatten_grouped_subsumptions(grouped.clone());
-        let grouped_json = grouped
-            .into_iter()
-            .map(|(subject, supers)| {
-                (
-                    std::sync::Arc::from(subject),
-                    supers.into_iter().map(std::sync::Arc::from).collect(),
-                )
-            })
-            .collect();
+        let grouped_json = super::GroupedJsonTaxonomy {
+            iris: vec![
+                std::sync::Arc::from("S1"),
+                std::sync::Arc::from("S2"),
+                std::sync::Arc::from("S3"),
+                std::sync::Arc::from("http://a.example/A"),
+                std::sync::Arc::from("http://z.example/A"),
+            ],
+            rows: std::collections::BTreeMap::from([
+                (3, vec![0, 0, 1]),
+                (4, vec![0, 2]),
+            ]),
+        };
         let classification = super::Classification {
             consistent: true,
             subsumptions: flat,
@@ -1293,12 +1372,25 @@ mod tests {
     }
 
     #[test]
-    fn json_iri_interner_shares_repeated_values() {
-        let mut pool = std::collections::HashSet::new();
-        let first = super::intern_iri(&mut pool, "http://example.org/Repeated");
-        let second = super::intern_iri(&mut pool, "http://example.org/Repeated");
-        assert!(std::sync::Arc::ptr_eq(&first, &second));
-        assert_eq!(pool.len(), 1);
+    fn json_iri_ids_share_repeated_values_and_reorder_fallbacks() {
+        let map = std::collections::BTreeMap::from([
+            ("local:a".to_string(), "http://z.example/Z".to_string()),
+            ("local:b".to_string(), "http://z.example/Z".to_string()),
+        ]);
+        let mut ids = super::JsonIriIds::new(&map);
+        let z = ids.id("local:a");
+        assert_eq!(z, ids.id("local:b"));
+        let a = ids.id("http://a.example/A");
+        let grouped = ids.finish(std::collections::BTreeMap::from([(z, vec![a, a])]));
+        assert_eq!(
+            grouped
+                .iris
+                .iter()
+                .map(|iri| iri.as_ref())
+                .collect::<Vec<_>>(),
+            vec!["http://a.example/A", "http://z.example/Z"]
+        );
+        assert_eq!(grouped.rows, std::collections::BTreeMap::from([(1, vec![0, 0])]));
     }
 
     /// Regression: the in-process CB fast path published a resource-truncated
