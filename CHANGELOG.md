@@ -9,8 +9,10 @@ The retained blocker candidates and blocking result are unchanged. The complete
 release suite passed. Three alternating source-bound ORE6934 pairs were
 byte-identical and improved mean wall from 124.623 to 115.447 seconds (7.36%);
 mean peak RSS was measurement-neutral at 3,347,608 versus 3,348,468 KiB. A
-complete corpus sweep remains required before release. Evidence and
-reproduction scripts are in
+source-bound 592-ontology sweep then passed with 591 successes, the existing
+ORE1194 error, and zero semantic or route differences from `02e6200`. Across
+591 paired successes, mean wall improved 0.24%, median wall improved 0.87%, and
+mean peak RSS improved 0.05%. Evidence and reproduction scripts are in
 [`results/benchmarks/2026-08-05-i2-tail-truncate/`](results/benchmarks/2026-08-05-i2-tail-truncate/README.md).
 
 ### Store grouped taxonomy relations as compact IDs (2026-08-04)

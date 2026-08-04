@@ -44,5 +44,18 @@ The candidate source archive has SHA-256
 [`ibex_6934_pair.sbatch`](ibex_6934_pair.sbatch) reproduce the build and pair.
 Sanity job `50049899` and source-bound production arrays `50049893` and
 `50049894` use [`ibex_sweep_07b8526.sbatch`](ibex_sweep_07b8526.sbatch).
-The arrays are dependency-queued behind the `02e6200` corpus sweep. A complete
-strictly audited 592-ontology result remains required before release.
+They completed at
+`/ibex/scratch/hohndor/km/release-07b8526-auto-20260805`. The strict audit
+verified all 592 terminal rows, checkpoints, profiles, production route traces,
+task-to-ontology identities, exact binary hashes, completion logs, and
+collision-sensitive full-IRI fingerprints, with no temporary artifacts. Every
+route and semantic result matched the `02e6200` sweep.
+
+Coverage remained 591/592: 591 successful rows and the existing ORE1194 error.
+Verdicts remained 588 matches, the established consistency disagreements on
+ORE2669 and ORE15516, one no-gold row (ORE10860), and ORE1194's error. Across
+the 591 paired successes, mean wall fell from 5.8006 to 5.7865 seconds (0.24%)
+and median wall from 0.2538 to 0.2516 seconds (0.87%). Mean peak RSS fell from
+819.95 to 819.58 MiB (0.05%), and median peak fell from 42.77 to 42.12 MiB
+(1.52%). The complete result table is
+[`automatic-results.tsv`](automatic-results.tsv).
