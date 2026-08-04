@@ -35,19 +35,17 @@ use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, Or
 #[derive(Clone, serde::Deserialize)]
 struct TOutput {
     consistent: bool,
-    subsumptions: Vec<Vec<String>>,
+    subsumptions: Vec<[String; 2]>,
     unsatisfiable: Vec<String>,
 }
 
 fn tableau_to_out(t: TOutput) -> EngineOut {
     let mut subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for p in &t.subsumptions {
-        if p.len() >= 2 {
-            subs.entry(p[0].clone()).or_default().push(p[1].clone());
-        }
+    for [subject, superclass] in t.subsumptions {
+        subs.entry(subject).or_default().push(superclass);
     }
-    for u in &t.unsatisfiable {
-        subs.entry(u.clone())
+    for unsatisfiable in t.unsatisfiable {
+        subs.entry(unsatisfiable)
             .or_default()
             .push("owl:Nothing".to_string());
     }
@@ -3248,7 +3246,7 @@ mod tests {
         let certificate = positive_role_proxy_abox_certificate(&safe).expect("safe positive role");
         let exact = TOutput {
             consistent: true,
-            subsumptions: vec![vec!["A".into(), "D".into()]],
+            subsumptions: vec![["A".into(), "D".into()]],
             unsatisfiable: Vec::new(),
         };
         assert!(proxy_abox_certificate_accepts(&certificate, &exact));
@@ -3263,7 +3261,7 @@ mod tests {
         ));
         let unsatisfiable = TOutput {
             consistent: true,
-            subsumptions: vec![vec!["A".into(), "D".into()]],
+            subsumptions: vec![["A".into(), "D".into()]],
             unsatisfiable: vec!["A".into()],
         };
         assert!(!proxy_abox_certificate_accepts(
@@ -3340,6 +3338,22 @@ mod tests {
             head: vec![HAtom::Eq { s: 0, t: 1 }],
         });
         assert!(positive_role_proxy_abox_certificate(&equality).is_none());
+    }
+
+    #[test]
+    fn tableau_output_requires_exact_pairs_and_moves_them_into_rows() {
+        assert!(serde_json::from_str::<TOutput>(
+            r#"{"consistent":true,"subsumptions":[["A","B","C"]],"unsatisfiable":[]}"#,
+        )
+        .is_err());
+
+        let out = tableau_to_out(TOutput {
+            consistent: true,
+            subsumptions: vec![["A".into(), "B".into()], ["A".into(), "C".into()]],
+            unsatisfiable: vec!["D".into()],
+        });
+        assert_eq!(out.subsumptions["A"], ["B", "C"]);
+        assert_eq!(out.subsumptions["D"], ["owl:Nothing"]);
     }
 
     #[test]
