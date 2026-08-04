@@ -50,7 +50,8 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 The `km classify` CLI now writes the final classification through its existing
 Python-compatible JSON formatter directly to locked stdout instead of first
-materialising a second whole-output byte vector. The allocation-returning API
+materialising a second whole-output byte vector. A bounded output buffer keeps
+serde's small writes efficient for files and pipes. The allocation-returning API
 delegates to the same writer, and a regression test pins byte identity. This is
 an output-representation change only; reasoning and the fixpoint are unchanged.
 The complete release suite passes with 1,949 library tests, eight ignored
@@ -61,6 +62,13 @@ On ORE 9674, three source-bound alternating IBEX pairs reduced mean wall from
 KiB, a 1.396 GiB (26.7%) reduction. All six output streams were byte-identical.
 Evidence is in
 [`results/benchmarks/2026-08-04-streamed-output/`](results/benchmarks/2026-08-04-streamed-output/README.md).
+
+A second file-backed alternating benchmark of the buffered implementation
+reduced mean wall from 44.213 to 43.593 seconds (1.40%) and again removed 1.396
+GiB of peak RSS with byte-identical output. A partial production sweep was
+cancelled conservatively after 116 terminals when scheduler elapsed was
+mistaken for reasoner wall; its completed ORE 9674 row was correct and took
+45.2206 seconds at 3,923.18 MiB. It is not used as corpus-wide evidence.
 
 ### Order dense final taxonomies by grouped full-IRI rows (2026-08-04)
 

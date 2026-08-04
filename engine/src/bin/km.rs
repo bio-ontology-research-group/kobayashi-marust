@@ -476,9 +476,12 @@ fn classify_cmd(rest: &[String]) {
     let cfg = Config::from_env();
     match orchestrate::classify(&cfg, Path::new(ontology)) {
         Ok(res) => {
-            use std::io::Write;
+            use std::io::{BufWriter, Write};
             let stdout = std::io::stdout();
-            let mut w = stdout.lock();
+            // serde emits many small writes. Buffer them so direct streaming
+            // remains fast when stdout is a network-backed harness file, while
+            // still avoiding a whole-classification byte vector.
+            let mut w = BufWriter::new(stdout.lock());
             if lines {
                 let _ = writeln!(w, "{}", res.to_lines());
             } else {

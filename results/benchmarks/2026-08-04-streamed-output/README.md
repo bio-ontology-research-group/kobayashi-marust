@@ -36,9 +36,39 @@ Mean wall improved by 3.78%. Mean peak RSS fell by 1,463,437 KiB (26.7%), or
 1.396 GiB. All six outputs had SHA-256
 `152cdf0863750e3c94ac3faeb1764fe31a52935db73069bb48a5a8b6d2cd9184`.
 
+## Buffered file-backed validation
+
+The CLI wraps the locked stdout stream in a bounded `BufWriter`, preventing
+serde's small writes from reaching a file or pipe individually. A second
+source-bound build used archive SHA-256
+`b4c7127c472784d6be731c2c21ecfe5bf0037581f8dca972b8eb04ede98830f6`.
+Build job `50029770` produced binary SHA-256
+`a0400ac6678755c08d2478daddcf1c2e7341eae82e5a39ff7d6e0da9ab15c736`.
+Job `50029868` wrote each complete output to a node-local file before hashing
+it, matching the production redirection shape more closely.
+
+| repetition | `6600efe` wall | buffered candidate wall | `6600efe` peak KiB | buffered candidate peak KiB |
+|---:|---:|---:|---:|---:|
+| 1 | 44.07 s | 44.59 s | 5,479,896 | 4,016,824 |
+| 2 | 44.32 s | 43.03 s | 5,480,504 | 4,015,680 |
+| 3 | 44.25 s | 43.16 s | 5,479,892 | 4,015,904 |
+| **mean** | **44.213 s** | **43.593 s** | **5,480,097** | **4,016,136** |
+
+Mean wall improved by 1.40%, while mean peak RSS again fell by 1.396 GiB
+(26.7%). All outputs retained the same SHA-256 as the pipe-backed experiment.
+
+An initial production sweep was conservatively cancelled after 116 unique
+terminals because scheduler elapsed for ORE 9674 exceeded three minutes. Its
+completed row showed the reasoner itself took 45.2206 seconds at 3,923.18 MiB
+with the correct signature; the remaining task time was canonicalisation of
+14,809,043 pairs, not reasoner serialization. No result from the cancelled
+partial sweep is used as a corpus-wide claim.
+
 Reproduction files:
 
 - [`ibex_build_candidate.sbatch`](ibex_build_candidate.sbatch)
 - [`ibex_9674_pair.sbatch`](ibex_9674_pair.sbatch)
+- [`ibex_build_buffered_candidate.sbatch`](ibex_build_buffered_candidate.sbatch)
+- [`ibex_9674_buffered_file_pair.sbatch`](ibex_9674_buffered_file_pair.sbatch)
 
 The complete 592-ontology production sweep remains the acceptance gate.
