@@ -14,6 +14,8 @@
 
 set -euo pipefail
 root=/ibex/scratch/hohndor/km/release-02e6200-auto-20260805
+expected_binary=3acef3c43d46b69a6ce9cd9b7d4f6ef4508ed74d8b8f1e92c31eac7ce04e9219
+[[ $(sha256sum "$root/km" | cut -d" " -f1) == "$expected_binary" ]]
 arm=km_route_auto_02e6200
 km_root=/ibex/scratch/hohndor/km
 ontology_list=$km_root/routing_20260715/onts.txt
@@ -36,7 +38,7 @@ if [[ -e "$root/results/$ontology.json" ]]; then
   if /usr/bin/python3 - \
       "$root/results/$ontology.json" \
       "$root/profiles/$ontology.json" \
-      "$ontology" "$index" <<'PY'
+      "$ontology" "$index" "$expected_binary" <<'PY'
 import json
 import sys
 
@@ -45,6 +47,8 @@ if row.get("ont") != sys.argv[3]:
     raise SystemExit(f"ontology mismatch in existing row: {row}")
 if row.get("slurm_array_task_id") != str(sys.argv[4]):
     raise SystemExit(f"task mismatch in existing row: {row}")
+if row.get("binary_sha256") != sys.argv[5]:
+    raise SystemExit(f"binary mismatch in existing row: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid existing terminal status: {row}")
 profile = json.load(open(sys.argv[2]))
@@ -131,7 +135,7 @@ fi
   --env KM_ROUTE=auto \
   > "$root/results/$ontology.json.tmp"
 
-/usr/bin/python3 - "$root/results/$ontology.json.tmp" "$ontology" "$index" <<'PY'
+/usr/bin/python3 - "$root/results/$ontology.json.tmp" "$ontology" "$index" "$expected_binary" <<'PY'
 import json
 import sys
 
@@ -144,6 +148,8 @@ if row.get("slurm_array_task_id") != str(sys.argv[3]):
     )
 if not row.get("checkpointed"):
     raise SystemExit(f"runner did not checkpoint terminal state: {row}")
+if row.get("binary_sha256") != sys.argv[4]:
+    raise SystemExit(f"runner used wrong binary: {row}")
 if row.get("status") not in {"ok", "timeout", "memout", "error", "unsupported"}:
     raise SystemExit(f"invalid terminal status: {row}")
 if (
@@ -169,4 +175,3 @@ if sys.argv[2] in expected_fulliri:
 PY
 /usr/bin/mv "$root/results/$ontology.json.tmp" "$root/results/$ontology.json"
 echo "TASK_COMPLETE index=$index ontology=$ontology"
-
