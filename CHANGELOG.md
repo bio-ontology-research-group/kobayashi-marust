@@ -46,6 +46,20 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased]
 
+### Use fast deterministic hashing for exact-checked content interning (2026-08-04)
+
+Context-core and Pred-clause interning now use KM's deterministic FxHash-style
+hasher instead of constructing SipHash for every content probe. Hashes only
+select candidate buckets; exact structural comparison still resolves every
+lookup and collision, so the calculus and fixpoint are unchanged. The complete
+release suite passes with 1,955 library tests, eight ignored library tests, and
+every integration suite passing. On the completing 4669 base workload, three
+interleaved pairs improved mean wall from 22.463 to 21.463 seconds (4.45%) with
+byte-identical output and effectively unchanged peak RSS. A matched 60-second
+ORE 1194 check preserved its zero-output timeout and memory profile. Evidence
+is in
+[`results/benchmarks/2026-08-04-content-fxhash/`](results/benchmarks/2026-08-04-content-fxhash/README.md).
+
 ### Use fast deterministic hashing in the CB saturation state (2026-08-04)
 
 The CB engine now uses the same FxHash-style multiply-rotate hasher as the EL

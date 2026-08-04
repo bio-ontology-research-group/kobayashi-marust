@@ -2689,8 +2689,7 @@ const SMALL_PRED_PRODUCT: u64 = 64;
 /// Content hash for interning (collisions are resolved by exact comparison,
 /// never trusted on their own).
 fn content_hash<T: std::hash::Hash>(t: &T) -> u64 {
-    use std::hash::Hasher;
-    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let mut h = FxHasher::default();
     t.hash(&mut h);
     h.finish()
 }
