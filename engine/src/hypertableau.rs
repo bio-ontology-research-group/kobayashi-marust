@@ -765,20 +765,25 @@ impl Ext {
             self.i2_blocked[n] = blk;
             if !blk {
                 // unblocked node: register it as a candidate blocker for later nodes.
-                let keys: Vec<CLit> = self.concepts[n].keys().copied().collect();
-                for k in keys {
+                // Borrow the concept map and posting-list fields separately so this
+                // hot loop does not allocate a temporary key vector for every node.
+                let concepts = &self.concepts[n];
+                let lists = &mut self.i2_lists;
+                let in_touched = &mut self.i2_in_touched;
+                let touched = &mut self.i2_touched;
+                for &k in concepts.keys() {
                     let e = Ext::enc_lit(k);
-                    if e >= self.i2_lists.len() {
-                        self.i2_lists.resize_with(e + 1, Vec::new);
+                    if e >= lists.len() {
+                        lists.resize_with(e + 1, Vec::new);
                     }
-                    if e >= self.i2_in_touched.len() {
-                        self.i2_in_touched.resize(e + 1, false);
+                    if e >= in_touched.len() {
+                        in_touched.resize(e + 1, false);
                     }
-                    if !self.i2_in_touched[e] {
-                        self.i2_in_touched[e] = true;
-                        self.i2_touched.push(e);
+                    if !in_touched[e] {
+                        in_touched[e] = true;
+                        touched.push(e);
                     }
-                    self.i2_lists[e].push(n);
+                    lists[e].push(n);
                 }
             }
         }
