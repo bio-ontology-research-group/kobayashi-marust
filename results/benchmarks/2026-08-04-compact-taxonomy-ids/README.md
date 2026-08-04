@@ -42,7 +42,15 @@ lower this process's peak high-water mark.
 
 The scripts in this directory reproduce the exact source build and paired run.
 The complete 592-ontology production sweep is staged at
-`/ibex/scratch/hohndor/km/release-9ee269e-auto-20260804`. Sanity job `50040967`
-depends on both `abe2759` arrays; production arrays `50040968` and `50040969`
-depend on that sanity gate. The staged binary hash matches the paired candidate
-exactly.
+`/ibex/scratch/hohndor/km/release-9ee269e-auto-20260804`. Sanity job `50048451`
+passed with the expected binary hash, terminal checkpoint, production route,
+and result root. Production arrays `50048480` and `50048481` are running.
+
+An initial submission used a copied sweep script whose hard-coded root still
+named `229ad77`. Its tasks only recognized that sweep's existing rows as
+complete and produced zero `9ee269e` results. Jobs `50040968` and `50040969`
+were cancelled. The corrected
+[`ibex_sweep_9ee269e.sbatch`](ibex_sweep_9ee269e.sbatch) hard-pins the candidate
+root and binary SHA-256, checks binary identity in resumed rows and newly
+produced rows, and writes Slurm output beneath the candidate root. This makes a
+wrong-root fast finish fail before it can be accepted.
