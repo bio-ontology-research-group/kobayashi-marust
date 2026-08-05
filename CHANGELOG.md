@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Compact predecessor-clause intern postings (2026-08-05)
+
+The global predecessor-clause intern table now stores common one- and two-ID
+hash buckets inline in KM's 16-byte `Posting` representation instead of giving
+every bucket a 24-byte `Vec` header and heap allocation. Collision candidates
+remain insertion ordered and exact-compared, so interning, derivations,
+scheduling, and the saturation fixpoint are unchanged. The release library
+suite passed 1,954 tests with eight ignored. Source-bound build `50058329`,
+panel `50058474`, and full sweep `50058521` passed the strict 592-ontology gate
+with 591 successes and zero semantic or route differences from `4254fbb`.
+Across 591 successes, mean wall improved 0.49%, mean peak RSS improved 0.49%,
+and median peak RSS improved 0.71%. Evidence is in
+[`results/benchmarks/2026-08-05-compact-pred-intern-index/`](results/benchmarks/2026-08-05-compact-pred-intern-index/README.md).
+
 ### Remove the redundant predecessor-arrival vector (2026-08-05)
 
 CB contexts no longer append every received, interned predecessor-clause id to
