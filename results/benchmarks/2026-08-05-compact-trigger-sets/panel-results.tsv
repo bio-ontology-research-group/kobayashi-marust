@@ -1,0 +1,11 @@
+ontology	index	baseline_wall_s	candidate_wall_s	wall_change_pct	baseline_peak_mb	candidate_peak_mb	peak_change_pct	status	verdict	signature_equal
+ore_ont_1194.owl	33	27.4020	28.0353	+2.31	18563.96	18524.73	-0.21	error	error	yes
+ore_ont_3215.owl	109	163.0120	163.6413	+0.39	8665.69	8616.58	-0.57	ok	match	yes
+ore_ont_4669.owl	157	70.6651	66.9284	-5.29	5693.27	5705.98	+0.22	ok	match	yes
+ore_ont_7246.owl	258	30.7419	31.0700	+1.07	10493.37	10834.48	+3.25	ok	match	yes
+ore_ont_7914.owl	289	45.7801	43.7942	-4.34	9594.52	9542.62	-0.54	ok	match	yes
+ore_ont_9944.owl	362	8.2202	8.2053	-0.18	9103.75	8840.64	-2.89	ok	match	yes
+ore_ont_11311.owl	415	8.5331	8.4583	-0.88	5914.59	5923.50	+0.15	ok	match	yes
+ore_ont_11745.owl	435	12.0071	12.0796	+0.60	4071.70	3948.34	-3.03	ok	match	yes
+ore_ont_14817.owl	518	99.5319	98.6846	-0.85	5956.62	5312.94	-10.81	ok	match	yes
+ore_ont_15846.owl	558	186.5766	181.9062	-2.50	18962.35	19060.33	+0.52	ok	match	yes
