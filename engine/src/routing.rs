@@ -615,6 +615,59 @@ fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
         && source.max_concept_depth <= 1
 }
 
+/// A source-certified OWL EL terminology that should enter exact completion
+/// before the production portfolio enables polarity absorption.
+///
+/// `production_all` intentionally clausifies with `KM_ABSORB=1` for its CB
+/// fallback. On a large pure-EL source that transformation prevents the atomic
+/// EL worker from seeing the compact, directly recognized normal forms and can
+/// add a second frontend/CB pass. This predicate uses source constructors only
+/// and admits the ordinary OWL EL class and RBox constructors supported by
+/// `elc`: named subclass/equivalence, intersection, existential restriction,
+/// subproperties, chains, and transitivity. Every constructor outside that
+/// fragment fails closed here, and the normalized EL worker still rechecks the
+/// generated clause set before publishing an answer.
+fn source_el_terminology_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    source.logical_axioms >= 1_000
+        && source.abox_axioms == 0
+        && source.existentials > 0
+        && source.declared_data_properties == 0
+        && source.domain_axioms == 0
+        && source.range_axioms == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.disjoint_class_axioms == 0
+        && source.bottom_occurrences == 0
+        && source.bottom_role_occurrences == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("InverseObjectProperties") == 0
+        && count("SymmetricObjectProperty") == 0
+        && count("AsymmetricObjectProperty") == 0
+        && count("IrreflexiveObjectProperty") == 0
+        && count("DisjointObjectProperties") == 0
+        && count("DisjointDataProperties") == 0
+        && count("DataPropertyDomain") == 0
+        && count("DataPropertyRange") == 0
+        && count("SubDataPropertyOf") == 0
+        && count("EquivalentDataProperties") == 0
+        && count("FunctionalDataProperty") == 0
+}
+
 /// Large ABoxes without number restrictions are better served by the complete
 /// production portfolio than by eagerly materializing every nominal in the CB
 /// root context. The portfolio retains the exact nominal fallback, so this is
@@ -846,7 +899,12 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // rechecks the normalized RBox before admitting that arm; all inverse
         // axioms remain live. Nominal inputs stay on the exact nominal fallback
         // here until the combined certified-nominals portfolio is installed.
-        SemanticFragment::SriqCore if flat_taxonomy_el_candidate(profile) => Route::Elc,
+        SemanticFragment::SriqCore
+            if flat_taxonomy_el_candidate(profile)
+                || source_el_terminology_candidate(profile) =>
+        {
+            Route::Elc
+        }
         // This large Horn SHIF shape used to select the concurrent production
         // portfolio. Its exact bridge arm needs about 8 GiB, but racing the CB
         // fallback can push the process-tree total above the 20 GiB contract.
@@ -2017,6 +2075,48 @@ mod tests {
         profile.source.subclass_axioms = 0;
         profile.source.logical_axioms = 0;
         assert!(!flat_taxonomy_el_candidate(&profile));
+    }
+
+    #[test]
+    fn large_source_el_terminology_uses_atomic_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 50_000;
+        profile.source.tbox_axioms = 49_990;
+        profile.source.rbox_axioms = 10;
+        profile.source.subclass_axioms = 45_000;
+        profile.source.equivalent_class_axioms = 4_990;
+        profile.source.role_inclusion_axioms = 8;
+        profile.source.transitive_role_axioms = 2;
+        profile.source.existentials = 20_000;
+        profile.source.intersections = 5_000;
+        profile.source.max_concept_depth = 4;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(source_el_terminology_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        let mut unsafe_profile = profile.clone();
+        unsafe_profile.source.unions = 1;
+        assert!(!source_el_terminology_candidate(&unsafe_profile));
+
+        let mut unsafe_profile = profile.clone();
+        unsafe_profile.source.abox_axioms = 1;
+        assert!(!source_el_terminology_candidate(&unsafe_profile));
+
+        let mut unsafe_profile = profile.clone();
+        unsafe_profile.source.declared_data_properties = 1;
+        assert!(!source_el_terminology_candidate(&unsafe_profile));
+
+        let mut unsafe_profile = profile.clone();
+        unsafe_profile
+            .source
+            .axiom_types
+            .insert("InverseObjectProperties".into(), 1);
+        assert!(!source_el_terminology_candidate(&unsafe_profile));
+
+        let mut unsafe_profile = profile;
+        unsafe_profile.source.functional_role_axioms = 1;
+        assert!(!source_el_terminology_candidate(&unsafe_profile));
     }
 
     #[test]
