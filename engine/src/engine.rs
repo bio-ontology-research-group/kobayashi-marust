@@ -99,8 +99,14 @@ impl Default for Posting {
 
 impl Posting {
     #[inline]
+    fn has_spill(&self) -> bool {
+        self.inline[0] == u32::MAX && self.inline[1] != u32::MAX
+    }
+
+    #[inline]
     fn push(&mut self, value: u32) {
-        if !self.spill.is_empty() {
+        debug_assert_ne!(value, u32::MAX);
+        if self.has_spill() {
             self.spill.push(value);
         } else if self.inline[0] == u32::MAX {
             self.inline[0] = value;
@@ -109,15 +115,18 @@ impl Posting {
         } else {
             self.spill.extend_from_slice(&self.inline);
             self.spill.push(value);
+            self.inline = [u32::MAX, 0];
         }
     }
 
     #[inline]
     fn as_slice(&self) -> &[u32] {
-        if !self.spill.is_empty() {
-            self.spill.as_slice()
-        } else if self.inline[0] == u32::MAX {
-            &self.inline[..0]
+        if self.inline[0] == u32::MAX {
+            if self.inline[1] == u32::MAX {
+                &self.inline[..0]
+            } else {
+                self.spill.as_slice()
+            }
         } else if self.inline[1] == u32::MAX {
             &self.inline[..1]
         } else {
@@ -132,7 +141,7 @@ impl Posting {
 
     #[inline]
     fn is_empty(&self) -> bool {
-        self.inline[0] == u32::MAX && self.spill.is_empty()
+        self.inline == [u32::MAX; 2]
     }
 
     #[inline]
@@ -141,7 +150,7 @@ impl Posting {
     }
 
     fn retain(&mut self, mut keep: impl FnMut(&u32) -> bool) {
-        if !self.spill.is_empty() {
+        if self.has_spill() {
             self.spill.retain(&mut keep);
             if self.spill.len() <= 2 {
                 self.inline = [u32::MAX; 2];
@@ -7658,9 +7667,11 @@ mod tests {
         for value in [3, 7, 11, 15] {
             posting.push(value);
         }
+        assert!(posting.has_spill());
         assert_eq!(posting.as_slice(), &[3, 7, 11, 15]);
         posting.retain(|value| *value == 7 || *value == 15);
         assert_eq!(posting.as_slice(), &[7, 15]);
+        assert!(!posting.has_spill());
         assert_eq!(posting.heap_capacity(), 0);
         posting.retain(|value| *value == 15);
         assert_eq!(posting.as_slice(), &[15]);
