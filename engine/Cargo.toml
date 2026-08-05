@@ -1,9 +1,9 @@
 [package]
 name = "kobayashi-marust"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "BSD-3-Clause"
-description = "A sound disjunctive context-based (consequence-based) reasoner for SROIQ / OWL 2 DL, with machine-checked soundness in Lean 4."
+description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
 repository = "https://github.com/bio-ontology-research-group/kobayashi-marust"
 keywords = ["description-logic", "owl", "reasoner", "sroiq", "lean"]
 categories = ["science"]

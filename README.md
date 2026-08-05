@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.1`.
+are available from the repository tags; the current release is `v0.2.2`.
 
 ## Classify an ontology
 
@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `50029950`, sanity job `50029951`, arrays
-`50029952` and `50029953`, and the complete 592-row integrity audit verify every
-terminal row, checkpoint, route trace, profile, log, and binary identity.
-Metrics use the 591 successful rows from reasoner commit `c3c3d24` and IBEX
-binary `a0400ac66787…`.
+over all 592 ontologies. Build job `50050792`, sanity job `50051037`, arrays
+`50051038` and `50051039`, and the complete 592-row integrity audit verify every
+terminal row, checkpoint, route trace, profile, log, collision-sensitive
+full-IRI fingerprint, and binary identity. Metrics use the 591 successful rows
+from reasoner commit `5bd9489` and IBEX binary `a16f97f89985…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `c3c3d24` (binary `a0400ac66787…`) | **591** | **591** | **5.8301** | **0.2526** | **830.96** | **43.07** |
+| **KM automatic, `km classify`** | `5bd9489` (binary `a16f97f89985…`) | **591** | **591** | **5.7993** | **0.2536** | **818.65** | **43.33** |
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -114,6 +114,9 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-04-grouped-output-sort/`](results/benchmarks/2026-08-04-grouped-output-sort/)
 - [`results/benchmarks/2026-08-04-content-fxhash/`](results/benchmarks/2026-08-04-content-fxhash/)
 - [`results/benchmarks/2026-08-04-cb-fxhash/`](results/benchmarks/2026-08-04-cb-fxhash/)
+- [`results/benchmarks/2026-08-05-default-performance/`](results/benchmarks/2026-08-05-default-performance/)
+- [`results/benchmarks/2026-08-05-i2-tail-truncate/`](results/benchmarks/2026-08-05-i2-tail-truncate/)
+- [`results/benchmarks/2026-08-05-i2-key-borrow/`](results/benchmarks/2026-08-05-i2-key-borrow/)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 

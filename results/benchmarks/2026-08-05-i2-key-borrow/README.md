@@ -39,8 +39,23 @@ zero exit codes, and all six output digests.
 
 Sanity job `50051037` and source-bound production arrays `50051038` and
 `50051039` use [`ibex_sweep_5bd9489.sbatch`](ibex_sweep_5bd9489.sbatch).
-The arrays are gated on the sanity result. A complete strictly audited
-592-ontology result remains required before release.
+They completed at
+`/ibex/scratch/hohndor/km/release-5bd9489-auto-20260805`. The strict audit
+verified all 592 terminal rows, checkpoints, profiles, production route traces,
+task-to-ontology identities, exact binary hashes, completion logs, and
+collision-sensitive full-IRI fingerprints, with no temporary artifacts. Every
+route and semantic result matched the `07b8526` sweep.
+
+Coverage remained 591/592: 591 successful rows and the existing ORE1194 error.
+Verdicts remained 588 matches, the established consistency disagreements on
+ORE2669 and ORE15516, one no-gold row (ORE10860), and ORE1194's error. Across
+the 591 paired successes, mean wall moved from 5.7865 to 5.7993 seconds
+(+0.22%) and mean peak RSS fell from 819.58 to 818.65 MiB (0.11%). Median wall
+moved from 0.2516 to 0.2536 seconds (+0.79%), and median peak moved from 42.12
+to 43.33 MiB (+2.87%). These independently scheduled sweeps are noisier than
+the alternating source-isolated pair and do not establish a corpus-wide speed
+change. The complete result table is
+[`automatic-results.tsv`](automatic-results.tsv).
 
 [`ibex_build_5bd9489.sbatch`](ibex_build_5bd9489.sbatch) and
 [`ibex_6934_pair.sbatch`](ibex_6934_pair.sbatch) reproduce the build and pair.
