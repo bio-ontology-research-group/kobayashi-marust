@@ -6,14 +6,20 @@ duplicate predecessor-message arrivals, so the representation change would
 have preserved the derived fixpoint. A focused unit test and release check
 passed.
 
-The workstation performance gate rejected the change before an IBEX run.
-ORE4669's single-thread CB engine had not completed after 74.72 seconds and was
-terminated by PID; current `main` completes the same gate in roughly 21 seconds.
-Peak RSS at termination was 682,140 KiB, but the incomplete run cannot support
-a memory comparison. The workload contains millions of predecessor-message
-identifiers, and sorted-vector insertion shifts too many existing `u32` values.
+The workstation production-route gate rejected the change before an IBEX run.
+On ORE4669, current `main` and the candidate emitted byte-identical output
+(SHA-256 `d9f2ef6fe9159392094a154c24201f90d502fc9ac5a7f02717d57642e282a58a`).
+The candidate took 77.98 seconds at 4,824,304 KiB peak RSS versus 79.73 seconds
+at 4,824,220 KiB for `main`: ordinary run noise in wall time and no memory
+improvement. On ORE1194, both failed closed at the production memory watchdog;
+the candidate took 32.62 seconds at 18,953,984 KiB versus 32.98 seconds at
+18,923,964 KiB for `main`, a 30,020 KiB regression.
+
+An initial direct-engine diagnostic was invalid because it fed the unrestricted
+frontend clause set rather than the production-routed workload. Both `main` and
+the candidate grew far beyond the production profile under that input, so it
+is not used as promotion evidence.
 
 No source code from this experiment was merged. The result narrows the useful
-design space: `neighbor_pred_seen` needs constant-time insertion, or a compact
-structure whose append-only assumptions are demonstrated from the actual
-identifier arrival order.
+design space: `neighbor_pred_seen` needs constant-time insertion. Its hash-set
+overhead is not material in process-tree peak RSS on these production routes.
