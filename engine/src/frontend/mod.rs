@@ -545,6 +545,8 @@ fn ofn_to_clauses_requested(
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
     let abox_data = abox_consistency::collect(&ontology);
+    let nominal_enumeration_inconsistent =
+        abox_consistency::nominal_enumeration_inconsistent(&ontology);
     let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
     if std::env::var_os("KM_DEBUG_RULES").is_some() {
         eprintln!(
@@ -630,6 +632,7 @@ fn ofn_to_clauses_requested(
     // asserted-ABox inconsistency: named-disjointness clash (abox_consistency)
     // or datatype range/functionality clash (data_abox); both sound prechecks.
     let abox_inconsistent = abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false)
+        || nominal_enumeration_inconsistent
         || data_abox.is_inconsistent()
         || rule_abox_inconsistent;
     if !abox_inconsistent && data_abox.positive_assertions_redundant() {

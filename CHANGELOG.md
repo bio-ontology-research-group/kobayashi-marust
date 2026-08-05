@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.2.5] – 2026-08-05
+
+### Detect equality clashes forced by finite nominal enumerations
+
+The frontend now detects when equivalent finite `ObjectOneOf` definitions
+force two named individuals to be equal while `DifferentIndividuals` requires
+them to differ. This closes the soundness defect reported in GitHub issue #3:
+`C ≡ {a}`, `C ≡ {a,b}`, and `DifferentIndividuals(a,b)` now returns
+`CONSISTENT 0`. The corresponding ontology without `DifferentIndividuals`
+continues to return `CONSISTENT 1`.
+
+The check derives only exact finite-set consequences before routing. It closes
+named-class equivalence and explicit `SameIndividual` components, and reports a
+clash only when one equivalent enumeration is a singleton and another contains
+an explicitly different representative. It does not alter the CB calculus or
+approximate general nominal satisfiability. The complete release suite passes
+with 1,957 library tests, eight intentional ignores, every integration test,
+and no failures.
+
 ## [0.2.4] – 2026-08-05
 
 ### Route certified flat taxonomies directly to EL completion

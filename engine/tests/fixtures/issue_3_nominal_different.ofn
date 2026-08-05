@@ -1,0 +1,9 @@
+Prefix(:=<http://ex.org/>)
+Ontology(<http://ex.org/pigeon>
+Declaration(Class(:C))
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+EquivalentClasses(:C ObjectOneOf(:a))
+EquivalentClasses(:C ObjectOneOf(:a :b))
+DifferentIndividuals(:a :b)
+)

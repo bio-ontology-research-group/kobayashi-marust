@@ -24,6 +24,99 @@ use std::collections::{HashMap, HashSet};
 use super::rbox::RboxRecord;
 use super::syntax::{Axiom, Concept, Ontology};
 
+fn nominal_set(concept: &Concept) -> Option<HashSet<String>> {
+    match concept {
+        Concept::Nominal(individual) => Some([individual.clone()].into_iter().collect()),
+        Concept::Or(operands) => operands
+            .iter()
+            .map(|operand| match operand {
+                Concept::Nominal(individual) => Some(individual.clone()),
+                _ => None,
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
+/// Detect an exact finite-nominal equality clash.
+///
+/// If one named class is equivalent to a singleton `{a}` and, through named
+/// class equivalence, also equivalent to an enumeration containing `b`, then
+/// OWL set equality entails `a = b`. An asserted `DifferentIndividuals(a,b)`
+/// makes the ontology inconsistent. Explicit `SameIndividual` closure is
+/// applied first. This is deliberately one-sided: non-singleton versus
+/// non-singleton set equality is left to the complete nominal reasoner.
+pub fn nominal_enumeration_inconsistent(ont: &Ontology) -> bool {
+    let mut class_parent: HashMap<String, String> = HashMap::new();
+    let mut individual_parent: HashMap<String, String> = HashMap::new();
+    let mut raw_enumerations: Vec<(String, HashSet<String>)> = Vec::new();
+    let mut different = Vec::new();
+
+    for axiom in ont.tbox() {
+        if let Axiom::EquivalentClasses(left, right) = axiom {
+            match (left, right) {
+                (Concept::Name(a), Concept::Name(b)) => {
+                    uf_union(&mut class_parent, a, b);
+                }
+                (Concept::Name(class), enumeration) | (enumeration, Concept::Name(class)) => {
+                    if let Some(individuals) = nominal_set(enumeration) {
+                        raw_enumerations.push((class.clone(), individuals));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    for axiom in ont.abox() {
+        match axiom {
+            Axiom::SameIndividual(a, b) => uf_union(&mut individual_parent, a, b),
+            Axiom::DifferentIndividuals(a, b) => different.push((a.clone(), b.clone())),
+            _ => {}
+        }
+    }
+    if raw_enumerations.is_empty() || different.is_empty() {
+        return false;
+    }
+
+    let mut enumerations: HashMap<String, Vec<HashSet<String>>> = HashMap::new();
+    for (class, individuals) in raw_enumerations {
+        let class = uf_find(&mut class_parent, &class);
+        let representatives = individuals
+            .into_iter()
+            .map(|individual| uf_find(&mut individual_parent, &individual))
+            .collect();
+        enumerations.entry(class).or_default().push(representatives);
+    }
+    let different: HashSet<(String, String)> = different
+        .into_iter()
+        .map(|(a, b)| {
+            let a = uf_find(&mut individual_parent, &a);
+            let b = uf_find(&mut individual_parent, &b);
+            if a <= b {
+                (a, b)
+            } else {
+                (b, a)
+            }
+        })
+        .collect();
+
+    enumerations.values().any(|sets| {
+        sets.iter().filter(|set| set.len() == 1).any(|singleton| {
+            let only = singleton.iter().next().expect("singleton has one member");
+            sets.iter().any(|set| {
+                set.iter().any(|member| {
+                    let pair = if only <= member {
+                        (only.clone(), member.clone())
+                    } else {
+                        (member.clone(), only.clone())
+                    };
+                    different.contains(&pair)
+                })
+            })
+        })
+    })
+}
+
 /// Named-class data projected from the parsed ontology. Built only when the
 /// ontology has at least one named-class disjointness pair, so ontologies
 /// without relevant disjointness (including the large TBox-only giants) pay
@@ -381,5 +474,38 @@ mod tests {
             !data.is_inconsistent(&[RboxRecord::Range("t".into(), "D".into())]),
             "a chain-derived clash is invisible to the asserted-only precheck"
         );
+    }
+
+    #[test]
+    fn singleton_and_larger_nominal_enumeration_clash_with_different() {
+        let ontology = ont(vec![
+            Axiom::EquivalentClasses(Concept::Name("C".into()), Concept::Nominal("a".into())),
+            Axiom::EquivalentClasses(
+                Concept::Name("C".into()),
+                Concept::Or(
+                    [Concept::Nominal("a".into()), Concept::Nominal("b".into())]
+                        .into_iter()
+                        .collect(),
+                ),
+            ),
+            Axiom::DifferentIndividuals("a".into(), "b".into()),
+        ]);
+        assert!(nominal_enumeration_inconsistent(&ontology));
+    }
+
+    #[test]
+    fn distinct_members_of_one_enumeration_do_not_clash() {
+        let ontology = ont(vec![
+            Axiom::EquivalentClasses(
+                Concept::Name("C".into()),
+                Concept::Or(
+                    [Concept::Nominal("a".into()), Concept::Nominal("b".into())]
+                        .into_iter()
+                        .collect(),
+                ),
+            ),
+            Axiom::DifferentIndividuals("a".into(), "b".into()),
+        ]);
+        assert!(!nominal_enumeration_inconsistent(&ontology));
     }
 }

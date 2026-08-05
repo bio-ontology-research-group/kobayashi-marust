@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.4`.
+are available from the repository tags; the current release is `v0.2.5`.
 
 ## Classify an ontology
 
