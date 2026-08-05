@@ -1923,14 +1923,15 @@ struct Context {
     /// Everything this context derived (or was seeded with) beyond the base.
     delta: ClauseLayer,
     todo: VecDeque<u32>,
-    /// pred clauses pushed in from successor contexts (already back-substituted),
-    /// as ids into the engine-level `pred_interned` table.  The same substituted
-    /// clause can arrive more than once (e.g. from a successor's pre- and
-    /// post-growth contexts under the central strategy); `neighbor_pred_seen`
-    /// dedups arrivals, which only skips re-deriving already-derived clauses.
-    neighbor_pred: Vec<u32>,
+    /// Pred clauses pushed in from successor contexts are interned in the
+    /// engine-level `pred_interned` table. The same substituted clause can
+    /// arrive more than once (for example from a successor's pre- and
+    /// post-growth contexts under the central strategy); this set deduplicates
+    /// arrivals. Exact body posting lists below retain every id needed by Pred,
+    /// so a second arrival-order vector would duplicate storage without serving
+    /// a reasoning read.
     neighbor_pred_seen: HashSet<u32>,
-    /// Exact body-predicate posting lists over `neighbor_pred`, in arrival
+    /// Exact body-predicate posting lists over received Pred-clause ids, in arrival
     /// order.  Local Pred only needs clauses whose body contains the maximal
     /// function predicate currently being processed; indexing that membership
     /// avoids rescanning every received predecessor clause for every such
@@ -2046,7 +2047,6 @@ impl Context {
             base_removed: HashSet::default(),
             delta: ClauseLayer::default(),
             todo: VecDeque::new(),
-            neighbor_pred: Vec::new(),
             neighbor_pred_seen: HashSet::default(),
             neighbor_pred_body_index: HashMap::default(),
             successors: HashMap::default(),
@@ -3032,8 +3032,9 @@ pub struct Engine {
     shared_root_closure: Option<Vec<u32>>,
     equality: bool,
     /// Intern table for back-substituted pred clauses: one copy per distinct
-    /// content, shared across all receiving contexts (`Context.neighbor_pred`
-    /// stores ids).  The same clause shape recurs across thousands of contexts
+    /// content, shared across all receiving contexts (which store ids in their
+    /// deduplication sets and exact body indexes). The same clause shape recurs
+    /// across thousands of contexts
     /// on role-chain ontologies, where the per-context copies dominated peak
     /// memory.  Append-only; ids are stable.
     pred_interned: Vec<PredClause>,
@@ -6351,7 +6352,6 @@ impl Engine {
             }
             return to;
         }
-        self.contexts[to].neighbor_pred.push(pid);
         for &predicate in &self.pred_interned[pid as usize].body {
             self.contexts[to]
                 .neighbor_pred_body_index
@@ -6747,7 +6747,7 @@ impl Engine {
             let mut top_succ: usize = 0;
             for c in &self.contexts {
                 let wo = c.worked_off_len();
-                let np = c.neighbor_pred.len();
+                let np = c.neighbor_pred_seen.len();
                 if c.root && c.query.is_some() {
                     qroot_n += 1;
                     qroot_wo += wo;
@@ -7072,8 +7072,8 @@ impl Engine {
                 add("todo", ctx.todo.len(), ctx.todo.capacity() * 4);
                 add(
                     "neighbor_pred(ids)",
-                    ctx.neighbor_pred.len(),
-                    ctx.neighbor_pred.capacity() * 4 + ctx.neighbor_pred_seen.len() * 12,
+                    ctx.neighbor_pred_seen.len(),
+                    ctx.neighbor_pred_seen.len() * 12,
                 );
                 add(
                     "trigger_sets",
@@ -9446,7 +9446,6 @@ mod tests {
             body: vec![max, other],
             head: vec![],
         });
-        e.contexts[0].neighbor_pred.push(0);
         e.contexts[0]
             .neighbor_pred_body_index
             .entry(max)
@@ -9600,7 +9599,6 @@ mod tests {
                 vec![extra[0], extra[1]]
             };
             e.pred_interned.push(PredClause { body, head });
-            e.contexts[0].neighbor_pred.push(0);
             e.contexts[0]
                 .neighbor_pred_body_index
                 .entry(trigger)
@@ -9676,7 +9674,6 @@ mod tests {
             body,
             head: vec![h],
         });
-        e.contexts[0].neighbor_pred.push(0);
         e.contexts[0]
             .neighbor_pred_body_index
             .entry(trigger)
