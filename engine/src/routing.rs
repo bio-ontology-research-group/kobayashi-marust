@@ -583,18 +583,17 @@ fn large_nominal_portfolio_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.datatype
 }
 
-/// Source certificate for a giant taxonomy containing only flat named-class
+/// Source certificate for a taxonomy containing only flat named-class
 /// declarations and subclass edges.
 ///
 /// Such a graph is inside EL regardless of noisy external expressivity labels.
-/// The size threshold is a performance gate: smaller members remain on the
-/// learned production route, while million-edge graphs avoid racing the
-/// synchronous bridge and its duplicate in-memory terminology.
-fn giant_flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
-    const GIANT_FLAT_SUBCLASS_AXIOMS: u64 = 1_000_000;
-
+/// The EL worker independently validates the normalized fragment before it can
+/// publish an answer, so a source-profile false positive can only defer to the
+/// existing exact route.  Routing the complete certified family also avoids
+/// the production portfolio's duplicate in-memory terminology.
+fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
-    source.subclass_axioms >= GIANT_FLAT_SUBCLASS_AXIOMS
+    source.subclass_axioms > 0
         && source.logical_axioms == source.subclass_axioms
         && source.abox_axioms == 0
         && source.rbox_axioms == 0
@@ -847,7 +846,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // rechecks the normalized RBox before admitting that arm; all inverse
         // axioms remain live. Nominal inputs stay on the exact nominal fallback
         // here until the combined certified-nominals portfolio is installed.
-        SemanticFragment::SriqCore if giant_flat_taxonomy_el_candidate(profile) => Route::Elc,
+        SemanticFragment::SriqCore if flat_taxonomy_el_candidate(profile) => Route::Elc,
         // This large Horn SHIF shape used to select the concurrent production
         // portfolio. Its exact bridge arm needs about 8 GiB, but racing the CB
         // fallback can push the process-tree total above the 20 GiB contract.
@@ -1973,7 +1972,7 @@ mod tests {
         profile.expressivity.transitivity = true;
 
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
-        assert!(giant_flat_taxonomy_el_candidate(&profile));
+        assert!(flat_taxonomy_el_candidate(&profile));
         assert_eq!(select(&profile), Route::Elc);
 
         let invalidators: [fn(&mut OntologyProfile); 4] = [
@@ -1992,8 +1991,32 @@ mod tests {
             if candidate.source.abox_axioms > 0 {
                 candidate.source.logical_axioms += 1;
             }
-            assert!(!giant_flat_taxonomy_el_candidate(&candidate));
+            assert!(!flat_taxonomy_el_candidate(&candidate));
         }
+    }
+
+    #[test]
+    fn every_nonempty_flat_taxonomy_uses_el_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.source.subclass_axioms = 847_755;
+        profile.source.logical_axioms = profile.source.subclass_axioms;
+        profile.source.declarations = 847_760;
+        profile.source.declared_classes = 847_760;
+        profile.source.distinct_classes = 847_760;
+        profile.source.max_concept_depth = 1;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(flat_taxonomy_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        profile.source.subclass_axioms = 1;
+        profile.source.logical_axioms = profile.source.subclass_axioms;
+        assert!(flat_taxonomy_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        profile.source.subclass_axioms = 0;
+        profile.source.logical_axioms = 0;
+        assert!(!flat_taxonomy_el_candidate(&profile));
     }
 
     #[test]
