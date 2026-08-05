@@ -626,7 +626,10 @@ fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
 /// `elc`: named subclass/equivalence, intersection, existential restriction,
 /// subproperties, chains, and transitivity. Every constructor outside that
 /// fragment fails closed here, and the normalized EL worker still rechecks the
-/// generated clause set before publishing an answer.
+/// generated clause set before publishing an answer. Named-class disjointness
+/// and class bottom are EL constraints: `elc` represents both as NF5 empty-head
+/// clauses. Bottom roles remain excluded because their normalized constraints
+/// need not have an EL normal form.
 fn source_el_shape(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
@@ -638,8 +641,6 @@ fn source_el_shape(profile: &OntologyProfile) -> bool {
         && source.range_axioms == 0
         && source.unions == 0
         && source.complements == 0
-        && source.disjoint_class_axioms == 0
-        && source.bottom_occurrences == 0
         && source.bottom_role_occurrences == 0
         && source.universals == 0
         && source.min_cardinalities == 0
@@ -2112,6 +2113,20 @@ mod tests {
         assert!(source_el_terminology_candidate(&profile));
         assert_eq!(select(&profile), Route::Elc);
 
+        // OWL EL admits class bottom and named-class disjointness. The ELC
+        // worker independently requires their normalized NF5 empty-head shape
+        // before it can publish an answer.
+        profile.source.disjoint_class_axioms = 3;
+        profile.source.bottom_occurrences = 2;
+        assert!(source_el_terminology_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+        profile.source.disjoint_class_axioms = 0;
+        profile.source.bottom_occurrences = 0;
+
+        let mut bottom_role = profile.clone();
+        bottom_role.source.bottom_role_occurrences = 1;
+        assert!(!source_el_terminology_candidate(&bottom_role));
+
         let mut unsafe_profile = profile.clone();
         unsafe_profile.source.unions = 1;
         assert!(!source_el_terminology_candidate(&unsafe_profile));
@@ -2149,6 +2164,15 @@ mod tests {
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
         assert!(source_el_positive_abox_candidate(&profile));
         assert_eq!(select(&profile), Route::Elc);
+
+        // The typed positive-ABox certificate checks asserted consistency,
+        // while ELC handles the TBox's normalized NF5 constraints.
+        profile.source.disjoint_class_axioms = 1;
+        profile.source.bottom_occurrences = 1;
+        assert!(source_el_positive_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+        profile.source.disjoint_class_axioms = 0;
+        profile.source.bottom_occurrences = 0;
 
         let mut uncertified = profile.clone();
         uncertified.positive_el_abox_materializable = false;
