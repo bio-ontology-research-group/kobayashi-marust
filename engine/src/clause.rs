@@ -195,6 +195,25 @@ impl ContextClause {
         }
     }
 
+    /// Construct from vectors already in strict canonical order. Rule hot
+    /// paths that merge canonical premises can avoid sorting the merged clause
+    /// again. The public contract remains checked in debug/test builds.
+    pub fn from_sorted_unique(
+        body: Vec<Pred>,
+        head: Vec<Lit>,
+        root: bool,
+        sig: &Sig,
+    ) -> ContextClause {
+        debug_assert!(body.windows(2).all(|pair| pair[0] < pair[1]));
+        debug_assert!(head.windows(2).all(|pair| pair[0] < pair[1]));
+        let max_head_mask = compute_max_head_mask(&head, root, sig);
+        ContextClause {
+            body,
+            head,
+            max_head_mask,
+        }
+    }
+
     /// Iterate the ordering-maximal head literals, decoded from
     /// `max_head_mask`.  Replaces the old cached `max_head: Vec<Lit>` field;
     /// yields `head[i]` for each set bit (or every head literal when the head

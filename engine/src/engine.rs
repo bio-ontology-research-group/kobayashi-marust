@@ -2793,6 +2793,36 @@ fn push_nonredundant_pred_result(out: &mut PredResultBuffer, clause: ContextClau
     out.push_nonredundant(clause);
 }
 
+/// Union two strictly sorted, duplicate-free slices while optionally omitting
+/// one value from the right premise (the resolved Pred head literal). Values
+/// from the left premise are never omitted, matching the rule's existing
+/// provider-only resolution step.
+fn merge_sorted_unique<T: Copy + Ord>(left: &[T], right: &[T], omit_right: Option<T>) -> Vec<T> {
+    let mut out = Vec::with_capacity(left.len() + right.len());
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < left.len() || j < right.len() {
+        if j < right.len() && omit_right.is_some_and(|omit| right[j] == omit) {
+            j += 1;
+            continue;
+        }
+        if i == left.len() {
+            out.push(right[j]);
+            j += 1;
+        } else if j == right.len() || left[i] < right[j] {
+            out.push(left[i]);
+            i += 1;
+        } else if right[j] < left[i] {
+            out.push(right[j]);
+            j += 1;
+        } else {
+            out.push(left[i]);
+            i += 1;
+            j += 1;
+        }
+    }
+    out
+}
+
 /// Below this many selections, local Pred enumerates its premise product
 /// directly instead of staging a per-premise antichain.  The staged join wins
 /// only when the product is much larger than the antichain it collapses to;
@@ -4950,18 +4980,19 @@ impl Engine {
                         // The pinned position for `max` is provided by the side
                         // clause, which has no arena id.
                         let provider = if ci == usize::MAX { side } else { &arena[ci] };
-                        let mut body = partial.body.clone();
-                        body.extend_from_slice(&provider.body);
-                        let mut head = partial.head.clone();
-                        for &literal in &provider.head {
-                            if literal != Lit::P(matched) {
-                                head.push(literal);
-                            }
-                        }
+                        let body =
+                            merge_sorted_unique(&partial.body, &provider.body, None);
+                        let head = merge_sorted_unique(
+                            &partial.head,
+                            &provider.head,
+                            Some(Lit::P(matched)),
+                        );
                         if let Some(head) = self.filter_head(head) {
                             push_nonredundant_pred_result(
                                 &mut next,
-                                ContextClause::new(body, head, root, &self.sig),
+                                ContextClause::from_sorted_unique(
+                                    body, head, root, &self.sig,
+                                ),
                             );
                         }
                     }
@@ -6426,18 +6457,16 @@ impl Engine {
             for partial in partials {
                 for &(ci, matched) in &dimension {
                     let provider = &arena[ci];
-                    let mut body = partial.body.clone();
-                    body.extend_from_slice(&provider.body);
-                    let mut head = partial.head.clone();
-                    for &literal in &provider.head {
-                        if literal != Lit::P(matched) {
-                            head.push(literal);
-                        }
-                    }
+                    let body = merge_sorted_unique(&partial.body, &provider.body, None);
+                    let head = merge_sorted_unique(
+                        &partial.head,
+                        &provider.head,
+                        Some(Lit::P(matched)),
+                    );
                     if let Some(head) = self.filter_head(head) {
                         push_nonredundant_pred_result(
                             &mut next,
-                            ContextClause::new(body, head, root, &self.sig),
+                            ContextClause::from_sorted_unique(body, head, root, &self.sig),
                         );
                     }
                 }
