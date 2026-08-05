@@ -1,0 +1,17 @@
+{
+  "baseline_binary_sha256": "4812d656144b4b822523acf97d6500238391aff5912078868535604f1aef22b1",
+  "baseline_mean_peak_mb": 7412.446666666667,
+  "baseline_mean_wall_s": 100.29983333333332,
+  "baseline_median_peak_mb": 9149.67,
+  "baseline_median_wall_s": 109.9128,
+  "baseline_release": "v0.2.5",
+  "candidate_binary_sha256": "8f4a8ca4617be1039614b85de9a2ebb2c11e49cc14e7f9d9a444c250f88a315a",
+  "candidate_mean_peak_mb": 7404.551666666667,
+  "candidate_mean_wall_s": 101.51213333333334,
+  "candidate_median_peak_mb": 9122.6,
+  "candidate_median_wall_s": 112.14155,
+  "candidate_revision": "2624799",
+  "ok_pairs": 6,
+  "pairs": 7,
+  "semantically_identical_pairs": 7
+}
