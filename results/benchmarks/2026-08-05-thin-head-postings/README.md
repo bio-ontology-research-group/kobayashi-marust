@@ -66,8 +66,37 @@ in both independent gates: 146.01 to 168.33 seconds in the full sweep and
 146.01 to 165.67 seconds in the sentinel comparison. This implementation is
 therefore not promoted as-is despite its memory improvement.
 
-[`automatic-results.tsv`](automatic-results.tsv) contains all 592 result rows
-and has SHA-256
+[`first-implementation-results.tsv`](first-implementation-results.tsv) preserves
+this first complete sweep. Its SHA-256 is
 `64db7bd1293ca2aa5a06b0f1cbe1f62edd335723a6406fe7909014e13ff826fd`.
-The follow-up design tags spill state in the inline words so hot reads do not
+
+## Tagged-spill implementation and promotion
+
+Commit `ce4835f` tags spill state in the inline words so hot reads do not
 dereference the `ThinVec` allocation merely to decide which slice to return.
+Its source archive has SHA-256
+`2b8c87ee59b617a616770f1f3ccf6ca2d7003426adffb45b5a31fc4f26312be5`.
+Source-bound build `50056177` completed in 4:45 and produced binary SHA-256
+`a23ff5237e38d58b7d71ab85a03eb6813e5d8dc991f278f04fd72de7fc139490`.
+Ten-task panel `50056245` and resumable full array `50056291` used that binary.
+
+The final strict audit verified 592 unique rows, profiles, checkpoints, array
+indices, and terminal receipts; one binary identity; no temporary files; the
+expected diagnostic captures only; and ORE4669's full-IRI fingerprint. Coverage
+remained 591/592, with 588 exact matches, the two established consistency
+disputes, the established no-gold case, and only ORE1194 failing closed. There
+were zero status, verdict, signature, or selected-route differences against
+both the compact-trigger baseline and the first thin-posting implementation.
+
+Across the 591 successes, mean peak RSS improved from 817.18 to 808.03 MiB
+(1.12%). Median wall improved from 0.2530 to 0.2509 seconds; the paired median
+ratios also favored the candidate for wall and memory. Independently scheduled
+mean wall was 5.8385 versus 5.7810 seconds (0.99% higher), while source-isolated
+ORE3215 and ORE9944 pairs were wall-neutral. The full gate saved 578.56 MiB on
+ORE7914, 571.31 MiB on ORE10621, 559.63 MiB on ORE9944, and 511.99 MiB on
+ORE7246. This representation was promoted to `main` as commits `a44c91d` and
+`1d7b8dc`.
+
+[`automatic-results.tsv`](automatic-results.tsv) contains the final 592 rows
+and has SHA-256
+`5ec066e634a630bbe42e3b940b55570aec0c540979a484b752acbc89bcdf5a80`.

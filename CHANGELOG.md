@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+### Store head-index postings in compact thin vectors (2026-08-05)
+
+CB contexts now store the common one- and two-clause head-index postings in a
+16-byte inline representation, down from the 24-byte `SmallVec` value. Wider
+postings spill to a one-allocation `ThinVec`; an inline tag lets hot reads choose
+the representation without touching the allocation header. Insertion order,
+removal order, index membership, rule scheduling, and the saturation fixpoint
+are unchanged. The complete serial release suite passed with 1,962 library
+tests and every integration, CLI, binary, and documentation test passing.
+Source-bound IBEX build `50056177`, sentinel array `50056245`, and resumable
+full array `50056291` passed the strict 592-ontology gate with 591 successes and
+zero status, verdict, signature, or selected-route differences from `ed81ac6`.
+Across the 591 successes, mean peak RSS fell from 817.18 to 808.03 MiB (1.12%).
+The paired medians improved for both wall and memory, while independently
+scheduled mean wall was 0.99% higher. Source-isolated ORE3215 and ORE9944 runs
+were wall-neutral; the full sweep saved about 560–579 MiB on ORE7914, ORE9944,
+and ORE10621 and 512 MiB on ORE7246. Evidence is in
+[`results/benchmarks/2026-08-05-thin-head-postings/`](results/benchmarks/2026-08-05-thin-head-postings/README.md).
+
 ### Store central trigger sets as compact sorted vectors (2026-08-05)
 
 CB central contexts now store successor trigger sets as sorted vectors instead
