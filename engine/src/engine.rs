@@ -20,6 +20,7 @@ use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
 use smallvec::SmallVec;
+use thin_vec::ThinVec;
 
 use crate::calc::*;
 use crate::clause::*;
@@ -76,14 +77,101 @@ type FxBuild = BuildHasherDefault<FxHasher>;
 type HashMap<K, V> = std::collections::HashMap<K, V, FxBuild>;
 type HashSet<T> = std::collections::HashSet<T, FxBuild>;
 
-/// Posting list for the per-context head indexes.  Most head keys in a context
-/// resolve to a single clause id (unit heads dominate), so inlining up to two
-/// ids avoids a heap allocation (and its allocator rounding) per key.  On the
-/// big throughput onts the head indexes are the #1 context-memory category
-/// (≈37-50% of RSS), almost all of it Vec-header + heap-alloc overhead for
-/// singleton postings; SmallVec collapses that.  Output-identical: a posting is
-/// the same id sequence, stored inline below the spill threshold.
-type Posting = SmallVec<[u32; 2]>;
+/// Compact posting list for the per-context head indexes. Most keys resolve to
+/// one or two clause ids. Keeping those ids beside a thin spill vector makes
+/// the common posting 16 bytes, versus 24 bytes for `SmallVec<[u32; 2]>`.
+/// `ThinVec` stores its length and capacity with its data, so wider postings
+/// still need only one allocation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Posting {
+    inline: [u32; 2],
+    spill: ThinVec<u32>,
+}
+
+impl Default for Posting {
+    fn default() -> Self {
+        Self {
+            inline: [u32::MAX; 2],
+            spill: ThinVec::new(),
+        }
+    }
+}
+
+impl Posting {
+    #[inline]
+    fn push(&mut self, value: u32) {
+        if !self.spill.is_empty() {
+            self.spill.push(value);
+        } else if self.inline[0] == u32::MAX {
+            self.inline[0] = value;
+        } else if self.inline[1] == u32::MAX {
+            self.inline[1] = value;
+        } else {
+            self.spill.extend_from_slice(&self.inline);
+            self.spill.push(value);
+        }
+    }
+
+    #[inline]
+    fn as_slice(&self) -> &[u32] {
+        if !self.spill.is_empty() {
+            self.spill.as_slice()
+        } else if self.inline[0] == u32::MAX {
+            &self.inline[..0]
+        } else if self.inline[1] == u32::MAX {
+            &self.inline[..1]
+        } else {
+            &self.inline
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.inline[0] == u32::MAX && self.spill.is_empty()
+    }
+
+    #[inline]
+    fn heap_capacity(&self) -> usize {
+        self.spill.capacity()
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&u32) -> bool) {
+        if !self.spill.is_empty() {
+            self.spill.retain(&mut keep);
+            if self.spill.len() <= 2 {
+                self.inline = [u32::MAX; 2];
+                for (slot, value) in self.inline.iter_mut().zip(self.spill.iter().copied()) {
+                    *slot = value;
+                }
+                self.spill = ThinVec::new();
+            }
+            return;
+        }
+        let mut retained = [u32::MAX; 2];
+        let mut len = 0;
+        for value in self.inline.into_iter().take_while(|v| *v != u32::MAX) {
+            if keep(&value) {
+                retained[len] = value;
+                len += 1;
+            }
+        }
+        self.inline = retained;
+    }
+}
+
+impl std::ops::Deref for Posting {
+    type Target = [u32];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
 
 /// Remove one clause id from a `worked_off` head-index posting, dropping the
 /// key when its posting becomes empty.  This is the incremental inverse of the
@@ -1714,22 +1802,22 @@ fn layer_head_index_bytes(layer: &ClauseLayer, szp: usize) -> usize {
     layer
         .head_concept_index
         .values()
-        .map(|v| 24 + 4 + v.capacity() * 4)
+        .map(|v| 16 + 4 + v.heap_capacity() * 4)
         .sum::<usize>()
         + layer
             .head_role_index
             .values()
-            .map(|v| 24 + 4 + v.capacity() * 4)
+            .map(|v| 16 + 4 + v.heap_capacity() * 4)
             .sum::<usize>()
         + layer
             .max_head_pred_index
             .values()
-            .map(|v| 24 + szp + v.capacity() * 4)
+            .map(|v| 16 + szp + v.heap_capacity() * 4)
             .sum::<usize>()
         + layer
             .max_head_term_index
             .values()
-            .map(|v| 24 + std::mem::size_of::<Term>() + v.capacity() * 4)
+            .map(|v| 16 + std::mem::size_of::<Term>() + v.heap_capacity() * 4)
             .sum::<usize>()
 }
 
@@ -1739,7 +1827,7 @@ fn layer_redundancy_bytes(layer: &ClauseLayer) -> usize {
         + layer
             .active_head_lit_index
             .values()
-            .map(|v| 24 + std::mem::size_of::<Lit>() + v.capacity() * 4)
+            .map(|v| 16 + std::mem::size_of::<Lit>() + v.heap_capacity() * 4)
             .sum::<usize>()
 }
 
@@ -7561,6 +7649,24 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_posting_preserves_order_across_inline_and_spill() {
+        assert_eq!(std::mem::size_of::<Posting>(), 16);
+        let mut posting = Posting::default();
+        assert!(posting.is_empty());
+        for value in [3, 7, 11, 15] {
+            posting.push(value);
+        }
+        assert_eq!(posting.as_slice(), &[3, 7, 11, 15]);
+        posting.retain(|value| *value == 7 || *value == 15);
+        assert_eq!(posting.as_slice(), &[7, 15]);
+        assert_eq!(posting.heap_capacity(), 0);
+        posting.retain(|value| *value == 15);
+        assert_eq!(posting.as_slice(), &[15]);
+        posting.retain(|_| false);
+        assert!(posting.is_empty());
+    }
 
     fn cx(iri: Iri, t: Term) -> Pred {
         Pred::Concept { iri, t }
