@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.2.3] – 2026-08-05
+
+### Merge canonical predecessor conclusions linearly (2026-08-05)
+
+Staged local and arriving predecessor joins now linearly merge their already
+canonical bodies and heads and construct the canonical result without sorting
+it again. This changes representation work only; the premise products,
+resolved literals, result antichains, scheduling, derivations, and fixpoint are
+unchanged. The complete release suite and targeted predecessor oracle pass.
+Source-bound build `50061158`, panel `50061724`, and complete sweep `50062331`
+pass the strict 592-ontology gate with 591 successes and zero semantic or route
+differences. Across 591 successes, mean wall improves 0.625% and mean peak RSS
+improves 0.073%. Evidence is in
+[`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/README.md).
+
 ### Compact predecessor-clause intern postings (2026-08-05)
 
 The global predecessor-clause intern table now stores common one- and two-ID

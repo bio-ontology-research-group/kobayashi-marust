@@ -48,9 +48,14 @@ jobs:
           KM's single-command automatic classifier completes 591 of 592 ORE
           2015 ontologies under the 240-second, 20-GiB benchmark contract.
 
-          The result comprises 587 exact retained Konclude-signature matches
-          and four independently adjudicated results. ORE ontology 1194 is the
-          sole remaining input and fails closed without publishing a taxonomy.
+          The result comprises 588 retained or independently derived exact
+          signatures, two independently adjudicated consistency results, and
+          one independently adjudicated no-gold result. ORE ontology 1194 is
+          the sole remaining input and fails closed without publishing a
+          taxonomy.
+
+          The tagged benchmark reports 5.8647 seconds mean wall time and
+          801.66 MiB mean peak RSS across the 591 successful classifications.
 
           Certified benchmark evidence, route details, special-case handling,
           and the scope of the separate Lean development are documented in the
