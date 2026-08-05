@@ -8,7 +8,8 @@
 
 The frontend now detects when equivalent finite `ObjectOneOf` definitions
 force two named individuals to be equal while `DifferentIndividuals` requires
-them to differ. This closes the soundness defect reported in GitHub issue #3:
+them to differ. This closes the soundness defect reported in
+[GitHub issue #3](https://github.com/bio-ontology-research-group/kobayashi-marust/issues/3):
 `C ≡ {a}`, `C ≡ {a,b}`, and `DifferentIndividuals(a,b)` now returns
 `CONSISTENT 0`. The corresponding ontology without `DifferentIndividuals`
 continues to return `CONSISTENT 1`.
