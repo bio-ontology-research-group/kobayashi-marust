@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.2.6] – 2026-08-05
+
+### Route source-certified EL terminologies directly to completion
+
+The automatic router now sends large, TBox-only ontologies whose source axioms
+use only supported OWL EL constructors directly to exact EL completion. These
+ontologies previously entered `production_all`, whose polarity absorption and
+duplicate frontend/CB work obscured the compact EL forms. The source predicate
+excludes ABoxes, nominals, datatypes, imports, rules, inverse roles, Boolean
+constructors, cardinalities, and every unsupported role axiom. The normalized
+EL worker remains the final fragment checker and fails closed outside its
+complete fragment.
+
+The complete fixed-hardware sweep retains 591 successful classifications and
+ORE1194 as the sole fail-closed error. All 592 status, verdict, signature,
+consistency, taxonomy-count, discrepancy-count, and collision-sensitive
+full-IRI results equal v0.2.5. The audit finds exactly 106 intended
+`production_all` to `elc` route changes and no coverage or semantic regression.
+The issue #3 finite-nominal pigeonhole regression and its non-clashing control
+both pass on the release source.
+
+On Intel Xeon Gold 6248 measurements, mean wall time improves from 5.7632 to
+5.1787 seconds, median wall time from 0.2489 to 0.2467 seconds, mean peak RSS
+from 780.74 to 720.08 MiB, and median peak RSS from 42.76 to 42.02 MiB. This is
+a 10.14% mean-time and 7.77% mean-memory reduction. Evidence is in
+[`results/benchmarks/2026-08-05-source-el-routing/`](results/benchmarks/2026-08-05-source-el-routing/README.md).
+
 ## [0.2.5] – 2026-08-05
 
 ### Detect equality clashes forced by finite nominal enumerations

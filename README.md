@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.5`.
+are available from the repository tags; the current release is `v0.2.6`.
 
 ## Classify an ontology
 
@@ -90,21 +90,19 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Source-bound build `50069310`, the complete resumed
-automatic sweep, exact-route panels `50065528` and `50067083`, constrained
-ORE15846 rerun `50070685`, and the 592-row integrity audit verify every result,
-checkpoint, route trace, profile, collision-sensitive full-IRI fingerprint,
-and binary identity. Runtime commit `703a713` is promoted as main commit
-`eae74e8`; the tested binary is `ae603062a79c…`.
+over all 592 ontologies. Candidate commit `3938b30`, paired-panel job
+`50075107`, the complete resumable sweep ending in job `50078177`, and the
+592-row integrity audit verify every result, checkpoint, route trace, profile,
+collision-sensitive full-IRI fingerprint, and binary identity. The tested
+binary is `7ac98a33a265…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `703a713` / `eae74e8` (binary `ae603062a79c…`) | **591** | **591** | **5.7851** | **0.2547** | **781.08** | **41.27** |
+| **KM automatic, `km classify`** | `v0.2.6` / `3938b30` (binary `7ac98a33a265…`) | **591** | **591** | **5.1787** | **0.2467** | **720.08** | **42.02** |
 
-Performance values use the Intel Xeon Gold 6248 measurements for all 68
-changed routes and the unchanged v0.2.3 Gold-6248 rows for every other
-ontology. The complete automatic-route sweep supplies the semantic gate; its
-mixed-CPU raw timings are retained but are not used for this comparison.
+Performance values come from the complete v0.2.6 automatic-route sweep on
+exclusive Intel Xeon Gold 6248 nodes. The corresponding v0.2.5 source-bound
+baseline used the same processor model, limits, corpus, and harness contract.
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -117,6 +115,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
 - [`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/)
+- [`results/benchmarks/2026-08-05-source-el-routing/`](results/benchmarks/2026-08-05-source-el-routing/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
 - [`CHANGELOG.md`](CHANGELOG.md), which links the earlier optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
