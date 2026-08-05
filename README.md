@@ -16,10 +16,10 @@ without using the expected answer.
 
 - `km classify` completes **591 of 592** ORE 2015 ontologies under the
   240-second, 20-GiB benchmark contract.
-- The automatic results comprise **587 exact Konclude-signature matches** and
-  four independently adjudicated results: contested consistency cases 2669 and
-  15516, inconsistent ontology 10860, and the exact 4669 full-IRI taxonomy.
-  Ontology 1194 is the only remaining non-completing input.
+- The automatic results comprise **588 exact retained or independently derived
+  full-IRI signatures** and three independently adjudicated results: contested
+  consistency cases 2669 and 15516, and inconsistent ontology 10860. Ontology
+  1194 is the only remaining non-completing input.
 - KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle and fails
   closed when conversion, routing, or reasoning cannot produce a complete
   answer.
@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.3`.
+are available from the repository tags; the current release is `v0.2.4`.
 
 ## Classify an ontology
 
@@ -90,16 +90,21 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `50061158`, sentinel panel `50061724`, full
-sweep `50062331`, and the complete 592-row integrity audit verify every
-terminal row, checkpoint, route trace, profile, completion receipt,
-collision-sensitive full-IRI fingerprint, and binary identity. Metrics use the
-591 successful rows from reasoner commit `cbcc541` (promoted as main commit
-`86bf83c`) and IBEX binary `4b2c3229e900…`.
+over all 592 ontologies. Source-bound build `50069310`, the complete resumed
+automatic sweep, exact-route panels `50065528` and `50067083`, constrained
+ORE15846 rerun `50070685`, and the 592-row integrity audit verify every result,
+checkpoint, route trace, profile, collision-sensitive full-IRI fingerprint,
+and binary identity. Runtime commit `703a713` is promoted as main commit
+`eae74e8`; the tested binary is `ae603062a79c…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `cbcc541` / `86bf83c` (binary `4b2c3229e900…`) | **591** | **591** | **5.8647** | **0.2756** | **801.66** | **42.63** |
+| **KM automatic, `km classify`** | `703a713` / `eae74e8` (binary `ae603062a79c…`) | **591** | **591** | **5.7851** | **0.2547** | **781.08** | **41.27** |
+
+Performance values use the Intel Xeon Gold 6248 measurements for all 68
+changed routes and the unchanged v0.2.3 Gold-6248 rows for every other
+ontology. The complete automatic-route sweep supplies the semantic gate; its
+mixed-CPU raw timings are retained but are not used for this comparison.
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -111,17 +116,9 @@ Per-ontology routes, evidence, and special handling are recorded in:
 
 - [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
-- [`results/benchmarks/2026-08-04-streamed-output/`](results/benchmarks/2026-08-04-streamed-output/)
-- [`results/benchmarks/2026-08-04-grouped-output-sort/`](results/benchmarks/2026-08-04-grouped-output-sort/)
-- [`results/benchmarks/2026-08-04-content-fxhash/`](results/benchmarks/2026-08-04-content-fxhash/)
-- [`results/benchmarks/2026-08-04-cb-fxhash/`](results/benchmarks/2026-08-04-cb-fxhash/)
-- [`results/benchmarks/2026-08-05-default-performance/`](results/benchmarks/2026-08-05-default-performance/)
-- [`results/benchmarks/2026-08-05-i2-tail-truncate/`](results/benchmarks/2026-08-05-i2-tail-truncate/)
-- [`results/benchmarks/2026-08-05-i2-key-borrow/`](results/benchmarks/2026-08-05-i2-key-borrow/)
-- [`results/benchmarks/2026-08-05-thin-head-postings/`](results/benchmarks/2026-08-05-thin-head-postings/)
-- [`results/benchmarks/2026-08-05-remove-neighbor-vector/`](results/benchmarks/2026-08-05-remove-neighbor-vector/)
-- [`results/benchmarks/2026-08-05-compact-pred-intern-index/`](results/benchmarks/2026-08-05-compact-pred-intern-index/)
+- [`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
+- [`CHANGELOG.md`](CHANGELOG.md), which links the earlier optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 

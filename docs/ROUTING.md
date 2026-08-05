@@ -45,6 +45,17 @@ candidates may refine after normalization when the frontend has proved a typed
 payload certificate; the selected route and certificate outcome are recorded
 in the route trace.
 
+### Flat named-class taxonomies
+
+A nonempty ontology whose logical axioms consist only of flat named-class
+`SubClassOf` edges selects `elc`, even when conservative external expressivity
+labels place it in the SRIQ core. The source gate excludes ABox and RBox axioms,
+equivalence, disjointness, Boolean constructors, restrictions, cardinalities,
+nominals, self restrictions, and datatypes. The EL worker independently checks
+the normalized clause fragment before answering and declines outside it. This
+generic gate covers 69 ORE ontologies; 68 move from `production_all` to `elc`
+in v0.2.4, while the largest member already used EL completion.
+
 ## Konclude-compatible expressivity
 
 `km profile ontology.ofn` emits a versioned JSON profile. Schema version 2 adds

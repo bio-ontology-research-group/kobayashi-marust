@@ -2,12 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
-    paths:
-      - .github/workflows/release.yml
   workflow_dispatch:
     inputs:
       tag:
@@ -23,7 +19,7 @@ jobs:
     name: Publish source release
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.2.1' }}
+      RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,8 +50,14 @@ jobs:
           the sole remaining input and fails closed without publishing a
           taxonomy.
 
-          The tagged benchmark reports 5.8647 seconds mean wall time and
-          801.66 MiB mean peak RSS across the 591 successful classifications.
+          This release routes 68 source-certified flat taxonomies directly to
+          exact EL completion. The strict 592-row audit finds no semantic
+          differences from v0.2.3.
+
+          The Gold-6248 calibrated benchmark reports 5.7851 seconds mean and
+          0.2547 seconds median wall time, with 781.08 MiB mean and 41.27 MiB
+          median peak RSS across the 591 successful classifications. All four
+          metrics improve over v0.2.3.
 
           Certified benchmark evidence, route details, special-case handling,
           and the scope of the separate Lean development are documented in the

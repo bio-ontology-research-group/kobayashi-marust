@@ -1,0 +1,27 @@
+{
+  "automatic": {
+    "mean_peak_mib": 767.3186294416244,
+    "mean_wall_s": 5.43834179357022,
+    "median_peak_mib": 38.64,
+    "median_wall_s": 0.2734,
+    "successful": 591
+  },
+  "automatic_results_sha256": "c8fcdb9670a8ba77df6e924b98360587301529f41359b08ad7a3e5c9ae2e267a",
+  "baseline": {
+    "mean_peak_mib": 801.6617597292724,
+    "mean_wall_s": 5.864671235194585,
+    "median_peak_mib": 42.63,
+    "median_wall_s": 0.2756,
+    "successful": 591
+  },
+  "candidate_binary_sha256": "ae603062a79c90424a667f4ba607b81713627d171b6a4aeb9e6ae1347e04c7ea",
+  "changed_routes": 68,
+  "gold_calibrated": {
+    "mean_peak_mib": 781.0759052453469,
+    "mean_wall_s": 5.785061421319797,
+    "median_peak_mib": 41.27,
+    "median_wall_s": 0.2547,
+    "successful": 591
+  },
+  "gold_calibrated_results_sha256": "5da2f121582e0b7781e07fcce59f631813a34aabf5caa40875bce0ea922a5bf9"
+}

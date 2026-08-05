@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.2.4] – 2026-08-05
+
+### Route certified flat taxonomies directly to EL completion
+
+The automatic router now recognizes every nonempty source ontology whose
+logical axioms consist only of flat named-class subclass edges. It sends this
+source-certified family directly to exact EL completion instead of launching
+the larger production portfolio. The EL worker independently validates the
+normalized fragment and declines outside it, so the source predicate changes
+scheduling rather than accepted semantics.
+
+All 68 newly selected ontologies match their automatic candidate signatures
+through EL completion. The complete source-bound automatic sweep retains 591
+successful classifications and only ORE1194 failing closed. Its strict audit
+finds exactly 68 `production_all` to `elc` route changes and zero differences
+in status, verdict, signature, consistency, taxonomy counts, or discrepancy
+counts across all 592 ontologies. The complete release suite passes with 1,955
+library tests, eight intentional ignores, every integration test, and no
+failures.
+
+On Intel Xeon Gold 6248 measurements, the 591-row calibrated aggregate improves
+mean wall from 5.8647 to 5.7851 seconds, median wall from 0.2756 to 0.2547
+seconds, mean peak RSS from 801.66 to 781.08 MiB, and median peak RSS from 42.63
+to 41.27 MiB. Evidence is in
+[`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/README.md).
+
 ## [0.2.3] – 2026-08-05
 
 ### Merge canonical predecessor conclusions linearly (2026-08-05)
