@@ -1,0 +1,32 @@
+name: Repair v0.2.5 release notes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/repair-v025-release-notes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.2.5
+      - name: Replace release notes with the tagged changelog entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          awk '
+            $0 ~ "^## \\[0.2.5\\]" { emit=1 }
+            emit && $0 ~ "^## \\[" && $0 !~ "^## \\[0.2.5\\]" { exit }
+            emit { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+          gh release edit v0.2.5 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "KM v0.2.5: nominal-enumeration soundness fix" \
+            --notes-file release-notes.md

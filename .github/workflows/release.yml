@@ -32,34 +32,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          version=${RELEASE_TAG#v}
+          awk -v version="$version" '
+            $0 ~ "^## \\[" version "\\]" { emit=1 }
+            emit && $0 ~ "^## \\[" && $0 !~ "^## \\[" version "\\]" { exit }
+            emit { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "$RELEASE_TAG is already published"
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "KM ${RELEASE_TAG}: 591/592 automatic ORE coverage" \
+              --notes-file release-notes.md
             exit 0
           fi
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "KM ${RELEASE_TAG}: 591/592 automatic ORE coverage" \
-            --notes-file - <<'EOF'
-          KM's single-command automatic classifier completes 591 of 592 ORE
-          2015 ontologies under the 240-second, 20-GiB benchmark contract.
-
-          The result comprises 588 retained or independently derived exact
-          signatures, two independently adjudicated consistency results, and
-          one independently adjudicated no-gold result. ORE ontology 1194 is
-          the sole remaining input and fails closed without publishing a
-          taxonomy.
-
-          This release routes 68 source-certified flat taxonomies directly to
-          exact EL completion. The strict 592-row audit finds no semantic
-          differences from v0.2.3.
-
-          The Gold-6248 calibrated benchmark reports 5.7851 seconds mean and
-          0.2547 seconds median wall time, with 781.08 MiB mean and 41.27 MiB
-          median peak RSS across the 591 successful classifications. All four
-          metrics improve over v0.2.3.
-
-          Certified benchmark evidence, route details, special-case handling,
-          and the scope of the separate Lean development are documented in the
-          tagged README, changelog, and benchmark artifacts.
-          EOF
+            --notes-file release-notes.md
