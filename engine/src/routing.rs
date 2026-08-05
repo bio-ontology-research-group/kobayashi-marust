@@ -2158,16 +2158,13 @@ mod tests {
         non_el.source.universals = 1;
         assert!(!source_el_positive_abox_candidate(&non_el));
 
-        let mut nominal_or_inequality = OntologyProfile::default();
-        nominal_or_inequality.positive_el_abox_materializable = true;
-        nominal_or_inequality.source.logical_axioms = 50_000;
-        nominal_or_inequality.source.abox_axioms = 20_000;
-        nominal_or_inequality.source.existentials = 10_000;
-        nominal_or_inequality.source.nominals = 1;
-        nominal_or_inequality.source.inequality_assertions = 1;
-        assert!(!source_el_positive_abox_candidate(
-            &nominal_or_inequality
-        ));
+        let mut nominal_source = OntologyProfile::default();
+        nominal_source.positive_el_abox_materializable = true;
+        nominal_source.source.logical_axioms = 50_000;
+        nominal_source.source.abox_axioms = 20_000;
+        nominal_source.source.existentials = 10_000;
+        nominal_source.source.nominals = 1;
+        assert!(!source_el_positive_abox_candidate(&nominal_source));
     }
 
     #[test]
