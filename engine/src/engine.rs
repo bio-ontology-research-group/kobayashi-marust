@@ -101,6 +101,23 @@ fn posting_remove<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Posting>, key: K
     }
 }
 
+/// Insert into a compact ordered set represented by a `Vec`.
+///
+/// Successor trigger sets are read in sorted order every time their central
+/// core grows. Keeping that order incrementally avoids both a temporary sort
+/// and the per-element allocation of a tree set. Duplicate insertion remains
+/// a no-op, matching `BTreeSet::insert`.
+#[inline]
+fn sorted_pred_insert(set: &mut Vec<Pred>, pred: Pred) -> bool {
+    match set.binary_search(&pred) {
+        Ok(_) => false,
+        Err(pos) => {
+            set.insert(pos, pred);
+            true
+        }
+    }
+}
+
 /// `posting_remove` for the `Vec<u32>`-valued indexes (`ground_body_index`,
 /// `bridge_index`) — same incremental-inverse semantics as above.
 fn vec_posting_remove<K: std::hash::Hash + Eq>(
@@ -1828,7 +1845,7 @@ struct Context {
     /// set of succ-trigger predicates pushed so far.  The successor context for
     /// `f` is keyed by the σ-image of this set (its core); when the set grows,
     /// the edge re-targets a new context with the larger core.
-    trigger_sets: HashMap<Term, std::collections::BTreeSet<Pred>>,
+    trigger_sets: HashMap<Term, Vec<Pred>>,
     /// Central strategy: the subset of `trigger_sets[f]` whose triggers were
     /// derived as unit facts (`⊤ → p`, no body, no disjunction) in this
     /// context.  ONLY these enter the successor's core: a disjunctively
@@ -1840,7 +1857,7 @@ struct Context {
     /// Non-fact triggers still travel as Succ messages and become hypothesis
     /// clauses `p → p` at the target, so their consequences come back
     /// conditioned on `p` alone.
-    fact_trigger_sets: HashMap<Term, std::collections::BTreeSet<Pred>>,
+    fact_trigger_sets: HashMap<Term, Vec<Pred>>,
     /// predecessor edges: (predecessor ctx id, function term) -> pushed predicates
     predecessors: HashMap<(usize, Term), HashSet<Pred>>,
     pushed_succ: HashSet<Pred>,
@@ -5775,9 +5792,9 @@ impl Engine {
                         continue; // redundant push-back: do not grow the core
                     }
                     let f = p.max_term();
-                    ctx.trigger_sets.entry(f).or_default().insert(p);
+                    sorted_pred_insert(ctx.trigger_sets.entry(f).or_default(), p);
                     if is_fact {
-                        ctx.fact_trigger_sets.entry(f).or_default().insert(p);
+                        sorted_pred_insert(ctx.fact_trigger_sets.entry(f).or_default(), p);
                     }
                     new_by_f.entry(f).or_default().push(p);
                     if !grew.contains(&f) {
@@ -5786,7 +5803,7 @@ impl Engine {
                 }
             }
             for f in grew {
-                let raw: Vec<Pred> = self.contexts[id].trigger_sets[&f].iter().copied().collect();
+                let raw = self.contexts[id].trigger_sets[&f].clone();
                 // The successor core is the σ-image of the FACT triggers only;
                 // disjunctively/conditionally derived triggers stay hypotheses
                 // (see `fact_trigger_sets`).
@@ -6971,12 +6988,12 @@ impl Engine {
                             .sum::<usize>(),
                     ctx.trigger_sets
                         .values()
-                        .map(|s| 24 + s.len() * (szp + 8))
+                        .map(|s| 24 + s.capacity() * szp)
                         .sum::<usize>()
                         + ctx
                             .fact_trigger_sets
                             .values()
-                            .map(|s| 24 + s.len() * (szp + 8))
+                            .map(|s| 24 + s.capacity() * szp)
                             .sum::<usize>(),
                 );
                 add(
@@ -7550,6 +7567,17 @@ mod tests {
     }
     fn rl(iri: Iri, s: Term, t: Term) -> Pred {
         Pred::Role { iri, s, t }
+    }
+
+    #[test]
+    fn compact_trigger_set_is_sorted_and_unique() {
+        let mut set = Vec::new();
+        let predicates = [cx(3, X), cx(1, X), cx(2, X), cx(1, X)];
+        assert!(sorted_pred_insert(&mut set, predicates[0]));
+        assert!(sorted_pred_insert(&mut set, predicates[1]));
+        assert!(sorted_pred_insert(&mut set, predicates[2]));
+        assert!(!sorted_pred_insert(&mut set, predicates[3]));
+        assert_eq!(set, vec![cx(1, X), cx(2, X), cx(3, X)]);
     }
 
     /// The dense `ClauseSig` mirror the engine keeps beside `cc_arena`; tests
