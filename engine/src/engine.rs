@@ -3039,7 +3039,7 @@ pub struct Engine {
     /// memory.  Append-only; ids are stable.
     pred_interned: Vec<PredClause>,
     /// content hash -> candidate ids (collisions resolved by exact comparison)
-    pred_intern_idx: HashMap<u64, Vec<u32>>,
+    pred_intern_idx: HashMap<u64, Posting>,
     /// Global content-interned clause arenas, one per ordering domain
     /// (`[non-root, root]` -- the same (body, head) has a different cached
     /// `max_head` under the root vs non-root literal ordering, so the domains
@@ -3578,7 +3578,7 @@ impl Engine {
     fn intern_pred(&mut self, pc: PredClause) -> u32 {
         let h = content_hash(&pc);
         if let Some(ids) = self.pred_intern_idx.get(&h) {
-            for &i in ids {
+            for &i in ids.as_slice() {
                 if self.pred_interned[i as usize] == pc {
                     return i;
                 }
@@ -7163,11 +7163,11 @@ impl Engine {
                         .iter()
                         .map(|p| (p.body.capacity() + p.head.capacity()) * szp)
                         .sum::<usize>()
-                    + self.pred_intern_idx.len() * 40
+                    + self.pred_intern_idx.len() * 32
                     + self
                         .pred_intern_idx
                         .values()
-                        .map(|v| v.capacity() * 4)
+                        .map(|posting| posting.heap_capacity() * 4)
                         .sum::<usize>(),
             );
             add(
