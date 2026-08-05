@@ -876,11 +876,17 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if profile.card_number_role_separable => {
             Route::CertifiedCardProxyAbox
         }
-        SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
-            Route::CertifiedNominals
-        }
+        // Prefer the complete production portfolio for very large ABoxes when
+        // no number restriction can couple their individuals.  This test must
+        // precede the broad large-nominal portfolio: both routes retain the
+        // exact nominal-aware CB fallback, but eagerly materializing this
+        // shape can consume the whole process-tree budget before that fallback
+        // gets useful work done.
         SemanticFragment::Nominal if large_no_cardinality_abox_production_candidate(profile) => {
             Route::ProductionAll
+        }
+        SemanticFragment::Nominal if large_nominal_portfolio_candidate(profile) => {
+            Route::CertifiedNominals
         }
         // Typed object-ABoxes without number restrictions do not need the
         // cardinality-oriented bridge portfolio.  The complete production
@@ -1939,7 +1945,7 @@ mod tests {
     }
 
     #[test]
-    fn large_nominal_abox_uses_bounded_exact_portfolio() {
+    fn large_nominal_abox_prefers_no_cardinality_production() {
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 256_427;
         profile.source.class_assertions = 111_561;
@@ -1949,7 +1955,17 @@ mod tests {
         profile.expressivity.nominal = true;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(large_nominal_portfolio_candidate(&profile));
+        assert!(large_no_cardinality_abox_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::ProductionAll);
+
+        // A number restriction invalidates the production shortcut and keeps
+        // the bounded exact nominal portfolio authoritative.
+        profile.source.min_cardinalities = 1;
+        profile.expressivity.cardinality = true;
+        assert!(!large_no_cardinality_abox_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedNominals);
+        profile.source.min_cardinalities = 0;
+        profile.expressivity.cardinality = false;
 
         profile.source.datatype_constructors = 1;
         assert!(!large_nominal_portfolio_candidate(&profile));
