@@ -60,7 +60,7 @@ SubClassOf(:Noise :D)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("in-process elc done"),
+        stderr.contains("route=elc"),
         "EL explanation did not exercise the EL mechanism: {stderr}"
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
