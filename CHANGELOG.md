@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+### Store central trigger sets as compact sorted vectors (2026-08-05)
+
+CB central contexts now store successor trigger sets as sorted vectors instead
+of per-element tree nodes. Binary-search insertion preserves the same unique,
+deterministic predicate order, so context identity, rule derivation, scheduling,
+and the saturation fixpoint are unchanged. The complete serial release suite
+passed with 1,953 tests, eight ignored, and zero failures. Alternating ORE4669
+pairs were byte-identical and reduced peak RSS by 64–65 MiB with neutral wall;
+equal-progress 60-second ORE1194 diagnostics reduced peak RSS by 14.1%. IBEX
+build `50052290` and full array `50052291` then passed the 592-ontology gate:
+591 successes, the existing ORE1194 error, and zero status, verdict, signature,
+or production-route differences. Across 591 paired successes, mean wall fell
+0.32%, mean peak RSS fell 0.18%, and both medians improved. Evidence is in
+[`results/benchmarks/2026-08-05-compact-trigger-sets/`](results/benchmarks/2026-08-05-compact-trigger-sets/README.md).
+
 ## [0.2.2] – 2026-08-05
 
 ### Avoid temporary blocking-key vectors (2026-08-05)

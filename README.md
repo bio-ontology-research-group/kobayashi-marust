@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `50050792`, sanity job `50051037`, arrays
-`50051038` and `50051039`, and the complete 592-row integrity audit verify every
-terminal row, checkpoint, route trace, profile, log, collision-sensitive
-full-IRI fingerprint, and binary identity. Metrics use the 591 successful rows
-from reasoner commit `5bd9489` and IBEX binary `a16f97f89985…`.
+over all 592 ontologies. Build job `50052290`, sentinel array `50052224`, full
+array `50052291`, and the complete 592-row integrity audit verify every terminal
+row, checkpoint, route trace, profile, log, collision-sensitive full-IRI
+fingerprint, and binary identity. Metrics use the 591 successful rows from
+reasoner commit `ed81ac6` and IBEX binary `7d32fa946eb5…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `5bd9489` (binary `a16f97f89985…`) | **591** | **591** | **5.7993** | **0.2536** | **818.65** | **43.33** |
+| **KM automatic, `km classify`** | `ed81ac6` (binary `7d32fa946eb5…`) | **591** | **591** | **5.7810** | **0.2530** | **817.18** | **43.14** |
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one

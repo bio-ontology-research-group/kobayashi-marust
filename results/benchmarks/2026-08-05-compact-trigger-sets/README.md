@@ -47,9 +47,43 @@ Against the latest v0.2.2 source-bound sweep, total wall over the nine successfu
 sentinels fell from 625.0680 to 614.7679 seconds (1.65%), and mean peak RSS fell
 from 8,717.32 to 8,642.82 MiB (0.85%). ORE14817 had the largest memory reduction,
 5,956.62 to 5,312.94 MiB (10.81%). ORE7246 was the adverse cross-job outlier at
-10,493.37 to 10,834.48 MiB (3.25%); the full 592-ontology sweep is therefore the
+10,493.37 to 10,834.48 MiB (3.25%); the full sweep below provides the
 corpus-wide memory and correctness promotion gate.
 
 [`panel-results.tsv`](panel-results.tsv) contains every paired measurement and
 signature comparison. The Slurm scripts in this directory reproduce the build
 and panel with source, binary, ontology, CPU, checkpoint, and resume checks.
+
+## Full 592-ontology production sweep
+
+The merged source at `ed81ac6` was archived with SHA-256
+`6b853637570ef157519fe8c441f969b969ec5faa4a2c8389f277a4ec74d9d0f5`.
+Build job `50052290` completed in 4:47 and reproduced binary SHA-256
+`7d32fa946eb5100dbeb60115ccb2037df79f4ecfa296aeb89657b41c762ba6ba`.
+Resumable array `50052291` then completed all 592 tasks.
+
+The strict terminal audit verified 592 unique ontology rows, every array index
+from 0 through 591, 592 valid profiles, 592 terminal logs, 592 checkpoint
+receipts matching their result rows, one binary identity, four expected
+collision-sensitive full-IRI fingerprints, and zero temporary files. Coverage
+remained 591/592, with ORE1194 the only error. The verdict distribution remained
+588 matches, the two established adjudicated consistency mismatches, and one
+adjudicated no-gold result. Relative to the v0.2.2 sweep, there were zero status,
+verdict, signature, or production-route differences.
+
+Across the 591 paired successes:
+
+| metric | v0.2.2 | compact trigger sets | change |
+|---|---:|---:|---:|
+| Mean wall | 5.7993 s | 5.7810 s | -0.32% |
+| Median wall | 0.2536 s | 0.2530 s | -0.24% |
+| Mean peak RSS | 818.65 MiB | 817.18 MiB | -0.18% |
+| Median peak RSS | 43.33 MiB | 43.14 MiB | -0.44% |
+
+The 7246 cross-job RSS increase persisted, but the complete corpus aggregate
+improved and no ontology lost coverage or correctness. The exact full result
+table is [`automatic-results.tsv`](automatic-results.tsv), SHA-256
+`08e73a73c539550784a0eb4b9e845f64c40ac3fda717f7985977085ce36d89fb`.
+[`ibex_full_build.sbatch`](ibex_full_build.sbatch) and
+[`ibex_full_sweep.sbatch`](ibex_full_sweep.sbatch) reproduce the source-bound
+build and sweep.
