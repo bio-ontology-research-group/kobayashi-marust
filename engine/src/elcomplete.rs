@@ -1311,15 +1311,11 @@ impl Idx {
 /// index immutably while pushing conclusions here mutably.
 struct State {
     sub_super: Vec<HashSet<u32>>,
-    // Sorted outgoing `(role,target)` pairs. EL nodes usually have very few
-    // outgoing edges, so a flat vector avoids one hash-table allocation and
-    // its sparse buckets per source while making rule scans contiguous.
-    // Binary-search insertion retains exact set semantics.
-    edges: Vec<Vec<(u32, u32)>>,
+    edges: Vec<HashSet<(u32, u32)>>,
     // Backward links indexed by EXACT role: `in_by_role[(d, r)]` lists the
     // parents of `d` along `r`, in edge-creation order. A `Vec`, not a
     // `HashSet`: duplicates are already excluded because a parent is appended
-    // only inside the successful set insertion in `add_edge`,
+    // only inside the `edges[parent].insert(...)` success branch of `add_edge`,
     // which fires at most once per distinct edge.
     //
     // The Sub-NF4 rule wants exactly one role at a time (the role of the axiom
@@ -1373,31 +1369,6 @@ struct State {
 const SUB_JOURNAL_CAP: usize = 8_000_000;
 
 impl State {
-    #[inline]
-    fn insert_edge(edges: &mut Vec<(u32, u32)>, edge: (u32, u32)) -> bool {
-        match edges.binary_search(&edge) {
-            Ok(_) => false,
-            Err(position) => {
-                edges.insert(position, edge);
-                true
-            }
-        }
-    }
-
-    #[inline]
-    fn remove_edge(edges: &mut Vec<(u32, u32)>, edge: (u32, u32)) -> bool {
-        let Ok(position) = edges.binary_search(&edge) else {
-            return false;
-        };
-        edges.remove(position);
-        true
-    }
-
-    #[inline]
-    fn contains_edge(edges: &[(u32, u32)], edge: (u32, u32)) -> bool {
-        edges.binary_search(&edge).is_ok()
-    }
-
     /// Body of `add_sub` over the fields it actually touches, so a rule can add
     /// conclusions while another field of the state (e.g. `prop`) is still
     /// immutably borrowed.
@@ -1461,7 +1432,7 @@ impl State {
 
     #[inline]
     fn add_edge(&mut self, c: u32, r: u32, d: u32) {
-        if Self::insert_edge(&mut self.edges[c as usize], (r, d)) {
+        if self.edges[c as usize].insert((r, d)) {
             self.edge_epoch += 1;
             let parents = self.in_by_role.entry((d, r)).or_default();
             if parents.is_empty() {
@@ -1600,7 +1571,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 fn init_state(nfs: &Nfs, n: usize) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
-        edges: vec![Vec::new(); n],
+        edges: vec![HashSet::default(); n],
         in_by_role: HashMap::default(),
         in_roles: vec![Vec::new(); n],
         prop: HashMap::default(),
@@ -2496,7 +2467,7 @@ impl CertIdx {
         }
     }
 
-    fn build_edges(&mut self, edges: &[Vec<(u32, u32)>]) {
+    fn build_edges(&mut self, edges: &[HashSet<(u32, u32)>]) {
         self.edges_by_role = HashMap::default();
         for &c in &self.nodes {
             for &(r, d) in &edges[c as usize] {
@@ -2558,7 +2529,7 @@ impl CertIdx {
         rcs: &[RClause],
         concept_names: &HashSet<u32>,
         sub_super: &[HashSet<u32>],
-        edges: &[Vec<(u32, u32)>],
+        edges: &[HashSet<(u32, u32)>],
         delta: Option<&[(u32, u32)]>,
         edge_epoch: u64,
     ) {
@@ -2617,7 +2588,7 @@ impl CertIdx {
     /// rebuild would have produced, bucket contents and order included. Costs a
     /// full rebuild per round, so it is opt-in — it exists to check the reuse
     /// against the real repair traces, not to run in production.
-    fn audit(&mut self, sub_super: &[HashSet<u32>], edges: &[Vec<(u32, u32)>]) {
+    fn audit(&mut self, sub_super: &[HashSet<u32>], edges: &[HashSet<(u32, u32)>]) {
         let members = std::mem::take(&mut self.members);
         let edges_by_role = std::mem::take(&mut self.edges_by_role);
         self.build_members(sub_super);
@@ -2653,7 +2624,7 @@ fn cert_round(
     rcs: &[RClause],
     concept_names: &HashSet<u32>,
     sub_super: &[HashSet<u32>],
-    edges: &[Vec<(u32, u32)>],
+    edges: &[HashSet<(u32, u32)>],
     // node identity modulo repair merges (fully compressed union-find): a
     // merged node and its witness mirror are the SAME quotient element, so
     // equalities must compare representatives, not raw ids
@@ -2695,7 +2666,7 @@ fn cert_round(
         nodes: &[u32],
         alive: &[bool],
         sub_super: &[HashSet<u32>],
-        edges: &[Vec<(u32, u32)>],
+        edges: &[HashSet<(u32, u32)>],
         repr: Option<&[u32]>,
         members: &HashMap<u32, Vec<u32>>,
         edges_by_role: &HashMap<u32, Vec<(u32, u32)>>,
@@ -2745,10 +2716,7 @@ fn cert_round(
             let ok = rc.head.iter().any(|a| match *a {
                 RAtom::C { cid, v } => sub_super[asg[v].unwrap() as usize].contains(&cid),
                 RAtom::R { rid, s, t } => {
-                    State::contains_edge(
-                        &edges[asg[s].unwrap() as usize],
-                        (rid, asg[t].unwrap()),
-                    )
+                    edges[asg[s].unwrap() as usize].contains(&(rid, asg[t].unwrap()))
                 }
                 RAtom::Eq { s, t } => {
                     let (a, b) = (asg[s].unwrap(), asg[t].unwrap());
@@ -2831,7 +2799,7 @@ fn cert_round(
             RAtom::R { rid, s, t } => match (asg[s], asg[t]) {
                 (Some(sn), Some(tn)) => {
                     *budget = budget.saturating_sub(1);
-                    if !State::contains_edge(&edges[sn as usize], (rid, tn)) {
+                    if !edges[sn as usize].contains(&(rid, tn)) {
                         return true;
                     }
                     join(
@@ -3152,7 +3120,7 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
             continue;
         };
         for src in srcs {
-            if State::remove_edge(&mut st.edges[src as usize], (r, b)) {
+            if st.edges[src as usize].remove(&(r, b)) {
                 st.edge_epoch += 1;
             }
             st.add_edge(src, r, a);
@@ -3370,7 +3338,7 @@ fn repair_certify(
                     RAtom::R { rid, s, t } => {
                         let sn = uf_find(&mut repr, asg[s]);
                         let tn = uf_find(&mut repr, asg[t]);
-                        State::contains_edge(&st.edges[sn as usize], (rid, tn))
+                        st.edges[sn as usize].contains(&(rid, tn))
                     }
                     RAtom::Eq { s, t } => uf_find(&mut repr, asg[s]) == uf_find(&mut repr, asg[t]),
                 });
@@ -4149,7 +4117,7 @@ impl IncrementalElClassifier {
     ) -> Result<IncrementalUpdate, IncrementalError> {
         let added_clauses = additions.len();
         let reused_subsumptions = fact_count(&self.state.sub_super);
-        let reused_edges = edge_count(&self.state.edges);
+        let reused_edges = fact_count(&self.state.edges);
         if additions.is_empty() {
             return Ok(IncrementalUpdate {
                 revision: self.revision,
@@ -4196,7 +4164,7 @@ impl IncrementalElClassifier {
             seed_reflexive_edges(&next_nfs, &next_idx, &mut next_state);
             run(&next_idx, &mut next_state, &mut Prof::default());
             let new_subsumptions = fact_count(&next_state.sub_super);
-            let new_edges = edge_count(&next_state.edges);
+            let new_edges = fact_count(&next_state.edges);
             self.interner = next_interner;
             self.concept_ids = next_nfs.concept_names;
             self.normal_forms = next_normal_forms;
@@ -4218,7 +4186,7 @@ impl IncrementalElClassifier {
         // additions may introduce symbols; existing dense ids never move.
         let next_len = next_interner.len();
         self.state.sub_super.resize_with(next_len, HashSet::default);
-        self.state.edges.resize_with(next_len, Vec::new);
+        self.state.edges.resize_with(next_len, HashSet::default);
         // `in_by_role` is a sparse global map keyed by (target, role): retained
         // entries stay valid under new symbols and need no resizing.
         self.state.in_roles.resize_with(next_len, Vec::new);
@@ -4261,7 +4229,7 @@ impl IncrementalElClassifier {
         self.revision += 1;
 
         let final_subsumptions = fact_count(&self.state.sub_super);
-        let final_edges = edge_count(&self.state.edges);
+        let final_edges = fact_count(&self.state.edges);
         Ok(IncrementalUpdate {
             revision: self.revision,
             added_clauses,
@@ -4345,10 +4313,6 @@ impl IncrementalElClassifier {
 
 fn fact_count<T>(sets: &[HashSet<T>]) -> usize {
     sets.iter().map(HashSet::len).sum()
-}
-
-fn edge_count(edges: &[Vec<(u32, u32)>]) -> usize {
-    edges.iter().map(Vec::len).sum()
 }
 
 fn seed_reflexive_edges(nfs: &Nfs, idx: &Idx, state: &mut State) {
@@ -4781,21 +4745,6 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn flat_edge_set_preserves_exact_set_operations() {
-        let mut edges = Vec::new();
-        assert!(State::insert_edge(&mut edges, (7, 3)));
-        assert!(State::insert_edge(&mut edges, (2, 9)));
-        assert!(State::insert_edge(&mut edges, (7, 1)));
-        assert!(!State::insert_edge(&mut edges, (7, 3)));
-        assert_eq!(edges, vec![(2, 9), (7, 1), (7, 3)]);
-        assert!(State::contains_edge(&edges, (7, 1)));
-        assert!(!State::contains_edge(&edges, (7, 2)));
-        assert!(State::remove_edge(&mut edges, (7, 1)));
-        assert!(!State::remove_edge(&mut edges, (7, 1)));
-        assert_eq!(edges, vec![(2, 9), (7, 3)]);
-    }
 
     fn clauses(json: &str) -> Vec<JClause> {
         serde_json::from_str::<Vec<JClause>>(json).expect("test clause JSON")
@@ -5926,7 +5875,7 @@ mod tests {
     fn state_of(n: usize, labels: &[(u32, &[u32])], edges: &[(u32, u32, u32)]) -> State {
         let mut st = State {
             sub_super: vec![HashSet::default(); n],
-            edges: vec![Vec::new(); n],
+            edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
@@ -5940,7 +5889,7 @@ mod tests {
             }
         }
         for (s, r, t) in edges {
-            if State::insert_edge(&mut st.edges[*s as usize], (*r, *t)) {
+            if st.edges[*s as usize].insert((*r, *t)) {
                 let parents = st.in_by_role.entry((*t, *r)).or_default();
                 if parents.is_empty() {
                     st.in_roles[*t as usize].push(*r);
@@ -6284,7 +6233,7 @@ mod tests {
     fn blank_state(n: usize) -> State {
         State {
             sub_super: vec![HashSet::default(); n],
-            edges: vec![Vec::new(); n],
+            edges: vec![HashSet::default(); n],
             in_by_role: HashMap::default(),
             in_roles: vec![Vec::new(); n],
             prop: HashMap::default(),
@@ -6587,11 +6536,11 @@ mod tests {
         st.add_edge(P, R1, C);
         st.add_edge(W, QQ, C);
         run(&idx, &mut st, &mut Prof::default());
-        assert!(!State::contains_edge(&st.edges[P as usize], (SS, D)));
+        assert!(!st.edges[P as usize].contains(&(SS, D)));
         st.add_edge(C, R2, D);
         run(&idx, &mut st, &mut Prof::default());
         assert!(
-            State::contains_edge(&st.edges[P as usize], (SS, D)),
+            st.edges[P as usize].contains(&(SS, D)),
             "chain edge (P, s, D) missing from the symmetric join"
         );
         assert_eq!(st.in_by_role.get(&(D, SS)), Some(&vec![P]));
@@ -6620,9 +6569,9 @@ mod tests {
         let mut merged: Vec<u32> = Vec::new();
         merge_nodes(&mut st, &mut repr, &mut merged, A, B);
         run(&idx, &mut st, &mut Prof::default());
-        assert!(State::contains_edge(&st.edges[X as usize], (R, A)));
-        assert!(!State::contains_edge(&st.edges[X as usize], (R, B)));
-        assert!(State::contains_edge(&st.edges[Y as usize], (S, A)));
+        assert!(st.edges[X as usize].contains(&(R, A)));
+        assert!(!st.edges[X as usize].contains(&(R, B)));
+        assert!(st.edges[Y as usize].contains(&(S, A)));
         assert!(st.in_roles[B as usize].is_empty());
         assert!(st.in_by_role.get(&(B, R)).is_none());
         assert!(st.in_by_role.get(&(B, S)).is_none());
