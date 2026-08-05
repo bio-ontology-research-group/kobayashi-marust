@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+### Remove the redundant predecessor-arrival vector (2026-08-05)
+
+CB contexts no longer append every received, interned predecessor-clause id to
+a write-only vector in addition to the authoritative deduplication set and
+exact body indexes. This removes one allocation stream and four bytes per
+received id without changing any reasoning read, ordering, scheduling, or
+fixpoint. The release library suite passed 1,954 tests with eight ignored. A
+source-isolated ORE9944 pair was output-identical, 2.77% faster, and saved about
+143 MiB. Source-bound build `50057119`, panel `50057137`, and full sweep
+`50057302` passed the strict 592-ontology gate with 591 successes and zero
+status, verdict, signature, or selected-route differences from `b5c0158`.
+Across 591 successes, mean peak RSS improved 0.22% and median peak improved
+1.55%; independently scheduled mean wall was 1.58% higher. Evidence is in
+[`results/benchmarks/2026-08-05-remove-neighbor-vector/`](results/benchmarks/2026-08-05-remove-neighbor-vector/README.md).
+
 ### Store head-index postings in compact thin vectors (2026-08-05)
 
 CB contexts now store the common one- and two-clause head-index postings in a

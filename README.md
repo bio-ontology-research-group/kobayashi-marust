@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Build job `50056177`, sentinel array `50056245`, full
-array `50056291`, and the complete 592-row integrity audit verify every terminal
+over all 592 ontologies. Build job `50057119`, sentinel array `50057137`, full
+array `50057302`, and the complete 592-row integrity audit verify every terminal
 row, checkpoint, route trace, profile, log, collision-sensitive full-IRI
 fingerprint, and binary identity. Metrics use the 591 successful rows from
-reasoner commit `1d7b8dc` and IBEX binary `a23ff5237e38…`.
+reasoner commit `4254fbb` and IBEX binary `6af504831861…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `1d7b8dc` (binary `a23ff5237e38…`) | **591** | **591** | **5.8385** | **0.2509** | **808.03** | **43.19** |
+| **KM automatic, `km classify`** | `4254fbb` (binary `6af504831861…`) | **591** | **591** | **5.9308** | **0.2537** | **806.24** | **42.52** |
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -118,6 +118,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-05-i2-tail-truncate/`](results/benchmarks/2026-08-05-i2-tail-truncate/)
 - [`results/benchmarks/2026-08-05-i2-key-borrow/`](results/benchmarks/2026-08-05-i2-key-borrow/)
 - [`results/benchmarks/2026-08-05-thin-head-postings/`](results/benchmarks/2026-08-05-thin-head-postings/)
+- [`results/benchmarks/2026-08-05-remove-neighbor-vector/`](results/benchmarks/2026-08-05-remove-neighbor-vector/)
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 
