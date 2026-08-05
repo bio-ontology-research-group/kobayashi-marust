@@ -627,12 +627,11 @@ fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
 /// subproperties, chains, and transitivity. Every constructor outside that
 /// fragment fails closed here, and the normalized EL worker still rechecks the
 /// generated clause set before publishing an answer.
-fn source_el_terminology_candidate(profile: &OntologyProfile) -> bool {
+fn source_el_shape(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
 
     source.logical_axioms >= 1_000
-        && source.abox_axioms == 0
         && source.existentials > 0
         && source.declared_data_properties == 0
         && source.domain_axioms == 0
@@ -666,6 +665,23 @@ fn source_el_terminology_candidate(profile: &OntologyProfile) -> bool {
         && count("SubDataPropertyOf") == 0
         && count("EquivalentDataProperties") == 0
         && count("FunctionalDataProperty") == 0
+}
+
+fn source_el_terminology_candidate(profile: &OntologyProfile) -> bool {
+    profile.source.abox_axioms == 0 && source_el_shape(profile)
+}
+
+/// A source-certified OWL EL TBox plus a positive ABox whose complete
+/// consistency materialization is already checked by the orchestrator.
+///
+/// The positive-ABox certificate proves that dropping those assertions cannot
+/// change the public TBox taxonomy and decides their consistency against the
+/// completed EL model. The atomic EL worker therefore classifies precisely the
+/// remaining TBox. Both gates must pass before an answer is published.
+fn source_el_positive_abox_candidate(profile: &OntologyProfile) -> bool {
+    profile.source.abox_axioms > 0
+        && profile.positive_el_abox_materializable
+        && source_el_shape(profile)
 }
 
 /// Large ABoxes without number restrictions are better served by the complete
@@ -915,6 +931,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::SriqCore if large_horn_functional_native_bridge_candidate(profile) => {
             Route::HtBridge
         }
+        SemanticFragment::PositiveAbox if source_el_positive_abox_candidate(profile) => Route::Elc,
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore
             if profile.inverse_cardinality_role_separable =>
         {
@@ -2117,6 +2134,40 @@ mod tests {
         let mut unsafe_profile = profile;
         unsafe_profile.source.functional_role_axioms = 1;
         assert!(!source_el_terminology_candidate(&unsafe_profile));
+    }
+
+    #[test]
+    fn certified_positive_el_abox_uses_atomic_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.positive_el_abox_materializable = true;
+        profile.source.logical_axioms = 50_000;
+        profile.source.tbox_axioms = 30_000;
+        profile.source.abox_axioms = 20_000;
+        profile.source.class_assertions = 20_000;
+        profile.source.existentials = 10_000;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
+        assert!(source_el_positive_abox_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        let mut uncertified = profile.clone();
+        uncertified.positive_el_abox_materializable = false;
+        assert!(!source_el_positive_abox_candidate(&uncertified));
+
+        let mut non_el = profile;
+        non_el.source.universals = 1;
+        assert!(!source_el_positive_abox_candidate(&non_el));
+
+        let mut nominal_or_inequality = OntologyProfile::default();
+        nominal_or_inequality.positive_el_abox_materializable = true;
+        nominal_or_inequality.source.logical_axioms = 50_000;
+        nominal_or_inequality.source.abox_axioms = 20_000;
+        nominal_or_inequality.source.existentials = 10_000;
+        nominal_or_inequality.source.nominals = 1;
+        nominal_or_inequality.source.inequality_assertions = 1;
+        assert!(!source_el_positive_abox_candidate(
+            &nominal_or_inequality
+        ));
     }
 
     #[test]
