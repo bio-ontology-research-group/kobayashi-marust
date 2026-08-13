@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.2.11] – 2026-08-13
+
+### Project large independent atomic ABoxes before native HT conversion
+
+The HT orchestrator now recognizes ABoxes containing at least 10,000 distinct
+individuals when each has exactly one positive atomic class assertion and one
+distinct proxy, with no role assertions, equality, inequality, negative facts,
+or unsupported source content. OWL TBoxes are closed under disjoint unions, so
+the ABox is consistent exactly when every asserted class is satisfiable and it
+cannot alter named TBox subsumption. KM classifies the compact TBox and checks
+all asserted classes against the completed taxonomy. Any failed structural or
+semantic check defers to the unchanged complete production fallback.
+
+ORE7914 contains 108,512 such roots. Source-bound verification job `50433101`
+reduces automatic classification from about 46.8 seconds and 8.53 GiB to
+8.5783 seconds and 1,514.75 MiB. The isolated `ht_bridge` arm takes 7.2858
+seconds and 910.61 MiB. Both results are checkpointed exact matches with the
+same full-IRI signature.
+
+Strict sweep `50433149` contains exactly 592 results, profiles, and checkpoints
+with no temporary files. Comparison with v0.2.10 reports zero semantic,
+coverage, or route regressions: 591 classifications succeed and ORE1194 remains
+the sole fail-closed error. Aggregate mean wall falls from 4.5884 to 4.5079
+seconds and mean peak RSS from 528.14 to 517.05 MiB. Median wall is 0.2475
+seconds and median peak RSS is 42.27 MiB. Evidence is in
+[`results/benchmarks/2026-08-13-7914-regression/`](results/benchmarks/2026-08-13-7914-regression/README.md).
+
 ## [0.2.10] – 2026-08-13
 
 ### Certify a large near-EL terminology with a tiny identity ABox
