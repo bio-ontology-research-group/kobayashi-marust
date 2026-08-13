@@ -1,0 +1,15 @@
+{
+  "automatic_results_sha256": "6ad76437bcc6670ccd84564010056fb0fb2ce912773267485b9bf2918cdf3906",
+  "baseline_binary_sha256": "2b811f8586ee6e6775db5b6ed76f7d98eefd51519f21a9ca6ead06f0514eec99",
+  "behavioral_differences": 0,
+  "binary_sha256": "16a0d2cea74e29267ec2a37d1c8da48ac6ac29cc2ba2799eaae08e8a070f26a7",
+  "cpu_model": "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz",
+  "job": "50449122",
+  "mean_peak_mb": 481.2958277027027,
+  "mean_wall_s": 4.317722297297298,
+  "median_peak_mb": 39.64,
+  "median_wall_s": 0.232,
+  "rows": 592,
+  "status": {"error": 1, "ok": 591},
+  "verdict": {"consistency_mismatch": 2, "error": 1, "match": 588, "nogold": 1}
+}

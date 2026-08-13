@@ -807,6 +807,10 @@ fn classify_with_evidence_mode(
     }
 
     let mut consistency_certified = false;
+    // A positive-EL ABox certificate performs the same exact completion needed
+    // by an atomic ELC leaf. Retain that result so the leaf does not recompute
+    // the complete fixpoint after the certificate extracts consistency.
+    let mut certified_el_out: Option<EngineOut> = None;
     // Development gate for the positive-EL ABox certificate. Automatic
     // selection is added only after focused corpus validation proves both its
     // semantic and resource contract.
@@ -815,8 +819,8 @@ fn classify_with_evidence_mode(
     {
         let input: crate::json_io::JInput =
             serde_json::from_reader(BufReader::new(File::open(clauses_path.path())?))?;
-        match crate::elcomplete::positive_abox_consistent(input.clauses, &input.nominal_abox) {
-            Some(false) => {
+        match crate::elcomplete::positive_abox_classify(input.clauses, &input.nominal_abox) {
+            Some(result) if !result.consistent => {
                 return Ok(ClassificationEvidence {
                     classification: Classification {
                         consistent: false,
@@ -828,7 +832,21 @@ fn classify_with_evidence_mode(
                     consistency_certified: true,
                 });
             }
-            Some(true) => consistency_certified = true,
+            Some(result) => {
+                consistency_certified = true;
+                if selected_route == crate::routing::Route::Elc {
+                    if let Some(classification) = result.classification {
+                        if classification.unresolved.is_empty() {
+                            certified_el_out = Some(EngineOut {
+                                subsumptions: classification.subsumptions,
+                                inconsistent: classification.inconsistent,
+                                dropped: 0,
+                                unresolved: Vec::new(),
+                            });
+                        }
+                    }
+                }
+            }
             None => {
                 return Err(OrchestrateError::OutOfFragment(
                     "positive EL ABox consistency certificate declined".into(),
@@ -906,13 +924,26 @@ fn classify_with_evidence_mode(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let atomic_out = match run_atomic_mechanism(
-        cfg,
-        clauses_path.path(),
-        &named_set,
-        selected_route,
-        &meta.profile,
-    ) {
+    let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) {
+        certified_el_out.take().map(Some).map(Ok).unwrap_or_else(|| {
+            run_atomic_mechanism(
+                cfg,
+                clauses_path.path(),
+                &named_set,
+                selected_route,
+                &meta.profile,
+            )
+        })
+    } else {
+        run_atomic_mechanism(
+            cfg,
+            clauses_path.path(),
+            &named_set,
+            selected_route,
+            &meta.profile,
+        )
+    };
+    let atomic_out = match atomic_attempt {
         Ok(out) => out,
         Err(_error) if selected_route == crate::routing::Route::CertifiedElProduction => {
             // The source gate is only a scheduling hint. A certificate refusal,

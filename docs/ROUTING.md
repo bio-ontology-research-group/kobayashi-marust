@@ -214,6 +214,12 @@ worker taxonomy serialization and parse round trip. Flat taxonomies retain
 process isolation so completion allocations are released before public-output
 mapping. The selected route and completion algorithm are unchanged.
 
+When positive-EL ABox materialisation runs before an atomic exact-EL leaf, its
+completion result supplies both the consistency certificate and the taxonomy.
+The leaf does not recompute that fixpoint. This reuse is limited to the exact
+EL mechanism; every other mechanism and fallback retains its existing input
+and scheduling contract.
+
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:
 

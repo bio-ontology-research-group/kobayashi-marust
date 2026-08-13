@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.2.16] – 2026-08-13
+
+### Reuse the positive-EL ABox certificate taxonomy
+
+Positive-EL ABox consistency checking already computes an exact EL completion.
+When the selected automatic mechanism is the atomic exact-EL leaf, the
+orchestrator now retains that result instead of discarding it and recomputing
+the same terminology fixpoint. Every injected ABox rule is rooted at a fresh
+internal concept, so it cannot add a subsumption whose subject is an original
+named class. Other mechanisms, declines, and fallbacks are unchanged.
+
+Paired panel `50448999` matched gold on eight large affected inputs and reduced
+summed wall from 318.52 to 242.26 seconds. Strict sweep `50449122` contains
+exactly 592 terminal rows: 591 successful classifications, ORE1194 as the sole
+fail-closed error, and zero behavioral differences from v0.2.15. On directly
+comparable sweep rows, mean wall falls from 4.5116 to 4.3177 seconds, median
+wall from 0.2355 to 0.2320 seconds, and mean peak RSS from 481.72 to 481.30 MiB.
+Evidence is in
+[`results/benchmarks/2026-08-13-positive-el-reuse/`](results/benchmarks/2026-08-13-positive-el-reuse/README.md).
+
 ## [0.2.15] – 2026-08-13
 
 ### Eliminate the worker round trip for structured exact-EL leaves

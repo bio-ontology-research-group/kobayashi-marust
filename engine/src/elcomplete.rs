@@ -3834,10 +3834,24 @@ pub struct ElResult {
 /// Returns `None` unless the frontend retained the whole ABox and the combined
 /// clause set is pure EL++. Negative role assertions need closed-world edge
 /// comparison and therefore decline here.
-pub fn positive_abox_consistent(
+pub struct PositiveAboxResult {
+    pub consistent: bool,
+    /// Present when completion ran. An explicit identity contradiction proves
+    /// inconsistency before saturation and therefore has no taxonomy to reuse.
+    pub classification: Option<ElResult>,
+}
+
+/// Materialise a positive ground ABox and retain the exact EL taxonomy produced
+/// by that same completion. Every injected rule is rooted at a fresh ABox-node
+/// concept, and generated role edges connect only those fresh roots and their
+/// fresh witnesses. No injected rule can therefore add a subsumption whose
+/// subject is an original named class. Consequently the returned named-class
+/// taxonomy is the ordinary TBox taxonomy as well as the consistency
+/// certificate.
+pub fn positive_abox_classify(
     mut clauses: Vec<JClause>,
     meta: &crate::json_io::NominalAboxMeta,
-) -> Option<bool> {
+) -> Option<PositiveAboxResult> {
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
     if !meta.complete || !meta.unsupported.is_empty() || !meta.negative_role_assertions.is_empty() {
         if debug {
@@ -3901,7 +3915,10 @@ pub fn positive_abox_consistent(
         let l = find(&mut parent, ids[left.as_str()]);
         let r = find(&mut parent, ids[right.as_str()]);
         if l == r {
-            return Some(false);
+            return Some(PositiveAboxResult {
+                consistent: false,
+                classification: None,
+            });
         }
     }
 
@@ -3973,16 +3990,25 @@ pub fn positive_abox_consistent(
             return None;
         }
     };
-    if result.inconsistent {
-        return Some(false);
-    }
     let node_unsat = roots.iter().any(|root| {
         result
             .subsumptions
             .get(root)
             .is_some_and(|supers| supers.iter().any(|sup| sup == "owl:Nothing"))
     });
-    Some(!node_unsat)
+    Some(PositiveAboxResult {
+        consistent: !result.inconsistent && !node_unsat,
+        classification: Some(result),
+    })
+}
+
+pub fn positive_abox_consistent(
+    clauses: Vec<JClause>,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<bool> {
+    // Preserve the historical consistency-only API for callers and tests that
+    // do not need to retain the already-computed taxonomy.
+    positive_abox_classify(clauses, meta).map(|result| result.consistent)
 }
 
 /// Classify `clauses` with EL++ completion. Returns `Some(result)` when the
@@ -4796,6 +4822,42 @@ mod tests {
             ClassAssertion(<B> <b>)
         )"#;
         assert_eq!(positive_abox_consistency(inconsistent), Some(false));
+    }
+
+    #[test]
+    fn positive_abox_completion_retains_the_exact_named_taxonomy() {
+        let ofn = r#"Ontology(
+            Declaration(Class(<A>))
+            Declaration(Class(<B>))
+            Declaration(Class(<C>))
+            SubClassOf(<A> <B>)
+            SubClassOf(<B> <C>)
+            ClassAssertion(<A> <a>)
+        )"#;
+        crate::frontend::with_ofn_to_clauses_requested_route(
+            ofn,
+            crate::routing::Route::ProductionAll,
+            |frontend| {
+                let named: std::collections::HashSet<&str> =
+                    frontend.named.iter().map(String::as_str).collect();
+                let tbox = classify(frontend.clauses.clone()).expect("pure EL TBox");
+                let abox = positive_abox_classify(
+                    frontend.clauses,
+                    &frontend.nominal_abox,
+                )
+                .expect("positive EL ABox");
+                assert!(abox.consistent);
+                let abox = abox.classification.expect("completion ran");
+                for subject in named {
+                    assert_eq!(
+                        abox.subsumptions.get(subject),
+                        tbox.subsumptions.get(subject),
+                        "named taxonomy changed for {subject}"
+                    );
+                }
+            },
+        )
+        .expect("ontology parses");
     }
     fn cf(name: &str, f: &str, t: &str) -> String {
         format!(
