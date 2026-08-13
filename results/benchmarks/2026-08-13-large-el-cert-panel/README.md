@@ -43,3 +43,17 @@ expected 592-row mean reductions are about 0.093 seconds and 32.2 MiB.
 requires terminal checkpoints and exact route traces, and rejects differing
 successful signatures. `panel-results/` contains all nine terminal records and
 checkpoints.
+
+## Automatic verification and full sweep
+
+Candidate commit `d607ca7` was built natively on IBEX as binary
+`c8e4c51a3535927f6785ea9d3356de6bd11f9ac9ab8a6edb4b3ca58e98b1f145`.
+Automatic-route job `50428492` verifies all three inputs select
+`certified_el_production`, complete, and match gold.
+
+Strict array job `50428535` produced exactly 592 results, checkpoints, and
+profiles with no temporary files. Comparison with v0.2.8 finds exactly the
+three intended route transitions and zero semantic or coverage regressions.
+The aggregate is 591 `status=ok`, mean wall 4.5733 seconds, median wall 0.2490
+seconds, mean RSS 531.38 MiB, and median RSS 41.77 MiB. Compact evidence and
+verifiers are stored under `full-sweep/`, `auto-results/`, and beside this file.

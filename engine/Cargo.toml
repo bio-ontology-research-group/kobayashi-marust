@@ -1,6 +1,6 @@
 [package]
 name = "kobayashi-marust"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."

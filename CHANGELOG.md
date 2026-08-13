@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.2.9] – 2026-08-13
+
+### Certify three large extended-EL terminologies before production fallback
+
+The automatic router now sends large TBox-only, Horn-shaped source profiles
+with limited inverse, symmetric, reflexive, or named-disjointness declarations
+through plain normalization and the canonical-model certificate. Certificate
+refusal or any worker/resource failure reruns `production_all`, retaining exact
+coverage. The complete profile audit admits exactly ORE7246, ORE8737, and
+ORE16744.
+
+Same-node job `50428118` reduces their summed wall time by 54.9 seconds and
+summed peak RSS by 19,049 MiB. Every successful arm has the same gold-matching
+signature as `production_all`. Clean sweep `50428535` contains exactly 592
+result/checkpoint/profile triples and no temporary files. The strict v0.2.8
+comparison reports exactly three intended route changes, 591 successful
+classifications, and zero semantic or coverage regressions.
+
+The sweep records mean wall 4.5733 seconds, median wall 0.2490 seconds, mean
+peak RSS 531.38 MiB, and median peak RSS 41.77 MiB. Mean peak RSS and both
+medians are below the frozen Konclude measurements; mean wall remains above
+Konclude. Evidence is in
+[`results/benchmarks/2026-08-13-large-el-cert-panel/`](results/benchmarks/2026-08-13-large-el-cert-panel/README.md).
+
 ## [0.2.8] – 2026-08-13
 
 ### Route a large near-EL ABox through certified completion
