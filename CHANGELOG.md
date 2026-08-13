@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+### Schedule the large disjunctive SHI bridge before production fallback
+
+For very large source-certified disjunctive SHI terminologies, the automatic
+`production_all` portfolio now runs its complete-answer-or-defer completion
+bridge before allocating the exact CB fallback. Any bridge refusal, failure,
+or explicit defer starts the unchanged production stack. The complete
+592-profile audit selects only ORE3215.
+
+Same-node job `50440878` ran three alternating v0.2.12/candidate pairs. All six
+runs have the same gold-matching full-IRI signature. Mean wall falls from
+162.0549 to 157.3747 seconds and mean process-tree peak memory falls from
+8,499.09 to 6,330.62 MiB.
+
+Strict sweep `50441548` contains exactly 592 results, profiles, and checkpoints
+with no temporary outputs. It reports 591 successful classifications, ORE1194
+as the sole fail-closed error, and zero behavioral regression relative to
+v0.2.12. Mean peak RSS falls from 503.74 to 499.60 MiB and median peak RSS from
+42.78 to 41.45 MiB. The independently scheduled mean wall moves from 4.5441 to
+4.5871 seconds and median wall from 0.2461 to 0.2491 seconds; these
+noise-sensitive movements are reported without adjustment. Evidence is in
+[`results/benchmarks/2026-08-13-3215-sequential-bridge/`](results/benchmarks/2026-08-13-3215-sequential-bridge/README.md).
+
 ## [0.2.12] – 2026-08-13
 
 ### Schedule the large typed-ABox bridge before its exact fallback

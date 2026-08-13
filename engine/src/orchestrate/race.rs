@@ -2181,11 +2181,11 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    // The typed nominal bridge is complete-answer-or-defer.  Its certified
-    // portfolio can therefore run it before allocating the exact CB fallback,
-    // avoiding the sum of both process trees when the bridge succeeds.  Any
-    // rejection, worker error, or honest defer falls through to the unchanged
-    // CB mechanism.  Named measurement routes do not set this switch.
+    // The completion bridge is complete-answer-or-defer. Certified portfolios
+    // can therefore run it before allocating their exact CB fallback, avoiding
+    // the sum of both process trees when the bridge succeeds. Any rejection,
+    // worker error, or honest defer falls through to the unchanged CB
+    // mechanism. Named measurement routes do not set this switch.
     if std::env::var_os("KM_HT_BRIDGE_SEQUENTIAL").is_some() {
         match run_ht_only(cfg, clauses_path, named) {
             Ok(out) => return Ok(out),

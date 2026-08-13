@@ -487,6 +487,30 @@ pub(crate) fn sequential_typed_bridge_candidate(profile: &OntologyProfile) -> bo
         && profile.source.concept_expressions >= 100_000
 }
 
+/// Large disjunctive SHI terminologies whose synchronous completion bridge is
+/// already the only competitive exact arm. Running that complete-answer-or-
+/// defer bridge before allocating CB avoids memory-bandwidth contention from a
+/// fallback that cannot win this workload. The bridge still validates every
+/// normalized/source premise and a defer starts the unchanged production CB
+/// stack, so this predicate authorizes scheduling only.
+pub(crate) fn sequential_large_shi_bridge_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms == 0
+        && source.logical_axioms >= 50_000
+        && source.concept_expressions >= 300_000
+        && source.unions >= 10_000
+        && source.distinct_classes >= 50_000
+        && source.distinct_object_properties <= 16
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && profile.expressivity.inverse
+        && profile.expressivity.transitivity
+        && !profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -2288,6 +2312,24 @@ mod tests {
 
         profile.source.concept_expressions = 99_999;
         assert!(!sequential_typed_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn large_disjunctive_shi_tbox_runs_bridge_before_cb() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 54_977;
+        profile.source.tbox_axioms = 54_973;
+        profile.source.concept_expressions = 343_884;
+        profile.source.unions = 18_323;
+        profile.source.distinct_classes = 54_973;
+        profile.source.distinct_object_properties = 9;
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.negation_disjunction = true;
+        assert!(sequential_large_shi_bridge_candidate(&profile));
+
+        profile.source.unions = 9_999;
+        assert!(!sequential_large_shi_bridge_candidate(&profile));
     }
 
     #[test]

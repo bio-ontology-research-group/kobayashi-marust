@@ -196,6 +196,13 @@ exact CB procedure. Smaller inputs keep the concurrent race. This ordering
 reduces process-tree memory when the bridge succeeds; it does not change either
 procedure or the accepted answer contract.
 
+The same sequential schedule applies to very large, source-certified
+disjunctive SHI terminologies with no ABox, at least 50,000 logical axioms,
+300,000 concept expressions, 10,000 unions, and 50,000 named classes. The
+bridge remains complete-answer-or-defer and the unchanged `production_all` CB
+stack starts after any defer. The complete 592-profile audit currently selects
+only ORE3215.
+
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:
 
