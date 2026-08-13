@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.6`.
+are available from the repository tags; the current release is `v0.2.7`.
 
 ## Classify an ontology
 
@@ -90,19 +90,22 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Candidate commit `3938b30`, paired-panel job
-`50075107`, the complete resumable sweep ending in job `50078177`, and the
-592-row integrity audit verify every result, checkpoint, route trace, profile,
-collision-sensitive full-IRI fingerprint, and binary identity. The tested
-binary is `7ac98a33a265…`.
+over all 592 ontologies. Candidate commit `d725ad2`, same-node route panels,
+clean full sweep `50421935`, and the 592-row integrity audit verify every
+result, checkpoint, route trace, profile, collision-sensitive full-IRI
+fingerprint, and binary identity. The tested binary is `7e0e28e77a0…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.6` / `3938b30` (binary `7ac98a33a265…`) | **591** | **591** | **5.1787** | **0.2467** | **720.08** | **42.02** |
+| **KM automatic, `km classify`** | `v0.2.7` / `d725ad2` (binary `7e0e28e77a0…`) | **591** | **591** | **4.5777** | **0.2475** | **567.35** | **42.20** |
 
-Performance values come from the complete v0.2.6 automatic-route sweep on
-exclusive Intel Xeon Gold 6248 nodes. The corresponding v0.2.5 source-bound
-baseline used the same processor model, limits, corpus, and harness contract.
+Performance values come from the clean v0.2.7-candidate automatic-route sweep
+on exclusive Intel Xeon Gold 6248 nodes. Relative to v0.2.6, mean wall time
+improves 11.6% and mean peak RSS improves 21.2%. The sub-millisecond wall and
+0.18-MiB RSS median movements are measurement-neutral; both medians remain
+below the frozen Konclude medians. Same-node panels over every changed ELC
+route improve all four panel metrics. Both releases used the same processor
+model, limits, corpus, and harness contract.
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -116,8 +119,11 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
 - [`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/)
 - [`results/benchmarks/2026-08-05-source-el-routing/`](results/benchmarks/2026-08-05-source-el-routing/)
+- [`results/benchmarks/2026-08-05-positive-el-abox-routing/`](results/benchmarks/2026-08-05-positive-el-abox-routing/)
+- [`results/benchmarks/2026-08-05-el-bottom-routing/`](results/benchmarks/2026-08-05-el-bottom-routing/)
+- [`results/benchmarks/2026-08-05-15846-production-routing/`](results/benchmarks/2026-08-05-15846-production-routing/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
-- [`CHANGELOG.md`](CHANGELOG.md), which links the earlier optimization evidence
+- [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
 - [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
 

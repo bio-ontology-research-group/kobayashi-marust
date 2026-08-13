@@ -2,6 +2,44 @@
 
 ## [unreleased]
 
+## [0.2.7] – 2026-08-13
+
+### Extend exact EL routing and avoid eager completion on a large ABox
+
+The automatic router now sends source-certified OWL EL terminologies with
+named-class disjointness or class bottom to exact EL completion. It also sends
+positive EL ABoxes only when the frontend's materialization certificate proves
+that their consistency is decidable in the completed EL model and that
+dropping the assertions preserves the public TBox taxonomy. Nominals,
+identity constraints, bottom roles, imports, rules, datatypes, and unsupported
+constructors continue to fail closed to the production portfolio. The
+normalized EL worker independently validates its complete fragment before
+publishing an answer.
+
+For very large ABoxes without number restrictions, the router now tries the
+complete production portfolio before the broad eager nominal-completion route.
+This changes only ORE15846 and reduces its same-node run from 175.68 seconds
+and 19,056 MiB to 10.18 seconds and 1,335 MiB with an identical 10,640-pair
+full-IRI taxonomy.
+
+Clean fixed-hardware sweep `50421935` contains 592 result/checkpoint pairs,
+zero temporary files, 591 successful classifications, and ORE1194 as the sole
+fail-closed error. The strict comparison with v0.2.6 finds exactly 99 intended
+route changes, zero coverage regressions, and zero semantic regressions. The
+issue #3 finite-nominal pigeonhole integration test and the complete locked
+release suite pass on the release source.
+
+On Intel Xeon Gold 6248 measurements, mean wall time improves from 5.1787 to
+4.5777 seconds and mean peak RSS from 720.08 to 567.35 MiB. Median wall is
+0.2475 seconds and median peak RSS is 42.20 MiB; their 0.0008-second and
+0.18-MiB differences from v0.2.6 are measurement-neutral and both remain below
+Konclude's frozen medians. Same-node paired panels for the 98 newly selected EL
+routes improve all four panel metrics. Evidence is in
+[`results/benchmarks/2026-08-05-positive-el-abox-routing/`](results/benchmarks/2026-08-05-positive-el-abox-routing/README.md),
+[`results/benchmarks/2026-08-05-el-bottom-routing/`](results/benchmarks/2026-08-05-el-bottom-routing/README.md),
+and
+[`results/benchmarks/2026-08-05-15846-production-routing/`](results/benchmarks/2026-08-05-15846-production-routing/README.md).
+
 ## [0.2.6] – 2026-08-05
 
 ### Route source-certified EL terminologies directly to completion
