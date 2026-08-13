@@ -8831,12 +8831,7 @@ fn configure_native_nominal_completion_saturation_coupling(
 /// heuristics and are deliberately NOT ported: they would make the mechanism fire
 /// as a function of how big a particular ontology's labels happen to be.
 fn configure_native_backend_expansion_reuse(algo: &mut CompletionTaskHandleAlgorithm) {
-    // Diagnostic cut for source-bound performance comparisons.  This restores
-    // the pre-native-reuse scheduling without changing any completion rule or
-    // cache content.  Production keeps Konclude's reuse enabled unless a
-    // caller explicitly requests the comparison arm.
-    algo.conf_backend_expansion_reuse =
-        std::env::var_os("KM_HT_NO_NATIVE_BACKEND_REUSE").is_none();
+    algo.conf_backend_expansion_reuse = true;
     // The count-threshold arms stay off (see the doc comment); with them off
     // `conf_backend_expansion_late_dynamic_reuse_activation` has nothing to gate.
     algo.conf_backend_expansion_late_dynamic_reuse_activation = false;
