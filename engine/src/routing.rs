@@ -694,15 +694,15 @@ fn source_el_positive_abox_candidate(profile: &OntologyProfile) -> bool {
         && source_el_shape(profile)
 }
 
-/// Large near-EL terminologies with a positive ABox and only a small residual
-/// union set. The normalized EL worker remains authoritative: this source gate
-/// only schedules a plain canonical-model certificate before the complete
-/// absorbed production fallback.
+/// Large near-EL inputs for which plain normalization plus the canonical-model
+/// certificate is substantially smaller than absorbed production. The
+/// normalized EL worker remains authoritative; this source gate only schedules
+/// the certificate before the complete absorbed production fallback.
 fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
 
-    source.logical_axioms >= 100_000
+    let positive_abox = source.logical_axioms >= 100_000
         && source.tbox_axioms >= 100_000
         && source.abox_axioms >= 50_000
         && source.unions > 0
@@ -727,7 +727,40 @@ fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
         && count("AsymmetricObjectProperty") == 0
         && count("IrreflexiveObjectProperty") == 0
         && count("NegativeObjectPropertyAssertion") == 0
-        && count("NegativeDataPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0;
+
+    // Very large Horn-shaped TBoxes may lie just outside the direct EL source
+    // screen because they contain inverse/symmetric/reflexive role declarations
+    // or named disjointness. The certificate validates their normalized form
+    // before publication. Requiring one such declaration avoids intercepting
+    // the ordinary source-EL route.
+    let extended_tbox_declarations = count("InverseObjectProperties")
+        + count("SymmetricObjectProperty")
+        + count("ReflexiveObjectProperty")
+        + count("DisjointClasses");
+    let large_extended_tbox = source.logical_axioms >= 400_000
+        && source.tbox_axioms >= 400_000
+        && source.abox_axioms == 0
+        && extended_tbox_declarations > 0
+        && source.complements == 0
+        && source.unions == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("AsymmetricObjectProperty") == 0
+        && count("IrreflexiveObjectProperty") == 0;
+
+    positive_abox || large_extended_tbox
 }
 
 /// Large ABoxes without number restrictions are better served by the complete
@@ -1571,6 +1604,17 @@ mod tests {
         profile
     }
 
+    fn large_extended_el_tbox_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 500_000;
+        profile.source.tbox_axioms = 499_990;
+        profile
+            .source
+            .axiom_types
+            .insert("SymmetricObjectProperty".into(), 10);
+        profile
+    }
+
     #[test]
     fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
         assert!(certified_el_production_candidate(
@@ -1593,6 +1637,28 @@ mod tests {
             .source
             .axiom_types
             .insert("InverseObjectProperties".into(), 1);
+        assert!(!certified_el_production_candidate(&profile));
+    }
+
+    #[test]
+    fn automatic_route_admits_large_extended_el_tbox_with_exact_fallback() {
+        let profile = large_extended_el_tbox_profile();
+        assert!(certified_el_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedElProduction);
+    }
+
+    #[test]
+    fn extended_el_tbox_gate_requires_scale_declaration_and_safe_shape() {
+        let mut profile = large_extended_el_tbox_profile();
+        profile.source.logical_axioms = 399_999;
+        assert!(!certified_el_production_candidate(&profile));
+
+        let mut profile = large_extended_el_tbox_profile();
+        profile.source.axiom_types.clear();
+        assert!(!certified_el_production_candidate(&profile));
+
+        let mut profile = large_extended_el_tbox_profile();
+        profile.source.universals = 1;
         assert!(!certified_el_production_candidate(&profile));
     }
 
