@@ -1124,6 +1124,74 @@ struct ProxyAboxCertificate {
     extra_queries: Vec<usize>,
 }
 
+/// Project a large role-free ABox with one positive atomic assertion per
+/// individual out of the HT input. OWL TBoxes are closed under disjoint unions,
+/// so the ABox is consistent exactly when each asserted class is satisfiable;
+/// it cannot add a named TBox subsumption. Keeping this certificate before
+/// `install_nominal_abox` avoids allocating one proxy concept per individual.
+fn atomic_component_abox_certificate(
+    tin: &cb_to_ht::TInput,
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<ProxyAboxCertificate> {
+    use crate::frontend::syntax::Concept;
+    use std::collections::{HashMap, HashSet};
+
+    if !meta.complete
+        || !meta.unsupported.is_empty()
+        || meta.individuals.len() < 10_000
+        || !meta.same.is_empty()
+        || !meta.different.is_empty()
+        || !meta.role_assertions.is_empty()
+        || !meta.negative_role_assertions.is_empty()
+    {
+        return None;
+    }
+    let concept_ids: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(id, name)| (name.as_str(), id))
+        .collect();
+    let public_queries: HashSet<String> = tin
+        .queries
+        .iter()
+        .filter_map(|&query| tin.concepts.get(query).cloned())
+        .collect();
+    let mut individuals = HashSet::new();
+    let mut proxies = HashSet::new();
+    let mut assertion_ids = Vec::with_capacity(meta.individuals.len());
+    for individual in &meta.individuals {
+        let ([Concept::Name(asserted)], [marker], [proxy]) = (
+            individual.assertions.as_slice(),
+            individual.assertion_markers.as_slice(),
+            individual.proxies.as_slice(),
+        ) else {
+            return None;
+        };
+        if asserted != marker
+            || !individuals.insert(individual.individual.as_str())
+            || !proxies.insert(proxy.as_str())
+        {
+            return None;
+        }
+        let id = *concept_ids.get(marker.as_str())?;
+        if !public_queries.contains(marker) {
+            return None;
+        }
+        assertion_ids.push(id);
+    }
+
+    Some(ProxyAboxCertificate {
+        concepts: tin.concepts.clone(),
+        assertion_ids,
+        role_assertions: Vec::new(),
+        relevant_clauses: Vec::new(),
+        chains: Vec::new(),
+        public_queries,
+        extra_queries: Vec::new(),
+    })
+}
+
 fn positive_role_proxy_abox_certificate(tin: &cb_to_ht::TInput) -> Option<ProxyAboxCertificate> {
     use cb_to_ht::HAtom;
     use std::collections::HashSet;
@@ -1505,7 +1573,11 @@ fn spawn_ht(
             proxy_abox_certificate = Some(certificate);
         }
     } else if !certified_tbox_only {
-        cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same);
+        if let Some(certificate) = atomic_component_abox_certificate(&tin, &nominal_abox) {
+            proxy_abox_certificate = Some(certificate);
+        } else {
+            cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, allow_same);
+        }
     }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
@@ -3350,6 +3422,44 @@ mod tests {
             head: vec![HAtom::Eq { s: 0, t: 1 }],
         });
         assert!(positive_role_proxy_abox_certificate(&equality).is_none());
+    }
+
+    #[test]
+    fn atomic_component_abox_certificate_projects_only_exact_large_shape() {
+        use crate::frontend::syntax::Concept;
+        use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
+
+        let tin = cb_to_ht::TInput {
+            concepts: vec!["A".into()],
+            queries: vec![0],
+            ..Default::default()
+        };
+        let mut meta = NominalAboxMeta {
+            complete: true,
+            individuals: (0..10_000)
+                .map(|index| NominalIndividualMeta {
+                    individual: format!("a{index}"),
+                    proxies: vec![format!("__nom__a{index}")],
+                    assertions: vec![Concept::Name("A".into())],
+                    assertion_markers: vec!["A".into()],
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let certificate = atomic_component_abox_certificate(&tin, &meta)
+            .expect("exact role-free atomic ABox must project");
+        assert_eq!(certificate.assertion_ids.len(), 10_000);
+        assert!(proxy_abox_certificate_accepts(
+            &certificate,
+            &TOutput {
+                consistent: true,
+                unsatisfiable: Vec::new(),
+                subsumptions: Vec::new(),
+            }
+        ));
+
+        meta.individuals[0].assertions = vec![Concept::Top];
+        assert!(atomic_component_abox_certificate(&tin, &meta).is_none());
     }
 
     #[test]
