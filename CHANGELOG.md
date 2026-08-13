@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.2.8] – 2026-08-13
+
+### Route a large near-EL ABox through certified completion
+
+The automatic router now recognizes the source profile of ORE6682 and first
+uses plain EL normalization with the canonical-model repair certificate. The
+gate excludes complements, universals, cardinalities, nominals, identity and
+role risks, datatypes, imports, and rules. A certificate refusal, worker error,
+or resource failure reruns the exact `production_all` route, so the source gate
+changes scheduling rather than accepted semantics.
+
+Same-node job `50424991` reduces ORE6682 from 29.1361 seconds and 7778.68 MiB
+to 24.8344 seconds and 5082.77 MiB, improvements of 14.8% and 34.7%. Both arms
+produce the same gold-matching signature. A complete profile audit proves that
+ORE6682 is the only ontology admitted by the new gate.
+
+Clean sweep `50425474` contains exactly 592 result/checkpoint/profile triples
+and no temporary files. Its strict comparison with v0.2.7 reports 591
+successful classifications, ORE1194 as the sole fail-closed error, exactly one
+intended route change, and zero coverage or semantic regressions. Mean peak RSS
+is 563.01 MiB, down from 567.35 MiB. The sweep's 4.6525-second wall mean,
+0.2480-second wall median, and 42.36-MiB RSS median include small adverse
+run-to-run movement despite unchanged execution paths for 591 inputs; the
+controlled pair is the performance acceptance evidence. Evidence is in
+[`results/benchmarks/2026-08-13-6682-elc-cert/`](results/benchmarks/2026-08-13-6682-elc-cert/README.md).
+
 ## [0.2.7] – 2026-08-13
 
 ### Extend exact EL routing and avoid eager completion on a large ABox

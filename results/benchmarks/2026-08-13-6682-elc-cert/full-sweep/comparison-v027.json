@@ -1,0 +1,11 @@
+{
+  "coverage_regressions": 0,
+  "ontologies": 592,
+  "route_changes": {
+    "ore_ont_6682.owl": [
+      "production_all",
+      "certified_el_production"
+    ]
+  },
+  "semantic_regressions": 0
+}
