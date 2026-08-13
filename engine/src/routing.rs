@@ -36,6 +36,9 @@ pub enum Route {
     CbAbsorbPortfolio16,
     Elc,
     ElcCert,
+    /// Plain certified EL first, with the exact absorbed production portfolio
+    /// on certificate refusal or worker failure.
+    CertifiedElProduction,
     Lean,
     HtGeneral,
     HtQo,
@@ -64,7 +67,7 @@ pub enum Route {
 }
 
 impl Route {
-    pub const NAMED: [Route; 38] = [
+    pub const NAMED: [Route; 39] = [
         Route::Default,
         Route::Default8,
         Route::Default1,
@@ -85,6 +88,7 @@ impl Route {
         Route::CbAbsorbPortfolio16,
         Route::Elc,
         Route::ElcCert,
+        Route::CertifiedElProduction,
         Route::Lean,
         Route::HtGeneral,
         Route::HtQo,
@@ -129,6 +133,7 @@ impl Route {
             Route::CbAbsorbPortfolio16 => "cb_absorb_portfolio16",
             Route::Elc => "elc",
             Route::ElcCert => "elc_cert",
+            Route::CertifiedElProduction => "certified_el_production",
             Route::Lean => "lean",
             Route::HtGeneral => "ht_general",
             Route::HtQo => "ht_qo",
@@ -175,6 +180,7 @@ impl Route {
             Route::CbAbsorbPortfolio16 => CB_ABSORB_PORTFOLIO,
             Route::Elc => ELC,
             Route::ElcCert => ELC_CERT,
+            Route::CertifiedElProduction => ELC_CERT,
             Route::Lean => LEAN,
             Route::HtGeneral => HT_GENERAL,
             Route::HtQo => HT_QO,
@@ -297,6 +303,9 @@ impl FromStr for Route {
             "cb_absorb_portfolio16" | "absorb_portfolio" => Route::CbAbsorbPortfolio16,
             "elc" => Route::Elc,
             "elc_cert" => Route::ElcCert,
+            "certified_el_production" | "elc_cert_production" => {
+                Route::CertifiedElProduction
+            }
             "lean" => Route::Lean,
             "ht_general" | "ht" => Route::HtGeneral,
             "ht_qo" | "qo" => Route::HtQo,
@@ -685,6 +694,42 @@ fn source_el_positive_abox_candidate(profile: &OntologyProfile) -> bool {
         && source_el_shape(profile)
 }
 
+/// Large near-EL terminologies with a positive ABox and only a small residual
+/// union set. The normalized EL worker remains authoritative: this source gate
+/// only schedules a plain canonical-model certificate before the complete
+/// absorbed production fallback.
+fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    source.logical_axioms >= 100_000
+        && source.tbox_axioms >= 100_000
+        && source.abox_axioms >= 50_000
+        && source.unions > 0
+        && source.unions <= 100
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && source.role_chain_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("InverseObjectProperties") == 0
+        && count("SymmetricObjectProperty") == 0
+        && count("AsymmetricObjectProperty") == 0
+        && count("IrreflexiveObjectProperty") == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+}
+
 /// Large ABoxes without number restrictions are better served by the complete
 /// production portfolio than by eagerly materializing every nominal in the CB
 /// root context. The portfolio retains the exact nominal fallback, so this is
@@ -840,6 +885,9 @@ fn sriq_policy_eligible(route: Route) -> bool {
 }
 
 pub fn select(profile: &OntologyProfile) -> Route {
+    if certified_el_production_candidate(profile) {
+        return Route::CertifiedElProduction;
+    }
     match semantic_fragment(profile) {
         // These branches are semantic dispatch, not learned performance
         // choices. Ordinary proxy CB is incomplete for singleton/ABox meaning,
@@ -1513,6 +1561,40 @@ const ROUTE_KEYS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn large_near_el_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 230_000;
+        profile.source.tbox_axioms = 140_000;
+        profile.source.abox_axioms = 90_000;
+        profile.source.unions = 67;
+        profile
+    }
+
+    #[test]
+    fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
+        assert!(certified_el_production_candidate(
+            &large_near_el_profile()
+        ));
+        assert_eq!(
+            select(&large_near_el_profile()),
+            Route::CertifiedElProduction
+        );
+    }
+
+    #[test]
+    fn certified_el_production_gate_fails_closed_on_semantic_risk() {
+        let mut profile = large_near_el_profile();
+        profile.source.complements = 1;
+        assert!(!certified_el_production_candidate(&profile));
+
+        let mut profile = large_near_el_profile();
+        profile
+            .source
+            .axiom_types
+            .insert("InverseObjectProperties".into(), 1);
+        assert!(!certified_el_production_candidate(&profile));
+    }
 
     fn source_profile(text: &str) -> OntologyProfile {
         let mut builder = crate::frontend::profile::SourceProfileBuilder::new();

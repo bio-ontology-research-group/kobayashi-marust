@@ -707,6 +707,7 @@ fn classify_with_evidence_mode(
         .route
         .parse::<crate::routing::Route>()
         .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
+
     let routed_cfg = if matches!(
         selected_route,
         crate::routing::Route::Auto | crate::routing::Route::Manual
@@ -848,7 +849,22 @@ fn classify_with_evidence_mode(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let atomic_out = run_atomic_mechanism(cfg, clauses_path.path(), &named_set)?;
+    let atomic_out = match run_atomic_mechanism(cfg, clauses_path.path(), &named_set) {
+        Ok(out) => out,
+        Err(_error) if selected_route == crate::routing::Route::CertifiedElProduction => {
+            // The source gate is only a scheduling hint. A certificate refusal,
+            // resource failure, or worker error must retain the exact automatic
+            // coverage by rerunning the established absorbed production route.
+            crate::routing::Route::ProductionAll.apply_environment();
+            std::env::set_var(
+                "KM_ROUTE",
+                crate::routing::Route::ProductionAll.as_str(),
+            );
+            let fallback_cfg = Config::from_env();
+            return classify_with_evidence_mode(&fallback_cfg, ont, retain_grouped_output);
+        }
+        Err(error) => return Err(error),
+    };
     let out: EngineOut = match atomic_out {
         Some(out) => out,
         None => {

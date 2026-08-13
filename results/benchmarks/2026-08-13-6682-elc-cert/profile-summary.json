@@ -1,0 +1,33 @@
+{
+  "binary_sha256": "1abb488945d16df5ba16ee6aa261b1a2aac356b2bfe183b256856c7e28fe9734",
+  "checkpoints": 30,
+  "candidate_ontologies": [
+    {
+      "abox_axioms": 89292,
+      "disjunctive_clauses": 59,
+      "el_rbox_safe": true,
+      "logical_axioms": 246226,
+      "normalized_clauses": 321549,
+      "ontology": "ore_ont_6682.owl",
+      "tbox_axioms": 156741,
+      "unions": 67
+    }
+  ],
+  "rows": 592,
+  "selected_route_counts": {
+    "certified_card_nominals": 1,
+    "certified_card_proxy_abox": 1,
+    "certified_el_production": 1,
+    "certified_nominals": 9,
+    "elc": 275,
+    "ht_bridge": 1,
+    "ht_rules": 3,
+    "nominal_ni_tbox": 1,
+    "nominals": 58,
+    "production_all": 242
+  },
+  "statuses": {
+    "ok": 592
+  },
+  "unique_ontologies": 592
+}
