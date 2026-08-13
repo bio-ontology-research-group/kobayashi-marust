@@ -203,6 +203,11 @@ bridge remains complete-answer-or-defer and the unchanged `production_all` CB
 stack starts after any defer. The complete 592-profile audit currently selects
 only ORE3215.
 
+For very large TBox-only SRIQ inputs with substantial role chains and qualified
+cardinality, `production_all` uses eight workers instead of 16. The route,
+frontend, inference procedures, fallback, and answer contract are unchanged.
+The complete 592-profile audit currently selects only ORE14817.
+
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:
 

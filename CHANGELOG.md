@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.2.14] – 2026-08-13
+
+### Use eight workers for one large role-chain/cardinality terminology
+
+The automatic `production_all` route now uses eight workers instead of 16 for
+very large TBox-only SRIQ inputs with substantial role-chain and qualified
+cardinality structure. The source-profile predicate selects only ORE14817 in
+the complete 592-profile audit. The route, reasoning procedures, fallback,
+and answer contract remain unchanged.
+
+Same-node route panel `50442525` reduced ORE14817 mean wall from 98.3611 to
+97.6929 seconds and mean peak RSS from 5,209.64 to 5,206.61 MiB. The separate
+automatic candidate gate `50442923` measured a smaller wall reduction from
+98.7509 to 98.5933 seconds and a 0.79 MiB mean peak-RSS increase. Every run in
+both panels exactly matched the retained full-IRI gold signature.
+
+Strict sweep `50443229` contains exactly 592 terminal results and reports 591
+successful classifications, ORE1194 as the sole fail-closed error, and zero
+behavioral regressions relative to v0.2.13. Mean wall falls from 4.5871 to
+4.5758 seconds, mean peak RSS from 499.60 to 499.38 MiB, and median wall from
+0.2491 to 0.2469 seconds. Median peak RSS moves from 41.45 to 41.64 MiB; this
+0.19 MiB run-to-run increase is reported without adjustment. Evidence is in
+[`results/benchmarks/2026-08-13-14817-thread-panel/`](results/benchmarks/2026-08-13-14817-thread-panel/README.md).
+
 ## [0.2.13] – 2026-08-13
 
 ### Schedule the large disjunctive SHI bridge before production fallback

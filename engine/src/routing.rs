@@ -511,6 +511,25 @@ pub(crate) fn sequential_large_shi_bridge_candidate(profile: &OntologyProfile) -
         && !profile.expressivity.datatype
 }
 
+/// Large role-chain/cardinality TBoxes whose completion workload loses a small
+/// amount of throughput to the default 16-way orchestration. This predicate
+/// changes only the worker count of the unchanged `production_all` portfolio.
+pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms == 0
+        && source.logical_axioms >= 150_000
+        && source.qualified_cardinalities >= 70
+        && source.role_chain_axioms >= 30
+        && source.distinct_classes >= 58_000
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && profile.expressivity.inverse
+        && profile.expressivity.complex_subrole
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -2330,6 +2349,23 @@ mod tests {
 
         profile.source.unions = 9_999;
         assert!(!sequential_large_shi_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn large_role_chain_cardinality_tbox_uses_eight_workers() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 155_724;
+        profile.source.tbox_axioms = 155_577;
+        profile.source.qualified_cardinalities = 74;
+        profile.source.role_chain_axioms = 30;
+        profile.source.distinct_classes = 58_364;
+        profile.expressivity.inverse = true;
+        profile.expressivity.complex_subrole = true;
+        profile.expressivity.qualified_cardinality = true;
+        assert!(eight_thread_large_sriq_candidate(&profile));
+
+        profile.source.qualified_cardinalities = 69;
+        assert!(!eight_thread_large_sriq_candidate(&profile));
     }
 
     #[test]

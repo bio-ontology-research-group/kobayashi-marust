@@ -729,6 +729,11 @@ fn classify_with_evidence_mode(
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
         }
+        if selected_route == crate::routing::Route::ProductionAll
+            && crate::routing::eight_thread_large_sriq_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_THREADS", "8");
+        }
         if let Some(bits) = composite_layout(&meta.profile) {
             std::env::set_var("KM_COMP_IND_BITS", bits.to_string());
         }
