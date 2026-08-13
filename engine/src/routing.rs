@@ -760,7 +760,47 @@ fn certified_el_production_candidate(profile: &OntologyProfile) -> bool {
         && count("AsymmetricObjectProperty") == 0
         && count("IrreflexiveObjectProperty") == 0;
 
-    positive_abox || large_extended_tbox
+    // A very large near-EL terminology can carry a tiny identity-only ABox:
+    // positive class assertions plus DifferentIndividuals declarations, with
+    // the corresponding object-one-of expressions introduced by
+    // normalization.  The canonical-model worker validates the complete
+    // normalized input, including those identities, before publishing.  Any
+    // refusal or resource failure still reruns production_all.  Keep this
+    // scheduling gate narrow so an input that is unlikely to certify does not
+    // pay for a long completion attempt before its exact fallback.
+    let different_individuals = count("DifferentIndividuals");
+    let small_identity_abox = source.logical_axioms >= 400_000
+        && source.tbox_axioms >= 400_000
+        && source.abox_axioms > 0
+        && source.abox_axioms <= 100
+        && source.class_assertions > 0
+        && source.class_assertions <= 100
+        && source.abox_axioms == source.class_assertions + different_individuals
+        && source.nominals == source.class_assertions
+        && source.role_assertions == 0
+        && source.unions > 0
+        && source.unions <= 100
+        && source.disjoint_class_axioms > 0
+        && source.complements == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+        && source.functional_role_axioms == 0
+        && source.inverse_functional_role_axioms == 0
+        && source.role_chain_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && count("NegativeObjectPropertyAssertion") == 0
+        && count("NegativeDataPropertyAssertion") == 0
+        && count("AsymmetricObjectProperty") == 0
+        && count("IrreflexiveObjectProperty") == 0;
+
+    positive_abox || large_extended_tbox || small_identity_abox
 }
 
 /// Large ABoxes without number restrictions are better served by the complete
@@ -1615,6 +1655,22 @@ mod tests {
         profile
     }
 
+    fn large_el_tbox_with_small_identity_abox_profile() -> OntologyProfile {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 747_725;
+        profile.source.tbox_axioms = 747_700;
+        profile.source.abox_axioms = 21;
+        profile.source.class_assertions = 19;
+        profile.source.nominals = 19;
+        profile.source.unions = 13;
+        profile.source.disjoint_class_axioms = 44;
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 2);
+        profile
+    }
+
     #[test]
     fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
         assert!(certified_el_production_candidate(
@@ -1659,6 +1715,28 @@ mod tests {
 
         let mut profile = large_extended_el_tbox_profile();
         profile.source.universals = 1;
+        assert!(!certified_el_production_candidate(&profile));
+    }
+
+    #[test]
+    fn automatic_route_certifies_large_el_tbox_with_tiny_identity_abox() {
+        let profile = large_el_tbox_with_small_identity_abox_profile();
+        assert!(certified_el_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::CertifiedElProduction);
+    }
+
+    #[test]
+    fn small_identity_abox_gate_fails_closed_on_non_identity_or_risky_axioms() {
+        let mut profile = large_el_tbox_with_small_identity_abox_profile();
+        profile.source.role_assertions = 1;
+        assert!(!certified_el_production_candidate(&profile));
+
+        let mut profile = large_el_tbox_with_small_identity_abox_profile();
+        profile.source.abox_axioms += 1;
+        assert!(!certified_el_production_candidate(&profile));
+
+        let mut profile = large_el_tbox_with_small_identity_abox_profile();
+        profile.source.complements = 1;
         assert!(!certified_el_production_candidate(&profile));
     }
 
