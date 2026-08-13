@@ -3606,7 +3606,18 @@ fn independent_abox_representative_tags(bridged: &Bridged) -> HashSet<Cint64> {
 /// This deliberately does not relax the legacy fast-tableau nominal fence.
 fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
     let meta = &tin.nominal_abox;
-    if !source_mode || !meta.complete || !meta.unsupported.is_empty() || meta.individuals.is_empty()
+    let source_independent_atomic_abox = meta.same.is_empty()
+        && meta.different.is_empty()
+        && meta.role_assertions.is_empty()
+        && meta.negative_role_assertions.is_empty()
+        && meta.individuals.iter().all(|entry| {
+            matches!(entry.assertions.as_slice(), [SourceConcept::Name(name)]
+                if entry.assertion_markers.as_slice() == [name.as_str()])
+        });
+    if (!source_mode && !source_independent_atomic_abox)
+        || !meta.complete
+        || !meta.unsupported.is_empty()
+        || meta.individuals.is_empty()
     {
         return false;
     }
@@ -3661,6 +3672,40 @@ fn native_nominal_metadata_covered(tin: &TInput, source_mode: bool) -> bool {
             .get(id)
             .is_some_and(|name| proxies.contains(name.as_str()))
     })
+}
+
+/// Return the asserted public concept ids when the independently validated
+/// ABox consists of one positive atomic assertion per role-free individual.
+/// Each root may use a separate TBox model, so this ABox is consistent exactly
+/// when every asserted class is satisfiable and cannot alter TBox subsumption.
+fn singleton_atomic_abox_classes(tin: &TInput, independent_abox: bool) -> Option<HashSet<usize>> {
+    if !independent_abox
+        || !tin.nominal_abox.same.is_empty()
+        || !tin.nominal_abox.different.is_empty()
+        || !tin.nominal_abox.role_assertions.is_empty()
+        || !tin.nominal_abox.negative_role_assertions.is_empty()
+    {
+        return None;
+    }
+    let concept_index: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (name.as_str(), index))
+        .collect();
+    let queries: HashSet<usize> = tin.queries.iter().map(|&query| query as usize).collect();
+    let mut asserted = HashSet::new();
+    for individual in &tin.nominal_abox.individuals {
+        let [marker] = individual.assertion_markers.as_slice() else {
+            return None;
+        };
+        let &concept = concept_index.get(marker.as_str())?;
+        if !queries.contains(&concept) {
+            return None;
+        }
+        asserted.insert(concept);
+    }
+    (!asserted.is_empty()).then_some(asserted)
 }
 
 /// Environment-independent terminology builder used by focused absorber
@@ -11783,6 +11828,7 @@ fn bridged_classify_opts_with_trigger_absorption(
         native_nominals,
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
+    let singleton_atomic_abox = singleton_atomic_abox_classes(tin, independent_abox_elided);
     // A universal role used in a class expression couples every disjoint-union
     // component and remains unsupported. A top-role name occurring only as the
     // target of the tautology R <= top is semantically inert for the certified
@@ -11913,7 +11959,9 @@ fn bridged_classify_opts_with_trigger_absorption(
     let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
     if bridged.has_native_nominals() {
-        if independent_abox_elided {
+        if singleton_atomic_abox.is_some() {
+            // The completed named-class taxonomy decides consistency below.
+        } else if independent_abox_elided {
             // Role-free duplicate assertion signatures need one root each.
             // Otherwise decide every complete connected ABox component in a
             // fresh task. The disjoint-union certificate above is what permits
@@ -13072,6 +13120,17 @@ fn bridged_classify_opts_with_trigger_absorption(
     }
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
+    if singleton_atomic_abox.as_ref().is_some_and(|asserted| {
+        out.unsatisfiable
+            .iter()
+            .any(|concept| asserted.contains(concept))
+    }) {
+        return Some(BridgedClassification {
+            consistent: false,
+            unsatisfiable: Vec::new(),
+            subsumptions: Vec::new(),
+        });
+    }
     if !out.unsatisfiable.is_empty() {
         let unsatisfiable: std::collections::HashSet<usize> =
             out.unsatisfiable.iter().copied().collect();
@@ -13402,6 +13461,34 @@ mod tests {
                 .push(assertion);
             assert!(!independent_component_abox_profile(&coupled, true, true));
         }
+    }
+
+    #[test]
+    fn source_independent_singleton_atomic_abox_is_exactly_gated() {
+        use crate::frontend::syntax::Concept as C;
+
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "__nom__a".into()],
+            queries: vec![0],
+            nominal_abox: native_nominal_meta(
+                vec![("a", "__nom__a", vec![C::Name("A".into())])],
+                vec![],
+            ),
+            ..Default::default()
+        };
+        tin.nominal_abox.individuals[0].assertion_markers = vec!["A".into()];
+        assert!(native_nominal_metadata_covered(&tin, false));
+        assert_eq!(singleton_atomic_abox_classes(&tin, true), Some(HashSet::from([0])));
+
+        let mut complex = tin.clone();
+        complex.nominal_abox.individuals[0].assertions =
+            vec![C::And([C::Name("A".into()), C::Top].into())];
+        assert!(!native_nominal_metadata_covered(&complex, false));
+
+        let mut mismatched = tin.clone();
+        mismatched.nominal_abox.individuals[0].assertion_markers = vec!["B".into()];
+        assert!(!native_nominal_metadata_covered(&mismatched, false));
+        assert!(singleton_atomic_abox_classes(&mismatched, true).is_none());
     }
 
     #[test]
