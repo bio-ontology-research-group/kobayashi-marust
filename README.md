@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.11`.
+are available from the repository tags; the current release is `v0.2.12`.
 
 ## Classify an ontology
 
@@ -90,16 +90,17 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Candidate commit `78d5674`, targeted verification
-`50433101`, clean full sweep `50433149`, and the 592-row integrity audit verify
-every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `d19938110369…`.
+over all 592 ontologies. Tested source commit `e5dec28`, targeted verification
+`50438534`, strict sweep jobs `50438700`, `50439574`, and `50439604`, and the
+592-row integrity audit verify every result, checkpoint, route trace, profile,
+collision-sensitive full-IRI fingerprint, and binary identity. The tested
+binary is `21263bc18a61…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.11` / `78d5674` (binary `d19938110369…`) | **591** | **591** | **4.5079** | **0.2475** | **517.05** | **42.27** |
+| **KM automatic, `km classify`** | `v0.2.12` / `e5dec28` (binary `21263bc18a61…`) | **591** | **591** | **4.5441** | **0.2461** | **503.74** | **42.78** |
 
-Performance values come from the clean v0.2.11-candidate automatic-route sweep
+Performance values come from the strict v0.2.12-candidate automatic-route sweep
 on exclusive Intel Xeon Gold 6248 nodes. ORE7246, ORE8737, and ORE16744 now use
 certified EL completion with the exact production route as fallback. Their
 same-node panel removes 54.9 seconds and 19,049 MiB of summed peak RSS while
@@ -107,11 +108,14 @@ retaining identical gold-matching signatures. ORE15803 uses the same
 certificate-before-production schedule. For ORE7914, a disjoint-union
 certificate projects its 108,512 independent atomic ABox roots before native
 HT conversion; automatic classification falls from about 46.8 seconds and
-8.53 GiB to 8.58 seconds and 1.51 GiB. The full sweep reports zero semantic or
-coverage regressions. Mean wall and mean RSS fall to 4.5079 seconds and 517.05
-MiB. All four KM metrics except mean wall remain below the frozen Konclude
-values; the 0.29-MiB median-RSS movement relative to v0.2.10 is independent
-scheduling noise.
+8.53 GiB to 8.58 seconds and 1.51 GiB. For ORE10621, scheduling the certified
+typed-ABox bridge before its exact fallback reduces same-node mean process-tree
+peak memory from 9,368.57 to 1,256.15 MiB and mean wall from 87.1031 to 86.6274
+seconds. The full sweep reports zero semantic or coverage regressions. Across
+the independently scheduled corpus, mean RSS falls to 503.74 MiB and median
+wall to 0.2461 seconds. Mean wall moves to 4.5441 seconds and median RSS to
+42.78 MiB; both remain reported without adjustment. All four KM metrics except
+mean wall remain below the frozen Konclude values.
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -132,6 +136,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-13-large-el-cert-panel/`](results/benchmarks/2026-08-13-large-el-cert-panel/)
 - [`results/benchmarks/2026-08-13-small-identity-el-cert/`](results/benchmarks/2026-08-13-small-identity-el-cert/)
 - [`results/benchmarks/2026-08-13-7914-regression/`](results/benchmarks/2026-08-13-7914-regression/)
+- [`results/benchmarks/2026-08-13-10621-sequential-bridge/`](results/benchmarks/2026-08-13-10621-sequential-bridge/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
 - [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)

@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## [0.2.12] – 2026-08-13
+
 ### Schedule the large typed-ABox bridge before its exact fallback
 
 For source-certified typed object ABoxes with at least 30,000 logical axioms
