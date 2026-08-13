@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.13`.
+are available from the repository tags; the current release is `v0.2.14`.
 
 ## Classify an ontology
 
@@ -90,16 +90,16 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested source commit `7b28b03`, targeted verification
-`50440878`, strict sweep `50441548`, and the 592-row integrity audit verify
+over all 592 ontologies. Tested source commit `4e02cec`, targeted verification
+`50442923`, strict sweep `50443229`, and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `31ecdbc74174…`.
+fingerprint, and binary identity. The tested binary is `c2947579daf2…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.13` / `7b28b03` (binary `31ecdbc74174…`) | **591** | **591** | **4.5871** | **0.2491** | **499.60** | **41.45** |
+| **KM automatic, `km classify`** | `v0.2.14` / `4e02cec` (binary `c2947579daf2…`) | **591** | **591** | **4.5758** | **0.2469** | **499.38** | **41.64** |
 
-Performance values come from the strict v0.2.13-candidate automatic-route sweep
+Performance values come from the strict v0.2.14-candidate automatic-route sweep
 on exclusive Intel Xeon Gold 6248 nodes. ORE7246, ORE8737, and ORE16744 now use
 certified EL completion with the exact production route as fallback. Their
 same-node panel removes 54.9 seconds and 19,049 MiB of summed peak RSS while
@@ -113,11 +113,12 @@ peak memory from 9,368.57 to 1,256.15 MiB and mean wall from 87.1031 to 86.6274
 seconds. For ORE3215, scheduling its certified bridge before the production
 fallback reduces same-node mean wall from 162.0549 to 157.3747 seconds and
 mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
-reports zero semantic or coverage regressions. Across the independently
-scheduled corpus, mean RSS falls to 499.60 MiB and median RSS to 41.45 MiB.
-Mean wall moves to 4.5871 seconds and median wall to 0.2491 seconds; both remain
-reported without adjustment. All four KM metrics except mean wall remain below
-the frozen Konclude values.
+reports zero semantic or coverage regressions. ORE14817 now uses eight workers
+for the unchanged `production_all` route; its controlled panels preserve the
+gold signature and reduce mean wall. Across the independently scheduled corpus,
+mean RSS is 499.38 MiB and median RSS is 41.64 MiB. Mean wall is 4.5758 seconds
+and median wall is 0.2469 seconds. All four KM metrics except mean wall remain
+below the frozen Konclude values.
 
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
@@ -140,6 +141,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-13-7914-regression/`](results/benchmarks/2026-08-13-7914-regression/)
 - [`results/benchmarks/2026-08-13-10621-sequential-bridge/`](results/benchmarks/2026-08-13-10621-sequential-bridge/)
 - [`results/benchmarks/2026-08-13-3215-sequential-bridge/`](results/benchmarks/2026-08-13-3215-sequential-bridge/)
+- [`results/benchmarks/2026-08-13-14817-thread-panel/`](results/benchmarks/2026-08-13-14817-thread-panel/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
 - [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
