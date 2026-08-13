@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.2.17] – 2026-08-13
+
+### Borrow frontend-only output indexes
+
+Declaration seeding now checks borrowed concept names in a hash set instead of
+cloning them into a sorted set. IRI metadata construction iterates borrowed
+registry pairs directly, avoiding a temporary key vector and repeated hash
+lookups. These changes affect allocation and enumeration only: declaration
+tautologies retain source order, and focused IBEX panel `50451358` confirms
+byte-identical clause and metadata files on five large ontologies.
+
+End-to-end panel `50451248` produced five identical classifications and reduced
+summed wall from 183.23 to 180.16 seconds. Strict sweep `50451542` contains 592
+terminal rows, 591 successful classifications, ORE1194 as the sole fail-closed
+error, and zero status, consistency, signature, or coverage differences from
+v0.2.16. In the directly comparable raw sweep rows, mean wall falls from 4.2748
+to 4.2520 seconds, median wall from 0.2210 to 0.2208 seconds, mean peak RSS from
+450.81 to 450.74 MiB, and median peak RSS from 39.47 to 39.24 MiB. Evidence is
+in [`results/benchmarks/2026-08-13-frontend-borrowed-names/`](results/benchmarks/2026-08-13-frontend-borrowed-names/README.md).
+
 ## [0.2.16] – 2026-08-13
 
 ### Reuse the positive-EL ABox certificate taxonomy
