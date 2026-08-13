@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.2.15] – 2026-08-13
+
+### Eliminate the worker round trip for structured exact-EL leaves
+
+Structured ontologies selected by the typed exact `elc` leaf now run the same
+completion implementation in the orchestrator process. This avoids serializing
+and reparsing worker taxonomies that can exceed 500 MiB. Exact-EL inputs whose
+named-class count is at least 90% of their logical-axiom count retain the
+subprocess boundary, releasing completion allocations before mapping very
+large flat taxonomies. Other routes and every fallback remain unchanged.
+
+Strict sweep `50447018` contains exactly 592 terminal results and reports 591
+successful classifications, ORE1194 as the sole fail-closed error, and zero
+behavioral regressions relative to v0.2.14. Mean wall falls from 4.5758 to
+4.4699 seconds, median wall from 0.2469 to 0.2272 seconds, mean peak RSS from
+499.38 to 451.22 MiB, and median peak RSS from 41.64 to 38.98 MiB. Evidence is
+in [`results/benchmarks/2026-08-13-large-inproc-elc/`](results/benchmarks/2026-08-13-large-inproc-elc/README.md).
+
 ## [0.2.14] – 2026-08-13
 
 ### Use eight workers for one large role-chain/cardinality terminology

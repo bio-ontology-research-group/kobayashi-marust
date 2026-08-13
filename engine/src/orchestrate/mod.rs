@@ -328,7 +328,30 @@ fn handle_elc_result(
 /// Execute one EL completion attempt and never resolve a residue with CB. Exit
 /// 3 (not EL) and exit 4 (certificate residue) are honest fragment declines for
 /// an atomic EL mechanism, not invitations to start another classifier.
-fn run_atomic_elc(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, OrchestrateError> {
+fn run_atomic_elc(
+    cfg: &Config,
+    clauses_path: &Path,
+    in_process: bool,
+) -> Result<EngineOut, OrchestrateError> {
+    if in_process {
+        let buf = std::fs::read(clauses_path)?;
+        let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
+        drop(buf);
+        return match crate::elcomplete::classify(input.clauses) {
+            None => Err(OrchestrateError::OutOfFragment(
+                "ontology is outside the selected EL completion fragment".into(),
+            )),
+            Some(res) if !res.unresolved.is_empty() => Err(OrchestrateError::OutOfFragment(
+                "EL completeness certificate left an unresolved residue".into(),
+            )),
+            Some(res) => Ok(EngineOut {
+                subsumptions: res.subsumptions,
+                inconsistent: res.inconsistent,
+                dropped: 0,
+                unresolved: Vec::new(),
+            }),
+        };
+    }
     let (program, prefix) = cfg.elc_cmd();
     let res = engine_run::run_engine(
         &program,
@@ -409,10 +432,18 @@ fn run_atomic_mechanism(
     cfg: &Config,
     clauses_path: &Path,
     named: &HashSet<String>,
+    selected_route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
-        Mechanism::Elc => run_atomic_elc(cfg, clauses_path).map(Some),
+        Mechanism::Elc => run_atomic_elc(
+            cfg,
+            clauses_path,
+            use_atomic_inproc_elc(selected_route, profile)
+                && std::env::var_os("KM_NO_INPROC_ELC").is_none(),
+        )
+        .map(Some),
         Mechanism::Cb => run_atomic_cb(cfg, clauses_path).map(Some),
         Mechanism::Ht => race::run_ht_only(cfg, clauses_path, named).map(Some),
         Mechanism::Tableau => race::run_tableau_only(cfg, clauses_path, named).map(Some),
@@ -426,6 +457,17 @@ fn run_atomic_mechanism(
 /// fast path. Trivial ORE onts are a few hundred KB; the bound stays well
 /// below the giants (whose elc peak must remain in an isolated subprocess).
 const INPROC_ELC_MAX: u64 = 4 << 20;
+
+#[inline]
+fn use_atomic_inproc_elc(
+    selected_route: crate::routing::Route,
+    profile: &crate::frontend::profile::OntologyProfile,
+) -> bool {
+    selected_route == crate::routing::Route::Elc
+        && profile.source.logical_axioms > 0
+        && profile.source.distinct_classes.saturating_mul(10)
+            < profile.source.logical_axioms.saturating_mul(9)
+}
 
 #[inline]
 fn use_elc_portfolio(elc: bool, elc_portfolio: bool, is_giant: bool, tab_race: bool) -> bool {
@@ -864,7 +906,13 @@ fn classify_with_evidence_mode(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let atomic_out = match run_atomic_mechanism(cfg, clauses_path.path(), &named_set) {
+    let atomic_out = match run_atomic_mechanism(
+        cfg,
+        clauses_path.path(),
+        &named_set,
+        selected_route,
+        &meta.profile,
+    ) {
         Ok(out) => out,
         Err(_error) if selected_route == crate::routing::Route::CertifiedElProduction => {
             // The source gate is only a scheduling hint. A certificate refusal,
@@ -1337,7 +1385,7 @@ impl Classification {
 mod tests {
     use super::{
         composite_layout, flatten_grouped_subsumptions, inproc_engine_out, is_bottom,
-        use_elc_portfolio,
+        use_atomic_inproc_elc, use_elc_portfolio,
     };
     use crate::reasoner::Reasoner;
 
@@ -1472,6 +1520,19 @@ mod tests {
         assert!(!use_elc_portfolio(true, true, false, true));
         assert!(!use_elc_portfolio(true, true, true, false));
         assert!(!use_elc_portfolio(false, true, false, false));
+    }
+
+    #[test]
+    fn atomic_inproc_elc_excludes_flat_taxonomies_and_non_el_leaves() {
+        use crate::frontend::profile::OntologyProfile;
+        use crate::routing::Route;
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 100;
+        profile.source.distinct_classes = 50;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        assert!(!use_atomic_inproc_elc(Route::ProductionAll, &profile));
+        profile.source.distinct_classes = 90;
+        assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
     }
 
     #[test]

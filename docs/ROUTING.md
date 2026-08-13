@@ -208,6 +208,12 @@ cardinality, `production_all` uses eight workers instead of 16. The route,
 frontend, inference procedures, fallback, and answer contract are unchanged.
 The complete 592-profile audit currently selects only ORE14817.
 
+An exact `elc` leaf runs completion in-process when its source profile is
+structured rather than a flat one-class-per-axiom taxonomy. This removes the
+worker taxonomy serialization and parse round trip. Flat taxonomies retain
+process isolation so completion allocations are released before public-output
+mapping. The selected route and completion algorithm are unchanged.
+
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:
 

@@ -1,0 +1,27 @@
+{
+  "baseline": {
+    "mean_peak_mb": 499.38428087986466,
+    "mean_wall_s": 4.575821489001692,
+    "median_peak_mb": 41.64,
+    "median_wall_s": 0.2469
+  },
+  "behavior_regressions": 0,
+  "candidate": {
+    "mean_peak_mb": 451.2218950930626,
+    "mean_wall_s": 4.469920642978003,
+    "median_peak_mb": 38.98,
+    "median_wall_s": 0.2272
+  },
+  "change": {
+    "mean_peak_mb": -48.162385786802076,
+    "mean_wall_s": -0.10590084602368854,
+    "median_peak_mb": -2.6600000000000037,
+    "median_wall_s": -0.019699999999999995
+  },
+  "change_pct": {
+    "mean_peak_mb": -9.644353583165422,
+    "mean_wall_s": -2.3143570237219357,
+    "median_peak_mb": -6.388088376561008,
+    "median_wall_s": -7.978938841636285
+  }
+}
