@@ -719,6 +719,11 @@ fn classify_with_evidence_mode(
         // manual mode so the absorption portfolio can explicitly request its
         // plain/absorbed pass without the tree overriding it.
         selected_route.apply_environment();
+        if selected_route == crate::routing::Route::CertifiedNominals
+            && crate::routing::sequential_typed_bridge_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+        }
         if let Some(bits) = composite_layout(&meta.profile) {
             std::env::set_var("KM_COMP_IND_BITS", bits.to_string());
         }

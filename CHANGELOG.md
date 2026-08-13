@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+### Schedule the large typed-ABox bridge before its exact fallback
+
+For source-certified typed object ABoxes with at least 30,000 logical axioms
+and 100,000 concept expressions, the `certified_nominals` portfolio now runs
+its complete-answer-or-defer bridge before allocating the exact CB fallback.
+Bridge refusal, failure, or explicit defer starts the unchanged fallback. The
+592-profile audit selects only ORE10621, so smaller typed ABoxes retain their
+concurrent low-latency race.
+
+Same-node job `50438534` ran three alternating v0.2.11/candidate pairs. All six
+runs have the same gold-matching full-IRI signature. Mean wall falls from
+87.1031 to 86.6274 seconds and mean process-tree peak memory falls from
+9,368.57 to 1,256.15 MiB.
+
+The resumable strict sweep (`50438700`, `50439574`, and `50439604`) contains
+exactly 592 results, profiles, and checkpoints with no temporary outputs. It
+reports 591 successful classifications, ORE1194 as the sole fail-closed error,
+and zero behavioral regression relative to v0.2.11. Mean peak RSS falls from
+517.05 to 503.74 MiB and median wall falls from 0.2475 to 0.2461 seconds. The
+independently scheduled mean wall moves from 4.5079 to 4.5441 seconds and
+median RSS from 42.27 to 42.78 MiB; these noise-sensitive movements are
+reported without adjustment. Evidence is in
+[`results/benchmarks/2026-08-13-10621-sequential-bridge/`](results/benchmarks/2026-08-13-10621-sequential-bridge/README.md).
+
 ## [0.2.11] – 2026-08-13
 
 ### Project large independent atomic ABoxes before native HT conversion

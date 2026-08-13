@@ -476,6 +476,17 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
         && !profile.expressivity.universal_role
 }
 
+/// Large typed-ABox bridge jobs for which concurrent exact CB materialization
+/// dominates process-tree memory.  The bridge remains complete-answer-or-defer;
+/// this source predicate changes only whether the unchanged CB fallback starts
+/// concurrently or after a bridge defer.  Keep the scale gate high so small
+/// certified-nominal jobs retain their low-latency race.
+pub(crate) fn sequential_typed_bridge_candidate(profile: &OntologyProfile) -> bool {
+    typed_object_abox_bridge_candidate(profile)
+        && profile.source.logical_axioms >= 30_000
+        && profile.source.concept_expressions >= 100_000
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -1626,6 +1637,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_HT_CARD_FN",
     "KM_NOMINALS",
     "KM_HT_CARD_PROXY_ABOX",
+    "KM_HT_BRIDGE_SEQUENTIAL",
     "KM_HT_COMPONENT_ABOX",
     "KM_SEQ_ORDER",
     "KM_NO_SEQ_ORDER",
@@ -2216,6 +2228,10 @@ mod tests {
         );
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
         assert!(typed_object_abox_bridge_candidate(&profile));
+        assert!(
+            !sequential_typed_bridge_candidate(&profile),
+            "small typed ABoxes keep the concurrent low-latency portfolio"
+        );
         assert_eq!(select(&profile), Route::CertifiedNominals);
 
         let datatype_tbox = source_profile(
@@ -2250,6 +2266,28 @@ mod tests {
             );
             assert_eq!(select(&candidate), Route::Nominals);
         }
+    }
+
+    #[test]
+    fn large_typed_abox_defers_cb_allocation_until_bridge_defer() {
+        let mut profile = OntologyProfile::default();
+        profile.source.abox_axioms = 2;
+        profile.source.class_assertions = 1;
+        profile.source.logical_axioms = 120_000;
+        profile.source.concept_expressions = 300_000;
+        profile
+            .source
+            .axiom_types
+            .insert("ClassAssertion".into(), 1);
+        profile
+            .source
+            .axiom_types
+            .insert("DifferentIndividuals".into(), 1);
+        assert!(typed_object_abox_bridge_candidate(&profile));
+        assert!(sequential_typed_bridge_candidate(&profile));
+
+        profile.source.concept_expressions = 99_999;
+        assert!(!sequential_typed_bridge_candidate(&profile));
     }
 
     #[test]

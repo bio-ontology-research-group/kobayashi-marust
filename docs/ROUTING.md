@@ -187,6 +187,15 @@ generated/internal symbols. Its SHOIQ worker may return a complete taxonomy or
 defer; defer runs the exact CB fallback. This route closed 6934 in the audited
 v16 sweep without changing the accepted results of the other 591 inputs.
 
+For a large source-certified typed object ABox, the `certified_nominals`
+portfolio may schedule that same complete-answer-or-defer bridge before it
+allocates the nominal-aware CB fallback. The scale gate requires at least
+30,000 logical axioms and 100,000 concept expressions. If the bridge rejects
+the normalized input, errors, or explicitly defers, KM starts the unchanged
+exact CB procedure. Smaller inputs keep the concurrent race. This ordering
+reduces process-tree memory when the bridge succeeds; it does not change either
+procedure or the accepted answer contract.
+
 The consolidated production portfolio also restores two guarded mechanisms
 that the frozen matrix measured separately:
 
