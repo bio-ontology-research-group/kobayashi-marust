@@ -3486,46 +3486,6 @@ fn independent_component_abox_profile(
         .all(|assertion| !coupled(assertion))
 }
 
-/// Return the asserted named classes when every independent ABox component is
-/// one role-free individual carrying exactly one positive atomic assertion.
-/// Such an ABox is consistent exactly when each asserted class is satisfiable:
-/// choose one TBox model per assertion and take their disjoint union.  This
-/// avoids constructing a completion graph containing hundreds of thousands of
-/// otherwise unrelated nominal roots while retaining an exact consistency
-/// check against the completed TBox taxonomy.
-fn singleton_atomic_abox_classes(
-    tin: &TInput,
-    independent_abox: bool,
-) -> Option<HashSet<usize>> {
-    if !independent_abox
-        || !tin.nominal_abox.same.is_empty()
-        || !tin.nominal_abox.different.is_empty()
-        || !tin.nominal_abox.role_assertions.is_empty()
-        || !tin.nominal_abox.negative_role_assertions.is_empty()
-    {
-        return None;
-    }
-    let concept_index: HashMap<&str, usize> = tin
-        .concepts
-        .iter()
-        .enumerate()
-        .map(|(index, name)| (name.as_str(), index))
-        .collect();
-    let queries: HashSet<usize> = tin.queries.iter().map(|&query| query as usize).collect();
-    let mut asserted = HashSet::new();
-    for individual in &tin.nominal_abox.individuals {
-        let [SourceConcept::Name(name)] = individual.assertions.as_slice() else {
-            return None;
-        };
-        let &concept = concept_index.get(name.as_str())?;
-        if !queries.contains(&concept) {
-            return None;
-        }
-        asserted.insert(concept);
-    }
-    (!asserted.is_empty()).then_some(asserted)
-}
-
 /// Connected components of the exact numeric positive-ABox graph, expressed
 /// as native completion tags. Isolated asserted individuals are singleton
 /// components. Invalid indices fail closed.
@@ -11823,7 +11783,6 @@ fn bridged_classify_opts_with_trigger_absorption(
         native_nominals,
         std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
     );
-    let singleton_atomic_abox = singleton_atomic_abox_classes(tin, independent_abox_elided);
     // A universal role used in a class expression couples every disjoint-union
     // component and remains unsupported. A top-role name occurring only as the
     // target of the tautology R <= top is semantically inert for the certified
@@ -11954,11 +11913,7 @@ fn bridged_classify_opts_with_trigger_absorption(
     let mut retained_consistency_branch_node = super::process::BranchNodeId::NONE;
     let mut retained_consistency_databox: Option<super::process::databox::ProcessingDataBox> = None;
     if bridged.has_native_nominals() {
-        if singleton_atomic_abox.is_some() {
-            // Consistency is decided from the completed named-class taxonomy
-            // below. Taxonomy classification itself is TBox-only under the
-            // independent-component certificate.
-        } else if independent_abox_elided {
+        if independent_abox_elided {
             // Role-free duplicate assertion signatures need one root each.
             // Otherwise decide every complete connected ABox component in a
             // fresh task. The disjoint-union certificate above is what permits
@@ -13117,17 +13072,6 @@ fn bridged_classify_opts_with_trigger_absorption(
     }
     out.unsatisfiable.sort_unstable();
     out.unsatisfiable.dedup();
-    if singleton_atomic_abox.as_ref().is_some_and(|asserted| {
-        out.unsatisfiable
-            .iter()
-            .any(|concept| asserted.contains(concept))
-    }) {
-        return Some(BridgedClassification {
-            consistent: false,
-            unsatisfiable: Vec::new(),
-            subsumptions: Vec::new(),
-        });
-    }
     if !out.unsatisfiable.is_empty() {
         let unsatisfiable: std::collections::HashSet<usize> =
             out.unsatisfiable.iter().copied().collect();
@@ -13458,39 +13402,6 @@ mod tests {
                 .push(assertion);
             assert!(!independent_component_abox_profile(&coupled, true, true));
         }
-    }
-
-    #[test]
-    fn singleton_atomic_abox_certificate_requires_one_public_name_per_root() {
-        use crate::frontend::syntax::Concept as C;
-
-        let mut tin = cached_native_role_input();
-        tin.nominal_abox.role_assertions.clear();
-        let a = tin
-            .concepts
-            .iter()
-            .position(|name| name == "A")
-            .expect("public A concept");
-        if !tin.queries.contains(&a) {
-            tin.queries.push(a);
-        }
-        for individual in &mut tin.nominal_abox.individuals {
-            individual.assertions = vec![C::Name("A".into())];
-        }
-        assert_eq!(
-            singleton_atomic_abox_classes(&tin, true),
-            Some(HashSet::from([a]))
-        );
-
-        let mut complex = tin.clone();
-        complex.nominal_abox.individuals[0].assertions =
-            vec![C::And([C::Name("A".into()), C::Top].into())];
-        assert!(singleton_atomic_abox_classes(&complex, true).is_none());
-
-        let mut same = tin.clone();
-        same.nominal_abox.same.push(("a".into(), "b".into()));
-        assert!(singleton_atomic_abox_classes(&same, true).is_none());
-        assert!(singleton_atomic_abox_classes(&tin, false).is_none());
     }
 
     #[test]
