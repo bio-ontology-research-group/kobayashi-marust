@@ -4,7 +4,7 @@
 //! `domain_range_clauses`, `detect_role_chains`, `transitivity_clauses`,
 //! `chain_clauses`, `_is_chain_axiom`, and `augment`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::clauses::{clause, var_x, var_y, Atom, DLClause, Term};
 use super::normalise::GroundHooks;
@@ -571,50 +571,92 @@ pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
     fn is_synthetic(name: &str) -> bool {
         name.starts_with("Q_") || name.starts_with("__")
     }
-    let mut needed_concepts: HashSet<&str> = HashSet::new();
-    let mut needed_roles: HashSet<String> = HashSet::new();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for c in tbox {
-            let active = c.head.is_empty()
-                || c.head.iter().any(|a| match a {
-                    // A named concept is a query goal only on a non-Skolem term:
-                    // a named concept on a function term f(x) is an existential
-                    // FILLER (`A ⊑ ∃R.C` emits `A(x) -> C(f(x))`), not a
-                    // subsumption goal. It reaches a central named subsumption
-                    // only through a subclass-side existential `∃R.C ⊑ D`, whose
-                    // recognizer head is a definer on the central term and is
-                    // captured separately. (Already-needed concepts re-activate
-                    // regardless of term.)
-                    Atom::Concept(n, t) => {
-                        (!is_synthetic(n) && !matches!(t, Term::Fun(..)))
-                            || needed_concepts.contains(n.as_str())
+    // Building reverse indexes has a fixed allocation cost and only pays off
+    // on large normalized clause sets. Keep the established scan on ordinary
+    // ontologies, which also leaves the corpus-median memory path untouched.
+    if tbox.len() < 10_000 {
+        let mut needed_concepts: HashSet<&str> = HashSet::new();
+        let mut needed_roles: HashSet<String> = HashSet::new();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for c in tbox {
+                let active = c.head.is_empty()
+                    || c.head.iter().any(|a| match a {
+                        Atom::Concept(n, t) => {
+                            (!is_synthetic(n) && !matches!(t, Term::Fun(..)))
+                                || needed_concepts.contains(n.as_str())
+                        }
+                        Atom::Eq(..) => true,
+                        Atom::Role(r, _, _) => needed_roles.contains(r),
+                    });
+                if !active {
+                    continue;
+                }
+                for a in &c.body {
+                    match a {
+                        Atom::Concept(n, _) => changed |= needed_concepts.insert(n),
+                        Atom::Role(r, _, _) => changed |= needed_roles.insert(r.clone()),
+                        Atom::Eq(..) => {}
                     }
-                    Atom::Eq(..) => true,
-                    Atom::Role(r, _, _) => needed_roles.contains(r),
-                });
-            if !active {
-                continue;
+                }
             }
-            for a in &c.body {
-                match a {
-                    Atom::Concept(n, _) => {
-                        if needed_concepts.insert(n.as_str()) {
-                            changed = true;
-                        }
-                    }
-                    Atom::Role(r, _, _) => {
-                        if needed_roles.insert(r.clone()) {
-                            changed = true;
-                        }
-                    }
-                    Atom::Eq(..) => {}
+        }
+        return needed_roles;
+    }
+    // This is backward graph reachability. The former implementation rescanned
+    // every clause after each growing wave of needed symbols. Index the heads
+    // of clauses that are not goals initially, then activate each clause once
+    // when one of its head symbols becomes needed.
+    let mut concept_heads: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut role_heads: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut pending = VecDeque::new();
+    for (index, c) in tbox.iter().enumerate() {
+        let initial = c.head.is_empty()
+            || c.head.iter().any(|a| match a {
+                // A named concept is a query goal only on a non-Skolem term:
+                // a named concept on a function term f(x) is an existential
+                // filler rather than a central subsumption goal.
+                Atom::Concept(n, t) => !is_synthetic(n) && !matches!(t, Term::Fun(..)),
+                Atom::Eq(..) => true,
+                Atom::Role(..) => false,
+            });
+        if initial {
+            pending.push_back(index);
+        } else {
+            for atom in &c.head {
+                match atom {
+                    Atom::Concept(name, _) => concept_heads.entry(name).or_default().push(index),
+                    Atom::Role(role, _, _) => role_heads.entry(role).or_default().push(index),
+                    Atom::Eq(..) => unreachable!("equality heads are initial goals"),
                 }
             }
         }
     }
-    needed_roles
+
+    let mut activated = vec![false; tbox.len()];
+    let mut needed_concepts: HashSet<&str> = HashSet::new();
+    let mut needed_roles: HashSet<&str> = HashSet::new();
+    while let Some(index) = pending.pop_front() {
+        if std::mem::replace(&mut activated[index], true) {
+            continue;
+        }
+        for atom in &tbox[index].body {
+            let dependents = match atom {
+                Atom::Concept(name, _) if needed_concepts.insert(name) => {
+                    concept_heads.get(name.as_str())
+                }
+                Atom::Role(role, _, _) if needed_roles.insert(role) => {
+                    role_heads.get(role.as_str())
+                }
+                _ => None,
+            };
+            if let Some(dependents) = dependents {
+                pending.extend(dependents.iter().copied());
+            }
+        }
+    }
+    needed_roles.into_iter().map(str::to_owned).collect()
 }
 
 /// Drop the reverse-edge clauses for *inert* symmetric and inverse roles — the
@@ -1458,6 +1500,28 @@ mod tests {
             [Atom::Concept("D".to_string(), var_x())],
         );
         assert!(concept_relevant_roles(&[recognizer, q_named]).contains("R"));
+    }
+
+    #[test]
+    fn indexed_relevance_matches_the_large_clause_shape() {
+        let recognizer = clause(
+            [
+                role("R", var_x(), var_y()),
+                Atom::Concept("C".to_string(), var_y()),
+            ],
+            [Atom::Concept("Q_0".to_string(), var_x())],
+        );
+        let q_named = clause(
+            [Atom::Concept("Q_0".to_string(), var_x())],
+            [Atom::Concept("D".to_string(), var_x())],
+        );
+        let inert = clause(
+            [Atom::Concept("I".to_string(), var_x())],
+            [Atom::Concept("Q_inert".to_string(), var_x())],
+        );
+        let mut tbox = vec![inert; 10_000];
+        tbox.extend([recognizer, q_named]);
+        assert_eq!(concept_relevant_roles(&tbox), relevant_set(&["R"]));
     }
 
     #[test]
