@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.2.18] – 2026-08-14
+
+### Index large role-relevance slices
+
+Large normalized clause sets now compute the role-relevance backward slice with
+borrowed reverse head indexes and a work queue, activating each reachable clause
+once instead of rescanning the complete clause set for every fixpoint wave.
+Inputs below 10,000 clauses retain the established scan, avoiding index costs on
+the corpus-median path. Focused panel `50453255` produced byte-identical clauses
+and metadata on five large inputs and reduced the indexed phase by 5.9%.
+
+Strict sweep `50456241` contains 592 terminal rows, 591 successful
+classifications, ORE1194 as the sole fail-closed error, and zero behavioral
+differences from v0.2.17. Mean wall falls from 4.2520 to 4.1484 seconds, median
+wall from 0.2208 to 0.2192 seconds, mean peak RSS from 450.74 to 450.25 MiB, and
+median peak RSS from 39.24 to 39.04 MiB. Evidence is in
+[`results/benchmarks/2026-08-14-relevance-queue/`](results/benchmarks/2026-08-14-relevance-queue/README.md).
+
 ## [0.2.17] – 2026-08-13
 
 ### Borrow frontend-only output indexes
