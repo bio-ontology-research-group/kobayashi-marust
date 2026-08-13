@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.2.10] – 2026-08-13
+
+### Certify a large near-EL terminology with a tiny identity ABox
+
+The automatic router now recognizes very large near-EL terminologies carrying
+at most 100 ABox axioms when the ABox consists only of positive class
+assertions and explicit `DifferentIndividuals` statements. The source gate
+excludes role assertions, complements, universals, cardinalities, datatypes,
+functionality, imports, and rules. The normalized canonical-model certificate
+remains authoritative; refusal, error, or resource failure reruns the complete
+`production_all` route.
+
+The complete 592-profile audit admits exactly ORE15803 beyond the existing
+certified routes. Same-node job `50430173` reduces it from 33.2433 seconds and
+2,589.44 MiB to 24.3237 seconds and 1,316.07 MiB, with the same gold-matching
+signature. Automatic verification job `50430743` independently selects
+`certified_el_production` and matches gold.
+
+Clean sweep `50430792` contains exactly 592 result, profile, and checkpoint
+rows with no temporary files. The strict v0.2.9 comparison reports exactly one
+route change, 591 successful classifications, the unchanged fail-closed
+ORE1194 error, and zero semantic or coverage regressions. Mean peak RSS falls
+from 531.38 to 528.14 MiB. The independently scheduled wall mean and medians
+move slightly upward to 4.5884 seconds, 0.2498 seconds, and 41.98 MiB despite
+the controlled-route improvement; they are reported without adjustment.
+Evidence is in
+[`results/benchmarks/2026-08-13-small-identity-el-cert/`](results/benchmarks/2026-08-13-small-identity-el-cert/README.md).
+
 ## [0.2.9] – 2026-08-13
 
 ### Certify three large extended-EL terminologies before production fallback
