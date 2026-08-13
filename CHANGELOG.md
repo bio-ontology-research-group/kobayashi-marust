@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## [0.2.13] – 2026-08-13
+
 ### Schedule the large disjunctive SHI bridge before production fallback
 
 For very large source-certified disjunctive SHI terminologies, the automatic
