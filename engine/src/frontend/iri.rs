@@ -156,6 +156,15 @@ impl IriRegistry {
     pub fn owned_names(&self) -> Vec<String> {
         self.short_owner.keys().cloned().collect()
     }
+
+    /// Borrowed internal-name/full-IRI pairs. Output construction already has
+    /// to own its final map and name list; borrowing here avoids an additional
+    /// temporary key vector and one hash lookup per registered IRI.
+    pub fn owned_entries(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.short_owner
+            .iter()
+            .map(|(internal, iri)| (internal.as_str(), iri.as_str()))
+    }
 }
 
 fn reserved_internal_prefix(name: &str) -> bool {

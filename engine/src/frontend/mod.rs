@@ -23,7 +23,7 @@ pub mod sexpr;
 pub mod syntax;
 pub mod top_role;
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use clauses::{clause, clause_to_json, Atom, DLClause, Term};
 use iri::IriRegistry;
@@ -387,15 +387,16 @@ fn collect_nominal_abox(
     }
 }
 
-/// Concept names appearing (body or head) in a list of JSON clauses. Port of
-/// `frontend._concept_names_in`.
-fn concept_names_in(clauses: &[crate::json_io::JClause]) -> BTreeSet<String> {
+/// Borrowed concept names appearing in a list of JSON clauses. Declaration
+/// seeding needs membership only; owning a second copy of every name made this
+/// temporary set both allocation-heavy and needlessly ordered.
+fn concept_names_in(clauses: &[crate::json_io::JClause]) -> HashSet<&str> {
     use crate::json_io::JAtom;
-    let mut names = BTreeSet::new();
+    let mut names = HashSet::new();
     for c in clauses {
         for atom in c.body.iter().chain(c.head.iter()) {
             if let JAtom::Concept { concept, .. } = atom {
-                names.insert(concept.clone());
+                names.insert(concept.as_str());
             }
         }
     }
@@ -837,13 +838,21 @@ fn ofn_to_clauses_requested(
     // Seed every declared class absent from the clause set with a tautological
     // self-clause A(x) → A(x) (port of the declared-classes loop).
     let mut present = concept_names_in(&jclauses);
-    for name in &declared {
-        if !present.contains(name) {
-            present.insert(name.clone());
-            let atom = Atom::Concept(name.clone(), Term::Var("x".to_string()));
-            let self_cl: DLClause = clause([atom.clone()], [atom]);
-            jclauses.push(clause_to_json(&self_cl));
+    let mut missing = Vec::new();
+    for (index, name) in declared.iter().enumerate() {
+        if present.insert(name.as_str()) {
+            missing.push(index);
         }
+    }
+    // `present` borrows the clause vector. Release it before appending the
+    // missing declaration tautologies, in the same source declaration order as
+    // before. `missing` stores indices rather than cloned names.
+    drop(present);
+    for index in missing {
+        let name = &declared[index];
+        let atom = Atom::Concept(name.clone(), Term::Var("x".to_string()));
+        let self_cl: DLClause = clause([atom.clone()], [atom]);
+        jclauses.push(clause_to_json(&self_cl));
     }
 
     // iri_map / named: every internal name registered to a real IRI, EXCEPT
@@ -859,13 +868,12 @@ fn ofn_to_clauses_requested(
     let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
     let mut iri_map = std::collections::BTreeMap::new();
     let mut named = Vec::new();
-    for internal in reg.owned_names() {
-        let iri = reg.full_iri(&internal);
+    for (internal, iri) in reg.owned_entries() {
         if drop_blank && iri.starts_with("_:") {
             continue;
         }
-        iri_map.insert(internal.clone(), iri);
-        named.push(internal);
+        iri_map.insert(internal.to_string(), iri.to_string());
+        named.push(internal.to_string());
     }
     named.sort();
     t.lap("declared_seed+iri_map");
@@ -918,7 +926,8 @@ pub(crate) fn with_ofn_to_clauses_requested_route<T>(
 
 #[cfg(test)]
 mod bottom_prepass_route_tests {
-    use super::route_needs_bottom_prepass;
+    use super::{ofn_to_clauses, route_needs_bottom_prepass};
+    use crate::json_io::JAtom;
     use crate::routing::Route;
 
     #[test]
@@ -927,6 +936,29 @@ mod bottom_prepass_route_tests {
         assert!(!route_needs_bottom_prepass(Route::ElcCert));
         assert!(route_needs_bottom_prepass(Route::ProductionAll));
         assert!(route_needs_bottom_prepass(Route::CbPlain16));
+    }
+
+    #[test]
+    fn absent_declarations_are_seeded_once_in_source_order() {
+        let result = ofn_to_clauses(
+            "Ontology(Declaration(Class(<Z>)) Declaration(Class(<A>)) \
+             Declaration(Class(<Z>)))",
+        )
+        .expect("declaration-only ontology is accepted");
+
+        // The metadata intentionally preserves declaration occurrences; only
+        // the synthetic clause seeding deduplicates them.
+        assert_eq!(result.declared, vec!["Z", "A", "Z"]);
+        let seeded: Vec<&str> = result
+            .clauses
+            .iter()
+            .filter_map(|clause| match (&clause.body[..], &clause.head[..]) {
+                ([JAtom::Concept { concept: body, .. }],
+                 [JAtom::Concept { concept: head, .. }]) if body == head => Some(body.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(seeded, vec!["Z", "A"]);
     }
 }
 

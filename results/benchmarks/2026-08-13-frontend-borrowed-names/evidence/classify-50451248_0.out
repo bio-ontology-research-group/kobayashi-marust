@@ -1,0 +1,11 @@
+f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/13482-baseline.classify.txt
+	User time (seconds): 36.80
+	System time (seconds): 3.11
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:40.07
+	Maximum resident set size (kbytes): 3726124
+f53dc74457c489196911b752d7fdf38ee88703a7aafdd89f7697febae203d2e4  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/13482-candidate.classify.txt
+	User time (seconds): 35.86
+	System time (seconds): 3.11
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:39.11
+	Maximum resident set size (kbytes): 3722692
+CLASSIFY_IDENTICAL ontology=13482

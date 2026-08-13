@@ -1,0 +1,27 @@
+[ofn-timing] parse+axioms              2.157s  rss=729MB hwm=729MB
+[ofn-timing] normalise                 4.773s  rss=2476MB hwm=2489MB
+[ofn-timing] augment                   2.576s  rss=2845MB hwm=2980MB
+[ofn-timing] relevance+prune           2.721s  rss=2880MB hwm=2980MB
+[ofn-timing] rbox+domain+declared      0.145s  rss=2880MB hwm=2980MB
+[ofn-timing] clause_to_json            0.750s  rss=2880MB hwm=2980MB
+[ofn-timing] declared_seed+iri_map     2.158s  rss=2880MB hwm=2980MB
+8a5d77a2298d151007f5080b9852167a548b2e56d72f74b01bc99e864f9aaae5  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/15280-baseline.clauses.json
+d859462831401c4ed7852556ffb9dcbb9777369b81283784b879905113456646  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/15280-baseline.meta.json
+	User time (seconds): 19.04
+	System time (seconds): 1.52
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:20.64
+	Maximum resident set size (kbytes): 3051676
+[ofn-timing] parse+axioms              2.155s  rss=729MB hwm=729MB
+[ofn-timing] normalise                 4.747s  rss=2475MB hwm=2488MB
+[ofn-timing] augment                   2.537s  rss=2845MB hwm=2979MB
+[ofn-timing] relevance+prune           2.705s  rss=2880MB hwm=2979MB
+[ofn-timing] rbox+domain+declared      0.145s  rss=2880MB hwm=2979MB
+[ofn-timing] clause_to_json            0.751s  rss=2880MB hwm=2979MB
+[ofn-timing] declared_seed+iri_map     1.539s  rss=2881MB hwm=2979MB
+8a5d77a2298d151007f5080b9852167a548b2e56d72f74b01bc99e864f9aaae5  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/15280-candidate.clauses.json
+d859462831401c4ed7852556ffb9dcbb9777369b81283784b879905113456646  /ibex/scratch/hohndor/km/frontend-borrowed-names-20260813/15280-candidate.meta.json
+	User time (seconds): 18.20
+	System time (seconds): 1.53
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:19.81
+	Maximum resident set size (kbytes): 3051404
+BYTE_IDENTICAL ontology=15280
