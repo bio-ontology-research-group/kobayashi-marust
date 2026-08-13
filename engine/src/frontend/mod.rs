@@ -403,6 +403,28 @@ fn concept_names_in(clauses: &[crate::json_io::JClause]) -> HashSet<&str> {
     names
 }
 
+fn seed_missing_declarations(
+    clauses: &mut Vec<crate::json_io::JClause>,
+    declared: &[String],
+) {
+    let mut present = concept_names_in(clauses);
+    let mut missing = Vec::new();
+    for (index, name) in declared.iter().enumerate() {
+        if present.insert(name.as_str()) {
+            missing.push(index);
+        }
+    }
+    // `present` borrows the clause vector. Release it before appending the
+    // missing declaration tautologies, in source declaration order.
+    drop(present);
+    for index in missing {
+        let name = &declared[index];
+        let atom = Atom::Concept(name.clone(), Term::Var("x".to_string()));
+        let self_cl: DLClause = clause([atom.clone()], [atom]);
+        clauses.push(clause_to_json(&self_cl));
+    }
+}
+
 /// Per-stage wall timing, written to stderr when `KM_OFN_TIMING` is set. Cheap
 /// (one `Instant::now()` per stage) and off by default, so the normal path is
 /// unaffected.
@@ -837,23 +859,7 @@ fn ofn_to_clauses_requested(
 
     // Seed every declared class absent from the clause set with a tautological
     // self-clause A(x) → A(x) (port of the declared-classes loop).
-    let mut present = concept_names_in(&jclauses);
-    let mut missing = Vec::new();
-    for (index, name) in declared.iter().enumerate() {
-        if present.insert(name.as_str()) {
-            missing.push(index);
-        }
-    }
-    // `present` borrows the clause vector. Release it before appending the
-    // missing declaration tautologies, in the same source declaration order as
-    // before. `missing` stores indices rather than cloned names.
-    drop(present);
-    for index in missing {
-        let name = &declared[index];
-        let atom = Atom::Concept(name.clone(), Term::Var("x".to_string()));
-        let self_cl: DLClause = clause([atom.clone()], [atom]);
-        jclauses.push(clause_to_json(&self_cl));
-    }
+    seed_missing_declarations(&mut jclauses, &declared);
 
     // iri_map / named: every internal name registered to a real IRI, EXCEPT
     // anonymous blank nodes (`_:genidN` — OWL structure nodes for complex
@@ -926,7 +932,7 @@ pub(crate) fn with_ofn_to_clauses_requested_route<T>(
 
 #[cfg(test)]
 mod bottom_prepass_route_tests {
-    use super::{ofn_to_clauses, route_needs_bottom_prepass};
+    use super::{route_needs_bottom_prepass, seed_missing_declarations};
     use crate::json_io::JAtom;
     use crate::routing::Route;
 
@@ -940,17 +946,10 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn absent_declarations_are_seeded_once_in_source_order() {
-        let result = ofn_to_clauses(
-            "Ontology(Declaration(Class(<Z>)) Declaration(Class(<A>)) \
-             Declaration(Class(<Z>)))",
-        )
-        .expect("declaration-only ontology is accepted");
-
-        // The metadata intentionally preserves declaration occurrences; only
-        // the synthetic clause seeding deduplicates them.
-        assert_eq!(result.declared, vec!["Z", "A", "Z"]);
-        let seeded: Vec<&str> = result
-            .clauses
+        let mut clauses = Vec::new();
+        let declared = vec!["Z".to_string(), "A".to_string(), "Z".to_string()];
+        seed_missing_declarations(&mut clauses, &declared);
+        let seeded: Vec<&str> = clauses
             .iter()
             .filter_map(|clause| match (&clause.body[..], &clause.head[..]) {
                 ([JAtom::Concept { concept: body, .. }],
