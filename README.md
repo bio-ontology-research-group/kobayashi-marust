@@ -90,14 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Focused certified-EL panels, strict sweep `50494584`,
+over all 592 ontologies. Tested implementation commit `1dde744`, focused
+certified-EL panels, strict sweep `50494584`,
 and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
 fingerprint, and binary identity. The tested binary is `13b4d406aadd…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.23` (binary `13b4d406aadd…`) | **591** | **591** | **3.7835** | **0.1885** | **441.46** | **36.47** |
+| **KM automatic, `km classify`** | `v0.2.23` / `1dde744` (binary `13b4d406aadd…`) | **591** | **591** | **3.7835** | **0.1885** | **441.46** | **36.47** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
 Performance values come directly from the 591 successful rows of the strict

@@ -2,6 +2,7 @@
 
 This directory records the v0.2.23 automatic-route release evidence.
 
+- Implementation commit: `1dde744`
 - Candidate binary SHA-256:
   `13b4d406aaddb4b94d1d9f9740cfd5839df851193d049bd76f911a3f1ab84e30`
 - Strict IBEX sweep: Slurm job `50494584`
