@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.24`.
+are available from the repository tags; the current release is `v0.2.25`.
 
 ## Classify an ontology
 
@@ -90,15 +90,15 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `ef20e37`, focused
-certified-EL panels, strict sweep `50496853`,
+over all 592 ontologies. Tested implementation commit `02b75c5`, frontend
+byte-identity sweep `50498616`, and strict sweep `50499428`
 and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `b51af8f49e59…`.
+fingerprint, and binary identity. The tested binary is `7c090417f169…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.24` / `ef20e37` (binary `b51af8f49e59…`) | **591** | **591** | **3.7799** | **0.1887** | **441.54** | **36.17** |
+| **KM automatic, `km classify`** | `v0.2.25` / `02b75c5` (binary `7c090417f169…`) | **591** | **591** | **3.7227** | **0.1860** | **440.81** | **36.04** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
 Performance values come directly from the 591 successful rows of the strict
@@ -119,9 +119,14 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 441.54 MiB and median RSS is 36.17 MiB. Mean wall is 3.7799 seconds
-and median wall is 0.1887 seconds. All four KM metrics except mean wall remain
+mean RSS is 440.81 MiB and median RSS is 36.04 MiB. Mean wall is 3.7227 seconds
+and median wall is 0.1860 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
+
+Frontend IRI metadata now uses one sorted pass for both the named-class vector
+and ordered map. The independent frontend sweep found 592/592 clause streams
+and metadata files byte-identical to v0.2.24. Strict sweep `50499428` reports
+zero behavioral differences and improves all four corpus metrics.
 
 Dense edge-side NF4 frontiers are grouped by parent and evaluated in parallel
 when the source profile predicts enough propagation work. Sparse frontiers use

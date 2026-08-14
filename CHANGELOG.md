@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.2.25] – 2026-08-14
+
+### Build frontend IRI metadata in one sorted pass
+
+The frontend now sorts owned IRI metadata once, derives the named-class vector
+from that ordering, and bulk-constructs its ordered map. This removes a second
+independent ordering pass without changing the map, names, clauses, or routes.
+An independent IBEX sweep found byte-identical clause and metadata output for
+all 592 ontologies.
+
+Strict sweep `50499428` contains 592 validated terminal rows for binary
+`7c090417f169d5…`: 591 are successful and ORE1194 remains the sole fail-closed
+error. Comparison with v0.2.24 finds zero differences in status, verdict,
+consistency, selected route, or signature. Mean wall falls from 3.77991 to
+3.72268 seconds, median wall from 0.1887 to 0.1860 seconds, mean peak RSS from
+441.536 to 440.806 MiB, and median peak RSS from 36.17 to 36.04 MiB. The
+complete release suite passes 1,987 library tests with eight ignored tests and
+all integration tests, including the issue #3 pigeonhole regression. Evidence
+is in
+[`results/benchmarks/2026-08-14-iri-map-bulk/`](results/benchmarks/2026-08-14-iri-map-bulk/README.md).
+
 ## [0.2.24] – 2026-08-14
 
 ### Parallelize dense EL NF4 frontiers
