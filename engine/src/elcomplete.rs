@@ -1289,11 +1289,25 @@ enum Item {
     EdgeAfterNf4(u32, u32, u32),
 }
 
+/// NF1 and NF2 rules triggered by the same newly derived subsumer. Keeping the
+/// two immutable slices in one bucket lets the serial Sub hot path pay for one
+/// integer-keyed lookup while preserving its NF1-before-NF2 firing order.
+struct SubRules {
+    nf1_sups: Box<[u32]>,
+    nf2_cand: Box<[(u32, u32)]>,
+}
+
+#[derive(Default)]
+struct SubRulesBuilder {
+    nf1_sups: Vec<u32>,
+    nf2_cand: Vec<(u32, u32)>,
+}
+
 /// Read-only indexes over the normal forms; built once, never mutated during the
 /// loop, so the hot path can iterate their slices directly (no per-item clone).
 struct Idx {
-    nf1_by_sub: HashMap<u32, Vec<u32>>,        // sub -> [sup]
-    nf2_by_sub: HashMap<u32, Vec<(u32, u32)>>, // key -> [(other, sup)]
+    // Newly derived subsumer -> its NF1 conclusions and NF2 candidates.
+    sub_rules: HashMap<u32, SubRules>,
     nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
     // NF4 (∃R.D⊑E) indexed by FILLER only: `filler D -> [(role R, sup E)]`. Both
     // the propagation-registration (Sub rule) and the join (Edge rule, via the
@@ -1487,16 +1501,42 @@ impl State {
 /// Build the read-only rule indexes (including the role-hierarchy closure).
 fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     // ----- build indexes -----
-    let mut nf1_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
+    let mut sub_rule_builders: HashMap<u32, SubRulesBuilder> = HashMap::default();
     for a in &nfs.nf1 {
-        nf1_by_sub.entry(a.sub).or_default().push(a.sup);
+        sub_rule_builders
+            .entry(a.sub)
+            .or_default()
+            .nf1_sups
+            .push(a.sup);
     }
-    let mut nf2_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf2 {
         // indexed by both sides; store the *other* side + the conclusion
-        nf2_by_sub.entry(a.sub1).or_default().push((a.sub2, a.sup));
-        nf2_by_sub.entry(a.sub2).or_default().push((a.sub1, a.sup));
+        sub_rule_builders
+            .entry(a.sub1)
+            .or_default()
+            .nf2_cand
+            .push((a.sub2, a.sup));
+        sub_rule_builders
+            .entry(a.sub2)
+            .or_default()
+            .nf2_cand
+            .push((a.sub1, a.sup));
     }
+    // The index is immutable after construction. Boxed slices keep each merged
+    // map value to two pointers (rather than two three-word Vec headers), while
+    // reusing the builders' backing allocations.
+    let sub_rules: HashMap<u32, SubRules> = sub_rule_builders
+        .into_iter()
+        .map(|(sub, rules)| {
+            (
+                sub,
+                SubRules {
+                    nf1_sups: rules.nf1_sups.into_boxed_slice(),
+                    nf2_cand: rules.nf2_cand.into_boxed_slice(),
+                },
+            )
+        })
+        .collect();
     let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf3 {
         nf3_by_sub
@@ -1565,8 +1605,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     }
 
     Idx {
-        nf1_by_sub,
-        nf2_by_sub,
+        sub_rules,
         nf3_by_sub,
         nf4_by_filler,
         nf5_subs,
@@ -1750,17 +1789,18 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
         match item {
             Item::Sub(c, d) => {
                 prof.sub_items += 1;
-                // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
-                if let Some(sups) = idx.nf1_by_sub.get(&d) {
-                    prof.nf1_scan += sups.len() as u64;
-                    for &sup in sups {
+                // One lookup serves both concept-only rules. The two loops keep
+                // their original order, so NF1 conclusions are visible to NF2
+                // immediately just as they were with the separate indexes.
+                if let Some(rules) = idx.sub_rules.get(&d) {
+                    // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
+                    prof.nf1_scan += rules.nf1_sups.len() as u64;
+                    for &sup in rules.nf1_sups.iter() {
                         st.add_sub(c, sup);
                     }
-                }
-                // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
-                if let Some(cand) = idx.nf2_by_sub.get(&d) {
-                    prof.nf2_scan += cand.len() as u64;
-                    for &(other, sup) in cand {
+                    // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
+                    prof.nf2_scan += rules.nf2_cand.len() as u64;
+                    for &(other, sup) in rules.nf2_cand.iter() {
                         if st.sub_super[c as usize].contains(&other) {
                             st.add_sub(c, sup);
                         }
@@ -6415,8 +6455,7 @@ mod tests {
             })
             .collect();
         Idx {
-            nf1_by_sub: HashMap::default(),
-            nf2_by_sub: HashMap::default(),
+            sub_rules: HashMap::default(),
             nf3_by_sub: HashMap::default(),
             nf4_by_filler,
             nf5_subs: HashSet::default(),
@@ -6437,6 +6476,61 @@ mod tests {
             sub_journal: None,
             edge_epoch: 0,
         }
+    }
+
+    #[test]
+    fn shared_nf1_nf2_bucket_preserves_the_serial_horn_closure() {
+        const ROOT: u32 = 2;
+        const A: u32 = 3;
+        const B: u32 = 4;
+        const D: u32 = 5;
+        const E: u32 = 6;
+        const F: u32 = 7;
+        let nfs = Nfs {
+            // A ⊑ B and B ⊑ D. Each NF1 conclusion is inserted before
+            // the NF2 candidates in that same trigger bucket are inspected.
+            nf1: vec![Nf1 { sub: A, sup: B }, Nf1 { sub: B, sup: D }],
+            // A ⊓ B ⊑ E and B ⊓ D ⊑ F exercise both symmetric
+            // NF2 entries, including candidates made true by the preceding NF1.
+            nf2: vec![
+                Nf2 {
+                    sub1: A,
+                    sub2: B,
+                    sup: E,
+                },
+                Nf2 {
+                    sub1: B,
+                    sub2: D,
+                    sup: F,
+                },
+            ],
+            nf3: Vec::new(),
+            nf4: Vec::new(),
+            nf5: Vec::new(),
+            nf6: Vec::new(),
+            nf7: Vec::new(),
+            reflexive_roles: HashSet::default(),
+            concept_names: HashSet::default(),
+            role_names: HashSet::default(),
+        };
+        let idx = build_idx(&nfs, 8);
+        assert_eq!(idx.sub_rules.len(), 3);
+        assert_eq!(&*idx.sub_rules[&A].nf1_sups, &[B]);
+        assert_eq!(&*idx.sub_rules[&A].nf2_cand, &[(B, E)]);
+
+        let mut st = blank_state(8);
+        st.add_sub(ROOT, A);
+        let mut prof = Prof::default();
+        run(&idx, &mut st, &mut prof);
+
+        for sup in [A, B, D, E, F] {
+            assert!(
+                st.sub_super[ROOT as usize].contains(&sup),
+                "ROOT ⊑ {sup} missing"
+            );
+        }
+        assert_eq!(prof.nf1_scan, 2);
+        assert_eq!(prof.nf2_scan, 4);
     }
 
     #[test]
@@ -6761,8 +6855,7 @@ mod tests {
             })
             .collect();
         Idx {
-            nf1_by_sub: HashMap::default(),
-            nf2_by_sub: HashMap::default(),
+            sub_rules: HashMap::default(),
             nf3_by_sub: HashMap::default(),
             nf4_by_filler: HashMap::default(),
             nf5_subs: HashSet::default(),
