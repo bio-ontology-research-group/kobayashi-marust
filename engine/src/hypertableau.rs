@@ -483,6 +483,10 @@ struct CardReq {
 #[derive(Clone)]
 pub struct Ext {
     concepts: Vec<HashMap<CLit, DepSet>>,
+    /// Dense encoded-literal membership used only by the subset-blocking hot
+    /// path. `concepts` remains authoritative (and retains dependencies); this
+    /// shadow turns repeated hash probes into contiguous word operations.
+    block_bits: Option<Vec<Vec<u64>>>,
     out_edges: Vec<Vec<(R, Node, DepSet)>>,
     in_edges: Vec<Vec<(R, Node, DepSet)>>,
     /// KM_HT_CARD: inequality / distinct edges (Konclude `CDistinctHash`). Two
@@ -637,6 +641,7 @@ impl Ext {
     pub fn new() -> Ext {
         Ext {
             concepts: Vec::new(),
+            block_bits: None,
             out_edges: Vec::new(),
             in_edges: Vec::new(),
             distinct: Vec::new(),
@@ -687,6 +692,11 @@ impl Ext {
         }
     }
 
+    fn enable_block_bits(&mut self) {
+        debug_assert!(self.concepts.is_empty());
+        self.block_bits = Some(Vec::new());
+    }
+
     /// Note that node `n`'s label changed (or `n` is new): widen the dirty suffix
     /// so the next `i2_recompute` re-evaluates from here on. Cheap; the actual
     /// blocking work is deferred to the compute called once per saturation pass.
@@ -722,7 +732,18 @@ impl Ext {
                 continue;
             }
             let lm = &self.concepts[m];
-            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+            if lm.len() >= lnlen
+                && self.block_bits.as_ref().unwrap()[n]
+                    .iter()
+                    .enumerate()
+                    .all(|(word, &need)| {
+                        need & !self.block_bits.as_ref().unwrap()[m]
+                            .get(word)
+                            .copied()
+                            .unwrap_or(0)
+                            == 0
+                    })
+            {
                 return true;
             }
         }
@@ -1017,6 +1038,9 @@ impl Ext {
     fn push_node(&mut self, parent: Option<Node>, blockable: bool) -> Node {
         let id = self.concepts.len();
         self.concepts.push(HashMap::new());
+        if let Some(block_bits) = &mut self.block_bits {
+            block_bits.push(Vec::new());
+        }
         self.out_edges.push(Vec::new());
         self.in_edges.push(Vec::new());
         self.distinct.push(Vec::new());
@@ -1075,6 +1099,14 @@ impl Ext {
         match self.concepts[node].get(&lit) {
             None => {
                 self.concepts[node].insert(lit, dep.clone());
+                if let Some(block_bits) = &mut self.block_bits {
+                    let e = Ext::enc_lit(lit);
+                    let word = e >> 6;
+                    if word >= block_bits[node].len() {
+                        block_bits[node].resize(word + 1, 0);
+                    }
+                    block_bits[node][word] |= 1u64 << (e & 63);
+                }
                 self.trail.push(Trail::Concept(node, lit));
                 if self.incr_block {
                     let e = Ext::enc_lit(lit);
@@ -1318,6 +1350,10 @@ impl Ext {
                         min_aff = node;
                     }
                     self.concepts[node].remove(&lit);
+                    if let Some(block_bits) = &mut self.block_bits {
+                        let e = Ext::enc_lit(lit);
+                        block_bits[node][e >> 6] &= !(1u64 << (e & 63));
+                    }
                     if self.incr_block {
                         // LIFO: the most recent fresh add for this literal was this
                         // node, so it is the last element of its posting list.
@@ -1351,6 +1387,9 @@ impl Ext {
                         min_aff = id;
                     }
                     self.concepts.pop();
+                    if let Some(block_bits) = &mut self.block_bits {
+                        block_bits.pop();
+                    }
                     self.out_edges.pop();
                     self.in_edges.pop();
                     self.distinct.pop();
@@ -10147,6 +10186,9 @@ impl Ht {
                 self.ext.incr2 = true;
                 self.ext.incroblig = true;
             }
+            if self.block_mode == 1 && self.ext.incr2 {
+                self.ext.enable_block_bits();
+            }
             if self.force_qmerge {
                 self.ext.qmerge = true;
             }
@@ -13918,6 +13960,39 @@ mod tests {
 
     fn lit(neg: bool, c: C) -> CLit {
         CLit { neg, c }
+    }
+
+    #[test]
+    fn subset_blocking_bit_labels_track_add_and_backtrack() {
+        let mut ext = Ext::new();
+        ext.incr2 = true;
+        ext.enable_block_bits();
+        let root = ext.new_root();
+        let child = ext.new_node(Some(root));
+        for l in [lit(false, 1), lit(true, 70)] {
+            ext.add_concept(root, l, &dep_empty());
+            ext.add_concept(child, l, &dep_empty());
+        }
+        assert_eq!(ext.i2_recompute(), vec![false, true]);
+
+        let mark = ext.mark();
+        ext.add_concept(child, lit(false, 130), &dep_empty());
+        assert_eq!(ext.i2_recompute(), vec![false, false]);
+        ext.backtrack_to(mark);
+        assert_eq!(ext.i2_recompute(), vec![false, true]);
+
+        for n in 0..ext.num_nodes() {
+            for c in 0..160 {
+                for neg in [false, true] {
+                    let l = lit(neg, c);
+                    let e = Ext::enc_lit(l);
+                    let bit = ext.block_bits.as_ref().unwrap()[n]
+                        .get(e >> 6)
+                        .is_some_and(|word| word & (1u64 << (e & 63)) != 0);
+                    assert_eq!(bit, ext.concepts[n].contains_key(&l));
+                }
+            }
+        }
     }
     fn con(neg: bool, c: C, t: Var) -> Atom {
         Atom::Concept {
