@@ -403,10 +403,7 @@ fn concept_names_in(clauses: &[crate::json_io::JClause]) -> HashSet<&str> {
     names
 }
 
-fn seed_missing_declarations(
-    clauses: &mut Vec<crate::json_io::JClause>,
-    declared: &[String],
-) {
+fn seed_missing_declarations(clauses: &mut Vec<crate::json_io::JClause>, declared: &[String]) {
     let mut present = concept_names_in(clauses);
     let mut missing = Vec::new();
     for (index, name) in declared.iter().enumerate() {
@@ -494,10 +491,24 @@ fn ofn_to_clauses_requested(
     let mut profile_builder = profile::SourceProfileBuilder::new();
     let mut rule_certificate_scan = rule_certificate::RuleCertificateScan::default();
     let mut top_role_scan = top_role::TopRoleScan::default();
+    // Side-channel observers retain only borrowed tokens, compact derived data,
+    // and the RBox axiom subtrees that must be replayed after normalization.
+    // None touches `reg`, so first-use internal-name assignment remains exactly
+    // the primary parser's sequence.
+    let mut raw_rbox = rbox::RawRbox::default();
+    let mut declared_raw: Vec<&str> = Vec::new();
+    let mut data_ranges = data_range::DataRanges::default();
+    let mut data_abox = data_abox::DataAbox::default();
     let mut ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
         profile_builder.observe(node);
         rule_certificate_scan.observe(node);
         top_role_scan.observe(node);
+        raw_rbox.observe(node);
+        data_ranges.observe(node);
+        data_abox.observe(node);
+        if let Some(name) = parse::declared_class_node(node) {
+            declared_raw.push(name);
+        }
     })?;
     // `R ⊑ owl:topObjectProperty` is a tautology. When it is the ontology's only
     // mention of the builtin, removing it keeps every entailment and every CB
@@ -561,6 +572,15 @@ fn ofn_to_clauses_requested(
     } else {
         None
     };
+    // Bottom-role constraints are a subset of the retained RBox source nodes.
+    // Derive them only for routes that use the prepass, matching the prior
+    // conditional observer without reparsing the document.
+    let mut bottom_role_constraints = bottom_prepass::RawRoleConstraints::default();
+    if bottom_prepass.is_some() {
+        for node in raw_rbox.source_nodes() {
+            bottom_role_constraints.observe(node);
+        }
+    }
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
     let mut nominal_abox = collect_nominal_abox(&ontology, &abox, &hooks, &profile.source);
@@ -623,29 +643,10 @@ fn ofn_to_clauses_requested(
     drop(hooks);
     t.lap("augment");
 
-    // Pass 2: re-stream the (cheap, zero-copy) parse for the RBox records and
-    // the declared-class list. Re-parsing trades a few seconds of tokenising
-    // for not retaining the document AST across `normalise`/`augment`. The
-    // `reg.short` call order — all axiom names, then all rbox names, then all
-    // declared names — matches the old single-parse code exactly, so the
-    // assigned internal names are identical.
-    let mut rbox: Vec<rbox::RboxRecord> = Vec::new();
-    let mut declared_raw: Vec<&str> = Vec::new();
-    let mut data_ranges = data_range::DataRanges::default();
-    let mut data_abox = data_abox::DataAbox::default();
-    let mut bottom_role_constraints = bottom_prepass::RawRoleConstraints::default();
-    parse::for_each_ontology_child(text, |node| {
-        rbox::rbox_node(&mut reg, node, &mut rbox);
-        data_ranges.observe(node);
-        data_abox.observe(node);
-        if bottom_prepass.is_some() {
-            bottom_role_constraints.observe(node);
-        }
-        if let Some(name) = parse::declared_class_node(node) {
-            declared_raw.push(name);
-        }
-        Ok(())
-    })?;
+    // Replay only retained RBox nodes after all primary axiom names have been
+    // registered. This keeps every `reg.short` call in the same order as the
+    // former full Pass 2, then declarations are resolved below as before.
+    let mut rbox = raw_rbox.resolve(&mut reg);
     // The RBox is re-extracted from the source text, so it still carries the
     // rows of the inclusions elided above. They are what puts the builtin into
     // the TInput role table.
@@ -936,8 +937,58 @@ pub(crate) fn with_ofn_to_clauses_requested_route<T>(
 #[cfg(test)]
 mod bottom_prepass_route_tests {
     use super::{route_needs_bottom_prepass, seed_missing_declarations};
+    use crate::frontend::iri::IriRegistry;
+    use crate::frontend::{bottom_prepass, clauses, data_abox, data_range, parse, rbox};
     use crate::json_io::JAtom;
     use crate::routing::Route;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct SideBytes {
+        rbox: Vec<u8>,
+        declared: Vec<u8>,
+        empty_ranges: Vec<u8>,
+        bottom: bottom_prepass::BottomPrepassResult,
+        data_inconsistent: bool,
+        data_redundant: bool,
+        registry: Vec<u8>,
+    }
+
+    fn finish_side_scan<'a>(
+        mut registry: IriRegistry,
+        rbox_records: Vec<rbox::RboxRecord>,
+        declared_raw: Vec<&'a str>,
+        data_ranges: data_range::DataRanges,
+        data_abox: data_abox::DataAbox<'a>,
+        raw_roles: bottom_prepass::RawRoleConstraints,
+        bottom: bottom_prepass::BottomPrepass,
+    ) -> SideBytes {
+        let declared: Vec<_> = declared_raw
+            .into_iter()
+            .map(|name| registry.short(name))
+            .filter(|name| name != "owl:Thing" && name != "owl:Nothing")
+            .collect();
+        let bottom = bottom.certify(&raw_roles.resolve(&mut registry));
+        let empty_ranges: Vec<_> = data_ranges
+            .empty_range_constraints(&mut registry)
+            .iter()
+            .map(clauses::clause_to_json)
+            .collect();
+        let mut registry_entries: Vec<_> = registry
+            .owned_entries()
+            .map(|(name, iri)| (name.to_string(), iri.to_string()))
+            .collect();
+        registry_entries.sort_unstable();
+        SideBytes {
+            rbox: serde_json::to_vec(&rbox_records.iter().map(rbox::to_row).collect::<Vec<_>>())
+                .unwrap(),
+            declared: serde_json::to_vec(&declared).unwrap(),
+            empty_ranges: serde_json::to_vec(&empty_ranges).unwrap(),
+            bottom,
+            data_inconsistent: data_abox.is_inconsistent(),
+            data_redundant: data_abox.positive_assertions_redundant(),
+            registry: serde_json::to_vec(&registry_entries).unwrap(),
+        }
+    }
 
     #[test]
     fn el_completion_does_not_build_the_general_bottom_certificate() {
@@ -955,12 +1006,89 @@ mod bottom_prepass_route_tests {
         let seeded: Vec<&str> = clauses
             .iter()
             .filter_map(|clause| match (&clause.body[..], &clause.head[..]) {
-                ([JAtom::Concept { concept: body, .. }],
-                 [JAtom::Concept { concept: head, .. }]) if body == head => Some(body.as_str()),
+                (
+                    [JAtom::Concept { concept: body, .. }],
+                    [JAtom::Concept { concept: head, .. }],
+                ) if body == head => Some(body.as_str()),
                 _ => None,
             })
             .collect();
         assert_eq!(seeded, vec!["Z", "A"]);
+    }
+
+    #[test]
+    fn retained_side_observers_match_v025_second_pass_bytes() {
+        let text = "Ontology(\
+            Declaration(Class(<http://decl.example#A>)) \
+            Declaration(Class(<http://other.example#A>)) \
+            SubClassOf(<http://decl.example#A> owl:Nothing) \
+            ObjectPropertyDomain(<http://role.example#r> <http://decl.example#A>) \
+            ObjectPropertyRange(ObjectInverseOf(<http://role.example#s>) ObjectUnionOf(<http://decl.example#A> <http://other.example#A>)) \
+            DataPropertyRange(<http://data.example#p> DataOneOf(\"a\"^^xsd:string)) \
+            DataPropertyRange(<http://data.example#p> DataOneOf(\"b\"^^xsd:string)) \
+            DataPropertyAssertion(<http://data.example#p> <http://individual.example#i> \"a\"^^xsd:string))";
+
+        let mut retained_registry = IriRegistry::new();
+        let mut raw_rbox = rbox::RawRbox::default();
+        let mut retained_declared = Vec::new();
+        let mut retained_ranges = data_range::DataRanges::default();
+        let mut retained_abox = data_abox::DataAbox::default();
+        let retained_ontology =
+            parse::parse_axioms_observed(&mut retained_registry, text, |node| {
+                raw_rbox.observe(node);
+                retained_ranges.observe(node);
+                retained_abox.observe(node);
+                if let Some(name) = parse::declared_class_node(node) {
+                    retained_declared.push(name);
+                }
+            })
+            .unwrap();
+        let retained_bottom = bottom_prepass::BottomPrepass::from_ontology(&retained_ontology);
+        let mut retained_roles = bottom_prepass::RawRoleConstraints::default();
+        for node in raw_rbox.source_nodes() {
+            retained_roles.observe(node);
+        }
+        let retained_records = raw_rbox.resolve(&mut retained_registry);
+        let retained = finish_side_scan(
+            retained_registry,
+            retained_records,
+            retained_declared,
+            retained_ranges,
+            retained_abox,
+            retained_roles,
+            retained_bottom,
+        );
+
+        let mut legacy_registry = IriRegistry::new();
+        let legacy_ontology = parse::parse_axioms(&mut legacy_registry, text).unwrap();
+        let legacy_bottom = bottom_prepass::BottomPrepass::from_ontology(&legacy_ontology);
+        let mut legacy_records = Vec::new();
+        let mut legacy_declared = Vec::new();
+        let mut legacy_ranges = data_range::DataRanges::default();
+        let mut legacy_abox = data_abox::DataAbox::default();
+        let mut legacy_roles = bottom_prepass::RawRoleConstraints::default();
+        parse::for_each_ontology_child(text, |node| {
+            rbox::rbox_node(&mut legacy_registry, node, &mut legacy_records);
+            legacy_ranges.observe(node);
+            legacy_abox.observe(node);
+            legacy_roles.observe(node);
+            if let Some(name) = parse::declared_class_node(node) {
+                legacy_declared.push(name);
+            }
+            Ok(())
+        })
+        .unwrap();
+        let legacy = finish_side_scan(
+            legacy_registry,
+            legacy_records,
+            legacy_declared,
+            legacy_ranges,
+            legacy_abox,
+            legacy_roles,
+            legacy_bottom,
+        );
+
+        assert_eq!(retained, legacy);
     }
 }
 

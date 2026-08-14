@@ -29,6 +29,52 @@ pub enum RboxRecord {
     Chain(String, String, String),
 }
 
+/// RBox source nodes retained during the primary parse without consulting the
+/// IRI registry. Replaying only these nodes after clausification preserves the
+/// historical "all axiom names, then RBox names" assignment order while
+/// avoiding a second tokenization and parse of the complete ontology.
+#[derive(Default)]
+pub struct RawRbox<'a> {
+    nodes: Vec<Node<'a>>,
+}
+
+impl<'a> RawRbox<'a> {
+    pub fn observe(&mut self, node: &Node<'a>) {
+        let Node::List(head, _) = node else {
+            return;
+        };
+        if matches!(
+            *head,
+            "SubObjectPropertyOf"
+                | "ObjectPropertyDomain"
+                | "ObjectPropertyRange"
+                | "InverseObjectProperties"
+                | "EquivalentObjectProperties"
+                | "TransitiveObjectProperty"
+                | "SymmetricObjectProperty"
+                | "ReflexiveObjectProperty"
+                | "IrreflexiveObjectProperty"
+                | "InverseFunctionalObjectProperty"
+                | "AsymmetricObjectProperty"
+                | "DisjointObjectProperties"
+        ) {
+            self.nodes.push(node.clone());
+        }
+    }
+
+    pub fn source_nodes(&self) -> impl Iterator<Item = &Node<'a>> {
+        self.nodes.iter()
+    }
+
+    pub fn resolve(self, registry: &mut IriRegistry) -> Vec<RboxRecord> {
+        let mut out = Vec::new();
+        for node in &self.nodes {
+            rbox_node(registry, node, &mut out);
+        }
+        out
+    }
+}
+
 /// Serialize the typed Rust record into the legacy row format consumed by
 /// `cb_to_ht` and the `km cb-to-ht` worker protocol.
 pub fn to_row(record: &RboxRecord) -> Vec<String> {
@@ -289,4 +335,59 @@ pub fn el_rbox_safe_relaxed(records: &[RboxRecord], relevant: &HashSet<String>) 
         RboxRecord::Inverse(r, s) => !relevant.contains(r) && !relevant.contains(s),
         RboxRecord::Transitive(..) | RboxRecord::Chain(..) => true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::parse;
+
+    fn registry_bytes(registry: &IriRegistry) -> Vec<u8> {
+        let mut entries: Vec<_> = registry.owned_entries().collect();
+        entries.sort_unstable();
+        serde_json::to_vec(&entries).unwrap()
+    }
+
+    fn record_bytes(records: &[RboxRecord]) -> Vec<u8> {
+        serde_json::to_vec(&records.iter().map(to_row).collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn retained_rbox_replay_matches_full_second_parse_bytes() {
+        let text = "Ontology(\
+            Declaration(Class(<http://decl.example#A>)) \
+            SubObjectPropertyOf(<http://one.example#r> <http://one.example#s>) \
+            SubObjectPropertyOf(ObjectPropertyChain(<http://one.example#r> <http://two.example#r>) <http://one.example#t>) \
+            ObjectPropertyDomain(<http://one.example#r> <http://class.example#A>) \
+            ObjectPropertyRange(ObjectInverseOf(<http://one.example#s>) ObjectIntersectionOf(<http://class.example#A> <http://class.example#B>)) \
+            EquivalentObjectProperties(<http://one.example#r> <http://two.example#r> <http://three.example#r>) \
+            InverseObjectProperties(<http://one.example#r> <http://one.example#s>) \
+            TransitiveObjectProperty(<http://one.example#t>) \
+            SymmetricObjectProperty(<http://one.example#s>) \
+            ReflexiveObjectProperty(<http://one.example#r>) \
+            IrreflexiveObjectProperty(<http://two.example#r>) \
+            InverseFunctionalObjectProperty(<http://one.example#s>) \
+            DisjointObjectProperties(<http://one.example#r> <http://one.example#s>))";
+
+        let mut retained_registry = IriRegistry::new();
+        let mut raw = RawRbox::default();
+        parse::parse_axioms_observed(&mut retained_registry, text, |node| raw.observe(node))
+            .unwrap();
+        let retained = raw.resolve(&mut retained_registry);
+
+        let mut legacy_registry = IriRegistry::new();
+        parse::parse_axioms(&mut legacy_registry, text).unwrap();
+        let mut legacy = Vec::new();
+        parse::for_each_ontology_child(text, |node| {
+            rbox_node(&mut legacy_registry, node, &mut legacy);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(record_bytes(&retained), record_bytes(&legacy));
+        assert_eq!(
+            registry_bytes(&retained_registry),
+            registry_bytes(&legacy_registry)
+        );
+    }
 }
