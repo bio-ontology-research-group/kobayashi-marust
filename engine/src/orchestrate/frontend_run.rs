@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -41,10 +42,70 @@ fn manual_route() -> String {
 /// on trivial onts the subprocess fork/exec + meta round-trip is ~15-25 ms of
 /// the ~0.12 s total — the difference between a WIN and a tie against Konclude on
 /// the ~125 near-tie onts. Kept SMALL so the frontend's transient parse peak
-/// (multi-GB on the giants) stays isolated in the subprocess: at 2 MB the
+/// (multi-GB on the giants) stays isolated in the subprocess: at 4 MB the
 /// in-process transient peak is only tens of MB and is freed before the engine
 /// runs, so the classify RSS high-water-mark is unaffected.
-const IN_PROCESS_OFN_MAX: u64 = 2 << 20;
+const IN_PROCESS_OFN_MAX: u64 = 4 << 20;
+const GIANT_IN_PROCESS_OFN_MIN: u64 = 300 << 20;
+const GIANT_IN_PROCESS_OFN_MAX: u64 = 600 << 20;
+
+fn giant_source_uses_certified_rbox(path: &Path) -> std::io::Result<bool> {
+    const TOKENS: &[&[u8]] = &[
+        b"InverseObjectProperties(",
+        b"SymmetricObjectProperty(",
+        b"TransitiveObjectProperty(",
+    ];
+    const CHUNK: usize = 64 << 10;
+    const TAIL: u64 = 1 << 20;
+    let overlap = TOKENS.iter().map(|token| token.len()).max().unwrap() - 1;
+    let mut file = File::open(path)?;
+    let len = file.metadata()?.len();
+    if len > TAIL {
+        file.seek(SeekFrom::End(-(TAIL as i64)))?;
+        let mut tail = Vec::with_capacity(TAIL as usize);
+        file.read_to_end(&mut tail)?;
+        if TOKENS.iter().any(|token| {
+            tail.windows(token.len())
+                .any(|window| window == *token)
+        }) {
+            return Ok(true);
+        }
+        file.seek(SeekFrom::Start(0))?;
+    }
+    let mut buffer = vec![0; CHUNK + overlap];
+    let mut carried = 0;
+    loop {
+        let read = file.read(&mut buffer[carried..])?;
+        let available = carried + read;
+        if TOKENS.iter().any(|token| {
+            buffer[..available]
+                .windows(token.len())
+                .any(|window| window == *token)
+        }) {
+            return Ok(true);
+        }
+        if read == 0 {
+            return Ok(false);
+        }
+        carried = overlap.min(available);
+        buffer.copy_within(available - carried..available, 0);
+    }
+}
+
+fn use_in_process_ofn(path: &Path, source_bytes: u64) -> bool {
+    if let Some(max) = std::env::var("KM_INPROC_OFN_MAX")
+        .ok()
+        .and_then(|value| value.parse().ok())
+    {
+        return source_bytes < max;
+    }
+    if source_bytes < IN_PROCESS_OFN_MAX {
+        return true;
+    }
+    GIANT_IN_PROCESS_OFN_MIN <= source_bytes
+        && source_bytes < GIANT_IN_PROCESS_OFN_MAX
+        && !giant_source_uses_certified_rbox(path).unwrap_or(true)
+}
 
 /// In-process port of the `ofn --meta` subprocess: parse + clausify directly,
 /// write the clauses file the engine reads, and return the parsed `Meta`. The
@@ -81,16 +142,25 @@ fn run_ofn_in_process(
         nominal_abox: result.nominal_abox,
         rules: result.rules,
     };
-    let f = File::create(clauses_path)?;
-    let mut w = std::io::BufWriter::new(f);
-    serde_json::to_writer(&mut w, &out)?;
-    std::io::Write::flush(&mut w)?;
     // Only EL completion can consume this representation directly. Dropping
     // non-EL inputs before returning preserves the old frontend lifetime and
     // avoids making its allocations part of the orchestrator's RSS high-water.
-    let cached = (meta.el_rbox_safe
-        && meta.route.parse::<crate::routing::Route>() == Ok(crate::routing::Route::Elc))
-    .then_some(out);
+    let cacheable = std::env::var_os("KM_NO_INPROC_ELC").is_none()
+        && std::env::var_os("KM_EL_ABOX_CHECK").is_none()
+        && meta.el_rbox_safe
+        && !meta.profile.positive_el_abox_materializable
+        && meta.route.parse::<crate::routing::Route>() == Ok(crate::routing::Route::Elc)
+        && super::use_atomic_inproc_elc(crate::routing::Route::Elc, &meta.profile);
+    // An exact Elc route consumes `out` directly and has no classifier fallback,
+    // so serializing the same clauses is dead work. Every path that can spawn a
+    // worker, including KM_NO_INPROC_ELC, retains the authoritative JSON file.
+    if !cacheable {
+        let f = File::create(clauses_path)?;
+        let mut w = std::io::BufWriter::new(f);
+        serde_json::to_writer(&mut w, &out)?;
+        std::io::Write::flush(&mut w)?;
+    }
+    let cached = cacheable.then_some(out);
     Ok((meta, cached))
 }
 
@@ -112,9 +182,12 @@ pub fn run_ofn_split_cached(
     let clauses = TempPath::new(".clauses.json");
 
     // In-process fast path for small ontologies (avoids the ofn subprocess).
+    // Very large inputs in the measured band also benefit: structured exact-EL
+    // leaves can pass their already-built clauses directly to completion, while
+    // the two certified-EL controls preserve their isolated completion route.
     // Any failure falls through to the subprocess path below (identical output).
     let small = std::fs::metadata(ont)
-        .map(|m| m.len() < IN_PROCESS_OFN_MAX)
+        .map(|m| use_in_process_ofn(ont, m.len()))
         .unwrap_or(false);
     if small && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
         match run_ofn_in_process(ont, clauses.path()) {
@@ -194,5 +267,47 @@ pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath>
         Some(clauses)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{giant_source_uses_certified_rbox, TempPath};
+
+    #[test]
+    fn giant_rbox_scan_detects_tokens_across_chunk_boundaries() {
+        let path = TempPath::new(".ofn");
+        let token = b"TransitiveObjectProperty(";
+        let mut input = vec![b'x'; (64 << 10) - token.len() / 2];
+        input.extend_from_slice(token);
+        input.extend_from_slice(b"<r>)");
+        std::fs::write(path.path(), input).unwrap();
+        assert!(giant_source_uses_certified_rbox(path.path()).unwrap());
+    }
+
+    #[test]
+    fn giant_rbox_scan_accepts_plain_el_source() {
+        let path = TempPath::new(".ofn");
+        std::fs::write(
+            path.path(),
+            b"Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)))",
+        )
+        .unwrap();
+        assert!(!giant_source_uses_certified_rbox(path.path()).unwrap());
+    }
+
+    #[test]
+    fn giant_rbox_scan_checks_tail_then_full_source() {
+        let tail_path = TempPath::new(".ofn");
+        let mut tail_input = vec![b'x'; (1 << 20) + 4096];
+        tail_input.extend_from_slice(b"InverseObjectProperties(<r> <s>)");
+        std::fs::write(tail_path.path(), tail_input).unwrap();
+        assert!(giant_source_uses_certified_rbox(tail_path.path()).unwrap());
+
+        let prefix_path = TempPath::new(".ofn");
+        let mut prefix_input = b"SymmetricObjectProperty(<r>)".to_vec();
+        prefix_input.resize((1 << 20) + 4096, b'x');
+        std::fs::write(prefix_path.path(), prefix_input).unwrap();
+        assert!(giant_source_uses_certified_rbox(prefix_path.path()).unwrap());
     }
 }

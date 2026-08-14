@@ -937,7 +937,17 @@ fn classify_with_evidence_mode(
     // Owned declaration set consumed by the CB-to-HT conversion. A declared
     // class is always a query even when its spelling resembles an internal
     // frontend symbol.
-    let named_set: HashSet<String> = meta.named.iter().cloned().collect();
+    // Only HT/tableau and the historical portfolio consume an owned query set.
+    // Atomic EL/CB return before those branches and use the borrowed `named`
+    // lookup below for output mapping, so cloning every class here is dead work.
+    let named_set: HashSet<String> = if matches!(
+        &cfg.mechanism,
+        Mechanism::Ht | Mechanism::Tableau | Mechanism::Portfolio
+    ) {
+        meta.named.iter().cloned().collect()
+    } else {
+        HashSet::new()
+    };
     // In the Rust-frontend path the per-ontology short registry is empty, so
     // `short(n) == n`; is_internal keys directly on the internal name.
     let is_internal = |n: &str| -> bool {
