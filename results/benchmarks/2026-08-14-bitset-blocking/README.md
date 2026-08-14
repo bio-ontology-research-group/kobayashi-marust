@@ -1,6 +1,7 @@
 # v0.2.21 subset-blocking benchmark
 
 This directory records the evidence for the v0.2.21 automatic-route release.
+The tested implementation is commit `cb5c59b`.
 The strict candidate binary was
 `08d0fcd50d524bb6991fe350af440c5f2729ef516c8989a81236687cf66bd410`.
 All end-to-end measurements used exclusive Intel Xeon Gold 6248 nodes, a

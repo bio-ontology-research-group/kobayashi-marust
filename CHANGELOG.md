@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.2.21] – 2026-08-14
+
+### Accelerate incremental subset blocking
+
+Mode-1 incremental subset blocking now maintains a dense encoded-literal
+shadow of each dependency-bearing concept label. Candidate blockers are still
+selected by the established rarest-literal posting list, but the exact label
+subset test uses contiguous bit operations instead of repeated hash-table
+membership probes. The bitsets exist only while this blocking mode is active;
+other tableau modes and all non-tableau routes retain their prior allocation
+layout. This is a representation change for the same blocking predicate and
+does not alter reasoning rules, branch order, dependencies, or derived results.
+
+The exact ORE6934 pair `50480341` preserved byte-identical output and identical
+search work while reducing wall from 123.09 to 73.15 seconds, peak RSS from
+3,082,604 to 2,985,812 KiB, and measured blocking time from 105.136 to 54.422
+seconds. Independent strict sweep `50483032` contains exactly 592 results,
+profiles, and checkpoints. It reports 591 successful classifications, ORE1194
+as the sole fail-closed error, and zero status, verdict, signature,
+consistency, or coverage regressions from v0.2.20. Mean wall falls from 3.95409
+to 3.89729 seconds, median wall from 0.1910 to 0.1897 seconds, mean peak RSS
+from 443.371 to 443.222 MiB, and median peak RSS from 36.43 to 35.94 MiB. The
+complete release suite, including the issue #3 pigeonhole regression, passes.
+Evidence is in
+[`results/benchmarks/2026-08-14-bitset-blocking/`](results/benchmarks/2026-08-14-bitset-blocking/README.md).
+
 ## [0.2.20] – 2026-08-14
 
 ### Reduce automatic frontend handoff overhead
