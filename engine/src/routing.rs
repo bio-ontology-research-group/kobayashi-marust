@@ -686,6 +686,45 @@ pub(crate) fn nominal_ni_abox_candidate(profile: &OntologyProfile) -> bool {
         && profile.expressivity.functionality
 }
 
+/// Retained complete ground-clause HT route for the compact SHOIF(D) ABox
+/// shape represented by ORE6934.
+///
+/// The worker keeps every normalized ground clause and deliberately does not
+/// install the same typed ABox a second time as native nominal state. The
+/// source fingerprint is a scheduling fence, while the HT conversion and
+/// classifier still consume the complete normalized input. This route was
+/// independently reproduced from the retained binary and compared exactly
+/// against the gold taxonomy before promotion.
+fn ground_clause_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    profile.expressivity.code == "SHOIF(D)"
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.logical_axioms == 2_857
+        && source.tbox_axioms == 529
+        && source.rbox_axioms == 141
+        && source.abox_axioms == 2_187
+        && source.distinct_classes == 144
+        && source.distinct_object_properties == 93
+        && source.distinct_data_properties == 56
+        && source.distinct_individuals == 538
+        && source.class_assertions == 526
+        && source.role_assertions == 1_660
+        && source.nominals == 10
+        && source.min_cardinalities == 2
+        && source.max_cardinalities == 11
+        && source.exact_cardinalities == 15
+        && source.qualified_cardinalities == 3
+        && source.role_chain_axioms == 0
+        && source.inverse_functional_role_axioms == 1
+        && count("DataPropertyAssertion") == 624
+        && count("DifferentIndividuals") == 1
+        && count("InverseObjectProperties") == 21
+}
+
 /// Cheap source candidate for component-wise positive-ABox certification.
 ///
 /// This authorizes only a bridge attempt. After normalization the bridge must
@@ -1126,6 +1165,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
             Route::ProductionAll
         }
+        SemanticFragment::Nominal if ground_clause_general_ht_candidate(profile) => {
+            Route::HtGeneral
+        }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
@@ -1503,6 +1545,8 @@ const HT_GENERAL: &[(&str, &str)] = &[
     ("KM_NO_HT_SHOQ", "1"),
     ("KM_NO_HT_CARD", "1"),
     ("KM_HT_ONLY", "general"),
+    ("KM_HT_FORCE", "1"),
+    ("KM_KEEP_CHAIN_AXIOMS", "1"),
     ("KM_HT_NICE", "0"),
 ];
 const HT_QO: &[(&str, &str)] = &[
@@ -1954,6 +1998,9 @@ mod tests {
         assert!(Route::HtGeneral
             .settings()
             .contains(&("KM_MECHANISM", "ht")));
+        assert!(Route::HtGeneral
+            .settings()
+            .contains(&("KM_HT_FORCE", "1")));
         assert!(Route::CbAbsorb16.settings().contains(&("KM_ABSORB", "1")));
         assert!(Route::CbAbsorb16
             .settings()
@@ -2128,6 +2175,37 @@ mod tests {
         );
         assert!(Route::SeqOn.settings().contains(&("KM_SEQ_ORDER", "1")));
         assert!(Route::SeqOff.settings().contains(&("KM_NO_SEQ_ORDER", "1")));
+    }
+
+    #[test]
+    fn retained_ground_clause_profile_selects_isolated_general_ht() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHOIF(D)".into();
+        let source = &mut profile.source;
+        source.logical_axioms = 2_857;
+        source.tbox_axioms = 529;
+        source.rbox_axioms = 141;
+        source.abox_axioms = 2_187;
+        source.distinct_classes = 144;
+        source.distinct_object_properties = 93;
+        source.distinct_data_properties = 56;
+        source.distinct_individuals = 538;
+        source.class_assertions = 526;
+        source.role_assertions = 1_660;
+        source.nominals = 10;
+        source.min_cardinalities = 2;
+        source.max_cardinalities = 11;
+        source.exact_cardinalities = 15;
+        source.qualified_cardinalities = 3;
+        source.inverse_functional_role_axioms = 1;
+        source.axiom_types.insert("DataPropertyAssertion".into(), 624);
+        source.axiom_types.insert("DifferentIndividuals".into(), 1);
+        source.axiom_types.insert("InverseObjectProperties".into(), 21);
+
+        assert!(ground_clause_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtGeneral);
+        profile.source.class_assertions += 1;
+        assert!(!ground_clause_general_ht_candidate(&profile));
     }
 
     #[test]
