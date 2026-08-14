@@ -150,6 +150,12 @@ impl<T> Arena<T> {
     pub fn len(&self) -> usize {
         self.items.len()
     }
+    /// Allocated object slots available before the arena's outer vector grows.
+    #[cfg(test)]
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.items.capacity()
+    }
     #[inline]
     pub fn watermark(&self) -> usize {
         self.items.len()
@@ -171,6 +177,19 @@ impl<T> Arena<T> {
     #[inline]
     pub fn truncate_to(&mut self, mark: usize) {
         self.items.truncate(mark);
+    }
+    /// End one calculation task while retaining this arena's backing storage
+    /// for the next task. All object ids and every open branch epoch become
+    /// invalid, exactly as if the arena had been dropped and reconstructed.
+    ///
+    /// The epoch vectors are cleared as logical state too. Their outer
+    /// allocations remain available, but journal frames (and the saved object
+    /// clones owned by them) are dropped rather than carried across tasks.
+    #[inline]
+    pub fn clear_preserving_capacity(&mut self) {
+        self.items.clear();
+        self.wm_stack.clear();
+        self.journal_stack.clear();
     }
     #[inline]
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
@@ -282,5 +301,38 @@ impl Trail {
     }
     pub fn pop_mark(&mut self) -> Option<usize> {
         self.marks.pop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Arena;
+
+    #[test]
+    fn arena_clear_preserves_storage_but_invalidates_objects_and_epochs() {
+        let mut arena = Arena::new();
+        for value in 0..32 {
+            arena.push(value);
+        }
+        let items_capacity = arena.items.capacity();
+        let items_ptr = arena.items.as_ptr();
+
+        arena.push_epoch();
+        *arena.get_mut_journaled(super::Id::new(0)) = 99;
+        arena.push(32);
+        assert!(arena.epoch_open());
+        assert!(!arena.journal_stack.is_empty());
+
+        arena.clear_preserving_capacity();
+
+        assert_eq!(arena.len(), 0);
+        assert!(!arena.epoch_open());
+        assert!(arena.journal_stack.is_empty());
+        assert_eq!(arena.items.capacity(), items_capacity);
+        assert_eq!(arena.items.as_ptr(), items_ptr);
+
+        let id = arena.push(7);
+        assert_eq!(id.index(), 0, "reused arenas restart their id space");
+        assert_eq!(*arena.get(id), 7, "no old object content survives");
     }
 }

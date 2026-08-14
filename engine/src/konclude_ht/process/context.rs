@@ -865,6 +865,275 @@ impl ProcessContext {
         }
     }
 
+    /// Reset the per-calculation process pool without releasing its arena
+    /// allocations. This has the same logical postcondition as [`Self::new`]:
+    /// every transient object id is invalid, no branch epoch remains open, and
+    /// the process handles and tag counters are at their constructor values.
+    ///
+    /// When `preserve_saturation` is true, this leaves exactly the arenas moved
+    /// by [`Self::adopt_saturation_state_from`] untouched. Those arenas belong
+    /// to the ontology-wide saturation task and are read by later completion
+    /// probes through stable concept-to-saturation ids. Every other arena is
+    /// per-probe state and is cleared, including completion-side saturation
+    /// blocking data and saturation-named temporary assertion/cardinality
+    /// pools that the existing transfer method deliberately does not carry.
+    pub fn reset_for_probe_preserving_capacity(&mut self, preserve_saturation: bool) {
+        self.clear_transient_arenas_preserving_capacity();
+        if !preserve_saturation {
+            self.clear_saturation_arenas_preserving_capacity();
+        }
+        self.branch_epoch_depth = 0;
+        self.used_mem_man = INVALID;
+        self.used_process_tagger = ProcessTagger::new();
+        self.used_process_stat_gath = INVALID;
+    }
+
+    fn clear_transient_arenas_preserving_capacity(&mut self) {
+        self.nodes.clear_preserving_capacity();
+        self.edges.clear_preserving_capacity();
+        self.distinct_edges.clear_preserving_capacity();
+        self.disjoint_edges.clear_preserving_capacity();
+        self.con_descs.clear_preserving_capacity();
+        self.con_proc_descs.clear_preserving_capacity();
+        self.clash_descs.clear_preserving_capacity();
+        self.dep_nodes.clear_preserving_capacity();
+        self.track_points.clear_preserving_capacity();
+        self.dep_links.clear_preserving_capacity();
+        self.branch_nodes.clear_preserving_capacity();
+        self.branch_instrs.clear_preserving_capacity();
+        self.label_sets.clear_preserving_capacity();
+        self.core_con_descs.clear_preserving_capacity();
+        self.role_succ_hashes.clear_preserving_capacity();
+        self.restriction_specs.clear_preserving_capacity();
+        self.branching_merging_candidate_linkers
+            .clear_preserving_capacity();
+        self.indi_sat_block_datas.clear_preserving_capacity();
+        self.sat_exp_storing_datas.clear_preserving_capacity();
+        self.process_asserted_data_literal_linkers
+            .clear_preserving_capacity();
+        self.additional_role_assertion_linkers
+            .clear_preserving_capacity();
+        self.additional_data_assertion_linkers
+            .clear_preserving_capacity();
+        self.var_bindings.clear_preserving_capacity();
+        self.var_binding_descs.clear_preserving_capacity();
+        self.var_binding_paths.clear_preserving_capacity();
+        self.var_binding_path_descs.clear_preserving_capacity();
+        self.var_binding_path_sets.clear_preserving_capacity();
+        self.var_binding_path_join_datas.clear_preserving_capacity();
+        self.var_binding_path_join_hashes
+            .clear_preserving_capacity();
+        self.var_binding_path_merging_hashes
+            .clear_preserving_capacity();
+        self.var_binding_trigger_linkers
+            .clear_preserving_capacity();
+        self.var_binding_trigger_hashes
+            .clear_preserving_capacity();
+        self.concept_nominal_schema_grounding_datas
+            .clear_preserving_capacity();
+        self.concept_nominal_schema_grounding_hashes
+            .clear_preserving_capacity();
+        self.distinct_hashes.clear_preserving_capacity();
+        self.conn_succ_sets.clear_preserving_capacity();
+        self.conn_succ_corr_hashes.clear_preserving_capacity();
+        self.disjoint_succ_role_hashes
+            .clear_preserving_capacity();
+        self.nominal_conn_sets.clear_preserving_capacity();
+        self.blocking_follow_sets.clear_preserving_capacity();
+        self.analized_con_exp_datas.clear_preserving_capacity();
+        self.analized_con_exp_linkers.clear_preserving_capacity();
+        self.nominal_caching_loss_reactivation_datas
+            .clear_preserving_capacity();
+        self.nominal_caching_loss_reactivation_hashes
+            .clear_preserving_capacity();
+        self.successor_individual_atmost_reactivation_datas
+            .clear_preserving_capacity();
+        self.datatypes_value_space_datas
+            .clear_preserving_capacity();
+        self.sig_block_cand_hashes.clear_preserving_capacity();
+        self.blocking_test_datas.clear_preserving_capacity();
+        self.blocking_alt_datas.clear_preserving_capacity();
+        self.inc_exp_datas.clear_preserving_capacity();
+        self.cond_reapply_con_descs.clear_preserving_capacity();
+        self.reapply_con_descs.clear_preserving_capacity();
+        self.con_var_bind_path_set_hashes
+            .clear_preserving_capacity();
+        self.con_prop_binding_set_hashes
+            .clear_preserving_capacity();
+        self.prop_bindings.clear_preserving_capacity();
+        self.prop_binding_descs.clear_preserving_capacity();
+        self.prop_binding_reapply_con_descs
+            .clear_preserving_capacity();
+        self.prop_binding_reapply_con_hashes
+            .clear_preserving_capacity();
+        self.prop_binding_sets.clear_preserving_capacity();
+        self.prop_var_bind_trans_exts
+            .clear_preserving_capacity();
+        self.prop_rep_trans_exts.clear_preserving_capacity();
+        self.rep_var_bind_path_set_datas
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_set_migrate_datas
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_joining_key_datas
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_joining_key_hashes
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_set_hashes
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_hashes.clear_preserving_capacity();
+        self.rep_var_bind_path_set_joining_datas
+            .clear_preserving_capacity();
+        self.rep_var_bind_path_set_joining_hashes
+            .clear_preserving_capacity();
+        self.rep_joining_datas.clear_preserving_capacity();
+        self.rep_joining_hashes.clear_preserving_capacity();
+        self.rep_prop_descs.clear_preserving_capacity();
+        self.rep_prop_sets.clear_preserving_capacity();
+        self.con_rep_prop_set_hashes
+            .clear_preserving_capacity();
+        self.backend_neighbour_expansion_controlling_datas
+            .clear_preserving_capacity();
+        self.backend_sync_datas.clear_preserving_capacity();
+        self.blocking_indi_node_cand_hashes
+            .clear_preserving_capacity();
+        self.blocking_indi_node_cand_datas
+            .clear_preserving_capacity();
+        self.blocking_indi_node_linked_cand_hashes
+            .clear_preserving_capacity();
+        self.blocking_indi_node_linked_cand_datas
+            .clear_preserving_capacity();
+        self.blocking_indi_node_linkers
+            .clear_preserving_capacity();
+        self.sig_block_con_exp_datas.clear_preserving_capacity();
+        self.reusing_con_exp_datas.clear_preserving_capacity();
+        self.signature_blocking_review_sets
+            .clear_preserving_capacity();
+        self.reusing_review_datas.clear_preserving_capacity();
+        self.node_switch_histories.clear_preserving_capacity();
+        self.branching_trees.clear_preserving_capacity();
+        self.marker_indi_node_hashes
+            .clear_preserving_capacity();
+        self.marker_indi_node_datas.clear_preserving_capacity();
+        self.unsat_cache_ret_datas.clear_preserving_capacity();
+        self.referred_individual_tracking_vectors
+            .clear_preserving_capacity();
+        self.concept_process_linkers.clear_preserving_capacity();
+        self.individual_process_node_linkers
+            .clear_preserving_capacity();
+        self.backward_prop_links.clear_preserving_capacity();
+        self.backward_prop_reapply_descs
+            .clear_preserving_capacity();
+        self.role_backward_prop_hashes
+            .clear_preserving_capacity();
+        self.linked_data_value_assertion_datas
+            .clear_preserving_capacity();
+        self.data_value_role_assertion_linkers
+            .clear_preserving_capacity();
+        self.critical_pred_role_card_datas
+            .clear_preserving_capacity();
+        self.critical_pred_role_card_hashes
+            .clear_preserving_capacity();
+        self.individual_merging_hashes
+            .clear_preserving_capacity();
+        self.succ_role_hashes.clear_preserving_capacity();
+        self.indi_unsorted_proc_queues
+            .clear_preserving_capacity();
+        self.indi_rotation_proc_queues
+            .clear_preserving_capacity();
+        self.indi_depth_proc_queues.clear_preserving_capacity();
+        self.indi_proc_node_descs.clear_preserving_capacity();
+        self.indi_proc_queues.clear_preserving_capacity();
+        self.indi_custom_priority_proc_queues
+            .clear_preserving_capacity();
+        self.indi_concept_batch_proc_queues
+            .clear_preserving_capacity();
+        self.indi_reactivation_proc_queues
+            .clear_preserving_capacity();
+        self.concept_proc_queues.clear_preserving_capacity();
+    }
+
+    fn clear_saturation_arenas_preserving_capacity(&mut self) {
+        self.backward_sat_prop_links.clear_preserving_capacity();
+        self.backward_sat_prop_reapply_descs
+            .clear_preserving_capacity();
+        self.con_sat_descs.clear_preserving_capacity();
+        self.con_sat_proc_linkers.clear_preserving_capacity();
+        self.critical_sat_concept_queues
+            .clear_preserving_capacity();
+        self.critical_sat_concept_type_queues
+            .clear_preserving_capacity();
+        self.extended_con_ref_linking_datas
+            .clear_preserving_capacity();
+        self.imp_reapply_con_sat_descs
+            .clear_preserving_capacity();
+        self.indi_sat_node_ext_datas
+            .clear_preserving_capacity();
+        self.indi_sat_process_node_linkers
+            .clear_preserving_capacity();
+        self.indi_sat_succ_link_data_linkers
+            .clear_preserving_capacity();
+        self.linked_role_sat_succ_datas
+            .clear_preserving_capacity();
+        self.linked_role_sat_succ_hashes
+            .clear_preserving_capacity();
+        self.reapply_con_sat_label_sets
+            .clear_preserving_capacity();
+        self.role_backward_sat_prop_hashes
+            .clear_preserving_capacity();
+        self.role_sat_proc_linkers.clear_preserving_capacity();
+        self.sat_atmost_successor_merging_datas
+            .clear_preserving_capacity();
+        self.sat_atmost_successor_merging_hashes
+            .clear_preserving_capacity();
+        self.sat_concept_extension_maps
+            .clear_preserving_capacity();
+        self.sat_critical_ind_node_con_test_sets
+            .clear_preserving_capacity();
+        self.sat_critical_ind_node_proc_queues
+            .clear_preserving_capacity();
+        self.sat_disjunct_common_concept_extraction_datas
+            .clear_preserving_capacity();
+        self.sat_disjunct_extraction_linkers
+            .clear_preserving_capacity();
+        self.sat_indi_node_all_concept_ext_datas
+            .clear_preserving_capacity();
+        self.sat_indi_node_datatype_datas
+            .clear_preserving_capacity();
+        self.sat_indi_node_ext_resolve_datas
+            .clear_preserving_capacity();
+        self.sat_indi_node_ext_resolve_hashes
+            .clear_preserving_capacity();
+        self.sat_indi_node_functional_concept_ext_datas
+            .clear_preserving_capacity();
+        self.sat_indi_node_succ_ext_datas
+            .clear_preserving_capacity();
+        self.sat_influenced_nominal_sets
+            .clear_preserving_capacity();
+        self.sat_linked_succ_indi_all_concept_ext_datas
+            .clear_preserving_capacity();
+        self.sat_modified_process_update_linkers
+            .clear_preserving_capacity();
+        self.sat_nodes.clear_preserving_capacity();
+        self.sat_nominal_dependent_node_datas
+            .clear_preserving_capacity();
+        self.sat_nominal_dependent_node_hashes
+            .clear_preserving_capacity();
+        self.sat_nominal_handling_datas
+            .clear_preserving_capacity();
+        self.sat_succ_datas.clear_preserving_capacity();
+        self.sat_successor_all_concept_ext_datas
+            .clear_preserving_capacity();
+        self.sat_successor_concept_extension_maps
+            .clear_preserving_capacity();
+        self.sat_successor_functional_concept_ext_datas
+            .clear_preserving_capacity();
+        self.sat_succ_ext_datas.clear_preserving_capacity();
+        self.sat_succ_ext_ind_node_proc_queues
+            .clear_preserving_capacity();
+        self.sat_succ_role_assertion_linkers
+            .clear_preserving_capacity();
+    }
+
     /// Port of `CProcessContext::getUsedProcessTagger` — the owned per-test tagger.
     pub fn used_process_tagger(&self) -> &ProcessTagger {
         &self.used_process_tagger
@@ -1458,6 +1727,12 @@ impl ProcessContext {
     #[inline]
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+    /// Backing capacity retained by per-probe completion-node pool reuse.
+    #[cfg(test)]
+    #[inline]
+    pub fn node_arena_capacity(&self) -> usize {
+        self.nodes.capacity()
     }
     arena_accessors!(
         sat_nodes,
@@ -7727,6 +8002,65 @@ mod tests {
         VariableBindingPath, VariableBindingPathMergingHash, VariableBindingPathMergingHashData,
     };
     use super::*;
+
+    #[test]
+    fn probe_reset_reuses_transient_capacity_with_fresh_logical_state() {
+        let mut ctx = ProcessContext::new();
+        for _ in 0..32 {
+            ctx.alloc_node(IndividualProcessNode::default());
+        }
+        ctx.push_branch_epoch();
+        ctx.alloc_node(IndividualProcessNode::default());
+        // Capture the capacity after the branch allocation: that insertion may
+        // legitimately grow the vector, and reset must retain the resulting
+        // allocation rather than the allocator's earlier growth step.
+        let node_capacity = ctx.nodes.capacity();
+        ctx.used_mem_man = 17;
+        ctx.used_process_stat_gath = 19;
+        ctx.used_process_tagger.localization_tag = 23;
+        ctx.used_process_tagger.processing_tag = 29;
+
+        ctx.reset_for_probe_preserving_capacity(false);
+
+        assert_eq!(ctx.node_count(), 0);
+        assert_eq!(ctx.branch_epoch_depth(), 0);
+        assert!(!ctx.nodes.epoch_open());
+        assert_eq!(ctx.nodes.capacity(), node_capacity);
+        assert_eq!(ctx.used_mem_man, INVALID);
+        assert_eq!(ctx.used_process_stat_gath, INVALID);
+        assert_eq!(ctx.used_process_tagger.localization_tag, 0);
+        assert_eq!(ctx.used_process_tagger.processing_tag, 0);
+
+        let first = ctx.alloc_node(IndividualProcessNode::default());
+        assert_eq!(first.index(), 0, "a new probe restarts the node id space");
+    }
+
+    #[test]
+    fn probe_reset_preserves_only_requested_saturation_state() {
+        let mut ctx = ProcessContext::new();
+        let mut saturation_node = IndividualSaturationProcessNode::default();
+        saturation_node.set_individual_id(41);
+        let saturation_id = ctx.alloc_sat_node(saturation_node);
+        ctx.alloc_node(IndividualProcessNode::default());
+
+        let sat_capacity = ctx.sat_nodes.capacity();
+        let transient_capacity = ctx.nodes.capacity();
+
+        ctx.reset_for_probe_preserving_capacity(true);
+
+        assert_eq!(ctx.node_count(), 0, "completion nodes are per-probe");
+        assert_eq!(ctx.nodes.capacity(), transient_capacity);
+        assert_eq!(ctx.sat_node_count(), 1);
+        assert_eq!(ctx.sat_node(saturation_id).get_individual_id(), 41);
+        assert_eq!(ctx.sat_nodes.capacity(), sat_capacity);
+
+        ctx.reset_for_probe_preserving_capacity(false);
+
+        assert_eq!(ctx.sat_node_count(), 0);
+        assert_eq!(ctx.sat_nodes.capacity(), sat_capacity);
+        let first = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
+        assert_eq!(first.index(), 0, "discarded saturation ids do not survive");
+    }
 
     #[test]
     fn processing_data_box_grounding_hash_localizes_and_copies_previous_entries() {

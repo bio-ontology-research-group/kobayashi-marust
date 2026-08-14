@@ -7306,11 +7306,12 @@ fn reset_probe_env_impl(
     if card_nominal_profile {
         install_native_nominal_backend_replay(algo, bridged);
     }
-    // Fresh context EXCEPT the shared read-only terminology: rebuild through
-    // the same ctor as `fresh_bridge_env`, then graft the arenas back. This
-    // resets EVERY per-probe field (process context, databox, dependency
-    // factory ids, epoch stack, pending signal) by construction rather than
-    // by enumeration.
+    // Fresh context EXCEPT the shared read-only terminology and the empty
+    // backing allocations of the old process pool: rebuild every outer field
+    // through the same ctor as `fresh_bridge_env`, then graft the terminology
+    // and logically reset process context back. The databox, dependency
+    // factory ids, context epoch stack, pending signal, and every other outer
+    // per-probe field therefore still reset by construction.
     let arenas = std::mem::replace(&mut ctx.base.ontology_arenas, OntologyArenas::new());
     let strategy = ctx.base.used_concept_priority_strategy.take();
     let top = ctx.base.used_processing_data_box.ontology_top_concept;
@@ -7336,12 +7337,17 @@ fn reset_probe_env_impl(
     // reproduces Konclude's stable saturation-task pointers. Carried even
     // when the coupling is off (budget-aborted pass) so the linkings never
     // dangle.
+    // Clear every transient arena before replacing the outer context. Unlike
+    // dropping `ctx`, `Arena::clear_preserving_capacity` keeps the typed pool's
+    // backing allocation for the next probe. It drops all objects, epoch
+    // watermarks, and journals, so ids restart at zero and no completion state
+    // survives. With saturation preservation enabled, the method leaves
+    // exactly the same arena set that `adopt_saturation_state_from` moved in
+    // the previous implementation.
+    let mut process_context = std::mem::take(ctx.process_context_mut());
+    process_context.reset_for_probe_preserving_capacity(preserve_saturation);
     let mut fresh = CalculationAlgorithmContextBase::new();
-    if preserve_saturation {
-        fresh
-            .process_context_mut()
-            .adopt_saturation_state_from(ctx.process_context_mut());
-    }
+    *fresh.process_context_mut() = process_context;
     *ctx = fresh;
     ctx.base.ontology_arenas = arenas;
     ctx.base.used_concept_priority_strategy = strategy;
@@ -19433,6 +19439,68 @@ mod tests {
             ctx.base.take_used_unsatisfiable_cache_handler().is_some(),
             "unsat-cache handler must survive reset_probe_env"
         );
+    }
+
+    #[test]
+    fn probe_reset_reuses_process_capacity_and_matches_a_fresh_probe() {
+        let env = bridge_ofn(
+            "Prefix(:=<http://example.org/>)\n\
+             Ontology(Declaration(Class(:A)) Declaration(Class(:B))\n\
+             SubClassOf(:A :B))",
+        );
+        let (mut algo, mut ctx, bridged) =
+            fresh_bridge_env_with_trigger_absorption(&env.tin, true);
+        let a = bridged.named[env.con_id["A"]];
+        let b = bridged.named[env.con_id["B"]];
+
+        let mut next_id = 0;
+        let cold = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut next_id,
+            &[(a, false), (b, true)],
+        );
+        assert_eq!(cold, Some(true), "A and not-B must clash");
+        let retained_capacity = ctx.process_context().node_arena_capacity();
+        assert!(retained_capacity > 0, "the cold probe allocated nodes");
+
+        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+        assert_eq!(
+            ctx.process_context().node_count(),
+            0,
+            "no completion node may cross the reset"
+        );
+        assert_eq!(
+            ctx.process_context().node_arena_capacity(),
+            retained_capacity,
+            "the reset must retain the node arena allocation"
+        );
+
+        let mut reused_next_id = 0;
+        let reused = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut reused_next_id,
+            &[(a, false), (b, true)],
+        );
+
+        let (mut fresh_algo, mut fresh_ctx, fresh_bridged) =
+            fresh_bridge_env_with_trigger_absorption(&env.tin, true);
+        let fresh_a = fresh_bridged.named[env.con_id["A"]];
+        let fresh_b = fresh_bridged.named[env.con_id["B"]];
+        let mut fresh_next_id = 0;
+        let fresh = bridged_unsat(
+            &mut fresh_algo,
+            &mut fresh_ctx,
+            &fresh_bridged,
+            &mut fresh_next_id,
+            &[(fresh_a, false), (fresh_b, true)],
+        );
+
+        assert_eq!(reused, cold, "reuse changed the repeated probe verdict");
+        assert_eq!(reused, fresh, "reuse differs from a fresh environment");
     }
 
     /// Miniature of the ore_ont_12653 wrong-root-cancel (memory
