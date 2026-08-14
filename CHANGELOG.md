@@ -2,6 +2,38 @@
 
 ## [unreleased]
 
+## [0.2.19] – 2026-08-14
+
+### Reduce one-shot allocation overlap
+
+Small ontologies selected for exact in-process EL completion now pass the
+frontend's typed clause vector directly into completion instead of reading and
+parsing the JSON handoff that remains available to subprocess fallbacks. The
+frontend retains this vector only for the selected `elc` route; every other
+route drops it at the same lifetime boundary as v0.2.18. The one-shot CB CLI
+also releases its converted source-clause arena after building the immutable
+prepared ontology and query-equivalence groups. Reusable library reasoners keep
+their existing input-retention contract.
+
+Role-chain preprocessing derives additions while borrowing the raw TBox and
+then moves retained clauses into a right-sized allocation, avoiding a complete
+TBox clone and an oversized collection buffer. Two source-profile gates use
+lower worker counts for one large plain TBox and one medium SHI terminology.
+These are allocation, handoff, and scheduling changes only; they do not alter
+rules, ordering, redundancy, or the derived fixpoint.
+
+The ten-ontology, 100-run paired panel `50466117` produced byte-identical
+outputs, reduced mean wall from 0.1812 to 0.1774 seconds, and reduced mean peak
+RSS from 30,223.6 to 29,292.2 KiB. Strict sweep `50466143` contains exactly 592
+results, profiles, and checkpoints: 591 classifications succeed, ORE1194
+remains the sole fail-closed error, and comparison with v0.2.18 finds zero
+status, verdict, signature, consistency, or coverage differences. Across the
+591 successful rows, mean wall falls from 4.14838 to 4.00461 seconds, median
+wall from 0.2192 to 0.2159 seconds, mean peak RSS from 450.251 to 449.847 MiB,
+and median peak RSS from 39.04 to 38.66 MiB. The complete serial release suite,
+including the issue #3 pigeonhole regression, passes. Evidence is in
+[`results/benchmarks/2026-08-14-move-augment-tbox/`](results/benchmarks/2026-08-14-move-augment-tbox/README.md).
+
 ## [0.2.18] – 2026-08-14
 
 ### Index large role-relevance slices

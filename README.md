@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.18`.
+are available from the repository tags; the current release is `v0.2.19`.
 
 ## Classify an ontology
 
@@ -90,14 +90,14 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `23ec391`, focused panel
-`50453255`, strict sweep `50456241`, and the 592-row integrity audit verify
+over all 592 ontologies. Tested implementation commit `e8f51dc`, focused panel
+`50466117`, strict sweep `50466143`, and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `4a972445d57a…`.
+fingerprint, and binary identity. The tested binary is `6b4dbd165382…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.18` / `23ec391` (binary `4a972445d57a…`) | **591** | **591** | **4.1484** | **0.2192** | **450.25** | **39.04** |
+| **KM automatic, `km classify`** | `v0.2.19` / `e8f51dc` (binary `6b4dbd165382…`) | **591** | **591** | **4.0046** | **0.2159** | **449.85** | **38.66** |
 
 Performance values come directly from the 591 successful rows of the strict
 automatic-route sweep
@@ -117,8 +117,8 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 450.25 MiB and median RSS is 39.04 MiB. Mean wall is 4.1484 seconds
-and median wall is 0.2192 seconds. All four KM metrics except mean wall remain
+mean RSS is 449.85 MiB and median RSS is 38.66 MiB. Mean wall is 4.0046 seconds
+and median wall is 0.2159 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
 
 Structured exact-EL leaves now run the same completion implementation in the
@@ -145,6 +145,14 @@ inputs retain the established scan. The strict sweep preserves every status and
 signature while reducing mean wall by 2.44%, median wall by 0.72%, mean peak
 RSS by 0.11%, and median peak RSS by 0.51%.
 
+Exact in-process EL leaves now consume the frontend's typed clause vector
+directly, while non-EL routes retain the established serialized handoff and
+allocation lifetime. One-shot CB classification releases its duplicate
+converted source clauses after preparation. The v0.2.19 strict sweep preserves
+every status and signature while reducing mean wall by 3.47%, median wall by
+1.51%, mean peak RSS by 0.09%, and median peak RSS by 0.97% relative to
+v0.2.18.
+
 “Empirically correct” means 588 exact retained or independently derived
 full-IRI signatures, two independently adjudicated consistency results, and one
 independently adjudicated no-gold result. It is not a claim of 591 Konclude
@@ -169,6 +177,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-13-14817-thread-panel/`](results/benchmarks/2026-08-13-14817-thread-panel/)
 - [`results/benchmarks/2026-08-13-large-inproc-elc/`](results/benchmarks/2026-08-13-large-inproc-elc/)
 - [`results/benchmarks/2026-08-13-positive-el-reuse/`](results/benchmarks/2026-08-13-positive-el-reuse/)
+- [`results/benchmarks/2026-08-14-move-augment-tbox/`](results/benchmarks/2026-08-14-move-augment-tbox/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
 - [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
