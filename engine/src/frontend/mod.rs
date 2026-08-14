@@ -872,16 +872,19 @@ fn ofn_to_clauses_requested(
     // blank-node CONCEPT stays in the clause set — only its query/output
     // registration is dropped). Gated by KM_KEEP_BLANK_NAMES for A/B.
     let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
-    let mut iri_map = std::collections::BTreeMap::new();
-    let mut named = Vec::new();
-    for (internal, iri) in reg.owned_entries() {
-        if drop_blank && iri.starts_with("_:") {
-            continue;
-        }
-        iri_map.insert(internal.to_string(), iri.to_string());
-        named.push(internal.to_string());
-    }
-    named.sort();
+    let mut iri_entries: Vec<(String, String)> = reg
+        .owned_entries()
+        .filter(|(_, iri)| !drop_blank || !iri.starts_with("_:"))
+        .map(|(internal, iri)| (internal.to_string(), iri.to_string()))
+        .collect();
+    iri_entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    let named = iri_entries
+        .iter()
+        .map(|(internal, _)| internal.clone())
+        .collect();
+    // The iterator is already in key order. `BTreeMap` can bulk-extend its
+    // right edge instead of performing a second independent ordering pass.
+    let iri_map = iri_entries.into_iter().collect();
     t.lap("declared_seed+iri_map");
 
     // The deployable tree uses source/expressivity features because it must
