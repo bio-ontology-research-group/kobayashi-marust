@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.2.23] – 2026-08-14
+
+### Pass certified EL clauses directly to completion
+
+The two giant certified-EL inputs now pass the frontend's typed clause vector
+directly to the same EL completion implementation instead of starting a worker
+that reparses the serialized JSON handoff. The serialized clause file remains
+available and authoritative for the exact `production_all` fallback if EL
+certification declines or errors. This changes process boundaries and
+representation only; it does not change completion rules, certification, route
+selection, or fallback behavior.
+
+Three alternating ORE8737 pairs produced identical gold-matching signatures
+and reduced mean wall from 96.743 to 80.223 seconds. Independent pairs reduced
+ORE16744 from 73.233 to 63.438 seconds. Strict sweep `50494584` contains
+exactly 592 results, profiles, and checkpoints for binary `13b4d406aaddb4…`.
+It reports 591 successful classifications, ORE1194 as the sole fail-closed
+error, and zero status, consistency, signature, or coverage regressions from
+v0.2.22. Mean wall falls from 3.84669 to 3.78352 seconds and median wall remains
+0.1885 seconds. Independent-sweep RSS moved from 441.114 to 441.459 MiB mean
+and from 35.73 to 36.47 MiB median; focused affected-route peaks differed by
+less than 0.2%. The complete release suite, including issue #3, passes.
+Evidence is in
+[`results/benchmarks/2026-08-14-certified-el-typed-handoff/`](results/benchmarks/2026-08-14-certified-el-typed-handoff/README.md).
+
 ## [0.2.22] – 2026-08-14
 
 ### Wake the supervisor when workers exit

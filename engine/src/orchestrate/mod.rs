@@ -479,8 +479,10 @@ fn use_atomic_inproc_elc(
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
 ) -> bool {
-    selected_route == crate::routing::Route::Elc
-        && profile.source.logical_axioms > 0
+    matches!(
+        selected_route,
+        crate::routing::Route::Elc | crate::routing::Route::CertifiedElProduction
+    ) && profile.source.logical_axioms > 0
         && profile.source.distinct_classes.saturating_mul(10)
             < profile.source.logical_axioms.saturating_mul(9)
 }
@@ -1611,13 +1613,17 @@ mod tests {
     }
 
     #[test]
-    fn atomic_inproc_elc_excludes_flat_taxonomies_and_non_el_leaves() {
+    fn atomic_inproc_elc_admits_certified_el_and_excludes_other_non_el_leaves() {
         use crate::frontend::profile::OntologyProfile;
         use crate::routing::Route;
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 100;
         profile.source.distinct_classes = 50;
         assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        assert!(use_atomic_inproc_elc(
+            Route::CertifiedElProduction,
+            &profile
+        ));
         assert!(!use_atomic_inproc_elc(Route::ProductionAll, &profile));
         profile.source.distinct_classes = 90;
         assert!(!use_atomic_inproc_elc(Route::Elc, &profile));

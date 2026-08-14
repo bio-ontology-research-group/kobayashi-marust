@@ -133,7 +133,7 @@ fn run_ofn_in_process(
         profile: result.profile,
         route: result.route,
     };
-    let out = crate::json_io::JInput {
+    let mut out = crate::json_io::JInput {
         clauses: result.clauses,
         rbox: result.rbox,
         cardinalities: result.cardinalities,
@@ -145,16 +145,26 @@ fn run_ofn_in_process(
     // Only EL completion can consume this representation directly. Dropping
     // non-EL inputs before returning preserves the old frontend lifetime and
     // avoids making its allocations part of the orchestrator's RSS high-water.
+    let selected_route = meta.route.parse::<crate::routing::Route>().ok();
     let cacheable = std::env::var_os("KM_NO_INPROC_ELC").is_none()
         && std::env::var_os("KM_EL_ABOX_CHECK").is_none()
         && meta.el_rbox_safe
         && !meta.profile.positive_el_abox_materializable
-        && meta.route.parse::<crate::routing::Route>() == Ok(crate::routing::Route::Elc)
-        && super::use_atomic_inproc_elc(crate::routing::Route::Elc, &meta.profile);
-    // An exact Elc route consumes `out` directly and has no classifier fallback,
-    // so serializing the same clauses is dead work. Every path that can spawn a
-    // worker, including KM_NO_INPROC_ELC, retains the authoritative JSON file.
-    if !cacheable {
+        && selected_route.is_some_and(|route| super::use_atomic_inproc_elc(route, &meta.profile));
+    // The subprocess JSON path rebuilds an exactly-sized outer clause vector.
+    // Match that footprint before retaining frontend-owned clauses across the
+    // phase boundary; spare parser growth capacity otherwise survives into EL
+    // completion and raises the classify process's high-water mark.
+    if cacheable {
+        out.clauses.shrink_to_fit();
+    }
+    // Exact Elc consumes `out` directly and has no classifier fallback, so its
+    // serialized copy is dead work. CertifiedElProduction also consumes the
+    // typed input directly, but retains the authoritative JSON for its required
+    // ProductionAll fallback if the certificate declines or errors.
+    let needs_serialized_fallback =
+        selected_route == Some(crate::routing::Route::CertifiedElProduction);
+    if !cacheable || needs_serialized_fallback {
         let f = File::create(clauses_path)?;
         let mut w = std::io::BufWriter::new(f);
         serde_json::to_writer(&mut w, &out)?;
