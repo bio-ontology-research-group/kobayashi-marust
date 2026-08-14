@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.21`.
+are available from the repository tags; the current release is `v0.2.22`.
 
 ## Classify an ontology
 
@@ -90,14 +90,14 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `cb5c59b`, focused pair
-`50480341`, strict sweep `50483032`, and the 592-row integrity audit verify
+over all 592 ontologies. Tested implementation commit `144f92d`, focused panel
+`50491928`, strict sweep `50492209`, and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `08d0fcd50d52…`.
+fingerprint, and binary identity. The tested binary is `4379bd61e853…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.21` / `cb5c59b` (binary `08d0fcd50d52…`) | **591** | **591** | **3.8973** | **0.1897** | **443.22** | **35.94** |
+| **KM automatic, `km classify`** | `v0.2.22` / `144f92d` (binary `4379bd61e853…`) | **591** | **591** | **3.8467** | **0.1885** | **441.11** | **35.73** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
 Performance values come directly from the 591 successful rows of the strict
@@ -118,9 +118,17 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 443.22 MiB and median RSS is 35.94 MiB. Mean wall is 3.8973 seconds
-and median wall is 0.1897 seconds. All four KM metrics except mean wall remain
+mean RSS is 441.11 MiB and median RSS is 35.73 MiB. Mean wall is 3.8467 seconds
+and median wall is 0.1885 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
+
+Linux supervisors now use process exit notifications while retaining the same
+RSS and deadline checks, removing up to one watchdog interval after a worker
+finishes. Release builds use a smaller abort-on-panic binary, and five measured
+production shapes use one CB worker without changing their route portfolio or
+complete fallback. Relative to v0.2.21, strict sweep `50492209` reduces mean
+wall by 1.30%, median wall by 0.63%, mean peak RSS by 0.48%, and median peak RSS
+by 0.58%, with zero behavioral regressions.
 
 Mode-1 incremental subset blocking uses dense literal bitsets for the exact
 label-subset test while retaining dependency-bearing concept maps as the

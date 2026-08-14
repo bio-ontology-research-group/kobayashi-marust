@@ -1,0 +1,17 @@
+{
+  "baseline": {
+    "release": "v0.2.21",
+    "mean_wall_s": 3.8972910321489,
+    "median_wall_s": 0.1897,
+    "mean_peak_mb": 443.22230118443315,
+    "median_peak_mb": 35.94
+  },
+  "candidate": {
+    "binary_sha256": "4379bd61e853869c81148633365740d058e1f768b3320c69334f64e3cf88127f",
+    "mean_wall_s": 3.8466922165820643,
+    "median_wall_s": 0.1885,
+    "mean_peak_mb": 441.1139255499154,
+    "median_peak_mb": 35.73
+  },
+  "behavior_regressions": 0
+}

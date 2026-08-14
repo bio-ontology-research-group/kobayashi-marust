@@ -2,6 +2,37 @@
 
 ## [unreleased]
 
+## [0.2.22] – 2026-08-14
+
+### Wake the supervisor when workers exit
+
+On Linux, the engine watchdog now waits on a process file descriptor between
+RSS and deadline checks. A completed child wakes the supervisor immediately
+instead of waiting for the remainder of an exponential polling interval, which
+previously reached 100 ms on longer worker stages. Kernels without `pidfd_open`
+and non-Linux systems retain the established sleep-based watchdog. Focused
+tests cover normal completion, timeout termination, and RSS-cap termination.
+
+Release builds use aborting panic behavior, reducing the multi-call binary's
+code from 10.44 to 9.23 MiB while leaving normal execution unchanged. Five
+measured nominal-free production shapes use one CB worker instead of the full
+parallel allocation. The route portfolio, bridge, complete fallback, and
+winner contract are unchanged. These changes affect process notification,
+release code generation, and scheduling only; they do not alter reasoning
+rules or derived results.
+
+The 85-run alternating pidfd panel produced byte-identical output and reduced
+panel median wall from 0.21 to 0.20 seconds. Strict sweep `50492209` contains
+exactly 592 results, profiles, and checkpoints for binary
+`4379bd61e853869c…`. It reports 591 successful classifications, ORE1194 as the
+sole fail-closed error, and zero status, verdict, signature, consistency, or
+coverage regressions from v0.2.21. Mean wall falls from 3.89729 to 3.84669
+seconds, median wall from 0.1897 to 0.1885 seconds, mean peak RSS from 443.222
+to 441.114 MiB, and median peak RSS from 35.94 to 35.73 MiB. The complete
+release suite, including the issue #3 pigeonhole regression, passes. Evidence
+is in
+[`results/benchmarks/2026-08-14-exit-notified-workers/`](results/benchmarks/2026-08-14-exit-notified-workers/README.md).
+
 ## [0.2.21] – 2026-08-14
 
 ### Accelerate incremental subset blocking

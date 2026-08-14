@@ -1,0 +1,38 @@
+{
+  "automatic_results_sha256": "026d13755a14359f754670cd5bb6adacba99d87ec1299832b501a8a605071ce7",
+  "baseline_release": "v0.2.12",
+  "binary_sha256": "4379bd61e853869c81148633365740d058e1f768b3320c69334f64e3cf88127f",
+  "cpu_model": "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz",
+  "mean_peak_mb": 441.1139255499157,
+  "mean_wall_s": 3.846692216582067,
+  "median_peak_mb": 35.73,
+  "median_wall_s": 0.1885,
+  "revision": "candidate-sequential-large-shi-bridge",
+  "routes": {
+    "cb_plain16": 2,
+    "certified_card_nominals": 1,
+    "certified_card_proxy_abox": 1,
+    "certified_el_production": 5,
+    "certified_nominals": 9,
+    "elc": 273,
+    "ht_bridge": 1,
+    "ht_rules": 3,
+    "mirror_private": 1,
+    "nominal_ni_abox": 8,
+    "nominal_ni_tbox": 1,
+    "nominals": 50,
+    "production_all": 232,
+    "production_all1": 5
+  },
+  "rows": 592,
+  "status": {
+    "error": 1,
+    "ok": 591
+  },
+  "verdict": {
+    "consistency_mismatch": 2,
+    "error": 1,
+    "match": 588,
+    "nogold": 1
+  }
+}
