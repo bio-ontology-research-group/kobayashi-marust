@@ -1050,21 +1050,35 @@ pub fn augment_with_chains(
     // KM_KEEP_CHAIN_AXIOMS.  KM_ROLE_AUTOMATON still keeps them (the expensive
     // preprocessing closure needs the raw axioms in the tbox it scans).
     let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some();
-    let mut base: Vec<DLClause> = tbox
-        .iter()
-        .filter(|c| keep_chains || !is_chain_axiom(c))
-        .cloned()
-        .collect();
+    // Build every addition while raw chain axioms remain borrowable, then move
+    // the retained normalized clauses into `base`. Cloning the whole TBox here
+    // served only to keep the original alive for these derived passes.
+    // Consolidate additions immediately. Keeping four independently grown
+    // vectors alive at once retains all four spare capacities and can exceed
+    // the clone this path removes on transitivity-heavy ontologies.
+    let mut derived = transitivity_clauses(&tbox);
+    derived.extend(chain_clauses(&tbox));
+    derived.extend(transitive_chain_compose_clauses(&tbox));
+    derived.extend(role_automaton_reachability_clauses(&tbox));
+    let chain_info = detect_role_chains(&tbox);
+    // Do not use `filter().collect()` here. `Vec`'s in-place collection may
+    // retain the normaliser's substantially over-allocated source buffer even
+    // after most of the parse-time working set is dead. Move the clauses into
+    // a right-sized allocation instead: this copies only the small DLClause
+    // headers while every atom/string allocation remains owned and is moved.
+    let mut base = Vec::with_capacity(tbox.len());
+    base.extend(
+        tbox
+            .into_iter()
+            .filter(|c| keep_chains || !is_chain_axiom(c)),
+    );
     base.extend(nominal_clauses(abox, hooks));
     if std::env::var_os("KM_NOMINALS").is_some() {
         base.extend(abox.iter().cloned());
         base.extend(nominal_defining_clauses(hooks));
     }
-    base.extend(transitivity_clauses(&tbox));
-    base.extend(chain_clauses(&tbox));
-    base.extend(transitive_chain_compose_clauses(&tbox));
-    base.extend(role_automaton_reachability_clauses(&tbox));
-    (base, detect_role_chains(&tbox))
+    base.extend(derived);
+    (base, chain_info)
 }
 
 /// Three-clause transitivity recognition for `R(x,y) ∧ ⋀filler(y) → ⋀head(x)`

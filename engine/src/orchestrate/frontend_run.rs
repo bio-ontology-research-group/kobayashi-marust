@@ -36,23 +36,6 @@ fn manual_route() -> String {
 /// The clauses temp file the reasoners consume (`{clauses, cardinalities,
 /// rules}` — matches `cli::OfnClausesOnly` exactly, the format the `ofn`
 /// subprocess writes).
-#[derive(serde::Serialize)]
-struct ClausesFile {
-    clauses: Vec<crate::json_io::JClause>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    rbox: Vec<Vec<String>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    cardinalities: Vec<crate::json_io::CardMeta>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    definers: Vec<crate::json_io::DefinerMeta>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
-    #[serde(skip_serializing_if = "crate::json_io::NominalAboxMeta::is_empty")]
-    nominal_abox: crate::json_io::NominalAboxMeta,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    rules: Vec<crate::json_io::JRule>,
-}
-
 /// Below this ontology-file size, run the frontend IN-PROCESS (call
 /// `ofn_to_clauses` directly) instead of forking the `ofn` subprocess. Measured:
 /// on trivial onts the subprocess fork/exec + meta round-trip is ~15-25 ms of
@@ -68,7 +51,10 @@ const IN_PROCESS_OFN_MAX: u64 = 2 << 20;
 /// clause set is dropped before returning, so no frontend memory is held during
 /// the engine run. `ofn_to_clauses` is the SAME function the subprocess calls,
 /// so the output is byte-for-byte identical.
-fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, OrchestrateError> {
+fn run_ofn_in_process(
+    ont: &Path,
+    clauses_path: &Path,
+) -> Result<(Meta, Option<crate::json_io::JInput>), OrchestrateError> {
     let text = std::fs::read_to_string(ont).map_err(|e| OrchestrateError::Spawn {
         bin: "ofn".into(),
         source: e,
@@ -86,7 +72,7 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
         profile: result.profile,
         route: result.route,
     };
-    let out = ClausesFile {
+    let out = crate::json_io::JInput {
         clauses: result.clauses,
         rbox: result.rbox,
         cardinalities: result.cardinalities,
@@ -99,10 +85,28 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
     let mut w = std::io::BufWriter::new(f);
     serde_json::to_writer(&mut w, &out)?;
     std::io::Write::flush(&mut w)?;
-    Ok(meta)
+    // Only EL completion can consume this representation directly. Dropping
+    // non-EL inputs before returning preserves the old frontend lifetime and
+    // avoids making its allocations part of the orchestrator's RSS high-water.
+    let cached = (meta.el_rbox_safe
+        && meta.route.parse::<crate::routing::Route>() == Ok(crate::routing::Route::Elc))
+    .then_some(out);
+    Ok((meta, cached))
 }
 
 pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), OrchestrateError> {
+    let (clauses, meta, _cached) = run_ofn_split_cached(cfg, ont)?;
+    Ok((clauses, meta))
+}
+
+/// Split frontend output while retaining the already-built typed input for the
+/// small in-process path. The serialized file remains authoritative for every
+/// subprocess fallback; callers consume the cache only when the selected
+/// classifier also runs in this process.
+pub fn run_ofn_split_cached(
+    cfg: &Config,
+    ont: &Path,
+) -> Result<(TempPath, Meta, Option<crate::json_io::JInput>), OrchestrateError> {
     let prepared = super::input::prepare(ont)?;
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
@@ -114,7 +118,7 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
         .unwrap_or(false);
     if small && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
         match run_ofn_in_process(ont, clauses.path()) {
-            Ok(meta) => return Ok((clauses, meta)),
+            Ok((meta, cached)) => return Ok((clauses, meta, cached)),
             // OutOfFragment is a real verdict (not a transient failure): surface it
             // exactly as the subprocess exit-3 path does, don't silently retry.
             Err(e @ OrchestrateError::OutOfFragment(_)) => return Err(e),
@@ -165,7 +169,7 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
     // large ontologies (19 s → 5 s).
     let meta_bytes = std::fs::read(meta.path())?;
     let meta_parsed: Meta = serde_json::from_slice(&meta_bytes)?;
-    Ok((clauses, meta_parsed))
+    Ok((clauses, meta_parsed, None))
 }
 
 /// Run `ofn` once with `KM_ABSORB` forced on/off, streaming the (full) clause

@@ -237,21 +237,21 @@ pub struct NominalRoleAssertionMeta {
     pub target: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct JInput {
     pub clauses: Vec<JClause>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rbox: Vec<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cardinalities: Vec<CardMeta>,
-    #[serde(default)]
-    pub rules: Vec<JRule>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub definers: Vec<DefinerMeta>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_axioms: Vec<SourceAxiomMeta>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "NominalAboxMeta::is_empty")]
     pub nominal_abox: NominalAboxMeta,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<JRule>,
 }
 
 #[derive(Serialize)]

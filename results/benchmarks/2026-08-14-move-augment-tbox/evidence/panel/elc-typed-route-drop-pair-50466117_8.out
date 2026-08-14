@@ -1,0 +1,11 @@
+RESULT ontology=15341 repeat=0 label=baseline wall_s=0.18 peak_kb=30116 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=0 label=candidate wall_s=0.19 peak_kb=30000 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=1 label=candidate wall_s=0.18 peak_kb=30012 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=1 label=baseline wall_s=0.18 peak_kb=30312 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=2 label=baseline wall_s=0.18 peak_kb=30320 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=2 label=candidate wall_s=0.19 peak_kb=30300 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=3 label=candidate wall_s=0.19 peak_kb=30160 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=3 label=baseline wall_s=0.18 peak_kb=30052 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=4 label=baseline wall_s=0.18 peak_kb=30312 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+RESULT ontology=15341 repeat=4 label=candidate wall_s=0.18 peak_kb=30332 sha=2dc299b342e7debc545a17e55c085ee77b327703f1b2f949f816dfa03b36782b
+OUTPUT_IDENTICAL ontology=15341 repeats=5

@@ -1,0 +1,44 @@
+{
+  "baseline_metrics": {
+    "mean_peak_mib": 450.25089678511,
+    "mean_wall_s": 4.148379695431472,
+    "median_peak_mib": 39.04,
+    "median_wall_s": 0.2192,
+    "n": 591
+  },
+  "baseline_root": "/ibex/scratch/hohndor/km/relevance-queue-20260813/threshold-sweep/results",
+  "behavior_differences": [],
+  "binary_identities": [
+    "6b4dbd165382f19ec666520cb226b46058b77a3bc83ccc9f7a779f8b2f0eb9e1"
+  ],
+  "candidate_binary_sha256": "6b4dbd165382f19ec666520cb226b46058b77a3bc83ccc9f7a779f8b2f0eb9e1",
+  "candidate_job": "50466143",
+  "candidate_metrics": {
+    "mean_peak_mib": 449.84717428087987,
+    "mean_wall_s": 4.004607783417936,
+    "median_peak_mib": 38.66,
+    "median_wall_s": 0.2159,
+    "n": 591
+  },
+  "candidate_root": "/ibex/scratch/hohndor/km/move-augment-right-sized-20260814/elc-typed-route-drop-sweep",
+  "checkpoint_count": 592,
+  "cpu_identities": [
+    "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz"
+  ],
+  "job_identities": [
+    "50466143"
+  ],
+  "missing_route_traces": [],
+  "profile_count": 592,
+  "row_count": 592,
+  "status_counts": {
+    "error": 1,
+    "ok": 591
+  },
+  "verdict_counts": {
+    "consistency_mismatch": 2,
+    "error": 1,
+    "match": 588,
+    "nogold": 1
+  }
+}

@@ -332,11 +332,16 @@ fn run_atomic_elc(
     cfg: &Config,
     clauses_path: &Path,
     in_process: bool,
+    cached_input: Option<crate::json_io::JInput>,
 ) -> Result<EngineOut, OrchestrateError> {
     if in_process {
-        let buf = std::fs::read(clauses_path)?;
-        let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
-        drop(buf);
+        let input = match cached_input {
+            Some(input) => input,
+            None => {
+                let buf = std::fs::read(clauses_path)?;
+                serde_json::from_slice(&buf)?
+            }
+        };
         return match crate::elcomplete::classify(input.clauses) {
             None => Err(OrchestrateError::OutOfFragment(
                 "ontology is outside the selected EL completion fragment".into(),
@@ -434,6 +439,7 @@ fn run_atomic_mechanism(
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
+    cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
@@ -442,11 +448,21 @@ fn run_atomic_mechanism(
             clauses_path,
             use_atomic_inproc_elc(selected_route, profile)
                 && std::env::var_os("KM_NO_INPROC_ELC").is_none(),
+            cached_input.take(),
         )
         .map(Some),
-        Mechanism::Cb => run_atomic_cb(cfg, clauses_path).map(Some),
-        Mechanism::Ht => race::run_ht_only(cfg, clauses_path, named).map(Some),
-        Mechanism::Tableau => race::run_tableau_only(cfg, clauses_path, named).map(Some),
+        Mechanism::Cb => {
+            drop(cached_input.take());
+            run_atomic_cb(cfg, clauses_path).map(Some)
+        }
+        Mechanism::Ht => {
+            drop(cached_input.take());
+            race::run_ht_only(cfg, clauses_path, named).map(Some)
+        }
+        Mechanism::Tableau => {
+            drop(cached_input.take());
+            race::run_tableau_only(cfg, clauses_path, named).map(Some)
+        }
         Mechanism::Unknown(name) => Err(OrchestrateError::OutOfFragment(format!(
             "unknown KM_MECHANISM {name:?}"
         ))),
@@ -599,12 +615,15 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
 fn try_inproc_elc(
     cfg: &Config,
     clauses_path: &Path,
+    cached_input: Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
-    let buf = std::fs::read(clauses_path)?;
-    let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
-    // Raw JSON bytes are dead once parsed; `classify` itself drops the parsed
-    // clause block before its saturation, so free the bytes symmetrically.
-    drop(buf);
+    let input = match cached_input {
+        Some(input) => input,
+        None => {
+            let buf = std::fs::read(clauses_path)?;
+            serde_json::from_slice(&buf)?
+        }
+    };
     match crate::elcomplete::classify(input.clauses) {
         None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
         Some(res) => {
@@ -744,7 +763,8 @@ fn classify_with_evidence_mode(
             consistency_certified: true,
         });
     }
-    let (clauses_path, meta) = frontend_run::run_ofn_split(initial_cfg, ont)?;
+    let (clauses_path, meta, mut cached_input) =
+        frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
     let selected_route = meta
         .route
         .parse::<crate::routing::Route>()
@@ -772,9 +792,15 @@ fn classify_with_evidence_mode(
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
         }
         if selected_route == crate::routing::Route::ProductionAll
-            && crate::routing::eight_thread_large_sriq_candidate(&meta.profile)
+            && (crate::routing::eight_thread_large_sriq_candidate(&meta.profile)
+                || crate::routing::eight_thread_large_plain_tbox_candidate(&meta.profile))
         {
             std::env::set_var("KM_THREADS", "8");
+        }
+        if selected_route == crate::routing::Route::ProductionAll
+            && crate::routing::one_thread_medium_shi_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_THREADS", "1");
         }
         if let Some(bits) = composite_layout(&meta.profile) {
             std::env::set_var("KM_COMP_IND_BITS", bits.to_string());
@@ -783,6 +809,20 @@ fn classify_with_evidence_mode(
         Some(Config::from_env())
     };
     let cfg = routed_cfg.as_ref().unwrap_or(initial_cfg);
+    // The typed frontend handoff benefits only an EL implementation that
+    // consumes its clause vector directly. Release it before constructing
+    // route bookkeeping for every other mechanism; delaying this drop until
+    // the CB/HT dispatch raises the process high-water mark even though those
+    // workers still use the established serialized input.
+    let retain_cached_for_el = std::env::var_os("KM_NO_INPROC_ELC").is_none()
+        && match &cfg.mechanism {
+            Mechanism::Elc => use_atomic_inproc_elc(selected_route, &meta.profile),
+            Mechanism::Portfolio => cfg.elc && meta.el_rbox_safe,
+            Mechanism::Cb | Mechanism::Ht | Mechanism::Tableau | Mechanism::Unknown(_) => false,
+        };
+    if !retain_cached_for_el {
+        drop(cached_input.take());
+    }
     if timing {
         eprintln!(
             "KM_TIMING frontend done @ {:.2}s route={}",
@@ -932,6 +972,7 @@ fn classify_with_evidence_mode(
                 &named_set,
                 selected_route,
                 &meta.profile,
+                &mut cached_input,
             )
         })
     } else {
@@ -941,6 +982,7 @@ fn classify_with_evidence_mode(
             &named_set,
             selected_route,
             &meta.profile,
+            &mut cached_input,
         )
     };
     let atomic_out = match atomic_attempt {
@@ -990,7 +1032,7 @@ fn classify_with_evidence_mode(
                 .map(|m| m.len() < INPROC_ELC_MAX)
                 .unwrap_or(false);
             if cfg.elc && inproc_ok && small && meta.el_rbox_safe {
-                out = try_inproc_elc(cfg, clauses_path.path())?;
+                out = try_inproc_elc(cfg, clauses_path.path(), cached_input.take())?;
                 if timing && out.is_some() {
                     eprintln!(
                         "KM_TIMING in-process elc done @ {:.2}s (no race)",
@@ -1071,6 +1113,11 @@ fn classify_with_evidence_mode(
                 && !meta.el_rbox_safe
                 && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
             {
+                // Directly retaining frontend-built vectors wins both time and
+                // memory for EL completion, which consumes them. CB first
+                // interns borrowed clauses into a second representation; drop
+                // the cache and keep its established right-sized JSON handoff.
+                drop(cached_input.take());
                 let budget_s: f64 = std::env::var("KM_INPROC_ENGINE_BUDGET_S")
                     .ok()
                     .and_then(|s| s.parse().ok())

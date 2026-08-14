@@ -389,7 +389,7 @@ pub fn run_engine() {
         eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
     }
     let t2 = std::time::Instant::now();
-    r.saturate();
+    r.saturate_releasing_input();
     let t_saturate = t2.elapsed();
     if r.incomplete() {
         eprintln!(

@@ -530,6 +530,48 @@ pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bo
         && !profile.expressivity.datatype
 }
 
+/// Large nominal-free production TBoxes without qualified cardinality use the
+/// same exact portfolio more efficiently with eight worker threads. Six
+/// representative ORE classifications retained byte-identical answers while
+/// reducing their summed process-tree peak by about 916 MiB; none became
+/// slower. This predicate changes scheduling only.
+pub(crate) fn eight_thread_large_plain_tbox_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms == 0
+        && source.logical_axioms >= 20_000
+        && source.qualified_cardinalities == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && !profile.expressivity.nominal
+        && !profile.expressivity.datatype
+}
+
+/// Medium SHI terminologies in the plain production fragment do not benefit
+/// from parallel CB workers. The single-worker schedule produced identical
+/// classifications on all five matching ORE ontologies, preserved wall time,
+/// and removed hundreds of MiB on the two parallel-allocation-heavy members.
+pub(crate) fn one_thread_medium_shi_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.abox_axioms == 0
+        && (20_000..100_000).contains(&source.logical_axioms)
+        && source.unions == 0
+        && source.role_chain_axioms == 0
+        && source.qualified_cardinalities == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && profile.expressivity.negation_disjunction
+        && profile.expressivity.existential
+        && profile.expressivity.transitivity
+        && profile.expressivity.role_hierarchy
+        && profile.expressivity.inverse
+        && !profile.expressivity.complex_subrole
+        && !profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -2366,6 +2408,45 @@ mod tests {
 
         profile.source.qualified_cardinalities = 69;
         assert!(!eight_thread_large_sriq_candidate(&profile));
+    }
+
+    #[test]
+    fn large_plain_tbox_uses_eight_workers() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 24_749;
+        profile.source.tbox_axioms = 24_587;
+        profile.source.distinct_classes = 9_860;
+        profile.expressivity.inverse = true;
+        profile.expressivity.transitivity = true;
+        assert!(eight_thread_large_plain_tbox_candidate(&profile));
+
+        profile.source.logical_axioms = 19_999;
+        assert!(!eight_thread_large_plain_tbox_candidate(&profile));
+        profile.source.logical_axioms = 24_749;
+        profile.source.qualified_cardinalities = 1;
+        assert!(!eight_thread_large_plain_tbox_candidate(&profile));
+        profile.source.qualified_cardinalities = 0;
+        profile.source.abox_axioms = 1;
+        assert!(!eight_thread_large_plain_tbox_candidate(&profile));
+    }
+
+    #[test]
+    fn medium_shi_tbox_uses_one_worker() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 80_435;
+        profile.source.tbox_axioms = 80_419;
+        profile.expressivity.negation_disjunction = true;
+        profile.expressivity.existential = true;
+        profile.expressivity.transitivity = true;
+        profile.expressivity.role_hierarchy = true;
+        profile.expressivity.inverse = true;
+        assert!(one_thread_medium_shi_candidate(&profile));
+
+        profile.source.role_chain_axioms = 1;
+        assert!(!one_thread_medium_shi_candidate(&profile));
+        profile.source.role_chain_axioms = 0;
+        profile.source.logical_axioms = 100_000;
+        assert!(!one_thread_medium_shi_candidate(&profile));
     }
 
     #[test]

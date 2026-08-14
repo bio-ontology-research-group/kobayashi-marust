@@ -782,6 +782,20 @@ impl Reasoner {
     }
 
     pub fn saturate(&mut self) {
+        self.saturate_inner(false);
+    }
+
+    /// Classify a one-shot input and release the converted source clauses once
+    /// the immutable prepared ontology and query-equivalence groups have been
+    /// built.  The CLI never saturates the same `Reasoner` twice, so retaining
+    /// `clauses0` there only duplicates the (up to million-clause) ontology at
+    /// the context-saturation peak.  Reusable library callers keep the normal
+    /// `saturate` contract above.
+    pub fn saturate_releasing_input(&mut self) {
+        self.saturate_inner(true);
+    }
+
+    fn saturate_inner(&mut self, release_input: bool) {
         // Auto-route the Sequoia definer ordering before any saturation (the
         // parallel workers below all read the resulting global). Env overrides
         // win inside `set_seq_order_auto`.
@@ -839,6 +853,10 @@ impl Reasoner {
             return;
         }
         let (queries, mutual_unit_groups) = self.collapse_mutual_unit_queries(&queries);
+        if release_input {
+            self.clauses0.clear();
+            self.clauses0.shrink_to_fit();
+        }
         if std::env::var_os("KM_PROF").is_some() && !mutual_unit_groups.is_empty() {
             let aliases: usize = mutual_unit_groups
                 .iter()
@@ -1085,6 +1103,23 @@ mod tests {
         rr.saturate();
         rr
     }
+
+    #[test]
+    fn one_shot_saturation_releases_converted_input_after_preparation() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+        ];
+        let mut retained = Reasoner::new(&clauses);
+        retained.saturate();
+        let mut released = Reasoner::new(&clauses);
+        released.saturate_releasing_input();
+
+        assert_eq!(released.subsumptions(), retained.subsumptions());
+        assert!(released.clauses0.is_empty());
+        assert!(!retained.clauses0.is_empty());
+    }
+
     fn supers(rr: &Reasoner, a: &str) -> std::collections::BTreeSet<String> {
         rr.subsumptions().get(a).cloned().unwrap_or_default()
     }
