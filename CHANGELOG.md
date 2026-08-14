@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.2.24] – 2026-08-14
+
+### Parallelize dense EL NF4 frontiers
+
+The EL completion path now groups dense edge-side NF4 frontiers by parent,
+computes missing propagation conclusions in parallel, and inserts them in
+deterministic order. Sparse frontiers keep the established serial join. The
+automatic route enables this scheduler only for a source-profile shape that
+matches ORE8737 among the 592 stored ORE profiles.
+
+Three alternating automatic-route pairs preserve the gold signature and
+reduce ORE8737 mean wall from 85.174 to 78.256 seconds. Strict sweep `50496853`
+contains 592 validated terminal rows for binary `b51af8f49e59f4c…`: 591 are
+successful and ORE1194 remains the sole fail-closed error. Comparison with
+v0.2.23 finds zero differences in status, verdict, consistency, route, or
+signature. Mean wall falls from 3.78352 to 3.77991 seconds; median wall is
+0.1887 seconds, mean peak RSS is 441.536 MiB, and median peak RSS is 36.17 MiB.
+The complete release suite, including issue #3, passes. Evidence is in
+[`results/benchmarks/2026-08-14-parallel-nf4-frontier/`](results/benchmarks/2026-08-14-parallel-nf4-frontier/README.md).
+
 ## [0.2.23] – 2026-08-14
 
 ### Pass certified EL clauses directly to completion
