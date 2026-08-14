@@ -17,6 +17,8 @@
 use std::collections::VecDeque;
 use std::hash::{BuildHasherDefault, Hasher};
 
+use rayon::prelude::*;
+
 use crate::json_io::{JAtom, JClause, JTerm};
 
 // ---------------------------------------------------------------------------
@@ -1278,6 +1280,13 @@ fn to_nf(
 enum Item {
     Sub(u32, u32),
     Edge(u32, u32, u32),
+    /// This edge frontier did not have enough NF4 join density to amortize a
+    /// parallel batch. Process it with the ordinary edge-side NF4 rule without
+    /// reconsidering the same frontier on every pop.
+    EdgeSerial(u32, u32, u32),
+    /// The edge-side NF4 join was already discharged by a frontier batch. The
+    /// remaining edge rules still run in the original queue order.
+    EdgeAfterNf4(u32, u32, u32),
 }
 
 /// Read-only indexes over the normal forms; built once, never mutated during the
@@ -1602,6 +1611,118 @@ struct Prof {
     nf4_edge_scan: u64, // (super_role, d_super) lookups in the Edge-NF4 rule
     nf7_scan: u64,      // out-edges scanned in the NF7 rule
     botback: u64,
+    nf4_batch_calls: u64,
+    nf4_batch_edges: u64,
+    nf4_batch_groups: u64,
+    nf4_batch_missing: u64,
+}
+
+const PAR_NF4_MIN_EDGES: usize = 256;
+const PAR_NF4_MAX_EDGES: usize = 65_536;
+
+/// Discharge the edge-side NF4 join for one consecutive edge frontier.
+///
+/// Edges are grouped by parent because all conclusions of the join land in the
+/// parent's label. Each group is independent and can therefore be computed in
+/// parallel without synchronizing the authoritative state. A local set removes
+/// the confluence duplicates produced when several targets carry the same
+/// propagation. Conclusions are sorted before insertion, making the schedule
+/// deterministic. Every emitted conclusion is exactly one that the ordinary
+/// edge-side NF4 rule would attempt; delaying and deduplicating attempts does
+/// not change the finite monotone closure.
+fn fire_edge_nf4_batch(
+    idx: &Idx,
+    st: &mut State,
+    prof: &mut Prof,
+    parallel_nf4: bool,
+) -> bool {
+    if !parallel_nf4 || idx.nf4_by_filler.is_empty() {
+        return false;
+    }
+    let edge_count = st
+        .worklist
+        .iter()
+        .take(PAR_NF4_MAX_EDGES)
+        .take_while(|item| matches!(item, Item::Edge(..)))
+        .count();
+    if edge_count < PAR_NF4_MIN_EDGES {
+        return false;
+    }
+
+    let mut edges = Vec::with_capacity(edge_count);
+    for _ in 0..edge_count {
+        let Some(Item::Edge(c, r, d)) = st.worklist.pop_front() else {
+            unreachable!("the measured consecutive edge frontier changed")
+        };
+        edges.push((c, r, d));
+    }
+
+    // A batch pays for grouping and local deduplication. Sparse propagation
+    // frontiers are faster through the ordinary direct join. Measure the exact
+    // immutable slices this frontier would scan, then mark a declined frontier
+    // so it is not measured repeatedly as each edge is popped.
+    let estimated_scan: usize = edges
+        .iter()
+        .map(|&(_, r, d)| st.prop.get(&(d, r)).map_or(0, Vec::len))
+        .sum();
+    if estimated_scan < edge_count.saturating_mul(128) {
+        for (c, r, d) in edges.into_iter().rev() {
+            st.worklist.push_front(Item::EdgeSerial(c, r, d));
+        }
+        return true;
+    }
+
+    let mut by_parent: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    for &(c, r, d) in &edges {
+        by_parent.entry(c).or_default().push((r, d));
+    }
+    if by_parent.len().saturating_mul(2) > edge_count {
+        for (c, r, d) in edges.into_iter().rev() {
+            st.worklist.push_front(Item::EdgeSerial(c, r, d));
+        }
+        return true;
+    }
+    prof.nf4_batch_calls += 1;
+    prof.nf4_batch_edges += edges.len() as u64;
+    prof.nf4_batch_groups += by_parent.len() as u64;
+    let prop = &st.prop;
+    let labels = &st.sub_super;
+    let mut conclusions: Vec<(u32, Vec<u32>, u64)> = by_parent
+        .into_par_iter()
+        .map(|(c, parent_edges)| {
+            let label = &labels[c as usize];
+            let mut missing: HashSet<u32> = HashSet::default();
+            let mut scanned = 0u64;
+            for (r, d) in parent_edges {
+                if let Some(sups) = prop.get(&(d, r)) {
+                    scanned += sups.len() as u64;
+                    for &sup in sups {
+                        if !label.contains(&sup) {
+                            missing.insert(sup);
+                        }
+                    }
+                }
+            }
+            let mut missing: Vec<u32> = missing.into_iter().collect();
+            missing.sort_unstable();
+            (c, missing, scanned)
+        })
+        .collect();
+    conclusions.sort_unstable_by_key(|(c, _, _)| *c);
+    for (c, missing, scanned) in conclusions {
+        prof.nf4_edge_scan += scanned;
+        prof.nf4_batch_missing += missing.len() as u64;
+        for sup in missing {
+            st.add_sub(c, sup);
+        }
+    }
+
+    // Preserve the original order for bottom propagation, role chains, and
+    // hierarchy lifting. Only the already-completed NF4 join is skipped.
+    for (c, r, d) in edges.into_iter().rev() {
+        st.worklist.push_front(Item::EdgeAfterNf4(c, r, d));
+    }
+    true
 }
 
 /// Run the completion rules to fixpoint over whatever is on `st`'s worklist.
@@ -1620,7 +1741,12 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
     // state. Snapshots (`.collect()`) are taken only when iterating one of the
     // state's *own* mutated collections (sub_super[d], edges[d], the backward
     // links of c).
-    while let Some(item) = st.worklist.pop_front() {
+    let parallel_nf4 = std::env::var_os("KM_ELC_PAR_NF4").is_some();
+    while !st.worklist.is_empty() {
+        if fire_edge_nf4_batch(idx, st, prof, parallel_nf4) {
+            continue;
+        }
+        let item = st.worklist.pop_front().expect("checked non-empty");
         match item {
             Item::Sub(c, d) => {
                 prof.sub_items += 1;
@@ -1734,7 +1860,10 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                     }
                 }
             }
-            Item::Edge(c, r, d) => {
+            Item::Edge(c, r, d)
+            | Item::EdgeSerial(c, r, d)
+            | Item::EdgeAfterNf4(c, r, d) => {
+                let nf4_already_fired = matches!(item, Item::EdgeAfterNf4(..));
                 prof.edge_items += 1;
                 // R∃⁻ (NF4), ELK backward-link join: this new edge `(c,r,d)` is a
                 // backward link arriving at context `d` with EXACT role `r`. Fire
@@ -1748,7 +1877,7 @@ fn run(idx: &Idx, st: &mut State, prof: &mut Prof) {
                 // see `fire_edge_nf4` for why `prop[(d,r)]` is stable across
                 // the loop, self-edge c==d included. Skipped entirely when
                 // there are no NF4 axioms.
-                if !idx.nf4_by_filler.is_empty() {
+                if !nf4_already_fired && !idx.nf4_by_filler.is_empty() {
                     prof.nf4_edge_scan += st.fire_edge_nf4(c, r, d);
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
@@ -4648,7 +4777,8 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
         eprintln!(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
-             nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} botback={}",
+             nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} botback={} | \
+             nf4_batch_calls={} nf4_batch_edges={} nf4_batch_groups={} nf4_batch_missing={}",
             prof.sub_items,
             prof.edge_items,
             prof.nf1_scan,
@@ -4657,7 +4787,11 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             prof.nf4_sub_scan,
             prof.nf4_edge_scan,
             prof.nf7_scan,
-            prof.botback
+            prof.botback,
+            prof.nf4_batch_calls,
+            prof.nf4_batch_edges,
+            prof.nf4_batch_groups,
+            prof.nf4_batch_missing
         );
     }
     let mut res = st;
@@ -6392,6 +6526,65 @@ mod tests {
             assert!(st.sub_super[A as usize].contains(&e), "A ⊑ {e} missing");
         }
         assert_eq!(st.prop.get(&(A, R)), Some(&vec![E1, E2, E3]));
+    }
+
+    #[test]
+    fn parallel_nf4_frontier_deduplicates_parent_conclusions_exactly() {
+        const R: u32 = 0;
+        const PARENT: u32 = 2;
+        const E1: u32 = 3;
+        const E2: u32 = 4;
+        const FIRST_TARGET: u32 = 10;
+        let idx = nf4_only_idx(&[(R, FIRST_TARGET, E1)], 1);
+        let mut st = blank_state(300);
+        for target in FIRST_TARGET..FIRST_TARGET + PAR_NF4_MIN_EDGES as u32 {
+            st.prop.insert(
+                (target, R),
+                (0..128).map(|i| if i % 2 == 0 { E1 } else { E2 }).collect(),
+            );
+            st.worklist.push_back(Item::Edge(PARENT, R, target));
+        }
+        let mut prof = Prof::default();
+        assert!(fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
+        assert_eq!(prof.nf4_edge_scan, 128 * PAR_NF4_MIN_EDGES as u64);
+        assert!(st.sub_super[PARENT as usize].contains(&E1));
+        assert!(st.sub_super[PARENT as usize].contains(&E2));
+        assert_eq!(st.sub_super[PARENT as usize].len(), 2);
+        assert_eq!(
+            st.worklist
+                .iter()
+                .filter(|item| matches!(item, Item::EdgeAfterNf4(..)))
+                .count(),
+            PAR_NF4_MIN_EDGES
+        );
+        assert_eq!(
+            st.worklist
+                .iter()
+                .filter(|item| matches!(item, Item::Sub(PARENT, E1 | E2)))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn sparse_nf4_frontier_declines_once_and_keeps_the_serial_join() {
+        const R: u32 = 0;
+        const PARENT: u32 = 2;
+        const SUP: u32 = 3;
+        const FIRST_TARGET: u32 = 10;
+        let idx = nf4_only_idx(&[(R, FIRST_TARGET, SUP)], 1);
+        let mut st = blank_state(300);
+        for target in FIRST_TARGET..FIRST_TARGET + PAR_NF4_MIN_EDGES as u32 {
+            st.prop.insert((target, R), vec![SUP]);
+            st.worklist.push_back(Item::Edge(PARENT, R, target));
+        }
+        let mut prof = Prof::default();
+        assert!(fire_edge_nf4_batch(&idx, &mut st, &mut prof, true));
+        assert_eq!(prof.nf4_batch_calls, 0);
+        assert!(st.worklist.iter().all(|item| matches!(item, Item::EdgeSerial(..))));
+        run(&idx, &mut st, &mut prof);
+        assert!(st.sub_super[PARENT as usize].contains(&SUP));
+        assert_eq!(prof.nf4_edge_scan, PAR_NF4_MIN_EDGES as u64);
     }
 
     #[test]

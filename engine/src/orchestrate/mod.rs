@@ -793,6 +793,11 @@ fn classify_with_evidence_mode(
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
         }
+        if selected_route == crate::routing::Route::CertifiedElProduction
+            && crate::routing::parallel_nf4_frontier_candidate(&meta.profile)
+        {
+            std::env::set_var("KM_ELC_PAR_NF4", "1");
+        }
         if selected_route == crate::routing::Route::ProductionAll
             && (crate::routing::eight_thread_large_sriq_candidate(&meta.profile)
                 || crate::routing::eight_thread_large_plain_tbox_candidate(&meta.profile))

@@ -511,6 +511,28 @@ pub(crate) fn sequential_large_shi_bridge_candidate(profile: &OntologyProfile) -
         && !profile.expressivity.datatype
 }
 
+/// Dense, role-rich EL terminology closures whose edge-side NF4 join has enough
+/// propagation work per frontier to amortize parent-grouped parallel batches.
+/// The bounds are source-profile scheduling gates only; the completion rules
+/// and certified production fallback remain unchanged.
+pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    // Production classification intentionally does not rescan the normalized
+    // clause vector for full clause statistics, so this gate must use source
+    // statistics carried by the normal frontend path.
+    (2_000_000..3_000_000).contains(&source.logical_axioms)
+        && source.existentials >= 2_000_000
+        && (4..=16).contains(&source.distinct_object_properties)
+        && (400_000_000..550_000_000).contains(&source.file_bytes)
+        && source.abox_axioms == 0
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && !profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Large role-chain/cardinality TBoxes whose completion workload loses a small
 /// amount of throughput to the default 16-way orchestration. This predicate
 /// changes only the worker count of the unchanged `production_all` portfolio.
@@ -1701,6 +1723,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_NO_ELC_PORTFOLIO",
     "KM_ELC_FORCE",
     "KM_ELC_CERT",
+    "KM_ELC_PAR_NF4",
     "KM_NO_HT_RACE",
     "KM_NO_HT_QO_ROUTER",
     "KM_NO_HT_SHOQ",
@@ -2422,6 +2445,25 @@ mod tests {
 
         profile.source.unions = 9_999;
         assert!(!sequential_large_shi_bridge_candidate(&profile));
+    }
+
+    #[test]
+    fn dense_role_rich_el_closure_enables_parallel_nf4_frontiers() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 2_544_794;
+        profile.source.existentials = 2_500_000;
+        profile.source.distinct_object_properties = 8;
+        profile.source.file_bytes = 472_349_807;
+        assert!(parallel_nf4_frontier_candidate(&profile));
+
+        profile.source.distinct_object_properties = 3;
+        assert!(!parallel_nf4_frontier_candidate(&profile));
+        profile.source.distinct_object_properties = 8;
+        profile.source.abox_axioms = 1;
+        assert!(!parallel_nf4_frontier_candidate(&profile));
+        profile.source.abox_axioms = 0;
+        profile.source.logical_axioms = 3_000_000;
+        assert!(!parallel_nf4_frontier_candidate(&profile));
     }
 
     #[test]

@@ -1,0 +1,20 @@
+{
+  "baseline": "v0.2.23",
+  "baseline_binary_sha256": "13b4d406aaddb4b94d1d9f9740cfd5839df851193d049bd76f911a3f1ab84e30",
+  "baseline_metrics": {
+    "mean_peak_mb": 441.45945854483926,
+    "mean_wall_s": 3.7835159052453466,
+    "median_peak_mb": 36.47,
+    "median_wall_s": 0.1885,
+    "ok": 591
+  },
+  "behavior_differences": [],
+  "candidate_binary_sha256": "b51af8f49e59f4c74515bb2677e68706a585a2d851ae838275046a81b77fe965",
+  "candidate_metrics": {
+    "mean_peak_mb": 441.5356514382403,
+    "mean_wall_s": 3.7799059221658204,
+    "median_peak_mb": 36.17,
+    "median_wall_s": 0.1887,
+    "ok": 591
+  }
+}
