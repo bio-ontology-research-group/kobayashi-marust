@@ -10,6 +10,8 @@
 //! pipe); stderr (small) is captured to a temp file too.
 
 use std::fs::File;
+#[cfg(target_os = "linux")]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,6 +29,43 @@ use super::{Config, OrchestrateError};
 // process, so there is no cross-ontology leakage to reset.
 static LIVE: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static CANCEL: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "linux")]
+fn open_pidfd(pid: u32) -> Option<OwnedFd> {
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) as libc::c_int };
+    if fd < 0 {
+        None
+    } else {
+        Some(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_pidfd(_pid: u32) -> Option<()> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_exit_or_interval(pidfd: Option<&OwnedFd>, interval: Duration) {
+    let Some(pidfd) = pidfd else {
+        std::thread::sleep(interval);
+        return;
+    };
+    let mut pollfd = libc::pollfd {
+        fd: pidfd.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let timeout_ms = interval.as_millis().min(libc::c_int::MAX as u128) as libc::c_int;
+    if unsafe { libc::poll(&mut pollfd, 1, timeout_ms) } < 0 {
+        std::thread::sleep(interval);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn wait_for_exit_or_interval(_pidfd: Option<&()>, interval: Duration) {
+    std::thread::sleep(interval);
+}
 
 /// A race was won elsewhere: SIGKILL every live engine child and block new spawns.
 pub fn cancel_and_kill_engines() {
@@ -127,6 +166,7 @@ pub fn run_engine(
     })?;
     let pid = child.id();
     register(pid);
+    let pidfd = open_pidfd(pid);
 
     let cap_bytes = rss_cap_gb.map(|g| (g * (1u64 << 30) as f64) as u64);
     let deadline = time_cap_s.map(|s| Instant::now() + Duration::from_secs_f64(s));
@@ -163,7 +203,10 @@ pub fn run_engine(
                     break child.wait()?;
                 }
             }
-            std::thread::sleep(interval);
+            // Linux pidfds become readable when the child exits, avoiding up
+            // to one full watchdog interval of latency. RSS and deadline
+            // checks retain the same cadence; unsupported kernels use sleep.
+            wait_for_exit_or_interval(pidfd.as_ref(), interval);
             interval = (interval * 2).min(Duration::from_millis(100));
         }
     };
@@ -257,4 +300,70 @@ pub fn run_engine_adaptive(
         }
     }
     Ok(proc)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn empty_input() -> TempPath {
+        let path = TempPath::new(".watchdog-input");
+        File::create(path.path()).unwrap();
+        path
+    }
+
+    #[test]
+    fn exit_notification_preserves_normal_completion() {
+        let input = empty_input();
+        let result = run_engine(
+            Path::new("/bin/sh"),
+            &["-c".into(), "exit 0".into()],
+            input.path(),
+            None,
+            Some(1.0),
+            Some(1.0),
+            &[],
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.code, 0);
+        assert!(!result.oom);
+        assert!(!result.timed_out);
+    }
+
+    #[test]
+    fn exit_notification_preserves_timeout_kill() {
+        let input = empty_input();
+        let result = run_engine(
+            Path::new("/bin/sh"),
+            &["-c".into(), "sleep 1".into()],
+            input.path(),
+            None,
+            None,
+            Some(0.02),
+            &[],
+            false,
+        )
+        .unwrap();
+        assert!(result.timed_out);
+        assert!(!result.oom);
+    }
+
+    #[test]
+    fn exit_notification_preserves_rss_kill() {
+        let input = empty_input();
+        let result = run_engine(
+            Path::new("/bin/sh"),
+            &["-c".into(), "while :; do :; done".into()],
+            input.path(),
+            None,
+            Some(1.0 / (1u64 << 30) as f64),
+            Some(1.0),
+            &[],
+            false,
+        )
+        .unwrap();
+        assert!(result.oom);
+        assert!(!result.timed_out);
+    }
 }

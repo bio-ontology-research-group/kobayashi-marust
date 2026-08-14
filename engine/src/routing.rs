@@ -572,6 +572,29 @@ pub(crate) fn one_thread_medium_shi_candidate(profile: &OntologyProfile) -> bool
         && !profile.expressivity.datatype
 }
 
+/// Measured nominal-free production shapes for which additional CB workers add
+/// substantial allocator/RSS overhead without reducing end-to-end latency. The
+/// portfolio, completion bridge, fallback, and winner contract are unchanged;
+/// only the CB worker count is reduced.
+pub(crate) fn one_thread_small_production_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let large_functional_tbox =
+        profile.expressivity.functionality && source.distinct_classes >= 2_500;
+    let live_disjunctive_tbox = source.unions >= 19 && source.universals >= 25;
+
+    (large_functional_tbox || live_disjunctive_tbox)
+        && source.abox_axioms == 0
+        && source.logical_axioms < 20_000
+        && source.file_bytes < 2_000_000
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && !profile.expressivity.complex_subrole
+        && !profile.expressivity.nominal
+        && !profile.expressivity.cardinality
+        && !profile.expressivity.datatype
+}
+
 /// Source-layout gate for the finite SHOIN nominal specialist.
 ///
 /// This route deliberately recognizes the complete Wine-style layout that was
@@ -1164,7 +1187,12 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::PositiveAbox | SemanticFragment::SriqCore => {
             let learned = routing_tree_generated::select(profile);
             if sriq_policy_eligible(learned) {
-                learned
+                if learned == Route::ProductionAll && one_thread_small_production_candidate(profile)
+                {
+                    Route::ProductionAll1
+                } else {
+                    learned
+                }
             } else {
                 // A malformed/stale generated tree must fail closed onto the
                 // certified SRIQ calculus, never onto a measurement-only arm.
@@ -2110,6 +2138,9 @@ mod tests {
     #[test]
     fn semantic_fragment_gate_precedes_the_learned_tree() {
         let mut profile = OntologyProfile::default();
+        // Keep this semantic-dispatch test outside the small-production
+        // scheduling refinement; that refinement has its own boundary test.
+        profile.source.file_bytes = 2_000_000;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
         assert_eq!(select(&profile), Route::ProductionAll);
 
@@ -2447,6 +2478,33 @@ mod tests {
         profile.source.role_chain_axioms = 0;
         profile.source.logical_axioms = 100_000;
         assert!(!one_thread_medium_shi_candidate(&profile));
+    }
+
+    #[test]
+    fn small_production_tboxes_use_one_worker_without_crossing_slow_shapes() {
+        let mut profile = OntologyProfile::default();
+        profile.source.file_bytes = 1_000_000;
+        profile.source.logical_axioms = 5_000;
+        profile.source.distinct_classes = 3_000;
+        profile.expressivity.inverse = true;
+        profile.expressivity.functionality = true;
+        assert!(one_thread_small_production_candidate(&profile));
+        assert_eq!(select(&profile), Route::ProductionAll1);
+
+        profile.source.distinct_classes = 865;
+        assert!(!one_thread_small_production_candidate(&profile));
+
+        profile.expressivity.functionality = false;
+        profile.source.logical_axioms = 325;
+        profile.source.universals = 68;
+        assert!(!one_thread_small_production_candidate(&profile));
+
+        profile.source.unions = 19;
+        profile.source.universals = 25;
+        assert!(one_thread_small_production_candidate(&profile));
+
+        profile.expressivity.complex_subrole = true;
+        assert!(!one_thread_small_production_candidate(&profile));
     }
 
     #[test]
