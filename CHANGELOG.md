@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.2.26] – 2026-08-14
+
+### Restore the isolated complete ground-clause route
+
+The automatic classifier now selects the retained general HT route for the
+compact SHOIF(D) ground-clause profile represented by ORE6934. An explicit
+`general` worker preserves the complete normalized clause input and no longer
+activates typed-ABox specialist state or installs the same ABox a second time.
+The reasoning input and result are unchanged; only scheduling and duplicate
+worker state change.
+
+Strict sweep jobs `50503499`, `50503695`, and `50503696` contain 592 validated
+terminal rows for binary `4d8d81378d565…`: 591 are successful and ORE1194
+remains the sole fail-closed error. Comparison with v0.2.25 finds zero
+differences in status, verdict, consistency, or signature. ORE6934 is the only
+route change, from `nominal_ni_abox` to `ht_general`; it falls from 68.9191
+seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB with the same exact
+gold signature. Across the 591 successful rows, mean wall falls from 3.72268
+to 3.60775 seconds, median wall from 0.1860 to 0.1839 seconds, and mean peak RSS
+from 440.806 to 436.372 MiB. Median peak RSS is 36.16 MiB versus 36.04 MiB in
+the independent baseline sweep. Evidence is in
+[`results/benchmarks/2026-08-14-6934-route-recovery/`](results/benchmarks/2026-08-14-6934-route-recovery/README.md).
+
 ## [0.2.25] – 2026-08-14
 
 ### Build frontend IRI metadata in one sorted pass
