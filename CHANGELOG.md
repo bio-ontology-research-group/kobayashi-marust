@@ -2,6 +2,37 @@
 
 ## [unreleased]
 
+## [0.2.20] – 2026-08-14
+
+### Reduce automatic frontend handoff overhead
+
+Automatic classification now keeps functional-syntax inputs smaller than 4
+MiB in the orchestrator process, avoiding a frontend subprocess around the
+corpus median. Exact in-process EL leaves pass their typed clauses directly to
+completion without writing an unused JSON handoff, and atomic EL/CB mechanisms
+avoid cloning an owned named-class set used only by HT, tableau, and portfolio
+conversion. Three measured 300–600 MiB exact-EL inputs enter the in-process
+path only after a fail-closed source scan excludes inverse, symmetric, and
+transitive object-property axioms that require the established isolated route.
+
+These changes affect process boundaries, serialization, allocation lifetime,
+and scheduling only. They do not change reasoning rules, ordering, redundancy,
+or the derived fixpoint. The 57-ontology 2–4 MiB panel `50472992` ran three
+alternating pairs per ontology and produced byte-identical outputs throughout.
+Median wall fell from 0.28 to 0.26 seconds and median peak RSS from 42,156 to
+39,088 KiB. Separate giant, sparse-EL, ABox, subprocess-fallback, and
+median-band panels verified the safety gates.
+
+Strict sweep `50473463` contains exactly 592 results, profiles, and completion
+markers. It reports 591 successful classifications, ORE1194 as the sole
+fail-closed error, and zero status, verdict, signature, consistency, or
+coverage differences from v0.2.19. Mean wall falls from 4.00461 to 3.95409
+seconds, median wall from 0.2159 to 0.1910 seconds, mean peak RSS from 449.847
+to 443.371 MiB, and median peak RSS from 38.66 to 36.43 MiB. The complete
+serial release suite, including the issue #3 pigeonhole regression, passes.
+Evidence is in
+[`results/benchmarks/2026-08-14-large-inproc-ofn/`](results/benchmarks/2026-08-14-large-inproc-ofn/README.md).
+
 ## [0.2.19] – 2026-08-14
 
 ### Reduce one-shot allocation overlap

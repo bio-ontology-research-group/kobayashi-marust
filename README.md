@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.19`.
+are available from the repository tags; the current release is `v0.2.20`.
 
 ## Classify an ontology
 
@@ -90,14 +90,14 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `e8f51dc`, focused panel
-`50466117`, strict sweep `50466143`, and the 592-row integrity audit verify
+over all 592 ontologies. Tested implementation commit `eb11fc2`, focused panel
+`50472992`, strict sweep `50473463`, and the 592-row integrity audit verify
 every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `6b4dbd165382…`.
+fingerprint, and binary identity. The tested binary is `a18fa4026561…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.19` / `e8f51dc` (binary `6b4dbd165382…`) | **591** | **591** | **4.0046** | **0.2159** | **449.85** | **38.66** |
+| **KM automatic, `km classify`** | `v0.2.20` / `eb11fc2` (binary `a18fa4026561…`) | **591** | **591** | **3.9541** | **0.1910** | **443.37** | **36.43** |
 
 Performance values come directly from the 591 successful rows of the strict
 automatic-route sweep
@@ -117,9 +117,17 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 449.85 MiB and median RSS is 38.66 MiB. Mean wall is 4.0046 seconds
-and median wall is 0.2159 seconds. All four KM metrics except mean wall remain
+mean RSS is 443.37 MiB and median RSS is 36.43 MiB. Mean wall is 3.9541 seconds
+and median wall is 0.1910 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
+
+Small automatic-route inputs now remain in the orchestrator process up to a
+4-MiB source threshold. Exact in-process EL leaves consume their typed clauses
+without an unused JSON handoff, and atomic mechanisms avoid an unused owned
+named-class clone. Three measured giant exact-EL inputs use a separate
+fail-closed source gate. Relative to v0.2.19, strict sweep `50473463` reduces
+mean wall by 1.26%, median wall by 11.53%, mean peak RSS by 1.44%, and median
+peak RSS by 5.77%, with zero behavioral regressions.
 
 Structured exact-EL leaves now run the same completion implementation in the
 orchestrator process, removing a large taxonomy serialization and parse round
@@ -178,6 +186,7 @@ Per-ontology routes, evidence, and special handling are recorded in:
 - [`results/benchmarks/2026-08-13-large-inproc-elc/`](results/benchmarks/2026-08-13-large-inproc-elc/)
 - [`results/benchmarks/2026-08-13-positive-el-reuse/`](results/benchmarks/2026-08-13-positive-el-reuse/)
 - [`results/benchmarks/2026-08-14-move-augment-tbox/`](results/benchmarks/2026-08-14-move-augment-tbox/)
+- [`results/benchmarks/2026-08-14-large-inproc-ofn/`](results/benchmarks/2026-08-14-large-inproc-ofn/)
 - [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
 - [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
 - [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
