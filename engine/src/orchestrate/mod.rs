@@ -864,6 +864,11 @@ fn classify_with_evidence_mode(
                 || crate::routing::eight_thread_large_sriq_candidate(&meta.profile))
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+            if crate::routing::eight_thread_large_sriq_candidate(&meta.profile) {
+                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "4");
+            } else if crate::routing::sequential_large_shi_bridge_candidate(&meta.profile) {
+                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "2");
+            }
         }
         if selected_route == crate::routing::Route::CertifiedElProduction
             && crate::routing::parallel_nf4_frontier_candidate(&meta.profile)
