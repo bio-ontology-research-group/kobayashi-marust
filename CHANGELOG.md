@@ -2,6 +2,35 @@
 
 ## [unreleased]
 
+## [0.2.34] – 2026-08-15
+
+### Schedule the large SRIQ bridge before CB fallback
+
+The automatic `production_all` route now schedules the already certified,
+complete hypertableau bridge before its consequence-based fallback for the
+large SRIQ profile used by ORE14817. A successful bridge answer is published;
+decline, error, or resource exhaustion retains the exact production fallback.
+The selected route and all certificates are unchanged. This is a scheduling
+change only and does not alter either reasoner's inference rules.
+
+Three alternating same-node pairs on ORE14817 preserve the gold-matching
+full-IRI signature and `production_all` route. Mean wall is flat at 92.099
+versus 92.205 seconds, while mean process-tree peak RSS falls from 5,100.81 to
+2,800.43 MiB. Order-balanced full-corpus job `50548596` contains exactly 1,184
+terminal rows, 1,184 matching checkpoints, 592 complete pairs, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI signature.
+Mean peak RSS falls from 420.39 to 416.06 MiB and summed peak RSS falls by
+2,555.49 MiB. Corpus wall is treated as flat measurement noise; the candidate
+reports 3.43423 seconds mean and 0.1623 seconds median wall.
+
+The complete release-mode suite passes 2,005 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole regression.
+
+Evidence is in
+[`results/benchmarks/2026-08-15-sequential-sriq-bridge/`](results/benchmarks/2026-08-15-sequential-sriq-bridge/README.md).
+
 ## [0.2.33] – 2026-08-15
 
 ### Pay-as-needed certified EL fallback serialization
