@@ -447,7 +447,7 @@ fn run_atomic_mechanism(
         Mechanism::Elc => {
             let in_process = use_atomic_inproc_elc(selected_route, profile)
                 && std::env::var_os("KM_NO_INPROC_ELC").is_none()
-                && cached_input.is_some();
+                && (cached_input.is_some() || elc_input_path == clauses_path);
             run_atomic_elc(
                 cfg,
                 if in_process {
