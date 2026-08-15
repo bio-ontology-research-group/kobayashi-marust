@@ -2,6 +2,35 @@
 
 ## [unreleased]
 
+## [0.2.32] – 2026-08-15
+
+### Compact dense EL taxonomy handoff
+
+Complete subprocess EL results with at least two million subsumptions now use
+a versioned dictionary-coded handoff. Each class name is owned once and row
+endpoints use checked integer identifiers. Sparse results and partial
+certificate residues retain the established JSON contract. Decoding rejects
+bad identifiers, truncation, trailing bytes, and excessive lengths without
+publishing an answer. This changes transfer representation only; EL
+completion, routing, certificates, and the final ordered JSON result are
+unchanged.
+
+Order-balanced full-corpus job `50546048` contains exactly 1,184 terminal rows
+over all 592 ontologies, with no temporary outputs. Both arms report 591
+successful classifications and ORE1194 as the sole fail-closed error. There
+are zero differences in status, verdict, consistency, selected route, solved
+state, answer counts, or full-IRI signature. Mean wall falls from 3.44657 to
+3.41502 seconds, saving 18.645 seconds over the 591 successful pairs. Mean and
+median peak RSS, and the sub-millisecond median-wall movement, are treated as
+flat measurement noise, so this release makes no memory or median claim.
+
+Three preceding threshold-selection replications (`50543902`, `50544635`, and
+`50544636`) each produced 1,184 validated rows with zero semantic differences.
+The release suite passes 1,997 library tests with eight ignored tests and all
+integration tests, including malformed compact-output checks and the issue #3
+pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-compact-elc-output/`](results/benchmarks/2026-08-15-compact-elc-output/README.md).
+
 ## [0.2.31] – 2026-08-15
 
 ### Share classification reference tables across jobs
