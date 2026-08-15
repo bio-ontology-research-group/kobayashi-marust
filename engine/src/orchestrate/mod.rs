@@ -857,7 +857,8 @@ fn classify_with_evidence_mode(
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
         }
         if selected_route == crate::routing::Route::ProductionAll
-            && crate::routing::sequential_large_shi_bridge_candidate(&meta.profile)
+            && (crate::routing::sequential_large_shi_bridge_candidate(&meta.profile)
+                || crate::routing::eight_thread_large_sriq_candidate(&meta.profile))
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
         }

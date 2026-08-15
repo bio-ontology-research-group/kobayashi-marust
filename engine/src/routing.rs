@@ -534,8 +534,9 @@ pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool
 }
 
 /// Large role-chain/cardinality TBoxes whose completion workload loses a small
-/// amount of throughput to the default 16-way orchestration. This predicate
-/// changes only the worker count of the unchanged `production_all` portfolio.
+/// amount of throughput to the default 16-way orchestration. The automatic
+/// pipeline also runs their complete-answer-or-defer bridge before allocating
+/// the unchanged CB fallback. This predicate changes scheduling only.
 pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     source.abox_axioms == 0
