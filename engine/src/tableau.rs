@@ -5173,10 +5173,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 .iter()
                 .map(|&(a, b)| (a as C, b as C))
                 .collect();
-            // Transitive closure at the serialization boundary, exactly like the
-            // other arms: every input pair is verified/entailed, so closing is
-            // sound and only adds entailed pairs.
-            let subs = hypertableau::transitive_close_subs(subs);
+            // `bridged_classify` publishes only a complete taxonomy (or defers),
+            // so its relation is already transitively closed.  The generic Ht
+            // closure repair below is needed for model-label candidate output,
+            // but repeating it here scans million-pair bridge taxonomies to add
+            // nothing (ORE14817).  Keep the certified bridge result directly.
             let name = |c: C| {
                 inp.concepts
                     .get(c as usize)
