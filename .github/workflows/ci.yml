@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo test --release --locked 2>&1 | tee /tmp/km-test.log
+          cargo test --release --locked -- --test-threads=1 2>&1 | tee /tmp/km-test.log
           status=${PIPESTATUS[0]}
           set -e
           if (( status != 0 )); then
