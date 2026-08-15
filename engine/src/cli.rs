@@ -128,26 +128,38 @@ struct OfnClausesOnly {
     rules: Vec<crate::json_io::JRule>,
 }
 
-/// `args` are the post-subcommand arguments: `args[0]` = ontology path, optional
-/// `args[1] == "--meta"` and `args[2]` = meta-file path. (For the standalone
-/// `ofn` binary this is `env::args()[1..]`; for `km ofn` it is `env::args()[2..]`.)
+/// `args` are the post-subcommand arguments: `args[0]` = ontology path, with
+/// optional `--meta <meta.json>` and `--elc-binary <clauses.bin>` outputs. (For
+/// the standalone `ofn` binary this is `env::args()[1..]`; for `km ofn` it is
+/// `env::args()[2..]`.)
 pub fn run_ofn(args: &[String]) {
     use crate::frontend::ofn_to_clauses;
     if args.is_empty() {
-        eprintln!("usage: ofn <ontology.ofn> [--meta <meta.json>]");
+        eprintln!(
+            "usage: ofn <ontology.ofn> [--meta <meta.json>] [--elc-binary <clauses.bin>]"
+        );
         exit(2);
     }
     let path = &args[0];
-    let meta_path: Option<&str> = match args.get(1).map(String::as_str) {
-        Some("--meta") => match args.get(2) {
-            Some(p) => Some(p.as_str()),
-            None => {
-                eprintln!("--meta requires a path argument");
+    let mut meta_path: Option<&str> = None;
+    let mut elc_binary_path: Option<&str> = None;
+    let mut index = 1;
+    while index < args.len() {
+        let (slot, name) = match args[index].as_str() {
+            "--meta" => (&mut meta_path, "--meta"),
+            "--elc-binary" => (&mut elc_binary_path, "--elc-binary"),
+            option => {
+                eprintln!("unknown ofn option: {option}");
                 exit(2);
             }
-        },
-        _ => None,
-    };
+        };
+        let Some(value) = args.get(index + 1) else {
+            eprintln!("{name} requires a path argument");
+            exit(2);
+        };
+        *slot = Some(value);
+        index += 2;
+    }
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
@@ -162,6 +174,29 @@ pub fn run_ofn(args: &[String]) {
             exit(3);
         }
     };
+    let binary_route = result
+        .route
+        .parse::<crate::routing::Route>()
+        .ok();
+    let binary_el_route = binary_route.is_some_and(|route| {
+        matches!(
+            route,
+            crate::routing::Route::Elc | crate::routing::Route::CertifiedElProduction
+        )
+    });
+    if result.el_rbox_safe && binary_el_route {
+        if let Some(binary_path) = elc_binary_path {
+            let write_result = std::fs::File::create(binary_path).and_then(|file| {
+                let mut writer = std::io::BufWriter::new(file);
+                crate::json_io::write_elc_binary(&mut writer, &result.clauses)?;
+                writer.flush()
+            });
+            if let Err(error) = write_result {
+                eprintln!("ELC binary serialise error: {error}");
+                exit(1);
+            }
+        }
+    }
     // The frontend result owns everything needed below. Release the potentially
     // very large source document before serialising the clause array so both do
     // not contribute to the same peak.
@@ -169,6 +204,10 @@ pub fn run_ofn(args: &[String]) {
     // Stream JSON to a buffered stdout (the clause array dominates peak memory).
     let stdout = std::io::stdout();
     let mut w = std::io::BufWriter::new(stdout.lock());
+    let binary_only = elc_binary_path.is_some()
+        && binary_route == Some(crate::routing::Route::Elc)
+        && !result.profile.positive_el_abox_materializable
+        && result.profile.source.rule_axioms == 0;
 
     if let Some(mp) = meta_path {
         let meta = OfnMeta {
@@ -194,6 +233,15 @@ pub fn run_ofn(args: &[String]) {
                 eprintln!("failed to write meta {}: {}", mp, e);
                 exit(1);
             }
+        }
+        // An atomic exact-EL route has no classifier fallback. When its compact
+        // sidecar was requested successfully, emitting the same multi-gigabyte
+        // clause set as JSON is dead serialization and disk traffic. Positive
+        // ABox and rule checks still consume the full JSON side channels and
+        // therefore retain the established output.
+        if binary_only {
+            let _ = w.flush();
+            return;
         }
         let out = OfnClausesOnly {
             clauses: result.clauses,
@@ -265,10 +313,17 @@ pub fn run_elc() {
         );
     }
     let t1 = Instant::now();
-    let input: JInput = match serde_json::from_slice(&buf) {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("bad input JSON: {}", e);
+    let clauses = match crate::json_io::decode_elc_binary(&buf) {
+        Ok(Some(clauses)) => clauses,
+        Ok(None) => match serde_json::from_slice::<JInput>(&buf) {
+            Ok(input) => input.clauses,
+            Err(e) => {
+                eprintln!("bad input JSON: {}", e);
+                exit(1);
+            }
+        },
+        Err(error) => {
+            eprintln!("bad ELC binary input: {error}");
             exit(1);
         }
     };
@@ -277,11 +332,11 @@ pub fn run_elc() {
         eprintln!(
             "KM_ELC_TIMING parse={:.2}s ({} clauses)",
             t1.elapsed().as_secs_f64(),
-            input.clauses.len()
+            clauses.len()
         );
     }
     let t2 = Instant::now();
-    match elcomplete::classify(input.clauses) {
+    match elcomplete::classify(clauses) {
         Some(res) => {
             if timing {
                 eprintln!(

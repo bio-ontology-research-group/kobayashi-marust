@@ -436,6 +436,7 @@ fn run_atomic_cb(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, Orchest
 fn run_atomic_mechanism(
     cfg: &Config,
     clauses_path: &Path,
+    elc_input_path: &Path,
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
@@ -443,14 +444,21 @@ fn run_atomic_mechanism(
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
-        Mechanism::Elc => run_atomic_elc(
-            cfg,
-            clauses_path,
-            use_atomic_inproc_elc(selected_route, profile)
-                && std::env::var_os("KM_NO_INPROC_ELC").is_none(),
-            cached_input.take(),
-        )
-        .map(Some),
+        Mechanism::Elc => {
+            let in_process = use_atomic_inproc_elc(selected_route, profile)
+                && std::env::var_os("KM_NO_INPROC_ELC").is_none();
+            run_atomic_elc(
+                cfg,
+                if in_process {
+                    clauses_path
+                } else {
+                    elc_input_path
+                },
+                in_process,
+                cached_input.take(),
+            )
+            .map(Some)
+        }
         Mechanism::Cb => {
             drop(cached_input.take());
             run_atomic_cb(cfg, clauses_path).map(Some)
@@ -792,8 +800,12 @@ fn classify_with_evidence_mode(
             consistency_certified: true,
         });
     }
-    let (clauses_path, meta, mut cached_input) =
+    let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    let elc_input_path = elc_binary
+        .as_ref()
+        .map(|path| path.path())
+        .unwrap_or_else(|| clauses_path.path());
     let selected_route = meta
         .route
         .parse::<crate::routing::Route>()
@@ -1013,6 +1025,7 @@ fn classify_with_evidence_mode(
             run_atomic_mechanism(
                 cfg,
                 clauses_path.path(),
+                elc_input_path,
                 &named_set,
                 selected_route,
                 &meta.profile,
@@ -1023,6 +1036,7 @@ fn classify_with_evidence_mode(
         run_atomic_mechanism(
             cfg,
             clauses_path.path(),
+            elc_input_path,
             &named_set,
             selected_route,
             &meta.profile,
@@ -1090,7 +1104,7 @@ fn classify_with_evidence_mode(
                 let res = engine_run::run_engine(
                     &elc_prog,
                     &elc_pre,
-                    clauses_path.path(),
+                    elc_input_path,
                     None,
                     None,
                     None,
@@ -1115,7 +1129,7 @@ fn classify_with_evidence_mode(
                     let res = engine_run::run_engine(
                         &elc_prog,
                         &elc_pre,
-                        clauses_path.path(),
+                        elc_input_path,
                         None,
                         Some(cfg.elc_force_mem_gb),
                         Some(cfg.elc_force_budget_s),
