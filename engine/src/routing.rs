@@ -804,6 +804,39 @@ fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
         && source.max_concept_depth <= 1
 }
 
+/// Source certificate for a named-class hierarchy whose only compound class
+/// constructor is intersection. This is an exact OWL EL terminology, but the
+/// flat-taxonomy gate above intentionally excludes its depth-two expressions
+/// and the broader source-EL gate requires an existential. Sending it through
+/// the atomic EL route avoids the absorbed production frontend and duplicate
+/// classifier state. The normalized EL worker still validates the clauses.
+fn intersection_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.logical_axioms > 0
+        && source.logical_axioms
+            == source
+                .subclass_axioms
+                .saturating_add(source.equivalent_class_axioms)
+        && source.intersections > 0
+        && source.abox_axioms == 0
+        && source.rbox_axioms == 0
+        && source.distinct_object_properties == 0
+        && source.distinct_data_properties == 0
+        && source.disjoint_class_axioms == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.bottom_role_occurrences == 0
+        && source.existentials == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
+}
+
 /// A source-certified OWL EL terminology that should enter exact completion
 /// before the production portfolio enables polarity absorption.
 ///
@@ -1228,6 +1261,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // here until the combined certified-nominals portfolio is installed.
         SemanticFragment::SriqCore
             if flat_taxonomy_el_candidate(profile)
+                || intersection_taxonomy_el_candidate(profile)
                 || source_el_terminology_candidate(profile) =>
         {
             Route::Elc
@@ -2710,6 +2744,32 @@ mod tests {
         profile.source.subclass_axioms = 0;
         profile.source.logical_axioms = 0;
         assert!(!flat_taxonomy_el_candidate(&profile));
+    }
+
+    #[test]
+    fn intersection_only_taxonomy_uses_el_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 12_343;
+        profile.source.tbox_axioms = 12_343;
+        profile.source.subclass_axioms = 12_343;
+        profile.source.intersections = 2;
+        profile.source.max_concept_depth = 2;
+        profile.source.distinct_classes = 15_319;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(intersection_taxonomy_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        for invalidate in [
+            |p: &mut OntologyProfile| p.source.abox_axioms = 1,
+            |p: &mut OntologyProfile| p.source.existentials = 1,
+            |p: &mut OntologyProfile| p.source.unions = 1,
+            |p: &mut OntologyProfile| p.source.distinct_object_properties = 1,
+        ] {
+            let mut candidate = profile.clone();
+            invalidate(&mut candidate);
+            assert!(!intersection_taxonomy_el_candidate(&candidate));
+        }
     }
 
     #[test]
