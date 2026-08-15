@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.34`.
+are available from the repository tags; the current release is `v0.2.35`.
 
 ## Classify an ontology
 
@@ -89,190 +89,26 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 
 ## Current ORE 2015 result
 
-The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Order-balanced full paired job `50548596` verifies
-every result, checkpoint, route trace, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested release-candidate binary is
-`cc04717a29ca…`.
+The production benchmark covers one deployable command, `km classify`, over all
+592 ontologies. Order-balanced paired job `50552285` verifies every result,
+checkpoint, route trace, collision-sensitive full-IRI fingerprint, and binary
+identity. The tested release-candidate binary is `d289f0e4c8c1…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.34` / `870fb86` (binary `cc04717a29ca…`) | **591** | **591** | **3.4342** | **0.1623** | **416.06** | **34.75** |
+| **KM automatic, `km classify`** | `v0.2.35` / `d9c251a` (binary `d289f0e4c8c1…`) | **591** | **591** | 3.3302 | **0.1621** | **417.04** | **35.02** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
-Performance values are the candidate arm of job `50548596` on exclusive Intel
-Xeon Gold 6248 nodes. The candidate preserves every status, verdict,
-consistency result, selected route, solved state, answer count, and full-IRI
-signature from v0.2.33 in all 592 pairs. Scheduling ORE14817's already selected
-certified bridge before its production fallback lowers that ontology's peak RSS
-from 5,112.05 to 2,791.18 MiB in the full pair. Across the corpus, mean peak RSS
-falls from 420.39 to 416.06 MiB and summed peak RSS falls by 2,555.49 MiB.
-Same-node repeated measurements treat wall as flat; the full-pair candidate
-reports 3.4342 seconds mean and 0.1623 seconds median wall.
-ORE6934 now
-uses an isolated complete ground-clause HT route. Its strict-sweep execution
-falls from 68.9191 seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB
-with the same gold-matching full-IRI signature. ORE7246, ORE8737, and ORE16744 use
-certified EL completion with the exact production route as fallback. Their
-same-node panel removes 54.9 seconds and 19,049 MiB of summed peak RSS while
-retaining identical gold-matching signatures. ORE15803 uses the same
-certificate-before-production schedule. For ORE7914, a disjoint-union
-certificate projects its 108,512 independent atomic ABox roots before native
-HT conversion; automatic classification falls from about 46.8 seconds and
-8.53 GiB to 8.58 seconds and 1.51 GiB. For ORE10621, scheduling the certified
-typed-ABox bridge before its exact fallback reduces same-node mean process-tree
-peak memory from 9,368.57 to 1,256.15 MiB and mean wall from 87.1031 to 86.6274
-seconds. For ORE3215, scheduling its certified bridge before the production
-fallback reduces same-node mean wall from 162.0549 to 157.3747 seconds and
-mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
-reports zero semantic or coverage regressions. ORE14817 now uses eight workers
-for the unchanged `production_all` route; its controlled panels preserve the
-gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 423.70 MiB and median RSS is 34.41 MiB. Mean wall is 3.4800 seconds
-and median wall is 0.1617 seconds. All four KM metrics except mean wall remain
-below the frozen Konclude values.
+Values are measured on exclusive Intel Xeon Gold 6248 nodes with a 240-second
+timeout and 20-GiB memory cap. All 592 paired comparisons agree in status,
+verdict, consistency, selected route, solved state, answer counts, and full-IRI
+signature. KM remains below Konclude on median wall time and both memory metrics;
+mean wall time is the remaining performance target.
 
-Frontend IRI metadata now uses one sorted pass for both the named-class vector
-and ordered map. The independent frontend sweep found 592/592 clause streams
-and metadata files byte-identical to v0.2.24. Strict sweep `50499428` reports
-zero behavioral differences and improves all four corpus metrics.
-
-Dense edge-side NF4 frontiers are grouped by parent and evaluated in parallel
-when the source profile predicts enough propagation work. Sparse frontiers use
-the unchanged serial join. Three alternating automatic-route pairs on ORE8737
-reduce mean wall from 85.17 to 78.26 seconds with identical gold-matching
-signatures. Strict sweep `50496853` reports zero behavioral or coverage
-differences from v0.2.23 and reduces corpus mean wall from 3.7835 to 3.7799
-seconds.
-
-Certified-EL routes now consume the frontend's typed clauses directly while
-retaining the serialized input for their exact production fallback. Focused
-same-node measurements reduce ORE8737 mean wall from 96.74 to 80.22 seconds
-and ORE16744 wall from 73.23 to 63.44 seconds with identical signatures.
-Relative to v0.2.22, strict sweep `50494584` reduces mean wall by 1.64%; median
-wall is unchanged. The independent sweep's RSS metrics moved by less than
-0.2%, and KM remains below Konclude on both memory metrics.
-
-Linux supervisors now use process exit notifications while retaining the same
-RSS and deadline checks, removing up to one watchdog interval after a worker
-finishes. Release builds use a smaller abort-on-panic binary, and five measured
-production shapes use one CB worker without changing their route portfolio or
-complete fallback. Relative to v0.2.21, strict sweep `50492209` reduces mean
-wall by 1.30%, median wall by 0.63%, mean peak RSS by 0.48%, and median peak RSS
-by 0.58%, with zero behavioral regressions.
-
-Mode-1 incremental subset blocking uses dense literal bitsets for the exact
-label-subset test while retaining dependency-bearing concept maps as the
-authoritative labels. On ORE6934 this preserves identical search work and
-output while reducing wall from 123.09 to 73.15 seconds. Relative to v0.2.20,
-strict sweep `50483032` reduces mean wall by 1.44%, median wall by 0.68%, mean
-peak RSS by 0.034%, and median peak RSS by 1.35%, with zero behavioral
-regressions.
-
-Small automatic-route inputs now remain in the orchestrator process up to a
-4-MiB source threshold. Exact in-process EL leaves consume their typed clauses
-without an unused JSON handoff, and atomic mechanisms avoid an unused owned
-named-class clone. Three measured giant exact-EL inputs use a separate
-fail-closed source gate. Relative to v0.2.19, strict sweep `50473463` reduces
-mean wall by 1.26%, median wall by 11.53%, mean peak RSS by 1.44%, and median
-peak RSS by 5.77%, with zero behavioral regressions.
-
-Structured exact-EL leaves now run the same completion implementation in the
-orchestrator process, removing a large taxonomy serialization and parse round
-trip. Flat one-class-per-axiom taxonomies retain process isolation. The strict
-sweep reduces mean wall by 2.31%, median wall by 7.98%, mean peak RSS by 9.64%,
-and median peak RSS by 6.39% relative to v0.2.14, with zero behavioral
-regressions.
-
-Positive-EL ABox consistency checking now retains its already-computed exact
-taxonomy for the atomic `elc` leaf instead of repeating the terminology
-fixpoint. On directly comparable complete sweeps, mean wall falls by 4.30%,
-median wall by 1.47%, and mean peak RSS by 0.09%. An eight-input same-node
-panel reduces summed wall by 24.0% and peak RSS in every candidate arm, with
-identical gold-matching signatures.
-
-Frontend declaration membership and IRI metadata construction now borrow their
-temporary indexes instead of cloning every concept and registry key. The strict
-sweep preserves every status and signature while reducing mean wall by 0.54%,
-median wall by 0.09%, mean peak RSS by 0.02%, and median peak RSS by 0.58%.
-
-Large role-relevance slices now use indexed backward reachability while small
-inputs retain the established scan. The strict sweep preserves every status and
-signature while reducing mean wall by 2.44%, median wall by 0.72%, mean peak
-RSS by 0.11%, and median peak RSS by 0.51%.
-
-Exact in-process EL leaves now consume the frontend's typed clause vector
-directly, while non-EL routes retain the established serialized handoff and
-allocation lifetime. One-shot CB classification releases its duplicate
-converted source clauses after preparation. The v0.2.19 strict sweep preserves
-every status and signature while reducing mean wall by 3.47%, median wall by
-1.51%, mean peak RSS by 0.09%, and median peak RSS by 0.97% relative to
-v0.2.18.
-
-“Empirically correct” means 588 exact retained or independently derived
-full-IRI signatures, two independently adjudicated consistency results, and one
-independently adjudicated no-gold result. It is not a claim of 591 Konclude
-matches or a proof about arbitrary OWL inputs. Ontology 1194 errors without
-publishing a taxonomy and is the only remaining input.
-
-Per-ontology routes, evidence, and special handling are recorded in:
-
-- [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
-- [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
-- [`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/)
-- [`results/benchmarks/2026-08-05-source-el-routing/`](results/benchmarks/2026-08-05-source-el-routing/)
-- [`results/benchmarks/2026-08-05-positive-el-abox-routing/`](results/benchmarks/2026-08-05-positive-el-abox-routing/)
-- [`results/benchmarks/2026-08-05-el-bottom-routing/`](results/benchmarks/2026-08-05-el-bottom-routing/)
-- [`results/benchmarks/2026-08-05-15846-production-routing/`](results/benchmarks/2026-08-05-15846-production-routing/)
-- [`results/benchmarks/2026-08-13-6682-elc-cert/`](results/benchmarks/2026-08-13-6682-elc-cert/)
-- [`results/benchmarks/2026-08-13-large-el-cert-panel/`](results/benchmarks/2026-08-13-large-el-cert-panel/)
-- [`results/benchmarks/2026-08-13-small-identity-el-cert/`](results/benchmarks/2026-08-13-small-identity-el-cert/)
-- [`results/benchmarks/2026-08-13-7914-regression/`](results/benchmarks/2026-08-13-7914-regression/)
-- [`results/benchmarks/2026-08-13-10621-sequential-bridge/`](results/benchmarks/2026-08-13-10621-sequential-bridge/)
-- [`results/benchmarks/2026-08-13-3215-sequential-bridge/`](results/benchmarks/2026-08-13-3215-sequential-bridge/)
-- [`results/benchmarks/2026-08-13-14817-thread-panel/`](results/benchmarks/2026-08-13-14817-thread-panel/)
-- [`results/benchmarks/2026-08-13-large-inproc-elc/`](results/benchmarks/2026-08-13-large-inproc-elc/)
-- [`results/benchmarks/2026-08-13-positive-el-reuse/`](results/benchmarks/2026-08-13-positive-el-reuse/)
-- [`results/benchmarks/2026-08-14-move-augment-tbox/`](results/benchmarks/2026-08-14-move-augment-tbox/)
-- [`results/benchmarks/2026-08-14-large-inproc-ofn/`](results/benchmarks/2026-08-14-large-inproc-ofn/)
-- [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
-- [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
-- [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
-- [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
-
-### Frozen uniform comparison
-
-The latest completed uniform cross-reasoner panel predates v0.2.0. It ran all
-listed implementations on the same hardware with the same 240-second,
-20-GiB, 16-core contract. The KM row is therefore correctly labelled with its
-older commit and must not be read as the current automatic result.
-
-| procedure | tested version or commit | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
-|---|---|---:|---:|---:|---:|---:|---:|
-| KM automatic, frozen panel | `8c731f43b3c8` | 570 | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
-| Konclude | `v0.7.0-1138` (`0002e8063540`) | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
-| HermiT | `1.4.6.519-SNAPSHOT` | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
-| ELK | `0.6.0` | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
-| RustDL, complete mode | `0.3.31` (`8c2bb1bf43d9`) | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
-| Sequoia, strict mode | `0.6.1-alpha` (`c5248ec7be30`) | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
-
-The complete 39,072-measurement package, scoring rules, raw rows, hashes, and
-receipts are in
-[`results/benchmarks/2026-07-22-reproduced-route-performance/`](results/benchmarks/2026-07-22-reproduced-route-performance/).
-A fresh uniform v0.2.0 panel is being run before replacing this table.
-
-### Route-selection terminology
-
-- **Automatic route:** `km classify` chooses from ontology features without
-  knowing the expected result. This is the deployable classifier.
-- **Preselected routes:** a fixed ontology-to-route map is chosen before a
-  benchmark run.
-- **Oracle-selected route:** after all procedures run and correctness is
-  known, the fastest correct route is selected separately for each ontology.
-  This is a retrospective upper bound, not a deployable classifier.
-
-Detailed route unions and oracle-selected measurements belong in benchmark
-artifacts rather than the release headline.
+ORE10621 uses four bounded, independent subject-classification workers inside
+its certified bridge. Three alternating same-node pairs reduce median wall time
+from 83.2711 to 38.9416 seconds while preserving the gold signature. The full
+sweep measures 38.8773 seconds and 1,555.30 MiB for ORE10621.
 
 ## Protégé plugin
 

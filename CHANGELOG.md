@@ -2,6 +2,39 @@
 
 ## [unreleased]
 
+## [0.2.35] – 2026-08-15
+
+### Partition large certified-bridge subjects
+
+The automatic `certified_nominals` route now partitions ORE10621's independent
+named-class jobs across four bounded bridge workers. Every worker receives the
+complete ontology and candidate-superclass universe. Results are merged,
+sorted, and deduplicated only after every worker returns a complete answer; a
+decline from any worker defers the entire bridge to the existing exact
+fallback. This changes scheduling only, not routing, inference rules, or
+accepted certificates.
+
+Three alternating same-node pairs in job `50552259` preserve the
+gold-matching full-IRI signature and `certified_nominals` route. Median wall
+falls from 83.2711 to 38.9416 seconds. Median process-tree peak RSS rises from
+1,273.03 to 1,555.85 MiB and remains below Konclude's measured 2,470 MiB on
+this ontology.
+
+Order-balanced full-corpus job `50552285` contains exactly 1,184 terminal
+records, 1,184 checkpoints, 592 pair-completion markers, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI
+signature. Mean wall falls from 3.41986 to 3.33021 seconds, median wall from
+0.1625 to 0.1621 seconds, and median peak RSS from 35.14 to 35.02 MiB. Mean
+peak RSS changes from 416.34 to 417.04 MiB and remains below Konclude's 558.09
+MiB.
+
+The complete release-mode suite passes 2,006 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole
+regression. Evidence is in
+[`results/benchmarks/2026-08-15-parallel-bridge-subjects/`](results/benchmarks/2026-08-15-parallel-bridge-subjects/README.md).
+
 ## [0.2.34] – 2026-08-15
 
 ### Schedule the large SRIQ bridge before CB fallback
