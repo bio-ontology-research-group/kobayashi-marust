@@ -855,6 +855,9 @@ fn classify_with_evidence_mode(
             && crate::routing::sequential_typed_bridge_candidate(&meta.profile)
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+            // Subject classifications share only immutable ontology input and
+            // are merged deterministically after all complete-or-defer jobs.
+            std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "4");
         }
         if selected_route == crate::routing::Route::ProductionAll
             && (crate::routing::sequential_large_shi_bridge_candidate(&meta.profile)
