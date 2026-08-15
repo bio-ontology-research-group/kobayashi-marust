@@ -979,8 +979,6 @@ fn classify_with_evidence_mode(
         }
     }
 
-    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
-    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
     // Owned declaration set consumed by the CB-to-HT conversion. A declared
     // class is always a query even when its spelling resembles an internal
     // frontend symbol.
@@ -995,19 +993,6 @@ fn classify_with_evidence_mode(
     } else {
         HashSet::new()
     };
-    // In the Rust-frontend path the per-ontology short registry is empty, so
-    // `short(n) == n`; is_internal keys directly on the internal name.
-    let is_internal = |n: &str| -> bool {
-        if named.contains(n) {
-            return false;
-        }
-        n.starts_with("Q_")
-            || n.starts_with("__")
-            || n.starts_with("aux_")
-            || n.starts_with("def_")
-            || (n.contains(':') && !is_bottom(n))
-    };
-
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.
@@ -1231,6 +1216,23 @@ fn classify_with_evidence_mode(
             out.subsumptions.len()
         );
     }
+    // These borrowed lookup tables are consumed only by public-output mapping.
+    // Constructing them before classification made their bucket allocations
+    // overlap the frontend and reasoner high-water marks on every route.
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    // In the Rust-frontend path the per-ontology short registry is empty, so
+    // `short(n) == n`; is_internal keys directly on the internal name.
+    let is_internal = |n: &str| -> bool {
+        if named.contains(n) {
+            return false;
+        }
+        n.starts_with("Q_")
+            || n.starts_with("__")
+            || n.starts_with("aux_")
+            || n.starts_with("def_")
+            || (n.contains(':') && !is_bottom(n))
+    };
     // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
     // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
     // Preserve Python's lexicographic pair ordering without globally sorting
