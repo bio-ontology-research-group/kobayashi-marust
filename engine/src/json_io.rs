@@ -30,9 +30,11 @@
 //!   - `{ "kind": "fun", "function": <str>, "arg": <term> }`
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::io::{self, Write};
 
 const ELC_BINARY_MAGIC: &[u8; 8] = b"KMELC\0\x01\0";
+const ELC_OUTPUT_BINARY_MAGIC: &[u8; 8] = b"KMELCO\x01\0";
 const MAX_BINARY_ITEMS: usize = 100_000_000;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -267,6 +269,124 @@ pub struct JOutput {
     /// role-automaton transformation). Soundness-preserving; nonzero only costs
     /// completeness. Zero on all benchmarks after the `augment` preprocessing.
     pub dropped: usize,
+}
+
+/// Dictionary-coded complete EL taxonomy used only for the worker-to-
+/// orchestrator handoff. Each concept name is owned once and relation rows
+/// carry integer endpoints, avoiding one allocated `String` per taxonomy pair.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompactElcOutput {
+    pub names: Vec<String>,
+    pub rows: Vec<(u32, Vec<u32>)>,
+    pub inconsistent: bool,
+    pub dropped: usize,
+}
+
+/// Write a complete EL result in a compact, versioned representation. The
+/// caller must retain JSON for partial results because their residue is merged
+/// with a CB taxonomy through the established map-based path.
+pub fn write_elc_output_binary<W: Write>(
+    mut writer: W,
+    subsumptions: &BTreeMap<String, Vec<String>>,
+    inconsistent: bool,
+    dropped: usize,
+) -> io::Result<()> {
+    let mut ids: HashMap<&str, u32> = HashMap::with_capacity(subsumptions.len());
+    let mut names: Vec<&str> = Vec::with_capacity(subsumptions.len());
+    for name in subsumptions.keys() {
+        let id = u32::try_from(names.len()).map_err(|_| invalid_binary("too many names"))?;
+        ids.insert(name.as_str(), id);
+        names.push(name);
+    }
+    for supers in subsumptions.values() {
+        for superclass in supers {
+            if !ids.contains_key(superclass.as_str()) {
+                let id =
+                    u32::try_from(names.len()).map_err(|_| invalid_binary("too many names"))?;
+                ids.insert(superclass.as_str(), id);
+                names.push(superclass);
+            }
+        }
+    }
+
+    writer.write_all(ELC_OUTPUT_BINARY_MAGIC)?;
+    writer.write_all(&[u8::from(inconsistent)])?;
+    write_len(&mut writer, dropped)?;
+    write_len(&mut writer, names.len())?;
+    for name in names {
+        write_string(&mut writer, name)?;
+    }
+    write_len(&mut writer, subsumptions.len())?;
+    for (subject, supers) in subsumptions {
+        writer.write_all(&ids[subject.as_str()].to_le_bytes())?;
+        write_len(&mut writer, supers.len())?;
+        for superclass in supers {
+            writer.write_all(&ids[superclass.as_str()].to_le_bytes())?;
+        }
+    }
+    Ok(())
+}
+
+/// Decode a compact complete EL result. `Ok(None)` preserves compatibility
+/// with the established JSON worker contract.
+pub fn decode_elc_output_binary(bytes: &[u8]) -> io::Result<Option<CompactElcOutput>> {
+    if !bytes.starts_with(ELC_OUTPUT_BINARY_MAGIC) {
+        return Ok(None);
+    }
+    let mut cursor = BinaryCursor {
+        bytes,
+        offset: ELC_OUTPUT_BINARY_MAGIC.len(),
+    };
+    let inconsistent = match cursor.byte()? {
+        0 => false,
+        1 => true,
+        _ => return Err(invalid_binary("invalid consistency flag")),
+    };
+    let dropped = cursor.len()?;
+    let name_count = cursor.len()?;
+    let mut names = Vec::with_capacity(name_count);
+    for _ in 0..name_count {
+        names.push(cursor.string()?);
+    }
+    let row_count = cursor.len()?;
+    let mut rows = Vec::with_capacity(row_count);
+    let mut pair_count = 0usize;
+    for _ in 0..row_count {
+        let subject = cursor.u32()?;
+        if subject as usize >= name_count {
+            return Err(invalid_binary("subject id out of range"));
+        }
+        let super_count = cursor.len()?;
+        pair_count = pair_count
+            .checked_add(super_count)
+            .ok_or_else(|| invalid_binary("pair count overflow"))?;
+        if pair_count > MAX_BINARY_ITEMS {
+            return Err(invalid_binary("pair count exceeds limit"));
+        }
+        let mut supers = Vec::with_capacity(super_count);
+        for _ in 0..super_count {
+            let superclass = cursor.u32()?;
+            if superclass as usize >= name_count {
+                return Err(invalid_binary("superclass id out of range"));
+            }
+            supers.push(superclass);
+        }
+        rows.push((subject, supers));
+    }
+    if cursor.offset != bytes.len() {
+        return Err(invalid_binary("trailing bytes"));
+    }
+    Ok(Some(CompactElcOutput {
+        names,
+        rows,
+        inconsistent,
+        dropped,
+    }))
+}
+
+#[inline]
+pub fn is_elc_output_binary(bytes: &[u8]) -> bool {
+    bytes.starts_with(ELC_OUTPUT_BINARY_MAGIC)
 }
 
 /// Write the clause-only input consumed by exact EL completion in a compact,
@@ -524,5 +644,37 @@ mod elc_binary_tests {
         assert!(decode_elc_binary(&bytes[..bytes.len() - 1]).is_err());
         bytes.push(0);
         assert!(decode_elc_binary(&bytes).is_err());
+    }
+
+    #[test]
+    fn compact_elc_output_shares_names_and_round_trips_rows() {
+        let subsumptions = BTreeMap::from([
+            ("A".to_string(), vec!["A".to_string(), "Top".to_string()]),
+            ("B".to_string(), vec!["Top".to_string()]),
+        ]);
+        let mut bytes = Vec::new();
+        write_elc_output_binary(&mut bytes, &subsumptions, true, 7).unwrap();
+        let decoded = decode_elc_output_binary(&bytes).unwrap().unwrap();
+        assert_eq!(decoded.names, vec!["A", "B", "Top"]);
+        assert_eq!(decoded.rows, vec![(0, vec![0, 2]), (1, vec![2])]);
+        assert!(decoded.inconsistent);
+        assert_eq!(decoded.dropped, 7);
+        assert!(decode_elc_output_binary(br#"{"subsumptions":{}}"#)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn compact_elc_output_rejects_bad_ids_and_truncation() {
+        let subsumptions = BTreeMap::from([("A".to_string(), vec!["A".to_string()])]);
+        let mut bytes = Vec::new();
+        write_elc_output_binary(&mut bytes, &subsumptions, false, 0).unwrap();
+        assert!(decode_elc_output_binary(&bytes[..bytes.len() - 1]).is_err());
+
+        // Header + flag + dropped + name-count + one length-prefixed name +
+        // row-count, followed by the first subject id.
+        let subject_offset = ELC_OUTPUT_BINARY_MAGIC.len() + 1 + 4 + 4 + 4 + 1 + 4;
+        bytes[subject_offset..subject_offset + 4].copy_from_slice(&9u32.to_le_bytes());
+        assert!(decode_elc_output_binary(&bytes).is_err());
     }
 }

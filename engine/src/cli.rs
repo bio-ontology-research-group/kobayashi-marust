@@ -353,14 +353,43 @@ pub fn run_elc() {
             };
             let stdout = std::io::stdout();
             let mut w = std::io::BufWriter::new(stdout.lock());
-            if let Err(e) = serde_json::to_writer(&mut w, &out) {
+            // Keep the established JSON path for the ORE median band.  The
+            // compact handoff is reserved for very dense taxonomies, where
+            // repeated superclass strings dominate transfer and decoding.
+            let compact = !partial
+                // Two million relations require a large subject set in the
+                // production taxonomies.  This guard keeps the relation-count
+                // scan entirely off the sparse path.
+                && out.subsumptions.len() >= 1_000
+                && std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
+                && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none()
+                && {
+                    let compact_min_relations =
+                        std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
+                            .ok()
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or(2_000_000);
+                    out.subsumptions.values().map(Vec::len).sum::<usize>()
+                        >= compact_min_relations
+                };
+            let write_result = if compact {
+                crate::json_io::write_elc_output_binary(
+                    &mut w,
+                    &out.subsumptions,
+                    out.inconsistent,
+                    out.dropped,
+                )
+            } else {
+                serde_json::to_writer(&mut w, &out).map_err(std::io::Error::other)
+            };
+            if let Err(e) = write_result {
                 eprintln!("serialise error: {}", e);
                 exit(1);
             }
             let _ = w.flush();
             if timing {
                 eprintln!(
-                    "KM_ELC_TIMING serialise={:.2}s total={:.2}s",
+                    "KM_ELC_TIMING serialise={:.2}s total={:.2}s compact={compact}",
                     t3.elapsed().as_secs_f64(),
                     t0.elapsed().as_secs_f64()
                 );

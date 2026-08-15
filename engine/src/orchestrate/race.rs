@@ -51,6 +51,7 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
     }
     EngineOut {
         subsumptions: subs,
+        compact_subsumptions: None,
         inconsistent: !t.consistent,
         dropped: 0,
         unresolved: Vec::new(),
@@ -334,6 +335,7 @@ fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tm
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
     let mut cmd = Command::new(&elc_prog);
+    cmd.env("KM_ELC_OUTPUT_BINARY", "1");
     cmd.args(&elc_pre)
         .stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
@@ -391,10 +393,7 @@ pub fn race_adaptive_vs_elc(
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
 
-    let read_tout = |p: &Path| -> Option<EngineOut> {
-        let f = File::open(p).ok()?;
-        serde_json::from_reader::<_, EngineOut>(BufReader::new(f)).ok()
-    };
+    let read_tout = |p: &Path| super::parse_out_path(p).ok();
 
     let cb_done = Arc::new(AtomicBool::new(false));
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {

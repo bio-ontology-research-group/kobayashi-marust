@@ -23,7 +23,7 @@ pub mod tmpfile;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -223,6 +223,11 @@ impl From<serde_json::Error> for OrchestrateError {
 #[derive(serde::Deserialize, Default)]
 pub struct EngineOut {
     pub subsumptions: BTreeMap<String, Vec<String>>,
+    /// Complete ELC workers may retain one copy of each concept name and use
+    /// integer relation endpoints. Other workers and partial ELC answers keep
+    /// the established map representation.
+    #[serde(skip)]
+    pub compact_subsumptions: Option<crate::json_io::CompactElcOutput>,
     pub inconsistent: bool,
     pub dropped: usize,
     /// elc exit-4 residue (named subjects the certificate could not determine)
@@ -251,9 +256,25 @@ pub(crate) struct ClassificationEvidence {
 }
 
 pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
-    Ok(serde_json::from_reader(BufReader::new(File::open(
-        res.stdout.path(),
-    )?))?)
+    parse_out_path(res.stdout.path())
+}
+
+pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let mut reader = BufReader::new(File::open(path)?);
+    if crate::json_io::is_elc_output_binary(reader.fill_buf()?) {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+        let compact = crate::json_io::decode_elc_output_binary(&bytes)?
+            .ok_or_else(|| std::io::Error::other("missing compact ELC output header"))?;
+        return Ok(EngineOut {
+            inconsistent: compact.inconsistent,
+            dropped: compact.dropped,
+            subsumptions: BTreeMap::new(),
+            compact_subsumptions: Some(compact),
+            unresolved: Vec::new(),
+        });
+    }
+    Ok(serde_json::from_reader(reader)?)
 }
 
 /// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
@@ -355,6 +376,7 @@ fn run_atomic_elc(
             )),
             Some(res) => Ok(EngineOut {
                 subsumptions: res.subsumptions,
+                compact_subsumptions: None,
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
@@ -369,7 +391,7 @@ fn run_atomic_elc(
         None,
         Some(cfg.par_mem_gb),
         None,
-        &[],
+        &[("KM_ELC_OUTPUT_BINARY", "1")],
         false,
     )?;
     match res.code {
@@ -648,6 +670,7 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
             .into_iter()
             .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
             .collect(),
+        compact_subsumptions: None,
         inconsistent: r.inconsistent(),
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
@@ -671,6 +694,7 @@ fn try_inproc_elc(
         Some(res) => {
             let out = EngineOut {
                 subsumptions: res.subsumptions,
+                compact_subsumptions: None,
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: res.unresolved,
@@ -930,6 +954,7 @@ fn classify_with_evidence_mode(
                         if classification.unresolved.is_empty() {
                             certified_el_out = Some(EngineOut {
                                 subsumptions: classification.subsumptions,
+                                compact_subsumptions: None,
                                 inconsistent: classification.inconsistent,
                                 dropped: 0,
                                 unresolved: Vec::new(),
@@ -1098,7 +1123,7 @@ fn classify_with_evidence_mode(
                     None,
                     None,
                     None,
-                    &[],
+                    &[("KM_ELC_OUTPUT_BINARY", "1")],
                     false,
                 )?;
                 out = handle_elc_result(cfg, res, clauses_path.path())?;
@@ -1123,7 +1148,7 @@ fn classify_with_evidence_mode(
                         None,
                         Some(cfg.elc_force_mem_gb),
                         Some(cfg.elc_force_budget_s),
-                        &[("KM_ELC_CERT", "2")],
+                        &[("KM_ELC_CERT", "2"), ("KM_ELC_OUTPUT_BINARY", "1")],
                         false,
                     )?;
                     if !(res.oom || res.timed_out) {
@@ -1142,7 +1167,7 @@ fn classify_with_evidence_mode(
                     None,
                     Some(cfg.elc_force_mem_gb),
                     Some(cfg.elc_force_budget_s),
-                    &[("KM_ELC_CERT", "2")],
+                    &[("KM_ELC_CERT", "2"), ("KM_ELC_OUTPUT_BINARY", "1")],
                     false,
                 )?;
                 if !(res.oom || res.timed_out) {
@@ -1214,10 +1239,14 @@ fn classify_with_evidence_mode(
     };
 
     if timing {
+        let subs_keys = out
+            .compact_subsumptions
+            .as_ref()
+            .map_or(out.subsumptions.len(), |compact| compact.rows.len());
         eprintln!(
             "KM_TIMING engine block done @ {:.2}s (subs_keys={})",
             t_start.elapsed().as_secs_f64(),
-            out.subsumptions.len()
+            subs_keys
         );
     }
     // These borrowed lookup tables are consumed only by public-output mapping.
@@ -1253,51 +1282,99 @@ fn classify_with_evidence_mode(
     let mut unsat_set: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
-    for (a, sups) in &out.subsumptions {
-        if is_internal(a) {
-            continue;
+    if let Some(compact) = &out.compact_subsumptions {
+        for (subject, super_ids) in &compact.rows {
+            let a = &compact.names[*subject as usize];
+            if is_internal(a) {
+                continue;
+            }
+            if retain_grouped_output {
+                let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
+                let mut mapped_supers = Vec::with_capacity(super_ids.len());
+                for superclass in super_ids {
+                    let s = &compact.names[*superclass as usize];
+                    if is_bottom(s) {
+                        if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(iri_ids.id(s));
+                    }
+                }
+                if !mapped_supers.is_empty() {
+                    grouped_json
+                        .entry(iri_ids.id(a))
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            } else {
+                let fa = mapped_iri(&meta.iri_map, a);
+                let mut mapped_supers = Vec::with_capacity(super_ids.len());
+                for superclass in super_ids {
+                    let s = &compact.names[*superclass as usize];
+                    if is_bottom(s) {
+                        if unsat_set.insert(fa.to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
+                    }
+                }
+                if !mapped_supers.is_empty() {
+                    grouped_subs
+                        .entry(fa.to_string())
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            }
         }
-        if retain_grouped_output {
-            let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
-            let mut mapped_supers = Vec::with_capacity(sups.len());
-            for s in sups {
-                if is_bottom(s) {
-                    // Preserve the previous first-full-IRI-representative
-                    // behaviour when multiple local aliases map to one class.
-                    if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
-                        unsat_names.insert(a.as_str());
+    } else {
+        for (a, sups) in &out.subsumptions {
+            if is_internal(a) {
+                continue;
+            }
+            if retain_grouped_output {
+                let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
+                let mut mapped_supers = Vec::with_capacity(sups.len());
+                for s in sups {
+                    if is_bottom(s) {
+                        // Preserve the previous first-full-IRI-representative
+                        // behaviour when multiple local aliases map to one class.
+                        if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(iri_ids.id(s));
                     }
-                } else if !is_internal(s) && s != a {
-                    mapped_supers.push(iri_ids.id(s));
                 }
-            }
-            if !mapped_supers.is_empty() {
-                grouped_json
-                    .entry(iri_ids.id(a))
-                    .or_default()
-                    .extend(mapped_supers);
-            }
-        } else {
-            let fa = mapped_iri(&meta.iri_map, a);
-            let mut mapped_supers = Vec::with_capacity(sups.len());
-            for s in sups {
-                if is_bottom(s) {
-                    // Preserve the previous first-full-IRI-representative
-                    // behaviour when multiple local aliases map to one class.
-                    if unsat_set.insert(fa.to_string()) {
-                        unsat_names.insert(a.as_str());
+                if !mapped_supers.is_empty() {
+                    grouped_json
+                        .entry(iri_ids.id(a))
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            } else {
+                let fa = mapped_iri(&meta.iri_map, a);
+                let mut mapped_supers = Vec::with_capacity(sups.len());
+                for s in sups {
+                    if is_bottom(s) {
+                        // Preserve the previous first-full-IRI-representative
+                        // behaviour when multiple local aliases map to one class.
+                        if unsat_set.insert(fa.to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
                     }
-                } else if !is_internal(s) && s != a {
-                    mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
                 }
-            }
-            if !mapped_supers.is_empty() {
-                // Moving `fa` here avoids cloning the same subject once per
-                // superclass. Aliases that map to one full IRI merge into one row.
-                grouped_subs
-                    .entry(fa.to_string())
-                    .or_default()
-                    .extend(mapped_supers);
+                if !mapped_supers.is_empty() {
+                    // Moving `fa` here avoids cloning the same subject once per
+                    // superclass. Aliases that map to one full IRI merge into one row.
+                    grouped_subs
+                        .entry(fa.to_string())
+                        .or_default()
+                        .extend(mapped_supers);
+                }
             }
         }
     }
