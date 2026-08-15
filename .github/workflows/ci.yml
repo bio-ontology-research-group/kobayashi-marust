@@ -30,7 +30,7 @@ jobs:
           set -e
           if (( status != 0 )); then
             excerpt=$(tail -120 /tmp/km-test.log | python3 -c \
-              'import sys; print(sys.stdin.read().replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))')
+              'import sys; s=sys.stdin.read(); s=s[-3500:]; print(s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))')
             echo "::error file=.github,line=1,title=Rust test failure::$excerpt"
             exit "$status"
           fi
