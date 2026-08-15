@@ -2127,6 +2127,10 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 );
             let possible_subsumer_template =
                 Self::possible_subsumer_message_template(&labels, concepts);
+            let label_tags: std::collections::HashSet<Cint64> = labels
+                .iter()
+                .map(|label| Self::concept_tag(label.concept, concepts))
+                .collect();
             for label in &labels {
                 if label.negated || !Self::is_named_class(label.concept, concepts) {
                     continue;
@@ -2144,6 +2148,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                         has_equivalent_non_candidates,
                         &equivalent_non_candidates,
                         Some(&possible_subsumer_template),
+                        Some(&label_tags),
                         concepts,
                     )
                 {
@@ -7262,6 +7267,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     (!equivalent_non_candidates.is_empty())
                         .then_some(equivalent_non_candidates.to_vec()),
                     None,
+                    None,
                     concepts,
                 )
             {
@@ -7401,6 +7407,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             (!equivalent_non_candidate_concepts.is_empty())
                 .then_some(equivalent_non_candidate_concepts.to_vec()),
             None,
+            None,
             concepts,
         )
     }
@@ -7441,6 +7448,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             eq_concepts_non_candidate_possible_subsumers,
             &possible_subsumers,
             None,
+            None,
             concepts,
         )
     }
@@ -7456,6 +7464,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         possible_subsumer_template: Option<
             &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
         >,
+        label_tags: Option<&std::collections::HashSet<Cint64>>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         // Only initialization messages consume the owned candidate list.
@@ -7472,6 +7481,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             has_equivalent_non_candidates,
             possible_subsumers,
             possible_subsumer_template,
+            label_tags,
             concepts,
         )
     }
@@ -7515,6 +7525,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         possible_subsumer_template: Option<
             &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
         >,
+        cached_label_tags: Option<&std::collections::HashSet<Cint64>>,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         if !adapter.has_extraction_flags(extraction_flag) || testing_concept.is_none() {
@@ -7573,10 +7584,16 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             return None;
         }
 
-        let mut label_tags = std::collections::HashSet::new();
-        for label in labels {
-            label_tags.insert(Self::concept_tag(label.concept, concepts));
-        }
+        let owned_label_tags;
+        let label_tags = if let Some(label_tags) = cached_label_tags {
+            label_tags
+        } else {
+            owned_label_tags = labels
+                .iter()
+                .map(|label| Self::concept_tag(label.concept, concepts))
+                .collect();
+            &owned_label_tags
+        };
         let updated_possible_subsumptions =
             state
                 .possible_subsumption_concepts
@@ -16693,6 +16710,7 @@ mod tests {
         let testing_concept = concepts.push(concept_with_tag(CCATOM, 20, true));
         let lower_candidate = concepts.push(concept_with_tag(CCATOM, 10, true));
         let eq_candidate = concepts.push(concept_with_tag(CCEQCAND, 30, false));
+        let missing_candidate = concepts.push(concept_with_tag(CCATOM, 40, true));
         let labels = vec![
             ClassificationAnalyserConceptLabel::new(eq_candidate, false, Some(1)),
             ClassificationAnalyserConceptLabel::new(testing_concept, false, Some(1)),
@@ -16730,6 +16748,7 @@ mod tests {
                 false,
                 &[],
                 Some(&template),
+                None,
                 &concepts,
             )
             .expect("cached message");
@@ -16748,6 +16767,47 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(concepts_in(cached), concepts_in(ordinary));
+
+        let state = ClassificationAnalyserPossibleSubsumptionState::initialized(vec![
+            missing_candidate,
+        ]);
+        let ordinary = analyser
+            .create_possible_class_subsumption_message(
+                &adapter,
+                testing_concept,
+                &labels,
+                &state,
+                &[],
+                &concepts,
+            )
+            .expect("ordinary update");
+        let label_tags = labels
+            .iter()
+            .map(|label| {
+                SatisfiableTaskClassificationMessageAnalyser::concept_tag(label.concept, &concepts)
+            })
+            .collect();
+        let cached = analyser
+            .create_possible_class_subsumption_message_with_equivalent_non_candidates(
+                &adapter,
+                testing_concept,
+                &labels,
+                &state,
+                false,
+                &[],
+                Some(&template),
+                Some(&label_tags),
+                &concepts,
+            )
+            .expect("cached update");
+        assert!(matches!(
+            ordinary,
+            ClassificationMessageDataPayload::UpdatePossibleClassSubsumption(_)
+        ));
+        assert!(matches!(
+            cached,
+            ClassificationMessageDataPayload::UpdatePossibleClassSubsumption(_)
+        ));
     }
 
     #[test]
