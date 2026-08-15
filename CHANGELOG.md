@@ -2,6 +2,37 @@
 
 ## [unreleased]
 
+## [0.2.33] – 2026-08-15
+
+### Pay-as-needed certified EL fallback serialization
+
+Certified EL classification no longer serializes a complete JSON clause copy
+before it knows that the production fallback is needed. In-process certified
+routes retain their typed clauses directly and rebuild the production input
+only after a certificate declines. For subprocess routes, source documents of
+at least 512 MiB use the existing checked binary clause handoff and omit the
+dead JSON stream after that handoff succeeds. Smaller certified subprocess
+routes keep the established JSON path because repeated paired measurements
+show that the extra encoding does not amortize there. Exact EL behavior is
+unchanged. This changes representation and scheduling only; routing,
+certificates, completion rules, and accepted answers are unchanged.
+
+Order-balanced full-corpus job `50547528` contains exactly 1,184 terminal rows,
+1,184 matching checkpoints, 592 complete pairs, and no temporary outputs. Both
+arms report 591 successful classifications and ORE1194 as the sole fail-closed
+error. There are zero differences in status, verdict, consistency, selected
+route, solved state, answer counts, or full-IRI signature. Mean wall falls from
+3.45100 to 3.43487 seconds, median wall from 0.1627 to 0.1622 seconds, mean peak
+RSS from 424.24 to 420.40 MiB, and median peak RSS from 35.05 to 34.39 MiB.
+Summed wall falls by 9.5335 seconds. ORE16744 accounts for the intended large
+handoff gain: wall falls from 63.2610 to 60.1049 seconds and peak RSS from
+5,668.39 to 3,570.22 MiB.
+
+The complete release-mode suite passes 2,005 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-certified-el-payg/`](results/benchmarks/2026-08-15-certified-el-payg/README.md).
+
 ## [0.2.32] – 2026-08-15
 
 ### Compact dense EL taxonomy handoff

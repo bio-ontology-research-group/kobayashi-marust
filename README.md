@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.32`.
+are available from the repository tags; the current release is `v0.2.33`.
 
 ## Classify an ontology
 
@@ -90,23 +90,24 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Order-balanced full paired job `50546048` verifies
+over all 592 ontologies. Order-balanced full paired job `50547528` verifies
 every result, checkpoint, route trace, collision-sensitive full-IRI
 fingerprint, and binary identity. The tested release-candidate binary is
-`e14949a66e60…`.
+`645e79b99626…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.32` / `b5aca75` (binary `e14949a66e60…`) | **591** | **591** | **3.4150** | **0.1628** | **424.18** | **35.31** |
+| **KM automatic, `km classify`** | `v0.2.33` / `19eb42e` (binary `645e79b99626…`) | **591** | **591** | **3.4349** | **0.1622** | **420.40** | **34.39** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
-Performance values are the candidate arm of job `50546048` on exclusive Intel
+Performance values are the candidate arm of job `50547528` on exclusive Intel
 Xeon Gold 6248 nodes. The candidate preserves every status, verdict,
-consistency result, selected route, and full-IRI signature from v0.2.31 in all
-592 pairs. Mean wall falls from 3.44657 to 3.41502 seconds, saving 18.645
-seconds over the 591 successful classifications. Mean and median peak RSS, and
-the sub-millisecond median-wall movement, are treated as flat measurement
-noise; no memory or median improvement is claimed.
+consistency result, selected route, solved state, answer count, and full-IRI
+signature from v0.2.32 in all 592 pairs. On the same nodes, mean wall falls
+from 3.45100 to 3.43487 seconds and summed wall falls by 9.5335 seconds. Mean
+peak RSS falls from 424.24 to 420.40 MiB, largely because ORE16744 falls from
+5,668.39 to 3,570.22 MiB. Median wall and peak RSS also measure lower at 0.1622
+seconds and 34.39 MiB.
 ORE6934 now
 uses an isolated complete ground-clause HT route. Its strict-sweep execution
 falls from 68.9191 seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB
