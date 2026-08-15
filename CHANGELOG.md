@@ -2,6 +2,40 @@
 
 ## [unreleased]
 
+## [0.2.36] – 2026-08-15
+
+### Partition two large production-bridge profiles
+
+The automatic `production_all` route now assigns four bounded, independent
+subject-classification workers to the large SRIQ bridge profile represented by
+ORE14817 and two workers to the large SHI bridge profile represented by
+ORE3215. Every worker receives the complete ontology and candidate-superclass
+universe. The bridge publishes a merged answer only when every partition
+completes; otherwise it defers to the existing exact fallback. This changes
+scheduling only, not routing, inference rules, or accepted certificates.
+
+Three alternating same-node pairs in jobs `50554126` and `50554127` preserve
+the gold-matching full-IRI signatures and all answer metadata. ORE14817 median
+wall falls from 91.8347 to 75.0825 seconds; ORE3215 falls from 125.5704 to
+89.1692 seconds. Their median process-tree peak RSS rises from 2,799.62 to
+5,963.04 MiB and from 6,278.98 to 9,643.82 MiB, respectively, within the
+20-GiB benchmark contract.
+
+Order-balanced full-corpus job `50554161` contains exactly 1,184 terminal
+records, 1,184 checkpoints, 592 pair-completion markers, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI
+signature. Mean wall falls from 3.32327 to 3.23825 seconds. Candidate median
+wall is 0.1628 seconds, mean peak RSS is 427.88 MiB, and median peak RSS is
+35.39 MiB. All four are below the frozen Konclude measurements of 3.2657
+seconds, 0.2813 seconds, 558.09 MiB, and 76.53 MiB.
+
+The complete serial release-mode suite passes 2,006 library tests with eight
+ignored tests and every integration test, including the issue #3 pigeonhole
+regression. Evidence is in
+[`results/benchmarks/2026-08-15-large-bridge-subjects/`](results/benchmarks/2026-08-15-large-bridge-subjects/README.md).
+
 ## [0.2.35] – 2026-08-15
 
 ### Partition large certified-bridge subjects

@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.35`.
+are available from the repository tags; the current release is `v0.2.36`.
 
 ## Classify an ontology
 
@@ -90,25 +90,26 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The production benchmark covers one deployable command, `km classify`, over all
-592 ontologies. Order-balanced paired job `50552285` verifies every result,
+592 ontologies. Order-balanced paired job `50554161` verifies every result,
 checkpoint, route trace, collision-sensitive full-IRI fingerprint, and binary
-identity. The tested release-candidate binary is `d289f0e4c8c1…`.
+identity. The tested release-candidate binary is `bbef8d7efbc6…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.35` / `d9c251a` (binary `d289f0e4c8c1…`) | **591** | **591** | 3.3302 | **0.1621** | **417.04** | **35.02** |
-| Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
+| **KM automatic, `km classify`** | `v0.2.36` / `6851533` (binary `bbef8d7efbc6…`) | **591** | **591** | **3.2383** | **0.1628** | **427.88** | **35.39** |
+| Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
 
 Values are measured on exclusive Intel Xeon Gold 6248 nodes with a 240-second
 timeout and 20-GiB memory cap. All 592 paired comparisons agree in status,
 verdict, consistency, selected route, solved state, answer counts, and full-IRI
-signature. KM remains below Konclude on median wall time and both memory metrics;
-mean wall time is the remaining performance target.
+signature. KM is below the frozen Konclude measurements on mean and median wall
+time and mean and median peak memory.
 
-ORE10621 uses four bounded, independent subject-classification workers inside
-its certified bridge. Three alternating same-node pairs reduce median wall time
-from 83.2711 to 38.9416 seconds while preserving the gold signature. The full
-sweep measures 38.8773 seconds and 1,555.30 MiB for ORE10621.
+The automatic route uses four bounded subject workers for the large SRIQ bridge
+profile represented by ORE14817 and two for the large SHI profile represented
+by ORE3215. Three-pair focused gates preserve each gold signature and reduce
+median wall time from 91.8347 to 75.0825 seconds and from 125.5704 to 89.1692
+seconds, respectively.
 
 ## Protégé plugin
 
