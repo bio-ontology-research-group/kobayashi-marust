@@ -2,6 +2,36 @@
 
 ## [unreleased]
 
+## [0.2.27] – 2026-08-15
+
+### Reuse KPSet labels and extend exact EL routing
+
+KPSet classification now reuses equivalent-candidate sets, possible-subsumer
+templates, and root-label tags within each completed model. These are cached
+representations of the same model labels and tests; the change does not alter
+blocking, branching, calculus rules, or the derived fixpoint.
+
+The automatic classifier now recognizes four role-free, ABox-free exact OWL EL
+terminologies containing named intersections and sends them to the existing EL
+completion implementation. A fail-closed source certificate excludes RBox,
+property, data, disjunction, complement, quantifier, cardinality, nominal, and
+datatype constructs. Small flat and intersection-only terminologies keep typed
+EL completion in the orchestrator process, while larger inputs retain process
+isolation. The ELC worker still validates normalized clauses before publishing.
+
+Strict sweep `50517606` contains 592 terminal rows for binary
+`628b11d8e95d…`: 591 are successful and ORE1194 remains the sole fail-closed
+error. It has zero semantic differences from v0.2.26 and exactly four expected
+route changes, from `production_all` to `elc` for ORE868, ORE9590, ORE10806,
+and ORE13664. Order-balanced same-node sweep `50518274` independently ran both
+binaries for every ontology. Relative to v0.2.26, mean wall falls from 3.65019
+to 3.58613 seconds, median wall from 0.1893 to 0.1848 seconds, mean peak RSS
+from 436.020 to 433.282 MiB, and median peak RSS from 35.85 to 35.04 MiB. The
+complete serial release suite passes 1,991 library tests with eight ignored
+tests and all integration tests, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-flat-inproc-elc/`](results/benchmarks/2026-08-15-flat-inproc-elc/README.md).
+
 ## [0.2.26] – 2026-08-14
 
 ### Restore the isolated complete ground-clause route

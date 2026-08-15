@@ -71,10 +71,13 @@ def main() -> None:
     parser.add_argument("candidate", type=Path)
     parser.add_argument("baseline", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--candidate-hash", default=EXPECTED_BINARY)
+    parser.add_argument("--baseline-hash", default=EXPECTED_BASELINE)
+    parser.add_argument("--allow-route-change", action="store_true")
     args = parser.parse_args()
 
-    candidate = load_and_validate(args.candidate.resolve(), EXPECTED_BINARY)
-    baseline = load_and_validate(args.baseline.resolve(), EXPECTED_BASELINE)
+    candidate = load_and_validate(args.candidate.resolve(), args.candidate_hash)
+    baseline = load_and_validate(args.baseline.resolve(), args.baseline_hash)
     candidate_by_ont = {row["ont"]: row for row in candidate}
     baseline_by_ont = {row["ont"]: row for row in baseline}
     if candidate_by_ont.keys() != baseline_by_ont.keys():
@@ -82,7 +85,7 @@ def main() -> None:
 
     behavior_fields = (
         "status", "verdict", "solved", "consistent", "signature_sha256",
-        "selected_route_trace", "missing", "extra", "missing_unsat", "extra_unsat",
+        "missing", "extra", "missing_unsat", "extra_unsat",
     )
     differences = {
         ont: {
@@ -95,6 +98,14 @@ def main() -> None:
     differences = {ont: fields for ont, fields in differences.items() if fields}
     if differences:
         raise SystemExit(f"behavioral differences: {json.dumps(differences, sort_keys=True)}")
+    route_differences = {
+        ont: [baseline_by_ont[ont].get("selected_route_trace"), candidate_by_ont[ont].get("selected_route_trace")]
+        for ont in sorted(candidate_by_ont)
+        if baseline_by_ont[ont].get("selected_route_trace")
+        != candidate_by_ont[ont].get("selected_route_trace")
+    }
+    if route_differences and not args.allow_route_change:
+        raise SystemExit(f"route differences: {json.dumps(route_differences, sort_keys=True)}")
 
     baseline_metrics = metrics(baseline)
     candidate_metrics = metrics(candidate)
@@ -105,9 +116,10 @@ def main() -> None:
     }
     improvements = {name: changes[name] < 0 for name in metric_names}
     report = {
-        "candidate_binary_sha256": EXPECTED_BINARY,
-        "baseline_binary_sha256": EXPECTED_BASELINE,
+        "candidate_binary_sha256": args.candidate_hash,
+        "baseline_binary_sha256": args.baseline_hash,
         "behavioral_differences": differences,
+        "route_differences": route_differences,
         "baseline": baseline_metrics,
         "candidate": candidate_metrics,
         "candidate_minus_baseline": changes,
