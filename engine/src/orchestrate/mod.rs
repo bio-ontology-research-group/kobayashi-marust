@@ -488,18 +488,18 @@ fn use_atomic_inproc_elc(
     }
     let structured = profile.source.distinct_classes.saturating_mul(10)
         < profile.source.logical_axioms.saturating_mul(9);
-    // Small role- and constructor-free class hierarchies cannot create EL
-    // completion edges or NF work. Their completion state is bounded by the
-    // same class graph that the worker would build, so keeping the historical
-    // subprocess boundary only adds clause serialization, fork/exec, and
-    // taxonomy reparsing. Retain that boundary for larger flat hierarchies,
-    // where allocator high-water during public-output mapping was measurable.
+    // Small role-free class hierarchies with only named intersections cannot
+    // create EL completion edges. Their completion state is bounded by the
+    // same class/NF2 graph that the worker would build, so keeping the
+    // historical subprocess boundary only adds clause serialization,
+    // fork/exec, and taxonomy reparsing. Retain that boundary for larger
+    // hierarchies, where allocator high-water during public-output mapping was
+    // measurable.
     let flat_small = profile.source.file_bytes < INPROC_ELC_MAX
         && profile.source.abox_axioms == 0
         && profile.source.rbox_axioms == 0
         && profile.source.distinct_object_properties == 0
         && profile.source.distinct_data_properties == 0
-        && profile.source.intersections == 0
         && profile.source.unions == 0
         && profile.source.complements == 0
         && profile.source.existentials == 0
@@ -1659,6 +1659,9 @@ mod tests {
         assert!(!use_atomic_inproc_elc(Route::ProductionAll, &profile));
         profile.source.distinct_classes = 90;
         profile.source.file_bytes = super::INPROC_ELC_MAX - 1;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.intersections = 2;
+        profile.source.max_concept_depth = 2;
         assert!(use_atomic_inproc_elc(Route::Elc, &profile));
         profile.source.file_bytes = super::INPROC_ELC_MAX;
         assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
