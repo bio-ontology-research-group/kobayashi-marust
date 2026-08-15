@@ -178,10 +178,20 @@ pub fn run_ofn(args: &[String]) {
         .route
         .parse::<crate::routing::Route>()
         .ok();
-    // CertifiedElProduction must retain the established JSON stream for its
-    // mandatory ProductionAll fallback. Writing both formats made its five ORE
-    // cases slower, while only the exact Elc leaf can discard JSON entirely.
-    let binary_el_route = binary_route == Some(crate::routing::Route::Elc);
+    // Both EL-first routes can consume the compact typed-clause sidecar. A
+    // CertifiedElProduction refusal recursively reruns the frontend under its
+    // mandatory ProductionAll fallback, so pre-serialising a giant JSON clause
+    // stream that the successful EL arm never reads is unnecessary.
+    // Exact EL always benefits from the compact handoff. For a certified EL
+    // route, measurements show that paying for both the binary encoding and
+    // its isolated worker only amortises on very large source documents. Keep
+    // the established JSON handoff below 512 MiB.
+    let binary_el_route = matches!(binary_route, Some(crate::routing::Route::Elc))
+        || (matches!(
+            binary_route,
+            Some(crate::routing::Route::CertifiedElProduction)
+        ) && text.len() >= 512 * 1024 * 1024);
+    let mut binary_written = false;
     if result.el_rbox_safe && binary_el_route {
         if let Some(binary_path) = elc_binary_path {
             let write_result = std::fs::File::create(binary_path).and_then(|file| {
@@ -193,6 +203,7 @@ pub fn run_ofn(args: &[String]) {
                 eprintln!("ELC binary serialise error: {error}");
                 exit(1);
             }
+            binary_written = true;
         }
     }
     // The frontend result owns everything needed below. Release the potentially
@@ -202,8 +213,7 @@ pub fn run_ofn(args: &[String]) {
     // Stream JSON to a buffered stdout (the clause array dominates peak memory).
     let stdout = std::io::stdout();
     let mut w = std::io::BufWriter::new(stdout.lock());
-    let binary_only = elc_binary_path.is_some()
-        && binary_route == Some(crate::routing::Route::Elc)
+    let binary_only = binary_written
         && !result.profile.positive_el_abox_materializable
         && result.profile.source.rule_axioms == 0;
 
@@ -232,11 +242,11 @@ pub fn run_ofn(args: &[String]) {
                 exit(1);
             }
         }
-        // An atomic exact-EL route has no classifier fallback. When its compact
-        // sidecar was requested successfully, emitting the same multi-gigabyte
-        // clause set as JSON is dead serialization and disk traffic. Positive
-        // ABox and rule checks still consume the full JSON side channels and
-        // therefore retain the established output.
+        // Successful EL-first routes consume the compact sidecar. Emitting the
+        // same multi-gigabyte clause set as JSON is dead serialization and disk
+        // traffic; a certified-route refusal reruns this frontend under the
+        // production fallback. Positive ABox and rule checks still consume the
+        // full JSON side channels and therefore retain established output.
         if binary_only {
             let _ = w.flush();
             return;

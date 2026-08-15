@@ -158,13 +158,10 @@ fn run_ofn_in_process(
     if cacheable {
         out.clauses.shrink_to_fit();
     }
-    // Exact Elc consumes `out` directly and has no classifier fallback, so its
-    // serialized copy is dead work. CertifiedElProduction also consumes the
-    // typed input directly, but retains the authoritative JSON for its required
-    // ProductionAll fallback if the certificate declines or errors.
-    let needs_serialized_fallback =
-        selected_route == Some(crate::routing::Route::CertifiedElProduction);
-    if !cacheable || needs_serialized_fallback {
+    // Exact Elc consumes `out` directly. CertifiedElProduction also consumes
+    // it directly and recursively reruns this frontend under ProductionAll if
+    // its certificate declines, so neither needs an eager serialized copy.
+    if !cacheable {
         let f = File::create(clauses_path)?;
         let mut w = std::io::BufWriter::new(f);
         serde_json::to_writer(&mut w, &out)?;
