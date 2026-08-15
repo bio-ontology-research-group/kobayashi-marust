@@ -2,6 +2,40 @@
 
 ## [unreleased]
 
+## [0.2.28] – 2026-08-15
+
+### Compact exact-EL handoff and reduce orchestration overlap
+
+Large exact-EL subprocess routes now pass normalized clauses through a compact,
+versioned binary representation. The worker accepts both this representation
+and the established JSON contract. Exact EL leaves omit the dead JSON copy;
+certified EL routes retain JSON for their mandatory complete fallback. The
+codec is lossless and fail-closed, and route selection and completion rules are
+unchanged.
+
+Public-output lookup tables are now built after classification, so their bucket
+allocations do not overlap frontend and reasoner high-water marks. Temporary
+worker paths reuse one process-local directory and collision nonce instead of
+querying the clock and environment for every handoff. These are lifetime and
+orchestration changes only; they do not alter the calculus or derived fixpoint.
+
+Strict sweep `50528307` contains 592 terminal rows for binary `4aa2370c8ceb…`:
+591 are successful and ORE1194 remains the sole fail-closed error. Every status,
+verdict, consistency result, selected route, and full-IRI signature is identical
+to v0.2.27, including all four collision-sensitive fingerprints. Relative to
+the published v0.2.27 measurements, mean wall falls from 3.58613 to 3.55523
+seconds, median wall from 0.1848 to 0.1635 seconds, mean peak RSS from 433.282
+to 423.840 MiB, and median peak RSS from 35.04 to 34.60 MiB.
+
+Order-balanced full pair `50526676` independently verifies the compact
+handoff's mean wall and memory reductions. Median-boundary panel `50527646`
+runs 270 alternating pairs over 90 ontologies and preserves every signature;
+the final overhead changes reduce panel mean wall by 1.03 milliseconds and
+mean peak RSS by 0.213 MiB. The complete release suite passes 1,994 library
+tests with eight ignored tests and all integration tests, including the issue
+#3 pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-el-binary-handoff/`](results/benchmarks/2026-08-15-el-binary-handoff/README.md).
+
 ## [0.2.27] – 2026-08-15
 
 ### Reuse KPSet labels and extend exact EL routing

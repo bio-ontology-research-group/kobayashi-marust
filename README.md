@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.27`.
+are available from the repository tags; the current release is `v0.2.28`.
 
 ## Classify an ontology
 
@@ -90,21 +90,24 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `8a65944`, strict sweep
-job `50517606`, paired sweep job `50518274`, and their integrity audits verify
-every result, checkpoint, route trace, collision-sensitive full-IRI fingerprint,
-and binary identity. The tested binary is `628b11d8e95d…`.
+over all 592 ontologies. Tested implementation commit `a50671d`, strict sweep
+job `50528307`, full paired job `50526676`, and median-boundary panel job
+`50527646` verify every result, checkpoint, route trace, collision-sensitive
+full-IRI fingerprint, and binary identity. The tested binary is `4aa2370c8ceb…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.27` / `8a65944` (binary `628b11d8e95d…`) | **591** | **591** | **3.5861** | **0.1848** | **433.28** | **35.04** |
+| **KM automatic, `km classify`** | `v0.2.28` / `a50671d` (binary `4aa2370c8ceb…`) | **591** | **591** | **3.5552** | **0.1635** | **423.84** | **34.60** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
-Performance values come directly from the 591 successful candidate rows of an
-order-balanced, same-node sweep against v0.2.26 on exclusive Intel Xeon Gold
-6248 nodes. The candidate preserves every status, verdict, consistency result,
-and full-IRI signature. It improves mean wall by 0.0641 seconds, median wall by
-4.5 milliseconds, mean peak RSS by 2.74 MiB, and median peak RSS by 0.81 MiB.
+Performance values come directly from the 591 successful rows of strict sweep
+`50528307` on exclusive Intel Xeon Gold 6248 nodes. The candidate preserves
+every status, verdict, consistency result, selected route, and full-IRI
+signature from v0.2.27. Relative to the published v0.2.27 measurements, mean
+wall improves by 0.0309 seconds, median wall by 21.3 milliseconds, mean peak
+RSS by 9.44 MiB, and median peak RSS by 0.44 MiB. A full order-balanced pair
+isolated the compact handoff's mean wall and memory gains. A separate 270-pair
+median-boundary panel measured the final route-neutral overhead changes.
 ORE6934 now
 uses an isolated complete ground-clause HT route. Its strict-sweep execution
 falls from 68.9191 seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB
@@ -124,8 +127,8 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 433.28 MiB and median RSS is 35.04 MiB. Mean wall is 3.5861 seconds
-and median wall is 0.1848 seconds. All four KM metrics except mean wall remain
+mean RSS is 423.84 MiB and median RSS is 34.60 MiB. Mean wall is 3.5552 seconds
+and median wall is 0.1635 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
 
 Frontend IRI metadata now uses one sorted pass for both the named-class vector

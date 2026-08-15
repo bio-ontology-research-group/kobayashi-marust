@@ -1,0 +1,30 @@
+{
+  "baseline_release": {
+    "binary_sha256": "628b11d8e95dcedf2394afac53a35399ba1e9106b0e844aae3dbbad41852875a",
+    "peak_mean_mib": 433.28199661590526,
+    "peak_median_mib": 35.04,
+    "successful": 591,
+    "wall_mean_s": 3.5861346869712354,
+    "wall_median_s": 0.1848
+  },
+  "candidate": {
+    "binary_sha256": "4aa2370c8cebac9b78fcd64cfbfa6d4be0af2bd87bb6b5c0f351c478d88056af",
+    "peak_mean_mib": 423.8402538071074,
+    "peak_median_mib": 34.6,
+    "successful": 591,
+    "wall_mean_s": 3.5552336717428115,
+    "wall_median_s": 0.1635
+  },
+  "collision_fingerprints": {
+    "ore_ont_13503.owl": "1b8fdf730b9cdce8afed1c69c13e782c6c2dde70c42e5f1d2273dcbdb6b1282b",
+    "ore_ont_15703.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+    "ore_ont_3524.owl": "090129a7fbaa14652ada3408dd1f160e7dd4a09a3502cc3323d8dad734e8893a",
+    "ore_ont_4669.owl": "a482e066a22110df593bf3a4c1fdd0ef4404f7141903b2101b85aae49811cb30"
+  },
+  "job": "50528307",
+  "ontologies": 592,
+  "route_differences": 0,
+  "semantic_differences": 0,
+  "sole_error": "ore_ont_1194.owl",
+  "temporary_files": 0
+}
