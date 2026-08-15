@@ -178,12 +178,10 @@ pub fn run_ofn(args: &[String]) {
         .route
         .parse::<crate::routing::Route>()
         .ok();
-    let binary_el_route = binary_route.is_some_and(|route| {
-        matches!(
-            route,
-            crate::routing::Route::Elc | crate::routing::Route::CertifiedElProduction
-        )
-    });
+    // CertifiedElProduction must retain the established JSON stream for its
+    // mandatory ProductionAll fallback. Writing both formats made its five ORE
+    // cases slower, while only the exact Elc leaf can discard JSON entirely.
+    let binary_el_route = binary_route == Some(crate::routing::Route::Elc);
     if result.el_rbox_safe && binary_el_route {
         if let Some(binary_path) = elc_binary_path {
             let write_result = std::fs::File::create(binary_path).and_then(|file| {
