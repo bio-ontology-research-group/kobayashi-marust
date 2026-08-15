@@ -2125,6 +2125,8 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     process_context,
                     ontology_top_concept,
                 );
+            let possible_subsumer_template =
+                Self::possible_subsumer_message_template(&labels, concepts);
             for label in &labels {
                 if label.negated || !Self::is_named_class(label.concept, concepts) {
                     continue;
@@ -2141,6 +2143,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                         state,
                         has_equivalent_non_candidates,
                         &equivalent_non_candidates,
+                        Some(&possible_subsumer_template),
                         concepts,
                     )
                 {
@@ -7258,6 +7261,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     !equivalent_non_candidates.is_empty(),
                     (!equivalent_non_candidates.is_empty())
                         .then_some(equivalent_non_candidates.to_vec()),
+                    None,
                     concepts,
                 )
             {
@@ -7396,6 +7400,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             !equivalent_non_candidate_concepts.is_empty(),
             (!equivalent_non_candidate_concepts.is_empty())
                 .then_some(equivalent_non_candidate_concepts.to_vec()),
+            None,
             concepts,
         )
     }
@@ -7435,6 +7440,7 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             state,
             eq_concepts_non_candidate_possible_subsumers,
             &possible_subsumers,
+            None,
             concepts,
         )
     }
@@ -7447,6 +7453,9 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         state: &ClassificationAnalyserPossibleSubsumptionState,
         has_equivalent_non_candidates: bool,
         possible_subsumers: &[ConceptId],
+        possible_subsumer_template: Option<
+            &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
+        >,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         // Only initialization messages consume the owned candidate list.
@@ -7462,8 +7471,36 @@ impl SatisfiableTaskClassificationMessageAnalyser {
             state,
             has_equivalent_non_candidates,
             possible_subsumers,
+            possible_subsumer_template,
             concepts,
         )
+    }
+
+    fn possible_subsumer_message_template(
+        labels: &[ClassificationAnalyserConceptLabel],
+        concepts: &Arena<Concept>,
+    ) -> Vec<(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)> {
+        let mut template = Vec::new();
+        for label in Self::sorted_labels_by_concept_tag(labels, concepts) {
+            if !label.negated
+                && Self::is_named_class(label.concept, concepts)
+                && Self::concept_tag(label.concept, concepts) != 1
+            {
+                template.push((
+                    ClassificationInitializePossibleClassSubsumptionData::new(label.concept),
+                    Some(label.concept),
+                ));
+            }
+            if Self::operator_code(label.concept, concepts) == CCEQCAND
+                && label.eq_candidate_possible_with_merged_saturated_model
+            {
+                template.push((
+                    ClassificationInitializePossibleClassSubsumptionData::new(label.concept),
+                    None,
+                ));
+            }
+        }
+        template
     }
 
     fn create_possible_class_subsumption_message_with_extraction_flag(
@@ -7475,6 +7512,9 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         state: &ClassificationAnalyserPossibleSubsumptionState,
         eq_concepts_non_candidate_possible_subsumers: bool,
         eq_concept_non_candidate_possible_subsumer_list: Option<Vec<ConceptId>>,
+        possible_subsumer_template: Option<
+            &[(ClassificationInitializePossibleClassSubsumptionData, Option<ConceptId>)],
+        >,
         concepts: &Arena<Concept>,
     ) -> Option<ClassificationMessageDataPayload> {
         if !adapter.has_extraction_flags(extraction_flag) || testing_concept.is_none() {
@@ -7482,25 +7522,38 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         }
 
         if !state.possible_subsumption_map_initialized {
-            let mut possible_subsumer_list = Vec::new();
-            for label in Self::sorted_labels_by_concept_tag(labels, concepts) {
-                if !label.negated
-                    && Self::is_named_class(label.concept, concepts)
-                    && Self::concept_tag(label.concept, concepts) != 1
-                    && label.concept != testing_concept
-                {
-                    possible_subsumer_list.push(
-                        ClassificationInitializePossibleClassSubsumptionData::new(label.concept),
-                    );
+            let possible_subsumer_list = if let Some(template) = possible_subsumer_template {
+                template
+                    .iter()
+                    .filter(|(_, excluded_for)| *excluded_for != Some(testing_concept))
+                    .map(|(candidate, _)| candidate.clone())
+                    .collect()
+            } else {
+                let mut possible_subsumer_list = Vec::new();
+                for label in Self::sorted_labels_by_concept_tag(labels, concepts) {
+                    if !label.negated
+                        && Self::is_named_class(label.concept, concepts)
+                        && Self::concept_tag(label.concept, concepts) != 1
+                        && label.concept != testing_concept
+                    {
+                        possible_subsumer_list.push(
+                            ClassificationInitializePossibleClassSubsumptionData::new(
+                                label.concept,
+                            ),
+                        );
+                    }
+                    if Self::operator_code(label.concept, concepts) == CCEQCAND
+                        && label.eq_candidate_possible_with_merged_saturated_model
+                    {
+                        possible_subsumer_list.push(
+                            ClassificationInitializePossibleClassSubsumptionData::new(
+                                label.concept,
+                            ),
+                        );
+                    }
                 }
-                if Self::operator_code(label.concept, concepts) == CCEQCAND
-                    && label.eq_candidate_possible_with_merged_saturated_model
-                {
-                    possible_subsumer_list.push(
-                        ClassificationInitializePossibleClassSubsumptionData::new(label.concept),
-                    );
-                }
-            }
+                possible_subsumer_list
+            };
 
             let mut message = ClassificationInitializePossibleClassSubsumptionMessageData::new();
             message.init_classification_possible_subsumption_message_data(
@@ -16631,6 +16684,70 @@ mod tests {
             message.get_class_eq_concept_non_candidate_possible_subsumer_list(),
             Some([eq_non_candidate].as_slice())
         );
+    }
+
+    #[test]
+    fn classification_message_template_preserves_order_and_testing_exclusion() {
+        let analyser = SatisfiableTaskClassificationMessageAnalyser;
+        let mut concepts = Arena::new();
+        let testing_concept = concepts.push(concept_with_tag(CCATOM, 20, true));
+        let lower_candidate = concepts.push(concept_with_tag(CCATOM, 10, true));
+        let eq_candidate = concepts.push(concept_with_tag(CCEQCAND, 30, false));
+        let labels = vec![
+            ClassificationAnalyserConceptLabel::new(eq_candidate, false, Some(1)),
+            ClassificationAnalyserConceptLabel::new(testing_concept, false, Some(1)),
+            ClassificationAnalyserConceptLabel::new(lower_candidate, false, Some(1)),
+            ClassificationAnalyserConceptLabel::new_eq_candidate(
+                eq_candidate,
+                false,
+                Some(1),
+                true,
+            ),
+        ];
+        let adapter = SatisfiableTaskClassificationMessageAdapter::new(
+            testing_concept,
+            EFEXTRACTPOSSIBLESUBSUMERSROOTNODE,
+        );
+        let state = ClassificationAnalyserPossibleSubsumptionState::uninitialized();
+        let ordinary = analyser
+            .create_possible_class_subsumption_message(
+                &adapter,
+                testing_concept,
+                &labels,
+                &state,
+                &[],
+                &concepts,
+            )
+            .expect("ordinary message");
+        let template = SatisfiableTaskClassificationMessageAnalyser::
+            possible_subsumer_message_template(&labels, &concepts);
+        let cached = analyser
+            .create_possible_class_subsumption_message_with_equivalent_non_candidates(
+                &adapter,
+                testing_concept,
+                &labels,
+                &state,
+                false,
+                &[],
+                Some(&template),
+                &concepts,
+            )
+            .expect("cached message");
+
+        let concepts_in = |payload: ClassificationMessageDataPayload| {
+            let ClassificationMessageDataPayload::InitializePossibleClassSubsumption(message) =
+                payload
+            else {
+                panic!("expected initialization message")
+            };
+            message
+                .get_class_possible_subsumer_list()
+                .unwrap_or(&[])
+                .iter()
+                .map(|candidate| candidate.get_possible_subsumer_concept())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(concepts_in(cached), concepts_in(ordinary));
     }
 
     #[test]
