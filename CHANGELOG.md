@@ -2,6 +2,35 @@
 
 ## [unreleased]
 
+## [0.2.31] – 2026-08-15
+
+### Share classification reference tables across jobs
+
+KPSet classification message adapters now share their immutable ontology-wide
+concept-reference table through `Arc` instead of cloning the complete table for
+every classified concept. The mutable adapter API retains copy-on-write
+semantics, so any future mutation remains isolated. This changes representation
+and allocation only; model construction, message order, routing, and accepted
+answers are unchanged.
+
+Three order-balanced full-corpus jobs (`50537280`, `50538368`, and `50539369`)
+each produced 1,184 terminal rows over all 592 ontologies. Every arm reports 591
+successful classifications and ORE1194 as the sole fail-closed error. Across
+all three jobs there are zero differences in status, verdict, consistency,
+selected route, solved state, answer counts, or full-IRI signature. The pooled
+1,776 classifications per arm reduce mean wall from 3.52007 to 3.50786 seconds,
+median wall from 0.16145 to 0.16075 seconds, and median peak RSS from 35.125 to
+34.965 MiB. Summed wall falls by 21.681 seconds. Mean peak RSS is statistically
+flat at 454.246 versus 454.347 MiB; its 0.022% difference changes direction
+between replications, so this release makes no mean-memory improvement claim.
+
+The focused same-node ORE3215 gate (`50537191`) reduces mean wall from 128.120
+to 124.495 seconds while preserving byte-identical 367-MiB JSON output in both
+orderings. The complete serial release suite passes 1,995 library tests with
+eight ignored tests and all integration tests, including the issue #3
+pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-shared-classification-references/`](results/benchmarks/2026-08-15-shared-classification-references/README.md).
+
 ## [0.2.30] – 2026-08-15
 
 ### Hash repeated taxonomy IRI lookups
