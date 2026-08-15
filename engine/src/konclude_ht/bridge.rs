@@ -6538,17 +6538,14 @@ fn analyse_kpset_completion_model(
     ctx: &mut CalculationAlgorithmContextBase,
 ) {
     let analyser = SatisfiableTaskClassificationMessageAnalyser::default();
-    let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
+    let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
         state
             .ontology_item
             .get_concept_satisfiable_test_item_container()[state.item_ids[subject].index()]
         .get_testing_concept(),
         0,
         0,
-        state
-            .ontology_item
-            .get_concept_reference_linking_data_hash()
-            .clone(),
+        state.concept_reference_linking_data_hash.clone(),
         EFEXTRACTALL,
     );
     let individual_vector = ctx

@@ -4056,6 +4056,7 @@ pub struct SynchronousKPSetClassState {
     pub ontology_item: OptimizedKPSetClassOntologyClassificationItem,
     pub item_ids: Vec<OptimizedKPSetClassTestingItemId>,
     pub ordered_subjects: Vec<usize>,
+    pub concept_reference_linking_data_hash: std::sync::Arc<HashMap<ConceptId, Cint64>>,
 }
 
 impl SynchronousKPSetClassState {
@@ -4406,10 +4407,14 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             }
         }
 
+        let concept_reference_linking_data_hash = std::sync::Arc::new(
+            ont_item.get_concept_reference_linking_data_hash().clone(),
+        );
         SynchronousKPSetClassState {
             ontology_item: ont_item,
             item_ids,
             ordered_subjects,
+            concept_reference_linking_data_hash,
         }
     }
 
