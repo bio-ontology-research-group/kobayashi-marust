@@ -479,12 +479,39 @@ fn use_atomic_inproc_elc(
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
 ) -> bool {
-    matches!(
+    if !matches!(
         selected_route,
         crate::routing::Route::Elc | crate::routing::Route::CertifiedElProduction
-    ) && profile.source.logical_axioms > 0
-        && profile.source.distinct_classes.saturating_mul(10)
-            < profile.source.logical_axioms.saturating_mul(9)
+    ) || profile.source.logical_axioms == 0
+    {
+        return false;
+    }
+    let structured = profile.source.distinct_classes.saturating_mul(10)
+        < profile.source.logical_axioms.saturating_mul(9);
+    // Small role- and constructor-free class hierarchies cannot create EL
+    // completion edges or NF work. Their completion state is bounded by the
+    // same class graph that the worker would build, so keeping the historical
+    // subprocess boundary only adds clause serialization, fork/exec, and
+    // taxonomy reparsing. Retain that boundary for larger flat hierarchies,
+    // where allocator high-water during public-output mapping was measurable.
+    let flat_small = profile.source.file_bytes < INPROC_ELC_MAX
+        && profile.source.abox_axioms == 0
+        && profile.source.rbox_axioms == 0
+        && profile.source.distinct_object_properties == 0
+        && profile.source.distinct_data_properties == 0
+        && profile.source.intersections == 0
+        && profile.source.unions == 0
+        && profile.source.complements == 0
+        && profile.source.existentials == 0
+        && profile.source.universals == 0
+        && profile.source.min_cardinalities == 0
+        && profile.source.max_cardinalities == 0
+        && profile.source.exact_cardinalities == 0
+        && profile.source.nominals == 0
+        && profile.source.has_values == 0
+        && profile.source.has_self == 0
+        && profile.source.datatype_constructors == 0;
+    structured || flat_small
 }
 
 #[inline]
@@ -1618,7 +1645,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_inproc_elc_admits_certified_el_and_excludes_other_non_el_leaves() {
+    fn atomic_inproc_elc_admits_structured_and_small_flat_exact_el() {
         use crate::frontend::profile::OntologyProfile;
         use crate::routing::Route;
         let mut profile = OntologyProfile::default();
@@ -1631,6 +1658,12 @@ mod tests {
         ));
         assert!(!use_atomic_inproc_elc(Route::ProductionAll, &profile));
         profile.source.distinct_classes = 90;
+        profile.source.file_bytes = super::INPROC_ELC_MAX - 1;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.file_bytes = super::INPROC_ELC_MAX;
+        assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.file_bytes = super::INPROC_ELC_MAX - 1;
+        profile.source.existentials = 1;
         assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
     }
 
