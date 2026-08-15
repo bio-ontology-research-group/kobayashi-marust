@@ -2108,6 +2108,23 @@ impl SatisfiableTaskClassificationMessageAnalyser {
 
         let mut poss_subsum_message_data_linker = None;
         if adapter.has_extraction_flags(EFEXTRACTPOSSIBLESUBSUMERSROOTNODE) {
+            // Equivalent non-candidate extraction depends on the completed
+            // model node, not on the named label whose message we are
+            // constructing. Some large KPSet models contain thousands of
+            // named labels; repeating the saturation-backed extraction for
+            // every label performs the same work thousands of times.
+            let (has_equivalent_non_candidates, equivalent_non_candidates) = self
+                .collect_equivalent_non_candidate_possible_subsumers(
+                    corrected_individual.node,
+                    ontology,
+                    concepts,
+                    roles,
+                    concept_process_datas,
+                    concept_reference_linking_datas,
+                    saturation_concept_reference_linkings,
+                    process_context,
+                    ontology_top_concept,
+                );
             for label in &labels {
                 if label.negated || !Self::is_named_class(label.concept, concepts) {
                     continue;
@@ -2117,20 +2134,14 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                     .get(&label.concept)
                     .unwrap_or(&default_state);
                 if let Some(poss_payload) = self
-                    .create_possible_class_subsumption_message_with_live_equivalent_non_candidates(
+                    .create_possible_class_subsumption_message_with_equivalent_non_candidates(
                         adapter,
                         label.concept,
                         &labels,
                         state,
-                        corrected_individual.node,
-                        ontology,
+                        has_equivalent_non_candidates,
+                        &equivalent_non_candidates,
                         concepts,
-                        roles,
-                        concept_process_datas,
-                        concept_reference_linking_datas,
-                        saturation_concept_reference_linkings,
-                        process_context,
-                        ontology_top_concept,
                     )
                 {
                     let poss_linker = ClassificationMessageDataLinker::from_message(poss_payload);
@@ -7417,14 +7428,40 @@ impl SatisfiableTaskClassificationMessageAnalyser {
                 process_context,
                 ontology_top_concept,
             );
+        self.create_possible_class_subsumption_message_with_equivalent_non_candidates(
+            adapter,
+            testing_concept,
+            labels,
+            state,
+            eq_concepts_non_candidate_possible_subsumers,
+            &possible_subsumers,
+            concepts,
+        )
+    }
+
+    fn create_possible_class_subsumption_message_with_equivalent_non_candidates(
+        &self,
+        adapter: &SatisfiableTaskClassificationMessageAdapter,
+        testing_concept: ConceptId,
+        labels: &[ClassificationAnalyserConceptLabel],
+        state: &ClassificationAnalyserPossibleSubsumptionState,
+        has_equivalent_non_candidates: bool,
+        possible_subsumers: &[ConceptId],
+        concepts: &Arena<Concept>,
+    ) -> Option<ClassificationMessageDataPayload> {
+        // Only initialization messages consume the owned candidate list.
+        // Update messages retain the same boolean flag but need no clone.
+        let possible_subsumers = (!state.possible_subsumption_map_initialized
+            && !possible_subsumers.is_empty())
+        .then(|| possible_subsumers.to_vec());
         self.create_possible_class_subsumption_message_with_extraction_flag(
             adapter,
             EFEXTRACTPOSSIBLESUBSUMERSROOTNODE,
             testing_concept,
             labels,
             state,
-            eq_concepts_non_candidate_possible_subsumers,
-            (!possible_subsumers.is_empty()).then_some(possible_subsumers),
+            has_equivalent_non_candidates,
+            possible_subsumers,
             concepts,
         )
     }
