@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.2.30] – 2026-08-15
+
+### Hash repeated taxonomy IRI lookups
+
+The JSON output mapper now uses a hash index for its lookup-only local-name to
+IRI-ID table. Serialized ordering remains owned by the sorted IRI vector and
+ordered row map. The grouped JSON path also avoids a redundant ordered-map
+lookup for every subject. This changes only final output representation and
+lookup cost; reasoning, routing, accepted answers, and serialized bytes are
+unchanged.
+
+Order-balanced same-node job `50535110` runs v0.2.29 and binary
+`1da5c66a9642…` on all 592 ontologies. Both arms report 591 successful
+classifications and ORE1194 as the sole fail-closed error. Every status,
+verdict, consistency result, selected route, and full-IRI signature is
+identical. Mean wall falls from 3.52441 to 3.47996 seconds, median wall from
+0.1874 to 0.1617 seconds, mean peak RSS from 424.010 to 423.700 MiB, and median
+peak RSS from 35.38 to 34.41 MiB. The paired wall reduction sums to 26.267
+seconds.
+
+Node-local byte comparisons on ORE10689, ORE868, and ORE1012 confirm identical
+JSON output and reduce wall by 2.66, 2.42, and 0.68 seconds respectively. The
+complete serial release suite passes 1,994 library tests with eight ignored
+tests and all integration tests, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-iri-hash/`](results/benchmarks/2026-08-15-iri-hash/README.md).
+
 ## [0.2.29] – 2026-08-15
 
 ### Skip redundant closure of certified bridge taxonomies
