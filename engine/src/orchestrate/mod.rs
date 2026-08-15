@@ -21,7 +21,7 @@ pub mod mirror;
 pub mod race;
 pub mod tmpfile;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
@@ -66,7 +66,11 @@ struct GroupedJsonTaxonomy {
 }
 
 struct JsonIriIds<'a> {
-    local_ids: BTreeMap<&'a str, u32>,
+    // Output mapping probes this table once per emitted superclass. Ordering is
+    // carried by `iris`/`by_iri`, not this lookup-only index, so a hash table
+    // avoids a logarithmic string-tree walk for every taxonomy pair without
+    // changing the serialized order or relation.
+    local_ids: HashMap<&'a str, u32>,
     by_iri: BTreeMap<Arc<str>, u32>,
     iris: Vec<Arc<str>>,
     appended_fallback: bool,
@@ -1253,7 +1257,6 @@ fn classify_with_evidence_mode(
         if is_internal(a) {
             continue;
         }
-        let fa = mapped_iri(&meta.iri_map, a);
         if retain_grouped_output {
             let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
             let mut mapped_supers = Vec::with_capacity(sups.len());
@@ -1261,7 +1264,7 @@ fn classify_with_evidence_mode(
                 if is_bottom(s) {
                     // Preserve the previous first-full-IRI-representative
                     // behaviour when multiple local aliases map to one class.
-                    if unsat_set.insert(fa.to_string()) {
+                    if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
                         unsat_names.insert(a.as_str());
                     }
                 } else if !is_internal(s) && s != a {
@@ -1275,6 +1278,7 @@ fn classify_with_evidence_mode(
                     .extend(mapped_supers);
             }
         } else {
+            let fa = mapped_iri(&meta.iri_map, a);
             let mut mapped_supers = Vec::with_capacity(sups.len());
             for s in sups {
                 if is_bottom(s) {
