@@ -1,0 +1,54 @@
+{
+  "all_four_improve": false,
+  "baseline": {
+    "mean_peak_mb": 436.3723519458541,
+    "mean_wall_s": 3.6077455160744494,
+    "median_peak_mb": 36.16,
+    "median_wall_s": 0.1839,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591,
+    "verdict": {
+      "consistency_mismatch": 2,
+      "error": 1,
+      "match": 588,
+      "nogold": 1
+    }
+  },
+  "baseline_binary_sha256": "4d8d81378d565d6b5d0b33b8fe352d2e6aa076b7c82a0c196bb58bc167401071",
+  "behavioral_differences": {},
+  "candidate": {
+    "mean_peak_mb": 436.13942470389196,
+    "mean_wall_s": 3.589761421319797,
+    "median_peak_mb": 36.17,
+    "median_wall_s": 0.1885,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591,
+    "verdict": {
+      "consistency_mismatch": 2,
+      "error": 1,
+      "match": 588,
+      "nogold": 1
+    }
+  },
+  "candidate_binary_sha256": "eb2f4335500dd4c6621676f4c87636a30867fe0d5484a3b879841f423adc4c84",
+  "candidate_minus_baseline": {
+    "mean_peak_mb": -0.23292724196215886,
+    "mean_wall_s": -0.017984094754652347,
+    "median_peak_mb": 0.010000000000005116,
+    "median_wall_s": 0.004599999999999993
+  },
+  "improvements": {
+    "mean_peak_mb": true,
+    "mean_wall_s": true,
+    "median_peak_mb": false,
+    "median_wall_s": false
+  }
+}
