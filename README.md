@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.28`.
+are available from the repository tags; the current release is `v0.2.29`.
 
 ## Classify an ontology
 
@@ -90,24 +90,25 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 ## Current ORE 2015 result
 
 The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `a50671d`, strict sweep
-job `50528307`, full paired job `50526676`, and median-boundary panel job
-`50527646` verify every result, checkpoint, route trace, collision-sensitive
-full-IRI fingerprint, and binary identity. The tested binary is `4aa2370c8ceb…`.
+over all 592 ontologies. Tested implementation commit `eede505`, strict sweep
+job `50531678`, and order-balanced full paired job `50532459` verify every
+result, checkpoint, route trace, collision-sensitive full-IRI fingerprint, and
+binary identity. The tested binary is `c5b85fea05ca…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.28` / `a50671d` (binary `4aa2370c8ceb…`) | **591** | **591** | **3.5552** | **0.1635** | **423.84** | **34.60** |
+| **KM automatic, `km classify`** | `v0.2.29` / `eede505` (binary `c5b85fea05ca…`) | **591** | **591** | **3.5288** | **0.1847** | **424.09** | **35.23** |
 | Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
 
 Performance values come directly from the 591 successful rows of strict sweep
-`50528307` on exclusive Intel Xeon Gold 6248 nodes. The candidate preserves
+`50531678` on exclusive Intel Xeon Gold 6248 nodes. The candidate preserves
 every status, verdict, consistency result, selected route, and full-IRI
-signature from v0.2.27. Relative to the published v0.2.27 measurements, mean
-wall improves by 0.0309 seconds, median wall by 21.3 milliseconds, mean peak
-RSS by 9.44 MiB, and median peak RSS by 0.44 MiB. A full order-balanced pair
-isolated the compact handoff's mean wall and memory gains. A separate 270-pair
-median-boundary panel measured the final route-neutral overhead changes.
+signature from v0.2.28. Relative to the v0.2.28 strict sweep, mean wall improves
+by 0.0265 seconds per ontology, or 15.6 seconds over the successful corpus.
+Order-balanced full pair `50532459` independently measures a 14.0-second summed
+wall reduction and reduces absolute median wall from 0.1839 to 0.1797 seconds.
+Mean memory is statistically flat in that pair (+0.10 MiB); no memory gain is
+claimed for this release.
 ORE6934 now
 uses an isolated complete ground-clause HT route. Its strict-sweep execution
 falls from 68.9191 seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB
@@ -127,7 +128,7 @@ mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
 reports zero semantic or coverage regressions. ORE14817 now uses eight workers
 for the unchanged `production_all` route; its controlled panels preserve the
 gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 423.84 MiB and median RSS is 34.60 MiB. Mean wall is 3.5552 seconds
+mean RSS is 424.09 MiB and median RSS is 35.23 MiB. Mean wall is 3.5288 seconds
 and median wall is 0.1635 seconds. All four KM metrics except mean wall remain
 below the frozen Konclude values.
 

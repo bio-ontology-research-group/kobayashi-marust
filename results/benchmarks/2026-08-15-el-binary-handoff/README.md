@@ -1,5 +1,31 @@
 # Compact exact-EL handoff and median overhead
 
+## Certified bridge closure follow-up (v0.2.29)
+
+Commit `eede505` skips the generic hypertableau transitive-closure repair after
+the completion bridge has already certified and returned a complete taxonomy.
+The change does not affect other HT outputs.
+
+- Focused same-node job `50531374`, plus collision-safe resume `50531489`, ran
+  two alternating pairs over ten bridge-family ontologies. All 20 pairs had
+  identical signatures. The candidate saved 6.77 seconds over the first 18
+  pairs and 0.65 seconds over the two ORE15703 pairs.
+- Strict job `50531678` produced 592 terminal rows for binary `c5b85fea05ca…`,
+  with 591 OK, ORE1194 as the sole error, and zero behavior or route
+  differences from v0.2.28. Mean wall is 3.52876 seconds versus 3.55523.
+- Full order-balanced pair `50532459` ran both binaries for every ontology and
+  asserted semantic equality in each task. Candidate summed wall is 14.04
+  seconds lower. Absolute median wall is 0.1797 versus 0.1839 seconds; mean RSS
+  differs by only +0.10 MiB.
+- Startup array `50531512` failed before producing a result because the new
+  root lacked the frozen 592-line list. The guard caught the error. Corrected
+  job `50531678` copied and import-validated the complete harness before
+  submission.
+
+Machine-readable summaries are `bridge-closed-strict-summary.json` and
+`bridge-closed-full-pair-summary.json`. Reproduction scripts are the
+`ibex_bridge_closed_*` files in this directory.
+
 This directory records the v0.2.28 release evidence.
 
 - Tested implementation: `a50671d`

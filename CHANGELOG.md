@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.2.29] – 2026-08-15
+
+### Skip redundant closure of certified bridge taxonomies
+
+The completion bridge publishes a taxonomy only after its complete-answer
+certificate succeeds. Its result is already transitively closed, so the worker
+now bypasses the generic hypertableau closure repair on that successful branch.
+Other hypertableau branches retain the repair. This removes a repeated scan of
+large bridge taxonomies without changing inference rules, route selection, or
+the accepted answer contract.
+
+Strict sweep `50531678` contains exactly 592 terminal rows for binary
+`c5b85fea05ca…`: 591 are successful and ORE1194 remains the sole fail-closed
+error. Every status, verdict, consistency result, selected route, and full-IRI
+signature is identical to v0.2.28. Mean wall falls from 3.55523 to 3.52876
+seconds, a 15.6-second reduction over the 591 successful ontologies. The strict
+sweep reports 424.09 MiB mean and 35.23 MiB median peak RSS.
+
+Order-balanced same-node job `50532459` runs both binaries for all 592
+ontologies and finds zero semantic differences. Its candidate arm reduces
+summed wall by 14.04 seconds, mean wall from 3.57766 to 3.55391 seconds,
+absolute median wall from 0.1839 to 0.1797 seconds, and absolute median peak RSS
+from 35.22 to 34.62 MiB. Mean RSS is flat within 0.10 MiB, so this release makes
+no memory-improvement claim. The complete serial release suite passes 1,994
+library tests with eight ignored tests and all integration tests, including the
+issue #3 pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-el-binary-handoff/`](results/benchmarks/2026-08-15-el-binary-handoff/README.md).
+
 ## [0.2.28] – 2026-08-15
 
 ### Compact exact-EL handoff and reduce orchestration overlap
