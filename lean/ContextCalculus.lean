@@ -3,6 +3,7 @@ import ContextCalculus.CompletenessProp
 import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
+import ContextCalculus.ELCompletion
 import ContextCalculus.CompletenessContext
 import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
