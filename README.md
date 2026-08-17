@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.3`.
+`v0.3.4`.
 
 ## Classify an ontology
 
@@ -140,30 +140,25 @@ lake exe cache get
 lake build
 ```
 
-Release v0.3.0 adds soundness and canonical-model completeness for the full
+The formalization proves soundness and canonical-model completeness for the
 pure ELC normal-form calculus used by the Rust worker: NF1–NF7, explicit top
 and bottom, existential bottom propagation, role hierarchy, reflexive roles,
-and role chains. It also proves fail-closed composition theorems for abstract
-workers, sequential fallbacks, races, and profile-based routing.
+and role chains. It proves that a sound, closed materialization yields the exact
+taxonomy and inconsistency result. It also proves fail-closed composition for
+abstract workers, sequential fallbacks, races, and profile-based routing.
 
-Release v0.4.0 adds the exact ELC materialization contract. A state that
-contains the initialization facts, is closed under NF1–NF7, and contains only
-derivable facts is proved extensionally equal to the semantic closure. Its
-taxonomy and inconsistency readouts are therefore exact.
+The certification build provides `elc-cert-check`, a native Lean
+checker for the versioned Rust certificate wire format. Set
+`KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
+closure, and Rust-state agreement before the pure ELC worker can publish. The
+worker fails closed if any stage fails. This opt-in path currently covers the
+pure NF1–NF7 ELC route; it does not certify residual repair modes.
 
-Release v0.3.2 adds an executable ELC proof-trace checker. Accepted traces are
-proved to contain only derivable NF1–NF7 subsumptions and edges, establishing
-the materialization contract's `SoundState` half. Release v0.3.3 adds an
-exhaustive finite closure checker and proves that passing both executable
-checks yields the exact taxonomy and inconsistency answer. The Rust certificate
-wire format remains to be completed.
-
-These theorems do not yet establish that the final indexed Rust ELC state
-satisfies the formal materialization contract, nor end-to-end soundness or
-completeness of the Rust
-frontend, HT and CB implementations, router, concurrency, resource fallbacks,
-or optimizations. ORE results are empirical and successful termination alone
-is not accepted as correctness evidence. See
+The checker validates the optimized Rust ELC state against the formal closure,
+but the OWL frontend-to-normal-form translation and final IRI/string output
+mapping are not yet formally certified. HT, CB, concrete production routing,
+and residual ELC modes also remain uncertified. ORE results are empirical and
+successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
 ## Documentation

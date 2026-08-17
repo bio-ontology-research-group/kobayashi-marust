@@ -137,6 +137,17 @@ signatures. `checkedTrace_exact` proves that passing both executable checks
 yields exact taxonomy and inconsistency answers. The Rust certificate wire
 format remains a separate obligation.
 
+### ELC wire checker — `ContextCalculus/ELCompletionWire.lean`
+
+The versioned JSON decoder validates every numeric id against a finite `Fin n`
+signature before constructing clauses or proof steps. The native
+`elc-cert-check` executable checks the trace, closure, active Rust contexts, and
+the materialized Rust subsumption and edge stores. `active_subsumption_exact`
+proves that every accepted active-context taxonomy answer is semantically
+exact. The Rust worker invokes this executable when
+`KM_ELC_LEAN_CERT_CHECKER` is set and declines without output if generation,
+serialization, process execution, or verification fails.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

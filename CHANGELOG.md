@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.4] – 2026-08-17
+
+### ELC Rust-to-Lean refinement path
+
+- Add a deterministic Rust certificate reconstruction pass that records NF1–NF7
+  derivations and compares the reconstructed formal closure with the optimized
+  production state on every active concept context.
+- Add a versioned JSON wire decoder with checked finite symbol ids and a native
+  `elc-cert-check` executable.
+- Include the active Rust contexts and complete Rust subsumption and edge stores
+  in the certificate. Lean verifies both directions of state agreement, and
+  `active_subsumption_exact` proves accepted active-context taxonomy answers
+  semantically exact.
+- Add fail-closed Rust invocation through `KM_ELC_LEAN_CERT_CHECKER`; checker
+  rejection produces no reasoner output. `KM_ELC_LEAN_CERT_OUT` retains a
+  certificate for inspection.
+- Replace exhaustive irrelevant symbol-tuple enumeration with a premise-driven
+  closure checker. The representative NF1–NF7 smoke certificate fell from about
+  30 seconds to 0.07 seconds end to end on the workstation.
+
 ## [0.3.3] – 2026-08-17
 
 ### Prove executable ELC certificate exactness
