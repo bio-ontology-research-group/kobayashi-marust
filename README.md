@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.17`.
+`v0.3.18`.
 
 ## Classify an ontology
 
@@ -168,8 +168,12 @@ OWL/frontend-clause-to-normal-form translation has semantic proofs for direct
 forms, conservative n-ary auxiliary expansion, and the raw two-clause Skolem
 encoding of existential introduction. Executable raw recognizers check
 variable wiring, Skolem pairing, whole-list assembly, auxiliary identity, and
-equality with Rust's emitted normal forms. HT, CB, concrete production routing,
-and residual ELC modes remain uncertified. ORE results
+equality with Rust's emitted normal forms. The residual formalization proves the canonical-model composition theorem
+needed by plain `CertMode::Check`, over the same live concept-only domain Rust
+enumerates, and provides a proved finite checker for compiled residual clauses.
+The Rust residual compiler and optimized join are not yet connected to that
+checker, so residual publication is not yet claimed as certified. HT, CB,
+concrete production routing, and residual repair remain uncertified. ORE results
 are empirical and successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
 

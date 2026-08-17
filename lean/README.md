@@ -205,6 +205,23 @@ published flag equivalent to semantic unsatisfiability. The Rust worker invokes 
 serialization, process execution, or verification fails. On acceptance it
 publishes the checked named relation directly.
 
+### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
+
+This module proves the semantic principle used by plain `CertMode::Check`.
+Adding arbitrary residual axioms preserves soundness of the ELC closure. If the
+ELC canonical model satisfies those residual axioms, the same closure is also
+complete for taxonomy and exact for inconsistency. The executable corollaries
+compose this result with `ClosedState` and `SoundState`.
+
+The canonical domain is restricted to live members of an explicit,
+signature-closed concept set. This matches Rust's `concept_names` enumeration
+and excludes role-only interned IDs. The module also defines Rust's compiled
+concept/role/equality atom language with pinned witness variables and proves an
+independent finite Boolean checker equivalent to its clause semantics. The
+remaining boundary is proving Rust's source residual compiler and optimized
+join checker refine this finite contract. Model-repair mode requires a separate
+model-transformation certificate.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

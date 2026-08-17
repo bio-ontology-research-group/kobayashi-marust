@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.18] – 2026-08-17
+
+### Prove canonical-model exactness with residual axioms
+
+- Add `ELResidualCertificate.lean` and formalize the semantic contract of the
+  plain ELC residual route: an exact ELC materialization remains sound after
+  adding arbitrary residual axioms, and becomes complete when its canonical
+  model satisfies those axioms.
+- Prove exact named-class taxonomy and inconsistency theorems, both for the
+  inductive ELC closure and for the executable `ClosedState`/`SoundState`
+  materialization contract.
+- Correct the canonical domain to match Rust: quantify only over live IDs in a
+  signature-closed concept set, excluding role-only interned IDs. Prove this
+  restricted canonical interpretation models every NF1–NF7 and reflexive axiom.
+- Define the exact compiled residual language used by Rust, including concept,
+  role, equality, and pinned canonical-witness variables.
+- Add an independent finite checker and prove its Boolean acceptance equivalent
+  to compiled-clause satisfaction. A kernel-evaluated example exercises it.
+- Audit the principal exactness theorems at `[propext, Classical.choice,
+  Quot.sound]`.
+
+The remaining plain-residual obligation is to prove that Rust's residual
+compiler and optimized join checker establish this finite semantic contract
+for the original source clauses. Repair mode, HT, CB, and concrete routing
+remain uncertified.
+
 ## [0.3.17] – 2026-08-17
 
 ### Connect Rust ELC normalization to the Lean checker
