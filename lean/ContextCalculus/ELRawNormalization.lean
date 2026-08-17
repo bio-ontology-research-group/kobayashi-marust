@@ -172,15 +172,270 @@ def allConceptsOn (varId : Nat) : List (RawAtom Concept Role) → Option (List C
       else none
   | _ => none
 
+/-- Decoding a concept-only body preserves exactly its conjunction semantics. -/
+theorem allConceptsOn_holdsRawAtoms_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (env : Nat → Domain) (varId : Nat) (atoms : List (RawAtom Concept Role))
+    (concepts : List Concept) (hdecode : allConceptsOn varId atoms = some concepts) :
+    holdsRawAtoms I T env atoms ↔ holdsBody I concepts (env varId) := by
+  induction atoms generalizing concepts with
+  | nil =>
+      simp only [allConceptsOn, Option.some.injEq] at hdecode
+      subst concepts
+      simp [holdsRawAtoms, holdsBody]
+  | cons atom rest ih =>
+      cases atom with
+      | role role source target => simp [allConceptsOn] at hdecode
+      | concept concept term =>
+          cases term with
+          | var actual =>
+              simp only [allConceptsOn] at hdecode
+              split at hdecode
+              next heq =>
+                subst actual
+                cases hrest : allConceptsOn varId rest with
+                | none => simp [hrest] at hdecode
+                | some tail =>
+                    simp [hrest] at hdecode
+                    subst concepts
+                    rw [holdsBody_cons, ← ih tail hrest]
+                    simp [holdsRawAtoms, satRawAtom, evalRawTerm]
+              next hne => simp at hdecode
+          | ind name => simp [allConceptsOn] at hdecode
+          | aux root label => simp [allConceptsOn] at hdecode
+          | «fun» function argument => simp [allConceptsOn] at hdecode
+
+/-- A raw concept-head clause is exactly its reconstructed subclass axiom. -/
+theorem rawConceptClause_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (atoms : List (RawAtom Concept Role)) (concepts : List Concept)
+    (sup : Concept) (varId : Nat)
+    (hdecode : allConceptsOn varId atoms = some concepts) :
+    satRawClause I T { body := atoms, head := [.concept sup (.var varId)] } ↔
+      satSourceAxiom I (.sub concepts sup) := by
+  constructor
+  · intro hraw x hbody
+    let env : Nat → Domain := fun _ => x
+    have hrawBody : holdsRawAtoms I T env atoms :=
+      (allConceptsOn_holdsRawAtoms_iff I T env varId atoms concepts hdecode).2 hbody
+    have hhead := hraw env hrawBody
+    simpa [satRawAtom, evalRawTerm, env] using hhead
+  · intro hsource env hbody
+    refine ⟨.concept sup (.var varId), by simp, ?_⟩
+    exact hsource (env varId)
+      ((allConceptsOn_holdsRawAtoms_iff I T env varId atoms concepts hdecode).1 hbody)
+
+/-- A raw empty-head concept clause is exactly its reconstructed bottom axiom. -/
+theorem rawBottomClause_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (atoms : List (RawAtom Concept Role)) (concepts : List Concept) (varId : Nat)
+    (hdecode : allConceptsOn varId atoms = some concepts) :
+    satRawClause I T { body := atoms, head := [] } ↔
+      satSourceAxiom I (.bottom concepts) := by
+  constructor
+  · intro hraw x hbody
+    let env : Nat → Domain := fun _ => x
+    have hrawBody : holdsRawAtoms I T env atoms :=
+      (allConceptsOn_holdsRawAtoms_iff I T env varId atoms concepts hdecode).2 hbody
+    simpa using hraw env hrawBody
+  · intro hsource env hbody
+    have hfalse := hsource (env varId)
+      ((allConceptsOn_holdsRawAtoms_iff I T env varId atoms concepts hdecode).1 hbody)
+    exact False.elim hfalse
+
+/-- The role-first raw restriction clause is exactly existential elimination. -/
+theorem rawExistsElimRoleFirst_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (role : Role) (filler sup : Concept) (source target : Nat)
+    (hne : source ≠ target) :
+    satRawClause I T {
+      body := [.role role (.var source) (.var target),
+        .concept filler (.var target)]
+      head := [.concept sup (.var source)]
+    } ↔ satSourceAxiom I (.existsElim role filler sup) := by
+  constructor
+  · intro hraw x hexists
+    rcases hexists with ⟨y, hrole, hfiller⟩
+    let env : Nat → Domain := Function.update (fun _ => x) target y
+    have hbody : holdsRawAtoms I T env
+        [.role role (.var source) (.var target), .concept filler (.var target)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hne, hrole, hfiller]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hne] using hhead
+  · intro hsource env hbody
+    refine ⟨.concept sup (.var source), by simp, ?_⟩
+    apply hsource (env source)
+    refine ⟨env target, ?_, ?_⟩
+    · exact hbody (.role role (.var source) (.var target)) (by simp)
+    · exact hbody (.concept filler (.var target)) (by simp)
+
+/-- Atom order does not change existential-elimination semantics. -/
+theorem rawExistsElimConceptFirst_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (role : Role) (filler sup : Concept) (source target : Nat)
+    (hne : source ≠ target) :
+    satRawClause I T {
+      body := [.concept filler (.var target),
+        .role role (.var source) (.var target)]
+      head := [.concept sup (.var source)]
+    } ↔ satSourceAxiom I (.existsElim role filler sup) := by
+  constructor
+  · intro hraw x hexists
+    rcases hexists with ⟨y, hrole, hfiller⟩
+    let env : Nat → Domain := Function.update (fun _ => x) target y
+    have hbody : holdsRawAtoms I T env
+        [.concept filler (.var target), .role role (.var source) (.var target)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hne, hrole, hfiller]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hne] using hhead
+  · intro hsource env hbody
+    refine ⟨.concept sup (.var source), by simp, ?_⟩
+    apply hsource (env source)
+    refine ⟨env target, ?_, ?_⟩
+    · exact hbody (.role role (.var source) (.var target)) (by simp)
+    · exact hbody (.concept filler (.var target)) (by simp)
+
+/-- A lone role body uses semantic top as its existential filler. -/
+theorem rawExistsElimTop_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (role : Role) (sup : Concept) (source target : Nat) (hne : source ≠ target) :
+    satRawClause I T {
+      body := [.role role (.var source) (.var target)]
+      head := [.concept sup (.var source)]
+    } ↔ satSourceAxiom I (.existsElim role top sup) := by
+  constructor
+  · intro hraw x hexists
+    rcases hexists with ⟨y, hrole, _htop⟩
+    let env : Nat → Domain := Function.update (fun _ => x) target y
+    have hbody : holdsRawAtoms I T env [.role role (.var source) (.var target)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hne, hrole]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hne] using hhead
+  · intro hsource env hbody
+    refine ⟨.concept sup (.var source), by simp, ?_⟩
+    apply hsource (env source)
+    exact ⟨env target,
+      hbody (.role role (.var source) (.var target)) (by simp),
+      I.top_true (env target)⟩
+
+/-- A correctly wired raw role implication is exactly role inclusion. -/
+theorem rawRoleSub_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (sub sup : Role) (source target : Nat) (hne : source ≠ target) :
+    satRawClause I T {
+      body := [.role sub (.var source) (.var target)]
+      head := [.role sup (.var source) (.var target)]
+    } ↔ satSourceAxiom I (.roleSub sub sup) := by
+  constructor
+  · intro hraw x y hsub
+    let env : Nat → Domain := Function.update (fun _ => x) target y
+    have hbody : holdsRawAtoms I T env [.role sub (.var source) (.var target)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hne, hsub]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hne] using hhead
+  · intro hsource env hbody
+    refine ⟨.role sup (.var source) (.var target), by simp, ?_⟩
+    exact hsource (env source) (env target)
+      (hbody (.role sub (.var source) (.var target)) (by simp))
+
+/-- An empty-body self-edge fact is exactly role reflexivity. -/
+theorem rawReflexive_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (role : Role) (variableId : Nat) :
+    satRawClause I T {
+      body := []
+      head := [.role role (.var variableId) (.var variableId)]
+    } ↔ satSourceAxiom I (.reflexive role) := by
+  constructor
+  · intro hraw x
+    let env : Nat → Domain := fun _ => x
+    have hhead := hraw env (by simp [holdsRawAtoms])
+    simpa [satRawAtom, evalRawTerm, env] using hhead
+  · intro hsource env _hbody
+    exact ⟨.role role (.var variableId) (.var variableId), by simp,
+      hsource (env variableId)⟩
+
+/-- A connected three-variable raw role chain has exactly role-chain semantics. -/
+theorem rawRoleChain_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (first second sup : Role) (source middle target : Nat)
+    (hsm : source ≠ middle) (hmt : middle ≠ target) (hst : source ≠ target) :
+    satRawClause I T {
+      body := [.role first (.var source) (.var middle),
+        .role second (.var middle) (.var target)]
+      head := [.role sup (.var source) (.var target)]
+    } ↔ satSourceAxiom I (.roleChain first second sup) := by
+  constructor
+  · intro hraw x y z hfirst hsecond
+    let env : Nat → Domain :=
+      Function.update (Function.update (fun _ => x) middle y) target z
+    have hbody : holdsRawAtoms I T env
+        [.role first (.var source) (.var middle),
+          .role second (.var middle) (.var target)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hsm, hmt, hst,
+        hfirst, hsecond]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hsm, hmt, hst] using hhead
+  · intro hsource env hbody
+    refine ⟨.role sup (.var source) (.var target), by simp, ?_⟩
+    exact hsource (env source) (env middle) (env target)
+      (hbody (.role first (.var source) (.var middle)) (by simp))
+      (hbody (.role second (.var middle) (.var target)) (by simp))
+
+/-- Reversing the two body atoms preserves the same connected chain. -/
+theorem rawRoleChainReversed_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (first second sup : Role) (source middle target : Nat)
+    (hsm : source ≠ middle) (hmt : middle ≠ target) (hst : source ≠ target) :
+    satRawClause I T {
+      body := [.role second (.var middle) (.var target),
+        .role first (.var source) (.var middle)]
+      head := [.role sup (.var source) (.var target)]
+    } ↔ satSourceAxiom I (.roleChain first second sup) := by
+  constructor
+  · intro hraw x y z hfirst hsecond
+    let env : Nat → Domain :=
+      Function.update (Function.update (fun _ => x) middle y) target z
+    have hbody : holdsRawAtoms I T env
+        [.role second (.var middle) (.var target),
+          .role first (.var source) (.var middle)] := by
+      simp [holdsRawAtoms, satRawAtom, evalRawTerm, env, hsm, hmt, hst,
+        hfirst, hsecond]
+    have hhead := hraw env hbody
+    simpa [satRawAtom, evalRawTerm, env, hsm, hmt, hst] using hhead
+  · intro hsource env hbody
+    refine ⟨.role sup (.var source) (.var target), by simp, ?_⟩
+    exact hsource (env source) (env middle) (env target)
+      (hbody (.role first (.var source) (.var middle)) (by simp))
+      (hbody (.role second (.var middle) (.var target)) (by simp))
+
+/-- Exact accepted shape of a raw existential-elimination body. -/
+inductive RawExistsElimBody (Concept Role : Type) where
+  | top (role : Role) (source target : Nat)
+  | roleFirst (role : Role) (filler : Concept) (source target : Nat)
+  | conceptFirst (role : Role) (filler : Concept) (source target : Nat)
+deriving DecidableEq, Repr
+
+def RawExistsElimBody.role : RawExistsElimBody Concept Role → Role
+  | .top role _ _ | .roleFirst role _ _ _ | .conceptFirst role _ _ _ => role
+
+def RawExistsElimBody.filler (top : Concept) : RawExistsElimBody Concept Role → Concept
+  | .top _ _ _ => top
+  | .roleFirst _ filler _ _ | .conceptFirst _ filler _ _ => filler
+
 /-- Recognize a role restriction body in either frontend atom order. -/
-def recognizeExistsElimBody (top : Concept) (headVar : Nat) :
-    List (RawAtom Concept Role) → Option (Role × Concept)
+def recognizeExistsElimBody (headVar : Nat) :
+    List (RawAtom Concept Role) → Option (RawExistsElimBody Concept Role)
   | [.role role (.var source) (.var target)] =>
-      if headVar = source && source != target then some (role, top) else none
+      if headVar = source && source != target then some (.top role source target) else none
   | [.role role (.var source) (.var target), .concept filler (.var fillerVar)]
+      =>
+      if headVar = source && source != target && fillerVar = target then
+        some (.roleFirst role filler source target)
+      else none
   | [.concept filler (.var fillerVar), .role role (.var source) (.var target)] =>
       if headVar = source && source != target && fillerVar = target then
-        some (role, filler)
+        some (.conceptFirst role filler source target)
       else none
   | _ => none
 
@@ -223,8 +478,9 @@ def recognizeRawClause (top : Concept) (clause : RawClause Concept Role) :
       match allConceptsOn headVar clause.body with
       | some body => some (.sub body sup)
       | none =>
-          match recognizeExistsElimBody top headVar clause.body with
-          | some (role, filler) => some (.existsElim role filler sup)
+          match recognizeExistsElimBody headVar clause.body with
+          | some recognized =>
+              some (.existsElim recognized.role (recognized.filler top) sup)
           | none => none
   | [.role sup (.var headSource) (.var headTarget)] =>
       if clause.body.isEmpty && headSource = headTarget then
@@ -237,6 +493,31 @@ def recognizeRawClause (top : Concept) (clause : RawClause Concept Role) :
             | some (first, second) => some (.roleChain first second sup)
             | none => none
   | _ => none
+
+/-- The executable empty-head branch returns only a semantically exact bottom axiom. -/
+theorem recognizeRawBottom_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (body : List (RawAtom Concept Role)) (source : SourceAxiom Concept Role)
+    (hrecognize : recognizeRawClause top { body := body, head := [] } = some source) :
+    satRawClause I T { body := body, head := [] } ↔ satSourceAxiom I source := by
+  cases body with
+  | nil => simp [recognizeRawClause] at hrecognize
+  | cons atom rest =>
+      cases atom with
+      | role role sourceTerm targetTerm => simp [recognizeRawClause] at hrecognize
+      | concept concept term =>
+          cases term with
+          | var varId =>
+              cases hdecode : allConceptsOn varId (.concept concept (.var varId) :: rest) with
+              | none => simp [recognizeRawClause, hdecode] at hrecognize
+              | some concepts =>
+                  simp [recognizeRawClause, hdecode] at hrecognize
+                  subst source
+                  exact rawBottomClause_sat_iff I T
+                    (.concept concept (.var varId) :: rest) concepts varId hdecode
+          | ind name => simp [recognizeRawClause] at hrecognize
+          | aux root label => simp [recognizeRawClause] at hrecognize
+          | «fun» function argument => simp [recognizeRawClause] at hrecognize
 
 /-- One of the two frontend clauses that jointly encode existential introduction. -/
 inductive RawExistentialHalf (Concept Role : Type) where

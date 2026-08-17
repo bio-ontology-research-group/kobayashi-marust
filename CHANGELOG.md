@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.10] – 2026-08-17
+
+### Prove direct raw ELC clause families semantically exact
+
+- Prove that every body accepted by `allConceptsOn` has exactly the decoded
+  conjunction semantics at its checked variable.
+- Prove raw concept-head subclass clauses and empty-head bottom clauses
+  equivalent to their reconstructed source axioms for arbitrary conjunction
+  length.
+- Prove raw existential-elimination clauses equivalent to `∃R.A ⊑ B` in
+  role-first, concept-first, and top-filler/domain forms.
+- Prove correctly wired raw role inclusions, reflexive role facts, and connected
+  three-variable role chains equivalent to their source semantics. Both role
+  chain body orders are covered.
+- Connect the executable empty-head recognizer branch directly to the bottom
+  equivalence theorem.
+- Refine existential-elimination recognition to return a typed shape that
+  records atom order and checked source/target variables, preparing small
+  constructor-specific inversion proofs instead of one brittle global split.
+
+The concept-head and role-head recognizer branches still need their executable
+inversion theorems before the whole `recognizeRawClause` result can be connected
+to these family proofs. Whole-list pairing, deterministic n-ary auxiliary-name
+validation, and certificate wire integration also remain open. HT, CB, and
+concrete routing remain uncertified.
+
 ## [0.3.9] – 2026-08-17
 
 ### Prove raw Skolem-pair normalization exact

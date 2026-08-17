@@ -118,9 +118,12 @@ clauses and paired existential-introduction clauses. The recognizers reject
 split or collapsed variables, reversed role wiring, nested Skolem arguments,
 and mismatched source/function pairs. `rawExistentialPair_sat_iff` proves the
 paired raw clauses equisatisfiable with `A ⊑ ∃R.B` by extracting and extending
-the Skolem function interpretation. The direct raw-clause semantic theorem,
-whole-list pairing, n-ary name validation, and certificate-wire connection
-remain open.
+the Skolem function interpretation. The same module proves semantic
+equivalence for every canonical direct raw family: subclass and bottom bodies,
+existential elimination in both atom orders and its top-filler form, role
+inclusion, reflexivity, and connected role chains in both orders. The remaining
+executable recognizer inversion theorems, whole-list pairing, n-ary name
+validation, and certificate-wire connection remain open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

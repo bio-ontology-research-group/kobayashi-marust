@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.9`.
+`v0.3.10`.
 
 ## Classify an ontology
 
@@ -162,10 +162,11 @@ Checker-enabled Rust publishes that verified named result directly. The
 OWL/frontend-clause-to-normal-form translation now has semantic proofs for
 direct forms, conservative n-ary auxiliary expansion, and the raw two-clause
 Skolem encoding of existential introduction. Executable raw recognizers check
-variable wiring and Skolem pairing, but certificate wire integration, the
-direct raw semantic bridge, and equality with Rust's emitted normal forms
-remain open. HT, CB, concrete production routing, and residual ELC modes also
-remain uncertified. ORE results
+variable wiring and Skolem pairing. Every canonical direct raw clause family
+now has a semantic equivalence proof; connecting the remaining executable
+recognizer branches, certificate wire integration, and equality with Rust's
+emitted normal forms remain open. HT, CB, concrete production routing, and
+residual ELC modes also remain uncertified. ORE results
 are empirical and successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
