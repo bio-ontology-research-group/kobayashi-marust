@@ -60,6 +60,142 @@ theorem canonOn_rewrittenExistential_satisfies_raw
       rw [hpin]
       exact Sub.nf1 (Sub.refl witness) hnf1
 
+structure CanonicalWitnessRecord (Concept Role : Type) where
+  sub : Concept
+  role : Role
+  filler : Concept
+  witness : Concept
+  function : Nat
+  roleVariable : Nat
+  fillerVariable : Nat
+deriving DecidableEq, Repr
+
+def CanonicalWitnessRecord.rawOntology (record : CanonicalWitnessRecord Concept Role) :
+    List (RawClause Concept Role) :=
+  [rawExistentialRoleClause record.sub record.role record.roleVariable record.function,
+    rawExistentialFillerClause (Role := Role) record.sub record.filler
+      record.fillerVariable record.function]
+
+def CanonicalWitnessRecord.rewrittenOntology
+    (record : CanonicalWitnessRecord Concept Role) : Ontology Concept Role :=
+  [.nf3 record.sub record.role record.witness,
+    .nf1 record.witness record.filler]
+
+def CanonicalWitnessRecord.Valid (active : Concept → Prop)
+    (O : Ontology Concept Role) (record : CanonicalWitnessRecord Concept Role) : Prop :=
+  active record.witness ∧
+    ¬Sub top bottom O record.witness bottom ∧
+    Clause.nf3 record.sub record.role record.witness ∈ O ∧
+    Clause.nf1 record.witness record.filler ∈ O
+
+def CanonicalWitnessRecord.PinCompatible (active : Concept → Prop)
+    (O : Ontology Concept Role) (pin : Nat → ActiveAlive active top bottom O)
+    (record : CanonicalWitnessRecord Concept Role) : Prop :=
+  ∀ hactive halive,
+    pin record.function =
+      canonicalWitness active O record.witness hactive halive
+
+def canonicalWitnessRawOntology
+    (records : List (CanonicalWitnessRecord Concept Role)) :
+    List (RawClause Concept Role) :=
+  records.flatMap CanonicalWitnessRecord.rawOntology
+
+def canonicalWitnessRewrittenOntology
+    (records : List (CanonicalWitnessRecord Concept Role)) : Ontology Concept Role :=
+  records.flatMap CanonicalWitnessRecord.rewrittenOntology
+
+/-- Every checked witness record is interpreted by the same global pinned term
+interpretation, so the complete list of original Skolem pairs holds together. -/
+theorem canonOn_witnessRecords_satisfy_raw
+    (active : Concept → Prop) (O : Ontology Concept Role)
+    (records : List (CanonicalWitnessRecord Concept Role))
+    (base : RawTermInterp (ActiveAlive active top bottom O))
+    (pin : Nat → ActiveAlive active top bottom O)
+    (hvalid : ∀ record ∈ records,
+      record.Valid (top := top) (bottom := bottom) active O)
+    (hpins : ∀ record ∈ records,
+      record.PinCompatible (top := top) (bottom := bottom) active O pin) :
+    modelsRaw (canonOn active (top := top) (bottom := bottom) (O := O))
+      (pinnedTermInterp base pin) (canonicalWitnessRawOntology records) := by
+  intro clause hclause
+  simp only [canonicalWitnessRawOntology, List.mem_flatMap] at hclause
+  obtain ⟨record, hrecord, hclause⟩ := hclause
+  obtain ⟨hactive, halive, hnf3, hnf1⟩ := hvalid record hrecord
+  have hpair := canonOn_rewrittenExistential_satisfies_raw
+    (top := top) (bottom := bottom) active O record.sub record.filler
+    record.witness record.role record.function record.roleVariable
+    record.fillerVariable hactive halive hnf3 hnf1 base pin
+    (hpins record hrecord hactive halive)
+  simp [CanonicalWitnessRecord.rawOntology] at hclause
+  rcases hclause with hrole | hfiller
+  · rw [hrole]
+    exact hpair.1
+  · rw [hfiller]
+    exact hpair.2
+
+def residualCompilationRawOntology
+    (entries : List (ResidualCompilationEntry Domain Concept Role)) :
+    List (RawResidualClause Concept Role) :=
+  entries.map ResidualCompilationEntry.raw
+
+/-- The three fail-closed source partitions: directly normalized clauses,
+canonical-witness Skolem pairs, and equality/disjunctive residual clauses. -/
+def partitionedRawOntology
+    (direct : List (RawClause Concept Role))
+    (records : List (CanonicalWitnessRecord Concept Role))
+    (entries : List (ResidualCompilationEntry Domain Concept Role)) :
+    List (RawResidualClause Concept Role) :=
+  direct.map RawClause.toResidual ++
+    (canonicalWitnessRawOntology records).map RawClause.toResidual ++
+    residualCompilationRawOntology entries
+
+/-- Satisfaction of all three checked partitions composes into satisfaction of
+the exact original source stream.  `hsource` is the executable coverage check:
+it prevents a frontend clause from being silently omitted or duplicated into a
+different clause during routing. -/
+theorem canonOn_partitionedRawOntology_satisfies_source
+    (active : Concept → Prop) (O : Ontology Concept Role)
+    (source : List (RawResidualClause Concept Role))
+    (direct : List (RawClause Concept Role))
+    (records : List (CanonicalWitnessRecord Concept Role))
+    (entries : List
+      (ResidualCompilationEntry (ActiveAlive active top bottom O) Concept Role))
+    (base : RawTermInterp (ActiveAlive active top bottom O))
+    (pin : Nat → ActiveAlive active top bottom O)
+    (hsource : source = partitionedRawOntology direct records entries)
+    (hdirect : modelsRaw
+      (canonOn active (top := top) (bottom := bottom) (O := O))
+      (pinnedTermInterp base pin) direct)
+    (hvalid : ∀ record ∈ records,
+      record.Valid (top := top) (bottom := bottom) active O)
+    (hpins : ∀ record ∈ records,
+      record.PinCompatible (top := top) (bottom := bottom) active O pin)
+    (hcompatible : ∀ entry ∈ entries, entry.pinCompatible pin)
+    (hcompiled : ∀ entry ∈ entries,
+      entry.compiledHolds
+        (canonOn active (top := top) (bottom := bottom) (O := O))) :
+    modelsRawResidual
+      (canonOn active (top := top) (bottom := bottom) (O := O))
+      (pinnedTermInterp base pin) source := by
+  rw [hsource]
+  intro clause hclause
+  change clause ∈ direct.map RawClause.toResidual ++
+    (canonicalWitnessRawOntology records).map RawClause.toResidual ++
+    entries.map ResidualCompilationEntry.raw at hclause
+  rcases List.mem_append.mp hclause with hnormal | hresidualClause
+  · rcases List.mem_append.mp hnormal with hdirectClause | hwitnessClause
+    · obtain ⟨raw, hraw, rfl⟩ := List.mem_map.mp hdirectClause
+      exact (satRawClause_toResidual_iff _ _ raw).mpr (hdirect raw hraw)
+    · obtain ⟨raw, hraw, rfl⟩ := List.mem_map.mp hwitnessClause
+      exact (satRawClause_toResidual_iff _ _ raw).mpr
+        (canonOn_witnessRecords_satisfy_raw active O records base pin hvalid hpins raw hraw)
+  · obtain ⟨entry, hentry, rfl⟩ := List.mem_map.mp hresidualClause
+    exact residualCompilationTheory_compiled_implies_raw base pin
+      (canonOn active (top := top) (bottom := bottom) (O := O)) entries
+      hcompatible hcompiled entry hentry
+
 #print axioms canonOn_rewrittenExistential_satisfies_raw
+#print axioms canonOn_witnessRecords_satisfy_raw
+#print axioms canonOn_partitionedRawOntology_satisfies_source
 
 end ContextCalculus.ELCompletion

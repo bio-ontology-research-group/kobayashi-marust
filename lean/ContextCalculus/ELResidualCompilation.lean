@@ -26,6 +26,16 @@ structure RawResidualClause (Concept Role : Type) where
   head : List (RawResidualAtom Concept Role)
 deriving DecidableEq, Repr
 
+def rawAtomToResidual : RawAtom Concept Role → RawResidualAtom Concept Role
+  | .concept concept term => .concept concept term
+  | .role role source target => .role role source target
+
+def RawClause.toResidual (clause : RawClause Concept Role) :
+    RawResidualClause Concept Role := {
+  body := clause.body.map rawAtomToResidual
+  head := clause.head.map rawAtomToResidual
+}
+
 def satRawResidualAtom (I : Interp Domain Concept Role top bottom)
     (T : RawTermInterp Domain) (env : Nat → Domain) :
     RawResidualAtom Concept Role → Prop
@@ -39,6 +49,51 @@ def satRawResidualClause (I : Interp Domain Concept Role top bottom)
   ∀ env,
     (∀ atom ∈ clause.body, satRawResidualAtom I T env atom) →
     ∃ atom ∈ clause.head, satRawResidualAtom I T env atom
+
+theorem satRawAtom_toResidual_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (env : Nat → Domain) (atom : RawAtom Concept Role) :
+    satRawResidualAtom I T env (rawAtomToResidual atom) ↔ satRawAtom I T env atom := by
+  cases atom <;> rfl
+
+theorem satRawClause_toResidual_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (clause : RawClause Concept Role) :
+    satRawResidualClause I T clause.toResidual ↔ satRawClause I T clause := by
+  constructor
+  · intro h env hbody
+    have hbody' : ∀ atom ∈ clause.body.map rawAtomToResidual,
+        satRawResidualAtom I T env atom := by
+      intro atom hatom
+      obtain ⟨source, hsource, rfl⟩ := List.mem_map.mp hatom
+      exact (satRawAtom_toResidual_iff I T env source).mpr (hbody source hsource)
+    obtain ⟨atom, hatom, hsatisfied⟩ := h env hbody'
+    obtain ⟨source, hsource, rfl⟩ := List.mem_map.mp hatom
+    exact ⟨source, hsource, (satRawAtom_toResidual_iff I T env source).mp hsatisfied⟩
+  · intro h env hbody
+    have hbody' : ∀ atom ∈ clause.body, satRawAtom I T env atom := by
+      intro atom hatom
+      exact (satRawAtom_toResidual_iff I T env atom).mp
+        (hbody (rawAtomToResidual atom) (List.mem_map.mpr ⟨atom, hatom, rfl⟩))
+    obtain ⟨atom, hatom, hsatisfied⟩ := h env hbody'
+    exact ⟨rawAtomToResidual atom, List.mem_map.mpr ⟨atom, hatom, rfl⟩,
+      (satRawAtom_toResidual_iff I T env atom).mpr hsatisfied⟩
+
+def modelsRawResidual (I : Interp Domain Concept Role top bottom)
+    (T : RawTermInterp Domain) (clauses : List (RawResidualClause Concept Role)) : Prop :=
+  ∀ clause ∈ clauses, satRawResidualClause I T clause
+
+theorem modelsRaw_toResidual_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (clauses : List (RawClause Concept Role)) :
+    modelsRawResidual I T (clauses.map RawClause.toResidual) ↔ modelsRaw I T clauses := by
+  constructor
+  · intro h clause hclause
+    exact (satRawClause_toResidual_iff I T clause).mp
+      (h clause.toResidual (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+  · intro h residual hresidual
+    obtain ⟨clause, hclause, rfl⟩ := List.mem_map.mp hresidual
+    exact (satRawClause_toResidual_iff I T clause).mpr (h clause hclause)
 
 inductive ResidualVarOrigin (Domain : Type) where
   | source (name : Nat)

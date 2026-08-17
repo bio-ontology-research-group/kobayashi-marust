@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.22] – 2026-08-17
+
+### Compose all plain-residual source partitions
+
+- Embed ordinary equality-free frontend clauses into the residual source
+  language and prove that clause and ontology satisfaction are preserved in
+  both directions.
+- Lift the canonical NF3 witness refinement from one Skolem pair to any finite
+  list of witness records under one shared pinned function interpretation.
+- Compose directly normalized clauses, rewritten existential witness pairs,
+  and independently compiled equality/disjunctive residual clauses. The main
+  theorem proves satisfaction of the exact original source stream when the
+  executable partition equality holds. Its axiom audit is
+  `[propext, Quot.sound]`.
+
+The next plain-residual obligation is checking this exact partition across the
+source-symbol/normalization-symbol boundary in the executable wire. Production
+still declines Lean-certified residual publication. Repair mode, HT, CB, and
+concrete routing remain uncertified.
+
 ## [0.3.21] – 2026-08-17
 
 ### Prove canonical NF3 witness refinement
