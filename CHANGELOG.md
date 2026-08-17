@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.8] – 2026-08-17
+
+### Prove n-ary ELC conjunction expansion conservative
+
+- Extend `ELNormalization.lean` with the left-associated NF2 prefix-chain
+  construction used for n-ary subclass and bottom axioms.
+- Model fresh conjunction concepts in an extended signature, indexed by their
+  exact source prefixes.
+- Define source-model extension by interpreting each auxiliary as the
+  intersection of its prefix, and define projection back to the original
+  concept signature.
+- Prove subclass and bottom expansion in both directions: every generated-chain
+  model projects to a source-axiom model, and every source model extends to a
+  generated-chain model.
+- Add an executable four-conjunct example pinning the exact three-clause NF2
+  chain shape.
+
+The remaining ELC frontend obligation is executable recognition of raw JSON
+clauses, including variable wiring, Skolem role/filler pairing, deterministic
+sorting and auxiliary-name validation, and equality with Rust's emitted normal
+forms. HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.7] – 2026-08-17
 
 ### Prove direct ELC frontend normalization exact

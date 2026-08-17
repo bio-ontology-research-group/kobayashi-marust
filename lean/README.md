@@ -104,8 +104,13 @@ conjunction, bottom, existential introduction and elimination, role inclusion,
 role chains, and reflexivity. `normalizeDirect_sat_iff` proves each successful
 translation preserves and reflects satisfaction, while `models_direct_iff`
 lifts the result to complete directly normalized axiom lists. N-ary conjunction
-auxiliaries and executable pairing of raw Skolem clauses remain open parts of
-the frontend refinement.
+expansion uses an extended concept signature whose fresh concepts denote exact
+prefix intersections. `compileConjunction_sub_reflects` and
+`compileConjunction_sub_preserves` prove subclass expansion in both directions;
+the corresponding bottom theorems prove the same for disjointness chains.
+Executable pairing of raw Skolem clauses, variable-wiring checks, deterministic
+sorting and auxiliary-name validation remain open parts of the frontend
+refinement.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

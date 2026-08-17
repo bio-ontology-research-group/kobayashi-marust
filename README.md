@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.7`.
+`v0.3.8`.
 
 ## Classify an ontology
 
@@ -159,8 +159,10 @@ frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
 state against the formal closure, the complete active concept set, the ID-level
 public relation, its named-string materialization, and the inconsistency flag.
 Checker-enabled Rust publishes that verified named result directly. The
-OWL/frontend-clause-to-normal-form translation still needs executable raw-clause
-pairing and n-ary conjunction auxiliary certification. HT, CB, concrete
+OWL/frontend-clause-to-normal-form translation now has semantic proofs for
+direct forms and conservative n-ary auxiliary expansion. It still needs
+executable raw-clause pairing and equality with Rust's emitted normal forms.
+HT, CB, concrete
 production routing, and residual ELC modes also remain uncertified. ORE results
 are empirical and successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
