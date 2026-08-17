@@ -1,4 +1,5 @@
 import ContextCalculus.ELCompletionRefinement
+import Mathlib.Data.Fintype.Basic
 
 /-!
 # Checkable proof traces for ELC materializations
@@ -132,5 +133,112 @@ theorem checkedTrace_soundState {top bottom : Concept} {O : Ontology Concept Rol
     SoundState (traceMaterialization top bottom trace) top bottom O where
   subSound h := checkTrace_sound hcheck (Fact.sub _ _) h
   edgeSound h := checkTrace_sound hcheck (Fact.edge _ _ _) h
+
+section FiniteClosure
+
+variable [Fintype Concept] [Fintype Role]
+
+/--
+Exhaustively check every initialization and closure obligation over a finite
+interned signature.  This is deliberately independent of the trace order: the
+trace establishes soundness, while this pass establishes fixpoint closure.
+-/
+def checkClosedTrace (top bottom : Concept) (O : Ontology Concept Role)
+    (trace : List (Step Concept Role)) : Bool :=
+  let m := traceMaterialization top bottom trace
+  letI : ∀ a b, Decidable (m.sub a b) := fun _ _ => by
+    dsimp [m, traceMaterialization]
+    infer_instance
+  letI : ∀ a role target, Decidable (m.edge a role target) := fun _ _ _ => by
+    dsimp [m, traceMaterialization]
+    infer_instance
+  decide (∀ a, m.sub a a) &&
+  decide (∀ a, m.sub a top) &&
+  decide (∀ a sub sup, m.sub a sub →
+    Clause.nf1 (Role := Role) sub sup ∈ O → m.sub a sup) &&
+  decide (∀ a left right sup,
+    m.sub a left → m.sub a right →
+      Clause.nf2 (Role := Role) left right sup ∈ O → m.sub a sup) &&
+  decide (∀ a sub, m.sub a sub →
+    Clause.nf5 (Role := Role) sub ∈ O → m.sub a bottom) &&
+  decide (∀ a target filler sup role,
+    m.edge a role target → m.sub target filler →
+      Clause.nf4 (Concept := Concept) (Role := Role) role filler sup ∈ O →
+        m.sub a sup) &&
+  decide (∀ a target role,
+    m.edge a role target → m.sub target bottom → m.sub a bottom) &&
+  decide (∀ a sub filler role,
+    m.sub a sub →
+      Clause.nf3 (Concept := Concept) (Role := Role) sub role filler ∈ O →
+        m.edge a role filler) &&
+  decide (∀ a target sub sup,
+    m.edge a sub target → Clause.nf6 (Concept := Concept) sub sup ∈ O →
+      m.edge a sup target) &&
+  decide (∀ a middle target first second sup,
+    m.edge a first middle → m.edge middle second target →
+      Clause.nf7 (Concept := Concept) first second sup ∈ O →
+        m.edge a sup target) &&
+  decide (∀ a role, Clause.reflexive (Concept := Concept) role ∈ O →
+    m.edge a role a)
+
+theorem checkClosedTrace_closed {top bottom : Concept} {O : Ontology Concept Role}
+    {trace : List (Step Concept Role)}
+    (hcheck : checkClosedTrace top bottom O trace = true) :
+    ClosedState (traceMaterialization top bottom trace) top bottom O := by
+  simp only [checkClosedTrace, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  rcases hcheck with
+    ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hrefl, htop⟩, hnf1⟩, hnf2⟩, hnf5⟩, hnf4⟩, hbottom⟩,
+      hnf3⟩, hnf6⟩, hnf7⟩, hreflexive⟩
+  exact {
+    initRefl := hrefl
+    initTop := htop
+    closeNf1 := fun {a sub sup} => hnf1 a sub sup
+    closeNf2 := fun {a left right sup} => hnf2 a left right sup
+    closeNf5 := fun {a sub} => hnf5 a sub
+    closeNf4 := fun {a target filler sup role} => hnf4 a target filler sup role
+    closeBottomEdge := fun {a target role} => hbottom a target role
+    closeNf3 := fun {a sub filler role} => hnf3 a sub filler role
+    closeNf6 := fun {a target sub sup} => hnf6 a target sub sup
+    closeNf7 := fun {a middle target first second sup} =>
+      hnf7 a middle target first second sup
+    closeReflexive := fun a {role} => hreflexive a role
+  }
+
+/-- Both executable checks together prove the materialization semantically exact. -/
+theorem checkedTrace_exact {top bottom : Concept} {O : Ontology Concept Role}
+    {trace : List (Step Concept Role)}
+    (hsound : checkTrace top bottom O trace = true)
+    (hclosed : checkClosedTrace top bottom O trace = true) :
+    (∀ a b, EntailsSub (top := top) (bottom := bottom) O a b ↔
+      (traceMaterialization top bottom trace).sub a bottom ∨
+        (traceMaterialization top bottom trace).sub a b) ∧
+    (Unsatisfiable (top := top) (bottom := bottom) O ↔
+      (traceMaterialization top bottom trace).sub top bottom) := by
+  have hc := checkClosedTrace_closed hclosed
+  have hs := checkedTrace_soundState hsound
+  exact ⟨fun a b => entails_iff_materialized hc hs a b,
+    unsat_iff_materialized hc hs⟩
+
+end FiniteClosure
+
+namespace Examples
+
+abbrev C := Fin 2
+abbrev R := Fin 1
+
+def emptyTrace : List (Step C R) :=
+  [.refl 0, .top 0, .refl 1, .top 1]
+
+example : checkTrace (0 : C) (1 : C) ([] : Ontology C R) emptyTrace = true := by
+  native_decide
+
+example : checkClosedTrace (0 : C) (1 : C) ([] : Ontology C R) emptyTrace = true := by
+  native_decide
+
+example : checkClosedTrace (0 : C) (1 : C) ([] : Ontology C R)
+    ([.refl 0, .top 0, .refl 1] : List (Step C R)) = false := by
+  native_decide
+
+end Examples
 
 end ContextCalculus.ELCompletion
