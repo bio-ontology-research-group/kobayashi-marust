@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.19`.
+`v0.3.20`.
 
 ## Classify an ontology
 
@@ -150,14 +150,16 @@ taxonomy and inconsistency result. It also proves fail-closed composition for
 abstract workers, sequential fallbacks, races, and profile-based routing.
 
 The certification build provides `elc-cert-check`, a native Lean checker for
-the versioned Rust certificate wire format. Wire version 3 carries the exact
+the versioned Rust certificate wire format. Wire version 4 carries the exact
 raw ELC clauses, variable signature, generated conjunction origins, normalized
 ontology, completion trace, and published result. Lean recomputes and validates
 the raw-to-normal transformation before checking completion. Set
 `KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
-closure, and Rust-state agreement before the pure ELC worker can publish. The
-worker fails closed if any stage fails. This opt-in path currently covers the
-pure NF1–NF7 ELC route; it does not certify residual repair modes.
+closure, and Rust-state agreement before the pure ELC worker can publish. It
+also checks exact residual-compilation evidence, although the production route
+still declines residual publication pending certification of the NF3 witness
+rewrite and canonical-model composition. The worker fails closed if any stage
+fails. This opt-in path currently publishes only the pure NF1–NF7 ELC route.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

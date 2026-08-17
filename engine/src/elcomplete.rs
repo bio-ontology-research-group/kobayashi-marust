@@ -1471,6 +1471,45 @@ enum LeanRawAtom {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanResidualAtom {
+    Concept { concept: u32, term: LeanRawTerm },
+    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
+    Eq { left: LeanRawTerm, right: LeanRawTerm },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanResidualClause {
+    body: Vec<LeanResidualAtom>,
+    head: Vec<LeanResidualAtom>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanResidualOrigin {
+    Source { name: usize },
+    Function { function: u32, witness: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanCompiledResidualAtom {
+    Concept { concept: u32, slot: usize },
+    Role { role: u32, source: usize, target: usize },
+    Eq { left: usize, right: usize },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanResidualCompilation {
+    variable_count: usize,
+    origins: Vec<LeanResidualOrigin>,
+    raw: LeanResidualClause,
+    body: Vec<LeanCompiledResidualAtom>,
+    head: Vec<LeanCompiledResidualAtom>,
+    pins: Vec<(usize, u32)>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
 struct LeanRawClause {
     body: Vec<LeanRawAtom>,
     head: Vec<LeanRawAtom>,
@@ -1491,6 +1530,7 @@ struct LeanElCertificate {
     bottom: u32,
     variable_count: u32,
     raw_ontology: Vec<LeanRawClause>,
+    residual_compilations: Vec<LeanResidualCompilation>,
     concept_origins: Vec<LeanConceptOrigin>,
     ontology: Vec<LeanElClause>,
     /// Reverse dependency order, as required by Lean's `checkTrace`.
@@ -1554,6 +1594,7 @@ fn build_lean_el_certificate(
     st: &State,
     interner: &Interner,
     raw_clauses: &[JClause],
+    residual_compilations: Vec<LeanResidualCompilation>,
 ) -> Result<LeanElCertificate, String> {
     use std::collections::BTreeSet;
 
@@ -1837,12 +1878,13 @@ fn build_lean_el_certificate(
         *slot = LeanConceptOrigin::Conjunction { prefix_ids: prefix_ids.clone() };
     }
     Ok(LeanElCertificate {
-        version: 3,
+        version: 4,
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
         variable_count: variables.len() as u32,
         raw_ontology,
+        residual_compilations,
         concept_origins,
         ontology,
         trace: steps,
@@ -2449,6 +2491,12 @@ enum RAtom {
     Eq { s: usize, t: usize },
 }
 
+#[derive(Clone)]
+enum ROrigin {
+    Source { source: String, name: usize },
+    Function { function: u32, witness: u32 },
+}
+
 /// A residual clause: `body -> head`, universally quantified over `nvars`
 /// variables.  Skolem terms `f(x)` are compiled to *pinned* variables, fixed
 /// to a dedicated canonical witness for that skolem function. Each witness is
@@ -2460,6 +2508,9 @@ enum RAtom {
 /// have the same filler concept.
 struct RClause {
     nvars: usize,
+    /// Exact source/function namespace origin for every compiled slot. This is
+    /// emitted to Lean, which independently reconstructs compilation evidence.
+    origins: Vec<ROrigin>,
     body: Vec<RAtom>,
     head: Vec<RAtom>,
     /// (variable index, canonical node) fixed before evaluation
@@ -2614,12 +2665,143 @@ fn compile_residual(
         }
         out.push(RClause {
             nvars: vars.len(),
+            origins: vars
+                .iter()
+                .enumerate()
+                .map(|(slot, key)| match key {
+                    ResidualVarKey::Source(source) => Some(ROrigin::Source {
+                        source: (*source).to_string(),
+                        name: slot,
+                    }),
+                    ResidualVarKey::Function(function) => {
+                        let function = it.id(function)?;
+                        let witness = *skolem_witness.get(&function)?;
+                        Some(ROrigin::Function { function, witness })
+                    }
+                })
+                .collect::<Option<Vec<_>>>()?,
             body,
             head,
             pins,
         });
     }
     Some(out)
+}
+
+fn build_lean_residual_compilations(
+    residual: &[JClause],
+    compiled: &[RClause],
+    interner: &Interner,
+) -> Result<Vec<LeanResidualCompilation>, String> {
+    if residual.len() != compiled.len() {
+        return Err("residual source/compiled clause count mismatch".into());
+    }
+    fn raw_term(
+        term: &JTerm,
+        clause: &RClause,
+        interner: &Interner,
+    ) -> Result<LeanRawTerm, String> {
+        match term {
+            JTerm::Var { name } => {
+                let source_name = clause.origins.iter().find_map(|origin| match origin {
+                    ROrigin::Source { source, name: source_name } if source == name => {
+                        Some(*source_name)
+                    }
+                    _ => None,
+                });
+                // A variable occurring only as the ignored argument of a
+                // constant Skolem interpretation need not own a compiled slot.
+                let name = source_name.or_else(|| (clause.nvars > 0).then_some(0))
+                    .ok_or_else(|| format!("residual variable {name} has no slot"))?;
+                Ok(LeanRawTerm::Var { name: name as u32 })
+            }
+            JTerm::Fun { function, arg } => Ok(LeanRawTerm::Fun {
+                function: interner
+                    .id(function)
+                    .ok_or_else(|| format!("uninterned residual function {function}"))?,
+                argument: Box::new(raw_term(arg, clause, interner)?),
+            }),
+            JTerm::Ind { .. } | JTerm::Aux { .. } => {
+                Err("unsupported residual term reached Lean payload".into())
+            }
+        }
+    }
+    fn raw_atom(
+        atom: &JAtom,
+        clause: &RClause,
+        interner: &Interner,
+    ) -> Result<LeanResidualAtom, String> {
+        match atom {
+            JAtom::Concept { concept, term } => Ok(LeanResidualAtom::Concept {
+                concept: interner
+                    .id(concept)
+                    .ok_or_else(|| format!("uninterned residual concept {concept}"))?,
+                term: raw_term(term, clause, interner)?,
+            }),
+            JAtom::Role { role, source, target } => Ok(LeanResidualAtom::Role {
+                role: interner
+                    .id(role)
+                    .ok_or_else(|| format!("uninterned residual role {role}"))?,
+                source: raw_term(source, clause, interner)?,
+                target: raw_term(target, clause, interner)?,
+            }),
+            JAtom::Eq { left, right } => Ok(LeanResidualAtom::Eq {
+                left: raw_term(left, clause, interner)?,
+                right: raw_term(right, clause, interner)?,
+            }),
+        }
+    }
+    fn compiled_atom(atom: &RAtom) -> LeanCompiledResidualAtom {
+        match *atom {
+            RAtom::C { cid, v } => LeanCompiledResidualAtom::Concept {
+                concept: cid,
+                slot: v,
+            },
+            RAtom::R { rid, s, t } => LeanCompiledResidualAtom::Role {
+                role: rid,
+                source: s,
+                target: t,
+            },
+            RAtom::Eq { s, t } => LeanCompiledResidualAtom::Eq { left: s, right: t },
+        }
+    }
+
+    residual
+        .iter()
+        .zip(compiled)
+        .map(|(raw, clause)| {
+            let origins = clause
+                .origins
+                .iter()
+                .map(|origin| match origin {
+                    ROrigin::Source { name, .. } => LeanResidualOrigin::Source { name: *name },
+                    ROrigin::Function { function, witness } => LeanResidualOrigin::Function {
+                        function: *function,
+                        witness: *witness,
+                    },
+                })
+                .collect();
+            Ok(LeanResidualCompilation {
+                variable_count: clause.nvars,
+                origins,
+                raw: LeanResidualClause {
+                    body: raw
+                        .body
+                        .iter()
+                        .map(|atom| raw_atom(atom, clause, interner))
+                        .collect::<Result<_, _>>()?,
+                    head: raw
+                        .head
+                        .iter()
+                        .map(|atom| raw_atom(atom, clause, interner))
+                        .collect::<Result<_, _>>()?,
+                },
+                body: clause.body.iter().map(compiled_atom).collect(),
+                head: clause.head.iter().map(compiled_atom).collect(),
+                pins: clause.pins.clone(),
+            })
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -5283,6 +5465,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             &st,
             &it,
             certificate_clauses.as_deref().expect("requested certificate retains source clauses"),
+            Vec::new(),
         ) {
             Ok(certificate) => certificate,
             Err(error) => {
@@ -5509,9 +5692,9 @@ mod tests {
         for name in ["A", "B", "r", "s", "t"] {
             interner.intern(name);
         }
-        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[])
+        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new())
             .expect("exact certificate");
-        assert_eq!(cert.version, 3);
+        assert_eq!(cert.version, 4);
         assert!(!cert.trace.is_empty());
         let json = serde_json::to_string(&cert).expect("certificate JSON");
         assert!(json.contains("\"nf7\""));
@@ -5535,7 +5718,7 @@ mod tests {
         }));
 
         state.sub_super[2].insert(6);
-        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[])
+        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new())
             .unwrap_err()
             .contains("Rust-only subsumption"));
     }
@@ -6365,6 +6548,61 @@ mod tests {
     }
 
     #[test]
+    fn lean_residual_compilation_payload_accepts_and_tampering_fails() {
+        let cs = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("A", "u")], &[rf("R", "u", "x")]),
+            cl(&[c("A", "u")], &[cf("B", "x", "u")]),
+            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+        ));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, skolem_target) =
+            to_nf(&cs, &mut interner).expect("normalizable EL prefix");
+        let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
+            .expect("supported residual");
+        let payloads = build_lean_residual_compilations(&residual, &compiled, &interner)
+            .expect("exact residual payload");
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].origins.len(), payloads[0].variable_count);
+        let json = serde_json::to_string(&payloads[0]).expect("payload JSON");
+        assert!(json.contains("\"source\""));
+        assert!(json.contains("\"function\""));
+
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let path = std::env::temp_dir().join(format!(
+            "km-elc-residual-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let run = |payload: &LeanResidualCompilation| {
+            std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .args(["--residual", &interner.len().to_string()])
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run Lean residual checker")
+                .success()
+        };
+        assert!(run(&payloads[0]), "exact Rust compilation must be accepted");
+
+        let mut pin_tamper = payloads[0].clone();
+        pin_tamper.pins[0].0 = 0;
+        assert!(!run(&pin_tamper), "pin mutation must fail closed");
+
+        let mut origin_tamper = payloads[0].clone();
+        origin_tamper.origins[0] = LeanResidualOrigin::Function {
+            function: 0,
+            witness: 0,
+        };
+        assert!(!run(&origin_tamper), "origin mutation must fail closed");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn cert_bails_on_nominal_terms_before_saturation() {
         // ind terms are not modelled: classify must return None (context engine).
         let cs = clauses(
@@ -6727,6 +6965,12 @@ mod tests {
     fn rc(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>, pins: Vec<(usize, u32)>) -> RClause {
         RClause {
             nvars,
+            origins: (0..nvars)
+                .map(|name| ROrigin::Source {
+                    source: format!("v{name}"),
+                    name,
+                })
+                .collect(),
             body,
             head,
             pins,
@@ -7665,6 +7909,12 @@ mod tests {
     fn rcl(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>) -> RClause {
         RClause {
             nvars,
+            origins: (0..nvars)
+                .map(|name| ROrigin::Source {
+                    source: format!("v{name}"),
+                    name,
+                })
+                .collect(),
             body,
             head,
             pins: Vec::new(),

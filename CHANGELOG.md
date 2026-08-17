@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.20] – 2026-08-17
+
+### Check residual compilation evidence executable end to end
+
+- Make residual term, atom, clause-list, and pin evidence computationally
+  checkable in Lean and prove each Boolean check equivalent to the semantic
+  `ResidualCompilationEvidence` contract.
+- Extend certificate wire version 4 with bounded residual source clauses,
+  independently numbered slot origins, compiled atoms, and exact witness pins.
+  Preserve decoded evidence objects for later whole-ontology composition.
+- Extend `elc-cert-check` with a standalone residual-compilation mode. A real
+  Rust `compile_residual` payload passes the native Lean checker; independent
+  pin and origin mutations fail closed.
+- Retain source-variable names in Rust's compilation metadata and emit source
+  and Skolem-function origins from separate namespaces.
+
+The production route still declines Lean certification when residual clauses
+are present. The remaining ELC obligation is certifying the NF3 witness rewrite
+and composing accepted residual clauses with the canonical model. Repair mode,
+HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.19] – 2026-08-17
 
 ### Prove whole-theory residual compilation refinement

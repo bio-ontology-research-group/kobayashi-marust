@@ -1,5 +1,6 @@
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELRawNormalization
+import ContextCalculus.ELResidualCompilation
 import Lean
 
 /-!
@@ -34,6 +35,37 @@ deriving FromJson, ToJson
 inductive WireRawAtom where
   | concept (concept : Nat) (term : WireRawTerm)
   | role (role : Nat) (source target : WireRawTerm)
+deriving FromJson, ToJson
+
+inductive WireResidualAtom where
+  | concept (concept : Nat) (term : WireRawTerm)
+  | role (role : Nat) (source target : WireRawTerm)
+  | eq (left right : WireRawTerm)
+deriving FromJson, ToJson
+
+structure WireResidualClause where
+  body : List WireResidualAtom
+  head : List WireResidualAtom
+deriving FromJson, ToJson
+
+inductive WireResidualOrigin where
+  | source (name : Nat)
+  | function (function witness : Nat)
+deriving FromJson, ToJson
+
+inductive WireCompiledResidualAtom where
+  | concept (concept slot : Nat)
+  | role (role source target : Nat)
+  | eq (left right : Nat)
+deriving FromJson, ToJson
+
+structure WireResidualCompilation where
+  variable_count : Nat
+  origins : List WireResidualOrigin
+  raw : WireResidualClause
+  body : List WireCompiledResidualAtom
+  head : List WireCompiledResidualAtom
+  pins : List (Nat × Nat)
 deriving FromJson, ToJson
 
 structure WireRawClause where
@@ -83,6 +115,7 @@ structure WireCertificate where
   bottom : Nat
   variable_count : Nat
   raw_ontology : List WireRawClause
+  residual_compilations : List WireResidualCompilation
   concept_origins : List WireConceptOrigin
   ontology : List WireClause
   trace : List WireStep
@@ -157,6 +190,92 @@ def WireRawClause.decode (n variableCount : Nat) (clause : WireRawClause) :
     head := ← clause.head.mapM (WireRawAtom.decode n variableCount)
   }
 
+def WireResidualAtom.decode (n variableCount : Nat) : WireResidualAtom →
+    Except String (RawResidualAtom (Fin n) (Fin n))
+  | .concept conceptId term =>
+      return .concept (← checkedFin n conceptId) (← term.decode n variableCount)
+  | .role roleId source target =>
+      return .role (← checkedFin n roleId) (← source.decode n variableCount)
+        (← target.decode n variableCount)
+  | .eq left right =>
+      return .eq (← left.decode n variableCount) (← right.decode n variableCount)
+
+def WireResidualClause.decode (n variableCount : Nat) (clause : WireResidualClause) :
+    Except String (RawResidualClause (Fin n) (Fin n)) :=
+  return {
+    body := ← clause.body.mapM (WireResidualAtom.decode n variableCount)
+    head := ← clause.head.mapM (WireResidualAtom.decode n variableCount)
+  }
+
+def WireResidualOrigin.decode (n : Nat) : WireResidualOrigin →
+    Except String (ResidualVarOrigin (Fin n))
+  | .source name => return .source name
+  | .function functionId witness =>
+      return .function (← checkedFin n functionId).val (← checkedFin n witness)
+
+def WireCompiledResidualAtom.decode (n variableCount : Nat) :
+    WireCompiledResidualAtom →
+    Except String (CompiledResidualAtom (Fin n) (Fin n) (Fin variableCount))
+  | .concept conceptId slot =>
+      return .concept (← checkedFin n conceptId) (← checkedFin variableCount slot)
+  | .role roleId source target =>
+      return .role (← checkedFin n roleId) (← checkedFin variableCount source)
+        (← checkedFin variableCount target)
+  | .eq left right =>
+      return .eq (← checkedFin variableCount left) (← checkedFin variableCount right)
+
+structure DecodedResidualCompilation (n variableCount : Nat) where
+  origin : Fin variableCount → ResidualVarOrigin (Fin n)
+  raw : RawResidualClause (Fin n) (Fin n)
+  compiled : CompiledResidualClause (Fin n) (Fin n) (Fin n) (Fin variableCount)
+
+structure SomeDecodedResidualCompilation (n : Nat) where
+  variableCount : Nat
+  decoded : DecodedResidualCompilation n variableCount
+
+def WireResidualCompilation.decode (n : Nat) (wire : WireResidualCompilation) :
+    Except String (DecodedResidualCompilation n wire.variable_count) := do
+  if horigins : wire.origins.length = wire.variable_count then
+    let origins ← wire.origins.mapM (WireResidualOrigin.decode n)
+    return {
+      origin := fun slot => origins.getD slot.val (.source 0)
+      raw := ← wire.raw.decode n wire.variable_count
+      compiled := {
+        body := ← wire.body.mapM
+          (WireCompiledResidualAtom.decode n wire.variable_count)
+        head := ← wire.head.mapM
+          (WireCompiledResidualAtom.decode n wire.variable_count)
+        pins := ← wire.pins.mapM fun (slot, witness) =>
+          return (← checkedFin wire.variable_count slot, ← checkedFin n witness)
+      }
+    }
+  else
+    throw s!"residual origin table has length {wire.origins.length}, expected {wire.variable_count}"
+
+def DecodedResidualCompilation.check {n variableCount : Nat}
+    (decoded : DecodedResidualCompilation n variableCount) : Bool :=
+  checkResidualCompilationEvidence decoded.origin decoded.raw decoded.compiled
+
+def WireResidualCompilation.check (n : Nat) (wire : WireResidualCompilation) :
+    Except String Bool := do
+  return (← wire.decode n).check
+
+def WireResidualCompilation.decodeSome (n : Nat) (wire : WireResidualCompilation) :
+    Except String (SomeDecodedResidualCompilation n) := do
+  return { variableCount := wire.variable_count, decoded := ← wire.decode n }
+
+def SomeDecodedResidualCompilation.check {n : Nat}
+    (decoded : SomeDecodedResidualCompilation n) : Bool :=
+  decoded.decoded.check
+
+theorem DecodedResidualCompilation.check_iff {n variableCount : Nat}
+    (decoded : DecodedResidualCompilation n variableCount) :
+  decoded.check = true ↔
+      ResidualCompilationEvidence decoded.origin decoded.raw decoded.compiled := by
+  exact checkResidualCompilationEvidence_iff decoded.origin decoded.raw decoded.compiled
+
+#print axioms DecodedResidualCompilation.check_iff
+
 def WireConceptOrigin.decode (n : Nat) (id : Fin n) : WireConceptOrigin →
     Except String (ExtendedConcept (Fin n))
   | .source => return .inl id
@@ -186,6 +305,7 @@ structure DecodedCertificate (n : Nat) where
   bottom : Fin n
   top_ne_bottom : top ≠ bottom
   raw_ontology : List (RawClause (Fin n) (Fin n))
+  residual_compilations : List (SomeDecodedResidualCompilation n)
   concept_origins : List (ExtendedConcept (Fin n))
   concept_origins_nodup : concept_origins.Nodup
   normal_ontology : Ontology (ExtendedConcept (Fin n)) (Fin n)
@@ -209,7 +329,7 @@ def WireEdgeFact.decode (n : Nat) (fact : WireEdgeFact) :
 
 def WireCertificate.decode (doc : WireCertificate) :
     Except String (DecodedCertificate doc.symbol_count) := do
-  if doc.version != 3 then
+  if doc.version != 4 then
     throw s!"unsupported ELC certificate version {doc.version}"
   let top ← checkedFin doc.symbol_count doc.top
   let bottom ← checkedFin doc.symbol_count doc.bottom
@@ -228,6 +348,8 @@ def WireCertificate.decode (doc : WireCertificate) :
             top_ne_bottom := hne
             raw_ontology := ← doc.raw_ontology.mapM
               (WireRawClause.decode doc.symbol_count doc.variable_count)
+            residual_compilations := ← doc.residual_compilations.mapM fun wire =>
+              wire.decodeSome doc.symbol_count
             concept_origins := origins
             concept_origins_nodup := horiginsNodup
             normal_ontology := ← doc.ontology.mapM
@@ -354,8 +476,21 @@ def DecodedCertificate.checkNormalization {n : Nat} (doc : DecodedCertificate n)
   | some certificate =>
       sourceOrigins && listSetEq doc.normal_ontology certificate.normal.normal
 
-def DecodedCertificate.checkV3 {n : Nat} (doc : DecodedCertificate n) : Bool :=
-  doc.checkNormalization && doc.check
+def DecodedCertificate.checkV4 {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.checkNormalization && doc.residual_compilations.all (fun residual => residual.check) &&
+    doc.check
+
+theorem DecodedCertificate.residualCompilation_valid {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV4 = true)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations) :
+    ResidualCompilationEvidence residual.decoded.origin residual.decoded.raw
+      residual.decoded.compiled := by
+  simp only [DecodedCertificate.checkV4, Bool.and_eq_true, List.all_eq_true] at hcheck
+  exact (DecodedResidualCompilation.check_iff residual.decoded).mp
+    (hcheck.1.2 residual hresidual)
+
+#print axioms DecodedCertificate.residualCompilation_valid
 
 theorem DecodedCertificate.checkNormalization_models_iff {n : Nat}
     (doc : DecodedCertificate n) (I : Interp Domain (Fin n) (Fin n) doc.top doc.bottom)
@@ -555,17 +690,37 @@ theorem DecodedCertificate.public_inconsistent_exact {n : Nat}
     rw [hnamed.2, hdecide]
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
-  return (← doc.decode).checkV3
+  return (← doc.decode).checkV4
 
 namespace WireExamples
 
+def residualCompilation : WireResidualCompilation where
+  variable_count := 2
+  origins := [.source 0, .function 2 2]
+  raw := {
+    body := [.concept 0 (.var 0)]
+    head := [.role 1 (.var 0) (.fun 2 (.var 0))]
+  }
+  body := [.concept 0 0]
+  head := [.role 1 0 1]
+  pins := [(1, 2)]
+
+example : residualCompilation.check 3 = .ok true := by native_decide
+
+example : { residualCompilation with pins := [(0, 2)] }.check 3 = .ok false := by
+  native_decide
+
+example : { residualCompilation with origins := [.source 0] }.check 3 =
+    .error "residual origin table has length 1, expected 2" := by native_decide
+
 def empty : WireCertificate where
-  version := 3
+  version := 4
   symbol_count := 2
   top := 0
   bottom := 1
   variable_count := 0
   raw_ontology := []
+  residual_compilations := []
   concept_origins := [.source, .source]
   ontology := []
   trace := [.refl 0, .top 0, .refl 1, .top 1]

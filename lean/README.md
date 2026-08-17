@@ -139,7 +139,7 @@ normalization, `certifyNaryConjunction` validates the exact NF2 prefix chain and
 reflects source models while fixing all source symbols. Whole-ontology
 composition is carried by `SourceOntologyNormalEvidence.models_iff`, and
 `RawToNormalCertificate.models_iff` connects an exact mixed raw stream to its
-complete shared NF1–NF7 ontology. Wire version 3 carries that raw stream,
+complete shared NF1–NF7 ontology. Wire version 4 carries that raw stream,
 finite variable signature, Rust's symbol table, and exact conjunction-prefix
 origins. `ELCompletionWire` checks the reconstructed normal ontology against
 Rust's emitted ontology before accepting its completion certificate.
@@ -188,13 +188,17 @@ discharges the finite Rust certificate wire obligation for normalized pure ELC.
 ### ELC wire checker — `ContextCalculus/ELCompletionWire.lean`
 
 The versioned JSON decoder validates every numeric id against a finite `Fin n`
-signature before constructing clauses or proof steps. Version 3 also validates
+signature before constructing clauses or proof steps. Version 4 also validates
 the exact raw ontology, variable IDs, and collision-free semantic origin table,
 then invokes `certifyRawToNormal` and compares the resulting normal ontology
 extensionally with Rust's emitted forms. The native
 `elc-cert-check` executable checks the trace, closure, complete active Rust
 context set, materialized Rust subsumption and edge stores, ID-level output,
 finite symbol table, named output, and inconsistency flag.
+It decodes residual source clauses, local variable/function origins, compiled
+atoms, and canonical witness pins, then independently checks the exact formal
+compilation relation. The production worker does not yet publish residual
+answers through this certificate.
 `active_subsumption_exact` proves the active materialization semantically
 exact. `public_subsumption_sound` and
 `public_named_subsumption_sound` prove publication soundness; their

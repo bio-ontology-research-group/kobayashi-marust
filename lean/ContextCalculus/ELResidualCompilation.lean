@@ -120,7 +120,204 @@ structure ResidualCompilationEvidence
   head : List.Forall₂ (CompiledResidualAtomEvidence origin) raw.head compiled.head
   pins_exact : ∀ slot witness,
     (slot, witness) ∈ compiled.pins ↔
-      ∃ function, origin slot = .function function witness
+      match origin slot with
+      | .source _ => False
+      | .function _ expected => expected = witness
+
+def checkCompiledResidualTerm [DecidableEq Domain] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain) (raw : RawTerm) (slot : Var) : Bool :=
+  match raw, origin slot with
+  | .var name, .source expected => decide (name = expected)
+  | .fun name (.var _), .function expected _ => decide (name = expected)
+  | _, _ => false
+
+theorem checkCompiledResidualTerm_iff [DecidableEq Domain] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain) (raw : RawTerm) (slot : Var) :
+    checkCompiledResidualTerm origin raw slot = true ↔
+      CompiledResidualTerm origin raw slot := by
+  cases raw with
+  | var name =>
+      cases horigin : origin slot with
+      | source expected =>
+          simp only [checkCompiledResidualTerm, horigin, decide_eq_true_eq]
+          constructor
+          · rintro rfl
+            exact .var horigin
+          · intro h
+            cases h with
+            | var hsource => exact (by simpa [horigin] using hsource.symm)
+      | function function witness =>
+          simp only [checkCompiledResidualTerm, horigin, Bool.false_eq_true]
+          constructor
+          · intro h; contradiction
+          · intro h
+            cases h with
+            | var hsource => simp [horigin] at hsource
+  | ind individual => simp [checkCompiledResidualTerm]; intro h; cases h
+  | aux name => simp [checkCompiledResidualTerm]; intro h; cases h
+  | «fun» name argument =>
+      cases argument with
+      | var argumentName =>
+          cases horigin : origin slot with
+          | source sourceName =>
+              simp only [checkCompiledResidualTerm, horigin, Bool.false_eq_true]
+              constructor
+              · intro h; contradiction
+              · intro h
+                cases h with
+                | function hfunction => simp [horigin] at hfunction
+          | function expected witness =>
+              simp only [checkCompiledResidualTerm, horigin, decide_eq_true_eq]
+              constructor
+              · rintro rfl
+                exact .function horigin
+              · intro h
+                cases h with
+                | function hfunction =>
+                    exact (ResidualVarOrigin.function.inj
+                      (horigin.symm.trans hfunction)).1.symm
+      | ind individual => simp [checkCompiledResidualTerm]; intro h; cases h
+      | aux auxName => simp [checkCompiledResidualTerm]; intro h; cases h
+      | «fun» nestedName nestedArgument => simp [checkCompiledResidualTerm]; intro h; cases h
+
+def checkCompiledResidualAtomEvidence [DecidableEq Domain] [DecidableEq Concept]
+    [DecidableEq Role] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain) :
+    RawResidualAtom Concept Role → CompiledResidualAtom Concept Role Var → Bool
+  | .concept rawConcept rawTerm, .concept compiledConcept slot =>
+      decide (rawConcept = compiledConcept) && checkCompiledResidualTerm origin rawTerm slot
+  | .role rawRole rawSource rawTarget, .role compiledRole source target =>
+      decide (rawRole = compiledRole) &&
+        checkCompiledResidualTerm origin rawSource source &&
+        checkCompiledResidualTerm origin rawTarget target
+  | .eq rawLeft rawRight, .eq left right =>
+      checkCompiledResidualTerm origin rawLeft left &&
+        checkCompiledResidualTerm origin rawRight right
+  | _, _ => false
+
+theorem checkCompiledResidualAtomEvidence_iff [DecidableEq Domain]
+    [DecidableEq Concept] [DecidableEq Role] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain)
+    (raw : RawResidualAtom Concept Role) (compiled : CompiledResidualAtom Concept Role Var) :
+    checkCompiledResidualAtomEvidence origin raw compiled = true ↔
+      CompiledResidualAtomEvidence origin raw compiled := by
+  cases raw <;> cases compiled <;>
+    simp only [checkCompiledResidualAtomEvidence, Bool.false_eq_true,
+      Bool.and_eq_true, decide_eq_true_eq,
+      checkCompiledResidualTerm_iff] <;>
+    constructor <;> intro h
+  all_goals try { contradiction }
+  · rcases h with ⟨rfl, hterm⟩; exact .concept hterm
+  · cases h with | concept hterm => exact ⟨rfl, hterm⟩
+  · rcases h with ⟨⟨rfl, hsource⟩, htarget⟩; exact .role hsource htarget
+  · cases h with | role hsource htarget => exact ⟨⟨rfl, hsource⟩, htarget⟩
+  · exact .eq h.1 h.2
+  · cases h with | eq hleft hright => exact ⟨hleft, hright⟩
+
+def checkCompiledResidualAtoms [DecidableEq Domain] [DecidableEq Concept]
+    [DecidableEq Role] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain) :
+    List (RawResidualAtom Concept Role) →
+      List (CompiledResidualAtom Concept Role Var) → Bool
+  | [], [] => true
+  | raw :: raws, compiled :: compileds =>
+      checkCompiledResidualAtomEvidence origin raw compiled &&
+        checkCompiledResidualAtoms origin raws compileds
+  | _, _ => false
+
+theorem checkCompiledResidualAtoms_iff [DecidableEq Domain]
+    [DecidableEq Concept] [DecidableEq Role] [DecidableEq Var]
+    (origin : Var → ResidualVarOrigin Domain) (raw : List (RawResidualAtom Concept Role))
+    (compiled : List (CompiledResidualAtom Concept Role Var)) :
+    checkCompiledResidualAtoms origin raw compiled = true ↔
+      List.Forall₂ (CompiledResidualAtomEvidence origin) raw compiled := by
+  induction raw generalizing compiled with
+  | nil => cases compiled <;> simp [checkCompiledResidualAtoms]
+  | cons atom atoms ih =>
+      cases compiled with
+      | nil => simp [checkCompiledResidualAtoms]
+      | cons compiledAtom compiledAtoms =>
+          simp [checkCompiledResidualAtoms, checkCompiledResidualAtomEvidence_iff, ih]
+
+def checkResidualPins [DecidableEq Domain] (origin : Fin variableCount → ResidualVarOrigin Domain)
+    (pins : List (Fin variableCount × Domain)) : Bool :=
+  pins.all (fun (slot, witness) =>
+    match origin slot with
+    | .source _ => false
+    | .function _ expected => decide (expected = witness)) &&
+  (List.finRange variableCount).all (fun slot =>
+    match origin slot with
+    | .source _ => true
+    | .function _ witness => decide ((slot, witness) ∈ pins))
+
+theorem checkResidualPins_iff [DecidableEq Domain]
+    (origin : Fin variableCount → ResidualVarOrigin Domain)
+    (pins : List (Fin variableCount × Domain)) :
+    checkResidualPins origin pins = true ↔
+      ∀ slot witness, (slot, witness) ∈ pins ↔
+        match origin slot with
+        | .source _ => False
+        | .function _ expected => expected = witness := by
+  simp only [checkResidualPins, Bool.and_eq_true, List.all_eq_true,
+    List.mem_finRange, decide_eq_true_eq]
+  constructor
+  · rintro ⟨hsound, hcomplete⟩ slot witness
+    cases horigin : origin slot with
+    | source name =>
+        simp only
+        constructor
+        · intro hmem
+          have := hsound (slot, witness) hmem
+          simp [horigin] at this
+        · intro h; contradiction
+    | function function expected =>
+        simp only
+        constructor
+        · intro hmem
+          simpa [horigin] using hsound (slot, witness) hmem
+        · intro heq
+          subst witness
+          simpa [horigin] using hcomplete slot
+  · intro hexact
+    constructor
+    · rintro ⟨slot, witness⟩ hmem
+      cases horigin : origin slot with
+      | source name =>
+          have hfalse := (hexact slot witness).mp hmem
+          simp [horigin] at hfalse
+      | function function expected =>
+          simpa [horigin] using (hexact slot witness).mp hmem
+    · intro slot _
+      cases horigin : origin slot with
+      | source name => simp [horigin]
+      | function function witness =>
+          simpa [horigin] using (hexact slot witness).mpr (by simp [horigin])
+
+def checkResidualCompilationEvidence [DecidableEq Domain]
+    [DecidableEq Concept] [DecidableEq Role]
+    (origin : Fin variableCount → ResidualVarOrigin Domain)
+    (raw : RawResidualClause Concept Role)
+    (compiled : CompiledResidualClause Domain Concept Role (Fin variableCount)) : Bool :=
+  checkCompiledResidualAtoms origin raw.body compiled.body &&
+    checkCompiledResidualAtoms origin raw.head compiled.head &&
+    checkResidualPins origin compiled.pins
+
+theorem checkResidualCompilationEvidence_iff [DecidableEq Domain]
+    [DecidableEq Concept] [DecidableEq Role]
+    (origin : Fin variableCount → ResidualVarOrigin Domain)
+    (raw : RawResidualClause Concept Role)
+    (compiled : CompiledResidualClause Domain Concept Role (Fin variableCount)) :
+    checkResidualCompilationEvidence origin raw compiled = true ↔
+      ResidualCompilationEvidence origin raw compiled := by
+  simp only [checkResidualCompilationEvidence, Bool.and_eq_true,
+    checkCompiledResidualAtoms_iff, checkResidualPins_iff]
+  constructor
+  · rintro ⟨⟨hbody, hhead⟩, hpins⟩
+    refine ⟨hbody, hhead, ?_⟩
+    exact hpins
+  · intro h
+    refine ⟨⟨h.body, h.head⟩, ?_⟩
+    exact h.pins_exact
 
 theorem forall₂_satisfaction_iff
     (origin : Var → ResidualVarOrigin Domain) (base : RawTermInterp Domain)
@@ -172,8 +369,12 @@ theorem ResidualCompilationEvidence.compiled_implies_raw
   let assignment := assignmentOf origin env
   have hpins : ∀ item ∈ compiled.pins, assignment item.1 = item.2 := by
     rintro ⟨slot, witness⟩ hmem
-    obtain ⟨function, horigin⟩ := (hevidence.pins_exact slot witness).mp hmem
-    simp [assignment, assignmentOf, horigin]
+    have hexact := (hevidence.pins_exact slot witness).mp hmem
+    cases horigin : origin slot with
+    | source name => simp [horigin] at hexact
+    | function function expected =>
+        simp only [horigin] at hexact
+        simp [assignment, assignmentOf, horigin, hexact]
   have hcompiledBody : ∀ atom ∈ compiled.body,
       satCompiledResidualAtom I assignment atom :=
     (forall₂_satisfaction_iff origin base pin hpin I env hevidence.body).mp hbody
