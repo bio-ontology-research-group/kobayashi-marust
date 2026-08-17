@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.26] – 2026-08-17
+
+### Prove one global Skolem interpretation for residual publication
+
+- Prove that every accepted canonical-witness record and every function-origin
+  residual variable agrees with one shared function-to-witness interpretation.
+- Reject conflicting or dead bindings semantically, then lift each accepted
+  residual compilation into a whole-theory entry carrying its checked
+  compilation evidence, compiled truth, and global pin compatibility.
+- Prove that packaging the independently numbered residual entries preserves
+  the exact raw residual-clause stream.
+
+Production still declines Lean-certified residual publication until the
+materialized direct, witness, and residual partitions are connected to the
+public taxonomy theorem. Repair mode, HT, CB, and concrete routing remain
+uncertified.
+
 ## [0.3.25] – 2026-08-17
 
 ### Check residual truth on the finite materialization

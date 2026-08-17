@@ -737,6 +737,236 @@ def DecodedCertificate.checkWitnessRecords {n : Nat}
       decide (Clause.nf3 record.sub record.role record.witness ∈ doc.ontology) &&
       decide (Clause.nf1 record.witness record.filler ∈ doc.ontology)
 
+def lookupBinding (fallback : α) (function : Nat) : List (Nat × α) → α
+  | [] => fallback
+  | binding :: bindings =>
+      if function = binding.1 then binding.2
+      else lookupBinding fallback function bindings
+
+theorem lookupBinding_eq_of_mem [DecidableEq α]
+    (fallback : α) (function : Nat) (witness : α)
+    (bindings : List (Nat × α))
+    (hconsistent : ∀ binding ∈ bindings, ∀ other ∈ bindings,
+      binding.1 = other.1 → binding.2 = other.2)
+    (hmem : (function, witness) ∈ bindings) :
+    lookupBinding fallback function bindings = witness := by
+  induction bindings with
+  | nil => simp at hmem
+  | cons binding bindings ih =>
+      simp only [lookupBinding]
+      by_cases heq : function = binding.1
+      · rw [if_pos heq]
+        exact hconsistent binding (by simp) (function, witness) (by simp [hmem]) heq.symm
+      · rw [if_neg heq]
+        apply ih
+        · intro left hleft right hright
+          exact hconsistent left (by simp [hleft]) right (by simp [hright])
+        · exact (List.mem_cons.mp hmem).resolve_left fun hequal =>
+            heq (congrArg Prod.fst hequal)
+
+def DecodedCertificate.bindingWitness {n : Nat}
+    (doc : DecodedCertificate n) (function : Nat) : Fin n :=
+  lookupBinding doc.top function doc.functionBindings
+
+def DecodedCertificate.sharedPin {n : Nat} (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom) :
+    Nat → doc.ResidualDomain :=
+  fun function => doc.residualDomainValue htopActive htopAlive
+    (doc.bindingWitness function)
+
+theorem DecodedCertificate.checkFunctionBindings_iff {n : Nat}
+    (doc : DecodedCertificate n) :
+    doc.checkFunctionBindings = true ↔
+      ∀ binding ∈ doc.functionBindings,
+        (binding.2 ∈ doc.active_concepts ∧
+          ¬doc.materialization.sub binding.2 doc.bottom) ∧
+        ∀ other ∈ doc.functionBindings,
+          binding.1 = other.1 → binding.2 = other.2 := by
+  simp [DecodedCertificate.checkFunctionBindings,
+    DecodedCertificate.residualValueAlive, imp_iff_not_or]
+
+theorem DecodedCertificate.sharedPin_eq_of_binding {n : Nat}
+    (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom)
+    (hcheck : doc.checkFunctionBindings = true)
+    (function : Nat) (witness : Fin n)
+    (hbinding : (function, witness) ∈ doc.functionBindings) :
+    doc.sharedPin htopActive htopAlive function =
+      materializedCanonicalWitness (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.bottom witness
+        ((doc.checkFunctionBindings_iff.mp hcheck (function, witness) hbinding).1.1)
+        ((doc.checkFunctionBindings_iff.mp hcheck (function, witness) hbinding).1.2) := by
+  have hvalid := doc.checkFunctionBindings_iff.mp hcheck
+  have hlookup : doc.bindingWitness function = witness := by
+    apply lookupBinding_eq_of_mem doc.top function witness doc.functionBindings
+    · intro binding hbinding' other hother
+      exact (hvalid binding hbinding').2 other hother
+    · exact hbinding
+  unfold DecodedCertificate.sharedPin
+  rw [hlookup]
+  simp only [DecodedCertificate.residualDomainValue]
+  split
+  · apply Subtype.ext
+    rfl
+  · rename_i hnot
+    exact False.elim (hnot (hvalid (function, witness) hbinding).1)
+
+theorem DecodedCertificate.witnessBinding_mem {n : Nat}
+    (doc : DecodedCertificate n)
+    (record : CanonicalWitnessRecord (Fin n) (Fin n))
+    (hrecord : record ∈ doc.witness_records) :
+    (record.function, record.witness) ∈ doc.functionBindings := by
+  unfold DecodedCertificate.functionBindings
+  apply List.mem_append_left
+  exact List.mem_map.mpr ⟨record, hrecord, rfl⟩
+
+theorem DecodedCertificate.residualBinding_mem {n : Nat}
+    (doc : DecodedCertificate n)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations)
+    (slot : Fin residual.variableCount) (function : Nat) (witness : Fin n)
+    (horigin : residual.decoded.origin slot = .function function witness) :
+    (function, witness) ∈ doc.functionBindings := by
+  unfold DecodedCertificate.functionBindings
+  apply List.mem_append_right
+  apply List.mem_flatMap.mpr
+  refine ⟨residual, hresidual, ?_⟩
+  unfold DecodedResidualCompilation.functionBindings
+  apply List.mem_filterMap.mpr
+  refine ⟨slot, by simp, ?_⟩
+  simp [horigin]
+
+theorem DecodedCertificate.checkWitnessRecords_valid {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkWitnessRecords = true)
+    (record : CanonicalWitnessRecord (Fin n) (Fin n))
+    (hrecord : record ∈ doc.witness_records) :
+    record.MaterializedValid (bottom := doc.bottom)
+      (fun concept => concept ∈ doc.active_concepts)
+      doc.materialization doc.ontology := by
+  simp only [DecodedCertificate.checkWitnessRecords, List.all_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  have hvalid := hcheck record hrecord
+  simp only [CanonicalWitnessRecord.MaterializedValid]
+  simp only [DecodedCertificate.residualValueAlive, Bool.and_eq_true,
+    decide_eq_true_eq] at hvalid
+  exact ⟨hvalid.1.1.1, hvalid.1.1.2, hvalid.1.2, hvalid.2⟩
+
+theorem DecodedCertificate.checkWitnessRecords_pinCompatible {n : Nat}
+    (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom)
+    (hbindings : doc.checkFunctionBindings = true)
+    (record : CanonicalWitnessRecord (Fin n) (Fin n))
+    (hrecord : record ∈ doc.witness_records) :
+    record.MaterializedPinCompatible (bottom := doc.bottom)
+      (fun concept => concept ∈ doc.active_concepts) doc.materialization
+      (doc.sharedPin htopActive htopAlive) := by
+  intro hactive halive
+  have hbinding := doc.witnessBinding_mem record hrecord
+  simpa using doc.sharedPin_eq_of_binding htopActive htopAlive hbindings
+    record.function record.witness hbinding
+
+theorem DecodedCertificate.sharedPin_eq_residualOrigin {n : Nat}
+    (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom)
+    (hbindings : doc.checkFunctionBindings = true)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations)
+    (slot : Fin residual.variableCount) (function : Nat) (witness : Fin n)
+    (horigin : residual.decoded.origin slot = .function function witness) :
+    doc.sharedPin htopActive htopAlive function =
+      doc.residualDomainValue htopActive htopAlive witness := by
+  have hbinding := doc.residualBinding_mem residual hresidual slot function witness horigin
+  have hvalid := (doc.checkFunctionBindings_iff.mp hbindings
+    (function, witness) hbinding).1
+  calc
+    doc.sharedPin htopActive htopAlive function =
+        materializedCanonicalWitness
+          (fun concept => concept ∈ doc.active_concepts) doc.materialization
+          doc.bottom witness hvalid.1 hvalid.2 := by
+      simpa using doc.sharedPin_eq_of_binding htopActive htopAlive hbindings
+        function witness hbinding
+    _ = doc.residualDomainValue htopActive htopAlive witness := by
+      apply Subtype.ext
+      simp only [DecodedCertificate.residualDomainValue]
+      split
+      · rfl
+      · rename_i hnot
+        exact False.elim (hnot hvalid)
+
+theorem DecodedCertificate.residualOrigin_pinCompatible {n : Nat}
+    (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom)
+    (hbindings : doc.checkFunctionBindings = true)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations) :
+    ∀ slot function witness,
+      residual.decoded.mappedOrigin
+          (doc.residualDomainValue htopActive htopAlive) slot =
+        .function function witness →
+      doc.sharedPin htopActive htopAlive function = witness := by
+  intro slot function witness horigin
+  cases hsource : residual.decoded.origin slot with
+  | source name =>
+      simp [DecodedResidualCompilation.mappedOrigin, hsource] at horigin
+  | function sourceFunction sourceWitness =>
+      simp only [DecodedResidualCompilation.mappedOrigin, hsource] at horigin
+      have hfunction := (ResidualVarOrigin.function.inj horigin).1
+      have hwitness := (ResidualVarOrigin.function.inj horigin).2
+      subst function
+      rw [← hwitness]
+      exact doc.sharedPin_eq_residualOrigin htopActive htopAlive hbindings
+        residual hresidual slot sourceFunction sourceWitness hsource
+
+def SomeDecodedResidualCompilation.toEntry {n : Nat}
+    (residual : SomeDecodedResidualCompilation n) {Domain : Type}
+    (map : Fin n → Domain)
+    (evidence : ResidualCompilationEvidence
+      (residual.decoded.mappedOrigin map) residual.decoded.raw
+      (residual.decoded.mappedCompiled map)) :
+    ResidualCompilationEntry Domain (Fin n) (Fin n) where
+  Var := Fin residual.variableCount
+  origin := residual.decoded.mappedOrigin map
+  raw := residual.decoded.raw
+  compiled := residual.decoded.mappedCompiled map
+  evidence := evidence
+
+theorem SomeDecodedResidualCompilation.toEntry_pinCompatible {n : Nat}
+    (residual : SomeDecodedResidualCompilation n) {Domain : Type}
+    (map : Fin n → Domain)
+    (evidence : ResidualCompilationEvidence
+      (residual.decoded.mappedOrigin map) residual.decoded.raw
+      (residual.decoded.mappedCompiled map))
+    (pin : Nat → Domain)
+    (hcompatible : ∀ slot function witness,
+      residual.decoded.mappedOrigin map slot = .function function witness →
+        pin function = witness) :
+    (residual.toEntry map evidence).pinCompatible pin := by
+  exact hcompatible
+
+@[simp] theorem SomeDecodedResidualCompilation.toEntry_raw {n : Nat}
+    (residual : SomeDecodedResidualCompilation n) {Domain : Type}
+    (map : Fin n → Domain)
+    (evidence : ResidualCompilationEvidence
+      (residual.decoded.mappedOrigin map) residual.decoded.raw
+      (residual.decoded.mappedCompiled map)) :
+    (residual.toEntry map evidence).raw = residual.decoded.raw := rfl
+
+@[simp] theorem SomeDecodedResidualCompilation.toEntry_compiledHolds {n : Nat}
+    (residual : SomeDecodedResidualCompilation n) {Domain : Type}
+    (map : Fin n → Domain)
+    (evidence : ResidualCompilationEvidence
+      (residual.decoded.mappedOrigin map) residual.decoded.raw
+      (residual.decoded.mappedCompiled map))
+    {top bottom : Fin n} (I : Interp Domain (Fin n) (Fin n) top bottom) :
+    (residual.toEntry map evidence).compiledHolds I ↔
+      satCompiledResidualClause I (residual.decoded.mappedCompiled map) :=
+  Iff.rfl
+
 def DecodedCertificate.residualModel {n : Nat} (doc : DecodedCertificate n) :
     FiniteResidualModel doc.ResidualDomain (Fin n) (Fin n) :=
   letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
@@ -897,6 +1127,30 @@ theorem DecodedCertificate.checkFiniteResiduals_evidence {n : Nat}
           (doc.residualDomainValue htopActive hconsistent))).mp hevidence
     · contradiction
   · contradiction
+
+def DecodedCertificate.certifiedResidualEntries {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    List (ResidualCompilationEntry doc.ResidualDomain (Fin n) (Fin n)) :=
+  let htopActive : doc.top ∈ doc.active_concepts := by
+    simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+    split at hcheck
+    · split at hcheck
+      · assumption
+      · contradiction
+    · contradiction
+  let map := doc.residualDomainValue htopActive hconsistent
+  doc.residual_compilations.attach.map fun residual =>
+    residual.1.toEntry map
+      (doc.checkFiniteResiduals_evidence hcheck hconsistent residual.1 residual.2)
+
+theorem DecodedCertificate.certifiedResidualEntries_raw {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    (doc.certifiedResidualEntries hcheck hconsistent).map
+        ResidualCompilationEntry.raw = doc.residualRawOntology := by
+  simp [DecodedCertificate.certifiedResidualEntries,
+    DecodedCertificate.residualRawOntology]
 
 #print axioms DecodedCertificate.residualModel_sat_iff
 #print axioms DecodedCertificate.checkFiniteResiduals_compiled
