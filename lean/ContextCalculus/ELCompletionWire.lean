@@ -442,6 +442,36 @@ def DecodedCertificate.checkActiveConcepts {n : Nat} (doc : DecodedCertificate n
   doc.active_concepts.all (fun id => decide (id ∈ doc.expectedActiveConcepts)) &&
     doc.expectedActiveConcepts.all (fun id => decide (id ∈ doc.active_concepts))
 
+def DecodedCertificate.checkSignatureClosed {n : Nat}
+    (doc : DecodedCertificate n) : Bool :=
+  decide (doc.top ∈ doc.active_concepts) &&
+    doc.ontology.all fun clause =>
+      clause.concepts.all fun concept => decide (concept ∈ doc.active_concepts)
+
+theorem Clause.mentionsConcept_iff_mem_concepts
+    (clause : Clause Concept Role) (concept : Concept) :
+    clause.mentionsConcept concept ↔ concept ∈ clause.concepts := by
+  cases clause <;> simp [Clause.mentionsConcept, Clause.concepts, eq_comm]
+
+theorem DecodedCertificate.checkSignatureClosed_iff {n : Nat}
+    (doc : DecodedCertificate n) :
+    doc.checkSignatureClosed = true ↔
+      SignatureClosed (fun concept => concept ∈ doc.active_concepts)
+        doc.top doc.ontology := by
+  simp only [DecodedCertificate.checkSignatureClosed, Bool.and_eq_true,
+    decide_eq_true_eq, List.all_eq_true]
+  constructor
+  · rintro ⟨htop, hclauses⟩
+    refine ⟨htop, ?_⟩
+    intro clause hclause concept hmentions
+    exact hclauses clause hclause concept
+      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mp hmentions)
+  · intro hclosed
+    refine ⟨hclosed.top_active, ?_⟩
+    intro clause hclause concept hconcept
+    exact hclosed.clause_active clause hclause concept
+      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mpr hconcept)
+
 def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
   doc.checkFactAgreement && doc.checkActiveConcepts
 
@@ -508,6 +538,100 @@ def RawResidualAtom.conceptIds : RawResidualAtom Concept Role → List Concept
 def RawResidualClause.conceptIds
     (clause : RawResidualClause Concept Role) : List Concept :=
   (clause.body ++ clause.head).flatMap RawResidualAtom.conceptIds
+
+@[simp] theorem rawAtomToResidual_conceptIds
+    (atom : RawAtom Concept Role) :
+    (rawAtomToResidual atom).conceptIds = atom.conceptIds := by
+  cases atom <;> rfl
+
+@[simp] theorem RawClause.toResidual_conceptIds
+    (clause : RawClause Concept Role) :
+    clause.toResidual.conceptIds = clause.conceptIds := by
+  simp [RawResidualClause.conceptIds, RawClause.conceptIds,
+    RawClause.toResidual, List.flatMap_map]
+
+theorem satRawAtom_congrOn
+    (I J : Interp Domain Concept Role top bottom)
+    (T : RawTermInterp Domain) (env : Nat → Domain)
+    (atom : RawAtom Concept Role)
+    (hconcept : ∀ concept ∈ atom.conceptIds, ∀ value,
+      I.concept concept value ↔ J.concept concept value)
+    (hrole : ∀ role source target,
+      I.role role source target ↔ J.role role source target) :
+    satRawAtom I T env atom ↔ satRawAtom J T env atom := by
+  cases atom with
+  | concept concept term =>
+      exact hconcept concept (by simp [RawAtom.conceptIds]) (evalRawTerm T env term)
+  | role role source target =>
+      exact hrole role (evalRawTerm T env source) (evalRawTerm T env target)
+
+theorem satRawClause_congrOn
+    (I J : Interp Domain Concept Role top bottom)
+    (T : RawTermInterp Domain) (clause : RawClause Concept Role)
+    (hconcept : ∀ concept ∈ clause.conceptIds, ∀ value,
+      I.concept concept value ↔ J.concept concept value)
+    (hrole : ∀ role source target,
+      I.role role source target ↔ J.role role source target) :
+    satRawClause I T clause ↔ satRawClause J T clause := by
+  have hatom : ∀ atom ∈ clause.body ++ clause.head, ∀ env,
+      satRawAtom I T env atom ↔ satRawAtom J T env atom := by
+    intro atom hatom env
+    apply satRawAtom_congrOn I J T env atom
+    · intro concept hconceptAtom value
+      apply hconcept concept
+      unfold RawClause.conceptIds
+      exact List.mem_flatMap.mpr ⟨atom, hatom, hconceptAtom⟩
+    · exact hrole
+  constructor
+  · intro hsatisfied env hbody
+    have hbodyI : holdsRawAtoms I T env clause.body := by
+      intro atom hatomBody
+      exact (hatom atom (List.mem_append_left _ hatomBody) env).mpr
+        (hbody atom hatomBody)
+    obtain ⟨atom, hatomHead, hsatisfiedAtom⟩ := hsatisfied env hbodyI
+    exact ⟨atom, hatomHead,
+      (hatom atom (List.mem_append_right _ hatomHead) env).mp hsatisfiedAtom⟩
+  · intro hsatisfied env hbody
+    have hbodyJ : holdsRawAtoms J T env clause.body := by
+      intro atom hatomBody
+      exact (hatom atom (List.mem_append_left _ hatomBody) env).mp
+        (hbody atom hatomBody)
+    obtain ⟨atom, hatomHead, hsatisfiedAtom⟩ := hsatisfied env hbodyJ
+    exact ⟨atom, hatomHead,
+      (hatom atom (List.mem_append_right _ hatomHead) env).mpr hsatisfiedAtom⟩
+
+def recastInterpEndpoints
+    (I : Interp Domain Concept Role top bottom)
+    (htop : top = targetTop) (hbottom : bottom = targetBottom) :
+    Interp Domain Concept Role targetTop targetBottom := by
+  subst targetTop
+  subst targetBottom
+  exact I
+
+@[simp] theorem recastInterpEndpoints_concept
+    (I : Interp Domain Concept Role top bottom)
+    (htop : top = targetTop) (hbottom : bottom = targetBottom) :
+    (recastInterpEndpoints I htop hbottom).concept = I.concept := by
+  subst targetTop
+  subst targetBottom
+  rfl
+
+@[simp] theorem recastInterpEndpoints_role
+    (I : Interp Domain Concept Role top bottom)
+    (htop : top = targetTop) (hbottom : bottom = targetBottom) :
+    (recastInterpEndpoints I htop hbottom).role = I.role := by
+  subst targetTop
+  subst targetBottom
+  rfl
+
+theorem models_recastInterpEndpoints_iff
+    (I : Interp Domain Concept Role top bottom)
+    (htop : top = targetTop) (hbottom : bottom = targetBottom)
+    (O : Ontology Concept Role) :
+    models (recastInterpEndpoints I htop hbottom) O ↔ models I O := by
+  subst targetTop
+  subst targetBottom
+  rfl
 
 def listSetEq [DecidableEq α] (left right : List α) : Bool :=
   left.all (· ∈ right) && right.all (· ∈ left)
@@ -637,6 +761,41 @@ def DecodedCertificate.checkPartitionedNormalization {n : Nat}
   | some certificate =>
       sourceOrigins && listSetEq doc.normal_ontology
         (certificate.normal.normal ++ doc.witnessNormalOntology)
+
+theorem DecodedCertificate.sourceConcept_origin {n : Nat}
+    (doc : DecodedCertificate n)
+    (hcheck : doc.checkPartitionedNormalization = true)
+    (clause : RawResidualClause (Fin n) (Fin n))
+    (hclause : clause ∈ doc.source_ontology)
+    (concept : Fin n) (hconcept : concept ∈ clause.conceptIds) :
+    doc.conceptOrigin concept = .inl concept := by
+  simp only [DecodedCertificate.checkPartitionedNormalization] at hcheck
+  split at hcheck
+  · contradiction
+  · simp only [Bool.and_eq_true] at hcheck
+    have horigins := hcheck.1
+    simp only [List.all_eq_true, decide_eq_true_eq] at horigins
+    apply horigins
+    apply List.mem_append_left
+    apply List.mem_flatMap.mpr
+    exact ⟨clause, hclause, hconcept⟩
+
+theorem DecodedCertificate.rawConcept_origin {n : Nat}
+    (doc : DecodedCertificate n)
+    (hnormal : doc.checkPartitionedNormalization = true)
+    (hpartition : doc.checkSourcePartition = true)
+    (clause : RawClause (Fin n) (Fin n))
+    (hclause : clause ∈ doc.raw_ontology)
+    (concept : Fin n) (hconcept : concept ∈ clause.conceptIds) :
+    doc.conceptOrigin concept = .inl concept := by
+  have hpartitioned : clause.toResidual ∈ doc.partitionedSourceOntology := by
+    unfold DecodedCertificate.partitionedSourceOntology
+    apply List.mem_append_left
+    apply List.mem_append_left
+    exact List.mem_map.mpr ⟨clause, hclause, rfl⟩
+  have hsource : clause.toResidual ∈ doc.source_ontology :=
+    (doc.checkSourcePartition_iff.mp hpartition clause.toResidual).mpr hpartitioned
+  exact doc.sourceConcept_origin hnormal clause.toResidual hsource concept (by simpa using hconcept)
 
 /-- Validate the previously trusted normalization boundary. -/
 def DecodedCertificate.checkNormalization {n : Nat} (doc : DecodedCertificate n) : Bool :=
@@ -1152,6 +1311,80 @@ theorem DecodedCertificate.certifiedResidualEntries_raw {n : Nat}
   simp [DecodedCertificate.certifiedResidualEntries,
     DecodedCertificate.residualRawOntology]
 
+theorem DecodedCertificate.checkFiniteResiduals_closed {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true) :
+    checkClosedTrace doc.top doc.bottom doc.ontology doc.trace = true := by
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · assumption
+  · contradiction
+
+theorem DecodedCertificate.checkFiniteResiduals_topActive {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true) :
+    doc.top ∈ doc.active_concepts := by
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · split at hcheck
+    · assumption
+    · contradiction
+  · contradiction
+
+theorem DecodedCertificate.checkFiniteResiduals_functionBindings {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    doc.checkFunctionBindings = true := by
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · split at hcheck
+    · simp only [Bool.and_eq_true] at hcheck
+      exact hcheck.1.1
+    · contradiction
+  · contradiction
+
+theorem DecodedCertificate.checkFiniteResiduals_witnessRecords {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    doc.checkWitnessRecords = true := by
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · split at hcheck
+    · simp only [Bool.and_eq_true] at hcheck
+      exact hcheck.1.2
+    · contradiction
+  · contradiction
+
+theorem DecodedCertificate.certifiedResidualEntries_pinCompatible {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    ∀ entry ∈ doc.certifiedResidualEntries hcheck hconsistent,
+      entry.pinCompatible
+        (doc.sharedPin (doc.checkFiniteResiduals_topActive hcheck) hconsistent) := by
+  intro entry hentry
+  simp only [DecodedCertificate.certifiedResidualEntries, List.mem_map] at hentry
+  rcases hentry with ⟨residual, hresidualEntry⟩
+  rcases residual with ⟨residual, hresidual⟩
+  rw [← hresidualEntry.2]
+  apply SomeDecodedResidualCompilation.toEntry_pinCompatible
+  exact doc.residualOrigin_pinCompatible
+    (doc.checkFiniteResiduals_topActive hcheck) hconsistent
+    (doc.checkFiniteResiduals_functionBindings hcheck hconsistent)
+    residual hresidual
+
+theorem DecodedCertificate.certifiedResidualEntries_compiled {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    let closed := checkClosedTrace_closed (doc.checkFiniteResiduals_closed hcheck)
+    ∀ entry ∈ doc.certifiedResidualEntries hcheck hconsistent,
+      entry.compiledHolds
+        (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+          doc.materialization doc.top doc.bottom closed) := by
+  intro closed entry hentry
+  simp only [DecodedCertificate.certifiedResidualEntries, List.mem_map] at hentry
+  rcases hentry with ⟨residual, hresidualEntry⟩
+  rcases residual with ⟨residual, hresidual⟩
+  rw [← hresidualEntry.2]
+  exact doc.checkFiniteResiduals_compiled hcheck hconsistent residual hresidual
+
 #print axioms DecodedCertificate.residualModel_sat_iff
 #print axioms DecodedCertificate.checkFiniteResiduals_compiled
 #print axioms DecodedCertificate.checkFiniteResiduals_evidence
@@ -1178,13 +1411,70 @@ theorem DecodedCertificate.checkPartitionedNormalization_direct_models
       certificate.normal.evidence.models_project J hnormal
     exact (certificate.raw.models_iff (projectInterp J) T).mpr hsources
 
+theorem DecodedCertificate.checkPartitionedNormalization_direct_models_materialized
+    {n : Nat} (doc : DecodedCertificate n)
+    (closed : ClosedState doc.materialization doc.top doc.bottom doc.ontology)
+    (hsig : SignatureClosed (fun concept => concept ∈ doc.active_concepts)
+      doc.top doc.ontology)
+    (T : RawTermInterp doc.ResidualDomain)
+    (hnormal : doc.checkPartitionedNormalization = true)
+    (horigin : doc.checkOriginOntology = true)
+    (hcanonical : doc.checkCanonicalOrigins = true)
+    (hpartition : doc.checkSourcePartition = true) :
+    modelsRaw
+      (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.top doc.bottom closed)
+      T doc.raw_ontology := by
+  let I := materializedCanon (fun concept => concept ∈ doc.active_concepts)
+    doc.materialization doc.top doc.bottom closed
+  letI : Nonempty (Fin n) := ⟨doc.top⟩
+  let inverse := Function.invFun doc.conceptOrigin
+  have hleft : Function.LeftInverse inverse doc.conceptOrigin :=
+    Function.leftInverse_invFun doc.conceptOrigin_injective
+  have hmodelsI : models I doc.ontology :=
+    materializedCanon_models _ doc.materialization closed hsig
+  have hmapped : models
+      (pushforwardInterp doc.conceptOrigin inverse hleft I)
+      (mapOntologyConcept doc.conceptOrigin doc.ontology) :=
+    (models_mapConcept_pushforward_iff doc.conceptOrigin inverse hleft I
+      doc.ontology).mpr hmodelsI
+  have hnormalModels : models
+      (pushforwardInterp doc.conceptOrigin inverse hleft I)
+      doc.normal_ontology :=
+    (models_iff_of_listSetEq
+      (pushforwardInterp doc.conceptOrigin inverse hleft I) horigin).mpr hmapped
+  simp only [DecodedCertificate.checkCanonicalOrigins, Bool.and_eq_true,
+    decide_eq_true_eq] at hcanonical
+  rcases hcanonical with ⟨htop, hbottom⟩
+  let J := recastInterpEndpoints
+    (pushforwardInterp doc.conceptOrigin inverse hleft I) htop hbottom
+  have hnormalJ : models J doc.normal_ontology :=
+    (models_recastInterpEndpoints_iff
+      (pushforwardInterp doc.conceptOrigin inverse hleft I)
+      htop hbottom doc.normal_ontology).mpr hnormalModels
+  have hraw := doc.checkPartitionedNormalization_direct_models
+    J T hnormal hnormalJ
+  intro clause hclause
+  have hconceptAgreement : ∀ concept ∈ clause.conceptIds, ∀ value,
+      I.concept concept value ↔ (projectInterp J).concept concept value := by
+    intro concept hconcept value
+    have hinverse := hleft concept
+    rw [doc.rawConcept_origin hnormal hpartition clause hclause concept hconcept] at hinverse
+    simp [I, J, projectInterp, pushforwardInterp, inverse, hinverse]
+  have hroleAgreement : ∀ role source target,
+      I.role role source target ↔ (projectInterp J).role role source target := by
+    intro role source target
+    simp [I, J, projectInterp, pushforwardInterp]
+  exact (satRawClause_congrOn I (projectInterp J) T clause
+    hconceptAgreement hroleAgreement).mpr (hraw clause hclause)
+
 #print axioms DecodedCertificate.checkPartitionedNormalization_direct_models
 
 def DecodedCertificate.checkV5 {n : Nat} (doc : DecodedCertificate n) : Bool :=
   doc.checkCanonicalOrigins && doc.checkOriginOntology &&
     doc.checkSourcePartition && doc.checkNormalizationV5 &&
     doc.residual_compilations.all (fun residual => residual.check) &&
-    doc.checkFiniteResiduals && doc.check
+    doc.checkFiniteResiduals && doc.checkSignatureClosed && doc.check
 
 theorem DecodedCertificate.residualCompilation_valid {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
@@ -1194,7 +1484,167 @@ theorem DecodedCertificate.residualCompilation_valid {n : Nat}
       residual.decoded.compiled := by
   simp only [DecodedCertificate.checkV5, Bool.and_eq_true, List.all_eq_true] at hcheck
   exact (DecodedResidualCompilation.check_iff residual.decoded).mp
-    (hcheck.1.1.2 residual hresidual)
+    (hcheck.1.1.1.2 residual hresidual)
+
+def DecodedCertificate.sourceResidualTheory {n : Nat}
+    (doc : DecodedCertificate n) :
+    ResidualTheory (Fin n) (Fin n) doc.top doc.bottom where
+  holds := fun I => ∃ T, modelsRawResidual I T doc.source_ontology
+
+theorem DecodedCertificate.checkV5_finiteResiduals {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true) :
+    doc.checkFiniteResiduals = true := by
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  exact hcheck.1.1.2
+
+theorem DecodedCertificate.checkV5_sourceResidual_holds {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
+    doc.sourceResidualTheory.holds
+      (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.top doc.bottom
+        (checkClosedTrace_closed
+          (doc.checkFiniteResiduals_closed
+            (doc.checkV5_finiteResiduals hcheck)))) := by
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hcanonical := hcheck.1.1.1.1.1.1.1
+  have horigin := hcheck.1.1.1.1.1.1.2
+  have hpartition := hcheck.1.1.1.1.1.2
+  have hnormal := hcheck.1.1.1.1.2
+  have hpartitionedNormalization : doc.checkPartitionedNormalization = true := by
+    simp only [DecodedCertificate.checkNormalizationV5] at hnormal
+    split at hnormal
+    · contradiction
+    · exact hnormal
+  have hfinite := hcheck.1.1.2
+  have hsignature := hcheck.1.2
+  let closed := checkClosedTrace_closed (doc.checkFiniteResiduals_closed hfinite)
+  let htopActive := doc.checkFiniteResiduals_topActive hfinite
+  let topValue := doc.residualDomainValue htopActive hconsistent doc.top
+  let base : RawTermInterp doc.ResidualDomain := {
+    individual := fun _ => topValue
+    auxiliary := fun _ _ => topValue
+    function := fun _ _ => topValue
+  }
+  let pin := doc.sharedPin htopActive hconsistent
+  let entries := doc.certifiedResidualEntries hfinite hconsistent
+  have hsig := doc.checkSignatureClosed_iff.mp hsignature
+  have hdirect : modelsRaw
+      (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.top doc.bottom closed)
+      (pinnedTermInterp base pin) doc.raw_ontology :=
+    doc.checkPartitionedNormalization_direct_models_materialized closed hsig
+      (pinnedTermInterp base pin) hpartitionedNormalization horigin hcanonical hpartition
+  have hvalid : ∀ record ∈ doc.witness_records,
+      record.MaterializedValid (bottom := doc.bottom)
+        (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.ontology :=
+    doc.checkWitnessRecords_valid
+      (doc.checkFiniteResiduals_witnessRecords hfinite hconsistent)
+  have hpins : ∀ record ∈ doc.witness_records,
+      record.MaterializedPinCompatible (bottom := doc.bottom)
+        (fun concept => concept ∈ doc.active_concepts) doc.materialization pin :=
+    doc.checkWitnessRecords_pinCompatible htopActive hconsistent
+      (doc.checkFiniteResiduals_functionBindings hfinite hconsistent)
+  have hcompatible : ∀ entry ∈ entries, entry.pinCompatible pin := by
+    exact doc.certifiedResidualEntries_pinCompatible hfinite hconsistent
+  have hcompiled : ∀ entry ∈ entries,
+      entry.compiledHolds
+        (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+          doc.materialization doc.top doc.bottom closed) := by
+    exact doc.certifiedResidualEntries_compiled hfinite hconsistent
+  have hpartitioned := materialized_partitionedRawOntology_satisfies_source
+    (fun concept => concept ∈ doc.active_concepts) doc.ontology
+    doc.materialization closed
+    (partitionedRawOntology doc.raw_ontology doc.witness_records entries)
+    doc.raw_ontology doc.witness_records entries base pin rfl hdirect hvalid hpins
+    hcompatible hcompiled
+  have hentriesRaw : entries.map ResidualCompilationEntry.raw =
+      doc.residualRawOntology :=
+    doc.certifiedResidualEntries_raw hfinite hconsistent
+  have hpartitionedEq :
+      partitionedRawOntology doc.raw_ontology doc.witness_records entries =
+        doc.partitionedSourceOntology := by
+    unfold partitionedRawOntology residualCompilationRawOntology
+      DecodedCertificate.partitionedSourceOntology
+    rw [hentriesRaw]
+  refine ⟨pinnedTermInterp base pin, ?_⟩
+  intro clause hclause
+  apply hpartitioned clause
+  rw [hpartitionedEq]
+  exact (doc.checkSourcePartition_iff.mp hpartition clause).mp hclause
+
+theorem DecodedCertificate.checkV5_entailsSubWithResidual_exact {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
+    (a b : Fin n) (hactive : a ∈ doc.active_concepts) :
+    EntailsSubWithResidual doc.ontology doc.sourceResidualTheory a b ↔
+      doc.materialization.sub a doc.bottom ∨ doc.materialization.sub a b := by
+  have hcheckV5 := hcheck
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hfinite := hcheck.1.1.2
+  have hsignature := hcheck.1.2
+  have hcore := hcheck.2
+  let closed := checkClosedTrace_closed (doc.checkFiniteResiduals_closed hfinite)
+  have hsound : SoundState doc.materialization doc.top doc.bottom doc.ontology := by
+    simp only [DecodedCertificate.check, Bool.and_eq_true] at hcore
+    exact checkedTrace_soundState hcore.1.1.1.1
+  have hsig := doc.checkSignatureClosed_iff.mp hsignature
+  by_cases hconsistent : ¬doc.materialization.sub doc.top doc.bottom
+  · exact entailsSubWithResidual_iff_finiteMaterialized closed hsound
+      (fun concept => concept ∈ doc.active_concepts) hsig doc.sourceResidualTheory
+      (doc.checkV5_sourceResidual_holds hcheckV5 hpartitionedMode hconsistent)
+      a b hactive
+  · have htopBottom : doc.materialization.sub doc.top doc.bottom :=
+      Classical.not_not.mp hconsistent
+    have hunsat : Unsatisfiable (top := doc.top) (bottom := doc.bottom)
+        doc.ontology := (unsat_iff_materialized closed hsound).mpr htopBottom
+    have haBottom : doc.materialization.sub a doc.bottom := by
+      have hentails : EntailsSub (top := doc.top) (bottom := doc.bottom)
+          doc.ontology a doc.bottom := by
+        intro Domain I hmodels x _
+        letI : Nonempty Domain := ⟨x⟩
+        exact False.elim (hunsat I hmodels)
+      rcases (entails_iff_materialized closed hsound a doc.bottom).mp hentails with
+        hbottom | hbottom
+      · exact hbottom
+      · exact hbottom
+    constructor
+    · intro _
+      exact Or.inl haBottom
+    · intro _
+      exact bottom_sound_withResidual (hsound.subSound haBottom)
+
+theorem DecodedCertificate.checkV5_unsatisfiableWithResidual_exact {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty)) :
+    UnsatisfiableWithResidual doc.ontology doc.sourceResidualTheory ↔
+      doc.materialization.sub doc.top doc.bottom := by
+  have hcheckV5 := hcheck
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hfinite := hcheck.1.1.2
+  have hsignature := hcheck.1.2
+  have hcore := hcheck.2
+  let closed := checkClosedTrace_closed (doc.checkFiniteResiduals_closed hfinite)
+  have hsound : SoundState doc.materialization doc.top doc.bottom doc.ontology := by
+    simp only [DecodedCertificate.check, Bool.and_eq_true] at hcore
+    exact checkedTrace_soundState hcore.1.1.1.1
+  have hsig := doc.checkSignatureClosed_iff.mp hsignature
+  by_cases hconsistent : ¬doc.materialization.sub doc.top doc.bottom
+  · exact unsatisfiableWithResidual_iff_finiteMaterialized closed hsound
+      (fun concept => concept ∈ doc.active_concepts) hsig doc.sourceResidualTheory
+      (doc.checkV5_sourceResidual_holds hcheckV5 hpartitionedMode hconsistent)
+  · have htopBottom : doc.materialization.sub doc.top doc.bottom :=
+      Classical.not_not.mp hconsistent
+    constructor
+    · intro _
+      exact htopBottom
+    · intro _
+      exact top_bottom_sound_withResidual (hsound.subSound htopBottom)
 
 #print axioms DecodedCertificate.residualCompilation_valid
 
@@ -1296,6 +1746,17 @@ theorem DecodedCertificate.public_subsumption_sound {n : Nat}
         exact Or.inr hfact
       · simp at hdecoded
 
+theorem DecodedCertificate.public_subsumption_sound_source {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true) {a b : Fin n}
+    (hpublic : (a, b) ∈ doc.public_subsumptions) :
+    EntailsSubWithResidual doc.ontology doc.sourceResidualTheory a b := by
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hcore := hcheck.2
+  have hsound : EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a b := doc.public_subsumption_sound hcore hpublic
+  intro Domain I hmodels x hsub
+  exact hsound I hmodels.1 x hsub
+
 theorem DecodedCertificate.public_subsumption_complete_of_satisfiable {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
     (hactive : a ∈ doc.active_concepts)
@@ -1314,6 +1775,34 @@ theorem DecodedCertificate.public_subsumption_complete_of_satisfiable {n : Nat}
     simp only [DecodedCertificate.expectedPublicOutput, List.mem_filterMap]
     refine ⟨Fact.sub a b, hsub, ?_⟩
     simp [haTop, haBottom, hba, hbTop]
+
+theorem DecodedCertificate.public_subsumption_complete_source_of_satisfiable
+    {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
+    {a b : Fin n} (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hsatisfiable : ¬ EntailsSubWithResidual doc.ontology
+      doc.sourceResidualTheory a doc.bottom)
+    (hentails : EntailsSubWithResidual doc.ontology
+      doc.sourceResidualTheory a b) :
+    (a, b) ∈ doc.public_subsumptions := by
+  have hcheckV5 := hcheck
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hcore := hcheck.2
+  have hexact := doc.checkV5_entailsSubWithResidual_exact hcheckV5 hpartitionedMode
+  have hmat := (hexact a b hactive).mp hentails
+  have hcoreEntails : EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a b := (doc.check_exact hcore).1 a b |>.mpr hmat
+  have hcoreSatisfiable : ¬EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a doc.bottom := by
+    intro hbottom
+    apply hsatisfiable
+    intro Domain I hmodels x hsub
+    exact hbottom I hmodels.1 x hsub
+  exact doc.public_subsumption_complete_of_satisfiable hcore hactive
+    haTop haBottom hba hbTop hcoreSatisfiable hcoreEntails
 
 theorem DecodedCertificate.namedSub_iff_expected {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) {sub sup : String} :
@@ -1352,6 +1841,26 @@ theorem DecodedCertificate.public_named_subsumption_complete_of_satisfiable {n :
   simp only [DecodedCertificate.expectedNamedOutput, List.mem_map]
   exact ⟨(a, b), doc.public_subsumption_complete_of_satisfiable hcheck hactive
     haTop haBottom hba hbTop hsatisfiable hentails, rfl⟩
+
+theorem DecodedCertificate.public_named_subsumption_complete_source_of_satisfiable
+    {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
+    {a b : Fin n} (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hsatisfiable : ¬ EntailsSubWithResidual doc.ontology
+      doc.sourceResidualTheory a doc.bottom)
+    (hentails : EntailsSubWithResidual doc.ontology
+      doc.sourceResidualTheory a b) :
+    (doc.symbols a, if b = doc.bottom then "owl:Nothing" else doc.symbols b) ∈
+      doc.public_named_subsumptions := by
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  apply (doc.namedSub_iff_expected hcheck.2).2
+  simp only [DecodedCertificate.expectedNamedOutput, List.mem_map]
+  exact ⟨(a, b), doc.public_subsumption_complete_source_of_satisfiable
+    (by simpa only [DecodedCertificate.checkV5, Bool.and_eq_true] using hcheck)
+    hpartitionedMode hactive haTop haBottom hba hbTop hsatisfiable hentails, rfl⟩
 
 theorem DecodedCertificate.top_active {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) :
@@ -1394,6 +1903,31 @@ theorem DecodedCertificate.public_inconsistent_exact {n : Nat}
     have hdecide : decide (Fact.sub doc.top doc.bottom ∈ doc.rust_facts) = true :=
       decide_eq_true hrust
     rw [hnamed.2, hdecide]
+
+theorem DecodedCertificate.public_inconsistent_source_exact {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty)) :
+    doc.public_inconsistent = true ↔
+      UnsatisfiableWithResidual doc.ontology doc.sourceResidualTheory := by
+  have hcheckV5 := hcheck
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hcore := hcheck.2
+  rw [doc.public_inconsistent_exact hcore]
+  rw [unsat_iff_materialized
+    (checkClosedTrace_closed
+      (doc.checkFiniteResiduals_closed hcheck.1.1.2))
+    (by
+      simp only [DecodedCertificate.check, Bool.and_eq_true] at hcore
+      exact checkedTrace_soundState hcore.1.1.1.1)]
+  exact (doc.checkV5_unsatisfiableWithResidual_exact hcheckV5 hpartitionedMode).symm
+
+#print axioms DecodedCertificate.checkV5_sourceResidual_holds
+#print axioms DecodedCertificate.checkV5_entailsSubWithResidual_exact
+#print axioms DecodedCertificate.checkV5_unsatisfiableWithResidual_exact
+#print axioms DecodedCertificate.public_subsumption_sound_source
+#print axioms DecodedCertificate.public_subsumption_complete_source_of_satisfiable
+#print axioms DecodedCertificate.public_inconsistent_source_exact
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
   return (← doc.decode).checkV5

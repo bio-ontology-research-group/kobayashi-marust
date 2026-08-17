@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.27] – 2026-08-17
+
+### Prove end-to-end residual source semantics and public exactness
+
+- Connect direct normalization, canonical witness rewrites, compiled residual
+  evidence, finite residual truth, and the checked source partition into one
+  model of the exact original raw clause stream.
+- Prove exact source-level subsumption and inconsistency for accepted
+  partitioned wire-v5 certificates, including a separate inconsistent-core
+  argument that does not fabricate live canonical witnesses.
+- Prove source-level soundness of public subsumptions and satisfiable-case
+  completeness of numeric and named public taxonomy output.
+- Add an executable signature-closure check and prove it equivalent to the
+  finite canonical model's `SignatureClosed` premise. Malformed certificates
+  can no longer rely on an incomplete active-concept domain.
+
+Production still declines Lean-certified residual publication until Rust emits
+the exact direct/witness/residual source partition consumed by these theorems.
+Repair mode, HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.26] – 2026-08-17
 
 ### Prove one global Skolem interpretation for residual publication
