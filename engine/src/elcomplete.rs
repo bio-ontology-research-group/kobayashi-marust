@@ -1427,6 +1427,9 @@ struct LeanElCertificate {
     /// The exact ID-level relation materialised by the public output loop.
     /// Names are a presentation concern; Lean checks the semantic filtering.
     public_subsumptions: Vec<LeanElSubFact>,
+    symbols: Vec<String>,
+    public_named_subsumptions: Vec<LeanElNamedSubFact>,
+    public_inconsistent: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1442,6 +1445,32 @@ struct LeanElEdgeFact {
     target: u32,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElNamedSubFact {
+    sub: String,
+    sup: String,
+}
+
+impl LeanElCertificate {
+    /// Materialize exactly the named result checked by Lean. Checker-enabled
+    /// publication returns this value directly, so no unchecked conversion can
+    /// intervene between acceptance and the worker's public result.
+    fn verified_result(&self) -> ElResult {
+        let mut subsumptions = std::collections::BTreeMap::<String, Vec<String>>::new();
+        for fact in &self.public_named_subsumptions {
+            subsumptions
+                .entry(fact.sub.clone())
+                .or_default()
+                .push(fact.sup.clone());
+        }
+        ElResult {
+            unresolved: Vec::new(),
+            subsumptions,
+            inconsistent: self.public_inconsistent,
+        }
+    }
+}
+
 /// Reconstruct the unoptimised formal NF1–NF7 closure and record one proof for
 /// every fact. This path is intentionally separate from the indexed production
 /// worklist: Lean checks the resulting derivations, and equality against `State`
@@ -1449,9 +1478,11 @@ struct LeanElEdgeFact {
 fn build_lean_el_certificate(
     nfs: &Nfs,
     st: &State,
-    symbol_count: usize,
+    interner: &Interner,
 ) -> Result<LeanElCertificate, String> {
     use std::collections::BTreeSet;
+
+    let symbol_count = interner.len();
 
     let mut subs: BTreeSet<(u32, u32)> = BTreeSet::new();
     let mut edges: BTreeSet<(u32, u32, u32)> = BTreeSet::new();
@@ -1641,7 +1672,12 @@ fn build_lean_el_certificate(
         .copied()
         .filter(|&a| a != BOTTOM)
         .collect();
+    // TOP is queried for the ontology inconsistency result even when it does
+    // not occur in an input normal form, so it is always an active context at
+    // the certificate boundary.
+    active_concepts.push(TOP);
     active_concepts.sort_unstable();
+    active_concepts.dedup();
     let mut rust_subsumptions = Vec::new();
     let mut rust_edges = Vec::new();
     for &sub in &active_concepts {
@@ -1665,8 +1701,19 @@ fn build_lean_el_certificate(
         .cloned()
         .collect();
     public_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
+    let public_named_subsumptions = public_subsumptions
+        .iter()
+        .map(|fact| LeanElNamedSubFact {
+            sub: interner.name(fact.sub).to_string(),
+            sup: if fact.sup == BOTTOM {
+                "owl:Nothing".to_string()
+            } else {
+                interner.name(fact.sup).to_string()
+            },
+        })
+        .collect();
     Ok(LeanElCertificate {
-        version: 1,
+        version: 2,
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
@@ -1676,6 +1723,9 @@ fn build_lean_el_certificate(
         rust_subsumptions,
         rust_edges,
         public_subsumptions,
+        symbols: interner.names.clone(),
+        public_named_subsumptions,
+        public_inconsistent: st.sub_super[TOP as usize].contains(&BOTTOM),
     })
 }
 
@@ -5011,6 +5061,10 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     let clauses = clauses;
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    // TOP is always a semantic concept context, even when no normalized axiom
+    // mentions it explicitly. The inconsistency readout queries TOP ⊑ BOTTOM,
+    // so omitting this initialization could miss an ontology-level clash.
+    nfs.concept_names.insert(TOP);
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
     // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
     // `residual`; the original `clauses` (millions of `JClause`, each owning
@@ -5092,7 +5146,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             }
             return None;
         }
-        let certificate = match build_lean_el_certificate(&nfs, &st, n) {
+        let certificate = match build_lean_el_certificate(&nfs, &st, &it) {
             Ok(certificate) => certificate,
             Err(error) => {
                 eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
@@ -5121,7 +5175,13 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             return None;
         }
         if let Some(checker) = lean_cert_checker.as_deref() {
-            let status = match std::process::Command::new(checker).arg(path).status() {
+            let status = match std::process::Command::new(checker)
+                .arg(path)
+                // The worker stdout is a JSON protocol. Checker diagnostics
+                // must never be allowed to corrupt that stream.
+                .stdout(std::process::Stdio::null())
+                .status()
+            {
                 Ok(status) => status,
                 Err(error) => {
                     eprintln!(
@@ -5141,6 +5201,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
                 );
                 return None;
             }
+            return Some(certificate.verified_result());
         }
     }
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
@@ -5306,13 +5367,28 @@ mod tests {
         }
         run(&idx, &mut state, &mut Prof::default());
 
-        let cert = build_lean_el_certificate(&nfs, &state, 7).expect("exact certificate");
-        assert_eq!(cert.version, 1);
+        let mut interner = Interner::new();
+        for name in ["A", "B", "r", "s", "t"] {
+            interner.intern(name);
+        }
+        let cert = build_lean_el_certificate(&nfs, &state, &interner)
+            .expect("exact certificate");
+        assert_eq!(cert.version, 2);
         assert!(!cert.trace.is_empty());
         let json = serde_json::to_string(&cert).expect("certificate JSON");
         assert!(json.contains("\"nf7\""));
         assert!(json.contains("\"reflexive\""));
         assert!(json.contains("\"public_subsumptions\""));
+        assert!(json.contains("\"public_named_subsumptions\""));
+        assert!(cert.active_concepts.contains(&TOP));
+        assert_eq!(cert.symbols.len(), 7);
+        assert_eq!(
+            cert.public_subsumptions.len(),
+            cert.public_named_subsumptions.len()
+        );
+        let verified = cert.verified_result();
+        assert_eq!(verified.inconsistent, cert.public_inconsistent);
+        assert!(verified.unresolved.is_empty());
         assert!(cert.public_subsumptions.iter().all(|fact| {
             fact.sub != TOP
                 && fact.sub != BOTTOM
@@ -5321,7 +5397,7 @@ mod tests {
         }));
 
         state.sub_super[2].insert(6);
-        assert!(build_lean_el_certificate(&nfs, &state, 7)
+        assert!(build_lean_el_certificate(&nfs, &state, &interner)
             .unwrap_err()
             .contains("Rust-only subsumption"));
     }

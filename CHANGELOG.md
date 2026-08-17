@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.6] – 2026-08-17
+
+### Certify named ELC publication and inconsistency
+
+- Extend the ELC wire certificate to version 2 with the complete finite symbol
+  table, named public subsumptions, and the public inconsistency flag.
+- Require the active context set to match every concept position in the
+  normalized ontology, with `TOP` always active and `BOTTOM` excluded as a
+  subject context. This prevents a certificate from proving a selected subset
+  while silently omitting another taxonomy subject.
+- Prove soundness and satisfiable-subject completeness for both ID-level and
+  named public subsumptions. Prove the checked public inconsistency flag
+  equivalent to semantic unsatisfiability.
+- Make checker-enabled Rust publish directly from the verified named result,
+  leaving no unchecked result conversion after checker acceptance.
+- Initialize the Rust `TOP` completion context unconditionally. The public
+  inconsistency test queried this context even when no normalized axiom had
+  caused it to be initialized.
+- Isolate checker stdout from the worker JSON protocol. Valid and tampered
+  end-to-end tests confirm byte-valid JSON, equality with the ordinary pure ELC
+  result, and fail-closed rejection of named-output, active-context, and
+  consistency-flag alterations.
+
+The remaining end-to-end ELC boundary is OWL/frontend-clause normalization.
+Residual ELC modes, HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.5] – 2026-08-17
 
 ### Certify pure ELC result materialization

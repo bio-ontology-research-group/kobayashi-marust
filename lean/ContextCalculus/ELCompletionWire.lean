@@ -50,6 +50,11 @@ structure WireEdgeFact where
   target : Nat
 deriving FromJson, ToJson
 
+structure WireNamedSubFact where
+  sub : String
+  sup : String
+deriving FromJson, ToJson
+
 structure WireCertificate where
   version : Nat
   symbol_count : Nat
@@ -61,6 +66,9 @@ structure WireCertificate where
   rust_subsumptions : List WireSubFact
   rust_edges : List WireEdgeFact
   public_subsumptions : List WireSubFact
+  symbols : List String
+  public_named_subsumptions : List WireNamedSubFact
+  public_inconsistent : Bool
 deriving FromJson, ToJson
 
 def checkedFin (n value : Nat) : Except String (Fin n) :=
@@ -108,11 +116,15 @@ def WireStep.decode (n : Nat) : WireStep → Except String (Step (Fin n) (Fin n)
 structure DecodedCertificate (n : Nat) where
   top : Fin n
   bottom : Fin n
+  top_ne_bottom : top ≠ bottom
   ontology : Ontology (Fin n) (Fin n)
   trace : List (Step (Fin n) (Fin n))
   active_concepts : List (Fin n)
   rust_facts : List (Fact (Fin n) (Fin n))
   public_subsumptions : List (Fin n × Fin n)
+  symbols : Fin n → String
+  public_named_subsumptions : List (String × String)
+  public_inconsistent : Bool
 
 def WireSubFact.decode (n : Nat) (fact : WireSubFact) :
     Except String (Fact (Fin n) (Fin n)) :=
@@ -125,31 +137,64 @@ def WireEdgeFact.decode (n : Nat) (fact : WireEdgeFact) :
 
 def WireCertificate.decode (doc : WireCertificate) :
     Except String (DecodedCertificate doc.symbol_count) := do
-  if doc.version != 1 then
+  if doc.version != 2 then
     throw s!"unsupported ELC certificate version {doc.version}"
-  return {
-    top := ← checkedFin doc.symbol_count doc.top
-    bottom := ← checkedFin doc.symbol_count doc.bottom
-    ontology := ← doc.ontology.mapM (WireClause.decode doc.symbol_count)
-    trace := ← doc.trace.mapM (WireStep.decode doc.symbol_count)
-    active_concepts := ← doc.active_concepts.mapM (checkedFin doc.symbol_count)
-    rust_facts :=
-      (← doc.rust_subsumptions.mapM (WireSubFact.decode doc.symbol_count)) ++
-      (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
-    public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
-      return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
-  }
+  let top ← checkedFin doc.symbol_count doc.top
+  let bottom ← checkedFin doc.symbol_count doc.bottom
+  if hne : top ≠ bottom then
+    if hsymbols : doc.symbols.length = doc.symbol_count then
+      return {
+        top := top
+        bottom := bottom
+        top_ne_bottom := hne
+        ontology := ← doc.ontology.mapM (WireClause.decode doc.symbol_count)
+        trace := ← doc.trace.mapM (WireStep.decode doc.symbol_count)
+        active_concepts := ← doc.active_concepts.mapM (checkedFin doc.symbol_count)
+        rust_facts :=
+          (← doc.rust_subsumptions.mapM (WireSubFact.decode doc.symbol_count)) ++
+          (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
+        public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
+          return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
+        symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
+        public_named_subsumptions :=
+          doc.public_named_subsumptions.map fun fact => (fact.sub, fact.sup)
+        public_inconsistent := doc.public_inconsistent
+      }
+    else
+      throw s!"symbol table has length {doc.symbols.length}, expected {doc.symbol_count}"
+  else
+    throw "top and bottom must have distinct symbol ids"
 
 def Fact.source {Concept Role : Type} : Fact Concept Role → Concept
   | .sub a _ => a
   | .edge a _ _ => a
 
-def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
+def Clause.concepts {Concept Role : Type} : Clause Concept Role → List Concept
+  | .nf1 sub sup => [sub, sup]
+  | .nf2 left right sup => [left, right, sup]
+  | .nf3 sub _ filler => [sub, filler]
+  | .nf4 _ filler sup => [filler, sup]
+  | .nf5 sub => [sub]
+  | .nf6 _ _ => []
+  | .nf7 _ _ _ => []
+  | .reflexive _ => []
+
+def DecodedCertificate.expectedActiveConcepts {n : Nat} (doc : DecodedCertificate n) :=
+  (doc.top :: doc.ontology.flatMap Clause.concepts).filter (· != doc.bottom)
+
+def DecodedCertificate.checkFactAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
   let formal := doc.trace.map (Step.conclusion doc.top doc.bottom)
   doc.rust_facts.all (fun fact =>
     decide (fact ∈ formal ∧ fact.source ∈ doc.active_concepts)) &&
   formal.all (fun fact =>
     if fact.source ∈ doc.active_concepts then decide (fact ∈ doc.rust_facts) else true)
+
+def DecodedCertificate.checkActiveConcepts {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.active_concepts.all (fun id => decide (id ∈ doc.expectedActiveConcepts)) &&
+    doc.expectedActiveConcepts.all (fun id => decide (id ∈ doc.active_concepts))
+
+def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.checkFactAgreement && doc.checkActiveConcepts
 
 def DecodedCertificate.expectedPublicOutput {n : Nat} (doc : DecodedCertificate n) :=
   doc.rust_facts.filterMap fun
@@ -163,25 +208,42 @@ def DecodedCertificate.checkPublicOutput {n : Nat} (doc : DecodedCertificate n) 
   doc.public_subsumptions.all (fun fact => decide (fact ∈ doc.expectedPublicOutput)) &&
     doc.expectedPublicOutput.all (fun fact => decide (fact ∈ doc.public_subsumptions))
 
+def DecodedCertificate.expectedNamedOutput {n : Nat} (doc : DecodedCertificate n) :=
+  doc.public_subsumptions.map fun (sub, sup) =>
+    (doc.symbols sub, if sup = doc.bottom then "owl:Nothing" else doc.symbols sup)
+
+def DecodedCertificate.checkNamedOutput {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.public_named_subsumptions.all (fun fact => decide (fact ∈ doc.expectedNamedOutput)) &&
+    doc.expectedNamedOutput.all (fun fact => decide (fact ∈ doc.public_named_subsumptions)) &&
+    decide (doc.public_inconsistent = decide (Fact.sub doc.top doc.bottom ∈ doc.rust_facts))
+
 def DecodedCertificate.check {n : Nat} (doc : DecodedCertificate n) : Bool :=
   checkTrace doc.top doc.bottom doc.ontology doc.trace &&
     checkClosedTrace doc.top doc.bottom doc.ontology doc.trace &&
-    doc.checkStateAgreement && doc.checkPublicOutput
+    doc.checkStateAgreement && doc.checkPublicOutput && doc.checkNamedOutput
 
 theorem DecodedCertificate.rustFact_iff {n : Nat} (doc : DecodedCertificate n)
     (hagree : doc.checkStateAgreement = true) {fact : Fact (Fin n) (Fin n)}
     (hactive : fact.source ∈ doc.active_concepts) :
     fact ∈ doc.rust_facts ↔
       fact ∈ doc.trace.map (Step.conclusion doc.top doc.bottom) := by
-  simp only [DecodedCertificate.checkStateAgreement, Bool.and_eq_true,
+  simp only [DecodedCertificate.checkStateAgreement, DecodedCertificate.checkFactAgreement,
+    Bool.and_eq_true,
     List.all_eq_true, decide_eq_true_eq] at hagree
   constructor
   · intro hrust
-    exact (hagree.1 fact hrust).1
+    exact (hagree.1.1 fact hrust).1
   · intro hformal
-    have h := hagree.2 fact hformal
+    have h := hagree.1.2 fact hformal
     simp only [hactive, if_true, decide_eq_true_eq] at h
     exact h
+
+theorem DecodedCertificate.rustFact_active {n : Nat} (doc : DecodedCertificate n)
+    (hagree : doc.checkStateAgreement = true) {fact : Fact (Fin n) (Fin n)}
+    (hfact : fact ∈ doc.rust_facts) : fact.source ∈ doc.active_concepts := by
+  simp only [DecodedCertificate.checkStateAgreement, DecodedCertificate.checkFactAgreement,
+    Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hagree
+  exact (hagree.1.1 fact hfact).2
 
 theorem DecodedCertificate.check_exact {n : Nat} (doc : DecodedCertificate n)
     (hcheck : doc.check = true) :
@@ -191,7 +253,7 @@ theorem DecodedCertificate.check_exact {n : Nat} (doc : DecodedCertificate n)
     (Unsatisfiable (top := doc.top) (bottom := doc.bottom) doc.ontology ↔
       (traceMaterialization doc.top doc.bottom doc.trace).sub doc.top doc.bottom) := by
   simp only [DecodedCertificate.check, Bool.and_eq_true] at hcheck
-  exact checkedTrace_exact hcheck.1.1.1 hcheck.1.1.2
+  exact checkedTrace_exact hcheck.1.1.1.1 hcheck.1.1.1.2
 
 theorem DecodedCertificate.active_subsumption_exact {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true)
@@ -204,15 +266,15 @@ theorem DecodedCertificate.active_subsumption_exact {n : Nat}
   constructor
   · intro h
     rcases h with hbottom | hsub
-    · exact Or.inl ((doc.rustFact_iff hcheck.1.2
+    · exact Or.inl ((doc.rustFact_iff hcheck.1.1.2
         (fact := Fact.sub a doc.bottom) hactive).2 hbottom)
-    · exact Or.inr ((doc.rustFact_iff hcheck.1.2
+    · exact Or.inr ((doc.rustFact_iff hcheck.1.1.2
         (fact := Fact.sub a b) hactive).2 hsub)
   · intro h
     rcases h with hbottom | hsub
-    · exact Or.inl ((doc.rustFact_iff hcheck.1.2
+    · exact Or.inl ((doc.rustFact_iff hcheck.1.1.2
         (fact := Fact.sub a doc.bottom) hactive).1 hbottom)
-    · exact Or.inr ((doc.rustFact_iff hcheck.1.2
+    · exact Or.inr ((doc.rustFact_iff hcheck.1.1.2
         (fact := Fact.sub a b) hactive).1 hsub)
 
 theorem DecodedCertificate.publicSub_iff_expected {n : Nat}
@@ -220,7 +282,7 @@ theorem DecodedCertificate.publicSub_iff_expected {n : Nat}
     (a, b) ∈ doc.public_subsumptions ↔ (a, b) ∈ doc.expectedPublicOutput := by
   simp only [DecodedCertificate.check, Bool.and_eq_true,
     DecodedCertificate.checkPublicOutput, List.all_eq_true, decide_eq_true_eq] at hcheck
-  exact ⟨hcheck.2.1 (a, b), hcheck.2.2 (a, b)⟩
+  exact ⟨hcheck.1.2.1 (a, b), hcheck.1.2.2 (a, b)⟩
 
 theorem DecodedCertificate.public_subsumption_sound {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
@@ -239,14 +301,111 @@ theorem DecodedCertificate.public_subsumption_sound {n : Nat}
         obtain ⟨hsub, hsup⟩ := hdecoded
         subst sub
         subst sup
-        simp only [DecodedCertificate.check, Bool.and_eq_true,
-          DecodedCertificate.checkStateAgreement, List.all_eq_true,
-          decide_eq_true_eq] at hcheck
-        have hactive := (hcheck.1.2.1 (Fact.sub a b) hfact).2
+        simp only [DecodedCertificate.check, Bool.and_eq_true] at hcheck
+        have hactive := doc.rustFact_active hcheck.1.1.2 hfact
         change a ∈ doc.active_concepts at hactive
         rw [doc.active_subsumption_exact hcert hactive]
         exact Or.inr hfact
       · simp at hdecoded
+
+theorem DecodedCertificate.public_subsumption_complete_of_satisfiable {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
+    (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hsatisfiable : ¬ EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a doc.bottom)
+    (hentails : EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a b) :
+    (a, b) ∈ doc.public_subsumptions := by
+  have hrust := (doc.active_subsumption_exact hcheck hactive).1 hentails
+  rcases hrust with hbottom | hsub
+  · exact False.elim (hsatisfiable
+      ((doc.active_subsumption_exact hcheck hactive).2 (Or.inl hbottom)))
+  · apply (doc.publicSub_iff_expected hcheck).2
+    simp only [DecodedCertificate.expectedPublicOutput, List.mem_filterMap]
+    refine ⟨Fact.sub a b, hsub, ?_⟩
+    simp [haTop, haBottom, hba, hbTop]
+
+theorem DecodedCertificate.namedSub_iff_expected {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {sub sup : String} :
+    (sub, sup) ∈ doc.public_named_subsumptions ↔
+      (sub, sup) ∈ doc.expectedNamedOutput := by
+  simp only [DecodedCertificate.check, Bool.and_eq_true,
+    DecodedCertificate.checkNamedOutput, List.all_eq_true, decide_eq_true_eq] at hcheck
+  exact ⟨hcheck.2.1.1 (sub, sup), hcheck.2.1.2 (sub, sup)⟩
+
+theorem DecodedCertificate.public_named_subsumption_sound {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {sub sup : String}
+    (hpublic : (sub, sup) ∈ doc.public_named_subsumptions) :
+    ∃ a b, (a, b) ∈ doc.public_subsumptions ∧
+      doc.symbols a = sub ∧
+      (if b = doc.bottom then "owl:Nothing" else doc.symbols b) = sup ∧
+      EntailsSub (top := doc.top) (bottom := doc.bottom) doc.ontology a b := by
+  have hexpected := (doc.namedSub_iff_expected hcheck).1 hpublic
+  simp only [DecodedCertificate.expectedNamedOutput, List.mem_map] at hexpected
+  rcases hexpected with ⟨⟨a, b⟩, hab, hnames⟩
+  simp only [Prod.mk.injEq] at hnames
+  exact ⟨a, b, hab, hnames.1, hnames.2,
+    doc.public_subsumption_sound hcheck hab⟩
+
+theorem DecodedCertificate.public_named_subsumption_complete_of_satisfiable {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
+    (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hsatisfiable : ¬ EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a doc.bottom)
+    (hentails : EntailsSub (top := doc.top) (bottom := doc.bottom)
+      doc.ontology a b) :
+    (doc.symbols a, if b = doc.bottom then "owl:Nothing" else doc.symbols b) ∈
+      doc.public_named_subsumptions := by
+  apply (doc.namedSub_iff_expected hcheck).2
+  simp only [DecodedCertificate.expectedNamedOutput, List.mem_map]
+  exact ⟨(a, b), doc.public_subsumption_complete_of_satisfiable hcheck hactive
+    haTop haBottom hba hbTop hsatisfiable hentails, rfl⟩
+
+theorem DecodedCertificate.top_active {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) :
+    doc.top ∈ doc.active_concepts := by
+  simp only [DecodedCertificate.check, Bool.and_eq_true] at hcheck
+  have hagree := hcheck.1.1.2
+  simp only [DecodedCertificate.checkStateAgreement,
+    DecodedCertificate.checkActiveConcepts, Bool.and_eq_true,
+    List.all_eq_true, decide_eq_true_eq] at hagree
+  apply hagree.2.2 doc.top
+  simp [DecodedCertificate.expectedActiveConcepts, doc.top_ne_bottom]
+
+theorem DecodedCertificate.public_inconsistent_exact {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) :
+    doc.public_inconsistent = true ↔
+      Unsatisfiable (top := doc.top) (bottom := doc.bottom) doc.ontology := by
+  have hcert := hcheck
+  simp only [DecodedCertificate.check, Bool.and_eq_true] at hcheck
+  have hagree := hcheck.1.1.2
+  have hnamed := hcheck.2
+  simp only [DecodedCertificate.checkNamedOutput, Bool.and_eq_true,
+    List.all_eq_true, decide_eq_true_eq] at hnamed
+  have hactive := doc.top_active hcert
+  have hfactActive :
+      (Fact.sub doc.top doc.bottom : Fact (Fin n) (Fin n)).source ∈ doc.active_concepts := by
+    exact hactive
+  have hexact := (doc.check_exact hcert).2
+  constructor
+  · intro hpublic
+    have hdecide : decide (Fact.sub doc.top doc.bottom ∈ doc.rust_facts) = true := by
+      rw [← hnamed.2]
+      exact hpublic
+    have hrust := of_decide_eq_true hdecide
+    have htrace := (doc.rustFact_iff hagree hfactActive).1 hrust
+    rw [hexact]
+    exact htrace
+  · intro hunsat
+    rw [hexact] at hunsat
+    have hrust := (doc.rustFact_iff hagree hfactActive).2 hunsat
+    have hdecide : decide (Fact.sub doc.top doc.bottom ∈ doc.rust_facts) = true :=
+      decide_eq_true hrust
+    rw [hnamed.2, hdecide]
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
   return (← doc.decode).check
@@ -254,7 +413,7 @@ def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
 namespace WireExamples
 
 def empty : WireCertificate where
-  version := 1
+  version := 2
   symbol_count := 2
   top := 0
   bottom := 1
@@ -264,6 +423,9 @@ def empty : WireCertificate where
   rust_subsumptions := [{ sub := 0, sup := 0 }]
   rust_edges := []
   public_subsumptions := []
+  symbols := ["top", "bottom"]
+  public_named_subsumptions := []
+  public_inconsistent := false
 
 example : empty.check = .ok true := by rfl
 

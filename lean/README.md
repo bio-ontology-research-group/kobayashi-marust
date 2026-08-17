@@ -141,13 +141,18 @@ discharges the finite Rust certificate wire obligation for normalized pure ELC.
 
 The versioned JSON decoder validates every numeric id against a finite `Fin n`
 signature before constructing clauses or proof steps. The native
-`elc-cert-check` executable checks the trace, closure, active Rust contexts, and
-the materialized Rust subsumption and edge stores, and the ID-level public
-output relation. `active_subsumption_exact` proves the active materialization
-semantically exact; `public_subsumption_sound` proves every published ID pair
-entailed. The Rust worker invokes this executable when
+`elc-cert-check` executable checks the trace, closure, complete active Rust
+context set, materialized Rust subsumption and edge stores, ID-level output,
+finite symbol table, named output, and inconsistency flag.
+`active_subsumption_exact` proves the active materialization semantically
+exact. `public_subsumption_sound` and
+`public_named_subsumption_sound` prove publication soundness; their
+`complete_of_satisfiable` counterparts prove completeness for reportable
+subsumptions of satisfiable subjects. `public_inconsistent_exact` proves the
+published flag equivalent to semantic unsatisfiability. The Rust worker invokes this executable when
 `KM_ELC_LEAN_CERT_CHECKER` is set and declines without output if generation,
-serialization, process execution, or verification fails.
+serialization, process execution, or verification fails. On acceptance it
+publishes the checked named relation directly.
 
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
