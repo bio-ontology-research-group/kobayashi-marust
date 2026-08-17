@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.14] – 2026-08-17
+
+### Add proof-producing mixed raw ELC list assembly
+
+- Add indexed evidence for the exact two raw clauses of an existential
+  introduction, retaining body variables, role/filler order, and shared
+  Skolem function ID.
+- Implement `certifyRawExistentialPair` for both frontend clause orders with
+  exact shape and variable-wiring checks.
+- Add `RawELListEvidence` to compose direct clauses and adjacent existential
+  pairs while exposing every used Skolem ID.
+- Implement recursive `certifyRawELList`; malformed and orphaned halves and
+  reused function IDs fail closed.
+- Prove `RawELListCertificate.models_iff`: every accepted mixed raw list is
+  equisatisfiable with its complete reconstructed source list under one shared
+  term interpretation.
+- Add kernel-evaluated acceptance tests for mixed and reverse-order lists and
+  rejection tests for orphan halves and duplicate function IDs. The theorem's
+  axiom audit is `propext`, `Classical.choice`, and `Quot.sound`.
+
+The assembler currently relies on the frontend invariant that each existential
+pair is adjacent. Connecting that invariant to Rust's emitted stream, adding
+deterministic n-ary auxiliary-name validation, and certificate-wire integration
+remain open. HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.13] – 2026-08-17
 
 ### Prove shared existential-pair normalization exact

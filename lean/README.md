@@ -129,8 +129,12 @@ normalization is certified for direct forms by `RawDirectListEvidence.models_iff
 and executable `certifyRawDirectList`. For already paired existential entries,
 `modelsRawExistentials_sat_iff` proves that globally unique Skolem IDs permit
 one shared raw interpretation and preserve and reflect the complete source
-existential list. Executable pair discovery and direct/existential assembly,
-n-ary name validation, and the certificate-wire connection remain open.
+existential list. `certifyRawELList` then produces indexed evidence for a mixed
+list of direct clauses and frontend-adjacent existential pairs, rejects orphaned
+halves and reused function IDs, and yields the whole-list equivalence theorem
+`RawELListCertificate.models_iff`. Proving the adjacency invariant against the
+Rust stream, n-ary name validation, and the certificate-wire connection remain
+open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

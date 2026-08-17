@@ -1084,6 +1084,231 @@ def recognizeExistentialPair [DecidableEq Concept]
   pairExistentialHalves (← recognizeExistentialHalf first)
     (← recognizeExistentialHalf second)
 
+/-! ## Proof-producing existential-pair recognition -/
+
+/-- Evidence that two exact raw clauses are the two halves of one existential entry. -/
+inductive RawExistentialPairEvidence :
+    RawClause Concept Role → RawClause Concept Role →
+      RawExistentialSpec Concept Role → Type where
+  | roleFirst (sub filler : Concept) (role : Role)
+      (roleVariable fillerVariable function : Nat) :
+      RawExistentialPairEvidence
+        (rawExistentialRoleClause sub role roleVariable function)
+        (rawExistentialFillerClause (Role := Role) sub filler fillerVariable function)
+        { sub, role, filler, roleVariable, fillerVariable, function }
+  | fillerFirst (sub filler : Concept) (role : Role)
+      (roleVariable fillerVariable function : Nat) :
+      RawExistentialPairEvidence
+        (rawExistentialFillerClause (Role := Role) sub filler fillerVariable function)
+        (rawExistentialRoleClause sub role roleVariable function)
+        { sub, role, filler, roleVariable, fillerVariable, function }
+
+/-- A pair certificate retains the reconstructed entry and exact input equalities. -/
+structure RawExistentialPairCertificate
+    (first second : RawClause Concept Role) where
+  spec : RawExistentialSpec Concept Role
+  evidence : RawExistentialPairEvidence first second spec
+
+/-- Execute the exact two-clause shape and wiring checks, returning typed evidence. -/
+def certifyRawExistentialPair [DecidableEq Concept] :
+    (first second : RawClause Concept Role) →
+      Option (RawExistentialPairCertificate first second)
+  | { body := [.concept sub (.var bodyVar)]
+      head := [.role role (.var sourceVar) (.fun function (.var argumentVar))] },
+    { body := [.concept sub' (.var fillerBodyVar)]
+      head := [.concept filler (.fun function' (.var fillerArgumentVar))] } =>
+      if h : bodyVar = sourceVar ∧ bodyVar = argumentVar ∧ sub = sub' ∧
+          function = function' ∧ fillerBodyVar = fillerArgumentVar then
+        some {
+          spec := ⟨sub, role, filler, bodyVar, fillerBodyVar, function⟩
+          evidence := by
+            rcases h with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            exact .roleFirst sub filler role bodyVar fillerBodyVar function
+        }
+      else none
+  | { body := [.concept sub' (.var fillerBodyVar)]
+      head := [.concept filler (.fun function' (.var fillerArgumentVar))] },
+    { body := [.concept sub (.var bodyVar)]
+      head := [.role role (.var sourceVar) (.fun function (.var argumentVar))] } =>
+      if h : bodyVar = sourceVar ∧ bodyVar = argumentVar ∧ sub = sub' ∧
+          function = function' ∧ fillerBodyVar = fillerArgumentVar then
+        some {
+          spec := ⟨sub, role, filler, bodyVar, fillerBodyVar, function⟩
+          evidence := by
+            rcases h with ⟨rfl, rfl, rfl, rfl, rfl⟩
+            exact .fillerFirst sub filler role bodyVar fillerBodyVar function
+        }
+      else none
+  | _, _ => none
+
+theorem RawExistentialPairEvidence.satisfied_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {first second : RawClause Concept Role} {spec : RawExistentialSpec Concept Role}
+    (evidence : RawExistentialPairEvidence first second spec) :
+    satRawClause I T first ∧ satRawClause I T second ↔ spec.satisfied I T := by
+  cases evidence <;> simp [RawExistentialSpec.satisfied, and_comm]
+
+/-! ## Mixed direct and adjacent-pair raw-list certificates -/
+
+/-- Evidence that an exact raw list consists only of direct clauses and adjacent
+existential pairs, with the latter's function IDs exposed for global validation. -/
+inductive RawELListEvidence (top : Concept) :
+    List (RawClause Concept Role) → SourceOntology Concept Role → List Nat → Type where
+  | nil : RawELListEvidence top [] [] []
+  | direct {raw raws sources functions}
+      (head : RawDirectCertificate top raw)
+      (tail : RawELListEvidence top raws sources functions) :
+      RawELListEvidence top (raw :: raws) (head.source :: sources) functions
+  | existential {first second raws sources functions}
+      (head : RawExistentialPairCertificate first second)
+      (tail : RawELListEvidence top raws sources functions) :
+      RawELListEvidence top (first :: second :: raws)
+        (head.spec.source :: sources) (head.spec.function :: functions)
+
+/-- Agreement on the recorded Skolem functions preserves the complete raw list. -/
+theorem RawELListEvidence.models_congr {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (left right : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)} {sources : SourceOntology Concept Role}
+    {functions : List Nat} (evidence : RawELListEvidence top raws sources functions)
+    (hagrees : ∀ function ∈ functions, ∀ x,
+      left.function function x = right.function function x) :
+    modelsRaw I left raws ↔ modelsRaw I right raws := by
+  induction evidence with
+  | nil => simp [modelsRaw]
+  | direct head tail ih =>
+      rw [modelsRaw_cons, modelsRaw_cons, head.sat_iff I left, head.sat_iff I right]
+      exact and_congr Iff.rfl (ih hagrees)
+  | existential head tail ih =>
+      rw [modelsRaw_cons, modelsRaw_cons, modelsRaw_cons, modelsRaw_cons]
+      have hpair : head.spec.satisfied I left ↔ head.spec.satisfied I right :=
+        RawExistentialSpec.satisfied_congr I left right head.spec
+          (hagrees head.spec.function (by simp))
+      have htail := ih (by
+        intro function hmem
+        exact hagrees function (by simp [hmem]))
+      constructor
+      · rintro ⟨hfirst, hsecond, hrest⟩
+        have hsatisfied := (head.evidence.satisfied_iff I left).mp ⟨hfirst, hsecond⟩
+        obtain ⟨hfirst', hsecond'⟩ :=
+          (head.evidence.satisfied_iff I right).mpr (hpair.mp hsatisfied)
+        exact ⟨hfirst', hsecond', htail.mp hrest⟩
+      · rintro ⟨hfirst, hsecond, hrest⟩
+        have hsatisfied := (head.evidence.satisfied_iff I right).mp ⟨hfirst, hsecond⟩
+        obtain ⟨hfirst', hsecond'⟩ :=
+          (head.evidence.satisfied_iff I left).mpr (hpair.mpr hsatisfied)
+        exact ⟨hfirst', hsecond', htail.mpr hrest⟩
+
+/-- Every mixed raw-list certificate maps raw models to source models. -/
+theorem RawELListEvidence.models_sound {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)} {sources : SourceOntology Concept Role}
+    {functions : List Nat} (evidence : RawELListEvidence top raws sources functions)
+    (hraw : modelsRaw I T raws) : modelsSource I sources := by
+  induction evidence with
+  | nil => simp [modelsSource]
+  | direct head tail ih =>
+      rw [modelsRaw_cons] at hraw
+      rw [modelsSource_cons]
+      exact ⟨(head.sat_iff I T).mp hraw.1, ih hraw.2⟩
+  | existential head tail ih =>
+      rw [modelsRaw_cons, modelsRaw_cons] at hraw
+      rw [modelsSource_cons]
+      have hsatisfied : head.spec.satisfied I T :=
+        (head.evidence.satisfied_iff I T).mp ⟨hraw.1, hraw.2.1⟩
+      exact ⟨rawExistentialPair_sound I T head.spec.sub head.spec.filler head.spec.role
+        head.spec.roleVariable head.spec.fillerVariable head.spec.function
+        hsatisfied.1 hsatisfied.2, ih hraw.2.2⟩
+
+/-- Source models extend to raw models when every recorded function ID is distinct. -/
+theorem RawELListEvidence.models_complete {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)} {sources : SourceOntology Concept Role}
+    {functions : List Nat} (evidence : RawELListEvidence top raws sources functions)
+    (hunique : functions.Nodup) (hsource : modelsSource I sources) :
+    ∃ T, modelsRaw I T raws := by
+  induction evidence with
+  | nil => exact ⟨base, by simp [modelsRaw]⟩
+  | direct head tail ih =>
+      rw [modelsSource_cons] at hsource
+      obtain ⟨T, htail⟩ := ih hunique hsource.2
+      exact ⟨T, (modelsRaw_cons I T _ _).mpr ⟨(head.sat_iff I T).mpr hsource.1, htail⟩⟩
+  | existential head tail ih =>
+      rw [modelsSource_cons] at hsource
+      simp only [List.nodup_cons] at hunique
+      obtain ⟨hnotmem, htailUnique⟩ := hunique
+      obtain ⟨tailInterp, htailRaw⟩ := ih htailUnique hsource.2
+      let combined := head.spec.extend I tailInterp hsource.1
+      have htailCombined : modelsRaw I combined _ :=
+        (tail.models_congr I combined tailInterp (by
+          intro function hmem x
+          exact RawExistentialSpec.extend_other I tailInterp head.spec hsource.1
+            (by
+              intro heq
+              apply hnotmem
+              simpa [heq] using hmem) x)).mpr htailRaw
+      have hpair := RawExistentialSpec.extend_satisfies I tailInterp head.spec hsource.1
+      have hclauses := (head.evidence.satisfied_iff I combined).mpr hpair
+      exact ⟨combined, (modelsRaw_cons I combined _ _).mpr
+        ⟨hclauses.1, (modelsRaw_cons I combined _ _).mpr ⟨hclauses.2, htailCombined⟩⟩⟩
+
+/-- A successful executable certificate includes the global uniqueness proof. -/
+structure RawELListCertificate (top : Concept)
+    (raws : List (RawClause Concept Role)) where
+  sources : SourceOntology Concept Role
+  functions : List Nat
+  evidence : RawELListEvidence top raws sources functions
+  unique : functions.Nodup
+
+theorem RawELListCertificate.models_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)} (certificate : RawELListCertificate top raws) :
+    (∃ T, modelsRaw I T raws) ↔ modelsSource I certificate.sources := by
+  constructor
+  · rintro ⟨T, hraw⟩
+    exact certificate.evidence.models_sound I T hraw
+  · exact certificate.evidence.models_complete I base certificate.unique
+
+/-- Consume direct clauses one at a time and existential clauses in their exact
+frontend-adjacent pairs; malformed, orphaned, or function-reusing input fails closed. -/
+def certifyRawELList [DecidableEq Concept] (top : Concept) :
+    (raws : List (RawClause Concept Role)) → Option (RawELListCertificate top raws)
+  | [] => some {
+      sources := []
+      functions := []
+      evidence := .nil
+      unique := by simp }
+  | [raw] => do
+      let head ← certifyRawDirect top raw
+      return {
+        sources := [head.source]
+        functions := []
+        evidence := .direct head .nil
+        unique := by simp }
+  | first :: second :: rest =>
+      match certifyRawDirect top first with
+      | some head => do
+          let tail ← certifyRawELList top (second :: rest)
+          return {
+            sources := head.source :: tail.sources
+            functions := tail.functions
+            evidence := .direct head tail.evidence
+            unique := tail.unique }
+      | none => do
+          let head ← certifyRawExistentialPair first second
+          let tail ← certifyRawELList top rest
+          if hfresh : head.spec.function ∉ tail.functions then
+            return {
+              sources := head.spec.source :: tail.sources
+              functions := head.spec.function :: tail.functions
+              evidence := .existential head tail.evidence
+              unique := List.nodup_cons.mpr ⟨hfresh, tail.unique⟩ }
+          else none
+
+/-- Erase mixed-list proof data for executable tests and certificate consumers. -/
+def certifiedRawELSources [DecidableEq Concept] (top : Concept)
+    (raws : List (RawClause Concept Role)) : Option (SourceOntology Concept Role) :=
+  (certifyRawELList top raws).map RawELListCertificate.sources
+
 /-- A successfully paired existential has exactly the NF3 source semantics. -/
 theorem recognizeExistentialPair_normalize_exact [DecidableEq Concept]
     {Domain : Type} {top bottom : Concept}
@@ -1178,6 +1403,31 @@ def existentialFillerHalf : RawClause C R := {
   body := [.concept 1 (.var 7)]
   head := [.concept 3 (.fun 41 (.var 7))]
 }
+
+example : certifiedRawELSources (Concept := C) (Role := R) 0 [
+    { body := [.concept 1 (.var 7)], head := [.concept 2 (.var 7)] },
+    existentialRoleHalf,
+    existentialFillerHalf,
+    { body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)],
+      head := [.concept 3 (.var 7)] }
+  ] = some [.sub [1] 2, .existential 1 2 3, .existsElim 1 2 3] := by native_decide
+
+example : certifiedRawELSources (Concept := C) (Role := R) 0 [
+    existentialFillerHalf, existentialRoleHalf
+  ] = some [.existential 1 2 3] := by native_decide
+
+example : certifiedRawELSources (Concept := C) (Role := R) 0 [
+    existentialRoleHalf
+  ] = none := by native_decide
+
+example : certifiedRawELSources (Concept := C) (Role := R) 0 [
+    existentialRoleHalf,
+    existentialFillerHalf,
+    { body := [.concept 2 (.var 9)]
+      head := [.role 3 (.var 9) (.fun 41 (.var 9))] },
+    { body := [.concept 2 (.var 10)]
+      head := [.concept 4 (.fun 41 (.var 10))] }
+  ] = none := by native_decide
 
 example : recognizeExistentialPair (Concept := C) (Role := R)
     existentialRoleHalf existentialFillerHalf =
