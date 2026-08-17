@@ -386,6 +386,111 @@ theorem compileConjunction_bottom_preserves {Domain : Type} {top bottom : Concep
   · intro x hbody
     exact False.elim (hsource x (by simpa using hbody))
 
+theorem projectInterp_extendInterp {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) :
+    projectInterp (extendInterp I) = I := by
+  rfl
+
+/-- Exact NF2 prefix expansion is equisatisfiable with an n-ary subclass axiom,
+while fixing the interpretation of every source concept and role. -/
+theorem compileConjunction_sub_sat_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    (first second : Concept) (rest : List Concept) (sup : Concept) :
+    (∃ J : Interp Domain (ExtendedConcept Concept) Role (.inl top) (.inl bottom),
+      projectInterp J = I ∧
+        models J (compileConjunction (first :: second :: rest) (.inl sup))) ↔
+      satSourceAxiom I (.sub (first :: second :: rest) sup) := by
+  constructor
+  · rintro ⟨J, hproject, hmodels⟩
+    simpa [hproject] using compileConjunction_sub_reflects J first second rest sup hmodels
+  · intro hsource
+    exact ⟨extendInterp I, projectInterp_extendInterp I,
+      compileConjunction_sub_preserves I first second rest sup hsource⟩
+
+/-- Exact NF2 prefix expansion is likewise equisatisfiable with n-ary bottom. -/
+theorem compileConjunction_bottom_sat_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    (first second : Concept) (rest : List Concept) :
+    (∃ J : Interp Domain (ExtendedConcept Concept) Role (.inl top) (.inl bottom),
+      projectInterp J = I ∧
+        models J (compileConjunction (first :: second :: rest) (.inl bottom))) ↔
+      satSourceAxiom I (.bottom (first :: second :: rest)) := by
+  constructor
+  · rintro ⟨J, hproject, hmodels⟩
+    simpa [hproject] using compileConjunction_bottom_reflects J first second rest hmodels
+  · intro hsource
+    exact ⟨extendInterp I, projectInterp_extendInterp I,
+      compileConjunction_bottom_preserves I first second rest hsource⟩
+
+/-- Typed evidence that an exact normal-form list is the deterministic prefix
+chain for one genuinely n-ary source conjunction. -/
+inductive NaryConjunctionEvidence (bottom : Concept) :
+    SourceAxiom Concept Role → Ontology (ExtendedConcept Concept) Role → Type where
+  | sub (first second : Concept) (rest : List Concept) (sup : Concept) :
+      NaryConjunctionEvidence bottom
+        (.sub (first :: second :: rest) sup)
+        (compileConjunction (first :: second :: rest) (.inl sup))
+  | bottom (first second : Concept) (rest : List Concept) :
+      NaryConjunctionEvidence bottom
+        (.bottom (first :: second :: rest))
+        (compileConjunction (first :: second :: rest) (.inl bottom))
+
+structure NaryConjunctionCertificate (bottom : Concept)
+    (normal : Ontology (ExtendedConcept Concept) Role) where
+  source : SourceAxiom Concept Role
+  canonical : Ontology (ExtendedConcept Concept) Role
+  evidence : NaryConjunctionEvidence bottom source canonical
+  input_eq : normal = canonical
+
+/-- Executably validate an emitted NF2 list against its complete deterministic chain. -/
+def certifyNaryConjunction [DecidableEq Concept] [DecidableEq Role]
+    (bottom : Concept) (body : List Concept) (sup : Option Concept)
+    (normal : Ontology (ExtendedConcept Concept) Role) :
+    Option (NaryConjunctionCertificate bottom normal) :=
+  match body, sup with
+  | first :: second :: rest, some target =>
+      let expected := compileConjunction (Role := Role)
+        (first :: second :: rest) (.inl target)
+      if h : normal = expected then
+        some {
+          source := .sub (first :: second :: rest) target
+          canonical := expected
+          evidence := .sub first second rest target
+          input_eq := h }
+      else none
+  | first :: second :: rest, none =>
+      let expected := compileConjunction (Role := Role)
+        (first :: second :: rest) (.inl bottom)
+      if h : normal = expected then
+        some {
+          source := .bottom (first :: second :: rest)
+          canonical := expected
+          evidence := .bottom first second rest
+          input_eq := h }
+      else none
+  | _, _ => none
+
+theorem NaryConjunctionCertificate.sat_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    {normal : Ontology (ExtendedConcept Concept) Role}
+    (certificate : NaryConjunctionCertificate bottom normal) :
+    (∃ J : Interp Domain (ExtendedConcept Concept) Role (.inl top) (.inl bottom),
+      projectInterp J = I ∧ models J normal) ↔ satSourceAxiom I certificate.source := by
+  cases certificate with
+  | mk source canonical evidence input_eq =>
+      subst normal
+      cases evidence with
+      | sub first second rest sup =>
+          exact compileConjunction_sub_sat_iff I first second rest sup
+      | bottom first second rest =>
+          exact compileConjunction_bottom_sat_iff I first second rest
+
+def certifiedNarySource [DecidableEq Concept] [DecidableEq Role]
+    (bottom : Concept) (body : List Concept) (sup : Option Concept)
+    (normal : Ontology (ExtendedConcept Concept) Role) :
+    Option (SourceAxiom Concept Role) :=
+  (certifyNaryConjunction bottom body sup normal).map NaryConjunctionCertificate.source
+
 namespace NormalizationExamples
 
 abbrev C := Fin 5
@@ -397,6 +502,15 @@ example :
        .nf2 (.inr [0, 1]) (.inl 2) (.inr [0, 1, 2]),
        .nf2 (.inr [0, 1, 2]) (.inl 3) (.inl 4)] := by
   simp [compileConjunction, compileConjTail]
+
+example : certifiedNarySource (Concept := C) (Role := R) 4 [0, 1, 2, 3] (some 4)
+    [.nf2 (.inl 0) (.inl 1) (.inr [0, 1]),
+     .nf2 (.inr [0, 1]) (.inl 2) (.inr [0, 1, 2]),
+     .nf2 (.inr [0, 1, 2]) (.inl 3) (.inl 4)] =
+    some (.sub [0, 1, 2, 3] 4) := by native_decide
+
+example : certifiedNarySource (Concept := C) (Role := R) 4 [0, 1, 2] none
+    [.nf2 (.inl 0) (.inl 1) (.inr [0, 1])] = none := by native_decide
 
 end NormalizationExamples
 

@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.15] – 2026-08-17
+
+### Certify exact conjunction-prefix expansion and remove name collisions
+
+- Prove that every binary or n-ary subclass and bottom conjunction is
+  equisatisfiable with its complete NF2 prefix chain while preserving the
+  interpretation of every source concept and role.
+- Add proof-producing `certifyNaryConjunction`, which accepts only the exact
+  deterministic chain and fails closed on missing, reordered, or altered NF2
+  clauses. `NaryConjunctionCertificate.sat_iff` has the axiom audit
+  `[propext, Quot.sound]`.
+- Replace Rust and Python's slash-joined `__conj__` names with byte-length-
+  prefixed components. Slash joining was not injective: prefixes `["a/b","c"]`
+  and `["a","b/c"]` produced the same internal concept and could contaminate
+  otherwise unrelated completion chains.
+- Add a Rust regression covering the collision witness and UTF-8 byte lengths,
+  plus Lean acceptance and tamper-rejection examples.
+
+Whole-ontology normal-form assembly and the raw-to-wire certificate connection
+remain open. HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.14] – 2026-08-17
 
 ### Add proof-producing mixed raw ELC list assembly

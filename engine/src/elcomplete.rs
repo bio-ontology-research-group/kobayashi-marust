@@ -840,6 +840,20 @@ fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, u
 /// against the canonical model (the completeness certificate). Returns `None`
 /// only for an orphan existential-filler half-clause (a shape we don't model
 /// at all).
+/// Collision-free internal name for a conjunction prefix. Length prefixes make
+/// component boundaries unambiguous even when source IRIs contain `/`, `:`, or
+/// decimal digits. Source names that use KM's reserved prefix are escaped by
+/// the frontend; the certificate wire additionally validates distinct IDs.
+fn conjunction_aux_name(names: &[String]) -> String {
+    let mut out = String::from("__conj__");
+    for name in names {
+        out.push_str(&name.len().to_string());
+        out.push(':');
+        out.push_str(name);
+    }
+    out
+}
+
 fn to_nf(
     clauses: &[JClause],
     it: &mut Interner,
@@ -924,7 +938,7 @@ fn to_nf(
                 names.sort();
                 let mut acc = names[0].clone();
                 for j in 1..names.len() - 1 {
-                    let aux = format!("__conj__{}", names[..=j].join("/"));
+                    let aux = conjunction_aux_name(&names[..=j]);
                     let s1 = addc!(&acc);
                     let s2 = addc!(&names[j]);
                     let sup = addc!(&aux);
@@ -1002,7 +1016,7 @@ fn to_nf(
                                 names.sort();
                                 let mut acc = names[0].clone();
                                 for j in 1..names.len() - 1 {
-                                    let aux = format!("__conj__{}", names[..=j].join("/"));
+                                    let aux = conjunction_aux_name(&names[..=j]);
                                     let s1 = addc!(&acc);
                                     let s2 = addc!(&names[j]);
                                     let sup = addc!(&aux);
@@ -7919,6 +7933,18 @@ mod tests {
             "the converse must cost the published taxonomy, got {:?} / {:?}",
             strong.subsumptions,
             strong.unresolved
+        );
+    }
+
+    #[test]
+    fn conjunction_aux_names_are_component_boundary_injective() {
+        let left = vec!["a/b".to_string(), "c".to_string()];
+        let right = vec!["a".to_string(), "b/c".to_string()];
+        assert_eq!(left.join("/"), right.join("/"), "regression witness must collide");
+        assert_ne!(conjunction_aux_name(&left), conjunction_aux_name(&right));
+        assert_eq!(
+            conjunction_aux_name(&["é".to_string(), "x/y".to_string()]),
+            "__conj__2:é3:x/y"
         );
     }
 

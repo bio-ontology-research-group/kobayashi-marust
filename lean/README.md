@@ -133,8 +133,10 @@ existential list. `certifyRawELList` then produces indexed evidence for a mixed
 list of direct clauses and frontend-adjacent existential pairs, rejects orphaned
 halves and reused function IDs, and yields the whole-list equivalence theorem
 `RawELListCertificate.models_iff`. Proving the adjacency invariant against the
-Rust stream, n-ary name validation, and the certificate-wire connection remain
-open.
+Rust stream and the certificate-wire connection remain open. For conjunction
+normalization, `certifyNaryConjunction` validates the exact NF2 prefix chain and
+`NaryConjunctionCertificate.sat_iff` proves that the chain preserves and
+reflects source models while fixing all source symbols.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 
