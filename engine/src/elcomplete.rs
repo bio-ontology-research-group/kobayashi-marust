@@ -5633,12 +5633,16 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
     let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
     let mut unresolved: Vec<String> = Vec::new();
-    // Exact residual-shrinking rewrites, certificate routes only. Cert-off
-    // classify declines on the first residual clause anyway, and leaving that
-    // path byte-identical keeps `is_pure_el_shape` (the router's screen) in
-    // step with what cert-off `classify` accepts.
+    // Residual-shrinking inverse-bridge rewrites are not yet part of the Lean
+    // source theorem. A checker-backed run must retain the exact input stream;
+    // otherwise an accepted certificate would start after an uncertified
+    // preprocessing boundary. Non-Lean certificate modes keep the established
+    // optimization. Cert-off classify declines on the first residual clause.
     let mut clauses = clauses;
-    if cert != CertMode::Off && std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+    if cert != CertMode::Off
+        && !lean_cert_requested
+        && std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none()
+    {
         prepare_inverse_bridges(&mut clauses, debug);
     }
     let clauses = clauses;
@@ -7112,12 +7116,30 @@ mod tests {
             cl(&[c("C", "x")], &[c("D", "x")]),
         ));
         assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
-        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        let res = classify_inner(cs.clone(), CertMode::Repair, false).expect("repair certifies");
         assert!(subs_of(&res, "C").contains(&"D".to_string()));
         // The choices must not leak into the answer.
         assert!(!subs_of(&res, "C").contains(&"A".to_string()));
         assert!(!subs_of(&res, "C").contains(&"B".to_string()));
         assert!(!res.inconsistent);
+
+        // The search-based repair algorithm has no Lean theorem yet. Even
+        // when ordinary repair accepts this ontology, checker-backed repair
+        // must stop at the rejected base-model certificate and publish
+        // nothing from the uncertified search.
+        if let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") {
+            let previous = std::env::var_os("KM_ELC_LEAN_CERT_CHECKER");
+            std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", checker);
+            let certified = classify_inner(cs, CertMode::Repair, false);
+            match previous {
+                Some(value) => std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", value),
+                None => std::env::remove_var("KM_ELC_LEAN_CERT_CHECKER"),
+            }
+            assert!(
+                certified.is_none(),
+                "checker-backed execution must not publish repair output"
+            );
+        }
     }
 
     #[test]

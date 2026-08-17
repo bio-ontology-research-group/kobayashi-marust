@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.29] – 2026-08-17
+
+### Close the remaining checker-backed ELC runtime trust boundaries
+
+- Disable inverse-bridge preprocessing whenever a Lean certificate is
+  requested, so the checked source theory is the exact input clause stream and
+  never the output of an unproved rewrite.
+- Keep inverse-bridge preprocessing for non-Lean certificate modes, preserving
+  the existing optimized route without extending the certification claim.
+- Verify through the real checker path that search-based repair output is never
+  published by checker-backed execution: a rejected base-model certificate
+  falls through before repair can contribute an answer.
+
+The checker-backed ELC clause route now publishes only results covered by the
+wire-v5 soundness and completeness theorems. OWL frontend translation,
+inverse-bridge preprocessing outside that route, repair publication outside
+that route, HT, CB, and concrete routing remain separate certification tasks.
+
 ## [0.3.28] – 2026-08-17
 
 ### Enable checker-backed residual ELC publication
