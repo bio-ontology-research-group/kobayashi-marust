@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.30] – 2026-08-17
+
+### Certify the guarded hypertableau semantic core
+
+- Add a Lean semantics for signed concept atoms, role atoms, existential
+  obligations, equality, guarded clauses, completion states, and realization.
+- Prove soundness of complementary-label clash detection, forced unit heads,
+  disjunctive hyper-rule branching, and semantic existential witnesses.
+- Construct the canonical interpretation of a clash-free branch and prove that
+  every witness-complete, clause-saturated guarded branch models its ontology.
+- Derive the refutational-completeness endpoint: an ontology with no model on
+  the branch domain cannot have a clash-free, witness-complete, saturated open
+  branch.
+- Audit the public theorems with `#print axioms`; none uses `sorryAx`.
+
+This milestone certifies the abstract guarded ALC(H) hypertableau core. Rust
+state-transition correspondence, exhaustive search, blocking and termination,
+taxonomy publication, cardinality and nominal extensions, HT routing, CB, and
+the concrete router remain outstanding.
+
 ## [0.3.29] – 2026-08-17
 
 ### Close the remaining checker-backed ELC runtime trust boundaries
