@@ -79,9 +79,9 @@ not propositional.
 
 ### Full pure ELC normal forms — `ContextCalculus/ELCompletion.lean`
 
-The Rust ELC worker's pure route accepts this normal-form vocabulary: NF1–NF7, explicit top and
-bottom, existential bottom propagation, role hierarchy, reflexive roles, and
-role chains.
+The Rust ELC worker's pure route accepts this normal-form vocabulary: NF1–NF7,
+explicit top and bottom, existential bottom propagation, role hierarchy,
+reflexive roles, and role chains.
 
 - `sub_sound` / `edge_sound` prove soundness of every completion rule;
 - `canon_models` constructs the canonical model over contexts not labelled
@@ -95,6 +95,17 @@ These results certify the mathematical closure relation. The executable wire
 checker connects the optimized materialization and ID-level output filter to
 this relation. The normal-form recognizer, OWL translation, residual certificate
 modes, and ID-to-IRI presentation remain separate obligations.
+
+### ELC frontend normalization — `ContextCalculus/ELNormalization.lean`
+
+`SourceAxiom` gives semantics to the EL axioms reconstructed from normalized
+frontend Horn clauses. `normalizeDirect` covers top inclusion, unary and binary
+conjunction, bottom, existential introduction and elimination, role inclusion,
+role chains, and reflexivity. `normalizeDirect_sat_iff` proves each successful
+translation preserves and reflects satisfaction, while `models_direct_iff`
+lifts the result to complete directly normalized axiom lists. N-ary conjunction
+auxiliaries and executable pairing of raw Skolem clauses remain open parts of
+the frontend refinement.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

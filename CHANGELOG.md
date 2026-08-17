@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.7] – 2026-08-17
+
+### Prove direct ELC frontend normalization exact
+
+- Add `ELNormalization.lean`, a semantic source language for the EL axioms
+  reconstructed from frontend Horn clauses. It represents conjunction bodies,
+  bottom axioms, existential introduction and elimination, role inclusion,
+  role chains, and reflexivity.
+- Define `normalizeDirect` for every translation that introduces no auxiliary
+  conjunction concept: top inclusion and NF1–NF7.
+- Prove `normalizeDirect_sat_iff`: every successful direct translation
+  preserves and reflects satisfaction in every interpretation.
+- Prove `models_direct_iff`: pointwise successful direct normalization
+  preserves and reflects models of a complete source-axiom list.
+
+This establishes the semantic frontend boundary for direct forms. The
+remaining ELC normalization proof must cover n-ary conjunction auxiliary
+expansion and executable reconstruction of paired Skolem clauses from the raw
+frontend JSON. HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.6] – 2026-08-17
 
 ### Certify named ELC publication and inconsistency

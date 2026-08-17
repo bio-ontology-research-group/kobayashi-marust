@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.6`.
+`v0.3.7`.
 
 ## Classify an ontology
 
@@ -154,13 +154,15 @@ closure, and Rust-state agreement before the pure ELC worker can publish. The
 worker fails closed if any stage fails. This opt-in path currently covers the
 pure NF1–NF7 ELC route; it does not certify residual repair modes.
 
-The checker validates the optimized Rust ELC state against the formal closure,
-the complete active concept set, the ID-level public relation, its named-string
-materialization, and the inconsistency flag. Checker-enabled Rust publishes
-that verified named result directly. The OWL/frontend-clause-to-normal-form
-translation is not yet formally certified. HT, CB, concrete production
-routing, and residual ELC modes also remain uncertified. ORE results are
-empirical and successful termination alone is not correctness evidence. See
+The Lean development also proves semantic exactness of the direct
+frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
+state against the formal closure, the complete active concept set, the ID-level
+public relation, its named-string materialization, and the inconsistency flag.
+Checker-enabled Rust publishes that verified named result directly. The
+OWL/frontend-clause-to-normal-form translation still needs executable raw-clause
+pairing and n-ary conjunction auxiliary certification. HT, CB, concrete
+production routing, and residual ELC modes also remain uncertified. ORE results
+are empirical and successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
 ## Documentation
