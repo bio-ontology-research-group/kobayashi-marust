@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.2] – 2026-08-17
+
+### Verify executable ELC proof traces
+
+`ContextCalculus/ELCompletionCertificate.lean` defines finite proof steps for
+every pure ELC rule, including initialization, NF1–NF7, reflexivity, and
+backward bottom propagation. `checkTrace` is executable and accepts a step only
+when all premises and the source normal form occur in the certificate.
+
+`validStep_derivable` proves each accepted step semantically derivable.
+`checkTrace_sound` lifts this result to complete traces, and
+`checkedTrace_soundState` constructs the v0.4.0 `SoundState` contract for the
+materialization represented by any accepted trace. The module is part of the
+default Lean build and contains no `sorry` or `admit`.
+
+This release does not yet provide the exhaustive finite closure checker or the
+Rust certificate serialization and fail-closed invocation needed to establish
+the `ClosedState` half and executable ELC refinement.
+
 ## [0.4.0] – 2026-08-17
 
 ### Prove the exact ELC materialization contract

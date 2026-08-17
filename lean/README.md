@@ -124,6 +124,16 @@ produce a state satisfying these two structures. The contract makes this a
 finite list of implementation obligations rather than another semantic-model
 proof.
 
+### Executable ELC proof traces — `ContextCalculus/ELCompletionCertificate.lean`
+
+This module defines a finite certificate step for every pure ELC inference and
+an executable `checkTrace`. The checker validates source normal forms and
+requires each premise to occur later in the reverse dependency trace.
+`checkTrace_sound` proves every accepted fact derivable, while
+`checkedTrace_soundState` turns acceptance into the exact `SoundState`
+obligation used by the materialization theorem. An exhaustive closure checker
+and the Rust certificate wire format remain separate obligations.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

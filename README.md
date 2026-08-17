@@ -40,7 +40,8 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.4.0`.
+are available from the repository tags; the current certification release is
+`v0.3.2`.
 
 ## Classify an ontology
 
@@ -149,6 +150,11 @@ Release v0.4.0 adds the exact ELC materialization contract. A state that
 contains the initialization facts, is closed under NF1–NF7, and contains only
 derivable facts is proved extensionally equal to the semantic closure. Its
 taxonomy and inconsistency readouts are therefore exact.
+
+Release v0.3.2 adds an executable ELC proof-trace checker. Accepted traces are
+proved to contain only derivable NF1–NF7 subsumptions and edges, establishing
+the materialization contract's `SoundState` half. Exhaustive closure checking
+and the Rust certificate wire format remain to be completed.
 
 These theorems do not yet establish that the final indexed Rust ELC state
 satisfies the formal materialization contract, nor end-to-end soundness or
