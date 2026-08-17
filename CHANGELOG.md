@@ -2,6 +2,36 @@
 
 ## [unreleased]
 
+## [0.3.0] – 2026-08-17
+
+### Certify the full pure ELC calculus and fail-closed composition
+
+`ContextCalculus/ELCompletion.lean` formalizes every pure normal form accepted
+by the Rust ELC worker: NF1–NF7 and reflexive roles. Its closure includes
+explicit top and bottom, conjunction, existential introduction and
+elimination, backward bottom propagation, role hierarchy, role-chain
+composition, and reflexivity. `sub_sound` and `edge_sound` prove every closure
+fact valid in every interpretation of those normal forms.
+
+The canonical interpretation contains exactly the contexts not labelled
+bottom. `canon_models` proves that this nonempty alive-context interpretation
+models every accepted axiom. `top_bottom_sound` and `top_bottom_complete`
+justify the worker's `TOP ⊑ BOTTOM` inconsistency criterion, and
+`subsumption_complete` proves that every named-class entailment is represented
+either directly or by the stronger result that its subject is unsatisfiable.
+
+`ContextCalculus/Certification.lean` formalizes the supervisor boundary as
+four outcomes: publish, defer, error, and timeout. It proves soundness and
+completeness composition for sequential portfolios, faithful and live races,
+and profile-based routers. Non-publication outcomes are fail-closed by type.
+
+The complete default Lean target builds successfully with no `sorry`. The new
+ELC soundness and canonical-model theorems use no axioms; the semantic
+subsumption capstone uses Lean's standard classical quotient axioms. This
+release does not claim executable ELC certification: refinement of Rust's
+normal-form recognizer, indexed worklist, output mapping, and certificate modes
+remains open, as do HT, CB, and concrete routing refinement.
+
 ## [0.2.36] – 2026-08-15
 
 ### Partition two large production-bridge profiles

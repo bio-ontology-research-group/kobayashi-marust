@@ -77,6 +77,35 @@ All of `CompletenessEL` is **fully constructive — no axioms at all**, `sorry`-
 This is genuinely first-order (∃R.C, roles, role hierarchy, canonical model),
 not propositional.
 
+### Full pure ELC normal forms — `ContextCalculus/ELCompletion.lean`
+
+The Rust ELC worker accepts more than the earlier positive EL slice. This file
+formalizes its complete pure normal-form vocabulary: NF1–NF7, explicit top and
+bottom, existential bottom propagation, role hierarchy, reflexive roles, and
+role chains.
+
+- `sub_sound` / `edge_sound` prove soundness of every completion rule;
+- `canon_models` constructs the canonical model over contexts not labelled
+  bottom and proves that it satisfies every normal form;
+- `top_bottom_sound` / `top_bottom_complete` justify the ELC inconsistency
+  readout;
+- `subsumption_complete` proves named-concept completeness, with an
+  unsatisfiable subject represented by its bottom label.
+
+These results certify the mathematical closure relation. They do not yet prove
+that `elcomplete.rs`'s interned indexes, queues, batched NF4 schedule, normal-form
+recognizer, certificate modes, and output conversion refine that relation.
+
+### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
+
+Workers have four explicit outcomes: publish, defer, error, and timeout. The
+module proves that sequential fallback preserves soundness and completeness
+when the selected portfolio is sound and covers the input. It proves the same
+for races under explicit faithfulness and liveness obligations, then composes
+the result through profile-based routing. Engine-specific and router-refinement
+proofs must discharge those obligations; the generic theorems do not assume
+that the Rust implementations already do so.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.36`.
+are available from the repository tags; the current release is `v0.3.0`.
 
 ## Classify an ontology
 
@@ -139,10 +139,17 @@ lake exe cache get
 lake build
 ```
 
-These theorems do not establish end-to-end soundness or completeness of the
-Rust frontend, router, all completion procedures, concurrency, resource
-fallbacks, or optimizations. ORE results are empirical and successful
-termination alone is not accepted as correctness evidence. See
+Release v0.3.0 adds soundness and canonical-model completeness for the full
+pure ELC normal-form calculus used by the Rust worker: NF1–NF7, explicit top
+and bottom, existential bottom propagation, role hierarchy, reflexive roles,
+and role chains. It also proves fail-closed composition theorems for abstract
+workers, sequential fallbacks, races, and profile-based routing.
+
+These theorems do not yet establish that the indexed Rust ELC worklist refines
+the formal closure, nor end-to-end soundness or completeness of the Rust
+frontend, HT and CB implementations, router, concurrency, resource fallbacks,
+or optimizations. ORE results are empirical and successful termination alone
+is not accepted as correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
 ## Documentation
