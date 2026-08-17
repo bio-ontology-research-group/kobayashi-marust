@@ -106,6 +106,24 @@ the result through profile-based routing. Engine-specific and router-refinement
 proofs must discharge those obligations; the generic theorems do not assume
 that the Rust implementations already do so.
 
+### Exact ELC state contract — `ContextCalculus/ELCompletionRefinement.lean`
+
+This module isolates the representation-refinement target for
+`elcomplete.rs`. `ClosedState` says that a materialized pair of subsumption and
+edge relations contains Rust's initialization facts and is closed under every
+pure ELC rule. `SoundState` says every stored fact has a derivation.
+
+- `ClosedState.sub_complete` / `edge_complete` prove closure completeness;
+- `sub_iff_of_exact` / `edge_iff_of_exact` prove extensional equality when the
+  state is also sound;
+- `entails_iff_materialized` proves the taxonomy readout exact;
+- `unsat_iff_materialized` proves the inconsistency readout exact.
+
+The executable proof must still show that Rust's recognizer and worklist
+produce a state satisfying these two structures. The contract makes this a
+finite list of implementation obligations rather than another semantic-model
+proof.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.4.0] – 2026-08-17
+
+### Prove the exact ELC materialization contract
+
+`ContextCalculus/ELCompletionRefinement.lean` introduces the abstract view of
+the Rust worker's completed `sub_super` and `edges` stores. `ClosedState` lists
+the precise initialization and closure obligations for NF1–NF7, reflexive
+roles, and backward bottom propagation. `SoundState` requires every stored
+subsumption and edge to have a derivation in the v0.3.0 semantic calculus.
+
+`ClosedState.sub_complete` and `ClosedState.edge_complete` prove by mutual
+induction that a closed state contains every derivable fact. Combined with
+`SoundState`, `sub_iff_of_exact` and `edge_iff_of_exact` prove extensional
+equality with the semantic closure. `entails_iff_materialized` then proves the
+materialized taxonomy exact, including unsatisfiable subjects, and
+`unsat_iff_materialized` proves the materialized `TOP ⊑ BOTTOM` test equivalent
+to semantic ontology inconsistency.
+
+The module is `sorry`-free and part of the default Lean target. The remaining
+ELC executable-refinement obligation is concrete: prove that
+`elcomplete.rs`'s final indexed state satisfies `ClosedState` and `SoundState`,
+including the normal-form recognizer, queue execution, batched NF4 schedule,
+certificate modes, and output conversion. This release does not claim that
+remaining step, nor HT, CB, or concrete routing certification.
+
 ## [0.3.0] – 2026-08-17
 
 ### Certify the full pure ELC calculus and fail-closed composition

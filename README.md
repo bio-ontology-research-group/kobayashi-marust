@@ -40,7 +40,7 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.3.0`.
+are available from the repository tags; the current release is `v0.4.0`.
 
 ## Classify an ontology
 
@@ -145,8 +145,14 @@ and bottom, existential bottom propagation, role hierarchy, reflexive roles,
 and role chains. It also proves fail-closed composition theorems for abstract
 workers, sequential fallbacks, races, and profile-based routing.
 
-These theorems do not yet establish that the indexed Rust ELC worklist refines
-the formal closure, nor end-to-end soundness or completeness of the Rust
+Release v0.4.0 adds the exact ELC materialization contract. A state that
+contains the initialization facts, is closed under NF1–NF7, and contains only
+derivable facts is proved extensionally equal to the semantic closure. Its
+taxonomy and inconsistency readouts are therefore exact.
+
+These theorems do not yet establish that the final indexed Rust ELC state
+satisfies the formal materialization contract, nor end-to-end soundness or
+completeness of the Rust
 frontend, HT and CB implementations, router, concurrency, resource fallbacks,
 or optimizations. ORE results are empirical and successful termination alone
 is not accepted as correctness evidence. See
