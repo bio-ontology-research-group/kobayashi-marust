@@ -183,6 +183,100 @@ theorem hyper_branch_sound
   intro atom hatom
   exact state.realized_holdsAtom I value hrealized assignment atom (hbody atom hatom)
 
+/-- Equality heads require node merging and are certified separately. Concept,
+role, and existential heads can be asserted monotonically on one branch. -/
+def Branchable : Atom Variable Concept Role → Prop
+  | .eq .. => False
+  | _ => True
+
+def State.assertAtom (state : State Node Concept Role)
+    (assignment : Variable → Node) : Atom Variable Concept Role →
+    State Node Concept Role
+  | .concept lit node =>
+      { state with label := fun candidate candidateLit =>
+          state.label candidate candidateLit ∨
+            (candidate = assignment node ∧ candidateLit = lit) }
+  | .role role source target =>
+      { state with edge := fun candidateRole candidateSource candidateTarget =>
+          state.edge candidateRole candidateSource candidateTarget ∨
+            (candidateRole = role ∧ candidateSource = assignment source ∧
+              candidateTarget = assignment target) }
+  | .exists_ role filler node =>
+      { state with obligation := fun candidateRole candidateFiller candidateNode =>
+          state.obligation candidateRole candidateFiller candidateNode ∨
+            (candidateRole = role ∧ candidateFiller = filler ∧
+              candidateNode = assignment node) }
+  | .eq .. => state
+
+/-- Adding a semantically true branch head preserves realization. -/
+theorem State.assertAtom_realized
+    (state : State Node Concept Role) (I : Interp Domain Concept Role)
+    (value : Node → Domain) (hrealized : state.RealizedBy I value)
+    (assignment : Variable → Node) (atom : Atom Variable Concept Role)
+    (hbranchable : Branchable atom)
+    (hsat : I.satAtom (value ∘ assignment) atom) :
+    (state.assertAtom assignment atom).RealizedBy I value := by
+  cases atom with
+  | concept lit node =>
+      refine ⟨?_, hrealized.2.1, hrealized.2.2⟩
+      intro candidate candidateLit hlabel
+      rcases hlabel with hlabel | ⟨rfl, rfl⟩
+      · exact hrealized.1 _ _ hlabel
+      · exact hsat
+  | role role source target =>
+      refine ⟨hrealized.1, ?_, hrealized.2.2⟩
+      intro candidateRole candidateSource candidateTarget hedge
+      rcases hedge with hedge | ⟨rfl, rfl, rfl⟩
+      · exact hrealized.2.1 _ _ _ hedge
+      · exact hsat
+  | exists_ role filler node =>
+      refine ⟨hrealized.1, hrealized.2.1, ?_⟩
+      intro candidateRole candidateFiller candidateNode hobligation
+      rcases hobligation with hobligation | ⟨rfl, rfl, rfl⟩
+      · exact hrealized.2.2 _ _ _ hobligation
+      · exact hsat
+  | eq left right => contradiction
+
+def State.RealizableWith (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role)) : Prop :=
+  ∃ (Domain : Type x) (I : Interp Domain Concept Role) (value : Node → Domain),
+    I.models ontology ∧ state.RealizedBy I value
+
+/-- An exhaustive refutation tree for the monotone guarded HT core. A branch
+node has one refuting child for every head disjunct of a matched ontology
+clause. Dependency sets and branch order do not occur because they can change
+search order but not this exhaustive semantic tree. -/
+inductive Refutes (Node : Type u)
+    (ontology : List (Clause Variable Concept Role)) :
+    State Node Concept Role → Prop where
+  | clash (state)
+      (hclash : ∃ node concept,
+        state.label node (.pos concept) ∧ state.label node (.negated concept)) :
+      Refutes Node ontology state
+  | branch (state) (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology) (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body, state.holdsAtom assignment atom)
+      (hbranchable : ∀ atom ∈ clause.head, Branchable atom)
+      (children : ∀ atom, atom ∈ clause.head →
+        Refutes Node ontology (state.assertAtom assignment atom)) :
+      Refutes Node ontology state
+
+/-- Soundness of a complete HT branch-refutation tree. -/
+theorem Refutes.sound
+    (hrefutes : Refutes Node ontology state) :
+    ¬state.RealizableWith ontology := by
+  induction hrefutes with
+  | clash state hclash =>
+      rintro ⟨Domain, I, value, _, hrealized⟩
+      exact state.clash_sound hclash ⟨Domain, I, value, hrealized⟩
+  | branch state clause hclause assignment hbody hbranchable children ih =>
+      rintro ⟨Domain, I, value, hmodels, hrealized⟩
+      rcases hyper_branch_sound state I value hrealized clause
+          (hmodels clause hclause) assignment hbody with ⟨atom, hatom, hsat⟩
+      exact ih atom hatom ⟨Domain, I, value, hmodels,
+        state.assertAtom_realized I value hrealized assignment atom
+          (hbranchable atom hatom) hsat⟩
+
 /-- The canonical interpretation of a completion branch uses positive labels
 as concept extensions and graph edges as role extensions. -/
 def State.canonical (state : State Node Concept Role) :
@@ -308,6 +402,8 @@ theorem no_saturated_branch_of_no_model
 #print axioms State.realized_obligation_witness
 #print axioms hyper_unit_sound
 #print axioms hyper_branch_sound
+#print axioms State.assertAtom_realized
+#print axioms Refutes.sound
 #print axioms canonical_models_of_saturated
 #print axioms saturated_branch_satisfiable
 #print axioms no_saturated_branch_of_no_model

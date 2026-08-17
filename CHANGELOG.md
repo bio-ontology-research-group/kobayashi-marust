@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.31] – 2026-08-17
+
+### Certify exhaustive hypertableau branch refutations
+
+- Define monotone concept, role, and existential head assertion on HT states and
+  prove that asserting a semantically true head preserves every realization.
+- Define an exhaustive HT refutation tree whose internal nodes record a matched
+  ontology clause and one refuting child for every legal head disjunct.
+- Prove `Refutes.sound`: a complete refutation tree excludes every interpretation
+  that both models the ontology and realizes the root branch.
+- Keep equality heads outside this monotone tree; their node-merge semantics need
+  a quotient-preservation theorem before Rust may certify cardinality branches.
+- Audit the new public theorems with `#print axioms`; neither uses `sorryAx`.
+
+Rust emission and executable checking of the tree, branch-state correspondence,
+blocking and termination, SAT/taxonomy publication, equality/cardinality,
+nominals, HT routing, CB, and concrete routing remain outstanding.
+
 ## [0.3.30] – 2026-08-17
 
 ### Certify the guarded hypertableau semantic core
