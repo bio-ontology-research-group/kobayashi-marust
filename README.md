@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.35`.
+`v0.3.36`.
 
 ## Classify an ontology
 
@@ -170,9 +170,12 @@ that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
 worker emits finite SAT evidence when
 `KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
 It publishes global consistency only after Lean accepts the exact normalized
-clauses and terminal model, and otherwise fails closed. Equality/cardinality,
-inverse roles, nominals, native ABoxes, QO, UNSAT, cyclic blocking/model folding,
-termination, and taxonomy publication remain separate HT certification tasks.
+clauses and terminal model, and otherwise fails closed. For default
+anywhere-subset blocking, Rust materializes the finite fold as ordinary edges;
+Lean exhaustively checks the folded graph, so blocker selection remains outside
+the trust boundary. Equality/cardinality, inverse roles, nominals, native
+ABoxes, QO, UNSAT, termination, and taxonomy publication remain separate HT
+certification tasks.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

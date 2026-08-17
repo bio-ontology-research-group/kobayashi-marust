@@ -7686,6 +7686,12 @@ impl Ht {
         if self.ext.unsupported {
             return Err("cannot certify an unsupported hypertableau state".to_string());
         }
+        if !self.anywhere || self.block_mode != 1 {
+            return Err(
+                "HT Lean SAT certificate v1 supports default anywhere-subset blocking only"
+                    .to_string(),
+            );
+        }
         if self.clauses.iter().any(|record| {
             record
                 .0
@@ -7755,7 +7761,41 @@ impl Ht {
                 });
             }
         }
+        // A blocked node represents an unraveling position whose continuation
+        // is the earlier unblocked superset-label node. Materialize that fold as
+        // ordinary candidate edges. Lean does not trust this blocker relation:
+        // it exhaustively checks the resulting finite graph against every
+        // ontology grounding, so a wrong fold is rejected rather than assumed.
+        let mut blocked_by = vec![None; self.ext.num_nodes()];
+        let mut unblocked: Vec<Node> = Vec::new();
+        for node in 0..self.ext.num_nodes() {
+            let label = &self.ext.concepts[node];
+            if self.ext.blockable[node] && !label.is_empty() {
+                blocked_by[node] = unblocked.iter().copied().find(|&candidate| {
+                    let candidate_label = &self.ext.concepts[candidate];
+                    candidate_label.len() >= label.len()
+                        && label
+                            .keys()
+                            .all(|literal| candidate_label.contains_key(literal))
+                });
+            }
+            if blocked_by[node].is_none() {
+                unblocked.push(node);
+            }
+        }
+        for (node, blocker) in blocked_by.into_iter().enumerate() {
+            let Some(blocker) = blocker else { continue };
+            for &(role, target, _) in &self.ext.out_edges[blocker] {
+                role_count = role_count.max(role as usize + 1);
+                edges.push(LeanHtEdge {
+                    role: role as usize,
+                    source: node,
+                    target,
+                });
+            }
+        }
         edges.sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        edges.dedup_by_key(|edge| (edge.role, edge.source, edge.target));
         let mut obligations = self
             .ext
             .obligations
@@ -16379,6 +16419,10 @@ mod tests {
         assert_eq!(wire["ontology"].as_array().unwrap().len(), 2);
         assert!(wire["labels"].as_array().unwrap().len() >= 2);
         assert!(!wire["edges"].as_array().unwrap().is_empty());
+        let terminal = wire["node_count"].as_u64().unwrap() - 1;
+        assert!(wire["edges"].as_array().unwrap().iter().any(|edge| {
+            edge["source"].as_u64() == Some(terminal)
+        }), "the blocked terminal node receives its materialized continuation");
     }
 
     #[test]

@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.36] – 2026-08-17
+
+### Certify finite HT model folding
+
+- Add a Lean finite-fold certificate that treats blocker pairs as untrusted
+  model-construction hints, materializes copied blocker edges, and reruns the
+  exhaustive finite SAT checker.
+- Prove that accepted folds preserve the exact ontology and construct a model
+  without assuming that any supplied blocker pair is valid.
+- Add a native cyclic-existential reduction test whose incomplete blocked graph
+  is rejected and whose materialized fold is accepted.
+- Make the Rust HT producer reconstruct the exact default anywhere-subset
+  blocker relation and emit the copied continuation edges as ordinary wire
+  evidence. Other blocking modes remain fenced.
+- Validate the cyclic Rust-to-JSON-to-Lean path: the terminal blocked node gains
+  its folded self-loop and `ht-cert-check` accepts the resulting finite model.
+
+This release certifies SAT model folding by validation, not by trusting the
+Rust blocking algorithm. HT UNSAT and taxonomy publication remain outstanding.
+
 ## [0.3.35] – 2026-08-17
 
 ### Connect Rust HT SAT evidence to the Lean checker
