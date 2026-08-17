@@ -519,6 +519,265 @@ theorem recognizeRawBottom_sat_iff {top bottom : Concept}
           | aux root label => simp [recognizeRawClause] at hrecognize
           | «fun» function argument => simp [recognizeRawClause] at hrecognize
 
+/-! ## Proof-producing direct normalization -/
+
+/--
+A typed witness for one accepted direct raw clause.  Its indices retain the
+exact input clause and reconstructed source axiom, while constructor fields
+retain every variable-wiring condition needed by the semantic proof.
+-/
+inductive RawDirectEvidence (top : Concept) :
+    RawClause Concept Role → SourceAxiom Concept Role → Type where
+  | sub (body : List (RawAtom Concept Role)) (concepts : List Concept)
+      (sup : Concept) (variableId : Nat)
+      (hdecode : allConceptsOn variableId body = some concepts) :
+      RawDirectEvidence top
+        { body := body, head := [.concept sup (.var variableId)] }
+        (.sub concepts sup)
+  | bottom (body : List (RawAtom Concept Role)) (concepts : List Concept)
+      (variableId : Nat)
+      (hdecode : allConceptsOn variableId body = some concepts) :
+      RawDirectEvidence top { body := body, head := [] } (.bottom concepts)
+  | existsTop (role : Role) (sup : Concept) (source target : Nat)
+      (hne : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.role role (.var source) (.var target)]
+        head := [.concept sup (.var source)]
+      } (.existsElim role top sup)
+  | existsRoleFirst (role : Role) (filler sup : Concept) (source target : Nat)
+      (hne : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.role role (.var source) (.var target),
+          .concept filler (.var target)]
+        head := [.concept sup (.var source)]
+      } (.existsElim role filler sup)
+  | existsConceptFirst (role : Role) (filler sup : Concept) (source target : Nat)
+      (hne : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.concept filler (.var target),
+          .role role (.var source) (.var target)]
+        head := [.concept sup (.var source)]
+      } (.existsElim role filler sup)
+  | roleSub (sub sup : Role) (source target : Nat) (hne : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.role sub (.var source) (.var target)]
+        head := [.role sup (.var source) (.var target)]
+      } (.roleSub sub sup)
+  | roleChain (first second sup : Role) (source middle target : Nat)
+      (hsm : source ≠ middle) (hmt : middle ≠ target) (hst : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.role first (.var source) (.var middle),
+          .role second (.var middle) (.var target)]
+        head := [.role sup (.var source) (.var target)]
+      } (.roleChain first second sup)
+  | roleChainReversed (first second sup : Role) (source middle target : Nat)
+      (hsm : source ≠ middle) (hmt : middle ≠ target) (hst : source ≠ target) :
+      RawDirectEvidence top {
+        body := [.role second (.var middle) (.var target),
+          .role first (.var source) (.var middle)]
+        head := [.role sup (.var source) (.var target)]
+      } (.roleChain first second sup)
+  | reflexive (role : Role) (variableId : Nat) :
+      RawDirectEvidence top {
+        body := []
+        head := [.role role (.var variableId) (.var variableId)]
+      } (.reflexive role)
+
+/-- Every typed direct-normalization witness carries an exact semantic refinement. -/
+theorem RawDirectEvidence.sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {raw : RawClause Concept Role} {source : SourceAxiom Concept Role}
+    (evidence : RawDirectEvidence top raw source) :
+    satRawClause I T raw ↔ satSourceAxiom I source := by
+  cases evidence with
+  | sub body concepts sup variableId hdecode =>
+      exact rawConceptClause_sat_iff I T body concepts sup variableId hdecode
+  | bottom body concepts variableId hdecode =>
+      exact rawBottomClause_sat_iff I T body concepts variableId hdecode
+  | existsTop role sup source target hne =>
+      exact rawExistsElimTop_sat_iff I T role sup source target hne
+  | existsRoleFirst role filler sup source target hne =>
+      exact rawExistsElimRoleFirst_sat_iff I T role filler sup source target hne
+  | existsConceptFirst role filler sup source target hne =>
+      exact rawExistsElimConceptFirst_sat_iff I T role filler sup source target hne
+  | roleSub sub sup source target hne =>
+      exact rawRoleSub_sat_iff I T sub sup source target hne
+  | roleChain first second sup source middle target hsm hmt hst =>
+      exact rawRoleChain_sat_iff I T first second sup source middle target hsm hmt hst
+  | roleChainReversed first second sup source middle target hsm hmt hst =>
+      exact rawRoleChainReversed_sat_iff I T first second sup source middle target hsm hmt hst
+  | reflexive role variableId => exact rawReflexive_sat_iff I T role variableId
+
+/-- A source axiom, canonical raw clause, and proof that the input is exactly that clause. -/
+structure RawDirectCertificate (top : Concept) (input : RawClause Concept Role) where
+  source : SourceAxiom Concept Role
+  canonical : RawClause Concept Role
+  evidence : RawDirectEvidence top canonical source
+  input_eq : input = canonical
+
+theorem RawDirectCertificate.sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {input : RawClause Concept Role} (certificate : RawDirectCertificate top input) :
+    satRawClause I T input ↔ satSourceAxiom I certificate.source := by
+  cases certificate with
+  | mk source canonical evidence input_eq =>
+      cases input_eq
+      exact evidence.sat_iff I T
+
+/-- Proof-producing normalization for a raw concept-head clause. -/
+def certifyRawConceptHead (top : Concept)
+    (body : List (RawAtom Concept Role)) (sup : Concept) (headVar : Nat) :
+    Option (RawDirectCertificate top
+      { body := body, head := [.concept sup (.var headVar)] }) :=
+  match hdecode : allConceptsOn headVar body with
+  | some concepts => some {
+      source := .sub concepts sup
+      canonical := { body := body, head := [.concept sup (.var headVar)] }
+      evidence := .sub body concepts sup headVar hdecode
+      input_eq := rfl
+    }
+  | none =>
+      match body with
+      | [.role role (.var source) (.var target)] =>
+          if h : headVar = source ∧ source ≠ target then
+            some {
+              source := .existsElim role top sup
+              canonical := {
+                body := [.role role (.var source) (.var target)]
+                head := [.concept sup (.var source)]
+              }
+              evidence := .existsTop role sup source target h.2
+              input_eq := by simp [h.1]
+            }
+          else none
+      | [.role role (.var source) (.var target), .concept filler (.var fillerVar)] =>
+          if h : headVar = source ∧ source ≠ target ∧ fillerVar = target then
+            some {
+              source := .existsElim role filler sup
+              canonical := {
+                body := [.role role (.var source) (.var target),
+                  .concept filler (.var target)]
+                head := [.concept sup (.var source)]
+              }
+              evidence := .existsRoleFirst role filler sup source target h.2.1
+              input_eq := by simp [h.1, h.2.2]
+            }
+          else none
+      | [.concept filler (.var fillerVar), .role role (.var source) (.var target)] =>
+          if h : headVar = source ∧ source ≠ target ∧ fillerVar = target then
+            some {
+              source := .existsElim role filler sup
+              canonical := {
+                body := [.concept filler (.var target),
+                  .role role (.var source) (.var target)]
+                head := [.concept sup (.var source)]
+              }
+              evidence := .existsConceptFirst role filler sup source target h.2.1
+              input_eq := by simp [h.1, h.2.2]
+            }
+          else none
+      | _ => none
+
+/-- Proof-producing normalization for a raw empty-head clause. -/
+def certifyRawBottom (top : Concept) (body : List (RawAtom Concept Role)) :
+    Option (RawDirectCertificate top { body := body, head := [] }) :=
+  match body with
+  | .concept concept (.var variableId) :: tail =>
+      match hdecode : allConceptsOn variableId
+          (.concept concept (.var variableId) :: tail) with
+      | some concepts => some {
+          source := .bottom concepts
+          canonical := {
+            body := .concept concept (.var variableId) :: tail
+            head := []
+          }
+          evidence := .bottom (.concept concept (.var variableId) :: tail)
+            concepts variableId hdecode
+          input_eq := rfl
+        }
+      | none => none
+  | _ => none
+
+/-- Proof-producing normalization for a raw role-head clause. -/
+def certifyRawRoleHead (top : Concept)
+    (body : List (RawAtom Concept Role)) (sup : Role) (headSource headTarget : Nat) :
+    Option (RawDirectCertificate top {
+      body := body
+      head := [.role sup (.var headSource) (.var headTarget)]
+    }) :=
+  match body with
+  | [] =>
+      if h : headSource = headTarget then
+        some {
+          source := .reflexive sup
+          canonical := {
+            body := []
+            head := [.role sup (.var headSource) (.var headSource)]
+          }
+          evidence := .reflexive sup headSource
+          input_eq := by simp [h]
+        }
+      else none
+  | [.role sub (.var bodySource) (.var bodyTarget)] =>
+      if h : headSource ≠ headTarget ∧
+          bodySource = headSource ∧ bodyTarget = headTarget then
+        some {
+          source := .roleSub sub sup
+          canonical := {
+            body := [.role sub (.var headSource) (.var headTarget)]
+            head := [.role sup (.var headSource) (.var headTarget)]
+          }
+          evidence := .roleSub sub sup headSource headTarget h.1
+          input_eq := by simp [h.2.1, h.2.2]
+        }
+      else none
+  | [.role first (.var a0) (.var a1), .role second (.var b0) (.var b1)] =>
+      if h : a0 ≠ a1 ∧ a1 ≠ b1 ∧ a0 ≠ b1 ∧
+          a1 = b0 ∧ headSource = a0 ∧ headTarget = b1 then
+        some {
+          source := .roleChain first second sup
+          canonical := {
+            body := [.role first (.var a0) (.var a1),
+              .role second (.var a1) (.var b1)]
+            head := [.role sup (.var a0) (.var b1)]
+          }
+          evidence := .roleChain first second sup a0 a1 b1 h.1 h.2.1 h.2.2.1
+          input_eq := by simp [h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2]
+        }
+      else if h : b0 ≠ b1 ∧ b1 ≠ a1 ∧ b0 ≠ a1 ∧
+          b1 = a0 ∧ headSource = b0 ∧ headTarget = a1 then
+        some {
+          source := .roleChain second first sup
+          canonical := {
+            body := [.role first (.var b1) (.var a1),
+              .role second (.var b0) (.var b1)]
+            head := [.role sup (.var b0) (.var a1)]
+          }
+          evidence := .roleChainReversed second first sup b0 b1 a1
+            h.1 h.2.1 h.2.2.1
+          input_eq := by simp [h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2]
+        }
+      else none
+  | _ => none
+
+/--
+Total proof-producing normalizer for every single-clause direct ELC form.
+Existential introduction remains the separate two-clause certifier above.
+-/
+def certifyRawDirect (top : Concept) :
+    (input : RawClause Concept Role) → Option (RawDirectCertificate top input)
+  | { body, head := [] } => certifyRawBottom top body
+  | { body, head := [.concept sup (.var headVar)] } =>
+      certifyRawConceptHead top body sup headVar
+  | { body, head := [.role sup (.var headSource) (.var headTarget)] } =>
+      certifyRawRoleHead top body sup headSource headTarget
+  | _ => none
+
+/-- Erase proof data when only the executable reconstructed source axiom is needed. -/
+def certifiedRawSource (top : Concept) (input : RawClause Concept Role) :
+    Option (SourceAxiom Concept Role) :=
+  (certifyRawDirect top input).map (RawDirectCertificate.source)
+
 /-- One of the two frontend clauses that jointly encode existential introduction. -/
 inductive RawExistentialHalf (Concept Role : Type) where
   | role (sub : Concept) (function : Nat) (role : Role)
@@ -594,6 +853,31 @@ example : recognizeRawClause (Concept := C) (Role := R) 0 {
     body := [.concept 1 (.var 7), .concept 2 (.var 7)]
     head := [.concept 3 (.var 7)]
   } = some (.sub [1, 2] 3) := by native_decide
+
+example : certifiedRawSource (Concept := C) (Role := R) 0 {
+    body := [.concept 1 (.var 7), .concept 2 (.var 7)]
+    head := [.concept 3 (.var 7)]
+  } = some (.sub [1, 2] 3) := by native_decide
+
+example : certifiedRawSource (Concept := C) (Role := R) 0 {
+    body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)]
+    head := [.concept 3 (.var 7)]
+  } = some (.existsElim 1 2 3) := by native_decide
+
+example : certifiedRawSource (Concept := C) (Role := R) 0 {
+    body := [.role 1 (.var 7) (.var 8), .role 2 (.var 8) (.var 9)]
+    head := [.role 3 (.var 7) (.var 9)]
+  } = some (.roleChain 1 2 3) := by native_decide
+
+example : certifiedRawSource (Concept := C) (Role := R) 0 {
+    body := [.role 2 (.var 8) (.var 9), .role 1 (.var 7) (.var 8)]
+    head := [.role 3 (.var 7) (.var 9)]
+  } = some (.roleChain 1 2 3) := by native_decide
+
+example : certifiedRawSource (Concept := C) (Role := R) 0 {
+    body := [.role 1 (.var 7) (.var 7)]
+    head := [.role 2 (.var 7) (.var 7)]
+  } = none := by native_decide
 
 example : recognizeRawClause (Concept := C) (Role := R) 0 {
     body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)]

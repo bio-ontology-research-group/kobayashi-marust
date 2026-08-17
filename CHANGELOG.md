@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.3.11] – 2026-08-17
+
+### Add a proof-producing executable direct ELC normalizer
+
+- Add `RawDirectEvidence`, indexed by the exact raw clause and reconstructed
+  source axiom. Its constructors retain concept-body decoding equations and
+  every required variable inequality and role-chain wiring fact.
+- Prove `RawDirectEvidence.sat_iff` by dispatching each constructor to the
+  direct raw semantic theorems from v0.3.10.
+- Add `RawDirectCertificate`, which carries the source axiom, canonical raw
+  clause, typed evidence, and an equality tying the actual input to that
+  canonical clause. Prove every such certificate semantically exact.
+- Implement proof-producing concept-head, bottom, and role-head normalizers,
+  then compose them as total executable `certifyRawDirect`.
+- Cover subclass and arbitrary conjunction bodies, bottom, all three
+  existential-elimination layouts, role inclusion, reflexivity, and both role
+  chain body orders. Malformed terms and collapsed or split variables return
+  `none`.
+- Add kernel-evaluated examples for accepted subclass, restriction, and both
+  chain orders, plus rejection of a collapsed role implication.
+
+This closes the semantic trust gap for successful single-clause direct raw
+normalization without requiring inversion of a Rust-authored result. Remaining
+ELC frontend work is proof-producing whole-list assembly, existential-half
+pairing in that assembly, deterministic n-ary auxiliary-name validation, and
+certificate wire integration. HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.10] – 2026-08-17
 
 ### Prove direct raw ELC clause families semantically exact

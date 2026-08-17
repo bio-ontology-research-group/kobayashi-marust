@@ -122,8 +122,11 @@ the Skolem function interpretation. The same module proves semantic
 equivalence for every canonical direct raw family: subclass and bottom bodies,
 existential elimination in both atom orders and its top-filler form, role
 inclusion, reflexivity, and connected role chains in both orders. The remaining
-executable recognizer inversion theorems, whole-list pairing, n-ary name
-validation, and certificate-wire connection remain open.
+`RawDirectEvidence` and `RawDirectCertificate` types make normalization
+proof-producing: `certifyRawDirect` returns the source axiom together with the
+exact canonical input equality and semantic witness, or fails closed. Whole-list
+pairing, n-ary name validation, and the certificate-wire connection remain
+open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 
