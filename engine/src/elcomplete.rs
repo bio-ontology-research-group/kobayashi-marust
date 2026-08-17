@@ -233,9 +233,8 @@ fn normal_form_keys(nfs: &Nfs) -> HashSet<NormalFormKey> {
 /// per-clause scan.
 enum Tk<'a> {
     Var(&'a str),
-    /// existential filler term `f(x)`: the function name (the bound var is
-    /// irrelevant to the EL mapping, exactly as in `_tk`).
-    Fun(&'a str),
+    /// existential filler term `f(x)`: function and exact argument variable.
+    Fun(&'a str, &'a str),
     /// `ind` / `aux`: not an EL normal-form tree term.
     Other,
 }
@@ -243,7 +242,10 @@ enum Tk<'a> {
 fn tk(t: &JTerm) -> Tk<'_> {
     match t {
         JTerm::Var { name } => Tk::Var(name),
-        JTerm::Fun { function, .. } => Tk::Fun(function),
+        JTerm::Fun { function, arg } => match arg.as_ref() {
+            JTerm::Var { name } => Tk::Fun(function, name),
+            _ => Tk::Other,
+        },
         _ => Tk::Other,
     }
 }
@@ -274,9 +276,9 @@ fn var_name(term: &JTerm) -> Option<&str> {
     }
 }
 
-fn fun_name(term: &JTerm) -> Option<&str> {
-    if let JTerm::Fun { function, .. } = term {
-        Some(function)
+fn fun_parts(term: &JTerm) -> Option<(&str, &str)> {
+    if let JTerm::Fun { function, arg } = term {
+        Some((function, var_name(arg)?))
     } else {
         None
     }
@@ -393,7 +395,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
             }
             JAtom::Concept { term, .. } => {
                 // Existential filler half: A(x) -> B(f(x)).
-                let Some(function) = fun_name(term) else {
+                let Some((function, argument)) = fun_parts(term) else {
                     return false;
                 };
                 let [JAtom::Concept {
@@ -403,7 +405,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 else {
                     return false;
                 };
-                if var_name(sub_term).is_none() {
+                if var_name(sub_term) != Some(argument) {
                     return false;
                 }
                 pending_ex.entry((sub, function)).or_default().1 = true;
@@ -418,14 +420,14 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 }
 
                 // Existential role half: A(x) -> R(x,f(x)).
-                if let Some(function) = fun_name(target) {
-                    if var_name(source).is_some() {
+                if let Some((function, argument)) = fun_parts(target) {
+                    if var_name(source) == Some(argument) {
                         if let [JAtom::Concept {
                             concept: sub,
                             term: sub_term,
                         }] = clause.body.as_slice()
                         {
-                            if var_name(sub_term).is_some() {
+                            if var_name(sub_term) == Some(argument) {
                                 pending_ex.entry((sub, function)).or_default().0 = true;
                                 continue;
                             }
@@ -444,6 +446,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 {
                     if var_name(body_source).is_some()
                         && var_name(body_target).is_some()
+                        && var_name(body_source) != var_name(body_target)
                         && var_name(body_source) == var_name(source)
                         && var_name(body_target) == var_name(target)
                     {
@@ -462,10 +465,16 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                     ..
                 }] = clause.body.as_slice()
                 {
-                    let ordered = var_name(a1) == var_name(b0)
+                    let ordered = var_name(a0) != var_name(a1)
+                        && var_name(a1) != var_name(b1)
+                        && var_name(a0) != var_name(b1)
+                        && var_name(a1) == var_name(b0)
                         && var_name(source) == var_name(a0)
                         && var_name(target) == var_name(b1);
-                    let reversed = var_name(b1) == var_name(a0)
+                    let reversed = var_name(b0) != var_name(b1)
+                        && var_name(b1) != var_name(a1)
+                        && var_name(b0) != var_name(a1)
+                        && var_name(b1) == var_name(a0)
                         && var_name(source) == var_name(b0)
                         && var_name(target) == var_name(a1);
                     let all_variables = [a0, a1, b0, b1, source, target]
@@ -1068,11 +1077,11 @@ fn to_nf(
                     residual.push(c.clone());
                     continue;
                 }
-                Tk::Fun(fname) => {
+                Tk::Fun(fname, argument) => {
                     // existential filler: A(x) -> B(f(x))
                     if bc.len() == 1
                         && br.is_empty()
-                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(_))
+                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(body) if body == argument)
                     {
                         let sub = addc!(concept_of(bc[0]).unwrap().0);
                         let fnid = it.intern(fname);
@@ -1116,11 +1125,11 @@ fn to_nf(
                     }
                 }
                 // existential role: A(x) -> R(x, f(x))
-                if let Tk::Fun(fname) = st {
-                    if matches!(sxs, Tk::Var(_))
+                if let Tk::Fun(fname, argument) = st {
+                    if matches!(sxs, Tk::Var(source) if source == argument)
                         && bc.len() == 1
                         && br.is_empty()
-                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(_))
+                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(body) if body == argument)
                     {
                         let sub = addc!(concept_of(bc[0]).unwrap().0);
                         let fnid = it.intern(fname);
@@ -1142,7 +1151,7 @@ fn to_nf(
                     } = br[0]
                     {
                         let fwd = match (vname(&tk(bs)), vname(&tk(bt)), vname(&sxs), vname(&st)) {
-                            (Some(a), Some(b), Some(c), Some(d)) => a == c && b == d,
+                            (Some(a), Some(b), Some(c), Some(d)) => a != b && a == c && b == d,
                             _ => false,
                         };
                         if !fwd {
@@ -1186,9 +1195,16 @@ fn to_nf(
                             vname(&tk(bt)),
                         );
                         let ordered = if let (Some(a0), Some(a1), Some(b0), Some(b1)) = w {
-                            if a1 == b0 && hs == a0 && ht == b1 {
+                            if a0 != a1 && a1 != b1 && a0 != b1 && a1 == b0 && hs == a0 && ht == b1
+                            {
                                 Some((ra, rb)) // R=br0, S=br1
-                            } else if b1 == a0 && hs == b0 && ht == a1 {
+                            } else if b0 != b1
+                                && b1 != a1
+                                && b0 != a1
+                                && b1 == a0
+                                && hs == b0
+                                && ht == a1
+                            {
                                 Some((rb, ra)) // R=br1, S=br0
                             } else {
                                 None
@@ -5904,6 +5920,49 @@ mod tests {
         let split_bottom = clauses(&format!("[{}]", cl(&[c("A", "x"), c("B", "y")], &[])));
         assert!(!is_pure_el_shape(&split_bottom));
         assert!(classify_inner(split_bottom, CertMode::Off, false).is_none());
+
+        // R(x,x) → S(x,x) is a self-restriction implication, not R ⊑ S.
+        let collapsed_role_sub = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x")], &[r("S", "x", "x")])
+        ));
+        assert!(!is_pure_el_shape(&collapsed_role_sub));
+        assert!(classify_inner(collapsed_role_sub, CertMode::Off, false).is_none());
+
+        // R(x,x) ∧ S(x,z) → T(x,z) is not the unrestricted chain R∘S ⊑ T.
+        let collapsed_role_chain = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x"), r("S", "x", "z")], &[r("T", "x", "z")],)
+        ));
+        assert!(!is_pure_el_shape(&collapsed_role_chain));
+        assert!(classify_inner(collapsed_role_chain, CertMode::Off, false).is_none());
+
+        // The Skolem argument is the universally quantified source variable.
+        // Changing it produces a different first-order clause, not A ⊑ ∃R.B.
+        let mismatched_skolem_argument = clauses(&format!(
+            "[{},{}]",
+            cl(
+                &[c("A", "x")],
+                &[format!(
+                    "{{\"kind\":\"role\",\"role\":\"R\",\"source\":{},\"target\":{{\"kind\":\"fun\",\"function\":\"f\",\"arg\":{}}}}}",
+                    v("x"),
+                    v("y")
+                )],
+            ),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+        ));
+        assert!(!is_pure_el_shape(&mismatched_skolem_argument));
+        assert!(classify_inner(mismatched_skolem_argument, CertMode::Off, false).is_none());
+
+        // Both halves must quantify the same source variable as their Skolem
+        // argument; merely sharing a function name is insufficient.
+        let mismatched_filler_argument = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "y")]),
+        ));
+        assert!(!is_pure_el_shape(&mismatched_filler_argument));
+        assert!(classify_inner(mismatched_filler_argument, CertMode::Off, false).is_none());
     }
 
     #[test]

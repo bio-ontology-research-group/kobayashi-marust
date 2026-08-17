@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.3.9] – 2026-08-17
+
+### Prove raw Skolem-pair normalization exact
+
+- Add a typed Lean model of the frontend's recursive raw terms, equality-free
+  atoms, clauses, term interpretation, and universally quantified Horn
+  semantics.
+- Add executable raw-clause recognition for direct ELC forms, with explicit
+  checks for concept-variable sharing, role orientation, distinct role
+  endpoints, connected three-variable role chains, and both body atom orders
+  for existential elimination.
+- Add executable recognition of the two raw clauses that share a Skolem
+  function for `A ⊑ ∃R.B`; reject mismatched body/source/argument variables,
+  source concepts, function ids, and nested terms.
+- Prove `rawExistentialPair_sat_iff`: the paired raw Skolem clauses are
+  equisatisfiable with the reconstructed source existential axiom. The forward
+  proof extracts the function value as a witness; the reverse proof extends an
+  arbitrary raw interpretation with a choice function.
+- Harden both Rust `to_nf` and its zero-copy routing screen with the same
+  variable-distinctness and Skolem-argument checks. Malformed raw JSON now
+  fails closed instead of being read as a stronger EL axiom.
+
+The raw clauses are not yet carried in certificate wire version 2, so the
+production checker does not yet invoke these recognizers. The direct raw-form
+semantic bridge, deterministic n-ary auxiliary-name check, whole-list pairing,
+and wire integration remain open. HT, CB, and concrete routing remain
+uncertified.
+
 ## [0.3.8] – 2026-08-17
 
 ### Prove n-ary ELC conjunction expansion conservative

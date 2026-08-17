@@ -108,9 +108,19 @@ expansion uses an extended concept signature whose fresh concepts denote exact
 prefix intersections. `compileConjunction_sub_reflects` and
 `compileConjunction_sub_preserves` prove subclass expansion in both directions;
 the corresponding bottom theorems prove the same for disjointness chains.
-Executable pairing of raw Skolem clauses, variable-wiring checks, deterministic
-sorting and auxiliary-name validation remain open parts of the frontend
+Executable whole-list normalization, deterministic sorting, auxiliary-name
+validation, and certificate-wire integration remain open parts of the frontend
 refinement.
+
+`ContextCalculus/ELRawNormalization.lean` models the recursive raw term and
+equality-free atom envelope and supplies executable recognizers for direct ELC
+clauses and paired existential-introduction clauses. The recognizers reject
+split or collapsed variables, reversed role wiring, nested Skolem arguments,
+and mismatched source/function pairs. `rawExistentialPair_sat_iff` proves the
+paired raw clauses equisatisfiable with `A ⊑ ∃R.B` by extracting and extending
+the Skolem function interpretation. The direct raw-clause semantic theorem,
+whole-list pairing, n-ary name validation, and certificate-wire connection
+remain open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

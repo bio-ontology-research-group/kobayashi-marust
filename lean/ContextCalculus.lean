@@ -5,6 +5,7 @@ import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion
 import ContextCalculus.ELNormalization
+import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELCompletionRefinement
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELCompletionWire
