@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.21] – 2026-08-17
+
+### Prove canonical NF3 witness refinement
+
+- Add `ELResidualWitness.lean` and prove the exact rewrite used by Rust:
+  replacing `A ⊑ ∃R.B` with `A ⊑ ∃R.W` and `W ⊑ B` satisfies both
+  original frontend Skolem clauses when the source function is pinned to the
+  alive canonical `W` node.
+- State the theorem over the signature-restricted canonical model used by the
+  executable residual certificate. Its axiom audit is `[propext]`.
+- Make Rust decline a residual certificate if any pin points outside the alive
+  canonical domain. Add focused regression coverage for live and dead pins.
+
+The remaining plain-residual obligation is whole-list executable rewrite
+evidence and composition with the accepted residual clauses. Repair mode, HT,
+CB, and concrete routing remain uncertified.
+
 ## [0.3.20] – 2026-08-17
 
 ### Check residual compilation evidence executable end to end

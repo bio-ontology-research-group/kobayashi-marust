@@ -3420,6 +3420,14 @@ fn cert_audit() -> bool {
 /// to [`REPAIR_VIOL_CAP`] per round. Returns `true` iff no violation was found
 /// and the budget survived. On `false`: an empty `out` means budget exhaustion
 /// (the caller must fail conservatively); a non-empty `out` is repair work.
+fn residual_pins_are_alive(rcs: &[RClause], alive: &[bool]) -> bool {
+    rcs.iter().all(|rc| {
+        rc.pins
+            .iter()
+            .all(|&(_, node)| alive.get(node as usize).copied().unwrap_or(false))
+    })
+}
+
 fn cert_round(
     rcs: &[RClause],
     concept_names: &HashSet<u32>,
@@ -3452,6 +3460,17 @@ fn cert_round(
     } = &*idx;
     let empty_m: Vec<u32> = Vec::new();
     let empty_e: Vec<(u32, u32)> = Vec::new();
+
+    // Pins denote elements of the canonical model, whose domain contains only
+    // alive concept nodes. A dead witness cannot interpret a source Skolem
+    // function. Decline instead of evaluating over a bottom-containing
+    // pseudo-domain that is larger than the certified model.
+    if !residual_pins_are_alive(rcs, alive) {
+        if debug {
+            eprintln!("KM_ELC_CERT fail: pinned witness is outside the alive canonical domain");
+        }
+        return false;
+    }
 
     // recursive join over one clause; returns false on a violating assignment
     // (collect == None), on a full violation round (collect cap reached), or
@@ -6975,6 +6994,24 @@ mod tests {
             head,
             pins,
         }
+    }
+
+    #[test]
+    fn residual_pin_must_name_an_alive_canonical_domain_element() {
+        let clause = rc(
+            1,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![(0, 3)],
+        );
+        assert!(residual_pins_are_alive(&[clause], &[true, false, true, true]));
+        let clause = rc(
+            1,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![(0, 3)],
+        );
+        assert!(!residual_pins_are_alive(&[clause], &[true, false, true, false]));
     }
 
     /// `≤1 R.C` guarded by concept `g`, over variables `x, y1, y2`.
