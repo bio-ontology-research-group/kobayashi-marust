@@ -131,8 +131,11 @@ an executable `checkTrace`. The checker validates source normal forms and
 requires each premise to occur later in the reverse dependency trace.
 `checkTrace_sound` proves every accepted fact derivable, while
 `checkedTrace_soundState` turns acceptance into the exact `SoundState`
-obligation used by the materialization theorem. An exhaustive closure checker
-and the Rust certificate wire format remain separate obligations.
+obligation used by the materialization theorem. `checkClosedTrace` exhaustively
+checks the complementary `ClosedState` obligation over finite interned
+signatures. `checkedTrace_exact` proves that passing both executable checks
+yields exact taxonomy and inconsistency answers. The Rust certificate wire
+format remains a separate obligation.
 
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their

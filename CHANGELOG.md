@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.3] – 2026-08-17
+
+### Prove executable ELC certificate exactness
+
+`checkClosedTrace` exhaustively checks initialization and closure under every
+pure ELC rule over the finite interned concept and role signature.
+`checkClosedTrace_closed` proves that acceptance constructs the v0.4.0
+`ClosedState` contract. `checkedTrace_exact` combines this result with the
+v0.3.2 proof-trace soundness theorem and proves that an accepted certificate's
+taxonomy and inconsistency readouts are semantically exact.
+
+The default Lean build includes executable positive and negative checker
+examples and contains no `sorry` or `admit`. The remaining ELC refinement work
+is to serialize the Rust worker's normal forms and completed state into this
+certificate, invoke the checker fail closed, and prove the wire translation.
+
 ## [0.3.2] – 2026-08-17
 
 ### Verify executable ELC proof traces
