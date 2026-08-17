@@ -79,8 +79,7 @@ not propositional.
 
 ### Full pure ELC normal forms — `ContextCalculus/ELCompletion.lean`
 
-The Rust ELC worker accepts more than the earlier positive EL slice. This file
-formalizes its complete pure normal-form vocabulary: NF1–NF7, explicit top and
+The Rust ELC worker's pure route accepts this normal-form vocabulary: NF1–NF7, explicit top and
 bottom, existential bottom propagation, role hierarchy, reflexive roles, and
 role chains.
 
@@ -92,9 +91,10 @@ role chains.
 - `subsumption_complete` proves named-concept completeness, with an
   unsatisfiable subject represented by its bottom label.
 
-These results certify the mathematical closure relation. They do not yet prove
-that `elcomplete.rs`'s interned indexes, queues, batched NF4 schedule, normal-form
-recognizer, certificate modes, and output conversion refine that relation.
+These results certify the mathematical closure relation. The executable wire
+checker connects the optimized materialization and ID-level output filter to
+this relation. The normal-form recognizer, OWL translation, residual certificate
+modes, and ID-to-IRI presentation remain separate obligations.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 
@@ -130,21 +130,22 @@ This module defines a finite certificate step for every pure ELC inference and
 an executable `checkTrace`. The checker validates source normal forms and
 requires each premise to occur later in the reverse dependency trace.
 `checkTrace_sound` proves every accepted fact derivable, while
-`checkedTrace_soundState` turns acceptance into the exact `SoundState`
+`checkedTrace_soundState` turns acceptance into the `SoundState`
 obligation used by the materialization theorem. `checkClosedTrace` exhaustively
 checks the complementary `ClosedState` obligation over finite interned
 signatures. `checkedTrace_exact` proves that passing both executable checks
-yields exact taxonomy and inconsistency answers. The Rust certificate wire
-format remains a separate obligation.
+yields exact taxonomy and inconsistency answers. `ELCompletionWire.lean`
+discharges the finite Rust certificate wire obligation for normalized pure ELC.
 
 ### ELC wire checker — `ContextCalculus/ELCompletionWire.lean`
 
 The versioned JSON decoder validates every numeric id against a finite `Fin n`
 signature before constructing clauses or proof steps. The native
 `elc-cert-check` executable checks the trace, closure, active Rust contexts, and
-the materialized Rust subsumption and edge stores. `active_subsumption_exact`
-proves that every accepted active-context taxonomy answer is semantically
-exact. The Rust worker invokes this executable when
+the materialized Rust subsumption and edge stores, and the ID-level public
+output relation. `active_subsumption_exact` proves the active materialization
+semantically exact; `public_subsumption_sound` proves every published ID pair
+entailed. The Rust worker invokes this executable when
 `KM_ELC_LEAN_CERT_CHECKER` is set and declines without output if generation,
 serialization, process execution, or verification fails.
 

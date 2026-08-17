@@ -60,6 +60,7 @@ structure WireCertificate where
   active_concepts : List Nat
   rust_subsumptions : List WireSubFact
   rust_edges : List WireEdgeFact
+  public_subsumptions : List WireSubFact
 deriving FromJson, ToJson
 
 def checkedFin (n value : Nat) : Except String (Fin n) :=
@@ -111,6 +112,7 @@ structure DecodedCertificate (n : Nat) where
   trace : List (Step (Fin n) (Fin n))
   active_concepts : List (Fin n)
   rust_facts : List (Fact (Fin n) (Fin n))
+  public_subsumptions : List (Fin n × Fin n)
 
 def WireSubFact.decode (n : Nat) (fact : WireSubFact) :
     Except String (Fact (Fin n) (Fin n)) :=
@@ -134,6 +136,8 @@ def WireCertificate.decode (doc : WireCertificate) :
     rust_facts :=
       (← doc.rust_subsumptions.mapM (WireSubFact.decode doc.symbol_count)) ++
       (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
+    public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
+      return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
   }
 
 def Fact.source {Concept Role : Type} : Fact Concept Role → Concept
@@ -147,10 +151,22 @@ def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n
   formal.all (fun fact =>
     if fact.source ∈ doc.active_concepts then decide (fact ∈ doc.rust_facts) else true)
 
+def DecodedCertificate.expectedPublicOutput {n : Nat} (doc : DecodedCertificate n) :=
+  doc.rust_facts.filterMap fun
+    | .sub sub sup =>
+        if sub != doc.top && sub != doc.bottom && sup != sub && sup != doc.top then
+          some (sub, sup)
+        else none
+    | .edge _ _ _ => none
+
+def DecodedCertificate.checkPublicOutput {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.public_subsumptions.all (fun fact => decide (fact ∈ doc.expectedPublicOutput)) &&
+    doc.expectedPublicOutput.all (fun fact => decide (fact ∈ doc.public_subsumptions))
+
 def DecodedCertificate.check {n : Nat} (doc : DecodedCertificate n) : Bool :=
   checkTrace doc.top doc.bottom doc.ontology doc.trace &&
     checkClosedTrace doc.top doc.bottom doc.ontology doc.trace &&
-    doc.checkStateAgreement
+    doc.checkStateAgreement && doc.checkPublicOutput
 
 theorem DecodedCertificate.rustFact_iff {n : Nat} (doc : DecodedCertificate n)
     (hagree : doc.checkStateAgreement = true) {fact : Fact (Fin n) (Fin n)}
@@ -175,7 +191,7 @@ theorem DecodedCertificate.check_exact {n : Nat} (doc : DecodedCertificate n)
     (Unsatisfiable (top := doc.top) (bottom := doc.bottom) doc.ontology ↔
       (traceMaterialization doc.top doc.bottom doc.trace).sub doc.top doc.bottom) := by
   simp only [DecodedCertificate.check, Bool.and_eq_true] at hcheck
-  exact checkedTrace_exact hcheck.1.1 hcheck.1.2
+  exact checkedTrace_exact hcheck.1.1.1 hcheck.1.1.2
 
 theorem DecodedCertificate.active_subsumption_exact {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true)
@@ -188,16 +204,49 @@ theorem DecodedCertificate.active_subsumption_exact {n : Nat}
   constructor
   · intro h
     rcases h with hbottom | hsub
-    · exact Or.inl ((doc.rustFact_iff hcheck.2
+    · exact Or.inl ((doc.rustFact_iff hcheck.1.2
         (fact := Fact.sub a doc.bottom) hactive).2 hbottom)
-    · exact Or.inr ((doc.rustFact_iff hcheck.2
+    · exact Or.inr ((doc.rustFact_iff hcheck.1.2
         (fact := Fact.sub a b) hactive).2 hsub)
   · intro h
     rcases h with hbottom | hsub
-    · exact Or.inl ((doc.rustFact_iff hcheck.2
+    · exact Or.inl ((doc.rustFact_iff hcheck.1.2
         (fact := Fact.sub a doc.bottom) hactive).1 hbottom)
-    · exact Or.inr ((doc.rustFact_iff hcheck.2
+    · exact Or.inr ((doc.rustFact_iff hcheck.1.2
         (fact := Fact.sub a b) hactive).1 hsub)
+
+theorem DecodedCertificate.publicSub_iff_expected {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n} :
+    (a, b) ∈ doc.public_subsumptions ↔ (a, b) ∈ doc.expectedPublicOutput := by
+  simp only [DecodedCertificate.check, Bool.and_eq_true,
+    DecodedCertificate.checkPublicOutput, List.all_eq_true, decide_eq_true_eq] at hcheck
+  exact ⟨hcheck.2.1 (a, b), hcheck.2.2 (a, b)⟩
+
+theorem DecodedCertificate.public_subsumption_sound {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
+    (hpublic : (a, b) ∈ doc.public_subsumptions) :
+    EntailsSub (top := doc.top) (bottom := doc.bottom) doc.ontology a b := by
+  have hcert := hcheck
+  have hexpected := (doc.publicSub_iff_expected hcheck).1 hpublic
+  simp only [DecodedCertificate.expectedPublicOutput, List.mem_filterMap] at hexpected
+  rcases hexpected with ⟨fact, hfact, hdecoded⟩
+  cases fact with
+  | edge source role target => simp at hdecoded
+  | sub sub sup =>
+      simp only at hdecoded
+      split at hdecoded
+      · simp only [Option.some.injEq, Prod.mk.injEq] at hdecoded
+        obtain ⟨hsub, hsup⟩ := hdecoded
+        subst sub
+        subst sup
+        simp only [DecodedCertificate.check, Bool.and_eq_true,
+          DecodedCertificate.checkStateAgreement, List.all_eq_true,
+          decide_eq_true_eq] at hcheck
+        have hactive := (hcheck.1.2.1 (Fact.sub a b) hfact).2
+        change a ∈ doc.active_concepts at hactive
+        rw [doc.active_subsumption_exact hcert hactive]
+        exact Or.inr hfact
+      · simp at hdecoded
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
   return (← doc.decode).check
@@ -214,6 +263,7 @@ def empty : WireCertificate where
   active_concepts := [0]
   rust_subsumptions := [{ sub := 0, sup := 0 }]
   rust_edges := []
+  public_subsumptions := []
 
 example : empty.check = .ok true := by rfl
 

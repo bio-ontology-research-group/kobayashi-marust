@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.5] – 2026-08-17
+
+### Certify pure ELC result materialization
+
+- Extend the Rust certificate with the exact ID-level subsumption relation
+  materialized by the public output loop.
+- Check both directions between that relation and the certified Rust state
+  after applying the public conventions: omit top and bottom subjects,
+  reflexive pairs, and top objects; retain bottom objects for unsatisfiable
+  classes.
+- Prove `public_subsumption_sound`: every subsumption accepted for publication
+  is semantically entailed by the normalized pure ELC ontology.
+- Test a complete Rust-to-native-Lean run and rejection after injecting a
+  forbidden public-output pair.
+- Pin the optional `dhat` dependency to the available 0.3.3 release, repairing
+  clean locked builds after crates.io stopped offering the locked 0.3.4 package.
+
+This milestone certifies normalized ID-level output. OWL frontend translation,
+ID-to-IRI presentation, residual ELC modes, HT, CB, and concrete routing remain
+outside the certified boundary.
+
 ## [0.3.4] – 2026-08-17
 
 ### ELC Rust-to-Lean refinement path

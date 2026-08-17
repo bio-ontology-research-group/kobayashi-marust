@@ -1424,6 +1424,9 @@ struct LeanElCertificate {
     active_concepts: Vec<u32>,
     rust_subsumptions: Vec<LeanElSubFact>,
     rust_edges: Vec<LeanElEdgeFact>,
+    /// The exact ID-level relation materialised by the public output loop.
+    /// Names are a presentation concern; Lean checks the semantic filtering.
+    public_subsumptions: Vec<LeanElSubFact>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1651,6 +1654,17 @@ fn build_lean_el_certificate(
     }
     rust_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
     rust_edges.sort_unstable_by_key(|fact| (fact.source, fact.role, fact.target));
+    let mut public_subsumptions: Vec<_> = rust_subsumptions
+        .iter()
+        .filter(|fact| {
+            fact.sub != TOP
+                && fact.sub != BOTTOM
+                && fact.sup != fact.sub
+                && fact.sup != TOP
+        })
+        .cloned()
+        .collect();
+    public_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
     Ok(LeanElCertificate {
         version: 1,
         symbol_count: symbol_count as u32,
@@ -1661,6 +1675,7 @@ fn build_lean_el_certificate(
         active_concepts,
         rust_subsumptions,
         rust_edges,
+        public_subsumptions,
     })
 }
 
@@ -5297,6 +5312,13 @@ mod tests {
         let json = serde_json::to_string(&cert).expect("certificate JSON");
         assert!(json.contains("\"nf7\""));
         assert!(json.contains("\"reflexive\""));
+        assert!(json.contains("\"public_subsumptions\""));
+        assert!(cert.public_subsumptions.iter().all(|fact| {
+            fact.sub != TOP
+                && fact.sub != BOTTOM
+                && fact.sup != fact.sub
+                && fact.sup != TOP
+        }));
 
         state.sub_super[2].insert(6);
         assert!(build_lean_el_certificate(&nfs, &state, 7)
