@@ -25,3 +25,5 @@ import ContextCalculus.CompletenessFO
 import ContextCalculus.CompletenessInverse
 import ContextCalculus.Nominals
 import ContextCalculus.Certification
+import ContextCalculus.Hypertableau
+import ContextCalculus.HypertableauCertificate

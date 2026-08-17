@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.32] – 2026-08-17
+
+### Certify finite hypertableau SAT certificates
+
+- Add an executable finite open-branch checker that validates guarded clause
+  bodies, clash freedom, existential witnesses, and every finite clause
+  grounding.
+- Use a computable exhaustive assignment enumeration and prove that it contains
+  every variable assignment, avoiding a classical decision procedure in the
+  checker implementation.
+- Prove that checker acceptance establishes the abstract saturation premises,
+  constructs the canonical model of the exact encoded ontology, and therefore
+  witnesses satisfiability.
+- Add native reduction tests accepting a valid branch and rejecting a clash, a
+  missing existential witness, and an undischarged grounding.
+- Audit the public acceptance theorems with `#print axioms`; none uses
+  `sorryAx`.
+
+This is a finite exhaustive Lean checker. Rust does not yet emit this SAT
+certificate, and the UNSAT refutation tree has no wire decoder yet. Blocking,
+termination, equality/cardinality, nominals, taxonomy publication, CB, and
+concrete routing remain outstanding.
+
 ## [0.3.31] – 2026-08-17
 
 ### Certify exhaustive hypertableau branch refutations
