@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.16`.
+`v0.3.17`.
 
 ## Classify an ontology
 
@@ -138,6 +138,8 @@ nominal rules, and small certificate checkers. Build it separately:
 cd lean
 lake exe cache get
 lake build
+# Native checker linking can otherwise use one compiler per workstation core.
+LEAN_NUM_THREADS=2 lake build elc-cert-check
 ```
 
 The formalization proves soundness and canonical-model completeness for the
@@ -147,8 +149,11 @@ and role chains. It proves that a sound, closed materialization yields the exact
 taxonomy and inconsistency result. It also proves fail-closed composition for
 abstract workers, sequential fallbacks, races, and profile-based routing.
 
-The certification build provides `elc-cert-check`, a native Lean
-checker for the versioned Rust certificate wire format. Set
+The certification build provides `elc-cert-check`, a native Lean checker for
+the versioned Rust certificate wire format. Wire version 3 carries the exact
+raw ELC clauses, variable signature, generated conjunction origins, normalized
+ontology, completion trace, and published result. Lean recomputes and validates
+the raw-to-normal transformation before checking completion. Set
 `KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
 closure, and Rust-state agreement before the pure ELC worker can publish. The
 worker fails closed if any stage fails. This opt-in path currently covers the
@@ -159,16 +164,12 @@ frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
 state against the formal closure, the complete active concept set, the ID-level
 public relation, its named-string materialization, and the inconsistency flag.
 Checker-enabled Rust publishes that verified named result directly. The
-OWL/frontend-clause-to-normal-form translation now has semantic proofs for
-direct forms, conservative n-ary auxiliary expansion, and the raw two-clause
-Skolem encoding of existential introduction. Executable raw recognizers check
-variable wiring and Skolem pairing. Every canonical direct raw clause family
-has a semantic equivalence proof, and a proof-producing executable normalizer
-returns typed evidence for every successful single-clause translation.
-Direct-only whole-list assembly is also proof-producing and model-equivalent.
-Integrating existential pairs into that list, certificate wire integration,
-and equality with Rust's emitted normal forms remain open. HT, CB, concrete
-production routing, and residual ELC modes also remain uncertified. ORE results
+OWL/frontend-clause-to-normal-form translation has semantic proofs for direct
+forms, conservative n-ary auxiliary expansion, and the raw two-clause Skolem
+encoding of existential introduction. Executable raw recognizers check
+variable wiring, Skolem pairing, whole-list assembly, auxiliary identity, and
+equality with Rust's emitted normal forms. HT, CB, concrete production routing,
+and residual ELC modes remain uncertified. ORE results
 are empirical and successful termination alone is not correctness evidence. See
 [`lean/README.md`](lean/README.md).
 

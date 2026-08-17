@@ -172,6 +172,8 @@ struct Nfs {
     reflexive_roles: HashSet<u32>,
     concept_names: HashSet<u32>,
     role_names: HashSet<u32>,
+    /// Exact source-prefix identity of every generated conjunction concept.
+    conjunction_origins: HashMap<u32, Vec<u32>>,
 }
 
 /// Set view of direct normal forms. Most addition transactions extend this set
@@ -868,6 +870,7 @@ fn to_nf(
     let mut reflexive_roles: HashSet<u32> = HashSet::default();
     let mut concept_names: HashSet<u32> = HashSet::default();
     let mut role_names: HashSet<u32> = HashSet::default();
+    let mut conjunction_origins: HashMap<u32, Vec<u32>> = HashMap::default();
 
     // (sub_concept, skolem_fn) -> (role, filler) halves of an A ⊑ ∃R.B axiom.
     let mut pending_ex: HashMap<(u32, u32), (Option<u32>, Option<u32>)> = HashMap::default();
@@ -942,6 +945,11 @@ fn to_nf(
                     let s1 = addc!(&acc);
                     let s2 = addc!(&names[j]);
                     let sup = addc!(&aux);
+                    let prefix_ids = names[..=j]
+                        .iter()
+                        .map(|name| addc!(name))
+                        .collect::<Vec<_>>();
+                    conjunction_origins.insert(sup, prefix_ids);
                     nf2.push(Nf2 {
                         sub1: s1,
                         sub2: s2,
@@ -1020,6 +1028,11 @@ fn to_nf(
                                     let s1 = addc!(&acc);
                                     let s2 = addc!(&names[j]);
                                     let sup = addc!(&aux);
+                                    let prefix_ids = names[..=j]
+                                        .iter()
+                                        .map(|name| addc!(name))
+                                        .collect::<Vec<_>>();
+                                    conjunction_origins.insert(sup, prefix_ids);
                                     nf2.push(Nf2 {
                                         sub1: s1,
                                         sub2: s2,
@@ -1296,6 +1309,7 @@ fn to_nf(
             reflexive_roles,
             concept_names,
             role_names,
+            conjunction_origins,
         },
         residual,
         skolem_target,
@@ -1443,11 +1457,41 @@ enum LeanElClause {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanRawTerm {
+    Var { name: u32 },
+    Fun { function: u32, argument: Box<LeanRawTerm> },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanRawAtom {
+    Concept { concept: u32, term: LeanRawTerm },
+    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanRawClause {
+    body: Vec<LeanRawAtom>,
+    head: Vec<LeanRawAtom>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanConceptOrigin {
+    Source,
+    Conjunction { prefix_ids: Vec<u32> },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
 struct LeanElCertificate {
     version: u32,
     symbol_count: u32,
     top: u32,
     bottom: u32,
+    variable_count: u32,
+    raw_ontology: Vec<LeanRawClause>,
+    concept_origins: Vec<LeanConceptOrigin>,
     ontology: Vec<LeanElClause>,
     /// Reverse dependency order, as required by Lean's `checkTrace`.
     trace: Vec<LeanElStep>,
@@ -1509,6 +1553,7 @@ fn build_lean_el_certificate(
     nfs: &Nfs,
     st: &State,
     interner: &Interner,
+    raw_clauses: &[JClause],
 ) -> Result<LeanElCertificate, String> {
     use std::collections::BTreeSet;
 
@@ -1742,11 +1787,63 @@ fn build_lean_el_certificate(
             },
         })
         .collect();
+    let mut variables: HashMap<String, u32> = HashMap::default();
+    fn raw_term(
+        term: &JTerm,
+        interner: &Interner,
+        variables: &mut HashMap<String, u32>,
+    ) -> Result<LeanRawTerm, String> {
+        match term {
+            JTerm::Var { name } => {
+                let next = variables.len() as u32;
+                let id = *variables.entry(name.clone()).or_insert(next);
+                Ok(LeanRawTerm::Var { name: id })
+            }
+            JTerm::Fun { function, arg } => Ok(LeanRawTerm::Fun {
+                function: interner.id(function).ok_or_else(|| format!("uninterned function {function}"))?,
+                argument: Box::new(raw_term(arg, interner, variables)?),
+            }),
+            JTerm::Ind { .. } | JTerm::Aux { .. } => Err("non-EL raw term in Lean certificate".into()),
+        }
+    }
+    fn raw_atom(
+        atom: &JAtom,
+        interner: &Interner,
+        variables: &mut HashMap<String, u32>,
+    ) -> Result<LeanRawAtom, String> {
+        match atom {
+            JAtom::Concept { concept, term } => Ok(LeanRawAtom::Concept {
+                concept: interner.id(concept).ok_or_else(|| format!("uninterned concept {concept}"))?,
+                term: raw_term(term, interner, variables)?,
+            }),
+            JAtom::Role { role, source, target } => Ok(LeanRawAtom::Role {
+                role: interner.id(role).ok_or_else(|| format!("uninterned role {role}"))?,
+                source: raw_term(source, interner, variables)?,
+                target: raw_term(target, interner, variables)?,
+            }),
+            JAtom::Eq { .. } => Err("equality atom in Lean ELC certificate".into()),
+        }
+    }
+    let mut raw_ontology = Vec::with_capacity(raw_clauses.len());
+    for clause in raw_clauses {
+        raw_ontology.push(LeanRawClause {
+            body: clause.body.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
+            head: clause.head.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
+        });
+    }
+    let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
+    for (&id, prefix_ids) in &nfs.conjunction_origins {
+        let slot = concept_origins.get_mut(id as usize).ok_or_else(|| format!("origin id {id} out of bounds"))?;
+        *slot = LeanConceptOrigin::Conjunction { prefix_ids: prefix_ids.clone() };
+    }
     Ok(LeanElCertificate {
-        version: 2,
+        version: 3,
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
+        variable_count: variables.len() as u32,
+        raw_ontology,
+        concept_origins,
         ontology,
         trace: steps,
         active_concepts,
@@ -5102,7 +5199,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // Drop it BEFORE saturation so the parse tree never coexists with the peak
     // saturation state. On a pure-EL ont (`residual` empty) this is the whole
     // input freed; the saturation then peaks on the interned state alone.
-    drop(clauses);
+    let certificate_clauses = lean_cert_requested.then_some(clauses);
     let rcs = if residual.is_empty() {
         Vec::new()
     } else {
@@ -5176,7 +5273,12 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             }
             return None;
         }
-        let certificate = match build_lean_el_certificate(&nfs, &st, &it) {
+        let certificate = match build_lean_el_certificate(
+            &nfs,
+            &st,
+            &it,
+            certificate_clauses.as_deref().expect("requested certificate retains source clauses"),
+        ) {
             Ok(certificate) => certificate,
             Err(error) => {
                 eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
@@ -5385,6 +5487,7 @@ mod tests {
             reflexive_roles: reflexive,
             concept_names: concepts,
             role_names: roles,
+            conjunction_origins: HashMap::default(),
         };
         let idx = build_idx(&nfs, 7);
         let mut state = init_state(&nfs, 7);
@@ -5401,9 +5504,9 @@ mod tests {
         for name in ["A", "B", "r", "s", "t"] {
             interner.intern(name);
         }
-        let cert = build_lean_el_certificate(&nfs, &state, &interner)
+        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[])
             .expect("exact certificate");
-        assert_eq!(cert.version, 2);
+        assert_eq!(cert.version, 3);
         assert!(!cert.trace.is_empty());
         let json = serde_json::to_string(&cert).expect("certificate JSON");
         assert!(json.contains("\"nf7\""));
@@ -5427,7 +5530,7 @@ mod tests {
         }));
 
         state.sub_super[2].insert(6);
-        assert!(build_lean_el_certificate(&nfs, &state, &interner)
+        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[])
             .unwrap_err()
             .contains("Rust-only subsumption"));
     }
@@ -7945,6 +8048,24 @@ mod tests {
         assert_eq!(
             conjunction_aux_name(&["é".to_string(), "x/y".to_string()]),
             "__conj__2:é3:x/y"
+        );
+    }
+
+    #[test]
+    fn conjunction_origins_record_exact_sorted_source_prefix_ids() {
+        let input = clauses(&format!(
+            "[{}]",
+            cl(&[c("C", "x"), c("A", "x"), c("B", "x")], &[c("D", "x")])
+        ));
+        let mut interner = Interner::new();
+        let (nfs, residual, _) = to_nf(&input, &mut interner).expect("EL normal form");
+        assert!(residual.is_empty());
+        let aux = interner
+            .id(&conjunction_aux_name(&["A".to_string(), "B".to_string()]))
+            .expect("conjunction auxiliary");
+        assert_eq!(
+            nfs.conjunction_origins.get(&aux),
+            Some(&vec![interner.id("A").unwrap(), interner.id("B").unwrap()])
         );
     }
 

@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/lean-el-v3#>)
+Ontology(
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(Class(:D))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(ObjectIntersectionOf(:A :B :C) :D)
+  SubClassOf(:D ObjectSomeValuesFrom(:r :A))
+  SubClassOf(ObjectSomeValuesFrom(:r :B) :C)
+)

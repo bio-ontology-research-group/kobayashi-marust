@@ -1,4 +1,5 @@
 import ContextCalculus.ELCompletionCertificate
+import ContextCalculus.ELRawNormalization
 import Lean
 
 /-!
@@ -23,6 +24,26 @@ inductive WireClause where
   | nf6 (sub sup : Nat)
   | nf7 (first second sup : Nat)
   | reflexive (role : Nat)
+deriving FromJson, ToJson
+
+inductive WireRawTerm where
+  | var (name : Nat)
+  | fun (function : Nat) (argument : WireRawTerm)
+deriving FromJson, ToJson
+
+inductive WireRawAtom where
+  | concept (concept : Nat) (term : WireRawTerm)
+  | role (role : Nat) (source target : WireRawTerm)
+deriving FromJson, ToJson
+
+structure WireRawClause where
+  body : List WireRawAtom
+  head : List WireRawAtom
+deriving FromJson, ToJson
+
+inductive WireConceptOrigin where
+  | source
+  | conjunction (prefix_ids : List Nat)
 deriving FromJson, ToJson
 
 inductive WireStep where
@@ -60,6 +81,9 @@ structure WireCertificate where
   symbol_count : Nat
   top : Nat
   bottom : Nat
+  variable_count : Nat
+  raw_ontology : List WireRawClause
+  concept_origins : List WireConceptOrigin
   ontology : List WireClause
   trace : List WireStep
   active_concepts : List Nat
@@ -113,10 +137,58 @@ def WireStep.decode (n : Nat) : WireStep → Except String (Step (Fin n) (Fin n)
         (← checkedFin n first) (← checkedFin n second) (← checkedFin n sup)
   | .reflexive a role => return .reflexive (← checkedFin n a) (← checkedFin n role)
 
+def WireRawTerm.decode (n variableCount : Nat) : WireRawTerm → Except String RawTerm
+  | .var name => return .var (← checkedFin variableCount name).val
+  | .fun function argument =>
+      return .fun (← checkedFin n function).val (← argument.decode n variableCount)
+
+def WireRawAtom.decode (n variableCount : Nat) : WireRawAtom →
+    Except String (RawAtom (Fin n) (Fin n))
+  | .concept conceptId term =>
+      return .concept (← checkedFin n conceptId) (← term.decode n variableCount)
+  | .role roleId source target =>
+      return .role (← checkedFin n roleId) (← source.decode n variableCount)
+        (← target.decode n variableCount)
+
+def WireRawClause.decode (n variableCount : Nat) (clause : WireRawClause) :
+    Except String (RawClause (Fin n) (Fin n)) :=
+  return {
+    body := ← clause.body.mapM (WireRawAtom.decode n variableCount)
+    head := ← clause.head.mapM (WireRawAtom.decode n variableCount)
+  }
+
+def WireConceptOrigin.decode (n : Nat) (id : Fin n) : WireConceptOrigin →
+    Except String (ExtendedConcept (Fin n))
+  | .source => return .inl id
+  | .conjunction prefixIds => return .inr (← prefixIds.mapM (checkedFin n))
+
+def WireClause.decodeExtended (n : Nat)
+    (origin : Fin n → ExtendedConcept (Fin n)) : WireClause →
+    Except String (Clause (ExtendedConcept (Fin n)) (Fin n))
+  | .nf1 sub sup => return .nf1 (origin (← checkedFin n sub)) (origin (← checkedFin n sup))
+  | .nf2 left right sup =>
+      return .nf2 (origin (← checkedFin n left)) (origin (← checkedFin n right))
+        (origin (← checkedFin n sup))
+  | .nf3 sub role filler =>
+      return .nf3 (origin (← checkedFin n sub)) (← checkedFin n role)
+        (origin (← checkedFin n filler))
+  | .nf4 role filler sup =>
+      return .nf4 (← checkedFin n role) (origin (← checkedFin n filler))
+        (origin (← checkedFin n sup))
+  | .nf5 sub => return .nf5 (origin (← checkedFin n sub))
+  | .nf6 sub sup => return .nf6 (← checkedFin n sub) (← checkedFin n sup)
+  | .nf7 first second sup =>
+      return .nf7 (← checkedFin n first) (← checkedFin n second) (← checkedFin n sup)
+  | .reflexive role => return .reflexive (← checkedFin n role)
+
 structure DecodedCertificate (n : Nat) where
   top : Fin n
   bottom : Fin n
   top_ne_bottom : top ≠ bottom
+  raw_ontology : List (RawClause (Fin n) (Fin n))
+  concept_origins : List (ExtendedConcept (Fin n))
+  concept_origins_nodup : concept_origins.Nodup
+  normal_ontology : Ontology (ExtendedConcept (Fin n)) (Fin n)
   ontology : Ontology (Fin n) (Fin n)
   trace : List (Step (Fin n) (Fin n))
   active_concepts : List (Fin n)
@@ -137,29 +209,46 @@ def WireEdgeFact.decode (n : Nat) (fact : WireEdgeFact) :
 
 def WireCertificate.decode (doc : WireCertificate) :
     Except String (DecodedCertificate doc.symbol_count) := do
-  if doc.version != 2 then
+  if doc.version != 3 then
     throw s!"unsupported ELC certificate version {doc.version}"
   let top ← checkedFin doc.symbol_count doc.top
   let bottom ← checkedFin doc.symbol_count doc.bottom
   if hne : top ≠ bottom then
     if hsymbols : doc.symbols.length = doc.symbol_count then
-      return {
-        top := top
-        bottom := bottom
-        top_ne_bottom := hne
-        ontology := ← doc.ontology.mapM (WireClause.decode doc.symbol_count)
-        trace := ← doc.trace.mapM (WireStep.decode doc.symbol_count)
-        active_concepts := ← doc.active_concepts.mapM (checkedFin doc.symbol_count)
-        rust_facts :=
-          (← doc.rust_subsumptions.mapM (WireSubFact.decode doc.symbol_count)) ++
-          (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
-        public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
-          return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
-        symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
-        public_named_subsumptions :=
-          doc.public_named_subsumptions.map fun fact => (fact.sub, fact.sup)
-        public_inconsistent := doc.public_inconsistent
-      }
+      if horiginCount : doc.concept_origins.length = doc.symbol_count then
+        let origins ← (List.finRange doc.symbol_count).mapM fun id =>
+          (doc.concept_origins.get ⟨id.val, by rw [horiginCount]; exact id.isLt⟩).decode
+            doc.symbol_count id
+        let origin : Fin doc.symbol_count → ExtendedConcept (Fin doc.symbol_count) :=
+          fun id => origins.getD id.val (.inl top)
+        if horiginsNodup : origins.Nodup then
+          return {
+            top := top
+            bottom := bottom
+            top_ne_bottom := hne
+            raw_ontology := ← doc.raw_ontology.mapM
+              (WireRawClause.decode doc.symbol_count doc.variable_count)
+            concept_origins := origins
+            concept_origins_nodup := horiginsNodup
+            normal_ontology := ← doc.ontology.mapM
+              (WireClause.decodeExtended doc.symbol_count origin)
+            ontology := ← doc.ontology.mapM (WireClause.decode doc.symbol_count)
+            trace := ← doc.trace.mapM (WireStep.decode doc.symbol_count)
+            active_concepts := ← doc.active_concepts.mapM (checkedFin doc.symbol_count)
+            rust_facts :=
+              (← doc.rust_subsumptions.mapM (WireSubFact.decode doc.symbol_count)) ++
+              (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
+            public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
+              return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
+            symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
+            public_named_subsumptions :=
+              doc.public_named_subsumptions.map fun fact => (fact.sub, fact.sup)
+            public_inconsistent := doc.public_inconsistent
+          }
+        else
+          throw "concept-origin table is not injective"
+      else
+        throw s!"concept-origin table has length {doc.concept_origins.length}, expected {doc.symbol_count}"
     else
       throw s!"symbol table has length {doc.symbols.length}, expected {doc.symbol_count}"
   else
@@ -221,6 +310,64 @@ def DecodedCertificate.check {n : Nat} (doc : DecodedCertificate n) : Bool :=
   checkTrace doc.top doc.bottom doc.ontology doc.trace &&
     checkClosedTrace doc.top doc.bottom doc.ontology doc.trace &&
     doc.checkStateAgreement && doc.checkPublicOutput && doc.checkNamedOutput
+
+def DecodedCertificate.conceptOrigin {n : Nat} (doc : DecodedCertificate n) (id : Fin n) :
+    ExtendedConcept (Fin n) :=
+  doc.concept_origins.getD id.val (.inl doc.top)
+
+def RawAtom.conceptIds : RawAtom Concept Role → List Concept
+  | .concept conceptId _ => [conceptId]
+  | .role _ _ _ => []
+
+def RawClause.conceptIds (clause : RawClause Concept Role) : List Concept :=
+  (clause.body ++ clause.head).flatMap RawAtom.conceptIds
+
+def listSetEq [DecidableEq α] (left right : List α) : Bool :=
+  left.all (· ∈ right) && right.all (· ∈ left)
+
+theorem listSetEq_iff [DecidableEq α] {left right : List α} :
+    listSetEq left right = true ↔ ∀ value, value ∈ left ↔ value ∈ right := by
+  simp [listSetEq]
+  constructor
+  · rintro ⟨hlr, hrl⟩ value
+    exact ⟨hlr value, hrl value⟩
+  · intro h
+    exact ⟨fun value hmem => (h value).mp hmem,
+      fun value hmem => (h value).mpr hmem⟩
+
+theorem models_iff_of_listSetEq [DecidableEq Concept] [DecidableEq Role]
+    {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    {left right : Ontology Concept Role} (heq : listSetEq left right = true) :
+    models I left ↔ models I right := by
+  rw [listSetEq_iff] at heq
+  simp only [models]
+  exact forall_congr' fun clause => imp_congr (heq clause) Iff.rfl
+
+/-- Validate the previously trusted normalization boundary. -/
+def DecodedCertificate.checkNormalization {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  let rawConcepts := doc.raw_ontology.flatMap RawClause.conceptIds
+  let sourceOrigins := rawConcepts.all fun concept =>
+    decide (doc.conceptOrigin concept = .inl concept)
+  match certifyRawToNormal doc.top doc.bottom doc.raw_ontology with
+  | none => false
+  | some certificate =>
+      sourceOrigins && listSetEq doc.normal_ontology certificate.normal.normal
+
+def DecodedCertificate.checkV3 {n : Nat} (doc : DecodedCertificate n) : Bool :=
+  doc.checkNormalization && doc.check
+
+theorem DecodedCertificate.checkNormalization_models_iff {n : Nat}
+    (doc : DecodedCertificate n) (I : Interp Domain (Fin n) (Fin n) doc.top doc.bottom)
+    (base : RawTermInterp Domain) (hcheck : doc.checkNormalization = true) :
+    (∃ T, modelsRaw I T doc.raw_ontology) ↔ models (extendInterp I) doc.normal_ontology := by
+  simp only [DecodedCertificate.checkNormalization] at hcheck
+  split at hcheck
+  · contradiction
+  · rename_i certificate hcertificate
+    simp only [Bool.and_eq_true] at hcheck
+    rw [certificate.models_iff I base]
+    exact (models_iff_of_listSetEq (extendInterp I) hcheck.2).symm
 
 theorem DecodedCertificate.rustFact_iff {n : Nat} (doc : DecodedCertificate n)
     (hagree : doc.checkStateAgreement = true) {fact : Fact (Fin n) (Fin n)}
@@ -408,15 +555,18 @@ theorem DecodedCertificate.public_inconsistent_exact {n : Nat}
     rw [hnamed.2, hdecide]
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
-  return (← doc.decode).check
+  return (← doc.decode).checkV3
 
 namespace WireExamples
 
 def empty : WireCertificate where
-  version := 2
+  version := 3
   symbol_count := 2
   top := 0
   bottom := 1
+  variable_count := 0
+  raw_ontology := []
+  concept_origins := [.source, .source]
   ontology := []
   trace := [.refl 0, .top 0, .refl 1, .top 1]
   active_concepts := [0]
@@ -427,10 +577,10 @@ def empty : WireCertificate where
   public_named_subsumptions := []
   public_inconsistent := false
 
-example : empty.check = .ok true := by rfl
+example : empty.check = .ok true := by native_decide
 
 example : { empty with top := 2 }.check = .error "symbol id 2 is outside [0,2)" := by
-  rfl
+  native_decide
 
 end WireExamples
 

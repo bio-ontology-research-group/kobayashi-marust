@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.17] – 2026-08-17
+
+### Connect Rust ELC normalization to the Lean checker
+
+- Extend the ELC certificate wire to version 3 with the exact raw clause
+  stream, finite variable signature, and one checked semantic origin for every
+  interned symbol.
+- Record each generated n-ary conjunction auxiliary as its sorted source-prefix
+  identity. The decoder rejects out-of-bounds or duplicate origins, source
+  concepts relabelled as auxiliaries, and auxiliary aliases.
+- Reconstruct Rust's emitted normal ontology over the extended concept
+  signature and run `certifyRawToNormal` inside the executable checker. The
+  checker accepts only when this ontology equals the one computed from the raw
+  stream, up to order and duplicate entries.
+- Compose raw normalization with the existing trace, closure, Rust-state,
+  public-output, symbol-table, and inconsistency checks. A mixed
+  NF2/NF3/NF4 production certificate passes the native checker; independent
+  mutations of its raw stream, normal forms, and origin table all fail closed.
+- Add Rust regression coverage for the exact sorted conjunction-prefix IDs.
+
+This closes the concrete raw-to-normal wire obligation for the pure ELC route.
+Residual ELC modes, HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.16] – 2026-08-17
 
 ### Prove whole-ontology raw-to-normal ELC equivalence
