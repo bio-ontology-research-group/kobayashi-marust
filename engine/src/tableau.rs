@@ -5219,6 +5219,38 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let abox_different = native_different.clone();
         let abox_roles = native_roles.clone();
         let ht_number = inp.number;
+        let lean_cert_path = std::env::var_os("KM_HT_LEAN_CERT_OUT").map(std::path::PathBuf::from);
+        let lean_cert_checker =
+            std::env::var_os("KM_HT_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
+        let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
+        if lean_cert_requested {
+            if std::env::var_os("KM_HT_GLOBAL").is_none() {
+                return Err(
+                    "HT Lean certificate v1 certifies global consistency only".to_string(),
+                );
+            }
+            if inp.number || inp.inverse || !inp.nominals.is_empty() || native_abox_active {
+                return Err(
+                    "HT Lean certificate v1 requires equality-free ALC(H) input".to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_QO").is_some() {
+                return Err("HT Lean certificate v1 does not certify the QO route".to_string());
+            }
+            if !inp.chains.is_empty() || !inp.transitive.is_empty() {
+                return Err(
+                    "HT Lean certificate v1 does not certify role-chain side-data compilation"
+                        .to_string(),
+                );
+            }
+            for optimization in ["KM_HT_TRIGABS", "KM_HT_CONTRA", "KM_HT_HARVEST"] {
+                if std::env::var_os(optimization).is_some() {
+                    return Err(format!(
+                        "HT Lean certificate v1 does not certify {optimization} preprocessing"
+                    ));
+                }
+            }
+        }
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
         let card_raw: Vec<(C, bool, u32, R, C)> = inp
             .card_defs
@@ -5254,7 +5286,15 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 if !card_raw.is_empty() && std::env::var_os("KM_HT_QO").is_none() {
                     ht.set_card_defs_raw(&card_raw);
                 }
-                if std::env::var_os("KM_HT_QO").is_some() {
+                let classification = if lean_cert_requested {
+                    let consistent = ht.consistent(&[])?;
+                    if !consistent {
+                        // Runtime UNSAT publication requires a refutation tree;
+                        // v1's Rust producer currently emits SAT models only.
+                        return None;
+                    }
+                    Some((true, Vec::new(), Vec::new()))
+                } else if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),
                         // QO bailed. In router mode (KM_HT_QO_CERTIFY_ONLY) this is
@@ -5274,7 +5314,13 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     }
                 } else {
                     ht.classify(&q)
-                }
+                };
+                let certificate = if lean_cert_requested {
+                    Some(ht.lean_sat_certificate_json().ok()?)
+                } else {
+                    None
+                };
+                Some((classification?, certificate))
             })
             .map_err(|e| e.to_string())?
             .join()
@@ -5282,7 +5328,44 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         if std::env::var_os("KM_HT_TRACE").is_some() {
             eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
         }
-        if let Some((consistent, unsat, subs)) = res {
+        if let Some(((consistent, unsat, subs), lean_certificate)) = res {
+            if let Some(certificate) = lean_certificate {
+                let temporary_path;
+                let path = if let Some(path) = lean_cert_path.as_deref() {
+                    path
+                } else {
+                    temporary_path = std::env::temp_dir()
+                        .join(format!("km-ht-cert-{}.json", std::process::id()));
+                    temporary_path.as_path()
+                };
+                if let Err(error) = std::fs::write(path, certificate) {
+                    return Err(format!(
+                        "KM_HT_LEAN_CERT cannot write {}: {error}",
+                        path.display()
+                    ));
+                }
+                if let Some(checker) = lean_cert_checker.as_deref() {
+                    let status = std::process::Command::new(checker)
+                        .arg(path)
+                        .stdout(std::process::Stdio::null())
+                        .status()
+                        .map_err(|error| {
+                            format!(
+                                "KM_HT_LEAN_CERT cannot execute {}: {error}",
+                                checker.display()
+                            )
+                        })?;
+                    if lean_cert_path.is_none() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    if !status.success() {
+                        return Err(format!(
+                            "KM_HT_LEAN_CERT checker {} rejected the certificate ({status})",
+                            checker.display()
+                        ));
+                    }
+                }
+            }
             // The per-concept model-label candidate sets can miss an entailed
             // A ⊑ C when A ⊑ B ⊑ C and C is absent from A's one captured model
             // (inferred, non-told subsumers via domain/range etc.). Subsumption
@@ -5304,6 +5387,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
             };
             return serde_json::to_string(&out).map_err(|e| e.to_string());
+        }
+        if lean_cert_requested {
+            return Err(
+                "HT Lean certificate producer deferred; no unchecked fallback published"
+                    .to_string(),
+            );
         }
         // None ⇒ out-of-fragment. In router mode this is a DEFER: do NOT fall to
         // the legacy Tableau (unsound/may hang on this inverse fragment) — signal

@@ -2180,6 +2180,61 @@ enum Out {
     /// restart budget hit: unwind to the top and re-run (activity preserved).
     Restart,
 }
+
+#[derive(serde::Serialize)]
+struct LeanHtLit {
+    concept: usize,
+    neg: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtAtom {
+    Concept { literal: LeanHtLit, node: usize },
+    Role { role: usize, source: usize, target: usize },
+    Exists_ { role: usize, filler: LeanHtLit, node: usize },
+    Eq { left: usize, right: usize },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtClause {
+    body: Vec<LeanHtAtom>,
+    head: Vec<LeanHtAtom>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtLabel {
+    node: usize,
+    literal: LeanHtLit,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtEdge {
+    role: usize,
+    source: usize,
+    target: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtObligation {
+    role: usize,
+    filler: LeanHtLit,
+    node: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtSatCertificate {
+    version: usize,
+    node_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    variable_count: usize,
+    ontology: Vec<LeanHtClause>,
+    labels: Vec<LeanHtLabel>,
+    edges: Vec<LeanHtEdge>,
+    obligations: Vec<LeanHtObligation>,
+    evidence: &'static str,
+}
 enum Scan {
     Sat,
     Clash,
@@ -7587,6 +7642,158 @@ impl<'a> QoSat<'a> {
 }
 
 impl Ht {
+    fn lean_wire_lit(lit: CLit) -> LeanHtLit {
+        LeanHtLit {
+            concept: lit.c as usize,
+            neg: lit.neg,
+        }
+    }
+
+    fn lean_wire_atom(atom: &Atom) -> LeanHtAtom {
+        match *atom {
+            Atom::Concept { lit, t } => LeanHtAtom::Concept {
+                literal: Self::lean_wire_lit(lit),
+                node: t as usize,
+            },
+            Atom::Role { r, s, t } => LeanHtAtom::Role {
+                role: r as usize,
+                source: s as usize,
+                target: t as usize,
+            },
+            Atom::Exists { r, fil, t } => LeanHtAtom::Exists_ {
+                role: r as usize,
+                filler: Self::lean_wire_lit(fil),
+                node: t as usize,
+            },
+            Atom::Eq { s, t } => LeanHtAtom::Eq {
+                left: s as usize,
+                right: t as usize,
+            },
+        }
+    }
+
+    /// Serialize the exact terminal completion graph and normalized HT clauses
+    /// consumed by Lean's version-1 finite-model checker.
+    ///
+    /// Equality is deliberately fenced from this first producer: node merging
+    /// needs an explicit quotient witness before its terminal graph can be
+    /// identified with the checker's finite domain.  A rejected producer does
+    /// not weaken ordinary HT execution; checker-backed publication fails closed.
+    pub fn lean_sat_certificate_json(&self) -> Result<String, String> {
+        if self.ext.clash.is_some() {
+            return Err("cannot certify a clashing hypertableau state".to_string());
+        }
+        if self.ext.unsupported {
+            return Err("cannot certify an unsupported hypertableau state".to_string());
+        }
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .body
+                .iter()
+                .chain(record.0.head.iter())
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
+            return Err("HT Lean SAT certificate v1 does not encode equality merging".to_string());
+        }
+
+        let mut variable_count = 0usize;
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        let mut note_atom = |atom: &Atom| match *atom {
+            Atom::Concept { lit, t } => {
+                variable_count = variable_count.max(t as usize + 1);
+                concept_count = concept_count.max(lit.c as usize + 1);
+            }
+            Atom::Role { r, s, t } => {
+                variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+                role_count = role_count.max(r as usize + 1);
+            }
+            Atom::Exists { r, fil, t } => {
+                variable_count = variable_count.max(t as usize + 1);
+                concept_count = concept_count.max(fil.c as usize + 1);
+                role_count = role_count.max(r as usize + 1);
+            }
+            Atom::Eq { .. } => unreachable!("equality rejected above"),
+        };
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                note_atom(atom);
+            }
+        }
+        drop(note_atom);
+
+        let ontology = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        let mut labels = Vec::new();
+        for (node, label) in self.ext.concepts.iter().enumerate() {
+            for &literal in label.keys() {
+                concept_count = concept_count.max(literal.c as usize + 1);
+                labels.push(LeanHtLabel {
+                    node,
+                    literal: Self::lean_wire_lit(literal),
+                });
+            }
+        }
+        labels.sort_unstable_by_key(|label| {
+            (label.node, label.literal.concept, label.literal.neg)
+        });
+        let mut edges = Vec::new();
+        for (source, outgoing) in self.ext.out_edges.iter().enumerate() {
+            for &(role, target, _) in outgoing {
+                role_count = role_count.max(role as usize + 1);
+                edges.push(LeanHtEdge {
+                    role: role as usize,
+                    source,
+                    target,
+                });
+            }
+        }
+        edges.sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        let mut obligations = self
+            .ext
+            .obligations
+            .iter()
+            .map(|obligation| {
+                concept_count = concept_count.max(obligation.fil.c as usize + 1);
+                role_count = role_count.max(obligation.r as usize + 1);
+                LeanHtObligation {
+                    role: obligation.r as usize,
+                    filler: Self::lean_wire_lit(obligation.fil),
+                    node: obligation.n,
+                }
+            })
+            .collect::<Vec<_>>();
+        obligations.sort_unstable_by_key(|obligation| {
+            (
+                obligation.role,
+                obligation.node,
+                obligation.filler.concept,
+                obligation.filler.neg,
+            )
+        });
+
+        serde_json::to_string(&LeanHtSatCertificate {
+            version: 1,
+            node_count: self.ext.num_nodes(),
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            labels,
+            edges,
+            obligations,
+            evidence: "sat",
+        })
+        .map_err(|error| error.to_string())
+    }
+
     /// Recompute the tableau trigger indexes (`concept_triggers`,
     /// `role_triggers`, `global_clauses`, `global_disj`) from the CURRENT
     /// `self.clauses`. Must be called whenever `self.clauses` is replaced after
@@ -16149,5 +16356,37 @@ mod tests {
             2,
             "both workers must see the global ABox clash"
         );
+    }
+
+    #[test]
+    fn lean_sat_wire_serializes_the_exact_terminal_model() {
+        let mut t = ht(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![exists(R0, false, B, X)],
+            ),
+        ]);
+        assert_eq!(t.consistent(&[]), Some(true));
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_sat_certificate_json()
+                .expect("clash-free equality-free state has a SAT certificate"),
+        )
+        .expect("certificate is JSON");
+        assert_eq!(wire["version"], 1);
+        assert_eq!(wire["evidence"], "sat");
+        assert_eq!(wire["variable_count"], 1);
+        assert_eq!(wire["ontology"].as_array().unwrap().len(), 2);
+        assert!(wire["labels"].as_array().unwrap().len() >= 2);
+        assert!(!wire["edges"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn lean_sat_wire_rejects_equality_until_quotients_are_certified() {
+        let t = ht(vec![Clause::new(
+            Vec::new(),
+            vec![Atom::Eq { s: X, t: 1 }],
+        )]);
+        assert!(t.lean_sat_certificate_json().is_err());
     }
 }

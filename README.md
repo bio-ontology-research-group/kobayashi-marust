@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.34`.
+`v0.3.35`.
 
 ## Classify an ontology
 
@@ -167,9 +167,12 @@ versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
 labels and edges, existential witnesses, saturation, clashes, and exhaustive
 disjunctive children. Acceptance proves that SAT evidence constructs a model or
 that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
-worker does not emit this evidence yet, so production HT results are not claimed
-as certified. Equality/cardinality, nominals, blocking, termination, and
-taxonomy publication also remain separate HT certification tasks.
+worker emits finite SAT evidence when
+`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
+It publishes global consistency only after Lean accepts the exact normalized
+clauses and terminal model, and otherwise fails closed. Equality/cardinality,
+inverse roles, nominals, native ABoxes, QO, UNSAT, cyclic blocking/model folding,
+termination, and taxonomy publication remain separate HT certification tasks.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

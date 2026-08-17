@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.35] – 2026-08-17
+
+### Connect Rust HT SAT evidence to the Lean checker
+
+- Serialize the exact normalized HT clauses and completed equality-free graph
+  into the version-1 Lean certificate wire format.
+- Gate checker-backed HT publication on successful execution of the native
+  `ht-cert-check` executable. Producer failure, checker rejection, and
+  unsupported evidence all defer without publishing a legacy fallback answer.
+- Restrict the integrated endpoint to global SAT results for equality-free
+  ALC(H). Taxonomy, UNSAT, QO, inverse, cardinality, nominal, and native-ABox
+  results remain fenced.
+- Add Rust tests for terminal-model serialization and equality rejection, plus
+  an end-to-end Rust-to-JSON-to-Lean acceptance test during release validation.
+- Confirm that Lean rejects a blocked existential completion graph that lacks
+  its folded model edges. This keeps cyclic blocking outside the certified
+  runtime slice until the blocking/model-folding theorem is complete.
+
+This release certifies publication only when the emitted finite SAT model is
+accepted by Lean. It does not certify HT taxonomy or UNSAT publication.
+
 ## [0.3.34] – 2026-08-17
 
 ### Certify the hypertableau JSON trust boundary
