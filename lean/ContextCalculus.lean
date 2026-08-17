@@ -8,6 +8,7 @@ import ContextCalculus.ELNormalization
 import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELCompletionRefinement
 import ContextCalculus.ELResidualCertificate
+import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELCompletionWire
 import ContextCalculus.CompletenessContext

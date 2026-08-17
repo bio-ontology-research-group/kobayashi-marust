@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.19] – 2026-08-17
+
+### Prove whole-theory residual compilation refinement
+
+- Add `ELResidualCompilation.lean` and formalize the exact source residual
+  language accepted by Rust, including concepts, roles, equality, ordinary
+  variables, and one-level Skolem terms.
+- Define proof-carrying compilation evidence for each term, atom, body, head,
+  and pin, then prove compiled-clause satisfaction implies satisfaction of the
+  original source clause under the pinned constant-function interpretation.
+- Compose independently numbered per-clause variable tables into a whole
+  residual theory with one shared Skolem-function interpretation. The
+  principal theorem audits at `[propext, Quot.sound]`.
+- Separate source-variable and Skolem-function namespaces in Rust's residual
+  compiler. Previously equal strings in those two namespaces could alias one
+  slot and incorrectly pin a universally quantified source variable. Add a
+  focused regression test for this collision.
+
+The executable wire still declines residual certificates until it can check
+and construct this evidence from Rust output. Repair mode, HT, CB, and concrete
+routing remain uncertified.
+
 ## [0.3.18] – 2026-08-17
 
 ### Prove canonical-model exactness with residual axioms

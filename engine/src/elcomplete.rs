@@ -2478,6 +2478,11 @@ fn compile_residual(
     nfs: &mut Nfs,
     skolem_target: &HashMap<u32, (u32, u32, u32)>,
 ) -> Option<Vec<RClause>> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ResidualVarKey<'a> {
+        Source(&'a str),
+        Function(&'a str),
+    }
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     macro_rules! bail {
         ($c:expr, $why:expr) => {{
@@ -2492,17 +2497,17 @@ fn compile_residual(
         }};
     }
     // tiny per-clause var sets: linear scan beats hashing
-    fn vid<'a>(vars: &mut Vec<&'a str>, name: &'a str) -> usize {
-        if let Some(i) = vars.iter().position(|v| *v == name) {
+    fn vid<'a>(vars: &mut Vec<ResidualVarKey<'a>>, key: ResidualVarKey<'a>) -> usize {
+        if let Some(i) = vars.iter().position(|v| *v == key) {
             return i;
         }
-        vars.push(name);
+        vars.push(key);
         vars.len() - 1
     }
     let mut out = Vec::with_capacity(residual.len());
     let mut skolem_witness: HashMap<u32, u32> = HashMap::default();
     for c in residual {
-        let mut vars: Vec<&str> = Vec::new();
+        let mut vars: Vec<ResidualVarKey<'_>> = Vec::new();
         let mut pins: Vec<(usize, u32)> = Vec::new();
         let mut body = Vec::with_capacity(c.body.len());
         let mut head = Vec::with_capacity(c.head.len());
@@ -2510,7 +2515,7 @@ fn compile_residual(
         macro_rules! term_v {
             ($t:expr) => {
                 match $t {
-                    JTerm::Var { name } => vid(&mut vars, name),
+                    JTerm::Var { name } => vid(&mut vars, ResidualVarKey::Source(name)),
                     JTerm::Fun { function, arg } => {
                         if !matches!(arg.as_ref(), JTerm::Var { .. }) {
                             bail!(c, "nested fun term");
@@ -2540,7 +2545,7 @@ fn compile_residual(
                                 witness
                             }
                         };
-                        let v = vid(&mut vars, function);
+                        let v = vid(&mut vars, ResidualVarKey::Function(function));
                         if !pins.iter().any(|&(pv, _)| pv == v) {
                             pins.push((v, witness));
                         }
@@ -6334,6 +6339,29 @@ mod tests {
             classify_inner(cs, CertMode::Repair, false).is_some(),
             "repair mode must preserve the same witness interpretation"
         );
+    }
+
+    #[test]
+    fn residual_source_variables_cannot_alias_function_pin_slots() {
+        // The source variable is deliberately named exactly like the Skolem
+        // function. They inhabit different namespaces: pinning x(·) must not
+        // pin the universally quantified source variable `x`.
+        let cs = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("A", "u")], &[rf("R", "u", "x")]),
+            cl(&[c("A", "u")], &[cf("B", "x", "u")]),
+            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+        ));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, skolem_target) =
+            to_nf(&cs, &mut interner).expect("normalizable EL prefix");
+        assert_eq!(residual.len(), 1);
+        let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
+            .expect("supported residual");
+        assert_eq!(compiled[0].nvars, 2);
+        assert_eq!(compiled[0].pins.len(), 1);
+        assert_ne!(compiled[0].pins[0].0, 0, "source slot must remain unpinned");
+        assert!(matches!(compiled[0].body[0], RAtom::C { v: 0, .. }));
     }
 
     #[test]
