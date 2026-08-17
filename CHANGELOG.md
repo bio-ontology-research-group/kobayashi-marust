@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.24] – 2026-08-17
+
+### Prove exact residual reasoning on the executable finite domain
+
+- Define the finite canonical domain as the active concepts that the checked
+  trace does not label with bottom, with concept and role interpretation taken
+  directly from the trace materialization.
+- Prove that fixpoint closure makes this finite interpretation a model of every
+  checked NF1–NF7 and reflexive axiom. The NF3 case proves that each required
+  filler remains active and alive.
+- Prove exact taxonomy and inconsistency theorems when the residual theory holds
+  on this same finite interpretation. These are the semantic theorems needed by
+  an exhaustive native residual-clause checker, rather than corollaries that
+  assume truth in a separate abstract canonical model.
+
+The executable wire does not yet invoke the finite residual-clause checker, so
+production still declines Lean-certified residual publication. Repair mode,
+HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.23] – 2026-08-17
 
 ### Check exact source partitions and symbol origins

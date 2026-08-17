@@ -221,6 +221,70 @@ theorem activeAlive_nonempty {active : Concept → Prop} {top bottom : Concept}
     Nonempty (ActiveAlive active top bottom O) :=
   ⟨⟨top, hsig.top_active, h⟩⟩
 
+/-! ## Finite canonical model of an executable materialization -/
+
+abbrev MaterializedActiveAlive (active : Concept → Prop)
+    (m : Materialization Concept Role) (bottom : Concept) :=
+  {a : Concept // active a ∧ ¬m.sub a bottom}
+
+def materializedCanon (active : Concept → Prop)
+    (m : Materialization Concept Role) (top bottom : Concept)
+    (closed : ClosedState m top bottom O) :
+    Interp (MaterializedActiveAlive active m bottom) Concept Role top bottom where
+  concept := fun concept x => m.sub x.1 concept
+  role := fun role x y => m.edge x.1 role y.1
+  top_true := fun x => closed.initTop x.1
+  bottom_false := fun x => x.2.2
+
+/-- Closure alone makes the finite, active-and-alive materialization domain a
+model of every NF1–NF7 and reflexive axiom. This is the exact finite domain the
+native residual checker enumerates. -/
+theorem materializedCanon_models
+    (active : Concept → Prop) (m : Materialization Concept Role)
+    (closed : ClosedState m top bottom O)
+    (hsig : SignatureClosed active top O) :
+    models (materializedCanon active m top bottom closed) O := by
+  intro clause hclause
+  cases clause with
+  | nf1 sub sup =>
+      intro x hsub
+      exact closed.closeNf1 hsub hclause
+  | nf2 left right sup =>
+      intro x hleft hright
+      exact closed.closeNf2 hleft hright hclause
+  | nf3 sub role filler =>
+      intro x hsub
+      have hedge : m.edge x.1 role filler := closed.closeNf3 hsub hclause
+      have halive : ¬m.sub filler bottom := by
+        intro hbottom
+        exact x.2.2 (closed.closeBottomEdge hedge hbottom)
+      have hactive : active filler :=
+        hsig.clause_active (.nf3 sub role filler) hclause filler (Or.inr rfl)
+      exact ⟨⟨filler, hactive, halive⟩, hedge, closed.initRefl filler⟩
+  | nf4 role filler sup =>
+      intro x hexists
+      obtain ⟨target, hedge, hfiller⟩ := hexists
+      exact closed.closeNf4 hedge hfiller hclause
+  | nf5 sub =>
+      intro x hsub
+      exact x.2.2 (closed.closeNf5 hsub hclause)
+  | nf6 sub sup =>
+      intro x y hedge
+      exact closed.closeNf6 hedge hclause
+  | nf7 first second sup =>
+      intro x y z hfirst hsecond
+      exact closed.closeNf7 hfirst hsecond hclause
+  | reflexive role =>
+      intro x
+      exact closed.closeReflexive x.1 hclause
+
+theorem materializedActiveAlive_nonempty
+    (active : Concept → Prop) (m : Materialization Concept Role)
+    (hsig : SignatureClosed active top O)
+    (halive : ¬m.sub top bottom) :
+    Nonempty (MaterializedActiveAlive active m bottom) :=
+  ⟨⟨top, hsig.top_active, halive⟩⟩
+
 def modelsWithResidual {Domain : Type} (O : Ontology Concept Role)
     (R : ResidualTheory Concept Role top bottom)
     (I : Interp Domain Concept Role top bottom) : Prop :=
@@ -393,9 +457,54 @@ theorem unsatisfiableWithResidual_iff_materialized_on {O : Ontology Concept Role
   rw [unsatisfiableWithResidual_iff_on active hsig R hresidual]
   exact (sub_iff_of_exact closed sound).symm
 
+/-- Exact taxonomy theorem whose countermodel is the finite materialized domain
+enumerated by the native residual checker. Unlike the earlier executable
+corollaries, its residual premise is checked on that same finite domain. -/
+theorem entailsSubWithResidual_iff_finiteMaterialized {O : Ontology Concept Role}
+    {m : Materialization Concept Role}
+    (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (R : ResidualTheory Concept Role top bottom)
+    (hresidual : R.holds (materializedCanon active m top bottom closed))
+    (a b : Concept) (ha : active a) :
+    EntailsSubWithResidual O R a b ↔ m.sub a bottom ∨ m.sub a b := by
+  constructor
+  · intro hentails
+    by_cases hbottom : m.sub a bottom
+    · exact Or.inl hbottom
+    · right
+      let x : MaterializedActiveAlive active m bottom := ⟨a, ha, hbottom⟩
+      exact hentails (materializedCanon active m top bottom closed)
+        ⟨materializedCanon_models active m closed hsig, hresidual⟩ x
+        (closed.initRefl a)
+  · rintro (hbottom | hsub)
+    · exact bottom_sound_withResidual (sound.subSound hbottom)
+    · exact sub_sound_withResidual (sound.subSound hsub)
+
+/-- Exact inconsistency theorem over the finite materialized domain enumerated
+by the native residual checker. -/
+theorem unsatisfiableWithResidual_iff_finiteMaterialized
+    {O : Ontology Concept Role} {m : Materialization Concept Role}
+    (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (R : ResidualTheory Concept Role top bottom)
+    (hresidual : R.holds (materializedCanon active m top bottom closed)) :
+    UnsatisfiableWithResidual O R ↔ m.sub top bottom := by
+  constructor
+  · intro hunsat
+    apply Classical.byContradiction
+    intro hnot
+    letI : Nonempty (MaterializedActiveAlive active m bottom) :=
+      materializedActiveAlive_nonempty active m hsig hnot
+    exact hunsat (materializedCanon active m top bottom closed)
+      ⟨materializedCanon_models active m closed hsig, hresidual⟩
+  · exact fun hbottom => top_bottom_sound_withResidual (sound.subSound hbottom)
+
 end ContextCalculus.ELCompletion
 
 #print axioms ContextCalculus.ELCompletion.entailsSubWithResidual_iff_materialized
 #print axioms ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_materialized
 #print axioms ContextCalculus.ELCompletion.entailsSubWithResidual_iff_materialized_on
 #print axioms ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_materialized_on
+#print axioms ContextCalculus.ELCompletion.entailsSubWithResidual_iff_finiteMaterialized
+#print axioms ContextCalculus.ELCompletion.unsatisfiableWithResidual_iff_finiteMaterialized
