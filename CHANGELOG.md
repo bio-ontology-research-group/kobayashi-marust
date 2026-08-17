@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.25] – 2026-08-17
+
+### Check residual truth on the finite materialization
+
+- Make wire-v5 acceptance exhaustively evaluate every compiled residual clause
+  over the active-and-alive trace domain. Already inconsistent ELC cores remain
+  valid without constructing a countermodel.
+- Reject residual and canonical-witness function bindings that name dead nodes,
+  disagree for one function, or omit the corresponding rewritten NF3/NF1
+  clauses.
+- Prove that accepted compiled clauses hold in the finite materialized canonical
+  interpretation, and prove that their independently checked compilation
+  evidence remains valid after restricting pins to that domain.
+- Lift canonical NF3 witness refinement and complete three-way source partition
+  composition from the abstract canonical model to the exact executable
+  materialization.
+- Add a native end-to-end mutation test: a structurally exact residual tautology
+  passes, while a structurally exact clause false in the finite canonical model
+  fails closed.
+
+Production still declines Lean-certified residual publication until the checked
+global function-binding table is connected to the whole-source composition
+theorem. Repair mode, HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.24] – 2026-08-17
 
 ### Prove exact residual reasoning on the executable finite domain

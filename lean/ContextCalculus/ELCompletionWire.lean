@@ -1,6 +1,7 @@
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELRenaming
 import ContextCalculus.ELRawNormalization
+import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualWitness
 import Lean
 
@@ -654,6 +655,253 @@ def DecodedCertificate.checkNormalizationV5 {n : Nat}
   else
     doc.checkPartitionedNormalization
 
+/-! ## Finite residual truth check -/
+
+def DecodedCertificate.materialization {n : Nat} (doc : DecodedCertificate n) :
+    Materialization (Fin n) (Fin n) :=
+  traceMaterialization doc.top doc.bottom doc.trace
+
+abbrev DecodedCertificate.ResidualDomain {n : Nat} (doc : DecodedCertificate n) :=
+  MaterializedActiveAlive (fun concept => concept ∈ doc.active_concepts)
+    doc.materialization doc.bottom
+
+def DecodedCertificate.residualDomainValue {n : Nat} (doc : DecodedCertificate n)
+    (htopActive : doc.top ∈ doc.active_concepts)
+    (htopAlive : ¬doc.materialization.sub doc.top doc.bottom)
+    (value : Fin n) : doc.ResidualDomain :=
+  letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
+    dsimp [DecodedCertificate.materialization, traceMaterialization]
+    infer_instance
+  if halive : value ∈ doc.active_concepts ∧
+      ¬doc.materialization.sub value doc.bottom then
+    ⟨value, halive⟩
+  else
+    ⟨doc.top, htopActive, htopAlive⟩
+
+def DecodedResidualCompilation.mappedOrigin {n variableCount : Nat}
+    (decoded : DecodedResidualCompilation n variableCount)
+    {Domain : Type} (map : Fin n → Domain) :
+    Fin variableCount → ResidualVarOrigin Domain :=
+  fun slot => match decoded.origin slot with
+    | .source name => .source name
+    | .function function witness => .function function (map witness)
+
+def DecodedResidualCompilation.mappedCompiled {n variableCount : Nat}
+    (decoded : DecodedResidualCompilation n variableCount)
+    {Domain : Type} (map : Fin n → Domain) :
+    CompiledResidualClause Domain (Fin n) (Fin n) (Fin variableCount) where
+  body := decoded.compiled.body
+  head := decoded.compiled.head
+  pins := decoded.compiled.pins.map fun pin => (pin.1, map pin.2)
+
+def DecodedCertificate.residualValueAlive {n : Nat}
+    (doc : DecodedCertificate n) (value : Fin n) : Bool :=
+  letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
+    dsimp [DecodedCertificate.materialization, traceMaterialization]
+    infer_instance
+  decide (value ∈ doc.active_concepts) &&
+    decide (¬doc.materialization.sub value doc.bottom)
+
+def DecodedCertificate.residualWitnessesAlive {n variableCount : Nat}
+    (doc : DecodedCertificate n)
+    (decoded : DecodedResidualCompilation n variableCount) : Bool :=
+  (List.finRange variableCount).all fun slot =>
+    match decoded.origin slot with
+    | .source _ => true
+    | .function _ witness => doc.residualValueAlive witness
+
+def DecodedResidualCompilation.functionBindings {n variableCount : Nat}
+    (decoded : DecodedResidualCompilation n variableCount) : List (Nat × Fin n) :=
+  (List.finRange variableCount).filterMap fun slot =>
+    match decoded.origin slot with
+    | .source _ => none
+    | .function function witness => some (function, witness)
+
+def DecodedCertificate.functionBindings {n : Nat}
+    (doc : DecodedCertificate n) : List (Nat × Fin n) :=
+  (doc.witness_records.map fun record => (record.function, record.witness)) ++
+    doc.residual_compilations.flatMap fun residual =>
+      residual.decoded.functionBindings
+
+def DecodedCertificate.checkFunctionBindings {n : Nat}
+    (doc : DecodedCertificate n) : Bool :=
+  doc.functionBindings.all fun binding =>
+    doc.residualValueAlive binding.2 &&
+      doc.functionBindings.all fun other =>
+        decide (binding.1 = other.1 → binding.2 = other.2)
+
+def DecodedCertificate.checkWitnessRecords {n : Nat}
+    (doc : DecodedCertificate n) : Bool :=
+  doc.witness_records.all fun record =>
+    doc.residualValueAlive record.witness &&
+      decide (Clause.nf3 record.sub record.role record.witness ∈ doc.ontology) &&
+      decide (Clause.nf1 record.witness record.filler ∈ doc.ontology)
+
+def DecodedCertificate.residualModel {n : Nat} (doc : DecodedCertificate n) :
+    FiniteResidualModel doc.ResidualDomain (Fin n) (Fin n) :=
+  letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
+    dsimp [DecodedCertificate.materialization, traceMaterialization]
+    infer_instance
+  letI : ∀ a role target, Decidable (doc.materialization.edge a role target) :=
+    fun _ _ _ => by
+      dsimp [DecodedCertificate.materialization, traceMaterialization]
+      infer_instance
+  { concept := fun concept value => decide (doc.materialization.sub value.1 concept)
+    role := fun role source target =>
+      decide (doc.materialization.edge source.1 role target.1) }
+
+/-- Exhaustively evaluate every compiled residual clause on the finite domain
+used by `entailsSubWithResidual_iff_finiteMaterialized`. An already inconsistent
+EL core needs no residual countermodel. -/
+def DecodedCertificate.checkFiniteResiduals {n : Nat}
+    (doc : DecodedCertificate n) : Bool :=
+  letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
+    dsimp [DecodedCertificate.materialization, traceMaterialization]
+    infer_instance
+  letI : DecidablePred (fun concept : Fin n =>
+      concept ∈ doc.active_concepts ∧
+        ¬doc.materialization.sub concept doc.bottom) := fun _ => inferInstance
+  if hclosed : checkClosedTrace doc.top doc.bottom doc.ontology doc.trace = true then
+    if htopActive : doc.top ∈ doc.active_concepts then
+      if htopBottom : doc.materialization.sub doc.top doc.bottom then
+        true
+      else
+        let closed := checkClosedTrace_closed hclosed
+        let map := doc.residualDomainValue htopActive htopBottom
+        let model := doc.residualModel
+        have htop : ∀ value, model.concept doc.top value = true := by
+          intro value
+          simpa [model, DecodedCertificate.residualModel] using
+            closed.initTop value.1
+        have hbottom : ∀ value, model.concept doc.bottom value = false := by
+          intro value
+          simpa [model, DecodedCertificate.residualModel] using value.2.2
+        doc.checkFunctionBindings && doc.checkWitnessRecords &&
+          doc.residual_compilations.all fun residual =>
+            doc.residualWitnessesAlive residual.decoded &&
+            checkResidualCompilationEvidence
+              (residual.decoded.mappedOrigin map) residual.decoded.raw
+              (residual.decoded.mappedCompiled map) &&
+            checkCompiledResidualClause model doc.top doc.bottom htop hbottom
+              (residual.decoded.mappedCompiled map)
+    else false
+  else false
+
+theorem DecodedCertificate.residualModel_sat_iff {n variableCount : Nat}
+    (doc : DecodedCertificate n)
+    (closed : ClosedState doc.materialization doc.top doc.bottom doc.ontology)
+    (htop : ∀ value, doc.residualModel.concept doc.top value = true)
+    (hbottom : ∀ value, doc.residualModel.concept doc.bottom value = false)
+    (clause : CompiledResidualClause doc.ResidualDomain (Fin n) (Fin n)
+      (Fin variableCount)) :
+    satCompiledResidualClause
+        (doc.residualModel.toInterp doc.top doc.bottom htop hbottom) clause ↔
+      satCompiledResidualClause
+        (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+          doc.materialization doc.top doc.bottom closed) clause := by
+  simp only [satCompiledResidualClause]
+  apply forall_congr'
+  intro assignment
+  apply imp_congr
+  · rfl
+  apply imp_congr
+  · apply forall₂_congr
+    intro atom hatom
+    cases atom <;> simp [satCompiledResidualAtom,
+      DecodedCertificate.residualModel, FiniteResidualModel.toInterp,
+      materializedCanon]
+  · apply exists_congr
+    intro atom
+    apply and_congr Iff.rfl
+    cases atom <;> simp [satCompiledResidualAtom,
+      DecodedCertificate.residualModel, FiniteResidualModel.toInterp,
+      materializedCanon]
+
+theorem DecodedCertificate.checkFiniteResiduals_compiled {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations) :
+    let closed := checkClosedTrace_closed (by
+      simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+      split at hcheck
+      · assumption
+      · contradiction)
+    let map := doc.residualDomainValue (by
+      simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+      split at hcheck
+      · split at hcheck
+        · assumption
+        · contradiction
+      · contradiction) hconsistent
+    satCompiledResidualClause
+      (materializedCanon (fun concept => concept ∈ doc.active_concepts)
+        doc.materialization doc.top doc.bottom closed)
+      (residual.decoded.mappedCompiled map) := by
+  letI : ∀ a b, Decidable (doc.materialization.sub a b) := fun _ _ => by
+    dsimp [DecodedCertificate.materialization, traceMaterialization]
+    infer_instance
+  letI : DecidablePred (fun concept : Fin n =>
+      concept ∈ doc.active_concepts ∧
+        ¬doc.materialization.sub concept doc.bottom) := fun _ => inferInstance
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · rename_i hclosed
+    split at hcheck
+    · rename_i htopActive
+      let closed := checkClosedTrace_closed hclosed
+      let map := doc.residualDomainValue htopActive hconsistent
+      let model := doc.residualModel
+      have htop : ∀ value, model.concept doc.top value = true := by
+        intro value
+        simpa [model, DecodedCertificate.residualModel] using
+          closed.initTop value.1
+      have hbottom : ∀ value, model.concept doc.bottom value = false := by
+        intro value
+        simpa [model, DecodedCertificate.residualModel] using value.2.2
+      simp only [List.all_eq_true, Bool.and_eq_true] at hcheck
+      have hclause := hcheck.2 residual hresidual |>.2
+      have hsatisfied :=
+        (checkCompiledResidualClause_eq_true model doc.top doc.bottom
+          htop hbottom (residual.decoded.mappedCompiled map)).mp hclause
+      exact (doc.residualModel_sat_iff closed htop hbottom
+        (residual.decoded.mappedCompiled map)).mp hsatisfied
+    · contradiction
+  · contradiction
+
+theorem DecodedCertificate.checkFiniteResiduals_evidence {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.checkFiniteResiduals = true)
+    (hconsistent : ¬doc.materialization.sub doc.top doc.bottom)
+    (residual : SomeDecodedResidualCompilation n)
+    (hresidual : residual ∈ doc.residual_compilations) :
+    let map := doc.residualDomainValue (by
+      simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+      split at hcheck
+      · split at hcheck
+        · assumption
+        · contradiction
+      · contradiction) hconsistent
+    ResidualCompilationEvidence (residual.decoded.mappedOrigin map)
+      residual.decoded.raw (residual.decoded.mappedCompiled map) := by
+  simp only [DecodedCertificate.checkFiniteResiduals] at hcheck
+  split at hcheck
+  · split at hcheck
+    · rename_i htopActive
+      simp only [List.all_eq_true, Bool.and_eq_true] at hcheck
+      have hevidence := hcheck.2 residual hresidual |>.1.2
+      exact (checkResidualCompilationEvidence_iff
+        (residual.decoded.mappedOrigin
+          (doc.residualDomainValue htopActive hconsistent))
+        residual.decoded.raw
+        (residual.decoded.mappedCompiled
+          (doc.residualDomainValue htopActive hconsistent))).mp hevidence
+    · contradiction
+  · contradiction
+
+#print axioms DecodedCertificate.residualModel_sat_iff
+#print axioms DecodedCertificate.checkFiniteResiduals_compiled
+#print axioms DecodedCertificate.checkFiniteResiduals_evidence
+
 theorem DecodedCertificate.checkPartitionedNormalization_direct_models
     {n : Nat} (doc : DecodedCertificate n)
     (J : Interp Domain (ExtendedConcept (Fin n)) (Fin n)
@@ -681,7 +929,8 @@ theorem DecodedCertificate.checkPartitionedNormalization_direct_models
 def DecodedCertificate.checkV5 {n : Nat} (doc : DecodedCertificate n) : Bool :=
   doc.checkCanonicalOrigins && doc.checkOriginOntology &&
     doc.checkSourcePartition && doc.checkNormalizationV5 &&
-    doc.residual_compilations.all (fun residual => residual.check) && doc.check
+    doc.residual_compilations.all (fun residual => residual.check) &&
+    doc.checkFiniteResiduals && doc.check
 
 theorem DecodedCertificate.residualCompilation_valid {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
@@ -691,7 +940,7 @@ theorem DecodedCertificate.residualCompilation_valid {n : Nat}
       residual.decoded.compiled := by
   simp only [DecodedCertificate.checkV5, Bool.and_eq_true, List.all_eq_true] at hcheck
   exact (DecodedResidualCompilation.check_iff residual.decoded).mp
-    (hcheck.1.2 residual hresidual)
+    (hcheck.1.1.2 residual hresidual)
 
 #print axioms DecodedCertificate.residualCompilation_valid
 

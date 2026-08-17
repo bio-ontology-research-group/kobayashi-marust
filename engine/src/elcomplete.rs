@@ -5953,6 +5953,62 @@ mod tests {
         };
         assert!(run_checker(&certificate), "exact source partition must pass");
 
+        let a = interner.id("A").expect("A is interned");
+        let source_var = LeanRawTerm::Var { name: 0 };
+        let tautology_raw = LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: a,
+                term: source_var.clone(),
+            }],
+            head: vec![LeanResidualAtom::Concept {
+                concept: a,
+                term: source_var,
+            }],
+        };
+        let tautology = LeanResidualCompilation {
+            variable_count: 1,
+            origins: vec![LeanResidualOrigin::Source { name: 0 }],
+            raw: tautology_raw.clone(),
+            body: vec![LeanCompiledResidualAtom::Concept {
+                concept: a,
+                slot: 0,
+            }],
+            head: vec![LeanCompiledResidualAtom::Concept {
+                concept: a,
+                slot: 0,
+            }],
+            pins: Vec::new(),
+        };
+        let mut residual_certificate = certificate.clone();
+        residual_certificate.source_ontology.push(tautology_raw);
+        residual_certificate.residual_compilations.push(tautology);
+        assert!(
+            run_checker(&residual_certificate),
+            "a structurally exact residual tautology must pass the finite model check"
+        );
+
+        let mut false_residual = residual_certificate.clone();
+        let compilation = false_residual
+            .residual_compilations
+            .last_mut()
+            .expect("residual compilation");
+        compilation.raw.head = vec![LeanResidualAtom::Concept {
+            concept: BOTTOM,
+            term: LeanRawTerm::Var { name: 0 },
+        }];
+        compilation.head = vec![LeanCompiledResidualAtom::Concept {
+            concept: BOTTOM,
+            slot: 0,
+        }];
+        *false_residual
+            .source_ontology
+            .last_mut()
+            .expect("residual source clause") = compilation.raw.clone();
+        assert!(
+            !run_checker(&false_residual),
+            "a structurally exact but canonically false residual must fail closed"
+        );
+
         let mut omitted_source = certificate.clone();
         omitted_source.source_ontology.clear();
         assert!(!run_checker(&omitted_source), "source omission must fail closed");
