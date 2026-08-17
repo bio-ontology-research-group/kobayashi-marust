@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.13] – 2026-08-17
+
+### Prove shared existential-pair normalization exact
+
+- Model a list of paired existential-introduction clauses whose entries share
+  one raw term interpretation.
+- Prove each pair depends only on its named Skolem function, so extending the
+  interpretation at another globally distinct function ID preserves it.
+- Construct a shared interpretation from all source existential witnesses by
+  installing one choice function per entry.
+- Prove `modelsRawExistentials_sat_iff`: under global Skolem-ID uniqueness, a
+  shared interpretation satisfies every raw role/filler pair exactly when the
+  source interpretation satisfies every reconstructed existential axiom.
+- Audit the milestone theorem: its axioms are `propext`, `Classical.choice`,
+  and `Quot.sound`; choice supplies the source existential witnesses.
+
+This closes the semantic whole-list composition obligation for already paired
+existential clauses. Executable discovery of pairs in an unordered raw list,
+composition with direct-list evidence, deterministic n-ary auxiliary-name
+validation, and certificate-wire integration remain open. HT, CB, and concrete
+routing remain uncertified.
+
 ## [0.3.12] – 2026-08-17
 
 ### Prove proof-producing direct-list normalization exact

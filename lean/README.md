@@ -126,8 +126,11 @@ inclusion, reflexivity, and connected role chains in both orders. The remaining
 proof-producing: `certifyRawDirect` returns the source axiom together with the
 exact canonical input equality and semantic witness, or fails closed. Whole-list
 normalization is certified for direct forms by `RawDirectListEvidence.models_iff`
-and executable `certifyRawDirectList`. Adding globally unique existential
-pairs, n-ary name validation, and the certificate-wire connection remain open.
+and executable `certifyRawDirectList`. For already paired existential entries,
+`modelsRawExistentials_sat_iff` proves that globally unique Skolem IDs permit
+one shared raw interpretation and preserve and reflect the complete source
+existential list. Executable pair discovery and direct/existential assembly,
+n-ary name validation, and the certificate-wire connection remain open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

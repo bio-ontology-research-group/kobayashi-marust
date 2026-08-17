@@ -156,6 +156,219 @@ theorem rawExistentialPair_sat_iff {top bottom : Concept}
     exact rawExistentialPair_complete I base sub filler role roleVariable fillerVariable function
       hsource
 
+/-- A role-half clause depends on its one Skolem function and no other term interpretation. -/
+theorem rawExistentialRoleClause_congr {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (left right : RawTermInterp Domain)
+    (sub : Concept) (role : Role) (variableId function : Nat)
+    (hfunction : ∀ x, left.function function x = right.function function x) :
+    satRawClause I left (rawExistentialRoleClause sub role variableId function) ↔
+      satRawClause I right (rawExistentialRoleClause sub role variableId function) := by
+  constructor
+  · intro hleft env hbody
+    have hsub := hbody (.concept sub (.var variableId)) (by
+      simp [rawExistentialRoleClause])
+    have hhead := hleft env (by
+      intro atom hmem
+      simp only [rawExistentialRoleClause, List.mem_singleton] at hmem
+      subst atom
+      exact hsub)
+    simpa [rawExistentialRoleClause, satRawAtom, evalRawTerm, hfunction] using hhead
+  · intro hright env hbody
+    have hsub := hbody (.concept sub (.var variableId)) (by
+      simp [rawExistentialRoleClause])
+    have hhead := hright env (by
+      intro atom hmem
+      simp only [rawExistentialRoleClause, List.mem_singleton] at hmem
+      subst atom
+      exact hsub)
+    simpa [rawExistentialRoleClause, satRawAtom, evalRawTerm, hfunction] using hhead
+
+/-- A filler-half clause likewise depends only on its named Skolem function. -/
+theorem rawExistentialFillerClause_congr {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (left right : RawTermInterp Domain)
+    (sub filler : Concept) (variableId function : Nat)
+    (hfunction : ∀ x, left.function function x = right.function function x) :
+    satRawClause I left
+        (rawExistentialFillerClause (Role := Role) sub filler variableId function) ↔
+      satRawClause I right
+        (rawExistentialFillerClause (Role := Role) sub filler variableId function) := by
+  constructor
+  · intro hleft env hbody
+    have hsub := hbody (.concept sub (.var variableId)) (by
+      simp [rawExistentialFillerClause])
+    have hhead := hleft env (by
+      intro atom hmem
+      simp only [rawExistentialFillerClause, List.mem_singleton] at hmem
+      subst atom
+      exact hsub)
+    simpa [rawExistentialFillerClause, satRawAtom, evalRawTerm, hfunction] using hhead
+  · intro hright env hbody
+    have hsub := hbody (.concept sub (.var variableId)) (by
+      simp [rawExistentialFillerClause])
+    have hhead := hright env (by
+      intro atom hmem
+      simp only [rawExistentialFillerClause, List.mem_singleton] at hmem
+      subst atom
+      exact hsub)
+    have hfunction' : ∀ x, right.function function x = left.function function x :=
+      fun x => (hfunction x).symm
+    simpa [rawExistentialFillerClause, satRawAtom, evalRawTerm, hfunction'] using hhead
+
+/-- One globally paired existential-introduction entry. -/
+structure RawExistentialSpec (Concept Role : Type) where
+  sub : Concept
+  role : Role
+  filler : Concept
+  roleVariable : Nat
+  fillerVariable : Nat
+  function : Nat
+deriving DecidableEq, Repr
+
+def RawExistentialSpec.source (spec : RawExistentialSpec Concept Role) :
+    SourceAxiom Concept Role :=
+  .existential spec.sub spec.role spec.filler
+
+def RawExistentialSpec.satisfied {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role) : Prop :=
+  satRawClause I T
+      (rawExistentialRoleClause spec.sub spec.role spec.roleVariable spec.function) ∧
+    satRawClause I T
+      (rawExistentialFillerClause (Role := Role) spec.sub spec.filler
+        spec.fillerVariable spec.function)
+
+def modelsRawExistentials {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (specs : List (RawExistentialSpec Concept Role)) : Prop :=
+  ∀ spec ∈ specs, spec.satisfied I T
+
+theorem RawExistentialSpec.satisfied_iff_source {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role) :
+    (∃ T, spec.satisfied I T) ↔ satSourceAxiom I spec.source := by
+  exact rawExistentialPair_sat_iff I base spec.sub spec.filler spec.role
+    spec.roleVariable spec.fillerVariable spec.function
+
+/-- Install one source existential's witness function into a shared raw interpretation. -/
+noncomputable def RawExistentialSpec.extend {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role)
+    (hsource : satSourceAxiom I spec.source) : RawTermInterp Domain := by
+  classical
+  let witness : Domain → Domain := fun x =>
+    if hx : I.concept spec.sub x then Classical.choose (hsource x hx) else x
+  exact {
+    base with
+    function := fun name argument =>
+      if name = spec.function then witness argument else base.function name argument
+  }
+
+theorem RawExistentialSpec.extend_other {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role)
+    (hsource : satSourceAxiom I spec.source) {other : Nat}
+    (hne : other ≠ spec.function) (x : Domain) :
+    (spec.extend I base hsource).function other x = base.function other x := by
+  simp [RawExistentialSpec.extend, hne]
+
+theorem RawExistentialSpec.extend_satisfies {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role)
+    (hsource : satSourceAxiom I spec.source) :
+    spec.satisfied I (spec.extend I base hsource) := by
+  classical
+  constructor
+  · intro env hbody
+    have hsub : I.concept spec.sub (env spec.roleVariable) :=
+      hbody (.concept spec.sub (.var spec.roleVariable)) (by
+        simp [rawExistentialRoleClause])
+    have hspec := Classical.choose_spec (hsource (env spec.roleVariable) hsub)
+    refine ⟨.role spec.role (.var spec.roleVariable)
+      (.fun spec.function (.var spec.roleVariable)), by simp [rawExistentialRoleClause], ?_⟩
+    simpa [satRawAtom, evalRawTerm, RawExistentialSpec.extend, hsub] using hspec.1
+  · intro env hbody
+    have hsub : I.concept spec.sub (env spec.fillerVariable) :=
+      hbody (.concept spec.sub (.var spec.fillerVariable)) (by
+        simp [rawExistentialFillerClause])
+    have hspec := Classical.choose_spec (hsource (env spec.fillerVariable) hsub)
+    refine ⟨.concept spec.filler (.fun spec.function (.var spec.fillerVariable)),
+      by simp [rawExistentialFillerClause], ?_⟩
+    simpa [satRawAtom, evalRawTerm, RawExistentialSpec.extend, hsub] using hspec.2
+
+/-- A pair's satisfaction depends only on its named Skolem function. -/
+theorem RawExistentialSpec.satisfied_congr {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (left right : RawTermInterp Domain)
+    (spec : RawExistentialSpec Concept Role)
+    (hfunction : ∀ x, left.function spec.function x = right.function spec.function x) :
+    spec.satisfied I left ↔ spec.satisfied I right := by
+  constructor
+  · rintro ⟨hrole, hfiller⟩
+    exact ⟨(rawExistentialRoleClause_congr I left right spec.sub spec.role
+      spec.roleVariable spec.function hfunction).mp hrole,
+      (rawExistentialFillerClause_congr I left right spec.sub spec.filler
+        spec.fillerVariable spec.function hfunction).mp hfiller⟩
+  · rintro ⟨hrole, hfiller⟩
+    exact ⟨(rawExistentialRoleClause_congr I left right spec.sub spec.role
+      spec.roleVariable spec.function hfunction).mpr hrole,
+      (rawExistentialFillerClause_congr I left right spec.sub spec.filler
+        spec.fillerVariable spec.function hfunction).mpr hfiller⟩
+
+/-- Every shared raw model of the pairs is a model of their source axioms. -/
+theorem modelsRawExistentials_sound {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (specs : List (RawExistentialSpec Concept Role))
+    (hraw : modelsRawExistentials I T specs) :
+    modelsSource I (specs.map RawExistentialSpec.source) := by
+  intro source hsource
+  simp only [List.mem_map] at hsource
+  obtain ⟨spec, hspec, rfl⟩ := hsource
+  exact rawExistentialPair_sound I T spec.sub spec.filler spec.role
+    spec.roleVariable spec.fillerVariable spec.function (hraw spec hspec).1 (hraw spec hspec).2
+
+/-- Distinct Skolem IDs let all source witnesses coexist in one interpretation. -/
+theorem modelsRawExistentials_complete {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (specs : List (RawExistentialSpec Concept Role))
+    (hunique : (specs.map RawExistentialSpec.function).Nodup)
+    (hsource : modelsSource I (specs.map RawExistentialSpec.source)) :
+    ∃ T, modelsRawExistentials I T specs := by
+  induction specs with
+  | nil => exact ⟨base, by simp [modelsRawExistentials]⟩
+  | cons head tail ih =>
+      rw [List.map_cons, modelsSource_cons] at hsource
+      simp only [List.map_cons, List.nodup_cons] at hunique
+      obtain ⟨hhead, htail⟩ := hsource
+      obtain ⟨hnotmem, htailUnique⟩ := hunique
+      obtain ⟨tailInterp, htailRaw⟩ := ih htailUnique htail
+      let combined := head.extend I tailInterp hhead
+      refine ⟨combined, ?_⟩
+      intro spec hmem
+      simp only [List.mem_cons] at hmem
+      rcases hmem with rfl | hmem
+      · exact RawExistentialSpec.extend_satisfies I tailInterp spec hhead
+      · have hne : spec.function ≠ head.function := by
+          intro heq
+          apply hnotmem
+          exact List.mem_map.mpr ⟨spec, hmem, heq⟩
+        have hfunction : ∀ x, combined.function spec.function x =
+            tailInterp.function spec.function x := by
+          intro x
+          exact RawExistentialSpec.extend_other I tailInterp head hhead hne x
+        exact (RawExistentialSpec.satisfied_congr I combined tailInterp spec hfunction).mpr
+          (htailRaw spec hmem)
+
+/-- With distinct Skolem IDs, the paired raw list and source list are equisatisfiable. -/
+theorem modelsRawExistentials_sat_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    (specs : List (RawExistentialSpec Concept Role))
+    (hunique : (specs.map RawExistentialSpec.function).Nodup) :
+    (∃ T, modelsRawExistentials I T specs) ↔
+      modelsSource I (specs.map RawExistentialSpec.source) := by
+  constructor
+  · rintro ⟨T, hraw⟩
+    exact modelsRawExistentials_sound I T specs hraw
+  · exact modelsRawExistentials_complete I base specs hunique
+
 def rawConcept : RawAtom Concept Role → Option (Concept × RawTerm)
   | .concept concept term => some (concept, term)
   | .role _ _ _ => none
