@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.16] – 2026-08-17
+
+### Prove whole-ontology raw-to-normal ELC equivalence
+
+- Add a collision-free embedding of every direct NF1–NF7 clause into the
+  extended concept signature and prove clause satisfaction unchanged under
+  source projection.
+- Add `SourceOntologyNormalEvidence`, which flattens a complete reconstructed
+  source ontology into one normal-form ontology while sharing conjunction
+  auxiliaries by structural prefix identity.
+- Implement fail-closed `certifySourceOntologyNormal` for direct clauses,
+  binary and n-ary subclass conjunctions, and binary and n-ary bottom chains.
+- Prove `SourceOntologyNormalEvidence.models_iff` for the entire source list,
+  not only pointwise axioms. Its axiom audit is `[propext, Quot.sound]`.
+- Compose raw-list and source-normal certificates as `RawToNormalCertificate`
+  and prove `models_iff`: the exact raw stream is satisfiable under a shared
+  term interpretation exactly when the generated NF1–NF7 ontology models the
+  source interpretation. Its additional `Classical.choice` axiom constructs
+  existential witnesses.
+- Add a kernel-evaluated mixed example spanning an n-ary NF2 chain, NF3
+  existential pairing, and NF4 existential elimination.
+
+The remaining ELC normalization obligation is connecting this certificate to
+the concrete Rust symbol table and emitted wire ontology. HT, CB, and concrete
+routing remain uncertified.
+
 ## [0.3.15] – 2026-08-17
 
 ### Certify exact conjunction-prefix expansion and remove name collisions

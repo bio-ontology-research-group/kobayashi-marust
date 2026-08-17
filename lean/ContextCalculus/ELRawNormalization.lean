@@ -1309,6 +1309,34 @@ def certifiedRawELSources [DecidableEq Concept] (top : Concept)
     (raws : List (RawClause Concept Role)) : Option (SourceOntology Concept Role) :=
   (certifyRawELList top raws).map RawELListCertificate.sources
 
+/-- One certificate connecting the exact raw stream to its complete shared
+NF1–NF7 ontology through the reconstructed source ontology. -/
+structure RawToNormalCertificate (top bottom : Concept)
+    (raws : List (RawClause Concept Role)) where
+  raw : RawELListCertificate top raws
+  normal : SourceOntologyNormalCertificate top bottom raw.sources
+
+/-- The executable raw and normal forms have exactly the same source models. -/
+theorem RawToNormalCertificate.models_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (base : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)}
+    (certificate : RawToNormalCertificate top bottom raws) :
+    (∃ T, modelsRaw I T raws) ↔ models (extendInterp I) certificate.normal.normal := by
+  rw [certificate.raw.models_iff I base, certificate.normal.models_iff I]
+
+/-- Build the entire trusted normalization bridge or fail closed at either layer. -/
+def certifyRawToNormal [DecidableEq Concept] [DecidableEq Role]
+    (top bottom : Concept) (raws : List (RawClause Concept Role)) :
+    Option (RawToNormalCertificate top bottom raws) := do
+  let raw ← certifyRawELList top raws
+  let normal ← certifySourceOntologyNormal top bottom raw.sources
+  return { raw := raw, normal := normal }
+
+def certifiedRawNormal [DecidableEq Concept] [DecidableEq Role]
+    (top bottom : Concept) (raws : List (RawClause Concept Role)) :
+    Option (Ontology (ExtendedConcept Concept) Role) :=
+  (certifyRawToNormal top bottom raws).map fun certificate => certificate.normal.normal
+
 /-- A successfully paired existential has exactly the NF3 source semantics. -/
 theorem recognizeExistentialPair_normalize_exact [DecidableEq Concept]
     {Domain : Type} {top bottom : Concept}
@@ -1411,6 +1439,20 @@ example : certifiedRawELSources (Concept := C) (Role := R) 0 [
     { body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)],
       head := [.concept 3 (.var 7)] }
   ] = some [.sub [1] 2, .existential 1 2 3, .existsElim 1 2 3] := by native_decide
+
+example : certifiedRawNormal (Concept := C) (Role := R) 0 4 [
+    { body := [.concept 0 (.var 7), .concept 1 (.var 7), .concept 2 (.var 7)],
+      head := [.concept 4 (.var 7)] },
+    existentialRoleHalf,
+    existentialFillerHalf,
+    { body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)],
+      head := [.concept 3 (.var 7)] }
+  ] = some [
+    .nf2 (.inl 0) (.inl 1) (.inr [0, 1]),
+    .nf2 (.inr [0, 1]) (.inl 2) (.inl 4),
+    .nf3 (.inl 1) 2 (.inl 3),
+    .nf4 1 (.inl 2) (.inl 3)
+  ] := by native_decide
 
 example : certifiedRawELSources (Concept := C) (Role := R) 0 [
     existentialFillerHalf, existentialRoleHalf

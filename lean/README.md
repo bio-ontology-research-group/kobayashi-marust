@@ -136,7 +136,11 @@ halves and reused function IDs, and yields the whole-list equivalence theorem
 Rust stream and the certificate-wire connection remain open. For conjunction
 normalization, `certifyNaryConjunction` validates the exact NF2 prefix chain and
 `NaryConjunctionCertificate.sat_iff` proves that the chain preserves and
-reflects source models while fixing all source symbols.
+reflects source models while fixing all source symbols. Whole-ontology
+composition is carried by `SourceOntologyNormalEvidence.models_iff`, and
+`RawToNormalCertificate.models_iff` connects an exact mixed raw stream to its
+complete shared NF1–NF7 ontology. The concrete Rust symbol-table and wire
+connection remain open.
 
 ### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
 

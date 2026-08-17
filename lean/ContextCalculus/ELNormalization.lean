@@ -491,6 +491,135 @@ def certifiedNarySource [DecidableEq Concept] [DecidableEq Role]
     Option (SourceAxiom Concept Role) :=
   (certifyNaryConjunction bottom body sup normal).map NaryConjunctionCertificate.source
 
+/-! ## Whole-source-ontology normal-form assembly -/
+
+/-- Embed an ordinary ELC normal form into the collision-free extended signature. -/
+def liftClause : Clause Concept Role → Clause (ExtendedConcept Concept) Role
+  | .nf1 sub sup => .nf1 (.inl sub) (.inl sup)
+  | .nf2 left right sup => .nf2 (.inl left) (.inl right) (.inl sup)
+  | .nf3 sub role filler => .nf3 (.inl sub) role (.inl filler)
+  | .nf4 role filler sup => .nf4 role (.inl filler) (.inl sup)
+  | .nf5 sub => .nf5 (.inl sub)
+  | .nf6 sub sup => .nf6 sub sup
+  | .nf7 first second sup => .nf7 first second sup
+  | .reflexive role => .reflexive role
+
+theorem satClause_liftClause_iff {Domain : Type} {top bottom : Concept}
+    (J : Interp Domain (ExtendedConcept Concept) Role (.inl top) (.inl bottom))
+    (clause : Clause Concept Role) :
+    satClause J (liftClause clause) ↔ satClause (projectInterp J) clause := by
+  cases clause <;> rfl
+
+theorem models_append {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    (left right : Ontology Concept Role) :
+    models I (left ++ right) ↔ models I left ∧ models I right := by
+  simp [models, or_imp, forall_and]
+
+theorem compileConjunction_sub_models_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    (first second : Concept) (rest : List Concept) (sup : Concept) :
+    models (extendInterp I)
+        (compileConjunction (first :: second :: rest) (.inl sup)) ↔
+      satSourceAxiom I (.sub (first :: second :: rest) sup) := by
+  constructor
+  · intro hmodels
+    simpa using compileConjunction_sub_reflects (extendInterp I) first second rest sup hmodels
+  · exact compileConjunction_sub_preserves I first second rest sup
+
+theorem compileConjunction_bottom_models_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    (first second : Concept) (rest : List Concept) :
+    models (extendInterp I)
+        (compileConjunction (first :: second :: rest) (.inl bottom)) ↔
+      satSourceAxiom I (.bottom (first :: second :: rest)) := by
+  constructor
+  · intro hmodels
+    simpa using compileConjunction_bottom_reflects (extendInterp I) first second rest hmodels
+  · exact compileConjunction_bottom_preserves I first second rest
+
+/-- Exact evidence for flattening every source axiom into one shared extended
+normal-form ontology. Prefix auxiliaries are shared by structural identity. -/
+inductive SourceOntologyNormalEvidence (top bottom : Concept) :
+    SourceOntology Concept Role → Ontology (ExtendedConcept Concept) Role → Type where
+  | nil : SourceOntologyNormalEvidence top bottom [] []
+  | direct {source : SourceAxiom Concept Role} {clause : Clause Concept Role}
+      {sources : SourceOntology Concept Role}
+      {normal : Ontology (ExtendedConcept Concept) Role}
+      (head : normalizeDirect top source = some clause)
+      (tail : SourceOntologyNormalEvidence top bottom sources normal) :
+      SourceOntologyNormalEvidence top bottom (source :: sources)
+        (liftClause clause :: normal)
+  | conjunctionSub (first second : Concept) (rest : List Concept) (sup : Concept)
+      {sources : SourceOntology Concept Role}
+      {normal : Ontology (ExtendedConcept Concept) Role}
+      (tail : SourceOntologyNormalEvidence top bottom sources normal) :
+      SourceOntologyNormalEvidence top bottom
+        (.sub (first :: second :: rest) sup :: sources)
+        (compileConjunction (first :: second :: rest) (.inl sup) ++ normal)
+  | conjunctionBottom (first second : Concept) (rest : List Concept)
+      {sources : SourceOntology Concept Role}
+      {normal : Ontology (ExtendedConcept Concept) Role}
+      (tail : SourceOntologyNormalEvidence top bottom sources normal) :
+      SourceOntologyNormalEvidence top bottom
+        (.bottom (first :: second :: rest) :: sources)
+        (compileConjunction (first :: second :: rest) (.inl bottom) ++ normal)
+
+/-- Whole-ontology assembly preserves and reflects all source models. -/
+theorem SourceOntologyNormalEvidence.models_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    {sources : SourceOntology Concept Role}
+    {normal : Ontology (ExtendedConcept Concept) Role}
+    (evidence : SourceOntologyNormalEvidence top bottom sources normal) :
+    models (extendInterp I) normal ↔ modelsSource I sources := by
+  induction evidence with
+  | nil => simp [models, modelsSource]
+  | direct head tail ih =>
+      rw [models_cons, modelsSource_cons, satClause_liftClause_iff,
+        projectInterp_extendInterp, ← normalizeDirect_sat_iff I _ _ head, ih]
+  | conjunctionSub first second rest sup tail ih =>
+      rw [models_append, modelsSource_cons,
+        compileConjunction_sub_models_iff I first second rest sup, ih]
+  | conjunctionBottom first second rest tail ih =>
+      rw [models_append, modelsSource_cons,
+        compileConjunction_bottom_models_iff I first second rest, ih]
+
+structure SourceOntologyNormalCertificate (top bottom : Concept)
+    (sources : SourceOntology Concept Role) where
+  normal : Ontology (ExtendedConcept Concept) Role
+  evidence : SourceOntologyNormalEvidence top bottom sources normal
+
+/-- Build the complete NF1–NF7 ontology or fail closed on an unsupported source shape. -/
+def certifySourceOntologyNormal (top bottom : Concept) :
+    (sources : SourceOntology Concept Role) →
+      Option (SourceOntologyNormalCertificate top bottom sources)
+  | [] => some { normal := [], evidence := .nil }
+  | .sub (first :: second :: rest) sup :: sources => do
+      let tail ← certifySourceOntologyNormal top bottom sources
+      return {
+        normal := compileConjunction (first :: second :: rest) (.inl sup) ++ tail.normal
+        evidence := .conjunctionSub first second rest sup tail.evidence }
+  | .bottom (first :: second :: rest) :: sources => do
+      let tail ← certifySourceOntologyNormal top bottom sources
+      return {
+        normal := compileConjunction (first :: second :: rest) (.inl bottom) ++ tail.normal
+        evidence := .conjunctionBottom first second rest tail.evidence }
+  | source :: sources =>
+      match h : normalizeDirect top source with
+      | none => none
+      | some clause => do
+          let tail ← certifySourceOntologyNormal top bottom sources
+          return {
+            normal := liftClause clause :: tail.normal
+            evidence := .direct h tail.evidence }
+
+theorem SourceOntologyNormalCertificate.models_iff {Domain : Type} {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom)
+    {sources : SourceOntology Concept Role}
+    (certificate : SourceOntologyNormalCertificate top bottom sources) :
+    models (extendInterp I) certificate.normal ↔ modelsSource I sources :=
+  certificate.evidence.models_iff I
+
 namespace NormalizationExamples
 
 abbrev C := Fin 5
