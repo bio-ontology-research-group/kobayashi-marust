@@ -1039,6 +1039,32 @@ def certifiedRawSources (top : Concept) (raws : List (RawClause Concept Role)) :
     Option (SourceOntology Concept Role) :=
   (certifyRawDirectList top raws).map Sigma.fst
 
+/-- A direct-only raw stream and its shared normalized ontology. Unlike the
+mixed certificate below, this certificate needs no existential choice and
+therefore preserves satisfaction for the exact supplied term interpretation. -/
+structure RawDirectToNormalCertificate (top bottom : Concept)
+    (raws : List (RawClause Concept Role)) where
+  sources : SourceOntology Concept Role
+  raw : RawDirectListEvidence top raws sources
+  normal : SourceOntologyNormalCertificate top bottom sources
+
+theorem RawDirectToNormalCertificate.models_iff {Domain : Type}
+    {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)}
+    (certificate : RawDirectToNormalCertificate top bottom raws) :
+    modelsRaw I T raws ↔ models (extendInterp I) certificate.normal.normal := by
+  rw [certificate.raw.models_iff I T, certificate.normal.models_iff I]
+
+def certifyRawDirectToNormal [DecidableEq Concept] [DecidableEq Role]
+    (top bottom : Concept) (raws : List (RawClause Concept Role)) :
+    Option (RawDirectToNormalCertificate top bottom raws) := do
+  let direct ← certifyRawDirectList top raws
+  let normal ← certifySourceOntologyNormal top bottom direct.1
+  return { sources := direct.1, raw := direct.2, normal }
+
+#print axioms RawDirectToNormalCertificate.models_iff
+
 /-- One of the two frontend clauses that jointly encode existential introduction. -/
 inductive RawExistentialHalf (Concept Role : Type) where
   | role (sub : Concept) (function : Nat) (role : Role)

@@ -1510,6 +1510,17 @@ struct LeanResidualCompilation {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+struct LeanCanonicalWitnessRecord {
+    sub: u32,
+    role: u32,
+    filler: u32,
+    witness: u32,
+    function: u32,
+    role_variable: u32,
+    filler_variable: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
 struct LeanRawClause {
     body: Vec<LeanRawAtom>,
     head: Vec<LeanRawAtom>,
@@ -1529,7 +1540,9 @@ struct LeanElCertificate {
     top: u32,
     bottom: u32,
     variable_count: u32,
+    source_ontology: Vec<LeanResidualClause>,
     raw_ontology: Vec<LeanRawClause>,
+    witness_records: Vec<LeanCanonicalWitnessRecord>,
     residual_compilations: Vec<LeanResidualCompilation>,
     concept_origins: Vec<LeanConceptOrigin>,
     ontology: Vec<LeanElClause>,
@@ -1872,18 +1885,63 @@ fn build_lean_el_certificate(
             head: clause.head.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
         });
     }
+    let source_ontology = raw_ontology
+        .iter()
+        .map(|clause| LeanResidualClause {
+            body: clause
+                .body
+                .iter()
+                .map(|atom| match atom {
+                    LeanRawAtom::Concept { concept, term } => LeanResidualAtom::Concept {
+                        concept: *concept,
+                        term: term.clone(),
+                    },
+                    LeanRawAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => LeanResidualAtom::Role {
+                        role: *role,
+                        source: source.clone(),
+                        target: target.clone(),
+                    },
+                })
+                .collect(),
+            head: clause
+                .head
+                .iter()
+                .map(|atom| match atom {
+                    LeanRawAtom::Concept { concept, term } => LeanResidualAtom::Concept {
+                        concept: *concept,
+                        term: term.clone(),
+                    },
+                    LeanRawAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => LeanResidualAtom::Role {
+                        role: *role,
+                        source: source.clone(),
+                        target: target.clone(),
+                    },
+                })
+                .collect(),
+        })
+        .collect();
     let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
     for (&id, prefix_ids) in &nfs.conjunction_origins {
         let slot = concept_origins.get_mut(id as usize).ok_or_else(|| format!("origin id {id} out of bounds"))?;
         *slot = LeanConceptOrigin::Conjunction { prefix_ids: prefix_ids.clone() };
     }
     Ok(LeanElCertificate {
-        version: 4,
+        version: 5,
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
         variable_count: variables.len() as u32,
+        source_ontology,
         raw_ontology,
+        witness_records: Vec::new(),
         residual_compilations,
         concept_origins,
         ontology,
@@ -5713,7 +5771,7 @@ mod tests {
         }
         let cert = build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new())
             .expect("exact certificate");
-        assert_eq!(cert.version, 4);
+        assert_eq!(cert.version, 5);
         assert!(!cert.trace.is_empty());
         let json = serde_json::to_string(&cert).expect("certificate JSON");
         assert!(json.contains("\"nf7\""));
@@ -5855,6 +5913,54 @@ mod tests {
             body.join(","),
             head.join(",")
         )
+    }
+
+    #[test]
+    fn lean_v5_certificate_checks_source_partition_and_rejects_tampering() {
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let source = clauses(&format!("[{}]", cl(&[c("A", "x")], &[c("B", "x")])));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, _) = to_nf(&source, &mut interner).expect("direct EL source");
+        assert!(residual.is_empty());
+        nfs.concept_names.insert(TOP);
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        run(&idx, &mut state, &mut Prof::default());
+        let certificate = build_lean_el_certificate(
+            &nfs,
+            &state,
+            &interner,
+            &source,
+            Vec::new(),
+        )
+        .expect("v5 certificate");
+        let path = std::env::temp_dir().join(format!(
+            "km-elc-v5-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let run_checker = |payload: &LeanElCertificate| {
+            std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run Lean v5 checker")
+                .success()
+        };
+        assert!(run_checker(&certificate), "exact source partition must pass");
+
+        let mut omitted_source = certificate.clone();
+        omitted_source.source_ontology.clear();
+        assert!(!run_checker(&omitted_source), "source omission must fail closed");
+
+        let mut old_version = certificate.clone();
+        old_version.version = 4;
+        assert!(!run_checker(&old_version), "wire downgrade must fail closed");
+        let _ = std::fs::remove_file(path);
     }
 
     /// `a ≈ b` over two plain variables (an at-most head).

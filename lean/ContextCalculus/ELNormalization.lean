@@ -584,6 +584,40 @@ theorem SourceOntologyNormalEvidence.models_iff {Domain : Type} {top bottom : Co
       rw [models_append, modelsSource_cons,
         compileConjunction_bottom_models_iff I first second rest, ih]
 
+/-- Every model of the normalized ontology projects to a model of the exact
+source ontology, even when auxiliary concepts are not interpreted by the
+canonical `extendInterp` construction. This is the direction needed by a
+certificate checker consuming an independently materialized canonical model. -/
+theorem SourceOntologyNormalEvidence.models_project {Domain : Type}
+    {top bottom : Concept}
+    (J : Interp Domain (ExtendedConcept Concept) Role (.inl top) (.inl bottom))
+    {sources : SourceOntology Concept Role}
+    {normal : Ontology (ExtendedConcept Concept) Role}
+    (evidence : SourceOntologyNormalEvidence top bottom sources normal)
+    (hmodels : models J normal) :
+    modelsSource (projectInterp J) sources := by
+  induction evidence with
+  | nil => simp [modelsSource]
+  | direct head tail ih =>
+      rw [models_cons] at hmodels
+      rw [modelsSource_cons]
+      constructor
+      · exact (normalizeDirect_sat_iff (projectInterp J) _ _ head).mpr
+          ((satClause_liftClause_iff J _).mp hmodels.1)
+      · exact ih hmodels.2
+  | conjunctionSub first second rest sup tail ih =>
+      rw [models_append] at hmodels
+      rw [modelsSource_cons]
+      exact ⟨compileConjunction_sub_reflects J first second rest sup hmodels.1,
+        ih hmodels.2⟩
+  | conjunctionBottom first second rest tail ih =>
+      rw [models_append] at hmodels
+      rw [modelsSource_cons]
+      exact ⟨compileConjunction_bottom_reflects J first second rest hmodels.1,
+        ih hmodels.2⟩
+
+#print axioms SourceOntologyNormalEvidence.models_project
+
 structure SourceOntologyNormalCertificate (top bottom : Concept)
     (sources : SourceOntology Concept Role) where
   normal : Ontology (ExtendedConcept Concept) Role

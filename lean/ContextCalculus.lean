@@ -4,6 +4,7 @@ import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion
+import ContextCalculus.ELRenaming
 import ContextCalculus.ELNormalization
 import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELCompletionRefinement

@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.23] – 2026-08-17
+
+### Check exact source partitions and symbol origins
+
+- Add wire version 5 with the complete residual-capable source ontology,
+  direct-clause partition, canonical-witness records, and residual compilation
+  entries. Lean rejects omitted source clauses, out-of-range fields, origin
+  mismatches, and wire downgrades.
+- Prove direct-only raw normalization preserves the exact shared term
+  interpretation, avoiding an existential-choice mismatch with globally pinned
+  residual functions.
+- Prove arbitrary normalized models project to source models, including models
+  whose conjunction auxiliaries were materialized independently.
+- Prove exact concept-renaming invariance for models, named subsumption, and
+  inconsistency under any origin map with a left inverse. The decoder constructs
+  injectivity evidence from its checked, full-length, duplicate-free origin
+  table, and the wire checks the normalized ontology against that renaming.
+- Add an end-to-end native Rust-to-Lean v5 test. Exact source evidence passes;
+  source omission and version downgrade mutations fail closed.
+
+Production still declines Lean-certified residual publication. The next
+plain-residual obligation is executable truth checking of every compiled clause
+over the alive canonical domain, followed by the final semantic composition.
+Repair mode, HT, CB, and concrete routing remain uncertified.
+
 ## [0.3.22] – 2026-08-17
 
 ### Compose all plain-residual source partitions

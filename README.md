@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.22`.
+`v0.3.23`.
 
 ## Classify an ontology
 
@@ -150,7 +150,7 @@ taxonomy and inconsistency result. It also proves fail-closed composition for
 abstract workers, sequential fallbacks, races, and profile-based routing.
 
 The certification build provides `elc-cert-check`, a native Lean checker for
-the versioned Rust certificate wire format. Wire version 4 carries the exact
+the versioned Rust certificate wire format. Wire version 5 carries the exact
 raw ELC clauses, variable signature, generated conjunction origins, normalized
 ontology, completion trace, and published result. Lean recomputes and validates
 the raw-to-normal transformation before checking completion. Set

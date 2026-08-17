@@ -139,7 +139,7 @@ normalization, `certifyNaryConjunction` validates the exact NF2 prefix chain and
 reflects source models while fixing all source symbols. Whole-ontology
 composition is carried by `SourceOntologyNormalEvidence.models_iff`, and
 `RawToNormalCertificate.models_iff` connects an exact mixed raw stream to its
-complete shared NF1–NF7 ontology. Wire version 4 carries that raw stream,
+complete shared NF1–NF7 ontology. Wire version 5 carries that raw stream,
 finite variable signature, Rust's symbol table, and exact conjunction-prefix
 origins. `ELCompletionWire` checks the reconstructed normal ontology against
 Rust's emitted ontology before accepting its completion certificate.

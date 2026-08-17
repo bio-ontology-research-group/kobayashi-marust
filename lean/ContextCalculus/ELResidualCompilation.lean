@@ -26,6 +26,18 @@ structure RawResidualClause (Concept Role : Type) where
   head : List (RawResidualAtom Concept Role)
 deriving DecidableEq, Repr
 
+def rawResidualAtomLiftSource : RawResidualAtom Concept Role →
+    RawResidualAtom (ExtendedConcept Concept) Role
+  | .concept concept term => .concept (.inl concept) term
+  | .role role source target => .role role source target
+  | .eq left right => .eq left right
+
+def rawResidualClauseLiftSource (clause : RawResidualClause Concept Role) :
+    RawResidualClause (ExtendedConcept Concept) Role := {
+  body := clause.body.map rawResidualAtomLiftSource
+  head := clause.head.map rawResidualAtomLiftSource
+}
+
 def rawAtomToResidual : RawAtom Concept Role → RawResidualAtom Concept Role
   | .concept concept term => .concept concept term
   | .role role source target => .role role source target
@@ -49,6 +61,40 @@ def satRawResidualClause (I : Interp Domain Concept Role top bottom)
   ∀ env,
     (∀ atom ∈ clause.body, satRawResidualAtom I T env atom) →
     ∃ atom ∈ clause.head, satRawResidualAtom I T env atom
+
+theorem satRawResidualAtom_liftSource_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (env : Nat → Domain) (atom : RawResidualAtom Concept Role) :
+    satRawResidualAtom (extendInterp I) T env (rawResidualAtomLiftSource atom) ↔
+      satRawResidualAtom I T env atom := by
+  cases atom <;> rfl
+
+theorem satRawResidualClause_liftSource_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (clause : RawResidualClause Concept Role) :
+    satRawResidualClause (extendInterp I) T (rawResidualClauseLiftSource clause) ↔
+      satRawResidualClause I T clause := by
+  constructor
+  · intro h env hbody
+    have hliftedBody : ∀ atom ∈ clause.body.map rawResidualAtomLiftSource,
+        satRawResidualAtom (extendInterp I) T env atom := by
+      intro atom hatom
+      obtain ⟨source, hsource, rfl⟩ := List.mem_map.mp hatom
+      exact (satRawResidualAtom_liftSource_iff I T env source).mpr
+        (hbody source hsource)
+    obtain ⟨atom, hatom, hsatisfied⟩ := h env hliftedBody
+    obtain ⟨source, hsource, rfl⟩ := List.mem_map.mp hatom
+    exact ⟨source, hsource,
+      (satRawResidualAtom_liftSource_iff I T env source).mp hsatisfied⟩
+  · intro h env hbody
+    have hsourceBody : ∀ atom ∈ clause.body,
+        satRawResidualAtom I T env atom := by
+      intro atom hatom
+      exact (satRawResidualAtom_liftSource_iff I T env atom).mp
+        (hbody (rawResidualAtomLiftSource atom) (List.mem_map.mpr ⟨atom, hatom, rfl⟩))
+    obtain ⟨atom, hatom, hsatisfied⟩ := h env hsourceBody
+    exact ⟨rawResidualAtomLiftSource atom, List.mem_map.mpr ⟨atom, hatom, rfl⟩,
+      (satRawResidualAtom_liftSource_iff I T env atom).mpr hsatisfied⟩
 
 theorem satRawAtom_toResidual_iff
     (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
@@ -82,6 +128,23 @@ theorem satRawClause_toResidual_iff
 def modelsRawResidual (I : Interp Domain Concept Role top bottom)
     (T : RawTermInterp Domain) (clauses : List (RawResidualClause Concept Role)) : Prop :=
   ∀ clause ∈ clauses, satRawResidualClause I T clause
+
+theorem modelsRawResidual_liftSource_iff
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (clauses : List (RawResidualClause Concept Role)) :
+    modelsRawResidual (extendInterp I) T
+      (clauses.map rawResidualClauseLiftSource) ↔
+      modelsRawResidual I T clauses := by
+  constructor
+  · intro h clause hclause
+    exact (satRawResidualClause_liftSource_iff I T clause).mp
+      (h (rawResidualClauseLiftSource clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+  · intro h lifted hlifted
+    obtain ⟨clause, hclause, rfl⟩ := List.mem_map.mp hlifted
+    exact (satRawResidualClause_liftSource_iff I T clause).mpr
+      (h clause hclause)
+
+#print axioms modelsRawResidual_liftSource_iff
 
 theorem modelsRaw_toResidual_iff
     (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
