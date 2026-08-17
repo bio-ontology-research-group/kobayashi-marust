@@ -778,6 +778,54 @@ def certifiedRawSource (top : Concept) (input : RawClause Concept Role) :
     Option (SourceAxiom Concept Role) :=
   (certifyRawDirect top input).map (RawDirectCertificate.source)
 
+/-! ## Proof-producing direct-list normalization -/
+
+def modelsRaw {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (clauses : List (RawClause Concept Role)) : Prop :=
+  ∀ clause ∈ clauses, satRawClause I T clause
+
+theorem modelsRaw_cons {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    (head : RawClause Concept Role) (tail : List (RawClause Concept Role)) :
+    modelsRaw I T (head :: tail) ↔ satRawClause I T head ∧ modelsRaw I T tail := by
+  simp [modelsRaw]
+
+/-- Pointwise direct certificates for an exact raw list and source ontology. -/
+inductive RawDirectListEvidence (top : Concept) :
+    List (RawClause Concept Role) → SourceOntology Concept Role → Type where
+  | nil : RawDirectListEvidence top [] []
+  | cons {raw : RawClause Concept Role} {raws : List (RawClause Concept Role)}
+      (head : RawDirectCertificate top raw) {sources : SourceOntology Concept Role}
+      (tail : RawDirectListEvidence top raws sources) :
+      RawDirectListEvidence top (raw :: raws) (head.source :: sources)
+
+/-- A direct-list witness preserves and reflects the models of the whole list. -/
+theorem RawDirectListEvidence.models_iff {top bottom : Concept}
+    (I : Interp Domain Concept Role top bottom) (T : RawTermInterp Domain)
+    {raws : List (RawClause Concept Role)} {sources : SourceOntology Concept Role}
+    (evidence : RawDirectListEvidence top raws sources) :
+    modelsRaw I T raws ↔ modelsSource I sources := by
+  induction evidence with
+  | nil => simp [modelsRaw, modelsSource]
+  | cons head tail ih =>
+      rw [modelsRaw_cons, modelsSource_cons, head.sat_iff I T, ih]
+
+/-- Executable proof-producing normalization when every list entry is direct. -/
+def certifyRawDirectList (top : Concept) :
+    (raws : List (RawClause Concept Role)) →
+      Option (Sigma fun sources : SourceOntology Concept Role =>
+        RawDirectListEvidence top raws sources)
+  | [] => some ⟨[], .nil⟩
+  | raw :: raws => do
+      let head ← certifyRawDirect top raw
+      let tail ← certifyRawDirectList top raws
+      return ⟨head.source :: tail.1, .cons head tail.2⟩
+
+def certifiedRawSources (top : Concept) (raws : List (RawClause Concept Role)) :
+    Option (SourceOntology Concept Role) :=
+  (certifyRawDirectList top raws).map Sigma.fst
+
 /-- One of the two frontend clauses that jointly encode existential introduction. -/
 inductive RawExistentialHalf (Concept Role : Type) where
   | role (sub : Concept) (function : Nat) (role : Role)
@@ -878,6 +926,20 @@ example : certifiedRawSource (Concept := C) (Role := R) 0 {
     body := [.role 1 (.var 7) (.var 7)]
     head := [.role 2 (.var 7) (.var 7)]
   } = none := by native_decide
+
+example : certifiedRawSources (Concept := C) (Role := R) 0 [
+    { body := [.concept 1 (.var 7)], head := [.concept 2 (.var 7)] },
+    { body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)],
+      head := [.concept 3 (.var 7)] },
+    { body := [.role 1 (.var 7) (.var 8), .role 2 (.var 8) (.var 9)],
+      head := [.role 3 (.var 7) (.var 9)] }
+  ] = some [.sub [1] 2, .existsElim 1 2 3, .roleChain 1 2 3] := by native_decide
+
+example : certifiedRawSources (Concept := C) (Role := R) 0 [
+    { body := [.concept 1 (.var 7)], head := [.concept 2 (.var 7)] },
+    { body := [.concept 1 (.var 7), .concept 2 (.var 8)],
+      head := [.concept 3 (.var 7)] }
+  ] = none := by native_decide
 
 example : recognizeRawClause (Concept := C) (Role := R) 0 {
     body := [.role 1 (.var 7) (.var 8), .concept 2 (.var 8)]

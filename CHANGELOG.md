@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.12] – 2026-08-17
+
+### Prove proof-producing direct-list normalization exact
+
+- Define raw-ontology semantics over one shared term interpretation and prove
+  its cons decomposition.
+- Add `RawDirectListEvidence`, indexed by the exact raw clause list and complete
+  reconstructed source ontology.
+- Prove `RawDirectListEvidence.models_iff`: a pointwise list certificate
+  preserves and reflects models for the entire ontology.
+- Implement recursive executable `certifyRawDirectList`; every clause must
+  return a `RawDirectCertificate`, otherwise the complete list normalization
+  fails closed.
+- Add kernel-evaluated examples for a mixed subclass/restriction/role-chain
+  list and rejection when a later clause has split concept variables.
+
+This certifies whole-list assembly for direct single-clause forms. The next
+ELC frontend obligation is adding globally unique existential-half pairs to
+the same list certificate, followed by deterministic n-ary auxiliary-name
+validation and certificate wire integration. HT, CB, and concrete routing
+remain uncertified.
+
 ## [0.3.11] – 2026-08-17
 
 ### Add a proof-producing executable direct ELC normalizer
