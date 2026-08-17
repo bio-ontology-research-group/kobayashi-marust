@@ -82,6 +82,15 @@ structure State (Node : Type u) (Concept : Type v) (Role : Type w) where
   edge : Role → Node → Node → Prop
   obligation : Role → Lit Concept → Node → Prop
 
+@[ext] theorem State.ext
+    {left right : State Node Concept Role}
+    (hlabel : left.label = right.label)
+    (hedge : left.edge = right.edge)
+    (hobligation : left.obligation = right.obligation) : left = right := by
+  cases left
+  cases right
+  simp_all
+
 def State.holdsAtom (state : State Node Concept Role)
     (assignment : Variable → Node) : Atom Variable Concept Role → Prop
   | .concept lit node => state.label (assignment node) lit

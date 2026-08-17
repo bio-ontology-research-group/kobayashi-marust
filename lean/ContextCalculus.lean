@@ -27,3 +27,4 @@ import ContextCalculus.Nominals
 import ContextCalculus.Certification
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauCertificate
+import ContextCalculus.HypertableauRefutationCertificate

@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.33] – 2026-08-17
+
+### Certify executable hypertableau UNSAT refutations
+
+- Add mutually inductive finite refutation trees and child spines with an
+  executable checker for clashes, ontology-clause membership, grounded bodies,
+  legal branch heads, exact child order, and every recursive child.
+- Prove checker acceptance constructs the abstract exhaustive `Refutes`
+  judgment and therefore excludes every realization of the checked root.
+- Prove that an accepted empty-root certificate over a nonempty node set
+  excludes every nonempty-domain model of the exact encoded ontology.
+- Reject equality branches until node merging has a certified quotient
+  construction.
+- Add native tests for an empty-head contradiction, exhaustive binary
+  disjunction closure, a missing branch, and an unsupported equality branch.
+- Audit all public UNSAT acceptance theorems with `#print axioms`; none uses
+  `sorryAx`.
+
+This release certifies the finite Lean UNSAT checker. Rust emission and a
+serialized wire decoder remain outstanding, as do blocking, termination,
+equality/cardinality, nominals, taxonomy publication, CB, and concrete routing.
+
 ## [0.3.32] – 2026-08-17
 
 ### Certify finite hypertableau SAT certificates
