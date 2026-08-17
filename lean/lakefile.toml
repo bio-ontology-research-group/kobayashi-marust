@@ -11,3 +11,7 @@ name = "ContextCalculus"
 
 [[lean_lib]]
 name = "Validation"
+
+[[lean_exe]]
+name = "elc-cert-check"
+root = "ELCertCheck"

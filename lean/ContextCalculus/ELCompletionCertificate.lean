@@ -1,5 +1,4 @@
 import ContextCalculus.ELCompletionRefinement
-import Mathlib.Data.Fintype.Basic
 
 /-!
 # Checkable proof traces for ELC materializations
@@ -136,77 +135,135 @@ theorem checkedTrace_soundState {top bottom : Concept} {O : Ontology Concept Rol
 
 section FiniteClosure
 
-variable [Fintype Concept] [Fintype Role]
+variable {n : Nat} (m : Materialization (Fin n) (Fin n))
+  [DecidableRel m.sub] [∀ a role target, Decidable (m.edge a role target)]
+
+def checkNf1Rule (a : Fin n) :
+    Clause (Fin n) (Fin n) → Bool
+  | .nf1 sub sup => decide (m.sub a sub → m.sub a sup)
+  | _ => true
+
+def checkNf2Rule (a : Fin n) :
+    Clause (Fin n) (Fin n) → Bool
+  | .nf2 left right sup => decide (m.sub a left → m.sub a right → m.sub a sup)
+  | _ => true
+
+def checkNf5Rule (bottom a : Fin n) : Clause (Fin n) (Fin n) → Bool
+  | .nf5 sub => decide (m.sub a sub → m.sub a bottom)
+  | _ => true
+
+def checkNf4Rule :
+    Fact (Fin n) (Fin n) → Clause (Fin n) (Fin n) → Bool
+  | .edge a role target, .nf4 required filler sup =>
+      decide (role = required → m.sub target filler → m.sub a sup)
+  | _, _ => true
+
+def checkBottomEdgeRule (bottom : Fin n) : Fact (Fin n) (Fin n) → Bool
+  | .edge a _ target => decide (m.sub target bottom → m.sub a bottom)
+  | _ => true
+
+def checkNf3Rule (a : Fin n) :
+    Clause (Fin n) (Fin n) → Bool
+  | .nf3 sub role filler => decide (m.sub a sub → m.edge a role filler)
+  | _ => true
+
+def checkNf6Rule :
+    Fact (Fin n) (Fin n) → Clause (Fin n) (Fin n) → Bool
+  | .edge a role target, .nf6 sub sup =>
+      decide (role = sub → m.edge a sup target)
+  | _, _ => true
+
+def checkNf7Rule :
+    Fact (Fin n) (Fin n) → Fact (Fin n) (Fin n) →
+      Clause (Fin n) (Fin n) → Bool
+  | .edge a first middle, .edge middle' second target, .nf7 req₁ req₂ sup =>
+      decide (first = req₁ → middle = middle' → second = req₂ → m.edge a sup target)
+  | _, _, _ => true
+
+def checkReflexiveRule (a : Fin n) : Clause (Fin n) (Fin n) → Bool
+  | .reflexive role => decide (m.edge a role a)
+  | _ => true
 
 /--
 Exhaustively check every initialization and closure obligation over a finite
 interned signature.  This is deliberately independent of the trace order: the
 trace establishes soundness, while this pass establishes fixpoint closure.
 -/
-def checkClosedTrace (top bottom : Concept) (O : Ontology Concept Role)
-    (trace : List (Step Concept Role)) : Bool :=
+def checkClosedTrace {n : Nat} (top bottom : Fin n) (O : Ontology (Fin n) (Fin n))
+    (trace : List (Step (Fin n) (Fin n))) : Bool :=
   let m := traceMaterialization top bottom trace
+  let facts := trace.map (Step.conclusion top bottom)
   letI : ∀ a b, Decidable (m.sub a b) := fun _ _ => by
     dsimp [m, traceMaterialization]
     infer_instance
   letI : ∀ a role target, Decidable (m.edge a role target) := fun _ _ _ => by
     dsimp [m, traceMaterialization]
     infer_instance
-  decide (∀ a, m.sub a a) &&
-  decide (∀ a, m.sub a top) &&
-  decide (∀ a sub sup, m.sub a sub →
-    Clause.nf1 (Role := Role) sub sup ∈ O → m.sub a sup) &&
-  decide (∀ a left right sup,
-    m.sub a left → m.sub a right →
-      Clause.nf2 (Role := Role) left right sup ∈ O → m.sub a sup) &&
-  decide (∀ a sub, m.sub a sub →
-    Clause.nf5 (Role := Role) sub ∈ O → m.sub a bottom) &&
-  decide (∀ a target filler sup role,
-    m.edge a role target → m.sub target filler →
-      Clause.nf4 (Concept := Concept) (Role := Role) role filler sup ∈ O →
-        m.sub a sup) &&
-  decide (∀ a target role,
-    m.edge a role target → m.sub target bottom → m.sub a bottom) &&
-  decide (∀ a sub filler role,
-    m.sub a sub →
-      Clause.nf3 (Concept := Concept) (Role := Role) sub role filler ∈ O →
-        m.edge a role filler) &&
-  decide (∀ a target sub sup,
-    m.edge a sub target → Clause.nf6 (Concept := Concept) sub sup ∈ O →
-      m.edge a sup target) &&
-  decide (∀ a middle target first second sup,
-    m.edge a first middle → m.edge middle second target →
-      Clause.nf7 (Concept := Concept) first second sup ∈ O →
-        m.edge a sup target) &&
-  decide (∀ a role, Clause.reflexive (Concept := Concept) role ∈ O →
-    m.edge a role a)
+  decide (∀ a : Fin n, m.sub a a) &&
+  decide (∀ a : Fin n, m.sub a top) &&
+  decide (∀ a : Fin n, O.all (checkNf1Rule m a) = true) &&
+  decide (∀ a : Fin n, O.all (checkNf2Rule m a) = true) &&
+  decide (∀ a : Fin n, O.all (checkNf5Rule m bottom a) = true) &&
+  decide (facts.all (fun fact => O.all (checkNf4Rule m fact)) = true) &&
+  decide (facts.all (checkBottomEdgeRule m bottom) = true) &&
+  decide (∀ a : Fin n, O.all (checkNf3Rule m a) = true) &&
+  decide (facts.all (fun fact => O.all (checkNf6Rule m fact)) = true) &&
+  decide (facts.all (fun firstFact => facts.all (fun secondFact =>
+    O.all (checkNf7Rule m firstFact secondFact))) = true) &&
+  decide (∀ a : Fin n, O.all (checkReflexiveRule m a) = true)
 
-theorem checkClosedTrace_closed {top bottom : Concept} {O : Ontology Concept Role}
-    {trace : List (Step Concept Role)}
+theorem checkClosedTrace_closed {n : Nat} {top bottom : Fin n}
+    {O : Ontology (Fin n) (Fin n)} {trace : List (Step (Fin n) (Fin n))}
     (hcheck : checkClosedTrace top bottom O trace = true) :
     ClosedState (traceMaterialization top bottom trace) top bottom O := by
-  simp only [checkClosedTrace, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  simp only [checkClosedTrace, Bool.and_eq_true, decide_eq_true_eq,
+    List.all_eq_true] at hcheck
   rcases hcheck with
     ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hrefl, htop⟩, hnf1⟩, hnf2⟩, hnf5⟩, hnf4⟩, hbottom⟩,
       hnf3⟩, hnf6⟩, hnf7⟩, hreflexive⟩
   exact {
     initRefl := hrefl
     initTop := htop
-    closeNf1 := fun {a sub sup} => hnf1 a sub sup
-    closeNf2 := fun {a left right sup} => hnf2 a left right sup
-    closeNf5 := fun {a sub} => hnf5 a sub
-    closeNf4 := fun {a target filler sup role} => hnf4 a target filler sup role
-    closeBottomEdge := fun {a target role} => hbottom a target role
-    closeNf3 := fun {a sub filler role} => hnf3 a sub filler role
-    closeNf6 := fun {a target sub sup} => hnf6 a target sub sup
-    closeNf7 := fun {a middle target first second sup} =>
-      hnf7 a middle target first second sup
-    closeReflexive := fun a {role} => hreflexive a role
+    closeNf1 := fun {a sub sup} hsub hcl => by
+      have h := hnf1 a _ hcl
+      simp only [checkNf1Rule, decide_eq_true_eq] at h
+      exact h hsub
+    closeNf2 := fun {a left right sup} hleft hright hcl => by
+      have h := hnf2 a _ hcl
+      simp only [checkNf2Rule, decide_eq_true_eq] at h
+      exact h hleft hright
+    closeNf5 := fun {a sub} hsub hcl => by
+      have h := hnf5 a _ hcl
+      simp only [checkNf5Rule, decide_eq_true_eq] at h
+      exact h hsub
+    closeNf4 := fun {a target filler sup role} hedge hfiller hcl => by
+      have h := hnf4 _ hedge _ hcl
+      simp only [checkNf4Rule, decide_eq_true_eq] at h
+      exact h trivial hfiller
+    closeBottomEdge := fun {a target role} hedge hbottomTarget => by
+      have h := hbottom _ hedge
+      simp only [checkBottomEdgeRule, decide_eq_true_eq] at h
+      exact h hbottomTarget
+    closeNf3 := fun {a sub filler role} hsub hcl => by
+      have h := hnf3 a _ hcl
+      simp only [checkNf3Rule, decide_eq_true_eq] at h
+      exact h hsub
+    closeNf6 := fun {a target sub sup} hedge hcl => by
+      have h := hnf6 _ hedge _ hcl
+      simp only [checkNf6Rule, decide_eq_true_eq] at h
+      exact h trivial
+    closeNf7 := fun {a middle target first second sup} hedge₁ hedge₂ hcl => by
+      have h := hnf7 _ hedge₁ _ hedge₂ _ hcl
+      simp only [checkNf7Rule, decide_eq_true_eq] at h
+      exact h trivial trivial trivial
+    closeReflexive := fun a {role} hcl => by
+      have h := hreflexive a _ hcl
+      simpa only [checkReflexiveRule, decide_eq_true_eq] using h
   }
 
 /-- Both executable checks together prove the materialization semantically exact. -/
-theorem checkedTrace_exact {top bottom : Concept} {O : Ontology Concept Role}
-    {trace : List (Step Concept Role)}
+theorem checkedTrace_exact {n : Nat} {top bottom : Fin n}
+    {O : Ontology (Fin n) (Fin n)} {trace : List (Step (Fin n) (Fin n))}
     (hsound : checkTrace top bottom O trace = true)
     (hclosed : checkClosedTrace top bottom O trace = true) :
     (∀ a b, EntailsSub (top := top) (bottom := bottom) O a b ↔
@@ -224,20 +281,20 @@ end FiniteClosure
 namespace Examples
 
 abbrev C := Fin 2
-abbrev R := Fin 1
+abbrev R := Fin 2
 
 def emptyTrace : List (Step C R) :=
   [.refl 0, .top 0, .refl 1, .top 1]
 
 example : checkTrace (0 : C) (1 : C) ([] : Ontology C R) emptyTrace = true := by
-  native_decide
+  rfl
 
 example : checkClosedTrace (0 : C) (1 : C) ([] : Ontology C R) emptyTrace = true := by
-  native_decide
+  rfl
 
 example : checkClosedTrace (0 : C) (1 : C) ([] : Ontology C R)
     ([.refl 0, .top 0, .refl 1] : List (Step C R)) = false := by
-  native_decide
+  rfl
 
 end Examples
 

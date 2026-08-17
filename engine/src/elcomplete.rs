@@ -1372,6 +1372,298 @@ struct State {
     edge_epoch: u64,
 }
 
+// ---------------------------------------------------------------------------
+// Lean ELC certificate wire model
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanElStep {
+    Refl { a: u32 },
+    Top { a: u32 },
+    Nf1 { a: u32, sub: u32, sup: u32 },
+    Nf2 { a: u32, left: u32, right: u32, sup: u32 },
+    Nf5 { a: u32, sub: u32 },
+    Nf4 { a: u32, target: u32, filler: u32, sup: u32, role: u32 },
+    BottomEdge { a: u32, target: u32, role: u32 },
+    Nf3 { a: u32, sub: u32, filler: u32, role: u32 },
+    Nf6 { a: u32, target: u32, sub: u32, sup: u32 },
+    Nf7 {
+        a: u32,
+        middle: u32,
+        target: u32,
+        first: u32,
+        second: u32,
+        sup: u32,
+    },
+    Reflexive { a: u32, role: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanElClause {
+    Nf1 { sub: u32, sup: u32 },
+    Nf2 { left: u32, right: u32, sup: u32 },
+    Nf3 { sub: u32, role: u32, filler: u32 },
+    Nf4 { role: u32, filler: u32, sup: u32 },
+    Nf5 { sub: u32 },
+    Nf6 { sub: u32, sup: u32 },
+    Nf7 { first: u32, second: u32, sup: u32 },
+    Reflexive { role: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElCertificate {
+    version: u32,
+    symbol_count: u32,
+    top: u32,
+    bottom: u32,
+    ontology: Vec<LeanElClause>,
+    /// Reverse dependency order, as required by Lean's `checkTrace`.
+    trace: Vec<LeanElStep>,
+    active_concepts: Vec<u32>,
+    rust_subsumptions: Vec<LeanElSubFact>,
+    rust_edges: Vec<LeanElEdgeFact>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElSubFact {
+    sub: u32,
+    sup: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElEdgeFact {
+    source: u32,
+    role: u32,
+    target: u32,
+}
+
+/// Reconstruct the unoptimised formal NF1–NF7 closure and record one proof for
+/// every fact. This path is intentionally separate from the indexed production
+/// worklist: Lean checks the resulting derivations, and equality against `State`
+/// detects either implementation disagreeing with the formal closure.
+fn build_lean_el_certificate(
+    nfs: &Nfs,
+    st: &State,
+    symbol_count: usize,
+) -> Result<LeanElCertificate, String> {
+    use std::collections::BTreeSet;
+
+    let mut subs: BTreeSet<(u32, u32)> = BTreeSet::new();
+    let mut edges: BTreeSet<(u32, u32, u32)> = BTreeSet::new();
+    let mut steps = Vec::new();
+    let mut add_sub = |fact: (u32, u32), step: LeanElStep| {
+        if subs.insert(fact) {
+            steps.push(step);
+            true
+        } else {
+            false
+        }
+    };
+    for a in 0..symbol_count as u32 {
+        add_sub((a, a), LeanElStep::Refl { a });
+        add_sub((a, TOP), LeanElStep::Top { a });
+    }
+    drop(add_sub);
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let sub_snapshot: Vec<_> = subs.iter().copied().collect();
+        let edge_snapshot: Vec<_> = edges.iter().copied().collect();
+
+        for &(a, known) in &sub_snapshot {
+            for nf in &nfs.nf1 {
+                if known == nf.sub && subs.insert((a, nf.sup)) {
+                    steps.push(LeanElStep::Nf1 { a, sub: nf.sub, sup: nf.sup });
+                    changed = true;
+                }
+            }
+            for nf in &nfs.nf2 {
+                if known == nf.sub1 && subs.contains(&(a, nf.sub2))
+                    || known == nf.sub2 && subs.contains(&(a, nf.sub1))
+                {
+                    if subs.insert((a, nf.sup)) {
+                        steps.push(LeanElStep::Nf2 {
+                            a,
+                            left: nf.sub1,
+                            right: nf.sub2,
+                            sup: nf.sup,
+                        });
+                        changed = true;
+                    }
+                }
+            }
+            if nfs.nf5.contains(&known) && subs.insert((a, BOTTOM)) {
+                steps.push(LeanElStep::Nf5 { a, sub: known });
+                changed = true;
+            }
+            for nf in &nfs.nf3 {
+                if known == nf.sub && edges.insert((a, nf.role, nf.filler)) {
+                    steps.push(LeanElStep::Nf3 {
+                        a,
+                        sub: nf.sub,
+                        filler: nf.filler,
+                        role: nf.role,
+                    });
+                    changed = true;
+                }
+            }
+        }
+
+        for &(a, role, target) in &edge_snapshot {
+            if subs.contains(&(target, BOTTOM)) && subs.insert((a, BOTTOM)) {
+                steps.push(LeanElStep::BottomEdge { a, target, role });
+                changed = true;
+            }
+            for nf in &nfs.nf4 {
+                if role == nf.role && subs.contains(&(target, nf.filler))
+                    && subs.insert((a, nf.sup))
+                {
+                    steps.push(LeanElStep::Nf4 {
+                        a,
+                        target,
+                        filler: nf.filler,
+                        sup: nf.sup,
+                        role,
+                    });
+                    changed = true;
+                }
+            }
+            for nf in &nfs.nf6 {
+                if role == nf.sub && edges.insert((a, nf.sup, target)) {
+                    steps.push(LeanElStep::Nf6 {
+                        a,
+                        target,
+                        sub: nf.sub,
+                        sup: nf.sup,
+                    });
+                    changed = true;
+                }
+            }
+            for &(middle, second, end) in &edge_snapshot {
+                if middle != target {
+                    continue;
+                }
+                for nf in &nfs.nf7 {
+                    if role == nf.r1 && second == nf.r2
+                        && edges.insert((a, nf.sup, end))
+                    {
+                        steps.push(LeanElStep::Nf7 {
+                            a,
+                            middle,
+                            target: end,
+                            first: nf.r1,
+                            second: nf.r2,
+                            sup: nf.sup,
+                        });
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        for a in 0..symbol_count as u32 {
+            for &role in &nfs.reflexive_roles {
+                if edges.insert((a, role, a)) {
+                    steps.push(LeanElStep::Reflexive { a, role });
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    // Every production fact must have a formal derivation. For active concept
+    // contexts other than bottom, production must also contain every formal
+    // fact. Role-only ids and bottom receive formal initialization facts but are
+    // intentionally not allocated as Rust completion contexts.
+    for (a, rust_supers) in st.sub_super.iter().enumerate() {
+        for &sup in rust_supers {
+            if !subs.contains(&(a as u32, sup)) {
+                return Err(format!("Rust-only subsumption ({a},{sup})"));
+            }
+        }
+    }
+    for (a, rust_edges) in st.edges.iter().enumerate() {
+        for &(role, target) in rust_edges {
+            if !edges.contains(&(a as u32, role, target)) {
+                return Err(format!("Rust-only edge ({a},{role},{target})"));
+            }
+        }
+    }
+    for &a in &nfs.concept_names {
+        if a == BOTTOM {
+            continue;
+        }
+        let formal_subs: BTreeSet<u32> = subs
+            .range((a, 0)..=(a, u32::MAX))
+            .map(|&(_, sup)| sup)
+            .collect();
+        let rust_subs: BTreeSet<u32> = st.sub_super[a as usize].iter().copied().collect();
+        if formal_subs != rust_subs {
+            return Err(format!("subsumption closure mismatch at context {a}"));
+        }
+        let formal_edges: BTreeSet<(u32, u32)> = edges
+            .range((a, 0, 0)..=(a, u32::MAX, u32::MAX))
+            .map(|&(_, role, target)| (role, target))
+            .collect();
+        let rust_edges: BTreeSet<(u32, u32)> = st.edges[a as usize].iter().copied().collect();
+        if formal_edges != rust_edges {
+            return Err(format!("edge closure mismatch at context {a}"));
+        }
+    }
+
+    let mut ontology = Vec::new();
+    ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 { sub: x.sub, sup: x.sup }));
+    ontology.extend(nfs.nf2.iter().map(|x| LeanElClause::Nf2 {
+        left: x.sub1, right: x.sub2, sup: x.sup,
+    }));
+    ontology.extend(nfs.nf3.iter().map(|x| LeanElClause::Nf3 {
+        sub: x.sub, role: x.role, filler: x.filler,
+    }));
+    ontology.extend(nfs.nf4.iter().map(|x| LeanElClause::Nf4 {
+        role: x.role, filler: x.filler, sup: x.sup,
+    }));
+    ontology.extend(nfs.nf5.iter().map(|&sub| LeanElClause::Nf5 { sub }));
+    ontology.extend(nfs.nf6.iter().map(|x| LeanElClause::Nf6 { sub: x.sub, sup: x.sup }));
+    ontology.extend(nfs.nf7.iter().map(|x| LeanElClause::Nf7 {
+        first: x.r1, second: x.r2, sup: x.sup,
+    }));
+    ontology.extend(nfs.reflexive_roles.iter().map(|&role| LeanElClause::Reflexive { role }));
+    steps.reverse();
+    let mut active_concepts: Vec<u32> = nfs
+        .concept_names
+        .iter()
+        .copied()
+        .filter(|&a| a != BOTTOM)
+        .collect();
+    active_concepts.sort_unstable();
+    let mut rust_subsumptions = Vec::new();
+    let mut rust_edges = Vec::new();
+    for &sub in &active_concepts {
+        rust_subsumptions.extend(st.sub_super[sub as usize].iter().map(|&sup| {
+            LeanElSubFact { sub, sup }
+        }));
+        rust_edges.extend(st.edges[sub as usize].iter().map(|&(role, target)| {
+            LeanElEdgeFact { source: sub, role, target }
+        }));
+    }
+    rust_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
+    rust_edges.sort_unstable_by_key(|fact| (fact.source, fact.role, fact.target));
+    Ok(LeanElCertificate {
+        version: 1,
+        symbol_count: symbol_count as u32,
+        top: TOP,
+        bottom: BOTTOM,
+        ontology,
+        trace: steps,
+        active_concepts,
+        rust_subsumptions,
+        rust_edges,
+    })
+}
+
 /// Ceiling on `State::sub_journal`. Above it the delta is no cheaper to merge
 /// than the labels are to rescan, so the journal stops recording and the
 /// certificate index falls back to a full rebuild.
@@ -4688,6 +4980,10 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
+    let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
+    let lean_cert_checker =
+        std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
+    let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
     let mut unresolved: Vec<String> = Vec::new();
     // Exact residual-shrinking rewrites, certificate routes only. Cert-off
     // classify declines on the first residual clause anyway, and leaving that
@@ -4761,7 +5057,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // pure-EL path there is no residual certificate, so only concept_names is
     // read after this point. Release the duplicate normal forms before the
     // saturation peak.
-    if rcs.is_empty() {
+    if rcs.is_empty() && !lean_cert_requested {
         nfs.nf1 = Vec::new();
         nfs.nf2 = Vec::new();
         nfs.nf3 = Vec::new();
@@ -4774,6 +5070,64 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     }
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut prof);
+    if lean_cert_requested {
+        if !residual.is_empty() {
+            if debug {
+                eprintln!("KM_ELC_LEAN_CERT defer: residual clauses are outside pure ELC");
+            }
+            return None;
+        }
+        let certificate = match build_lean_el_certificate(&nfs, &st, n) {
+            Ok(certificate) => certificate,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
+            }
+        };
+        let temporary_path;
+        let path = if let Some(path) = lean_cert_path.as_deref() {
+            path
+        } else {
+            temporary_path = std::env::temp_dir().join(format!(
+                "km-elc-cert-{}.json",
+                std::process::id()
+            ));
+            temporary_path.as_path()
+        };
+        let file = match std::fs::File::create(path) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT cannot create {}: {error}", path.display());
+                return None;
+            }
+        };
+        if let Err(error) = serde_json::to_writer(file, &certificate) {
+            eprintln!("KM_ELC_LEAN_CERT cannot write {}: {error}", path.display());
+            return None;
+        }
+        if let Some(checker) = lean_cert_checker.as_deref() {
+            let status = match std::process::Command::new(checker).arg(path).status() {
+                Ok(status) => status,
+                Err(error) => {
+                    eprintln!(
+                        "KM_ELC_LEAN_CERT cannot execute {}: {error}",
+                        checker.display()
+                    );
+                    return None;
+                }
+            };
+            if lean_cert_path.is_none() {
+                let _ = std::fs::remove_file(path);
+            }
+            if !status.success() {
+                eprintln!(
+                    "KM_ELC_LEAN_CERT checker {} rejected the certificate ({status})",
+                    checker.display()
+                );
+                return None;
+            }
+        }
+    }
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
         eprintln!(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
@@ -4905,6 +5259,50 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lean_certificate_reconstructs_and_audits_the_production_fixpoint() {
+        let mut concepts = HashSet::default();
+        concepts.extend([TOP, BOTTOM, 2, 3]);
+        let mut roles = HashSet::default();
+        roles.extend([4, 5, 6]);
+        let mut reflexive = HashSet::default();
+        reflexive.insert(4);
+        let nfs = Nfs {
+            nf1: vec![Nf1 { sub: 2, sup: 3 }],
+            nf2: vec![Nf2 { sub1: 2, sub2: 3, sup: TOP }],
+            nf3: vec![Nf3 { sub: 3, role: 4, filler: 2 }],
+            nf4: vec![Nf4 { role: 4, filler: 3, sup: 2 }],
+            nf5: vec![],
+            nf6: vec![Nf6 { sub: 4, sup: 5 }],
+            nf7: vec![Nf7 { r1: 5, r2: 4, sup: 6 }],
+            reflexive_roles: reflexive,
+            concept_names: concepts,
+            role_names: roles,
+        };
+        let idx = build_idx(&nfs, 7);
+        let mut state = init_state(&nfs, 7);
+        for &a in &nfs.concept_names {
+            if a != BOTTOM {
+                for &role in &idx.reflexive_closed {
+                    state.add_edge(a, role, a);
+                }
+            }
+        }
+        run(&idx, &mut state, &mut Prof::default());
+
+        let cert = build_lean_el_certificate(&nfs, &state, 7).expect("exact certificate");
+        assert_eq!(cert.version, 1);
+        assert!(!cert.trace.is_empty());
+        let json = serde_json::to_string(&cert).expect("certificate JSON");
+        assert!(json.contains("\"nf7\""));
+        assert!(json.contains("\"reflexive\""));
+
+        state.sub_super[2].insert(6);
+        assert!(build_lean_el_certificate(&nfs, &state, 7)
+            .unwrap_err()
+            .contains("Rust-only subsumption"));
+    }
 
     fn clauses(json: &str) -> Vec<JClause> {
         serde_json::from_str::<Vec<JClause>>(json).expect("test clause JSON")

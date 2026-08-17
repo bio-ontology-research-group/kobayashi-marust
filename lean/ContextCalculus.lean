@@ -6,6 +6,7 @@ import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion
 import ContextCalculus.ELCompletionRefinement
 import ContextCalculus.ELCompletionCertificate
+import ContextCalculus.ELCompletionWire
 import ContextCalculus.CompletenessContext
 import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
