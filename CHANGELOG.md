@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.34] – 2026-08-17
+
+### Certify the hypertableau JSON trust boundary
+
+- Add a versioned JSON schema for finite HT SAT and UNSAT evidence, with
+  separate node, concept, role, and variable signature bounds.
+- Check every untrusted numeric id, assignment arity, ontology clause index,
+  and refutation child count before constructing finite semantic objects.
+- Dispatch decoded evidence only to the proved SAT or UNSAT checker and prove
+  soundness of both decoded verdict forms.
+- Add the standalone `ht-cert-check` executable, which fails closed on parsing,
+  decoding, or semantic-checking errors.
+- Add native end-to-end tests for accepted SAT and UNSAT documents, out-of-range
+  concepts, missing branches, equality branches, and unsupported versions.
+- Audit the decoded-verdict theorems with `#print axioms`; neither uses
+  `sorryAx`.
+
+Rust HT evidence emission is not enabled in this release. Blocking,
+termination, equality/cardinality, nominals, taxonomy publication, CB, and
+concrete routing remain outstanding.
+
 ## [0.3.33] – 2026-08-17
 
 ### Certify executable hypertableau UNSAT refutations

@@ -28,3 +28,4 @@ import ContextCalculus.Certification
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauCertificate
 import ContextCalculus.HypertableauRefutationCertificate
+import ContextCalculus.HypertableauWire

@@ -209,6 +209,20 @@ published flag equivalent to semantic unsatisfiability. The Rust worker invokes 
 serialization, process execution, or verification fails. On acceptance it
 publishes the checked named relation directly.
 
+### Hypertableau certificate checker — `ContextCalculus/HypertableauWire.lean`
+
+`Hypertableau.lean` defines the guarded finite-branch semantics, sound
+hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
+`HypertableauCertificate.lean` checks finite saturated SAT branches, while
+`HypertableauRefutationCertificate.lean` checks every child of a finite UNSAT
+refutation. `HypertableauWire.lean` bounds-checks versioned JSON and dispatches
+only decoded evidence to those proved checkers. Build the native executable with
+`LEAN_NUM_THREADS=2 lake build ht-cert-check`.
+
+This is not yet a certification claim for the production Rust HT worker. Rust
+emission, blocking and termination correspondence, equality/cardinality,
+nominals, and taxonomy publication remain to be connected or proved.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.

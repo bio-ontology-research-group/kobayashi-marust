@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.33`.
+`v0.3.34`.
 
 ## Classify an ontology
 
@@ -140,6 +140,7 @@ lake exe cache get
 lake build
 # Native checker linking can otherwise use one compiler per workstation core.
 LEAN_NUM_THREADS=2 lake build elc-cert-check
+LEAN_NUM_THREADS=2 lake build ht-cert-check
 ```
 
 The formalization proves soundness and canonical-model completeness for the
@@ -161,6 +162,15 @@ still declines residual publication pending certification of the NF3 witness
 rewrite and canonical-model composition. The worker fails closed if any stage
 fails. This opt-in path currently publishes only the pure NF1–NF7 ELC route.
 
+The certification build also provides `ht-cert-check`. It bounds-checks a
+versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
+labels and edges, existential witnesses, saturation, clashes, and exhaustive
+disjunctive children. Acceptance proves that SAT evidence constructs a model or
+that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
+worker does not emit this evidence yet, so production HT results are not claimed
+as certified. Equality/cardinality, nominals, blocking, termination, and
+taxonomy publication also remain separate HT certification tasks.
+
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
 state against the formal closure, the complete active concept set, the ID-level
@@ -173,10 +183,9 @@ variable wiring, Skolem pairing, whole-list assembly, auxiliary identity, and
 equality with Rust's emitted normal forms. The residual formalization proves the canonical-model composition theorem
 needed by plain `CertMode::Check`, over the same live concept-only domain Rust
 enumerates, and provides a proved finite checker for compiled residual clauses.
-The Rust residual compiler and optimized join are not yet connected to that
-checker, so residual publication is not yet claimed as certified. HT, CB,
-concrete production routing, and residual repair remain uncertified. ORE results
-are empirical and successful termination alone is not correctness evidence. See
+CB, concrete production routing, and the remaining HT features are not yet
+certified. ORE results are empirical and successful termination alone is not
+correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
 ## Documentation

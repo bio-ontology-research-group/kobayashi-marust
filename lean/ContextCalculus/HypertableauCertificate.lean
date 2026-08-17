@@ -1,5 +1,4 @@
 import ContextCalculus.Hypertableau
-import Mathlib
 
 /-!
 # Executable certificates for open hypertableau branches
