@@ -26,6 +26,7 @@ inductive Clause (Concept Role : Type) where
   | nf6 (sub sup : Role)
   | nf7 (first second sup : Role)
   | reflexive (role : Role)
+deriving DecidableEq
 
 abbrev Ontology (Concept Role : Type) := List (Clause Concept Role)
 
