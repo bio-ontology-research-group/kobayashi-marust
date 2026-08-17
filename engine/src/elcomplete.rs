@@ -1607,6 +1607,7 @@ fn build_lean_el_certificate(
     st: &State,
     interner: &Interner,
     raw_clauses: &[JClause],
+    witness_records: Vec<LeanCanonicalWitnessRecord>,
     residual_compilations: Vec<LeanResidualCompilation>,
 ) -> Result<LeanElCertificate, String> {
     use std::collections::BTreeSet;
@@ -1885,7 +1886,7 @@ fn build_lean_el_certificate(
             head: clause.head.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
         });
     }
-    let source_ontology = raw_ontology
+    let mut source_ontology: Vec<_> = raw_ontology
         .iter()
         .map(|clause| LeanResidualClause {
             body: clause
@@ -1928,6 +1929,51 @@ fn build_lean_el_certificate(
                 .collect(),
         })
         .collect();
+    for record in &witness_records {
+        let role_variable = LeanRawTerm::Var {
+            name: record.role_variable,
+        };
+        let filler_variable = LeanRawTerm::Var {
+            name: record.filler_variable,
+        };
+        source_ontology.push(LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: record.sub,
+                term: role_variable.clone(),
+            }],
+            head: vec![LeanResidualAtom::Role {
+                role: record.role,
+                source: role_variable.clone(),
+                target: LeanRawTerm::Fun {
+                    function: record.function,
+                    argument: Box::new(role_variable),
+                },
+            }],
+        });
+        source_ontology.push(LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: record.sub,
+                term: filler_variable.clone(),
+            }],
+            head: vec![LeanResidualAtom::Concept {
+                concept: record.filler,
+                term: LeanRawTerm::Fun {
+                    function: record.function,
+                    argument: Box::new(filler_variable),
+                },
+            }],
+        });
+    }
+    source_ontology.extend(
+        residual_compilations
+            .iter()
+            .map(|compilation| compilation.raw.clone()),
+    );
+    let witness_variable_count = witness_records
+        .iter()
+        .flat_map(|record| [record.role_variable, record.filler_variable])
+        .max()
+        .map_or(0, |maximum| maximum + 1);
     let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
     for (&id, prefix_ids) in &nfs.conjunction_origins {
         let slot = concept_origins.get_mut(id as usize).ok_or_else(|| format!("origin id {id} out of bounds"))?;
@@ -1938,10 +1984,10 @@ fn build_lean_el_certificate(
         symbol_count: symbol_count as u32,
         top: TOP,
         bottom: BOTTOM,
-        variable_count: variables.len() as u32,
+        variable_count: (variables.len() as u32).max(witness_variable_count),
         source_ontology,
         raw_ontology,
-        witness_records: Vec::new(),
+        witness_records,
         residual_compilations,
         concept_origins,
         ontology,
@@ -2575,6 +2621,13 @@ struct RClause {
     pins: Vec<(usize, u32)>,
 }
 
+struct CompiledResidual {
+    clauses: Vec<RClause>,
+    /// One dedicated canonical concept for every Skolem function whose value
+    /// occurs in a compiled residual clause.
+    skolem_witnesses: HashMap<u32, u32>,
+}
+
 /// Compile the residual clauses for certificate checking. Returns `None` if
 /// any clause has a shape the checker cannot evaluate (function/`ind`/`aux`
 /// terms, equality in the body) — the caller then bails to the context engine
@@ -2586,7 +2639,7 @@ fn compile_residual(
     it: &mut Interner,
     nfs: &mut Nfs,
     skolem_target: &HashMap<u32, (u32, u32, u32)>,
-) -> Option<Vec<RClause>> {
+) -> Option<CompiledResidual> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum ResidualVarKey<'a> {
         Source(&'a str),
@@ -2743,7 +2796,10 @@ fn compile_residual(
             pins,
         });
     }
-    Some(out)
+    Some(CompiledResidual {
+        clauses: out,
+        skolem_witnesses: skolem_witness,
+    })
 }
 
 fn build_lean_residual_compilations(
@@ -2860,6 +2916,142 @@ fn build_lean_residual_compilations(
             })
         })
         .collect()
+}
+
+/// Recover the exact source partition consumed by the Lean wire-v5 checker.
+/// Residual clauses are matched as a multiset first. Every Skolem function
+/// rewritten by `compile_residual` then claims its original NF3 role/filler
+/// pair. All remaining clauses stay in the direct EL normalization input.
+fn build_lean_source_partition(
+    source: &[JClause],
+    residual: &[JClause],
+    skolem_target: &HashMap<u32, (u32, u32, u32)>,
+    skolem_witnesses: &HashMap<u32, u32>,
+    interner: &Interner,
+) -> Result<(Vec<JClause>, Vec<LeanCanonicalWitnessRecord>), String> {
+    let mut claimed = vec![false; source.len()];
+    for clause in residual {
+        let Some(index) = source
+            .iter()
+            .enumerate()
+            .position(|(index, candidate)| !claimed[index] && candidate == clause)
+        else {
+            return Err("residual clause is absent from retained source stream".into());
+        };
+        claimed[index] = true;
+    }
+
+    fn source_var(term: &JTerm) -> Option<&str> {
+        match term {
+            JTerm::Var { name } => Some(name),
+            _ => None,
+        }
+    }
+    fn matching_fun(term: &JTerm, function: &str, variable: &str) -> bool {
+        matches!(term,
+            JTerm::Fun { function: candidate, arg }
+                if candidate == function && source_var(arg) == Some(variable))
+    }
+    fn is_role_half(
+        clause: &JClause,
+        sub: &str,
+        role: &str,
+        function: &str,
+    ) -> bool {
+        let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
+            return false;
+        };
+        let Some(variable) = source_var(term) else {
+            return false;
+        };
+        let [JAtom::Role {
+            role: candidate_role,
+            source,
+            target,
+        }] = clause.head.as_slice()
+        else {
+            return false;
+        };
+        concept == sub
+            && candidate_role == role
+            && source_var(source) == Some(variable)
+            && matching_fun(target, function, variable)
+    }
+    fn is_filler_half(
+        clause: &JClause,
+        sub: &str,
+        filler: &str,
+        function: &str,
+    ) -> bool {
+        let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
+            return false;
+        };
+        let Some(variable) = source_var(term) else {
+            return false;
+        };
+        let [JAtom::Concept {
+            concept: candidate_filler,
+            term: target,
+        }] = clause.head.as_slice()
+        else {
+            return false;
+        };
+        concept == sub
+            && candidate_filler == filler
+            && matching_fun(target, function, variable)
+    }
+
+    let mut witnesses: Vec<_> = skolem_witnesses.iter().collect();
+    witnesses.sort_unstable_by_key(|&(function, _)| *function);
+    let mut records = Vec::with_capacity(witnesses.len());
+    for (&function, &witness) in witnesses {
+        let &(sub, role, filler) = skolem_target
+            .get(&function)
+            .ok_or_else(|| format!("rewritten Skolem function {function} has no NF3 target"))?;
+        let function_name = interner.name(function);
+        let sub_name = interner.name(sub);
+        let role_name = interner.name(role);
+        let filler_name = interner.name(filler);
+        let mut found_role = false;
+        let mut found_filler = false;
+        for (index, clause) in source.iter().enumerate() {
+            if claimed[index] {
+                continue;
+            }
+            if is_role_half(clause, sub_name, role_name, function_name) {
+                claimed[index] = true;
+                found_role = true;
+            } else if is_filler_half(clause, sub_name, filler_name, function_name) {
+                claimed[index] = true;
+                found_filler = true;
+            }
+        }
+        if !found_role || !found_filler {
+            return Err(format!(
+                "rewritten Skolem function {function_name} is missing its exact source pair"
+            ));
+        }
+        records.push(LeanCanonicalWitnessRecord {
+            sub,
+            role,
+            filler,
+            witness,
+            function,
+            // Variables are scoped by their clause. Canonical zero-based
+            // renaming keeps the emitted source pair alpha-equivalent to the
+            // retained JSON clauses and minimizes the wire domain.
+            role_variable: 0,
+            filler_variable: 0,
+        });
+    }
+
+    let direct = source
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !claimed[*index])
+        .map(|(_, clause)| clause.clone())
+        .collect();
+    Ok((direct, records))
 }
 
 // ---------------------------------------------------------------------------
@@ -5464,8 +5656,8 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // saturation state. On a pure-EL ont (`residual` empty) this is the whole
     // input freed; the saturation then peaks on the interned state alone.
     let certificate_clauses = lean_cert_requested.then_some(clauses);
-    let rcs = if residual.is_empty() {
-        Vec::new()
+    let (rcs, residual_skolem_witnesses) = if residual.is_empty() {
+        (Vec::new(), HashMap::default())
     } else {
         if cert == CertMode::Off {
             if debug {
@@ -5481,7 +5673,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             return None;
         }
         match compile_residual(&residual, &mut it, &mut nfs, &skolem_target) {
-            Some(r) => r,
+            Some(compiled) => (compiled.clauses, compiled.skolem_witnesses),
             None => {
                 if debug {
                     eprintln!(
@@ -5531,18 +5723,36 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut prof);
     if lean_cert_requested {
-        if !residual.is_empty() {
-            if debug {
-                eprintln!("KM_ELC_LEAN_CERT defer: residual clauses are outside pure ELC");
+        let source_clauses = certificate_clauses
+            .as_deref()
+            .expect("requested certificate retains source clauses");
+        let residual_compilations = match build_lean_residual_compilations(&residual, &rcs, &it) {
+            Ok(compilations) => compilations,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
             }
-            return None;
-        }
+        };
+        let (direct_clauses, witness_records) = match build_lean_source_partition(
+            source_clauses,
+            &residual,
+            &skolem_target,
+            &residual_skolem_witnesses,
+            &it,
+        ) {
+            Ok(partition) => partition,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
+            }
+        };
         let certificate = match build_lean_el_certificate(
             &nfs,
             &st,
             &it,
-            certificate_clauses.as_deref().expect("requested certificate retains source clauses"),
-            Vec::new(),
+            &direct_clauses,
+            witness_records,
+            residual_compilations,
         ) {
             Ok(certificate) => certificate,
             Err(error) => {
@@ -5769,7 +5979,7 @@ mod tests {
         for name in ["A", "B", "r", "s", "t"] {
             interner.intern(name);
         }
-        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new())
+        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
             .expect("exact certificate");
         assert_eq!(cert.version, 5);
         assert!(!cert.trace.is_empty());
@@ -5795,7 +6005,7 @@ mod tests {
         }));
 
         state.sub_super[2].insert(6);
-        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new())
+        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
             .unwrap_err()
             .contains("Rust-only subsumption"));
     }
@@ -5933,6 +6143,7 @@ mod tests {
             &state,
             &interner,
             &source,
+            Vec::new(),
             Vec::new(),
         )
         .expect("v5 certificate");
@@ -6722,32 +6933,57 @@ mod tests {
         assert_eq!(residual.len(), 1);
         let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
             .expect("supported residual");
-        assert_eq!(compiled[0].nvars, 2);
-        assert_eq!(compiled[0].pins.len(), 1);
-        assert_ne!(compiled[0].pins[0].0, 0, "source slot must remain unpinned");
-        assert!(matches!(compiled[0].body[0], RAtom::C { v: 0, .. }));
+        assert_eq!(compiled.clauses[0].nvars, 2);
+        assert_eq!(compiled.clauses[0].pins.len(), 1);
+        assert_ne!(compiled.clauses[0].pins[0].0, 0, "source slot must remain unpinned");
+        assert!(matches!(compiled.clauses[0].body[0], RAtom::C { v: 0, .. }));
     }
 
     #[test]
     fn lean_residual_compilation_payload_accepts_and_tampering_fails() {
         let cs = clauses(&format!(
-            "[{},{},{}]",
+            "[{},{},{},{}]",
             cl(&[c("A", "u")], &[rf("R", "u", "x")]),
             cl(&[c("A", "u")], &[cf("B", "x", "u")]),
             cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+            cl(&[c("B", "z")], &[c("C", "z")]),
         ));
         let mut interner = Interner::new();
         let (mut nfs, residual, skolem_target) =
             to_nf(&cs, &mut interner).expect("normalizable EL prefix");
         let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
             .expect("supported residual");
-        let payloads = build_lean_residual_compilations(&residual, &compiled, &interner)
+        let payloads = build_lean_residual_compilations(&residual, &compiled.clauses, &interner)
             .expect("exact residual payload");
         assert_eq!(payloads.len(), 1);
         assert_eq!(payloads[0].origins.len(), payloads[0].variable_count);
         let json = serde_json::to_string(&payloads[0]).expect("payload JSON");
         assert!(json.contains("\"source\""));
         assert!(json.contains("\"function\""));
+
+        let (direct, witnesses) = build_lean_source_partition(
+            &cs,
+            &residual,
+            &skolem_target,
+            &compiled.skolem_witnesses,
+            &interner,
+        )
+        .expect("exact direct/witness/residual partition");
+        assert_eq!(direct.len(), 1);
+        assert_eq!(witnesses.len(), 1);
+        nfs.concept_names.insert(TOP);
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        run(&idx, &mut state, &mut Prof::default());
+        let certificate = build_lean_el_certificate(
+            &nfs,
+            &state,
+            &interner,
+            &direct,
+            witnesses,
+            payloads.clone(),
+        )
+        .expect("whole residual certificate");
 
         let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
             return;
@@ -6769,6 +7005,30 @@ mod tests {
                 .success()
         };
         assert!(run(&payloads[0]), "exact Rust compilation must be accepted");
+
+        std::fs::write(&path, serde_json::to_vec(&certificate).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run whole Lean checker")
+                .success(),
+            "native source partition must pass the whole Lean checker"
+        );
+
+        let previous_checker = std::env::var_os("KM_ELC_LEAN_CERT_CHECKER");
+        std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", &checker);
+        let production = classify_inner(cs.clone(), CertMode::Check, false);
+        match previous_checker {
+            Some(value) => std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", value),
+            None => std::env::remove_var("KM_ELC_LEAN_CERT_CHECKER"),
+        }
+        assert!(
+            production.is_some(),
+            "checker-backed production residual publication must succeed"
+        );
 
         let mut pin_tamper = payloads[0].clone();
         pin_tamper.pins[0].0 = 0;

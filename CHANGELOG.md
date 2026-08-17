@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.28] – 2026-08-17
+
+### Enable checker-backed residual ELC publication
+
+- Partition the retained source clause stream exactly into direct EL clauses,
+  canonical Skolem-witness pairs, and compiled residual clauses.
+- Preserve duplicate source clauses while matching residuals as a multiset and
+  fail closed if a rewritten Skolem function lacks either source half.
+- Emit the canonical witness records and residual compilation evidence consumed
+  by the wire-v5 Lean theorem, then publish only the taxonomy returned by an
+  accepting Lean checker.
+- Add an end-to-end regression that checks the native partition, complete
+  certificate, production publication path, and adversarial pin/origin changes.
+
+This certifies residual publication for the retained clause stream after the
+current inverse-bridge preprocessing step. Certification of that preprocessing
+step, repair mode, HT, CB, and concrete routing remains outstanding.
+
 ## [0.3.27] – 2026-08-17
 
 ### Prove end-to-end residual source semantics and public exactness

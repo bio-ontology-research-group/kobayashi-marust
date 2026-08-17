@@ -53,7 +53,7 @@ pub enum JTerm {
     Fun { function: String, arg: Box<JTerm> },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum JAtom {
     #[serde(rename = "concept")]
@@ -68,7 +68,7 @@ pub enum JAtom {
     Eq { left: JTerm, right: JTerm },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct JClause {
     pub body: Vec<JAtom>,
     pub head: Vec<JAtom>,
