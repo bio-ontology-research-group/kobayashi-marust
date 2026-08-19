@@ -251,6 +251,28 @@ private def unsatDocument : WireCertificate where
 
 example : unsatDocument.check = .ok true := by native_decide
 
+private def mixedOneNodeUnsatDocument : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 1
+  ontology := [
+    { body := [], head := [.concept ⟨0, false⟩ 0, .concept ⟨1, false⟩ 0] },
+    { body := [.concept ⟨0, false⟩ 0], head := [.role 0 0 0] },
+    { body := [.role 0 0 0], head := [] },
+    { body := [.concept ⟨1, false⟩ 0], head := [.exists_ 0 ⟨0, false⟩ 0] },
+    { body := [.exists_ 0 ⟨0, false⟩ 0], head := [] }]
+  labels := []
+  edges := []
+  obligations := []
+  evidence := .unsat
+    (.branch 0 [0] [
+      .branch 1 [0] [.branch 2 [0] []],
+      .branch 3 [0] [.branch 4 [0] []]])
+
+example : mixedOneNodeUnsatDocument.check = .ok true := by native_decide
+
 private def badConceptDocument : WireCertificate :=
   { satDocument with
     variable_count := 1

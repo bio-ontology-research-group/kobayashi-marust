@@ -5291,7 +5291,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     let certificate = if consistent {
                         ht.lean_sat_certificate_json().ok()?
                     } else {
-                        ht.lean_concept_unsat_certificate_json().ok()?
+                        ht.lean_unsat_certificate_json().ok()?
                     };
                     return Some(((consistent, Vec::new(), Vec::new()), Some(certificate)));
                 }

@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.38] – 2026-08-19
+
+### Certify one-node HT role and existential refutations
+
+- Generalize the finite HT refutation producer from concept labels to the
+  checker's complete monotone branch vocabulary: concept labels, role edges,
+  and existential obligations.
+- Evaluate every clause under the explicit one-node assignment, including
+  equality tests in bodies, while continuing to reject equality heads that
+  would require an uncertified node merge.
+- Preserve fail-closed behavior: each recursive child adds one absent finite
+  fact, every disjunct receives a child, and any open branch declines without
+  publication.
+- Pass the native Lean checker on one mixed tree whose first disjunct closes
+  through a forced role edge and whose second closes through a forced
+  existential obligation.
+- Validate the production `tableau_cli` boundary and confirm checker rejection
+  suppresses publication.
+
+This release certifies global HT inconsistency whenever the exact normalized
+ontology has a closed one-node refutation over concept, role, and existential
+facts. Multi-node role refutations and equality-dependent branches remain
+outstanding.
+
 ## [0.3.37] – 2026-08-19
 
 ### Certify concept-only HT inconsistency publication
