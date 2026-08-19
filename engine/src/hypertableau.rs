@@ -2245,6 +2245,17 @@ enum LeanHtRefutationTree {
 enum LeanHtEvidence {
     Sat,
     Unsat { tree: LeanHtRefutationTree },
+    Subsumption {
+        root: usize,
+        sub: usize,
+        sup: usize,
+        tree: LeanHtRefutationTree,
+    },
+    UnsatisfiableConcept {
+        root: usize,
+        concept: usize,
+        tree: LeanHtRefutationTree,
+    },
 }
 
 #[derive(serde::Serialize)]
@@ -2269,9 +2280,9 @@ struct LeanHtRefutationState {
 }
 
 impl LeanHtRefutationState {
-    fn root() -> Self {
+    fn root(labels: &[(Node, CLit)]) -> Self {
         Self {
-            labels: HashSet::new(),
+            labels: labels.iter().copied().collect(),
             edges: HashSet::new(),
             obligations: HashSet::new(),
             active_nodes: 1,
@@ -7911,7 +7922,11 @@ impl Ht {
     /// node cap bounds search and an open or cap-exhausted branch declines.
     /// Equality heads are rejected because they require a separately certified
     /// merge. Publication still requires Lean checker acceptance.
-    pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
+    fn lean_refutation_certificate_json(
+        &self,
+        initial_labels: &[(Node, CLit)],
+        evidence: impl FnOnce(LeanHtRefutationTree) -> LeanHtEvidence,
+    ) -> Result<String, String> {
         if self
             .clauses
             .iter()
@@ -7949,6 +7964,12 @@ impl Ht {
                 }
             }
         }
+        for &(node, literal) in initial_labels {
+            if node != 0 {
+                return Err("HT Lean query certificates require root node 0".to_string());
+            }
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
         let ontology = self
             .clauses
             .iter()
@@ -7964,7 +7985,7 @@ impl Ht {
             .unwrap_or(8);
         let (tree, node_count) = self
             .lean_refutation(
-                &mut LeanHtRefutationState::root(),
+                &mut LeanHtRefutationState::root(initial_labels),
                 variable_count,
                 node_budget,
             )
@@ -7977,12 +7998,51 @@ impl Ht {
             role_count,
             variable_count,
             ontology,
-            labels: Vec::new(),
+            labels: initial_labels
+                .iter()
+                .map(|&(node, literal)| LeanHtLabel {
+                    node,
+                    literal: Self::lean_wire_lit(literal),
+                })
+                .collect(),
             edges: Vec::new(),
             obligations: Vec::new(),
-            evidence: LeanHtEvidence::Unsat { tree },
+            evidence: evidence(tree),
         })
         .map_err(|error| error.to_string())
+    }
+
+    pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
+        self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
+    }
+
+    /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
+    pub fn lean_subsumption_certificate_json(&self, sub: C, sup: C) -> Result<String, String> {
+        let labels = [
+            (0, CLit { c: sub, neg: false }),
+            (0, CLit { c: sup, neg: true }),
+        ];
+        self.lean_refutation_certificate_json(&labels, |tree| LeanHtEvidence::Subsumption {
+            root: 0,
+            sub: sub as usize,
+            sup: sup as usize,
+            tree,
+        })
+    }
+
+    /// Certify that `concept` is unsatisfiable by refuting its exact root label.
+    pub fn lean_unsatisfiable_concept_certificate_json(
+        &self,
+        concept: C,
+    ) -> Result<String, String> {
+        let labels = [(0, CLit { c: concept, neg: false })];
+        self.lean_refutation_certificate_json(&labels, |tree| {
+            LeanHtEvidence::UnsatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+                tree,
+            }
+        })
     }
 
     /// Serialize the exact terminal completion graph and normalized HT clauses
@@ -16777,6 +16837,42 @@ mod tests {
     }
 
     #[test]
+    fn lean_subsumption_wire_refutes_the_exact_query_root() {
+        let t = ht(vec![Clause::new(
+            vec![con(false, A, X), con(true, B, X)],
+            Vec::new(),
+        )]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_subsumption_certificate_json(A, B)
+                .expect("A and not-B close"),
+        )
+        .expect("subsumption certificate is JSON");
+        let evidence = &wire["evidence"]["subsumption"];
+        assert_eq!(evidence["root"], 0);
+        assert_eq!(evidence["sub"], A);
+        assert_eq!(evidence["sup"], B);
+        assert_eq!(wire["labels"].as_array().unwrap().len(), 2);
+        assert!(t.lean_subsumption_certificate_json(B, A).is_err());
+    }
+
+    #[test]
+    fn lean_unsatisfiable_concept_wire_refutes_the_exact_query_root() {
+        let t = ht(vec![Clause::new(vec![con(false, A, X)], Vec::new())]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_unsatisfiable_concept_certificate_json(A)
+                .expect("A closes"),
+        )
+        .expect("unsatisfiable-concept certificate is JSON");
+        let evidence = &wire["evidence"]["unsatisfiable_concept"];
+        assert_eq!(evidence["root"], 0);
+        assert_eq!(evidence["concept"], A);
+        assert_eq!(wire["labels"].as_array().unwrap().len(), 1);
+        assert!(t
+            .lean_unsatisfiable_concept_certificate_json(B)
+            .is_err());
+    }
+
+    #[test]
     fn lean_unsat_wire_closes_role_and_existential_branches() {
         let role_t = ht(vec![
             Clause::new(Vec::new(), vec![role(R0, X, X)]),
@@ -16873,5 +16969,39 @@ mod tests {
             .success();
         let _ = std::fs::remove_file(path);
         assert!(accepted, "Lean must accept the exact Rust UNSAT tree");
+    }
+
+    #[test]
+    fn lean_query_wires_pass_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let queries = [
+            ht(vec![Clause::new(
+                vec![con(false, A, X), con(true, B, X)],
+                Vec::new(),
+            )])
+            .lean_subsumption_certificate_json(A, B)
+            .expect("A and not-B close"),
+            ht(vec![Clause::new(vec![con(false, A, X)], Vec::new())])
+                .lean_unsatisfiable_concept_certificate_json(A)
+                .expect("A closes"),
+        ];
+        for (index, document) in queries.iter().enumerate() {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-query-cert-{}-{index}.json",
+                std::process::id()
+            ));
+            std::fs::write(&path, document).expect("write temporary HT query certificate");
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean HT checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(accepted, "Lean must accept Rust query certificate {index}");
+        }
     }
 }

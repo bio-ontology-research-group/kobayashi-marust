@@ -77,6 +77,16 @@ def Interp.models (I : Interp Domain Concept Role)
     (ontology : List (Clause Variable Concept Role)) : Prop :=
   ∀ clause ∈ ontology, I.modelsClause clause
 
+def EntailsSub (ontology : List (Clause Variable Concept Role))
+    (sub sup : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role), I.models ontology →
+    ∀ value, I.concept sub value → I.concept sup value
+
+def UnsatisfiableConcept (ontology : List (Clause Variable Concept Role))
+    (concept : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role), I.models ontology →
+    ∀ value, ¬I.concept concept value
+
 structure State (Node : Type u) (Concept : Type v) (Role : Type w) where
   label : Node → Lit Concept → Prop
   edge : Role → Node → Node → Prop

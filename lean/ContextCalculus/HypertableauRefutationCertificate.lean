@@ -274,6 +274,62 @@ theorem FiniteRefutationTree.check_ontology_unsatisfiable
   simp [FiniteSatCertificate.state, hlabels, hedges, hobligations,
     State.RealizedBy]
 
+def FiniteSatCertificate.SubsumptionRoot
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount) : Prop :=
+  certificate.labels = [(root, .pos sub), (root, .negated sup)] ∧
+  certificate.edges = [] ∧ certificate.obligations = []
+
+def FiniteSatCertificate.UnsatisfiableRoot
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount) : Prop :=
+  certificate.labels = [(root, .pos concept)] ∧
+  certificate.edges = [] ∧ certificate.obligations = []
+
+/-- Refuting the exact root assumptions `A` and `¬B` certifies `A ⊑ B`. -/
+theorem FiniteRefutationTree.check_subsumption
+    (tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hroot : certificate.SubsumptionRoot root sub sup)
+    (hcheck : tree.check certificate = true) :
+    EntailsSub certificate.ontology sub sup := by
+  intro Domain I hmodels value hsub
+  by_contra hsup
+  apply tree.check_unsatisfiable certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, ?_⟩
+  rcases hroot with ⟨hlabels, hedges, hobligations⟩
+  refine ⟨?_, ?_, ?_⟩
+  · intro node lit hlabel
+    simp only [FiniteSatCertificate.state, hlabels, List.mem_cons,
+      List.not_mem_nil, or_false, Prod.mk.injEq] at hlabel
+    rcases hlabel with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+    · simpa [Interp.satLit, Lit.pos] using hsub
+    · simpa [Interp.satLit, Lit.negated] using hsup
+  · simp [FiniteSatCertificate.state, hedges]
+  · simp [FiniteSatCertificate.state, hobligations]
+
+/-- Refuting the exact root assumption `A` certifies `A ⊑ ⊥`. -/
+theorem FiniteRefutationTree.check_unsatisfiable_concept
+    (tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hroot : certificate.UnsatisfiableRoot root concept)
+    (hcheck : tree.check certificate = true) :
+    UnsatisfiableConcept certificate.ontology concept := by
+  intro Domain I hmodels value hconcept
+  apply tree.check_unsatisfiable certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, ?_⟩
+  rcases hroot with ⟨hlabels, hedges, hobligations⟩
+  refine ⟨?_, ?_, ?_⟩
+  · intro node lit hlabel
+    simp only [FiniteSatCertificate.state, hlabels, List.mem_cons,
+      List.not_mem_nil, or_false, Prod.mk.injEq] at hlabel
+    rcases hlabel with ⟨rfl, rfl⟩
+    simpa [Interp.satLit, Lit.pos] using hconcept
+  · simp [FiniteSatCertificate.state, hedges]
+  · simp [FiniteSatCertificate.state, hobligations]
+
 namespace RefutationCheckerTests
 
 private def emptyHeadClause : Clause (Fin 0) (Fin 1) (Fin 1) :=
@@ -360,5 +416,7 @@ end RefutationCheckerTests
 #print axioms FiniteRefutationTree.check_sound
 #print axioms FiniteRefutationTree.check_unsatisfiable
 #print axioms FiniteRefutationTree.check_ontology_unsatisfiable
+#print axioms FiniteRefutationTree.check_subsumption
+#print axioms FiniteRefutationTree.check_unsatisfiable_concept
 
 end ContextCalculus.Hypertableau

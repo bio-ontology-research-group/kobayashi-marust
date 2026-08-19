@@ -58,6 +58,8 @@ deriving FromJson, ToJson, Repr
 inductive WireEvidence where
   | sat
   | unsat (tree : WireRefutationTree)
+  | subsumption (root sub sup : Nat) (tree : WireRefutationTree)
+  | unsatisfiable_concept (root concept : Nat) (tree : WireRefutationTree)
 deriving FromJson, ToJson, Repr
 
 structure WireCertificate where
@@ -181,12 +183,61 @@ inductive DecodedEvidence where
   | unsat (decoded : DecodedCertificate)
       (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
         decoded.roleCount decoded.variableCount)
+  | subsumption (decoded : DecodedCertificate)
+      (root : Fin decoded.nodeCount) (sub sup : Fin decoded.conceptCount)
+      (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
+        decoded.roleCount decoded.variableCount)
+  | unsatisfiableConcept (decoded : DecodedCertificate)
+      (root : Fin decoded.nodeCount) (concept : Fin decoded.conceptCount)
+      (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
+        decoded.roleCount decoded.variableCount)
+
+def FiniteSatCertificate.checkSubsumptionRoot
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount) : Bool :=
+  certificate.labels == [(root, .pos sub), (root, .negated sup)] &&
+  certificate.edges.isEmpty && certificate.obligations.isEmpty
+
+def FiniteSatCertificate.checkUnsatisfiableRoot
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount) : Bool :=
+  certificate.labels == [(root, .pos concept)] &&
+  certificate.edges.isEmpty && certificate.obligations.isEmpty
+
+theorem FiniteSatCertificate.checkSubsumptionRoot_sound
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hcheck : certificate.checkSubsumptionRoot root sub sup = true) :
+    certificate.SubsumptionRoot root sub sup := by
+  simp only [FiniteSatCertificate.checkSubsumptionRoot, Bool.and_eq_true,
+    beq_iff_eq, List.isEmpty_iff] at hcheck
+  exact ⟨hcheck.1.1, hcheck.1.2, hcheck.2⟩
+
+theorem FiniteSatCertificate.checkUnsatisfiableRoot_sound
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hcheck : certificate.checkUnsatisfiableRoot root concept = true) :
+    certificate.UnsatisfiableRoot root concept := by
+  simp only [FiniteSatCertificate.checkUnsatisfiableRoot, Bool.and_eq_true,
+    beq_iff_eq, List.isEmpty_iff] at hcheck
+  exact ⟨hcheck.1.1, hcheck.1.2, hcheck.2⟩
 
 def WireCertificate.decode (wire : WireCertificate) : Except String DecodedEvidence := do
   let decoded ← wire.decodeBase
   match wire.evidence with
   | .sat => return .sat decoded
   | .unsat tree => return .unsat decoded (← tree.decode decoded.certificate)
+  | .subsumption root sub sup tree =>
+      return .subsumption decoded
+        (← checkedFin "node" decoded.nodeCount root)
+        (← checkedFin "concept" decoded.conceptCount sub)
+        (← checkedFin "concept" decoded.conceptCount sup)
+        (← tree.decode decoded.certificate)
+  | .unsatisfiable_concept root concept tree =>
+      return .unsatisfiableConcept decoded
+        (← checkedFin "node" decoded.nodeCount root)
+        (← checkedFin "concept" decoded.conceptCount concept)
+        (← tree.decode decoded.certificate)
 
 def DecodedEvidence.check : DecodedEvidence → Bool
   | .sat decoded => decoded.certificate.checkSat
@@ -195,6 +246,12 @@ def DecodedEvidence.check : DecodedEvidence → Bool
       decoded.certificate.labels.isEmpty &&
       decoded.certificate.edges.isEmpty &&
       decoded.certificate.obligations.isEmpty &&
+      tree.check decoded.certificate
+  | .subsumption decoded root sub sup tree =>
+      decoded.certificate.checkSubsumptionRoot root sub sup &&
+      tree.check decoded.certificate
+  | .unsatisfiableConcept decoded root concept tree =>
+      decoded.certificate.checkUnsatisfiableRoot root concept &&
       tree.check decoded.certificate
 
 def WireCertificate.check (wire : WireCertificate) : Except String Bool := do
@@ -223,6 +280,26 @@ theorem DecodedEvidence.unsat_sound (decoded : DecodedCertificate)
     simp only [List.isEmpty_iff] at hlabels hedges hobligations
     exact ⟨hlabels, hedges, hobligations⟩
   exact tree.check_ontology_unsatisfiable decoded.certificate hempty hrefutation
+
+theorem DecodedEvidence.subsumption_sound (decoded : DecodedCertificate)
+    (root : Fin decoded.nodeCount) (sub sup : Fin decoded.conceptCount)
+    (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount)
+    (hcheck : (DecodedEvidence.subsumption decoded root sub sup tree).check = true) :
+    EntailsSub decoded.certificate.ontology sub sup := by
+  simp only [DecodedEvidence.check, Bool.and_eq_true] at hcheck
+  exact tree.check_subsumption decoded.certificate root sub sup
+    (decoded.certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
+
+theorem DecodedEvidence.unsatisfiableConcept_sound (decoded : DecodedCertificate)
+    (root : Fin decoded.nodeCount) (concept : Fin decoded.conceptCount)
+    (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount)
+    (hcheck : (DecodedEvidence.unsatisfiableConcept decoded root concept tree).check = true) :
+    UnsatisfiableConcept decoded.certificate.ontology concept := by
+  simp only [DecodedEvidence.check, Bool.and_eq_true] at hcheck
+  exact tree.check_unsatisfiable_concept decoded.certificate root concept
+    (decoded.certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
 
 namespace WireTests
 
@@ -300,6 +377,48 @@ private def witnessUnsatDocument : WireCertificate where
 
 example : witnessUnsatDocument.check = .ok true := by native_decide
 
+private def subsumptionDocument : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 1
+  ontology := [
+    { body := [.concept ⟨0, false⟩ 0, .concept ⟨1, true⟩ 0], head := [] }]
+  labels := [
+    { node := 0, literal := ⟨0, false⟩ },
+    { node := 0, literal := ⟨1, true⟩ }]
+  edges := []
+  obligations := []
+  evidence := .subsumption 0 0 1 (.branch 0 [0] [])
+
+example : subsumptionDocument.check = .ok true := by native_decide
+
+private def wrongSubsumptionRootDocument : WireCertificate :=
+  { subsumptionDocument with evidence := .subsumption 0 1 0 (.branch 0 [0] []) }
+
+example : wrongSubsumptionRootDocument.check = .ok false := by native_decide
+
+private def unsatisfiableConceptDocument : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 1
+  ontology := [{ body := [.concept ⟨0, false⟩ 0], head := [] }]
+  labels := [{ node := 0, literal := ⟨0, false⟩ }]
+  edges := []
+  obligations := []
+  evidence := .unsatisfiable_concept 0 0 (.branch 0 [0] [])
+
+example : unsatisfiableConceptDocument.check = .ok true := by native_decide
+
+private def wrongUnsatisfiableRootDocument : WireCertificate :=
+  { unsatisfiableConceptDocument with
+    evidence := .unsatisfiable_concept 0 1 (.branch 0 [0] []) }
+
+example : wrongUnsatisfiableRootDocument.check = .ok false := by native_decide
+
 private def nonfreshWitnessDocument : WireCertificate :=
   { witnessUnsatDocument with
     evidence := .unsat
@@ -339,5 +458,7 @@ end WireTests
 
 #print axioms DecodedEvidence.sat_sound
 #print axioms DecodedEvidence.unsat_sound
+#print axioms DecodedEvidence.subsumption_sound
+#print axioms DecodedEvidence.unsatisfiableConcept_sound
 
 end ContextCalculus.Hypertableau

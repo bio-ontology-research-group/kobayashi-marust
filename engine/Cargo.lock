@@ -206,7 +206,7 @@ checksum = "574b0cd5e90ee2ba03a66d0611fc9a09c9a0c28b2ecc2dc8a181dd31a53ca5d7"
 
 [[package]]
 name = "kobayashi-marust"
-version = "0.3.39"
+version = "0.3.40"
 dependencies = [
  "dhat",
  "horned-owl",

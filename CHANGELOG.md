@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.40] – 2026-08-19
+
+### Certify individual HT taxonomy refutations
+
+- Define semantic named-concept subsumption and concept-unsatisfiability
+  judgments for the normalized hypertableau ontology.
+- Prove that a checked refutation rooted at exactly `A` and `¬B` entails
+  `A ⊑ B`, and that one rooted at exactly `A` proves `A` unsatisfiable.
+- Extend the version-1 wire format with bounds-checked `subsumption` and
+  `unsatisfiable_concept` evidence. The executable checker verifies the exact
+  root labels and rejects query/root mismatches.
+- Generalize the Rust bounded refutation producer to start from query labels
+  and emit both evidence kinds. Rust-generated documents pass the native Lean
+  checker; open branches still decline without evidence.
+
+This release certifies individual HT taxonomy answers that have bounded closed
+refutations. Batch taxonomy publication, complete HT termination, and
+equality-dependent refutations remain outstanding.
+
 ## [0.3.39] – 2026-08-19
 
 ### Certify fresh existential witnesses in HT refutations
