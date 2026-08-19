@@ -27,6 +27,7 @@ import ContextCalculus.Nominals
 import ContextCalculus.Certification
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauEquality
+import ContextCalculus.HypertableauEqualityModel
 import ContextCalculus.HypertableauEqualityCertificate
 import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauCertificate

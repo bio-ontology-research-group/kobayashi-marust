@@ -227,7 +227,9 @@ finite equality closure. The checker validates every merge, representative,
 and path to that representative without assuming distinct certificate nodes
 denote distinct domain elements. `ht-cert-check` dispatches both versions; the
 same version-2 decoder is available separately with
-`LEAN_NUM_THREADS=2 lake build ht-eq-cert-check`. Equality-aware SAT and
+`LEAN_NUM_THREADS=2 lake build ht-eq-cert-check`. Version 2 accepts global SAT
+evidence only after constructing a nonempty quotient model and checking every
+guarded grounding modulo equality. Equality-aware query countermodels and
 taxonomy evidence remain fail-closed.
 
 The production Rust worker emits checker-gated global SAT evidence for

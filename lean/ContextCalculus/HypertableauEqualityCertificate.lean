@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauEquality
+import ContextCalculus.HypertableauEqualityModel
 import ContextCalculus.HypertableauRefutationCertificate
 
 /-!
@@ -175,6 +175,83 @@ theorem FiniteEqCertificate.closedHoldsAtomB_eq_true
   | eq left right =>
       exact certificate.closedRelatedB_eq_true hvalid (assignment left) (assignment right)
 
+/-- Quotient-closed lookup used by positive equality-aware model certificates.
+Unlike refutation-tree matching above, every fact kind is transported across
+the complete node equivalence relation. -/
+def FiniteEqCertificate.quotientHoldsAtomB
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount) :
+    Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount) → Bool
+  | .concept lit node =>
+      (List.finRange nodeCount).any fun source =>
+        certificate.closedRelatedB source (assignment node) &&
+          decide ((source, lit) ∈ certificate.base.labels)
+  | .role role source target =>
+      (List.finRange nodeCount).any fun edgeSource =>
+        (List.finRange nodeCount).any fun edgeTarget =>
+          (certificate.closedRelatedB edgeSource (assignment source) &&
+            certificate.closedRelatedB edgeTarget (assignment target)) &&
+          decide ((role, edgeSource, edgeTarget) ∈ certificate.base.edges)
+  | .exists_ role filler node =>
+      (List.finRange nodeCount).any fun source =>
+        certificate.closedRelatedB source (assignment node) &&
+          decide ((role, filler, source) ∈ certificate.base.obligations)
+  | .eq left right => certificate.closedRelatedB (assignment left) (assignment right)
+
+theorem FiniteEqCertificate.quotientHoldsAtomB_eq_true
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.quotientHoldsAtomB assignment atom = true ↔
+      certificate.state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept lit node =>
+      simp only [FiniteEqCertificate.quotientHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq, EqState.closedHoldsAtom,
+        EqState.closedLabel]
+      constructor
+      · rintro ⟨source, _, hrelated, hlabel⟩
+        exact ⟨source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mp hrelated,
+          hlabel⟩
+      · rintro ⟨source, hrelated, hlabel⟩
+        exact ⟨source, List.mem_finRange source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mpr hrelated,
+          hlabel⟩
+  | role role source target =>
+      simp only [FiniteEqCertificate.quotientHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq, EqState.closedHoldsAtom,
+        EqState.closedEdge]
+      constructor
+      · rintro ⟨edgeSource, _, edgeTarget, _, ⟨hsource, htarget⟩, hedge⟩
+        exact ⟨edgeSource, edgeTarget,
+          (certificate.closedRelatedB_eq_true hvalid edgeSource (assignment source)).mp hsource,
+          (certificate.closedRelatedB_eq_true hvalid edgeTarget (assignment target)).mp htarget,
+          hedge⟩
+      · rintro ⟨edgeSource, edgeTarget, hsource, htarget, hedge⟩
+        exact ⟨edgeSource, List.mem_finRange edgeSource, edgeTarget,
+          List.mem_finRange edgeTarget,
+          ⟨(certificate.closedRelatedB_eq_true hvalid edgeSource (assignment source)).mpr hsource,
+            (certificate.closedRelatedB_eq_true hvalid edgeTarget (assignment target)).mpr htarget⟩,
+          hedge⟩
+  | exists_ role filler node =>
+      simp only [FiniteEqCertificate.quotientHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq, EqState.closedHoldsAtom,
+        EqState.closedObligation]
+      constructor
+      · rintro ⟨source, _, hrelated, hobligation⟩
+        exact ⟨source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mp hrelated,
+          hobligation⟩
+      · rintro ⟨source, hrelated, hobligation⟩
+        exact ⟨source, List.mem_finRange source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mpr hrelated,
+          hobligation⟩
+  | eq left right =>
+      simpa [EqState.closedHoldsAtom] using
+        certificate.closedRelatedB_eq_true hvalid (assignment left) (assignment right)
+
 def FiniteEqCertificate.closedClashB
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) : Bool :=
   certificate.base.labels.any fun positive =>
@@ -209,6 +286,89 @@ theorem FiniteEqCertificate.closedClashB_sound
   exact ⟨positiveNode, negativeNode, negativeConcept,
     (certificate.closedRelatedB_eq_true hvalid positiveNode negativeNode).mp hrelated,
     hpositiveMem, hnegativeMem⟩
+
+theorem FiniteEqCertificate.not_closedClashB_closedClashFree
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (hclash : certificate.closedClashB = false) :
+    certificate.state.ClosedClashFree := by
+  intro positiveNode negativeNode concept hrelated hlabels
+  have hrelatedB : certificate.closedRelatedB positiveNode negativeNode = true :=
+    (certificate.closedRelatedB_eq_true hvalid positiveNode negativeNode).mpr hrelated
+  have hdetected : certificate.closedClashB = true := by
+    simp only [FiniteEqCertificate.closedClashB, List.any_eq_true,
+      Bool.and_eq_true, decide_eq_true_eq]
+    exact ⟨(positiveNode, .pos concept), hlabels.1, by simp [Lit.pos],
+      (negativeNode, .negated concept), hlabels.2,
+      by simp [Lit.pos, Lit.negated],
+      hrelatedB⟩
+  rw [hdetected] at hclash
+  contradiction
+
+def FiniteEqCertificate.checkEqSat
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) : Bool :=
+  certificate.equalityClosureValidB &&
+  certificate.base.ontology.all (fun clause => clause.body.all atomGuardedB) &&
+  !certificate.closedClashB &&
+  certificate.base.obligations.all (fun obligation =>
+    (List.finRange nodeCount).any fun witness =>
+      decide ((obligation.1, obligation.2.2, witness) ∈ certificate.base.edges) &&
+      decide ((witness, obligation.2.1) ∈ certificate.base.labels)) &&
+  certificate.base.ontology.all (fun clause =>
+    (allAssignments nodeCount variableCount).all fun assignment =>
+      !(clause.body.all (certificate.quotientHoldsAtomB assignment)) ||
+        clause.head.any (certificate.quotientHoldsAtomB assignment))
+
+theorem FiniteEqCertificate.checkEqSat_models
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hcheck : certificate.checkEqSat = true) :
+    certificate.state.quotientCanonical.models certificate.base.ontology := by
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true,
+    List.all_eq_true] at hcheck
+  rcases hcheck with ⟨⟨⟨⟨hvalid, hguarded⟩, hclash⟩, hwitness⟩, hsaturated⟩
+  apply certificate.state.quotientCanonical_models_of_closed_saturated
+  · intro clause hclause atom hatom
+    have h := hguarded clause hclause atom hatom
+    cases atom with
+    | concept lit node =>
+        rcases lit with ⟨concept, neg⟩
+        cases neg <;> simp [atomGuardedB, BodyAtom] at h ⊢
+    | role => trivial
+    | exists_ => simp [atomGuardedB] at h
+    | eq => trivial
+  · have hclashFalse : certificate.closedClashB = false := by
+      simpa using hclash
+    exact certificate.not_closedClashB_closedClashFree hvalid hclashFalse
+  · intro node role filler hobligation
+    have h := hwitness (role, filler, node) hobligation
+    simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+    rcases h with ⟨witness, _, hedge, hlabel⟩
+    exact ⟨witness, hedge, hlabel⟩
+  · intro clause hclause assignment hbody
+    have hassignment : assignment ∈ allAssignments nodeCount variableCount :=
+      mem_allAssignments nodeCount variableCount assignment
+    have h := hsaturated clause hclause assignment hassignment
+    have hbodyB : clause.body.all
+        (certificate.quotientHoldsAtomB assignment) = true := by
+      simp only [List.all_eq_true]
+      intro atom hatom
+      exact (certificate.quotientHoldsAtomB_eq_true hvalid assignment atom).mpr
+        (hbody atom hatom)
+    have hhead : clause.head.any
+        (certificate.quotientHoldsAtomB assignment) = true := by
+      simpa [hbodyB] using h
+    rw [List.any_eq_true] at hhead
+    rcases hhead with ⟨atom, hatom, hholds⟩
+    exact ⟨atom, hatom,
+      (certificate.quotientHoldsAtomB_eq_true hvalid assignment atom).mp hholds⟩
+
+theorem FiniteEqCertificate.checkEqSat_satisfiable
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hcheck : certificate.checkEqSat = true) :
+    ∃ (Domain : Type) (I : Interp Domain (Fin conceptCount) (Fin roleCount)),
+      I.models certificate.base.ontology :=
+  ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical,
+    certificate.checkEqSat_models hcheck⟩
 
 def FiniteEqCertificate.freshNodeB
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -663,7 +823,47 @@ example : staleEqualityBranch.check equalityRoot = false := by native_decide
 
 end EqualityRefutationCheckerTests
 
+namespace EqualitySatCheckerTests
+
+private def quotientSat : FiniteEqCertificate 2 2 1 2 where
+  base := {
+    ontology := [
+      { body := [.concept (.pos 0) 0], head := [.concept (.pos 1) 0] },
+      { body := [], head := [.eq 0 1] }
+    ]
+    labels := [(1, .pos 0), (0, .pos 1)]
+    edges := []
+    obligations := []
+  }
+  equalities := [(0, 1)]
+  representative := fun _ => 0
+  representativePath := fun node => if node = 1 then [0] else []
+
+example : quotientSat.checkEqSat = true := by native_decide
+
+private def missingQuotientHead : FiniteEqCertificate 2 2 1 2 :=
+  { quotientSat with base := { quotientSat.base with labels := [(1, .pos 0)] } }
+
+example : missingQuotientHead.checkEqSat = false := by native_decide
+
+private def quotientClash : FiniteEqCertificate 2 1 1 0 where
+  base := {
+    ontology := []
+    labels := [(0, .pos 0), (1, .negated 0)]
+    edges := []
+    obligations := []
+  }
+  equalities := [(0, 1)]
+  representative := fun _ => 0
+  representativePath := fun node => if node = 1 then [0] else []
+
+example : quotientClash.checkEqSat = false := by native_decide
+
+end EqualitySatCheckerTests
+
 #print axioms FiniteEqCertificate.equalityClosureValidB_sound
+#print axioms FiniteEqCertificate.checkEqSat_models
+#print axioms FiniteEqCertificate.checkEqSat_satisfiable
 #print axioms FiniteEqRefutationTree.check_sound
 #print axioms FiniteEqRefutationTree.check_unsatisfiable
 #print axioms FiniteEqRefutationTree.check_ontology_unsatisfiable

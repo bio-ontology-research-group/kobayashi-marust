@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.45`.
+`v0.3.46`.
 
 ## Classify an ontology
 
@@ -179,13 +179,16 @@ the trust boundary. For inconsistent clause sets admitting a bounded finite
 refutation, Rust independently constructs an exhaustive empty-root tree over
 concept, role, and existential facts. An existential obligation may bind a
 fresh certificate node to its semantic witness; Lean checks freshness before
-accepting the added edge and filler label. Version 2 also checks global UNSAT
-refutations with equality heads: every child includes the exact equality
-history, representative vector, and paths witnessing the quotient. Global
-inconsistency is published only after Lean accepts every branch. Open,
-node-capped, or assignment-capped search declines. Equality-aware SAT and
-taxonomy evidence, inverse roles, nominals, native ABoxes, QO, and complete
-termination/blocking correspondence remain separate HT certification tasks.
+accepting the added edge and filler label. Version 2 checks both global SAT and
+UNSAT evidence with equality heads. SAT acceptance constructs a nonempty model
+on node-equivalence classes after exhaustively checking labels, edges,
+obligations, and every guarded grounding modulo equality. UNSAT children carry
+the exact equality history, representative vector, and paths witnessing the
+quotient. Publication occurs only after Lean accepts the evidence. Open,
+node-capped, or assignment-capped search declines. Equality-aware query
+countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
+QO, and complete termination/blocking correspondence remain separate HT
+certification tasks.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered

@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.46] – 2026-08-19
+
+### Certify equality-aware HT finite models
+
+- Define quotient-closed HT labels, edges, obligations, and atom matching. Prove
+  that a guarded, clash-free, witness-complete, closed-saturated state constructs
+  a model on the complete node-equivalence quotient.
+- Add an executable equality-aware finite SAT checker. It validates equality
+  closure, clashes across merged nodes, existential witnesses, and every finite
+  grounding modulo equality. Acceptance proves satisfiability of the exact
+  normalized ontology.
+- Extend version-2 HT wire evidence with global SAT documents and require a
+  positive node bound, so accepted OWL models have a nonempty domain.
+- Emit version-2 SAT quotient evidence from Rust, including merge generators,
+  representatives, and checked paths. A Rust-produced document passes the
+  native Lean checker.
+
+This release certifies bounded global SAT and UNSAT evidence for the guarded HT
+fragment with equality. Equality-aware query countermodels and complete
+taxonomy, inverse roles, nominals, native ABoxes, and a proof that every search
+terminates with evidence remain unfinished. It does not certify the entire HT
+implementation.
+
 ## [0.3.45] – 2026-08-19
 
 ### Connect equality-aware HT refutations to the runtime

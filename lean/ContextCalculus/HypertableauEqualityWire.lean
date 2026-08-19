@@ -38,6 +38,7 @@ inductive WireEqRefutationTree where
 deriving FromJson, ToJson, Repr
 
 inductive WireEqEvidence where
+  | sat
   | unsat (tree : WireEqRefutationTree)
 deriving FromJson, ToJson, Repr
 
@@ -132,13 +133,17 @@ partial def WireEqRefutationTree.decode
         (← filler.decode conceptCount)
         (← child.decode nodeCount conceptCount roleCount variableCount ontology)
 
+inductive DecodedEqEvidence (nodeCount conceptCount roleCount variableCount : Nat) where
+  | sat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+  | unsat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+
 structure DecodedEqCertificate where
   nodeCount : Nat
   conceptCount : Nat
   roleCount : Nat
   variableCount : Nat
-  certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount
-  tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount
+  evidence : DecodedEqEvidence nodeCount conceptCount roleCount variableCount
 
 def WireEqCertificate.decode (wire : WireEqCertificate) : Except String DecodedEqCertificate := do
   if wire.version != 2 then
@@ -147,38 +152,63 @@ def WireEqCertificate.decode (wire : WireEqCertificate) : Except String DecodedE
     (WireClause.decode wire.variable_count wire.concept_count wire.role_count)
   let certificate ← wire.state.decode wire.node_count wire.concept_count
     wire.role_count wire.variable_count ontology
-  let tree ← match wire.evidence with
-    | .unsat tree =>
-        WireEqRefutationTree.decode wire.node_count wire.concept_count wire.role_count wire.variable_count ontology tree
+  let evidence ← match wire.evidence with
+    | .sat => pure (.sat certificate)
+    | .unsat tree => do
+        let decodedTree ← WireEqRefutationTree.decode wire.node_count wire.concept_count
+          wire.role_count wire.variable_count ontology tree
+        pure (.unsat certificate decodedTree)
   return {
     nodeCount := wire.node_count
     conceptCount := wire.concept_count
     roleCount := wire.role_count
     variableCount := wire.variable_count
-    certificate, tree
+    evidence
   }
 
 def DecodedEqCertificate.check (decoded : DecodedEqCertificate) : Bool :=
-  decide (0 < decoded.nodeCount) &&
-  decoded.certificate.base.labels.isEmpty &&
-  decoded.certificate.base.edges.isEmpty &&
-  decoded.certificate.base.obligations.isEmpty &&
-  decoded.tree.check decoded.certificate
+  match decoded.evidence with
+  | .sat certificate => decide (0 < decoded.nodeCount) && certificate.checkEqSat
+  | .unsat certificate tree =>
+      decide (0 < decoded.nodeCount) &&
+      certificate.base.labels.isEmpty &&
+      certificate.base.edges.isEmpty &&
+      certificate.base.obligations.isEmpty &&
+      tree.check certificate
 
 def WireEqCertificate.check (wire : WireEqCertificate) : Except String Bool := do
   return (← wire.decode).check
 
+def DecodedEqCertificate.SemanticallyValid (decoded : DecodedEqCertificate) : Prop :=
+  match decoded.evidence with
+  | .sat certificate =>
+      ∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
+          (Fin decoded.roleCount)),
+        Nonempty Domain ∧ I.models certificate.base.ontology
+  | .unsat certificate _ =>
+      ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
+          (Fin decoded.roleCount)),
+        Nonempty Domain ∧ I.models certificate.base.ontology
+
 theorem DecodedEqCertificate.check_sound (decoded : DecodedEqCertificate)
-    (hcheck : decoded.check = true) :
-    ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
-        (Fin decoded.roleCount)),
-      Nonempty Domain ∧ I.models decoded.certificate.base.ontology := by
-  simp only [DecodedEqCertificate.check, Bool.and_eq_true, decide_eq_true_eq,
-    List.isEmpty_iff] at hcheck
-  rcases hcheck with ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
-  haveI : Nonempty (Fin decoded.nodeCount) := ⟨⟨0, hpositive⟩⟩
-  exact decoded.tree.check_ontology_unsatisfiable decoded.certificate
-    ⟨hlabels, hedges, hobligations⟩ htree
+    (hcheck : decoded.check = true) : decoded.SemanticallyValid := by
+  cases hevidence : decoded.evidence with
+  | sat certificate =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      haveI : Nonempty (Fin decoded.nodeCount) := ⟨⟨0, hcheck.1⟩⟩
+      refine ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical,
+        ?_, certificate.checkEqSat_models hcheck.2⟩
+      exact ⟨Quotient.mk certificate.state.nodeSetoid (Classical.choice inferInstance)⟩
+  | unsat certificate tree =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true,
+        decide_eq_true_eq, List.isEmpty_iff] at hcheck
+      rcases hcheck with ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
+      haveI : Nonempty (Fin decoded.nodeCount) := ⟨⟨0, hpositive⟩⟩
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      exact tree.check_ontology_unsatisfiable certificate
+        ⟨hlabels, hedges, hobligations⟩ htree
 
 namespace EqualityWireTests
 
@@ -235,6 +265,51 @@ private def outOfBounds : WireEqCertificate :=
 
 example : outOfBounds.check = .error "representatives id 3 is outside [0,3)" := by
   native_decide
+
+private def satDocument : WireEqCertificate where
+  version := 2
+  node_count := 2
+  concept_count := 2
+  role_count := 1
+  variable_count := 2
+  ontology := [
+    { body := [.concept { concept := 0, neg := false } 0]
+      head := [.concept { concept := 1, neg := false } 0] },
+    { body := [], head := [.eq 0 1] }
+  ]
+  state := {
+    labels := [
+      { node := 1, literal := { concept := 0, neg := false } },
+      { node := 0, literal := { concept := 1, neg := false } }
+    ]
+    edges := []
+    obligations := []
+    equalities := [{ left := 0, right := 1 }]
+    representatives := [0, 0]
+    representative_paths := [[], [0]]
+  }
+  evidence := .sat
+
+example : satDocument.check = .ok true := by native_decide
+
+private def emptyDomainSat : WireEqCertificate where
+  version := 2
+  node_count := 0
+  concept_count := 0
+  role_count := 0
+  variable_count := 0
+  ontology := []
+  state := {
+    labels := []
+    edges := []
+    obligations := []
+    equalities := []
+    representatives := []
+    representative_paths := []
+  }
+  evidence := .sat
+
+example : emptyDomainSat.check = .ok false := by native_decide
 
 end EqualityWireTests
 

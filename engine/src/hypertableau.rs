@@ -2277,6 +2277,7 @@ enum LeanHtEqRefutationTree {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtEqEvidence {
+    Sat,
     Unsat { tree: LeanHtEqRefutationTree },
 }
 
@@ -8405,13 +8406,10 @@ impl Ht {
         })
     }
 
-    /// Serialize the exact terminal completion graph and normalized HT clauses
-    /// consumed by Lean's version-1 finite-model checker.
-    ///
-    /// Equality is deliberately fenced from this first producer: node merging
-    /// needs an explicit quotient witness before its terminal graph can be
-    /// identified with the checker's finite domain.  A rejected producer does
-    /// not weaken ordinary HT execution; checker-backed publication fails closed.
+    /// Serialize the exact terminal completion graph and normalized HT clauses.
+    /// Equality-free evidence uses wire version 1. Global equality-aware SAT
+    /// evidence uses version 2 with the complete merge forest and quotient
+    /// witnesses. Equality-aware query countermodels remain fail-closed.
     fn lean_sat_certificate_json_with_evidence(
         &self,
         evidence: LeanHtEvidence,
@@ -8428,15 +8426,19 @@ impl Ht {
                     .to_string(),
             );
         }
-        if self.clauses.iter().any(|record| {
+        let has_equality = self.clauses.iter().any(|record| {
             record
                 .0
                 .body
                 .iter()
                 .chain(record.0.head.iter())
                 .any(|atom| matches!(atom, Atom::Eq { .. }))
-        }) {
-            return Err("HT Lean SAT certificate v1 does not encode equality merging".to_string());
+        });
+        if has_equality && !matches!(evidence, LeanHtEvidence::Sat) {
+            return Err(
+                "HT Lean equality certificates do not yet encode query countermodels"
+                    .to_string(),
+            );
         }
 
         let mut variable_count = 0usize;
@@ -8456,7 +8458,9 @@ impl Ht {
                 concept_count = concept_count.max(fil.c as usize + 1);
                 role_count = role_count.max(r as usize + 1);
             }
-            Atom::Eq { .. } => unreachable!("equality rejected above"),
+            Atom::Eq { s, t } => {
+                variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+            }
         };
         for record in &self.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
@@ -8554,6 +8558,48 @@ impl Ht {
                 obligation.filler.neg,
             )
         });
+
+        if has_equality {
+            let node_count = self.ext.num_nodes();
+            let mut equalities = Vec::new();
+            let mut representative_paths = Vec::with_capacity(node_count);
+            for node in 0..node_count {
+                let mut path = Vec::new();
+                let mut current = node;
+                while let Some(parent) = self.ext.merged[current] {
+                    equalities.push(LeanHtEquality {
+                        left: current,
+                        right: parent,
+                    });
+                    path.push(parent);
+                    current = parent;
+                }
+                representative_paths.push(path);
+            }
+            equalities.sort_unstable_by_key(|equality| (equality.left, equality.right));
+            equalities.dedup_by_key(|equality| (equality.left, equality.right));
+            let representatives = (0..node_count)
+                .map(|node| self.ext.resolve(node))
+                .collect();
+            return serde_json::to_string(&LeanHtEqCertificate {
+                version: 2,
+                node_count,
+                concept_count,
+                role_count,
+                variable_count,
+                ontology,
+                state: LeanHtEqState {
+                    labels,
+                    edges,
+                    obligations,
+                    equalities,
+                    representatives,
+                    representative_paths,
+                },
+                evidence: LeanHtEqEvidence::Sat,
+            })
+            .map_err(|error| error.to_string());
+        }
 
         serde_json::to_string(&LeanHtCertificate {
             version: 1,
@@ -17317,12 +17363,56 @@ mod tests {
     }
 
     #[test]
-    fn lean_sat_wire_rejects_equality_until_quotients_are_certified() {
-        let t = ht(vec![Clause::new(
+    fn lean_sat_wire_serializes_the_exact_equality_quotient() {
+        let mut t = ht(vec![Clause::new(
             Vec::new(),
             vec![Atom::Eq { s: X, t: 1 }],
         )]);
-        assert!(t.lean_sat_certificate_json().is_err());
+        let first = t.ext.new_root();
+        let second = t.ext.new_node(Some(first));
+        t.ext.merge_into(first, second, &dep_empty());
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_sat_certificate_json()
+                .expect("the complete quotient has a SAT certificate"),
+        )
+        .expect("equality SAT certificate is JSON");
+        assert_eq!(wire["version"], 2);
+        assert_eq!(wire["evidence"], "sat");
+        assert_eq!(wire["state"]["equalities"].as_array().unwrap().len(), 1);
+        assert_eq!(wire["state"]["representatives"], serde_json::json!([0, 0]));
+        assert_eq!(
+            wire["state"]["representative_paths"],
+            serde_json::json!([[], [0]])
+        );
+    }
+
+    #[test]
+    fn lean_equality_sat_wire_passes_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let mut t = ht(vec![Clause::new(
+            Vec::new(),
+            vec![Atom::Eq { s: X, t: 1 }],
+        )]);
+        let first = t.ext.new_root();
+        let second = t.ext.new_node(Some(first));
+        t.ext.merge_into(first, second, &dep_empty());
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-eq-sat-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, t.lean_sat_certificate_json().unwrap()).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean equality HT checker")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the Rust equality SAT quotient");
     }
 
     #[test]
