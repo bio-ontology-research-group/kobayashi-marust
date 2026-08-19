@@ -1642,7 +1642,16 @@ fn nvars_of(clause: &Clause) -> usize {
 /// variables throughout the clause. For universally quantified clauses,
 /// `x = y ∧ B(x,y) → H(x,y)` is equivalent to `B(x,x) → H(x,x)`.
 /// Equality-only bodies otherwise have no concept or role event to wake them.
-fn eliminate_body_equalities(clause: &mut Clause) {
+#[derive(Clone)]
+struct BodyEqualityNormalizationEvidence {
+    source: Clause,
+    representatives: Vec<usize>,
+    representative_paths: Vec<Vec<usize>>,
+    had_equality: bool,
+}
+
+fn eliminate_body_equalities(clause: &mut Clause) -> BodyEqualityNormalizationEvidence {
+    let source = clause.clone();
     let equalities: Vec<(Var, Var)> = clause
         .body
         .iter()
@@ -1651,9 +1660,6 @@ fn eliminate_body_equalities(clause: &mut Clause) {
             _ => None,
         })
         .collect();
-    if equalities.is_empty() {
-        return;
-    }
     let count = nvars_of(clause);
     let mut parent: Vec<usize> = (0..count).collect();
     fn root(parent: &mut [usize], mut node: usize) -> usize {
@@ -1663,7 +1669,7 @@ fn eliminate_body_equalities(clause: &mut Clause) {
         }
         node
     }
-    for (left, right) in equalities {
+    for &(left, right) in &equalities {
         let left = root(&mut parent, left as usize);
         let right = root(&mut parent, right as usize);
         if left != right {
@@ -1678,6 +1684,46 @@ fn eliminate_body_equalities(clause: &mut Clause) {
     for variable in 0..count {
         parent[variable] = root(&mut parent, variable);
     }
+    let representative_paths = (0..count)
+        .map(|start| {
+            let finish = parent[start];
+            if start == finish {
+                return vec![start];
+            }
+            let mut predecessor = vec![None; count];
+            let mut stack = vec![start];
+            predecessor[start] = Some(start);
+            while let Some(node) = stack.pop() {
+                if node == finish {
+                    break;
+                }
+                for &(left, right) in &equalities {
+                    let (left, right) = (left as usize, right as usize);
+                    let next = if left == node {
+                        Some(right)
+                    } else if right == node {
+                        Some(left)
+                    } else {
+                        None
+                    };
+                    if let Some(next) = next {
+                        if predecessor[next].is_none() {
+                            predecessor[next] = Some(node);
+                            stack.push(next);
+                        }
+                    }
+                }
+            }
+            let mut reversed = vec![finish];
+            let mut node = finish;
+            while node != start {
+                node = predecessor[node].expect("union-find representative must have an equality path");
+                reversed.push(node);
+            }
+            reversed.reverse();
+            reversed
+        })
+        .collect();
     let rename = |variable: &mut Var| *variable = parent[*variable as usize] as Var;
     let rename_atom = |atom: &mut Atom| match atom {
         Atom::Concept { t, .. } | Atom::Exists { t, .. } => rename(t),
@@ -1693,6 +1739,12 @@ fn eliminate_body_equalities(clause: &mut Clause) {
         rename_atom(atom);
     }
     clause.body.retain(|atom| !matches!(atom, Atom::Eq { .. }));
+    BodyEqualityNormalizationEvidence {
+        source,
+        representatives: parent,
+        representative_paths,
+        had_equality: !equalities.is_empty(),
+    }
 }
 
 fn sorted_body(body: &[Atom]) -> Vec<Atom> {
@@ -2261,6 +2313,13 @@ struct LeanHtClause {
 }
 
 #[derive(serde::Serialize)]
+struct LeanHtClauseNormalization {
+    source: LeanHtClause,
+    representatives: Vec<usize>,
+    representative_paths: Vec<Vec<usize>>,
+}
+
+#[derive(serde::Serialize)]
 struct LeanHtLabel {
     node: usize,
     literal: LeanHtLit,
@@ -2795,6 +2854,7 @@ impl HtModelSnapshot {
 
 pub struct Ht {
     clauses: Vec<ClauseRec>,
+    cert_body_normalization: Option<Vec<BodyEqualityNormalizationEvidence>>,
     /// Concepts whose last per-concept QoSat saturation had a shared filler
     /// (in-degree ≥ 2 non-root node) and so may carry over-approximated subsumers.
     /// Set by `qo_classify_perconcept`, consumed by the verification pass.
@@ -8090,6 +8150,53 @@ impl Ht {
         }
     }
 
+    fn lean_source_variable_count(&self) -> usize {
+        self.cert_body_normalization
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .map(|evidence| nvars_of(&evidence.source))
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
+        let Some(normalization) = &self.cert_body_normalization else {
+            return Ok(payload);
+        };
+        if normalization.len() != self.clauses.len() {
+            return Err("HT source normalization no longer matches the certificate ontology"
+                .to_string());
+        }
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let payload_version = payload["version"]
+            .as_u64()
+            .ok_or_else(|| "HT certificate payload has no numeric version".to_string())?;
+        let normalization = normalization
+            .iter()
+            .map(|evidence| LeanHtClauseNormalization {
+                source: LeanHtClause {
+                    body: evidence.source.body.iter().map(Self::lean_wire_atom).collect(),
+                    head: evidence.source.head.iter().map(Self::lean_wire_atom).collect(),
+                },
+                representatives: evidence.representatives.clone(),
+                representative_paths: evidence.representative_paths.clone(),
+            })
+            .collect::<Vec<_>>();
+        let payload = match payload_version {
+            1 => serde_json::json!({ "plain": { "certificate": payload } }),
+            2 => serde_json::json!({ "equality": { "certificate": payload } }),
+            version => return Err(format!("cannot normalize HT payload version {version}")),
+        };
+        serde_json::to_string(&serde_json::json!({
+            "version": 3,
+            "normalization": normalization,
+            "payload": payload,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     fn lean_refutation_assignments(
         variable_count: usize,
         active_nodes: usize,
@@ -8327,6 +8434,7 @@ impl Ht {
             }
             concept_count = concept_count.max(literal.c as usize + 1);
         }
+        variable_count = variable_count.max(self.lean_source_variable_count());
         let ontology = self
             .clauses
             .iter()
@@ -8412,6 +8520,7 @@ impl Ht {
             }
             concept_count = concept_count.max(literal.c as usize + 1);
         }
+        variable_count = variable_count.max(self.lean_source_variable_count());
         let ontology = self
             .clauses
             .iter()
@@ -8454,7 +8563,7 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
-    pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
+    fn lean_unsat_certificate_json_raw(&self) -> Result<String, String> {
         if self
             .clauses
             .iter()
@@ -8467,8 +8576,12 @@ impl Ht {
         self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
     }
 
+    pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
+        self.wrap_normalized_lean_certificate(self.lean_unsat_certificate_json_raw()?)
+    }
+
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
-    pub fn lean_subsumption_certificate_json(&self, sub: C, sup: C) -> Result<String, String> {
+    fn lean_subsumption_certificate_json_raw(&self, sub: C, sup: C) -> Result<String, String> {
         let labels = [
             (0, CLit { c: sub, neg: false }),
             (0, CLit { c: sup, neg: true }),
@@ -8495,8 +8608,12 @@ impl Ht {
         })
     }
 
+    pub fn lean_subsumption_certificate_json(&self, sub: C, sup: C) -> Result<String, String> {
+        self.wrap_normalized_lean_certificate(self.lean_subsumption_certificate_json_raw(sub, sup)?)
+    }
+
     /// Certify that `concept` is unsatisfiable by refuting its exact root label.
-    pub fn lean_unsatisfiable_concept_certificate_json(
+    fn lean_unsatisfiable_concept_certificate_json_raw(
         &self,
         concept: C,
     ) -> Result<String, String> {
@@ -8521,6 +8638,15 @@ impl Ht {
                 tree,
             }
         })
+    }
+
+    pub fn lean_unsatisfiable_concept_certificate_json(
+        &self,
+        concept: C,
+    ) -> Result<String, String> {
+        self.wrap_normalized_lean_certificate(
+            self.lean_unsatisfiable_concept_certificate_json_raw(concept)?,
+        )
     }
 
     /// Serialize the exact terminal completion graph and normalized HT clauses.
@@ -8578,6 +8704,7 @@ impl Ht {
             }
         }
         drop(note_atom);
+        variable_count = variable_count.max(self.lean_source_variable_count());
 
         let ontology = self
             .clauses
@@ -8742,12 +8869,34 @@ impl Ht {
     }
 
     pub fn lean_sat_certificate_json(&self) -> Result<String, String> {
-        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::Sat)
+        self.wrap_normalized_lean_certificate(
+            self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::Sat)?,
+        )
     }
 
     /// Serialize a checked countermodel for `sub ⋢ sup` from the terminal
     /// graph of a successful `{sub, ¬sup}` consistency probe.
     pub fn lean_non_subsumption_certificate_json(
+        &self,
+        sub: C,
+        sup: C,
+    ) -> Result<String, String> {
+        let root = self
+            .ext
+            .concepts
+            .first()
+            .ok_or_else(|| "HT Lean countermodel has no query root".to_string())?;
+        if !root.contains_key(&CLit { c: sub, neg: false })
+            || !root.contains_key(&CLit { c: sup, neg: true })
+        {
+            return Err("HT Lean countermodel does not contain the declared query".to_string());
+        }
+        self.wrap_normalized_lean_certificate(self.lean_non_subsumption_certificate_json_raw(
+            sub, sup,
+        )?)
+    }
+
+    fn lean_non_subsumption_certificate_json_raw(
         &self,
         sub: C,
         sup: C,
@@ -8772,6 +8921,26 @@ impl Ht {
     /// Serialize a checked model of `concept` from the terminal graph of a
     /// successful `{concept}` consistency probe.
     pub fn lean_satisfiable_concept_certificate_json(
+        &self,
+        concept: C,
+    ) -> Result<String, String> {
+        let root = self
+            .ext
+            .concepts
+            .first()
+            .ok_or_else(|| "HT Lean concept model has no query root".to_string())?;
+        if !root.contains_key(&CLit {
+            c: concept,
+            neg: false,
+        }) {
+            return Err("HT Lean concept model does not contain the declared concept".to_string());
+        }
+        self.wrap_normalized_lean_certificate(
+            self.lean_satisfiable_concept_certificate_json_raw(concept)?,
+        )
+    }
+
+    fn lean_satisfiable_concept_certificate_json_raw(
         &self,
         concept: C,
     ) -> Result<String, String> {
@@ -8886,9 +9055,9 @@ impl Ht {
                 .consistent(&[CLit::pos(concept)])
                 .ok_or_else(|| "HT concept probe left the certified fragment".to_string())?;
             let document = if satisfiable {
-                self.lean_satisfiable_concept_certificate_json(concept)?
+                self.lean_satisfiable_concept_certificate_json_raw(concept)?
             } else {
-                self.lean_unsatisfiable_concept_certificate_json(concept)?
+                self.lean_unsatisfiable_concept_certificate_json_raw(concept)?
             };
             let (legacy, mixed) = note_document(document)?;
             legacy_concepts.push(legacy);
@@ -8903,9 +9072,9 @@ impl Ht {
                     .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
                     .ok_or_else(|| "HT subsumption probe left the certified fragment".to_string())?;
                 let document = if satisfiable {
-                    self.lean_non_subsumption_certificate_json(sub, sup)?
+                    self.lean_non_subsumption_certificate_json_raw(sub, sup)?
                 } else {
-                    self.lean_subsumption_certificate_json(sub, sup)?
+                    self.lean_subsumption_certificate_json_raw(sub, sup)?
                 };
                 let (legacy, mixed) = note_document(document)?;
                 legacy_row.push(legacy);
@@ -9000,9 +9169,6 @@ impl Ht {
 
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
-        for clause in &mut clauses {
-            eliminate_body_equalities(clause);
-        }
         // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
         // ⊤-disjunctions with negated disjuncts into dormant triggered clauses so
         // they no longer fire on every node. Run BEFORE contrapositives so the
@@ -9022,6 +9188,11 @@ impl Ht {
             }
             clauses.extend(extra);
         }
+        let normalization: Vec<_> = clauses
+            .iter_mut()
+            .map(eliminate_body_equalities)
+            .collect();
+        let has_body_equality = normalization.iter().any(|evidence| evidence.had_equality);
         // KM_KEEP_CHAIN_AXIOMS chain-unfolding is applied via `set_chains` (after
         // construction, when the TInput side data is available).  See `set_chains`.
 
@@ -9084,6 +9255,13 @@ impl Ht {
             .collect();
         let ht = Ht {
             clauses: recs,
+            cert_body_normalization: if has_body_equality
+                && !std::env::var_os("KM_HT_HARVEST").is_some()
+            {
+                Some(normalization)
+            } else {
+                None
+            },
             forall_idx,
             card_defs: HashMap::new(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
@@ -14545,6 +14723,7 @@ impl Ht {
                 );
             }
             self.clauses = mk_recs(&composed);
+            self.cert_body_normalization = None;
             // The tableau trigger indexes were built in `new` from the ORIGINAL
             // clauses; rebuild them for the composed set so the per-concept verify
             // tableau (`consistent`) fires valid `(cid, pos)` anchors. Without this
@@ -17903,6 +18082,46 @@ mod tests {
         let encoded = serde_json::to_string(&wire).unwrap();
         assert!(encoded.contains("equalities"));
         assert!(encoded.contains("representative_paths"));
+    }
+
+    #[test]
+    fn lean_body_equality_normalization_wire_certifies_the_source_clause() {
+        let t = ht(vec![Clause::new(
+            vec![Atom::Eq { s: X, t: 1 }],
+            Vec::new(),
+        )]);
+        let document = t
+            .lean_unsat_certificate_json()
+            .expect("body equality normalization exposes the global contradiction");
+        let wire: serde_json::Value =
+            serde_json::from_str(&document).expect("normalized certificate is JSON");
+        assert_eq!(wire["version"], 3);
+        assert_eq!(wire["normalization"][0]["source"]["body"][0]["eq"]["left"], X);
+        assert_eq!(wire["normalization"][0]["source"]["body"][0]["eq"]["right"], 1);
+        assert_eq!(wire["normalization"][0]["representatives"], serde_json::json!([0, 0]));
+        assert_eq!(
+            wire["normalization"][0]["representative_paths"],
+            serde_json::json!([[0], [1, 0]])
+        );
+        assert_eq!(wire["payload"]["plain"]["certificate"]["version"], 1);
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-body-eq-normalized-cert-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean normalized HT checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(accepted, "Lean must accept the source-normalized HT certificate");
+        }
     }
 
     #[test]

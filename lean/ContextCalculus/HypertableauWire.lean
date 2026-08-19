@@ -255,7 +255,7 @@ def WireCertificate.decode (wire : WireCertificate) : Except String DecodedEvide
         (← checkedFin "concept" decoded.conceptCount concept)
 
 def DecodedEvidence.check : DecodedEvidence → Bool
-  | .sat decoded => decoded.certificate.checkSat
+  | .sat decoded => decide (0 < decoded.nodeCount) && decoded.certificate.checkSat
   | .unsat decoded tree =>
       decide (0 < decoded.nodeCount) &&
       decoded.certificate.labels.isEmpty &&
@@ -281,10 +281,13 @@ def WireCertificate.check (wire : WireCertificate) : Except String Bool := do
 
 theorem DecodedEvidence.sat_sound (decoded : DecodedCertificate)
     (hcheck : (DecodedEvidence.sat decoded).check = true) :
-    ∃ I : Interp (Fin decoded.nodeCount) (Fin decoded.conceptCount)
-        (Fin decoded.roleCount),
-      I.models decoded.certificate.ontology :=
-  decoded.certificate.checkSat_satisfiable hcheck
+    ∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
+        (Fin decoded.roleCount)), Nonempty Domain ∧
+      I.models decoded.certificate.ontology := by
+  simp only [DecodedEvidence.check, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  letI : Nonempty (Fin decoded.nodeCount) := ⟨⟨0, hcheck.1⟩⟩
+  rcases decoded.certificate.checkSat_satisfiable hcheck.2 with ⟨I, hmodels⟩
+  exact ⟨Fin decoded.nodeCount, I, inferInstance, hmodels⟩
 
 theorem DecodedEvidence.unsat_sound (decoded : DecodedCertificate)
     (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
@@ -338,6 +341,38 @@ theorem DecodedEvidence.satisfiableConcept_sound (decoded : DecodedCertificate)
   simp only [DecodedEvidence.check, Bool.and_eq_true, decide_eq_true_eq] at hcheck
   exact decoded.certificate.checkSat_not_unsatisfiableConcept root concept
     hcheck.1 hcheck.2
+
+def DecodedEvidence.SemanticallyValid : DecodedEvidence → Prop
+  | .sat decoded =>
+      ∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
+          (Fin decoded.roleCount)),
+        Nonempty Domain ∧ I.models decoded.certificate.ontology
+  | .unsat decoded _ =>
+      ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
+          (Fin decoded.roleCount)),
+        Nonempty Domain ∧ I.models decoded.certificate.ontology
+  | .subsumption decoded _ sub sup _ =>
+      EntailsSub decoded.certificate.ontology sub sup
+  | .unsatisfiableConcept decoded _ concept _ =>
+      UnsatisfiableConcept decoded.certificate.ontology concept
+  | .nonSubsumption decoded _ sub sup =>
+      ¬EntailsSub decoded.certificate.ontology sub sup
+  | .satisfiableConcept decoded _ concept =>
+      ¬UnsatisfiableConcept decoded.certificate.ontology concept
+
+theorem DecodedEvidence.check_sound (decoded : DecodedEvidence)
+    (hcheck : decoded.check = true) : decoded.SemanticallyValid := by
+  cases decoded with
+  | sat decoded => exact DecodedEvidence.sat_sound decoded hcheck
+  | unsat decoded tree => exact DecodedEvidence.unsat_sound decoded tree hcheck
+  | subsumption decoded root sub sup tree =>
+      exact DecodedEvidence.subsumption_sound decoded root sub sup tree hcheck
+  | unsatisfiableConcept decoded root concept tree =>
+      exact DecodedEvidence.unsatisfiableConcept_sound decoded root concept tree hcheck
+  | nonSubsumption decoded root sub sup =>
+      exact DecodedEvidence.nonSubsumption_sound decoded root sub sup hcheck
+  | satisfiableConcept decoded root concept =>
+      exact DecodedEvidence.satisfiableConcept_sound decoded root concept hcheck
 
 namespace WireTests
 

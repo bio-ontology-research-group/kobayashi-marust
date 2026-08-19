@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.3.50] – 2026-08-19
+
+### Check HT equality-premise normalization from the source ontology
+
+- Lift clause-level equality-premise normalization to ontology model
+  equivalence, and prove transfer theorems for satisfiability, concept
+  unsatisfiability, and subsumption.
+- Add a proof-producing Lean decoder for representative maps and equality
+  paths. It rejects paths that are disconnected, out of bounds, or unsupported
+  by a positive equality premise, and checks the exact renamed target clause.
+- Add HT certificate wire version 3. It nests an existing plain or
+  equality-aware certificate for the normalized ontology together with the
+  source clauses and their normalization evidence. The native checker now
+  returns semantic evidence about the source ontology.
+- Make Rust retain normalization paths while it eliminates equality premises,
+  emit version 3 for individual HT results, and discard evidence if a later
+  optimization replaces the clause set. A Rust-produced source certificate is
+  accepted end to end by the native Lean checker.
+- Require a nonempty domain for plain SAT wire evidence, closing an implicit
+  empty-model edge case in version 1.
+
+This release connects individual HT certificates across equality-premise
+normalization. Taxonomy batches still certify their normalized ontology rather
+than carrying one shared source-normalization wrapper. Complete HT
+blocking/termination, inverse roles, nominals, native ABoxes, and the remaining
+OWL features are unfinished. This release does not certify the complete HT
+implementation or the full KM executable.
+
 ## [0.3.49] – 2026-08-19
 
 ### Prove and implement HT equality-premise normalization

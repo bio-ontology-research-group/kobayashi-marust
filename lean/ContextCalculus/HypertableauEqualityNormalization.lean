@@ -160,7 +160,68 @@ theorem BodyEqualityNormalization.models_iff
     exact (certificate.2.modelsClause_iff I).mpr
       (hmodels certificate.1.2 (List.mem_map.mpr ⟨certificate, hcertificate, rfl⟩))
 
+inductive OntologyEqualityNormalization :
+    List (Clause Variable Concept Role) →
+    List (Clause Variable Concept Role) → Prop
+  | nil : OntologyEqualityNormalization [] []
+  | cons (certificate : BodyEqualityNormalization sourceClause targetClause)
+      (tail : OntologyEqualityNormalization source target) :
+      OntologyEqualityNormalization (sourceClause :: source) (targetClause :: target)
+
+theorem OntologyEqualityNormalization.models_iff
+    {source target : List (Clause Variable Concept Role)}
+    (normalization : OntologyEqualityNormalization source target)
+    (I : Interp Domain Concept Role) :
+    I.models source ↔ I.models target := by
+  induction normalization with
+  | nil => simp [Interp.models]
+  | cons certificate tail ih =>
+      simp only [Interp.models, List.forall_mem_cons]
+      exact and_congr (certificate.modelsClause_iff I) ih
+
+def ModelEquivalent
+    (source target : List (Clause Variable Concept Role)) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    I.models source ↔ I.models target
+
+theorem ModelEquivalent.entailsSub_iff
+    {source target : List (Clause Variable Concept Role)}
+    (equivalent : ModelEquivalent source target) (sub sup : Concept) :
+    EntailsSub source sub sup ↔ EntailsSub target sub sup := by
+  constructor
+  · intro hsource Domain I htarget value hsub
+    exact hsource Domain I ((equivalent Domain I).mpr htarget) value hsub
+  · intro htarget Domain I hsource value hsub
+    exact htarget Domain I ((equivalent Domain I).mp hsource) value hsub
+
+theorem ModelEquivalent.unsatisfiableConcept_iff
+    {source target : List (Clause Variable Concept Role)}
+    (equivalent : ModelEquivalent source target) (concept : Concept) :
+    UnsatisfiableConcept source concept ↔ UnsatisfiableConcept target concept := by
+  constructor
+  · intro hsource Domain I htarget value
+    exact hsource Domain I ((equivalent Domain I).mpr htarget) value
+  · intro htarget Domain I hsource value
+    exact htarget Domain I ((equivalent Domain I).mp hsource) value
+
+theorem ModelEquivalent.satisfiable_iff
+    {source target : List (Clause Variable Concept Role)}
+    (equivalent : ModelEquivalent source target) :
+    (∃ (Domain : Type) (I : Interp Domain Concept Role),
+      Nonempty Domain ∧ I.models source) ↔
+    (∃ (Domain : Type) (I : Interp Domain Concept Role),
+      Nonempty Domain ∧ I.models target) := by
+  constructor
+  · rintro ⟨Domain, I, hdomain, hsource⟩
+    exact ⟨Domain, I, hdomain, (equivalent Domain I).mp hsource⟩
+  · rintro ⟨Domain, I, hdomain, htarget⟩
+    exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr htarget⟩
+
 #print axioms BodyEqualityNormalization.modelsClause_iff
 #print axioms BodyEqualityNormalization.models_iff
+#print axioms OntologyEqualityNormalization.models_iff
+#print axioms ModelEquivalent.entailsSub_iff
+#print axioms ModelEquivalent.unsatisfiableConcept_iff
+#print axioms ModelEquivalent.satisfiable_iff
 
 end ContextCalculus.Hypertableau
