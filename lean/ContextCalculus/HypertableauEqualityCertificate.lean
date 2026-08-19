@@ -26,7 +26,7 @@ def FiniteEqCertificate.state
   equiv := Relation.EqvGen fun x y => (x, y) ∈ certificate.equalities
   equiv_equivalence := Relation.EqvGen.is_equivalence _
 
-private theorem eqvGen_cons_iff
+theorem eqvGen_cons_iff
     (pair : Node × Node) (pairs : List (Node × Node)) (x y : Node) :
     Relation.EqvGen (fun a b => (a, b) ∈ pair :: pairs) x y ↔
       Relation.EqvGen
