@@ -106,6 +106,22 @@ def State.WitnessComplete (state : State Node Concept Role) : Prop :=
   ∀ node role filler, state.obligation role filler node →
     ∃ witness, state.edge role node witness ∧ state.label witness filler
 
+/-- A node is fresh when no existing branch fact constrains its interpretation. -/
+def State.Fresh (state : State Node Concept Role) (target : Node) : Prop :=
+  (∀ lit, ¬state.label target lit) ∧
+  (∀ role node, ¬state.edge role target node ∧ ¬state.edge role node target) ∧
+  (∀ role filler, ¬state.obligation role filler target)
+
+/-- Materialize one existential obligation at a fresh branch node. -/
+def State.materializeWitness (state : State Node Concept Role)
+    (source target : Node) (role : Role) (filler : Lit Concept) :
+    State Node Concept Role where
+  label node lit := state.label node lit ∨ (node = target ∧ lit = filler)
+  edge candidateRole candidateSource candidateTarget :=
+    state.edge candidateRole candidateSource candidateTarget ∨
+      (candidateRole = role ∧ candidateSource = source ∧ candidateTarget = target)
+  obligation := state.obligation
+
 def State.RealizedBy (state : State Node Concept Role)
     (I : Interp Domain Concept Role) (value : Node → Domain) : Prop :=
   (∀ node lit, state.label node lit → I.satLit lit (value node)) ∧
@@ -158,6 +174,54 @@ theorem State.realized_obligation_witness
     (hobligation : state.obligation role filler node) :
     ∃ witness, I.role role (value node) witness ∧ I.satLit filler witness :=
   hrealized.2.2 role filler node hobligation
+
+/-- A semantic witness for an obligation can be assigned to a completely fresh
+finite branch node while preserving every existing branch fact. -/
+theorem State.materializeWitness_realized
+    (state : State Node Concept Role) (I : Interp Domain Concept Role)
+    (value : Node → Domain) (hrealized : state.RealizedBy I value)
+    (source target : Node) (role : Role) (filler : Lit Concept)
+    (hobligation : state.obligation role filler source)
+    (hfresh : state.Fresh target) :
+    ∃ value', (state.materializeWitness source target role filler).RealizedBy I value' := by
+  classical
+  rcases hrealized.2.2 role filler source hobligation with
+    ⟨witness, hedge, hfiller⟩
+  have hsource : source ≠ target := by
+    intro heq
+    subst source
+    exact hfresh.2.2 role filler hobligation
+  let value' := Function.update value target witness
+  refine ⟨value', ?_, ?_, ?_⟩
+  · intro node lit hlabel
+    rcases hlabel with hlabel | ⟨rfl, rfl⟩
+    · have hnode : node ≠ target := by
+        intro heq
+        subst node
+        exact hfresh.1 lit hlabel
+      simpa [value', Function.update_of_ne hnode] using hrealized.1 node lit hlabel
+    · simpa [value'] using hfiller
+  · intro candidateRole candidateSource candidateTarget hedge'
+    rcases hedge' with hedge' | ⟨rfl, rfl, rfl⟩
+    · have hsource' : candidateSource ≠ target := by
+        intro heq
+        subst candidateSource
+        exact (hfresh.2.1 candidateRole candidateTarget).1 hedge'
+      have htarget' : candidateTarget ≠ target := by
+        intro heq
+        subst candidateTarget
+        exact (hfresh.2.1 candidateRole candidateSource).2 hedge'
+      simpa [value', Function.update_of_ne hsource', Function.update_of_ne htarget'] using
+        hrealized.2.1 candidateRole candidateSource candidateTarget hedge'
+    · simpa [value', Function.update_of_ne hsource] using hedge
+  · intro candidateRole candidateFiller node hobligation'
+    have hnode : node ≠ target := by
+      intro heq
+      subst node
+      exact hfresh.2.2 candidateRole candidateFiller hobligation'
+    rcases hrealized.2.2 candidateRole candidateFiller node hobligation' with
+      ⟨witness', hedge', hfiller'⟩
+    exact ⟨witness', by simpa [value', Function.update_of_ne hnode] using hedge', hfiller'⟩
 
 /-- A unit hyper-rule conclusion is semantically forced by a matched body. -/
 theorem hyper_unit_sound
@@ -269,6 +333,12 @@ inductive Refutes (Node : Type u)
       (children : ∀ atom, atom ∈ clause.head →
         Refutes Node ontology (state.assertAtom assignment atom)) :
       Refutes Node ontology state
+  | witness (state) (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.obligation role filler source)
+      (hfresh : state.Fresh target)
+      (child : Refutes Node ontology
+        (state.materializeWitness source target role filler)) :
+      Refutes Node ontology state
 
 /-- Soundness of a complete HT branch-refutation tree. -/
 theorem Refutes.sound
@@ -285,6 +355,11 @@ theorem Refutes.sound
       exact ih atom hatom ⟨Domain, I, value, hmodels,
         state.assertAtom_realized I value hrealized assignment atom
           (hbranchable atom hatom) hsat⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hrealized⟩
+      rcases state.materializeWitness_realized I value hrealized source target role filler
+          hobligation hfresh with ⟨value', hmaterialized⟩
+      exact ih ⟨Domain, I, value', hmodels, hmaterialized⟩
 
 /-- The canonical interpretation of a completion branch uses positive labels
 as concept extensions and graph edges as role extensions. -/
@@ -409,6 +484,7 @@ theorem no_saturated_branch_of_no_model
 #print axioms State.realized_clashFree
 #print axioms State.clash_sound
 #print axioms State.realized_obligation_witness
+#print axioms State.materializeWitness_realized
 #print axioms hyper_unit_sound
 #print axioms hyper_branch_sound
 #print axioms State.assertAtom_realized

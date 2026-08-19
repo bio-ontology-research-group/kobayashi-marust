@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.39] – 2026-08-19
+
+### Certify fresh existential witnesses in HT refutations
+
+- Add a semantic `State.materializeWitness` operation and prove that an
+  existential obligation can bind a completely fresh finite node to its model
+  witness without invalidating any existing label, edge, or obligation.
+- Extend abstract HT refutations with a witness step and preserve the global
+  `Refutes.sound` theorem.
+- Extend the finite checker with executable freshness checks, witness
+  materialization, and a proved refinement to the semantic operation.
+- Extend the version-1 JSON tree with bounds-checked witness nodes, roles, and
+  fillers. Lean accepts a two-node role/filler contradiction and rejects reuse
+  of a non-fresh node.
+- Generalize the Rust producer to bounded multi-node search. It enumerates
+  grounded clauses over active nodes, materializes unmet obligations, caps
+  assignments at one million and nodes at eight by default, and declines on
+  every open or capped branch.
+- Validate the exact Rust-to-JSON-to-Lean-to-`tableau_cli` path and confirm that
+  checker rejection suppresses publication.
+
+This release certifies global HT inconsistency for finite refutations that fit
+the producer bounds, including contradictions reached only after creating an
+existential witness. It does not claim complete HT termination or equality
+merging.
+
 ## [0.3.38] – 2026-08-19
 
 ### Certify one-node HT role and existential refutations

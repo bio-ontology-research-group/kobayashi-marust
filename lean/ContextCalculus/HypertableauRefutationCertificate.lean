@@ -48,6 +48,75 @@ theorem FiniteSatCertificate.state_assertAtom
     (certificate.assertAtom assignment atom).ontology = certificate.ontology := by
   cases atom <;> rfl
 
+def FiniteSatCertificate.freshNodeB
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (target : Fin nodeCount) : Bool :=
+  (certificate.labels.all fun entry => decide (entry.1 ≠ target)) &&
+  (certificate.edges.all fun entry =>
+    decide (entry.2.1 ≠ target) && decide (entry.2.2 ≠ target)) &&
+  (certificate.obligations.all fun entry => decide (entry.2.2 ≠ target))
+
+def FiniteSatCertificate.materializeWitness
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (source target : Fin nodeCount) (role : Fin roleCount)
+    (filler : Lit (Fin conceptCount)) :
+    FiniteSatCertificate nodeCount conceptCount roleCount variableCount :=
+  { certificate with
+    labels := (target, filler) :: certificate.labels
+    edges := (role, source, target) :: certificate.edges }
+
+theorem FiniteSatCertificate.freshNodeB_eq_true
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (target : Fin nodeCount) :
+    certificate.freshNodeB target = true ↔ certificate.state.Fresh target := by
+  simp only [FiniteSatCertificate.freshNodeB, Bool.and_eq_true, List.all_eq_true,
+    decide_eq_true_eq, FiniteSatCertificate.state, State.Fresh]
+  constructor
+  · rintro ⟨⟨hlabels, hedges⟩, hobligations⟩
+    refine ⟨?_, ?_, ?_⟩
+    · intro lit hlabel
+      exact (hlabels (target, lit) hlabel).elim rfl
+    · intro candidateRole node
+      exact ⟨fun hedge => (hedges (candidateRole, target, node) hedge).1 rfl,
+        fun hedge => (hedges (candidateRole, node, target) hedge).2 rfl⟩
+    · intro candidateRole filler hobligation
+      exact (hobligations (candidateRole, filler, target) hobligation).elim rfl
+  · rintro ⟨hlabels, hedges, hobligations⟩
+    refine ⟨⟨?_, ?_⟩, ?_⟩
+    · rintro ⟨node, lit⟩ hentry heq
+      have : node = target := by simpa using heq
+      subst node
+      exact hlabels lit hentry
+    · rintro ⟨candidateRole, source, target'⟩ hedge
+      exact ⟨fun heq => by
+          have : source = target := by simpa using heq
+          subst source
+          exact (hedges candidateRole target').1 hedge,
+        fun heq => by
+          have : target' = target := by simpa using heq
+          subst target'
+          exact (hedges candidateRole source).2 hedge⟩
+    · rintro ⟨candidateRole, filler, node⟩ hobligation heq
+      have : node = target := by simpa using heq
+      subst node
+      exact hobligations candidateRole filler hobligation
+
+theorem FiniteSatCertificate.state_materializeWitness
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (source target : Fin nodeCount) (role : Fin roleCount)
+    (filler : Lit (Fin conceptCount)) :
+    (certificate.materializeWitness source target role filler).state =
+      certificate.state.materializeWitness source target role filler := by
+  ext <;> simp [FiniteSatCertificate.materializeWitness, FiniteSatCertificate.state,
+    State.materializeWitness, eq_comm, or_comm]
+
+@[simp] theorem FiniteSatCertificate.ontology_materializeWitness
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (source target : Fin nodeCount) (role : Fin roleCount)
+    (filler : Lit (Fin conceptCount)) :
+    (certificate.materializeWitness source target role filler).ontology =
+      certificate.ontology := rfl
+
 mutual
   inductive FiniteRefutationTree
       (nodeCount conceptCount roleCount variableCount : Nat) where
@@ -57,6 +126,11 @@ mutual
         (assignment : Fin variableCount → Fin nodeCount)
         (children : FiniteRefutationChildren
           nodeCount conceptCount roleCount variableCount)
+    | witness
+        (source target : Fin nodeCount)
+        (role : Fin roleCount)
+        (filler : Lit (Fin conceptCount))
+        (child : FiniteRefutationTree nodeCount conceptCount roleCount variableCount)
 
   inductive FiniteRefutationChildren
       (nodeCount conceptCount roleCount variableCount : Nat) where
@@ -78,6 +152,10 @@ mutual
         clause.body.all (certificate.holdsAtomB assignment) &&
         clause.head.all branchableB &&
         children.check certificate assignment clause.head
+    | .witness source target role filler child =>
+        decide ((role, filler, source) ∈ certificate.obligations) &&
+        certificate.freshNodeB target &&
+        child.check (certificate.materializeWitness source target role filler)
 
   def FiniteRefutationChildren.check
       (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
@@ -128,6 +206,15 @@ mutual
         exact (branchableB_eq_true atom).1 (hbranchable atom hatom)
       · intro atom hatom
         exact children.check_sound certificate assignment clause.head hchildren atom hatom
+    | witness source target role filler child =>
+      intro certificate hcheck
+      simp only [FiniteRefutationTree.check, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨hobligation, hfresh⟩, hchild⟩
+      apply Refutes.witness certificate.state source target role filler hobligation
+        ((certificate.freshNodeB_eq_true target).1 hfresh)
+      rw [← certificate.state_materializeWitness source target role filler]
+      simpa only [FiniteSatCertificate.ontology_materializeWitness] using
+        child.check_sound (certificate.materializeWitness source target role filler) hchild
 
   theorem FiniteRefutationChildren.check_sound
       (children : FiniteRefutationChildren nodeCount conceptCount roleCount variableCount) :
@@ -238,6 +325,35 @@ private def equalityTree : FiniteRefutationTree 1 1 1 1 :=
   .branch equalityClause (fun _ => 0) (.cons (.eq 0 0) .clash .nil)
 
 example : equalityTree.check equalityCertificate = false := by native_decide
+
+private def witnessOntology :
+    List (Clause (Fin 2) (Fin 1) (Fin 1)) := [
+  { body := [], head := [.exists_ 0 (.pos 0) 0] },
+  { body := [.role 0 0 1, .concept (.pos 0) 1], head := [] }]
+
+private def witnessCertificate : FiniteSatCertificate 2 1 1 2 where
+  ontology := witnessOntology
+  labels := []
+  edges := []
+  obligations := []
+
+private def witnessTree : FiniteRefutationTree 2 1 1 2 :=
+  .branch witnessOntology[0] (fun _ => 0)
+    (.cons (.exists_ 0 (.pos 0) 0)
+      (.witness 0 1 0 (.pos 0)
+        (.branch witnessOntology[1] (Fin.cases 0 (fun _ => 1)) .nil))
+      .nil)
+
+example : witnessTree.check witnessCertificate = true := by native_decide
+
+private def nonfreshWitnessTree : FiniteRefutationTree 2 1 1 2 :=
+  .branch witnessOntology[0] (fun _ => 0)
+    (.cons (.exists_ 0 (.pos 0) 0)
+      (.witness 0 0 0 (.pos 0)
+        (.branch witnessOntology[1] (fun _ => 0) .nil))
+      .nil)
+
+example : nonfreshWitnessTree.check witnessCertificate = false := by native_decide
 
 end RefutationCheckerTests
 

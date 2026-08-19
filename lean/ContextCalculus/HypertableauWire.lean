@@ -51,6 +51,8 @@ inductive WireRefutationTree where
   | clash
   | branch (clause : Nat) (assignment : List Nat)
       (children : List WireRefutationTree)
+  | witness (source target role : Nat) (filler : WireLit)
+      (child : WireRefutationTree)
 deriving FromJson, ToJson, Repr
 
 inductive WireEvidence where
@@ -166,6 +168,13 @@ partial def WireRefutationTree.decode
           (← buildChildren clause.head decodedChildren)
       else
         throw s!"branch has {children.length} children, expected {clause.head.length}"
+  | .witness source target role filler child => do
+      return .witness
+        (← checkedFin "node" nodeCount source)
+        (← checkedFin "node" nodeCount target)
+        (← checkedFin "role" roleCount role)
+        (← filler.decode conceptCount)
+        (← child.decode certificate)
 
 inductive DecodedEvidence where
   | sat (decoded : DecodedCertificate)
@@ -272,6 +281,32 @@ private def mixedOneNodeUnsatDocument : WireCertificate where
       .branch 3 [0] [.branch 4 [0] []]])
 
 example : mixedOneNodeUnsatDocument.check = .ok true := by native_decide
+
+private def witnessUnsatDocument : WireCertificate where
+  version := 1
+  node_count := 2
+  concept_count := 1
+  role_count := 1
+  variable_count := 2
+  ontology := [
+    { body := [], head := [.exists_ 0 ⟨0, false⟩ 0] },
+    { body := [.role 0 0 1, .concept ⟨0, false⟩ 1], head := [] }]
+  labels := []
+  edges := []
+  obligations := []
+  evidence := .unsat
+    (.branch 0 [0, 0] [
+      .witness 0 1 0 ⟨0, false⟩ (.branch 1 [0, 1] [])])
+
+example : witnessUnsatDocument.check = .ok true := by native_decide
+
+private def nonfreshWitnessDocument : WireCertificate :=
+  { witnessUnsatDocument with
+    evidence := .unsat
+      (.branch 0 [0, 0] [
+        .witness 0 0 0 ⟨0, false⟩ (.branch 1 [0, 0] [])]) }
+
+example : nonfreshWitnessDocument.check = .ok false := by native_decide
 
 private def badConceptDocument : WireCertificate :=
   { satDocument with

@@ -2231,6 +2231,13 @@ enum LeanHtRefutationTree {
         assignment: Vec<usize>,
         children: Vec<LeanHtRefutationTree>,
     },
+    Witness {
+        source: usize,
+        target: usize,
+        role: usize,
+        filler: LeanHtLit,
+        child: Box<LeanHtRefutationTree>,
+    },
 }
 
 #[derive(serde::Serialize)]
@@ -2254,54 +2261,94 @@ struct LeanHtCertificate {
     evidence: LeanHtEvidence,
 }
 
-#[derive(Default)]
-struct LeanHtOneNodeState {
-    labels: HashSet<CLit>,
-    edges: HashSet<R>,
-    obligations: HashSet<(R, CLit)>,
+struct LeanHtRefutationState {
+    labels: HashSet<(Node, CLit)>,
+    edges: HashSet<(R, Node, Node)>,
+    obligations: HashSet<(R, CLit, Node)>,
+    active_nodes: usize,
 }
 
-impl LeanHtOneNodeState {
-    fn holds(&self, atom: &Atom) -> bool {
-        match atom {
-            Atom::Concept { lit, .. } => self.labels.contains(lit),
-            Atom::Role { r, .. } => self.edges.contains(r),
-            Atom::Exists { r, fil, .. } => self.obligations.contains(&(*r, *fil)),
-            // Every variable is assigned to the sole certificate node.
-            Atom::Eq { .. } => true,
+impl LeanHtRefutationState {
+    fn root() -> Self {
+        Self {
+            labels: HashSet::new(),
+            edges: HashSet::new(),
+            obligations: HashSet::new(),
+            active_nodes: 1,
         }
     }
 
-    fn insert(&mut self, atom: &Atom) -> bool {
+    fn holds(&self, atom: &Atom, assignment: &[Node]) -> bool {
         match atom {
-            Atom::Concept { lit, .. } => self.labels.insert(*lit),
-            Atom::Role { r, .. } => self.edges.insert(*r),
-            Atom::Exists { r, fil, .. } => self.obligations.insert((*r, *fil)),
+            Atom::Concept { lit, t } => self.labels.contains(&(assignment[*t as usize], *lit)),
+            Atom::Role { r, s, t } => self.edges.contains(&(
+                *r,
+                assignment[*s as usize],
+                assignment[*t as usize],
+            )),
+            Atom::Exists { r, fil, t } => {
+                self.obligations
+                    .contains(&(*r, *fil, assignment[*t as usize]))
+            }
+            Atom::Eq { s, t } => assignment[*s as usize] == assignment[*t as usize],
+        }
+    }
+
+    fn insert(&mut self, atom: &Atom, assignment: &[Node]) -> bool {
+        match atom {
+            Atom::Concept { lit, t } => {
+                self.labels.insert((assignment[*t as usize], *lit))
+            }
+            Atom::Role { r, s, t } => self.edges.insert((
+                *r,
+                assignment[*s as usize],
+                assignment[*t as usize],
+            )),
+            Atom::Exists { r, fil, t } => {
+                self.obligations
+                    .insert((*r, *fil, assignment[*t as usize]))
+            }
             Atom::Eq { .. } => false,
         }
     }
 
-    fn remove(&mut self, atom: &Atom) {
+    fn remove(&mut self, atom: &Atom, assignment: &[Node]) {
         match atom {
-            Atom::Concept { lit, .. } => {
-                self.labels.remove(lit);
+            Atom::Concept { lit, t } => {
+                self.labels.remove(&(assignment[*t as usize], *lit));
             }
-            Atom::Role { r, .. } => {
-                self.edges.remove(r);
+            Atom::Role { r, s, t } => {
+                self.edges.remove(&(
+                    *r,
+                    assignment[*s as usize],
+                    assignment[*t as usize],
+                ));
             }
-            Atom::Exists { r, fil, .. } => {
-                self.obligations.remove(&(*r, *fil));
+            Atom::Exists { r, fil, t } => {
+                self.obligations
+                    .remove(&(*r, *fil, assignment[*t as usize]));
             }
             Atom::Eq { .. } => {}
         }
     }
 
     fn clashes(&self) -> bool {
-        self.labels.iter().any(|literal| {
-            self.labels.contains(&CLit {
-                c: literal.c,
-                neg: !literal.neg,
-            })
+        self.labels.iter().any(|(node, literal)| {
+            self.labels.contains(&(
+                *node,
+                CLit {
+                    c: literal.c,
+                    neg: !literal.neg,
+                },
+            ))
+        })
+    }
+
+    fn witness_for(&self, role: R, filler: CLit, source: Node) -> bool {
+        self.edges.iter().any(|&(candidate_role, candidate_source, target)| {
+            candidate_role == role
+                && candidate_source == source
+                && self.labels.contains(&(target, filler))
         })
     }
 }
@@ -7742,53 +7789,128 @@ impl Ht {
         }
     }
 
-    fn lean_one_node_refutation(
-        &self,
-        state: &mut LeanHtOneNodeState,
+    fn lean_refutation_assignments(
         variable_count: usize,
-    ) -> Option<LeanHtRefutationTree> {
+        active_nodes: usize,
+    ) -> Option<Vec<Vec<Node>>> {
+        let assignment_count = (0..variable_count)
+            .try_fold(1usize, |count, _| count.checked_mul(active_nodes))?;
+        if assignment_count > 1_000_000 {
+            return None;
+        }
+        let mut assignments = vec![Vec::with_capacity(variable_count)];
+        for _ in 0..variable_count {
+            let mut next = Vec::with_capacity(assignments.len().saturating_mul(active_nodes));
+            for assignment in assignments {
+                for node in 0..active_nodes {
+                    let mut extended = assignment.clone();
+                    extended.push(node);
+                    next.push(extended);
+                }
+            }
+            assignments = next;
+        }
+        Some(assignments)
+    }
+
+    fn lean_refutation(
+        &self,
+        state: &mut LeanHtRefutationState,
+        variable_count: usize,
+        node_budget: usize,
+    ) -> Option<(LeanHtRefutationTree, usize)> {
         if state.clashes() {
-            return Some(LeanHtRefutationTree::Clash);
+            return Some((LeanHtRefutationTree::Clash, state.active_nodes));
         }
 
+        let assignments =
+            Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
             let clause = &record.0;
-            let body_holds = clause.body.iter().all(|atom| state.holds(atom));
-            if !body_holds {
-                continue;
-            }
-            let head_holds = clause.head.iter().any(|atom| state.holds(atom));
-            if head_holds {
-                continue;
-            }
-
-            let mut children = Vec::with_capacity(clause.head.len());
-            for atom in &clause.head {
-                if matches!(atom, Atom::Eq { .. }) {
-                    return None;
+            for assignment in &assignments {
+                let body_holds = clause
+                    .body
+                    .iter()
+                    .all(|atom| state.holds(atom, assignment));
+                if !body_holds {
+                    continue;
                 }
-                let inserted = state.insert(atom);
-                debug_assert!(inserted, "an unsatisfied branch head must be absent");
-                let child = self.lean_one_node_refutation(state, variable_count)?;
-                state.remove(atom);
-                children.push(child);
+                let head_holds = clause
+                    .head
+                    .iter()
+                    .any(|atom| state.holds(atom, assignment));
+                if head_holds {
+                    continue;
+                }
+
+                let mut children = Vec::with_capacity(clause.head.len());
+                let mut max_used = state.active_nodes;
+                for atom in &clause.head {
+                    if matches!(atom, Atom::Eq { .. }) {
+                        return None;
+                    }
+                    let inserted = state.insert(atom, assignment);
+                    debug_assert!(inserted, "an unsatisfied branch head must be absent");
+                    let result = self.lean_refutation(state, variable_count, node_budget);
+                    state.remove(atom, assignment);
+                    let Some((child, child_used)) = result else {
+                        return None;
+                    };
+                    max_used = max_used.max(child_used);
+                    children.push(child);
+                }
+                return Some((
+                    LeanHtRefutationTree::Branch {
+                        clause: clause_id,
+                        assignment: assignment.clone(),
+                        children,
+                    },
+                    max_used,
+                ));
             }
-            return Some(LeanHtRefutationTree::Branch {
-                clause: clause_id,
-                assignment: vec![0; variable_count],
-                children,
-            });
+        }
+
+        let obligation = state
+            .obligations
+            .iter()
+            .copied()
+            .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            .min();
+        if let Some((role, filler, source)) = obligation {
+            if state.active_nodes >= node_budget {
+                return None;
+            }
+            let target = state.active_nodes;
+            state.active_nodes += 1;
+            let inserted_edge = state.edges.insert((role, source, target));
+            let inserted_label = state.labels.insert((target, filler));
+            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            let result = self.lean_refutation(state, variable_count, node_budget);
+            state.labels.remove(&(target, filler));
+            state.edges.remove(&(role, source, target));
+            state.active_nodes -= 1;
+            let (child, max_used) = result?;
+            return Some((
+                LeanHtRefutationTree::Witness {
+                    source,
+                    target,
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    child: Box::new(child),
+                },
+                max_used,
+            ));
         }
 
         None
     }
 
-    /// Construct an exhaustive empty-root refutation over one abstract node for
-    /// the exact normalized ontology. Concept, role, and existential heads are
-    /// monotone finite facts; each recursive edge adds a previously absent fact,
-    /// so search terminates. Equality heads are rejected because they require a
-    /// separately certified merge. An open branch makes the producer decline.
-    /// Publication still requires Lean checker acceptance.
+    /// Construct an exhaustive empty-root refutation for the exact normalized
+    /// ontology. Concept, role, and existential heads are monotone finite facts.
+    /// Unwitnessed existential obligations may allocate a fresh finite node; the
+    /// node cap bounds search and an open or cap-exhausted branch declines.
+    /// Equality heads are rejected because they require a separately certified
+    /// merge. Publication still requires Lean checker acceptance.
     pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
         if self
             .clauses
@@ -7835,13 +7957,22 @@ impl Ht {
                 head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
             })
             .collect();
-        let tree = self
-            .lean_one_node_refutation(&mut LeanHtOneNodeState::default(), variable_count)
-            .ok_or_else(|| "ontology has an open one-node refutation branch".to_string())?;
+        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|&value| (1..=64).contains(&value))
+            .unwrap_or(8);
+        let (tree, node_count) = self
+            .lean_refutation(
+                &mut LeanHtRefutationState::root(),
+                variable_count,
+                node_budget,
+            )
+            .ok_or_else(|| "ontology has an open or node-capped refutation branch".to_string())?;
 
         serde_json::to_string(&LeanHtCertificate {
             version: 1,
-            node_count: 1,
+            node_count,
             concept_count,
             role_count,
             variable_count,
@@ -16683,19 +16814,44 @@ mod tests {
     }
 
     #[test]
+    fn lean_unsat_wire_materializes_a_fresh_existential_witness() {
+        let t = ht(vec![
+            Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
+            Clause::new(
+                vec![role(R0, X, 1), con(false, A, 1)],
+                Vec::new(),
+            ),
+        ]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_unsat_certificate_json()
+                .expect("the existential witness reaches the guarded clash"),
+        )
+        .expect("witness certificate is JSON");
+        assert_eq!(wire["node_count"], 2);
+        let witness =
+            &wire["evidence"]["unsat"]["tree"]["branch"]["children"][0]["witness"];
+        assert_eq!(witness["source"], 0);
+        assert_eq!(witness["target"], 1);
+        assert_eq!(witness["role"], 0);
+    }
+
+    #[test]
+    fn lean_unsat_assignment_enumeration_is_bounded() {
+        assert_eq!(Ht::lean_refutation_assignments(2, 2).unwrap().len(), 4);
+        assert!(Ht::lean_refutation_assignments(10, 10).is_none());
+    }
+
+    #[test]
     fn lean_unsat_wire_passes_native_checker_when_configured() {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
         let t = ht(vec![
-            Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
-            Clause::new(vec![con(false, A, X)], vec![role(R0, X, X)]),
-            Clause::new(vec![role(R0, X, X)], Vec::new()),
+            Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
             Clause::new(
-                vec![con(false, B, X)],
-                vec![exists(R0, false, A, X)],
+                vec![role(R0, X, 1), con(false, A, 1)],
+                Vec::new(),
             ),
-            Clause::new(vec![exists(R0, false, A, X)], Vec::new()),
         ]);
         let path = std::env::temp_dir().join(format!(
             "km-ht-unsat-cert-{}-{}.json",
@@ -16705,7 +16861,7 @@ mod tests {
         std::fs::write(
             &path,
             t.lean_unsat_certificate_json()
-                .expect("all concept, role, and existential branches close"),
+                .expect("the fresh existential witness closes"),
         )
         .expect("write temporary HT certificate");
         let accepted = std::process::Command::new(checker)

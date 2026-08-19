@@ -222,11 +222,14 @@ only decoded evidence to those proved checkers. Build the native executable with
 The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H) and materializes default anywhere-subset blocking folds as
 ordinary candidate edges. It also emits exhaustive global UNSAT refutations
-when a one-node search closes over concept, role, and existential facts. The
-Lean checker treats all Rust choices as untrusted and accepts only an exact
-finite model or a closed refutation tree. Multi-node role refutations, blocking
-termination correspondence, equality/cardinality, inverse roles, nominals,
-native ABoxes, and taxonomy publication remain to be connected or proved.
+when bounded finite search closes over concept, role, and existential facts.
+The refutation checker has an explicit fresh-witness rule: it verifies that the
+target node occurs in no prior fact, binds that node to the semantic existential
+witness, and then checks the recursively materialized edge and filler label.
+The Lean checker treats all Rust choices as untrusted and accepts only an exact
+finite model or a closed refutation tree. Complete blocking/termination
+correspondence, equality/cardinality, inverse roles, nominals, native ABoxes,
+and taxonomy publication remain to be connected or proved.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
