@@ -37,10 +37,12 @@ theorem EqState.materializeMinimum_realized
     (source : Node) (targets : Fin count → Node) (role : Role) (filler marker : Concept)
     (hmarker : state.base.label source (.pos marker))
     (hfresh : state.FreshFamily targets)
-    (witnesses : Fin count → Domain)
+    (witnesses : Fin count → Domain) (hinjective : Function.Injective witnesses)
     (hsuccessors : ∀ index, I.role role (value source) (witnesses index) ∧
       I.concept filler (witnesses index)) :
-    ∃ value', (state.materializeMinimum source targets role filler).RealizedBy I value' := by
+    ∃ value', (state.materializeMinimum source targets role filler).RealizedBy I value' ∧
+      Function.Injective (value' ∘ targets) ∧
+      ∀ node, (∀ index, targets index ≠ node) → value' node = value node := by
   classical
   let value' : Node → Domain := fun node =>
     if h : ∃ index, targets index = node then witnesses (Classical.choose h) else value node
@@ -61,42 +63,41 @@ theorem EqState.materializeMinimum_realized
   have hsource (index : Fin count) : targets index ≠ source := by
     intro heq
     exact (hfresh.2 index).1.1 (.pos marker) (by simpa [heq] using hmarker)
-  refine ⟨value', ⟨?_, ?_⟩⟩
-  · refine ⟨?_, ?_, ?_⟩
-    · intro node lit hlabel
-      rcases hlabel with hlabel | ⟨index, rfl, rfl⟩
-      · rw [hold node]
-        · exact hrealized.1.1 node lit hlabel
-        · intro index heq
-          subst node
-          exact hfresh.2 index |>.1.1 lit hlabel
-      · rw [htarget index]
-        exact (hsuccessors index).2
-    · intro candidateRole candidateSource candidateTarget hedge
-      rcases hedge with hedge | ⟨index, hrole, hsourceEq, htargetEq⟩
-      · have hcandidateSource : ∀ index, targets index ≠ candidateSource := by
-          intro index heq
-          exact ((hfresh.2 index).1.2.1 candidateRole candidateTarget).1
-            (by simpa [heq] using hedge)
-        have hcandidateTarget : ∀ index, targets index ≠ candidateTarget := by
-          intro index heq
-          exact ((hfresh.2 index).1.2.1 candidateRole candidateSource).2
-            (by simpa [heq] using hedge)
-        rw [hold candidateSource hcandidateSource, hold candidateTarget hcandidateTarget]
-        exact hrealized.1.2.1 candidateRole candidateSource candidateTarget hedge
-      · rw [hrole, hsourceEq, htargetEq]
-        rw [hold source hsource, htarget index]
-        exact (hsuccessors index).1
-    · intro candidateRole candidateFiller node hobligation
-      rcases hrealized.1.2.2 candidateRole candidateFiller node hobligation with
-        ⟨witness, hedge, hfiller⟩
-      refine ⟨witness, ?_, hfiller⟩
-      have hnode : ∀ index, targets index ≠ node := by
+  refine ⟨value', ⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_, hold⟩
+  · intro node lit hlabel
+    rcases hlabel with hlabel | ⟨index, rfl, rfl⟩
+    · rw [hold node]
+      · exact hrealized.1.1 node lit hlabel
+      · intro index heq
+        subst node
+        exact hfresh.2 index |>.1.1 lit hlabel
+    · rw [htarget index]
+      exact (hsuccessors index).2
+  · intro candidateRole candidateSource candidateTarget hedge
+    rcases hedge with hedge | ⟨index, hrole, hsourceEq, htargetEq⟩
+    · have hcandidateSource : ∀ index, targets index ≠ candidateSource := by
         intro index heq
-        exact (hfresh.2 index).1.2.2 candidateRole candidateFiller
-          (by simpa [heq] using hobligation)
-      rw [hold node hnode]
-      exact hedge
+        exact ((hfresh.2 index).1.2.1 candidateRole candidateTarget).1
+          (by simpa [heq] using hedge)
+      have hcandidateTarget : ∀ index, targets index ≠ candidateTarget := by
+        intro index heq
+        exact ((hfresh.2 index).1.2.1 candidateRole candidateSource).2
+          (by simpa [heq] using hedge)
+      rw [hold candidateSource hcandidateSource, hold candidateTarget hcandidateTarget]
+      exact hrealized.1.2.1 candidateRole candidateSource candidateTarget hedge
+    · rw [hrole, hsourceEq, htargetEq]
+      rw [hold source hsource, htarget index]
+      exact (hsuccessors index).1
+  · intro candidateRole candidateFiller node hobligation
+    rcases hrealized.1.2.2 candidateRole candidateFiller node hobligation with
+      ⟨witness, hedge, hfiller⟩
+    refine ⟨witness, ?_, hfiller⟩
+    have hnode : ∀ index, targets index ≠ node := by
+      intro index heq
+      exact (hfresh.2 index).1.2.2 candidateRole candidateFiller
+        (by simpa [heq] using hobligation)
+    rw [hold node hnode]
+    exact hedge
   · intro left right hequiv
     by_cases hleft : ∃ index, targets index = left
     · rcases hleft with ⟨index, hindex⟩
@@ -118,6 +119,9 @@ theorem EqState.materializeMinimum_realized
           intro index heq; exact hright ⟨index, heq⟩
         rw [hold left hleftOld, hold right hrightOld]
         exact hrealized.2 left right hequiv
+  · intro left right hequal
+    apply hinjective
+    simpa only [Function.comp_apply, htarget] using hequal
 
 def EqState.RealizableWithCardinality
     (state : EqState Node Concept Role)
@@ -237,10 +241,10 @@ theorem CardinalityEqRefutes.sound
       have hdefinitionModels : I.modelsCardinalityDef definition :=
         hcardinality definition hdefinition
       rcases I.minimum_witnesses definition hkind hdefinitionModels (value source)
-          hmarkerSat with ⟨witnesses, _hinjective, hsuccessors⟩
+          hmarkerSat with ⟨witnesses, hinjective, hsuccessors⟩
       rcases state.materializeMinimum_realized I value hrealized source targets
           definition.role definition.filler definition.marker hmarker hfresh witnesses
-          hsuccessors with ⟨value', hchild⟩
+          hinjective hsuccessors with ⟨value', hchild, _, _⟩
       exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
 
 #print axioms CardinalityEqRefutes.sound
