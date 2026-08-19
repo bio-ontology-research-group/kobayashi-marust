@@ -22,6 +22,8 @@ inductive WireCardinalityEqRefutationTree where
       (children : List (WireEqState × WireCardinalityEqRefutationTree))
   | witness (source target role : Nat) (filler : WireLit)
       (child : WireCardinalityEqRefutationTree)
+  | minimum (definition source : Nat) (targets : List Nat)
+      (next : WireEqState) (child : WireCardinalityEqRefutationTree)
   | maximum (definition source : Nat) (witnesses : List Nat)
       (children : List (List (WireEqState × WireCardinalityEqRefutationTree)))
 deriving FromJson, ToJson, Repr
@@ -89,9 +91,22 @@ def WireCardinalityEqRefutationTree.decodeAtDepth
         (← filler.decode conceptCount)
         (← child.decodeAtDepth nodeCount conceptCount roleCount variableCount
           ontology definitions depth)
+  | depth + 1, .minimum definitionIndex source targets next child => do
+      let definition ← match definitions[definitionIndex]? with
+        | some definition => pure definition
+        | none => throw s!"cardinality definition id {definitionIndex} is outside the definition list"
+      let decodedTargets ← targets.mapM (checkedFin "minimum target" nodeCount)
+      let targetVector ← decodeExactVector "minimum targets" definition.bound decodedTargets
+      return .minimum definition
+        (← checkedFin "node" nodeCount source)
+        targetVector
+        (← next.decode nodeCount conceptCount roleCount variableCount ontology)
+        (← child.decodeAtDepth nodeCount conceptCount roleCount variableCount
+          ontology definitions depth)
   | 0, .delay _ => .error "delay node requires positive declared depth"
   | 0, .branch .. => .error "branch node requires positive declared depth"
   | 0, .witness .. => .error "witness node requires positive declared depth"
+  | 0, .minimum .. => .error "minimum node requires positive declared depth"
   | 0, .maximum .. => .error "maximum node requires positive declared depth"
   | _ + 1, .equality _ => .error "equality leaf requires declared depth zero"
   | _ + 1, .clash => .error "clash leaf requires declared depth zero"

@@ -46,6 +46,60 @@ theorem FiniteEqCertificate.mergeTransitionB_state
       simp only [FiniteEqCertificate.state, EqState.merge, hequalities]
       exact eqvGen_cons_iff (left, right) current.equalities x y)
 
+def FiniteEqCertificate.minimumTransitionB
+    (current next : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (source : Fin nodeCount) (targets : Fin count → Fin nodeCount)
+    (role : Fin roleCount) (filler : Fin conceptCount) : Bool :=
+  decide (next.base.ontology = current.base.ontology) &&
+  decide (next.base.labels = current.base.labels ++
+    List.ofFn (fun index => (targets index, .pos filler))) &&
+  decide (next.base.edges = current.base.edges ++
+    List.ofFn (fun index => (role, source, targets index))) &&
+  decide (next.base.obligations = current.base.obligations) &&
+  decide (next.equalities = current.equalities)
+
+theorem FiniteEqCertificate.minimumTransitionB_state
+    (current next : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (source : Fin nodeCount) (targets : Fin count → Fin nodeCount)
+    (role : Fin roleCount) (filler : Fin conceptCount)
+    (htransition : current.minimumTransitionB next source targets role filler = true) :
+    next.state = current.state.materializeMinimum source targets role filler := by
+  simp only [FiniteEqCertificate.minimumTransitionB, Bool.and_eq_true,
+    decide_eq_true_eq] at htransition
+  rcases htransition with
+    ⟨⟨⟨⟨hontology, hlabels⟩, hedges⟩, hobligations⟩, hequalities⟩
+  apply EqState.ext
+  · apply State.ext
+    · funext node lit
+      apply propext
+      simp [FiniteEqCertificate.state, FiniteSatCertificate.state,
+        EqState.materializeMinimum, State.materializeMinimum, hlabels, eq_comm]
+    · funext candidateRole candidateSource candidateTarget
+      apply propext
+      simp [FiniteEqCertificate.state, FiniteSatCertificate.state,
+        EqState.materializeMinimum, State.materializeMinimum, hedges, eq_comm]
+    · funext candidateRole candidateFiller node
+      simp [FiniteEqCertificate.state, FiniteSatCertificate.state,
+        EqState.materializeMinimum, State.materializeMinimum, hobligations]
+  · simp [FiniteEqCertificate.state, EqState.materializeMinimum, hequalities]
+
+def FiniteEqCertificate.freshFamilyB
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (targets : Fin count → Fin nodeCount) : Bool :=
+  decide (∀ left right, targets left = targets right → left = right) &&
+    decide (∀ index, certificate.freshNodeB (targets index))
+
+theorem FiniteEqCertificate.freshFamilyB_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (targets : Fin count → Fin nodeCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (hcheck : certificate.freshFamilyB targets = true) :
+    certificate.state.FreshFamily targets := by
+  simp only [FiniteEqCertificate.freshFamilyB, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact ⟨(fun _ _ heq => hcheck.1 _ _ heq), fun index =>
+    (certificate.freshNodeB_eq_true hvalid (targets index)).mp (hcheck.2 index)⟩
+
 inductive FiniteCardinalityEqRefutationTree
     (nodeCount conceptCount roleCount variableCount : Nat) : Nat → Type where
   | equality
@@ -85,6 +139,15 @@ inductive FiniteCardinalityEqRefutationTree
         nodeCount conceptCount roleCount variableCount depth)
       : FiniteCardinalityEqRefutationTree
         nodeCount conceptCount roleCount variableCount (depth + 1)
+  | minimum
+      (definition : CardinalityDef (Fin conceptCount) (Fin roleCount))
+      (source : Fin nodeCount)
+      (targets : Fin definition.bound → Fin nodeCount)
+      (next : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (child : FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount depth)
+      : FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount (depth + 1)
 
 def FiniteCardinalityEqRefutationTree.check
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
@@ -115,6 +178,13 @@ def FiniteCardinalityEqRefutationTree.check
       decide ((role, filler, source) ∈ certificate.base.obligations) &&
       certificate.freshNodeB target &&
       child.check definitions (certificate.materializeWitness source target role filler)
+  | .minimum definition source targets next child =>
+      certificate.equalityClosureValidB &&
+      decide (definition ∈ definitions) && decide (definition.kind = .minimum) &&
+      decide ((source, .pos definition.marker) ∈ certificate.base.labels) &&
+      certificate.freshFamilyB targets &&
+      certificate.minimumTransitionB next source targets definition.role definition.filler &&
+      child.check definitions next
 
 theorem FiniteCardinalityEqRefutationTree.check_sound
     (tree : FiniteCardinalityEqRefutationTree
@@ -183,6 +253,21 @@ theorem FiniteCardinalityEqRefutationTree.check_sound
         hobligation ((certificate.freshNodeB_eq_true hvalid target).mp hfresh)
       rw [← certificate.state_materializeWitness source target role filler]
       exact ih (certificate.materializeWitness source target role filler) hchild
+  | minimum definition source targets next child ih =>
+      simp only [FiniteCardinalityEqRefutationTree.check, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      rcases hcheck with
+        ⟨⟨⟨⟨⟨⟨hvalid, hdefinition⟩, hkind⟩, hmarker⟩, hfresh⟩,
+          htransition⟩, hchild⟩
+      apply CardinalityEqRefutes.minimum certificate.state definition hdefinition hkind
+        source hmarker targets (certificate.freshFamilyB_sound targets hvalid hfresh)
+      rw [← certificate.minimumTransitionB_state next source targets definition.role
+        definition.filler htransition]
+      have hontology : next.base.ontology = certificate.base.ontology := by
+        simp only [FiniteEqCertificate.minimumTransitionB, Bool.and_eq_true,
+          decide_eq_true_eq] at htransition
+        exact htransition.1.1.1.1
+      simpa only [hontology] using ih next hchild
 
 theorem FiniteCardinalityEqRefutationTree.check_unsatisfiable
     (tree : FiniteCardinalityEqRefutationTree
@@ -266,6 +351,8 @@ theorem FiniteCardinalityEqRefutationTree.check_unsatisfiable_concept
     rfl
 
 #print axioms FiniteEqCertificate.mergeTransitionB_state
+#print axioms FiniteEqCertificate.minimumTransitionB_state
+#print axioms FiniteEqCertificate.freshFamilyB_sound
 #print axioms FiniteCardinalityEqRefutationTree.check_sound
 #print axioms FiniteCardinalityEqRefutationTree.check_ontology_unsatisfiable
 #print axioms FiniteCardinalityEqRefutationTree.check_subsumption
