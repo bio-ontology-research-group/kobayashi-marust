@@ -60,6 +60,8 @@ inductive WireEvidence where
   | unsat (tree : WireRefutationTree)
   | subsumption (root sub sup : Nat) (tree : WireRefutationTree)
   | unsatisfiable_concept (root concept : Nat) (tree : WireRefutationTree)
+  | non_subsumption (root sub sup : Nat)
+  | satisfiable_concept (root concept : Nat)
 deriving FromJson, ToJson, Repr
 
 structure WireCertificate where
@@ -191,6 +193,10 @@ inductive DecodedEvidence where
       (root : Fin decoded.nodeCount) (concept : Fin decoded.conceptCount)
       (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
         decoded.roleCount decoded.variableCount)
+  | nonSubsumption (decoded : DecodedCertificate)
+      (root : Fin decoded.nodeCount) (sub sup : Fin decoded.conceptCount)
+  | satisfiableConcept (decoded : DecodedCertificate)
+      (root : Fin decoded.nodeCount) (concept : Fin decoded.conceptCount)
 
 def FiniteSatCertificate.checkSubsumptionRoot
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
@@ -238,6 +244,15 @@ def WireCertificate.decode (wire : WireCertificate) : Except String DecodedEvide
         (← checkedFin "node" decoded.nodeCount root)
         (← checkedFin "concept" decoded.conceptCount concept)
         (← tree.decode decoded.certificate)
+  | .non_subsumption root sub sup =>
+      return .nonSubsumption decoded
+        (← checkedFin "node" decoded.nodeCount root)
+        (← checkedFin "concept" decoded.conceptCount sub)
+        (← checkedFin "concept" decoded.conceptCount sup)
+  | .satisfiable_concept root concept =>
+      return .satisfiableConcept decoded
+        (← checkedFin "node" decoded.nodeCount root)
+        (← checkedFin "concept" decoded.conceptCount concept)
 
 def DecodedEvidence.check : DecodedEvidence → Bool
   | .sat decoded => decoded.certificate.checkSat
@@ -253,6 +268,13 @@ def DecodedEvidence.check : DecodedEvidence → Bool
   | .unsatisfiableConcept decoded root concept tree =>
       decoded.certificate.checkUnsatisfiableRoot root concept &&
       tree.check decoded.certificate
+  | .nonSubsumption decoded root sub sup =>
+      decide ((root, .pos sub) ∈ decoded.certificate.labels) &&
+      decide ((root, .negated sup) ∈ decoded.certificate.labels) &&
+      decoded.certificate.checkSat
+  | .satisfiableConcept decoded root concept =>
+      decide ((root, .pos concept) ∈ decoded.certificate.labels) &&
+      decoded.certificate.checkSat
 
 def WireCertificate.check (wire : WireCertificate) : Except String Bool := do
   return (← wire.decode).check
@@ -301,6 +323,22 @@ theorem DecodedEvidence.unsatisfiableConcept_sound (decoded : DecodedCertificate
   exact tree.check_unsatisfiable_concept decoded.certificate root concept
     (decoded.certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
 
+theorem DecodedEvidence.nonSubsumption_sound (decoded : DecodedCertificate)
+    (root : Fin decoded.nodeCount) (sub sup : Fin decoded.conceptCount)
+    (hcheck : (DecodedEvidence.nonSubsumption decoded root sub sup).check = true) :
+    ¬EntailsSub decoded.certificate.ontology sub sup := by
+  simp only [DecodedEvidence.check, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  exact decoded.certificate.checkSat_not_entailsSub root sub sup
+    hcheck.1.1 hcheck.1.2 hcheck.2
+
+theorem DecodedEvidence.satisfiableConcept_sound (decoded : DecodedCertificate)
+    (root : Fin decoded.nodeCount) (concept : Fin decoded.conceptCount)
+    (hcheck : (DecodedEvidence.satisfiableConcept decoded root concept).check = true) :
+    ¬UnsatisfiableConcept decoded.certificate.ontology concept := by
+  simp only [DecodedEvidence.check, Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  exact decoded.certificate.checkSat_not_unsatisfiableConcept root concept
+    hcheck.1 hcheck.2
+
 namespace WireTests
 
 private def failed : Except String Bool → Bool
@@ -320,6 +358,46 @@ private def satDocument : WireCertificate where
   evidence := .sat
 
 example : satDocument.check = .ok true := by native_decide
+
+private def nonSubsumptionDocument : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 0
+  ontology := []
+  labels := [
+    { node := 0, literal := ⟨0, false⟩ },
+    { node := 0, literal := ⟨1, true⟩ }]
+  edges := []
+  obligations := []
+  evidence := .non_subsumption 0 0 1
+
+example : nonSubsumptionDocument.check = .ok true := by native_decide
+
+private def wrongNonSubsumptionDocument : WireCertificate :=
+  { nonSubsumptionDocument with evidence := .non_subsumption 0 1 0 }
+
+example : wrongNonSubsumptionDocument.check = .ok false := by native_decide
+
+private def satisfiableConceptDocument : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 0
+  ontology := []
+  labels := [{ node := 0, literal := ⟨0, false⟩ }]
+  edges := []
+  obligations := []
+  evidence := .satisfiable_concept 0 0
+
+example : satisfiableConceptDocument.check = .ok true := by native_decide
+
+private def wrongSatisfiableConceptDocument : WireCertificate :=
+  { satisfiableConceptDocument with evidence := .satisfiable_concept 0 1 }
+
+example : wrongSatisfiableConceptDocument.check = .ok false := by native_decide
 
 private def contradiction : WireClause := { body := [], head := [] }
 
@@ -460,5 +538,7 @@ end WireTests
 #print axioms DecodedEvidence.unsat_sound
 #print axioms DecodedEvidence.subsumption_sound
 #print axioms DecodedEvidence.unsatisfiableConcept_sound
+#print axioms DecodedEvidence.nonSubsumption_sound
+#print axioms DecodedEvidence.satisfiableConcept_sound
 
 end ContextCalculus.Hypertableau

@@ -2256,6 +2256,15 @@ enum LeanHtEvidence {
         concept: usize,
         tree: LeanHtRefutationTree,
     },
+    NonSubsumption {
+        root: usize,
+        sub: usize,
+        sup: usize,
+    },
+    SatisfiableConcept {
+        root: usize,
+        concept: usize,
+    },
 }
 
 #[derive(serde::Serialize)]
@@ -8052,7 +8061,10 @@ impl Ht {
     /// needs an explicit quotient witness before its terminal graph can be
     /// identified with the checker's finite domain.  A rejected producer does
     /// not weaken ordinary HT execution; checker-backed publication fails closed.
-    pub fn lean_sat_certificate_json(&self) -> Result<String, String> {
+    fn lean_sat_certificate_json_with_evidence(
+        &self,
+        evidence: LeanHtEvidence,
+    ) -> Result<String, String> {
         if self.ext.clash.is_some() {
             return Err("cannot certify a clashing hypertableau state".to_string());
         }
@@ -8202,9 +8214,60 @@ impl Ht {
             labels,
             edges,
             obligations,
-            evidence: LeanHtEvidence::Sat,
+            evidence,
         })
         .map_err(|error| error.to_string())
+    }
+
+    pub fn lean_sat_certificate_json(&self) -> Result<String, String> {
+        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::Sat)
+    }
+
+    /// Serialize a checked countermodel for `sub ⋢ sup` from the terminal
+    /// graph of a successful `{sub, ¬sup}` consistency probe.
+    pub fn lean_non_subsumption_certificate_json(
+        &self,
+        sub: C,
+        sup: C,
+    ) -> Result<String, String> {
+        let root = self
+            .ext
+            .concepts
+            .first()
+            .ok_or_else(|| "HT Lean countermodel has no query root".to_string())?;
+        if !root.contains_key(&CLit { c: sub, neg: false })
+            || !root.contains_key(&CLit { c: sup, neg: true })
+        {
+            return Err("HT Lean countermodel does not contain the declared query".to_string());
+        }
+        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::NonSubsumption {
+            root: 0,
+            sub: sub as usize,
+            sup: sup as usize,
+        })
+    }
+
+    /// Serialize a checked model of `concept` from the terminal graph of a
+    /// successful `{concept}` consistency probe.
+    pub fn lean_satisfiable_concept_certificate_json(
+        &self,
+        concept: C,
+    ) -> Result<String, String> {
+        let root = self
+            .ext
+            .concepts
+            .first()
+            .ok_or_else(|| "HT Lean concept model has no query root".to_string())?;
+        if !root.contains_key(&CLit {
+            c: concept,
+            neg: false,
+        }) {
+            return Err("HT Lean concept model does not contain the declared concept".to_string());
+        }
+        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::SatisfiableConcept {
+            root: 0,
+            concept: concept as usize,
+        })
     }
 
     /// Recompute the tableau trigger indexes (`concept_triggers`,
@@ -16873,6 +16936,40 @@ mod tests {
     }
 
     #[test]
+    fn lean_non_subsumption_wire_serializes_the_exact_countermodel_query() {
+        let mut t = ht(Vec::new());
+        assert_eq!(
+            t.consistent(&[CLit::pos(A), CLit { c: B, neg: true }]),
+            Some(true)
+        );
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_non_subsumption_certificate_json(A, B)
+                .expect("the retained model witnesses A and not-B"),
+        )
+        .expect("non-subsumption certificate is JSON");
+        let evidence = &wire["evidence"]["non_subsumption"];
+        assert_eq!(evidence["root"], 0);
+        assert_eq!(evidence["sub"], A);
+        assert_eq!(evidence["sup"], B);
+        assert!(t.lean_non_subsumption_certificate_json(B, A).is_err());
+    }
+
+    #[test]
+    fn lean_satisfiable_concept_wire_serializes_the_exact_model_query() {
+        let mut t = ht(Vec::new());
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_satisfiable_concept_certificate_json(A)
+                .expect("the retained model witnesses A"),
+        )
+        .expect("satisfiable-concept certificate is JSON");
+        let evidence = &wire["evidence"]["satisfiable_concept"];
+        assert_eq!(evidence["root"], 0);
+        assert_eq!(evidence["concept"], A);
+        assert!(t.lean_satisfiable_concept_certificate_json(B).is_err());
+    }
+
+    #[test]
     fn lean_unsat_wire_closes_role_and_existential_branches() {
         let role_t = ht(vec![
             Clause::new(Vec::new(), vec![role(R0, X, X)]),
@@ -16976,6 +17073,19 @@ mod tests {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
+        let mut countermodel = ht(Vec::new());
+        assert_eq!(
+            countermodel.consistent(&[CLit::pos(A), CLit { c: B, neg: true }]),
+            Some(true)
+        );
+        let non_subsumption = countermodel
+            .lean_non_subsumption_certificate_json(A, B)
+            .expect("A and not-B have a finite countermodel");
+        let mut concept_model = ht(Vec::new());
+        assert_eq!(concept_model.consistent(&[CLit::pos(A)]), Some(true));
+        let satisfiable_concept = concept_model
+            .lean_satisfiable_concept_certificate_json(A)
+            .expect("A has a finite model");
         let queries = [
             ht(vec![Clause::new(
                 vec![con(false, A, X), con(true, B, X)],
@@ -16986,6 +17096,8 @@ mod tests {
             ht(vec![Clause::new(vec![con(false, A, X)], Vec::new())])
                 .lean_unsatisfiable_concept_certificate_json(A)
                 .expect("A closes"),
+            non_subsumption,
+            satisfiable_concept,
         ];
         for (index, document) in queries.iter().enumerate() {
             let path = std::env::temp_dir().join(format!(

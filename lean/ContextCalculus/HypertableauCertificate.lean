@@ -182,6 +182,35 @@ theorem FiniteSatCertificate.checkSat_satisfiable
       I.models certificate.ontology :=
   ⟨certificate.state.canonical, certificate.checkSat_models hcheck⟩
 
+/-- A checked model carrying `A` and `¬B` at one node refutes `A ⊑ B`. -/
+theorem FiniteSatCertificate.checkSat_not_entailsSub
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hsub : (root, .pos sub) ∈ certificate.labels)
+    (hnotSup : (root, .negated sup) ∈ certificate.labels)
+    (hcheck : certificate.checkSat = true) :
+    ¬EntailsSub certificate.ontology sub sup := by
+  intro hentails
+  have hvalid := certificate.checkSat_sound hcheck
+  have hmodels := certificate.checkSat_models hcheck
+  have hsubCanonical : certificate.state.canonical.concept sub root := hsub
+  have hsupCanonical := hentails _ certificate.state.canonical hmodels root hsubCanonical
+  have hneg := certificate.state.canonical_satLit hvalid.2.1 root (.negated sup) hnotSup
+  have hnotSupCanonical : ¬certificate.state.canonical.concept sup root := by
+    simpa [Interp.satLit, Lit.negated] using hneg
+  exact hnotSupCanonical hsupCanonical
+
+/-- A checked model carrying `A` at one node refutes unsatisfiability of `A`. -/
+theorem FiniteSatCertificate.checkSat_not_unsatisfiableConcept
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hconcept : (root, .pos concept) ∈ certificate.labels)
+    (hcheck : certificate.checkSat = true) :
+    ¬UnsatisfiableConcept certificate.ontology concept := by
+  intro hunsatisfiable
+  have hmodels := certificate.checkSat_models hcheck
+  exact hunsatisfiable _ certificate.state.canonical hmodels root hconcept
+
 namespace CheckerTests
 
 private def reflexiveCertificate : FiniteSatCertificate 1 1 1 1 where
@@ -224,5 +253,7 @@ end CheckerTests
 #print axioms FiniteSatCertificate.checkSat_sound
 #print axioms FiniteSatCertificate.checkSat_models
 #print axioms FiniteSatCertificate.checkSat_satisfiable
+#print axioms FiniteSatCertificate.checkSat_not_entailsSub
+#print axioms FiniteSatCertificate.checkSat_not_unsatisfiableConcept
 
 end ContextCalculus.Hypertableau

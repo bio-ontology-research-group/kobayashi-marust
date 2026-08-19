@@ -223,10 +223,12 @@ The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H) and materializes default anywhere-subset blocking folds as
 ordinary candidate edges. It also emits exhaustive global UNSAT refutations
 when bounded finite search closes over concept, role, and existential facts.
-It can also emit individual subsumption and unsatisfiable-concept refutations;
-the checker verifies that each refutation starts from exactly the declared
-query labels. These query certificates are not yet assembled into the batch
-taxonomy publication path.
+It can also emit individual subsumption and unsatisfiable-concept refutations,
+plus finite countermodels for non-subsumption and concept satisfiability. The
+checker verifies that each refutation starts from exactly the declared query
+labels and that every countermodel contains its declared query labels. These
+query certificates are not yet assembled into the batch taxonomy publication
+path.
 The refutation checker has an explicit fresh-witness rule: it verifies that the
 target node occurs in no prior fact, binds that node to the semantic existential
 witness, and then checks the recursively materialized edge and filler label.

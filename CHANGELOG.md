@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.41] – 2026-08-19
+
+### Certify HT taxonomy countermodels
+
+- Prove that a checked finite model carrying `A` and `¬B` at one node refutes
+  `A ⊑ B`.
+- Prove that a checked finite model carrying `A` refutes the claim that `A` is
+  unsatisfiable.
+- Extend the version-1 HT wire format with bounds-checked `non_subsumption` and
+  `satisfiable_concept` evidence. The checker requires the declared query
+  literals to occur in the accepted finite model.
+- Extend the Rust producer to serialize retained terminal models for both query
+  kinds and reject calls that do not match the model root.
+- Validate all four individual taxonomy outcomes through the native Lean
+  checker: subsumption, non-subsumption, unsatisfiable concept, and satisfiable
+  concept.
+
+This release certifies either polarity of an individual HT taxonomy query when
+bounded refutation or finite-model evidence is available. A complete batch
+taxonomy certificate remains the next milestone.
+
 ## [0.3.40] – 2026-08-19
 
 ### Certify individual HT taxonomy refutations
