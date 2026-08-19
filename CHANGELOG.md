@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.47] – 2026-08-19
+
+### Certify equality-aware HT query decisions
+
+- Prove that a checked equality-quotient model containing `A` and `¬B`
+  refutes `A ⊑ B`, and that one containing `A` refutes concept
+  unsatisfiability.
+- Prove that equality-aware refutations rooted at exactly `{A, ¬B}` or `{A}`
+  establish subsumption or concept unsatisfiability, respectively.
+- Extend version-2 HT evidence with all four query outcomes: subsumption,
+  non-subsumption, unsatisfiable concept, and satisfiable concept. Query IDs
+  are bounds checked, query labels are checked, and every accepted outcome is
+  connected to its semantic theorem.
+- Emit version-2 query countermodels and refutations from Rust whenever the
+  normalized clause set contains equality heads. Rust-produced quotient
+  countermodels pass the native Lean checker.
+
+This release certifies individual equality-aware HT query answers whenever the
+bounded producer returns accepted evidence. Complete equality-aware taxonomy
+batch publication, inverse roles, nominals, native ABoxes, and a proof that
+every HT search terminates with evidence remain unfinished. It does not certify
+the entire HT implementation.
+
 ## [0.3.46] – 2026-08-19
 
 ### Certify equality-aware HT finite models

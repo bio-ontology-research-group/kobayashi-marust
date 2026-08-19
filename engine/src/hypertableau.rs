@@ -2279,6 +2279,26 @@ enum LeanHtEqRefutationTree {
 enum LeanHtEqEvidence {
     Sat,
     Unsat { tree: LeanHtEqRefutationTree },
+    Subsumption {
+        root: usize,
+        sub: usize,
+        sup: usize,
+        tree: LeanHtEqRefutationTree,
+    },
+    UnsatisfiableConcept {
+        root: usize,
+        concept: usize,
+        tree: LeanHtEqRefutationTree,
+    },
+    NonSubsumption {
+        root: usize,
+        sub: usize,
+        sup: usize,
+    },
+    SatisfiableConcept {
+        root: usize,
+        concept: usize,
+    },
 }
 
 #[derive(serde::Serialize)]
@@ -8211,7 +8231,11 @@ impl Ht {
         None
     }
 
-    fn lean_eq_unsat_certificate_json(&self) -> Result<String, String> {
+    fn lean_eq_refutation_certificate_json(
+        &self,
+        initial_labels: &[(Node, CLit)],
+        evidence: impl FnOnce(LeanHtEqRefutationTree) -> LeanHtEqEvidence,
+    ) -> Result<String, String> {
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -8239,6 +8263,12 @@ impl Ht {
                 }
             }
         }
+        for &(node, literal) in initial_labels {
+            if node != 0 {
+                return Err("HT Lean equality query certificates require root node 0".to_string());
+            }
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
         let ontology = self
             .clauses
             .iter()
@@ -8252,7 +8282,7 @@ impl Ht {
             .and_then(|value| value.parse::<usize>().ok())
             .filter(|&value| (1..=64).contains(&value))
             .unwrap_or(8);
-        let mut state = LeanHtRefutationState::root(&[]);
+        let mut state = LeanHtRefutationState::root(initial_labels);
         let (tree, _node_count) = self
             .lean_eq_refutation(&mut state, variable_count, node_budget)
             .ok_or_else(|| "ontology has an open or node-capped equality refutation branch".to_string())?;
@@ -8265,7 +8295,7 @@ impl Ht {
             variable_count,
             ontology,
             state: root_state,
-            evidence: LeanHtEqEvidence::Unsat { tree },
+            evidence: evidence(tree),
         })
         .map_err(|error| error.to_string())
     }
@@ -8372,7 +8402,9 @@ impl Ht {
             .iter()
             .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
         {
-            return self.lean_eq_unsat_certificate_json();
+            return self.lean_eq_refutation_certificate_json(&[], |tree| {
+                LeanHtEqEvidence::Unsat { tree }
+            });
         }
         self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
     }
@@ -8383,6 +8415,20 @@ impl Ht {
             (0, CLit { c: sub, neg: false }),
             (0, CLit { c: sup, neg: true }),
         ];
+        if self
+            .clauses
+            .iter()
+            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
+        {
+            return self.lean_eq_refutation_certificate_json(&labels, |tree| {
+                LeanHtEqEvidence::Subsumption {
+                    root: 0,
+                    sub: sub as usize,
+                    sup: sup as usize,
+                    tree,
+                }
+            });
+        }
         self.lean_refutation_certificate_json(&labels, |tree| LeanHtEvidence::Subsumption {
             root: 0,
             sub: sub as usize,
@@ -8397,6 +8443,19 @@ impl Ht {
         concept: C,
     ) -> Result<String, String> {
         let labels = [(0, CLit { c: concept, neg: false })];
+        if self
+            .clauses
+            .iter()
+            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
+        {
+            return self.lean_eq_refutation_certificate_json(&labels, |tree| {
+                LeanHtEqEvidence::UnsatisfiableConcept {
+                    root: 0,
+                    concept: concept as usize,
+                    tree,
+                }
+            });
+        }
         self.lean_refutation_certificate_json(&labels, |tree| {
             LeanHtEvidence::UnsatisfiableConcept {
                 root: 0,
@@ -8407,9 +8466,9 @@ impl Ht {
     }
 
     /// Serialize the exact terminal completion graph and normalized HT clauses.
-    /// Equality-free evidence uses wire version 1. Global equality-aware SAT
-    /// evidence uses version 2 with the complete merge forest and quotient
-    /// witnesses. Equality-aware query countermodels remain fail-closed.
+    /// Equality-free evidence uses wire version 1. Equality-aware SAT and
+    /// query-countermodel evidence uses version 2 with the complete merge
+    /// forest and quotient witnesses.
     fn lean_sat_certificate_json_with_evidence(
         &self,
         evidence: LeanHtEvidence,
@@ -8434,13 +8493,6 @@ impl Ht {
                 .chain(record.0.head.iter())
                 .any(|atom| matches!(atom, Atom::Eq { .. }))
         });
-        if has_equality && !matches!(evidence, LeanHtEvidence::Sat) {
-            return Err(
-                "HT Lean equality certificates do not yet encode query countermodels"
-                    .to_string(),
-            );
-        }
-
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -8560,6 +8612,21 @@ impl Ht {
         });
 
         if has_equality {
+            let equality_evidence = match evidence {
+                LeanHtEvidence::Sat => LeanHtEqEvidence::Sat,
+                LeanHtEvidence::NonSubsumption { root, sub, sup } => {
+                    LeanHtEqEvidence::NonSubsumption { root, sub, sup }
+                }
+                LeanHtEvidence::SatisfiableConcept { root, concept } => {
+                    LeanHtEqEvidence::SatisfiableConcept { root, concept }
+                }
+                _ => {
+                    return Err(
+                        "HT Lean equality SAT certificates cannot encode refutation evidence"
+                            .to_string(),
+                    );
+                }
+            };
             let node_count = self.ext.num_nodes();
             let mut equalities = Vec::new();
             let mut representative_paths = Vec::with_capacity(node_count);
@@ -8596,7 +8663,7 @@ impl Ht {
                     representatives,
                     representative_paths,
                 },
-                evidence: LeanHtEqEvidence::Sat,
+                evidence: equality_evidence,
             })
             .map_err(|error| error.to_string());
         }
@@ -17413,6 +17480,124 @@ mod tests {
             .success();
         let _ = std::fs::remove_file(path);
         assert!(accepted, "Lean must accept the Rust equality SAT quotient");
+    }
+
+    fn equality_query_model() -> Ht {
+        let mut t = ht(vec![Clause::new(
+            Vec::new(),
+            vec![Atom::Eq { s: X, t: 1 }],
+        )]);
+        let root = t.ext.new_root();
+        t.ext.add_concept(root, CLit::pos(A), &dep_empty());
+        t.ext
+            .add_concept(root, CLit { c: B, neg: true }, &dep_empty());
+        let second = t.ext.new_node(Some(root));
+        t.ext.merge_into(root, second, &dep_empty());
+        t
+    }
+
+    #[test]
+    fn lean_equality_query_wires_serialize_quotient_countermodels() {
+        let t = equality_query_model();
+        let non_subsumption: serde_json::Value = serde_json::from_str(
+            &t.lean_non_subsumption_certificate_json(A, B).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(non_subsumption["version"], 2);
+        assert_eq!(
+            non_subsumption["evidence"]["non_subsumption"],
+            serde_json::json!({ "root": 0, "sub": A, "sup": B })
+        );
+        let satisfiable: serde_json::Value = serde_json::from_str(
+            &t.lean_satisfiable_concept_certificate_json(A).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(satisfiable["version"], 2);
+        assert_eq!(
+            satisfiable["evidence"]["satisfiable_concept"],
+            serde_json::json!({ "root": 0, "concept": A })
+        );
+    }
+
+    #[test]
+    fn lean_equality_query_wires_pass_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let t = equality_query_model();
+        let documents = [
+            t.lean_non_subsumption_certificate_json(A, B).unwrap(),
+            t.lean_satisfiable_concept_certificate_json(A).unwrap(),
+        ];
+        for (index, document) in documents.iter().enumerate() {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-eq-query-cert-{}-{index}.json",
+                std::process::id()
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean equality HT checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(accepted, "Lean must accept Rust equality query evidence");
+        }
+    }
+
+    #[test]
+    fn lean_equality_refutation_query_wires_serialize() {
+        let equality = Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }]);
+        let subsumption = ht(vec![
+            equality.clone(),
+            Clause::new(
+                vec![con(false, A, X), con(true, B, X)],
+                Vec::new(),
+            ),
+        ]);
+        let subsumption_json = subsumption.lean_subsumption_certificate_json(A, B).unwrap();
+        let document: serde_json::Value = serde_json::from_str(&subsumption_json).unwrap();
+        assert_eq!(document["version"], 2);
+        assert!(document["evidence"]["subsumption"].is_object());
+
+        let unsatisfiable = ht(vec![
+            equality,
+            Clause::new(vec![con(false, A, X)], Vec::new()),
+        ]);
+        let unsatisfiable_json = unsatisfiable
+            .lean_unsatisfiable_concept_certificate_json(A)
+            .unwrap();
+        let document: serde_json::Value = serde_json::from_str(&unsatisfiable_json).unwrap();
+        assert_eq!(document["version"], 2);
+        assert!(document["evidence"]["unsatisfiable_concept"].is_object());
+
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        for (index, document) in [subsumption_json, unsatisfiable_json]
+            .iter()
+            .enumerate()
+        {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-eq-refutation-query-cert-{}-{index}.json",
+                std::process::id()
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean equality HT checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(
+                accepted,
+                "Lean must accept Rust equality refutation query evidence"
+            );
+        }
     }
 
     #[test]

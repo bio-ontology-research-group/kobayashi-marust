@@ -40,6 +40,10 @@ deriving FromJson, ToJson, Repr
 inductive WireEqEvidence where
   | sat
   | unsat (tree : WireEqRefutationTree)
+  | subsumption (root sub sup : Nat) (tree : WireEqRefutationTree)
+  | unsatisfiable_concept (root concept : Nat) (tree : WireEqRefutationTree)
+  | non_subsumption (root sub sup : Nat)
+  | satisfiable_concept (root concept : Nat)
 deriving FromJson, ToJson, Repr
 
 structure WireEqCertificate where
@@ -137,6 +141,20 @@ inductive DecodedEqEvidence (nodeCount conceptCount roleCount variableCount : Na
   | sat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
   | unsat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
       (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+  | subsumption
+      (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (root : Fin nodeCount) (sub sup : Fin conceptCount)
+      (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+  | unsatisfiableConcept
+      (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (root : Fin nodeCount) (concept : Fin conceptCount)
+      (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+  | nonSubsumption
+      (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (root : Fin nodeCount) (sub sup : Fin conceptCount)
+  | satisfiableConcept
+      (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (root : Fin nodeCount) (concept : Fin conceptCount)
 
 structure DecodedEqCertificate where
   nodeCount : Nat
@@ -144,6 +162,34 @@ structure DecodedEqCertificate where
   roleCount : Nat
   variableCount : Nat
   evidence : DecodedEqEvidence nodeCount conceptCount roleCount variableCount
+
+def FiniteEqCertificate.checkSubsumptionRoot
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount) : Bool :=
+  certificate.base.checkSubsumptionRoot root sub sup
+
+def FiniteEqCertificate.checkUnsatisfiableRoot
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount) : Bool :=
+  certificate.base.checkUnsatisfiableRoot root concept
+
+theorem FiniteEqCertificate.checkSubsumptionRoot_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hcheck : certificate.checkSubsumptionRoot root sub sup = true) :
+    certificate.SubsumptionRoot root sub sup := by
+  simpa [FiniteEqCertificate.checkSubsumptionRoot,
+    FiniteEqCertificate.SubsumptionRoot, FiniteSatCertificate.SubsumptionRoot] using
+    certificate.base.checkSubsumptionRoot_sound root sub sup hcheck
+
+theorem FiniteEqCertificate.checkUnsatisfiableRoot_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hcheck : certificate.checkUnsatisfiableRoot root concept = true) :
+    certificate.UnsatisfiableRoot root concept := by
+  simpa [FiniteEqCertificate.checkUnsatisfiableRoot,
+    FiniteEqCertificate.UnsatisfiableRoot, FiniteSatCertificate.UnsatisfiableRoot] using
+    certificate.base.checkUnsatisfiableRoot_sound root concept hcheck
 
 def WireEqCertificate.decode (wire : WireEqCertificate) : Except String DecodedEqCertificate := do
   if wire.version != 2 then
@@ -158,6 +204,28 @@ def WireEqCertificate.decode (wire : WireEqCertificate) : Except String DecodedE
         let decodedTree ← WireEqRefutationTree.decode wire.node_count wire.concept_count
           wire.role_count wire.variable_count ontology tree
         pure (.unsat certificate decodedTree)
+    | .subsumption root sub sup tree =>
+        pure (.subsumption certificate
+          (← checkedFin "node" wire.node_count root)
+          (← checkedFin "concept" wire.concept_count sub)
+          (← checkedFin "concept" wire.concept_count sup)
+          (← tree.decode wire.node_count wire.concept_count wire.role_count
+            wire.variable_count ontology))
+    | .unsatisfiable_concept root concept tree =>
+        pure (.unsatisfiableConcept certificate
+          (← checkedFin "node" wire.node_count root)
+          (← checkedFin "concept" wire.concept_count concept)
+          (← tree.decode wire.node_count wire.concept_count wire.role_count
+            wire.variable_count ontology))
+    | .non_subsumption root sub sup =>
+        pure (.nonSubsumption certificate
+          (← checkedFin "node" wire.node_count root)
+          (← checkedFin "concept" wire.concept_count sub)
+          (← checkedFin "concept" wire.concept_count sup))
+    | .satisfiable_concept root concept =>
+        pure (.satisfiableConcept certificate
+          (← checkedFin "node" wire.node_count root)
+          (← checkedFin "concept" wire.concept_count concept))
   return {
     nodeCount := wire.node_count
     conceptCount := wire.concept_count
@@ -175,6 +243,17 @@ def DecodedEqCertificate.check (decoded : DecodedEqCertificate) : Bool :=
       certificate.base.edges.isEmpty &&
       certificate.base.obligations.isEmpty &&
       tree.check certificate
+  | .subsumption certificate root sub sup tree =>
+      certificate.checkSubsumptionRoot root sub sup && tree.check certificate
+  | .unsatisfiableConcept certificate root concept tree =>
+      certificate.checkUnsatisfiableRoot root concept && tree.check certificate
+  | .nonSubsumption certificate root sub sup =>
+      decide ((root, .pos sub) ∈ certificate.base.labels) &&
+      decide ((root, .negated sup) ∈ certificate.base.labels) &&
+      certificate.checkEqSat
+  | .satisfiableConcept certificate root concept =>
+      decide ((root, .pos concept) ∈ certificate.base.labels) &&
+      certificate.checkEqSat
 
 def WireEqCertificate.check (wire : WireEqCertificate) : Except String Bool := do
   return (← wire.decode).check
@@ -189,6 +268,14 @@ def DecodedEqCertificate.SemanticallyValid (decoded : DecodedEqCertificate) : Pr
       ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.conceptCount)
           (Fin decoded.roleCount)),
         Nonempty Domain ∧ I.models certificate.base.ontology
+  | .subsumption certificate _ sub sup _ =>
+      EntailsSub certificate.base.ontology sub sup
+  | .unsatisfiableConcept certificate _ concept _ =>
+      UnsatisfiableConcept certificate.base.ontology concept
+  | .nonSubsumption certificate _ sub sup =>
+      ¬EntailsSub certificate.base.ontology sub sup
+  | .satisfiableConcept certificate _ concept =>
+      ¬UnsatisfiableConcept certificate.base.ontology concept
 
 theorem DecodedEqCertificate.check_sound (decoded : DecodedEqCertificate)
     (hcheck : decoded.check = true) : decoded.SemanticallyValid := by
@@ -209,6 +296,28 @@ theorem DecodedEqCertificate.check_sound (decoded : DecodedEqCertificate)
       simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
       exact tree.check_ontology_unsatisfiable certificate
         ⟨hlabels, hedges, hobligations⟩ htree
+  | subsumption certificate root sub sup tree =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true] at hcheck
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      exact tree.check_subsumption certificate root sub sup
+        (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
+  | unsatisfiableConcept certificate root concept tree =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true] at hcheck
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      exact tree.check_unsatisfiable_concept certificate root concept
+        (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
+  | nonSubsumption certificate root sub sup =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      exact certificate.checkEqSat_not_entailsSub root sub sup
+        hcheck.1.1 hcheck.1.2 hcheck.2
+  | satisfiableConcept certificate root concept =>
+      simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
+      exact certificate.checkEqSat_not_unsatisfiableConcept root concept
+        hcheck.1 hcheck.2
 
 namespace EqualityWireTests
 
@@ -291,6 +400,43 @@ private def satDocument : WireEqCertificate where
   evidence := .sat
 
 example : satDocument.check = .ok true := by native_decide
+
+private def nonSubsumptionDocument : WireEqCertificate where
+  version := 2
+  node_count := 2
+  concept_count := 2
+  role_count := 1
+  variable_count := 0
+  ontology := []
+  state := {
+    labels := [
+      { node := 1, literal := { concept := 0, neg := false } },
+      { node := 1, literal := { concept := 1, neg := true } }
+    ]
+    edges := []
+    obligations := []
+    equalities := [{ left := 0, right := 1 }]
+    representatives := [0, 0]
+    representative_paths := [[], [0]]
+  }
+  evidence := .non_subsumption 1 0 1
+
+example : nonSubsumptionDocument.check = .ok true := by native_decide
+
+private def badNonSubsumption : WireEqCertificate :=
+  { nonSubsumptionDocument with evidence := .non_subsumption 1 1 0 }
+
+example : badNonSubsumption.check = .ok false := by native_decide
+
+private def satisfiableConceptDocument : WireEqCertificate :=
+  { nonSubsumptionDocument with evidence := .satisfiable_concept 1 0 }
+
+example : satisfiableConceptDocument.check = .ok true := by native_decide
+
+private def badSatisfiableConcept : WireEqCertificate :=
+  { nonSubsumptionDocument with evidence := .satisfiable_concept 1 1 }
+
+example : badSatisfiableConcept.check = .ok false := by native_decide
 
 private def emptyDomainSat : WireEqCertificate where
   version := 2

@@ -222,15 +222,17 @@ decoder is built with
 `LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
 
 `HypertableauEqualityCertificate.lean` and
-`HypertableauEqualityWire.lean` add version-2 global UNSAT evidence with exact
+`HypertableauEqualityWire.lean` add version-2 evidence with exact
 finite equality closure. The checker validates every merge, representative,
 and path to that representative without assuming distinct certificate nodes
 denote distinct domain elements. `ht-cert-check` dispatches both versions; the
 same version-2 decoder is available separately with
 `LEAN_NUM_THREADS=2 lake build ht-eq-cert-check`. Version 2 accepts global SAT
 evidence only after constructing a nonempty quotient model and checking every
-guarded grounding modulo equality. Equality-aware query countermodels and
-taxonomy evidence remain fail-closed.
+guarded grounding modulo equality. It checks both polarities of individual
+subsumption and concept-satisfiability queries against quotient models or
+closed equality-aware refutations. Complete equality-aware taxonomy batch
+evidence remains fail-closed.
 
 The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H) and materializes default anywhere-subset blocking folds as
@@ -265,10 +267,11 @@ realizes the merged branch. The generalized branch theorem accepts concept,
 role, existential, and equality heads without a semantic side condition.
 
 `EqRefutes.sound` composes equality merges with fresh existential witnesses and
-detects complementary labels modulo node equivalence. This is the semantic
-target for the implementation's union-find merge. The finite union-find
-checker, JSON refinement, and Rust equality-certificate producer are not yet
-connected, so the executable checker continues to reject equality heads.
+detects complementary labels modulo node equivalence. The finite equality
+checker refines the implementation's merge forest using explicit
+representatives and paths. Version-2 JSON and the Rust producer connect global
+and individual-query SAT/UNSAT evidence to this checker. Complete taxonomy
+batching and termination remain separate obligations.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

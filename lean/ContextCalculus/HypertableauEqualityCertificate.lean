@@ -370,6 +370,44 @@ theorem FiniteEqCertificate.checkEqSat_satisfiable
   ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical,
     certificate.checkEqSat_models hcheck⟩
 
+theorem FiniteEqCertificate.checkEqSat_not_entailsSub
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hsub : (root, .pos sub) ∈ certificate.base.labels)
+    (hnotSup : (root, .negated sup) ∈ certificate.base.labels)
+    (hcheck : certificate.checkEqSat = true) :
+    ¬EntailsSub certificate.base.ontology sub sup := by
+  intro hentails
+  have hmodels := certificate.checkEqSat_models hcheck
+  have hparts := hcheck
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hparts
+  have hvalid : certificate.equalityClosureValidB = true := by
+    exact hparts.1.1.1.1
+  have hclashFalse : certificate.closedClashB = false := by
+    simpa using hparts.1.1.2
+  have hclash := certificate.not_closedClashB_closedClashFree hvalid hclashFalse
+  let value : certificate.state.QuotientDomain :=
+    Quotient.mk certificate.state.nodeSetoid root
+  have hsubModel : certificate.state.quotientCanonical.concept sub value :=
+    ⟨root, rfl, hsub⟩
+  have hsupModel := hentails _ certificate.state.quotientCanonical hmodels value hsubModel
+  have hnegative := certificate.state.quotientCanonical_sat_closedLabel hclash
+    root (.negated sup) ⟨root, certificate.state.equiv_equivalence.1 root, hnotSup⟩
+  exact hnegative hsupModel
+
+theorem FiniteEqCertificate.checkEqSat_not_unsatisfiableConcept
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hconcept : (root, .pos concept) ∈ certificate.base.labels)
+    (hcheck : certificate.checkEqSat = true) :
+    ¬UnsatisfiableConcept certificate.base.ontology concept := by
+  intro hunsatisfiable
+  have hmodels := certificate.checkEqSat_models hcheck
+  let value : certificate.state.QuotientDomain :=
+    Quotient.mk certificate.state.nodeSetoid root
+  exact hunsatisfiable _ certificate.state.quotientCanonical hmodels value
+    ⟨root, rfl, hconcept⟩
+
 def FiniteEqCertificate.freshNodeB
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (target : Fin nodeCount) : Bool :=
@@ -759,6 +797,64 @@ theorem FiniteEqRefutationTree.check_ontology_unsatisfiable
   · intro left right _
     rfl
 
+def FiniteEqCertificate.SubsumptionRoot
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount) : Prop :=
+  certificate.base.labels = [(root, .pos sub), (root, .negated sup)] ∧
+  certificate.base.edges = [] ∧ certificate.base.obligations = []
+
+def FiniteEqCertificate.UnsatisfiableRoot
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount) : Prop :=
+  certificate.base.labels = [(root, .pos concept)] ∧
+  certificate.base.edges = [] ∧ certificate.base.obligations = []
+
+theorem FiniteEqRefutationTree.check_subsumption
+    (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hroot : certificate.SubsumptionRoot root sub sup)
+    (hcheck : tree.check certificate = true) :
+    EntailsSub certificate.base.ontology sub sup := by
+  intro Domain I hmodels value hsub
+  by_contra hsup
+  apply tree.check_unsatisfiable certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, ?_, ?_⟩
+  · rcases hroot with ⟨hlabels, hedges, hobligations⟩
+    refine ⟨?_, ?_, ?_⟩
+    · intro node lit hlabel
+      simp only [FiniteEqCertificate.state, FiniteSatCertificate.state, hlabels,
+        List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hlabel
+      rcases hlabel with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+      · simpa [Interp.satLit, Lit.pos] using hsub
+      · simpa [Interp.satLit, Lit.negated] using hsup
+    · simp [FiniteEqCertificate.state, FiniteSatCertificate.state, hedges]
+    · simp [FiniteEqCertificate.state, FiniteSatCertificate.state, hobligations]
+  · intro left right _
+    rfl
+
+theorem FiniteEqRefutationTree.check_unsatisfiable_concept
+    (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hroot : certificate.UnsatisfiableRoot root concept)
+    (hcheck : tree.check certificate = true) :
+    UnsatisfiableConcept certificate.base.ontology concept := by
+  intro Domain I hmodels value hconcept
+  apply tree.check_unsatisfiable certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, ?_, ?_⟩
+  · rcases hroot with ⟨hlabels, hedges, hobligations⟩
+    refine ⟨?_, ?_, ?_⟩
+    · intro node lit hlabel
+      simp only [FiniteEqCertificate.state, FiniteSatCertificate.state, hlabels,
+        List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hlabel
+      rcases hlabel with ⟨rfl, rfl⟩
+      simpa [Interp.satLit, Lit.pos] using hconcept
+    · simp [FiniteEqCertificate.state, FiniteSatCertificate.state, hedges]
+    · simp [FiniteEqCertificate.state, FiniteSatCertificate.state, hobligations]
+  · intro left right _
+    rfl
+
 namespace EqualityRefutationCheckerTests
 
 private def transitiveBase : FiniteSatCertificate 3 1 1 1 where
@@ -864,8 +960,12 @@ end EqualitySatCheckerTests
 #print axioms FiniteEqCertificate.equalityClosureValidB_sound
 #print axioms FiniteEqCertificate.checkEqSat_models
 #print axioms FiniteEqCertificate.checkEqSat_satisfiable
+#print axioms FiniteEqCertificate.checkEqSat_not_entailsSub
+#print axioms FiniteEqCertificate.checkEqSat_not_unsatisfiableConcept
 #print axioms FiniteEqRefutationTree.check_sound
 #print axioms FiniteEqRefutationTree.check_unsatisfiable
 #print axioms FiniteEqRefutationTree.check_ontology_unsatisfiable
+#print axioms FiniteEqRefutationTree.check_subsumption
+#print axioms FiniteEqRefutationTree.check_unsatisfiable_concept
 
 end ContextCalculus.Hypertableau
