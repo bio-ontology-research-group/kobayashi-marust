@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.51] – 2026-08-19
+
+### Certify complete HT taxonomies against equality-bearing source clauses
+
+- Define semantic transfer of concept-status and subsumption decisions across
+  model-equivalent ontologies, then lift it to a complete named taxonomy.
+- Add source-aware HT taxonomy wire version 3. It wraps either a plain
+  version-1 matrix or a mixed equality-aware version-2 matrix with one checked
+  equality-premise normalization witness per clause.
+- Prove that every accepted concept and ordered-pair answer is exact for the
+  source ontology. Missing cells, disconnected equality paths, and malformed
+  nested payloads are rejected.
+- Emit the source-aware matrix from Rust and make checker-gated publication
+  read answers from the accepted nested payload. The public classification is
+  still withheld whenever the native Lean checker rejects the document.
+- Validate Rust-produced equality-body taxonomies with the native checker and
+  retain end-to-end publication tests for plain and mixed matrices.
+
+This closes the source-normalization gap for current individual and complete
+HT certificates. It does not prove that HT terminates or produces evidence for
+every SROIQ input. Blocking, inverse roles, nominals, native ABoxes, cardinality
+side data, role-chain compilation, and preprocessing transformations still
+need complete executable correspondence proofs.
+
 ## [0.3.50] – 2026-08-19
 
 ### Check HT equality-premise normalization from the source ontology

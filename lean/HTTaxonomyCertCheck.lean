@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauMixedTaxonomyWire
+import ContextCalculus.HypertableauNormalizedTaxonomyWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -10,7 +10,11 @@ def checkTaxonomyFile (path : System.FilePath) : IO UInt32 := do
       let json ← Json.parse input
       let versionValue ← json.getObjVal? "version"
       let version : Nat ← fromJson? versionValue
-      if version = 2 then
+      if version = 3 then
+        let document : WireNormalizedTaxonomyCertificate ← fromJson? json
+        let _ ← document.decode
+        return ()
+      else if version = 2 then
         let document : WireMixedTaxonomyCertificate ← fromJson? json
         let _ ← document.decode
         return ()

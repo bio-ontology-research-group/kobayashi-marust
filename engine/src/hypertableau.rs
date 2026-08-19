@@ -8160,34 +8160,67 @@ impl Ht {
             .unwrap_or(0)
     }
 
-    fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
+    fn lean_wire_normalization(&self) -> Result<Option<Vec<LeanHtClauseNormalization>>, String> {
         let Some(normalization) = &self.cert_body_normalization else {
-            return Ok(payload);
+            return Ok(None);
         };
         if normalization.len() != self.clauses.len() {
             return Err("HT source normalization no longer matches the certificate ontology"
                 .to_string());
         }
+        Ok(Some(
+            normalization
+                .iter()
+                .map(|evidence| LeanHtClauseNormalization {
+                    source: LeanHtClause {
+                        body: evidence.source.body.iter().map(Self::lean_wire_atom).collect(),
+                        head: evidence.source.head.iter().map(Self::lean_wire_atom).collect(),
+                    },
+                    representatives: evidence.representatives.clone(),
+                    representative_paths: evidence.representative_paths.clone(),
+                })
+                .collect(),
+        ))
+    }
+
+    fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
+        let Some(normalization) = self.lean_wire_normalization()? else {
+            return Ok(payload);
+        };
         let payload: serde_json::Value =
             serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         let payload_version = payload["version"]
             .as_u64()
             .ok_or_else(|| "HT certificate payload has no numeric version".to_string())?;
-        let normalization = normalization
-            .iter()
-            .map(|evidence| LeanHtClauseNormalization {
-                source: LeanHtClause {
-                    body: evidence.source.body.iter().map(Self::lean_wire_atom).collect(),
-                    head: evidence.source.head.iter().map(Self::lean_wire_atom).collect(),
-                },
-                representatives: evidence.representatives.clone(),
-                representative_paths: evidence.representative_paths.clone(),
-            })
-            .collect::<Vec<_>>();
         let payload = match payload_version {
             1 => serde_json::json!({ "plain": { "certificate": payload } }),
             2 => serde_json::json!({ "equality": { "certificate": payload } }),
             version => return Err(format!("cannot normalize HT payload version {version}")),
+        };
+        serde_json::to_string(&serde_json::json!({
+            "version": 3,
+            "normalization": normalization,
+            "payload": payload,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
+    fn wrap_normalized_lean_taxonomy_certificate(
+        &self,
+        payload: String,
+    ) -> Result<String, String> {
+        let Some(normalization) = self.lean_wire_normalization()? else {
+            return Ok(payload);
+        };
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let payload_version = payload["version"]
+            .as_u64()
+            .ok_or_else(|| "HT taxonomy payload has no numeric version".to_string())?;
+        let payload = match payload_version {
+            1 => serde_json::json!({ "plain": { "certificate": payload } }),
+            2 => serde_json::json!({ "mixed": { "certificate": payload } }),
+            version => return Err(format!("cannot normalize HT taxonomy payload version {version}")),
         };
         serde_json::to_string(&serde_json::json!({
             "version": 3,
@@ -9109,7 +9142,7 @@ impl Ht {
                 .collect::<Result<Vec<_>, _>>()?;
             (1, concepts, subsumptions)
         };
-        serde_json::to_string(&serde_json::json!({
+        let payload = serde_json::to_string(&serde_json::json!({
             "version": version,
             "concept_count": concept_count,
             "role_count": base["role_count"],
@@ -9119,7 +9152,8 @@ impl Ht {
             "concepts": concepts,
             "subsumptions": subsumptions,
         }))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        self.wrap_normalized_lean_taxonomy_certificate(payload)
     }
 
     /// Recompute the tableau trigger indexes (`concept_triggers`,
@@ -18298,7 +18332,16 @@ mod tests {
         let document = &documents[1];
         let mut tampered: serde_json::Value =
             serde_json::from_str(document).expect("taxonomy document is JSON");
-        tampered["subsumptions"][0]
+        let matrix = if tampered["version"] == 3 {
+            tampered["payload"]["plain"]["certificate"]["subsumptions"]
+                .as_array_mut()
+                .expect("normalized plain taxonomy matrix")
+        } else {
+            tampered["subsumptions"]
+                .as_array_mut()
+                .expect("taxonomy matrix")
+        };
+        matrix[0]
             .as_array_mut()
             .expect("first taxonomy row")
             .pop();
@@ -18328,6 +18371,11 @@ mod tests {
         let document = t
             .lean_taxonomy_certificate_json(&[A, B])
             .expect("produce a complete equality-body taxonomy");
+        let wire: serde_json::Value =
+            serde_json::from_str(&document).expect("normalized taxonomy is JSON");
+        assert_eq!(wire["version"], 3);
+        assert!(wire["normalization"][0]["source"]["body"][0]["eq"].is_object());
+        assert!(wire["payload"]["plain"]["certificate"].is_object());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()

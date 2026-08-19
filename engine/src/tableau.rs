@@ -5433,7 +5433,24 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             checker.display()
                         ));
                     }
-                    validated_taxonomy = Some(taxonomy_value);
+                    let checked_payload = if taxonomy_value["version"] == 3 {
+                        taxonomy_value["payload"]["plain"]["certificate"]
+                            .as_object()
+                            .map(|_| taxonomy_value["payload"]["plain"]["certificate"].clone())
+                            .or_else(|| {
+                                taxonomy_value["payload"]["mixed"]["certificate"]
+                                    .as_object()
+                                    .map(|_| {
+                                        taxonomy_value["payload"]["mixed"]["certificate"].clone()
+                                    })
+                            })
+                            .ok_or_else(|| {
+                                "checked normalized HT taxonomy omitted its payload".to_string()
+                            })?
+                    } else {
+                        taxonomy_value
+                    };
+                    validated_taxonomy = Some(checked_payload);
                 }
             }
             if let Some(taxonomy) = validated_taxonomy {
