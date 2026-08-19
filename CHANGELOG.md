@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.3.49] – 2026-08-19
+
+### Prove and implement HT equality-premise normalization
+
+- Define atom renaming and explicit paths through positive equality premises in
+  Lean. A normalization certificate records the representative map, proves each
+  variable reaches its representative, and proves every removed equality is
+  collapsed.
+- Prove that equality-premise elimination preserves clause satisfaction in
+  both directions, then lift the result to model equivalence for complete
+  ontologies. The theorems contain no `sorry` or `admit`; their axiom audit
+  reports only Lean's standard `propext` and `Quot.sound` principles.
+- Apply the same transformation before Rust constructs HT trigger indexes.
+  Equality-only bodies now fire, transitive equality classes use one
+  representative, and an equality-premise constraint with an empty head becomes
+  the required global clash.
+- Replace the fail-closed `x=x → A(x)` regression with a positive end-to-end
+  test: Rust materializes `A`, and the native Lean taxonomy checker accepts the
+  resulting complete matrix.
+
+The semantic refinement theorem now covers the runtime transformation, but the
+wire document still contains only the normalized ontology. Supplying the source
+ontology and checkable equality paths in the wire format remains the next
+connection milestone. Complete blocking/termination, inverse roles, nominals,
+native ABoxes, and the remaining OWL features are still unfinished; this release
+does not certify the entire HT implementation.
+
 ## [0.3.48] – 2026-08-19
 
 ### Certify complete mixed-equality HT taxonomies

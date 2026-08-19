@@ -1637,6 +1637,64 @@ fn nvars_of(clause: &Clause) -> usize {
     }
     (m as usize) + 1
 }
+
+/// Eliminate positive equality atoms from a clause body by identifying their
+/// variables throughout the clause. For universally quantified clauses,
+/// `x = y ∧ B(x,y) → H(x,y)` is equivalent to `B(x,x) → H(x,x)`.
+/// Equality-only bodies otherwise have no concept or role event to wake them.
+fn eliminate_body_equalities(clause: &mut Clause) {
+    let equalities: Vec<(Var, Var)> = clause
+        .body
+        .iter()
+        .filter_map(|atom| match atom {
+            Atom::Eq { s, t } => Some((*s, *t)),
+            _ => None,
+        })
+        .collect();
+    if equalities.is_empty() {
+        return;
+    }
+    let count = nvars_of(clause);
+    let mut parent: Vec<usize> = (0..count).collect();
+    fn root(parent: &mut [usize], mut node: usize) -> usize {
+        while parent[node] != node {
+            parent[node] = parent[parent[node]];
+            node = parent[node];
+        }
+        node
+    }
+    for (left, right) in equalities {
+        let left = root(&mut parent, left as usize);
+        let right = root(&mut parent, right as usize);
+        if left != right {
+            let (representative, other) = if left < right {
+                (left, right)
+            } else {
+                (right, left)
+            };
+            parent[other] = representative;
+        }
+    }
+    for variable in 0..count {
+        parent[variable] = root(&mut parent, variable);
+    }
+    let rename = |variable: &mut Var| *variable = parent[*variable as usize] as Var;
+    let rename_atom = |atom: &mut Atom| match atom {
+        Atom::Concept { t, .. } | Atom::Exists { t, .. } => rename(t),
+        Atom::Role { s, t, .. } | Atom::Eq { s, t } => {
+            rename(s);
+            rename(t);
+        }
+    };
+    for atom in &mut clause.body {
+        rename_atom(atom);
+    }
+    for atom in &mut clause.head {
+        rename_atom(atom);
+    }
+    clause.body.retain(|atom| !matches!(atom, Atom::Eq { .. }));
+}
+
 fn sorted_body(body: &[Atom]) -> Vec<Atom> {
     let mut v = body.to_vec();
     v.sort_by_key(|a| (atom_max_var(a), matches!(a, Atom::Concept { .. }) as u8));
@@ -8942,6 +9000,9 @@ impl Ht {
 
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
+        for clause in &mut clauses {
+            eliminate_body_equalities(clause);
+        }
         // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
         // ⊤-disjunctions with negated disjuncts into dormant triggered clauses so
         // they no longer fire on every node. Run BEFORE contrapositives so the
@@ -17775,10 +17836,10 @@ mod tests {
     }
 
     #[test]
-    fn lean_taxonomy_wire_mixes_plain_refutations_and_equality_models() {
+    fn lean_taxonomy_wire_uses_equality_cells_for_a_genuine_equality_head() {
         let mut t = ht(vec![Clause::new(
-            vec![con(false, D, X), Atom::Eq { s: X, t: X }],
-            vec![con(false, A, X)],
+            vec![con(false, D, X)],
+            vec![con(false, A, X), Atom::Eq { s: X, t: X }],
         )]);
         let wire: serde_json::Value = serde_json::from_str(
             &t.lean_taxonomy_certificate_json(&[A, B])
@@ -17787,7 +17848,7 @@ mod tests {
         .expect("mixed taxonomy certificate is JSON");
         assert_eq!(wire["version"], 2);
         assert!(wire["concepts"][0]["equality"].is_object());
-        assert!(wire["subsumptions"][0][0]["plain"].is_object());
+        assert!(wire["subsumptions"][0][0]["equality"].is_object());
         assert!(wire["subsumptions"][0][1]["equality"].is_object());
     }
 
@@ -18036,7 +18097,7 @@ mod tests {
     }
 
     #[test]
-    fn lean_taxonomy_checker_rejects_an_unmaterialized_equality_body() {
+    fn lean_taxonomy_checker_accepts_a_materialized_equality_body() {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
             return;
         };
@@ -18044,22 +18105,66 @@ mod tests {
             vec![Atom::Eq { s: X, t: X }],
             vec![con(false, A, X)],
         )]);
+        assert_eq!(t.consistent(&[]), Some(true));
         let document = t
             .lean_taxonomy_certificate_json(&[A, B])
-            .expect("the producer exposes its incomplete equality-body state to the checker");
+            .expect("produce a complete equality-body taxonomy");
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()
         ));
         std::fs::write(&path, document).unwrap();
-        let rejected = !std::process::Command::new(&checker)
+        let accepted = std::process::Command::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .expect("run native Lean checker on incomplete equality-body model")
+            .expect("run native Lean checker on normalized equality-body model")
             .success();
         let _ = std::fs::remove_file(path);
-        assert!(rejected, "the checker must keep this runtime gap fail-closed");
+        assert!(accepted, "the checker must accept the materialized equality body");
+    }
+
+    #[test]
+    fn body_equality_substitutes_every_occurrence_before_saturation() {
+        let y = 1;
+        let mut t = ht(vec![Clause::new(
+            vec![Atom::Eq { s: X, t: y }, con(false, D, y)],
+            vec![con(false, A, X)],
+        )]);
+        assert_eq!(
+            t.consistent(&[CLit::pos(D), CLit { c: A, neg: true }]),
+            Some(false),
+            "x=y and D(y) must force A(x) after equality elimination"
+        );
+    }
+
+    #[test]
+    fn transitive_body_equalities_share_one_representative() {
+        let y = 1;
+        let z = 2;
+        let t = ht(vec![Clause::new(
+            vec![
+                Atom::Eq { s: y, t: z },
+                Atom::Eq { s: X, t: y },
+                con(false, D, z),
+            ],
+            vec![con(false, A, y)],
+        )]);
+        let clause = &t.clauses[0].0;
+        assert!(matches!(clause.body.as_slice(),
+            [Atom::Concept { lit, t }] if *lit == CLit::pos(D) && *t == X));
+        assert!(matches!(clause.head.as_slice(),
+            [Atom::Concept { lit, t }] if *lit == CLit::pos(A) && *t == X));
+    }
+
+    #[test]
+    fn equality_premise_contradiction_becomes_a_global_clash() {
+        let y = 1;
+        let mut t = ht(vec![Clause::new(
+            vec![Atom::Eq { s: X, t: y }],
+            Vec::new(),
+        )]);
+        assert_eq!(t.consistent(&[]), Some(false));
     }
 }

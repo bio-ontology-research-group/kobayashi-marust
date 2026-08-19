@@ -211,6 +211,14 @@ publishes the checked named relation directly.
 
 ### Hypertableau certificate checkers — `ContextCalculus/HypertableauWire.lean`
 
+`HypertableauEqualityNormalization.lean` proves the preprocessing step used for
+positive equality premises. A certificate supplies equality paths from every
+variable to its selected representative and checks that every removed premise
+collapses. `BodyEqualityNormalization.modelsClause_iff` proves per-clause model
+equivalence, and `models_iff` lifts it to whole ontologies. The Rust producer now
+performs this normalization before trigger indexing. Encoding the source
+ontology and paths in the executable wire checker remains open.
+
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
 `HypertableauCertificate.lean` checks finite saturated SAT branches, while
