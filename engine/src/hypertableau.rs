@@ -2240,6 +2240,58 @@ enum LeanHtRefutationTree {
     },
 }
 
+#[derive(Clone, Copy, serde::Serialize)]
+struct LeanHtEquality {
+    left: usize,
+    right: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtEqState {
+    labels: Vec<LeanHtLabel>,
+    edges: Vec<LeanHtEdge>,
+    obligations: Vec<LeanHtObligation>,
+    equalities: Vec<LeanHtEquality>,
+    representatives: Vec<usize>,
+    representative_paths: Vec<Vec<usize>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtEqRefutationTree {
+    Clash,
+    Branch {
+        clause: usize,
+        assignment: Vec<usize>,
+        children: Vec<(LeanHtEqState, LeanHtEqRefutationTree)>,
+    },
+    Witness {
+        source: usize,
+        target: usize,
+        role: usize,
+        filler: LeanHtLit,
+        child: Box<LeanHtEqRefutationTree>,
+    },
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtEqEvidence {
+    Unsat { tree: LeanHtEqRefutationTree },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtEqCertificate {
+    version: usize,
+    node_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    variable_count: usize,
+    ontology: Vec<LeanHtClause>,
+    state: LeanHtEqState,
+    evidence: LeanHtEqEvidence,
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtEvidence {
@@ -2283,8 +2335,12 @@ struct LeanHtCertificate {
 
 struct LeanHtRefutationState {
     labels: HashSet<(Node, CLit)>,
+    label_order: Vec<(Node, CLit)>,
     edges: HashSet<(R, Node, Node)>,
+    edge_order: Vec<(R, Node, Node)>,
     obligations: HashSet<(R, CLit, Node)>,
+    obligation_order: Vec<(R, CLit, Node)>,
+    equalities: Vec<(Node, Node)>,
     active_nodes: usize,
 }
 
@@ -2292,9 +2348,122 @@ impl LeanHtRefutationState {
     fn root(labels: &[(Node, CLit)]) -> Self {
         Self {
             labels: labels.iter().copied().collect(),
+            label_order: labels.to_vec(),
             edges: HashSet::new(),
+            edge_order: Vec::new(),
             obligations: HashSet::new(),
+            obligation_order: Vec::new(),
+            equalities: Vec::new(),
             active_nodes: 1,
+        }
+    }
+
+    fn representatives_and_paths(&self, node_count: usize) -> (Vec<Node>, Vec<Vec<Node>>) {
+        debug_assert!(node_count >= self.active_nodes);
+        let mut parent: Vec<Node> = (0..node_count).collect();
+        fn find(parent: &mut [Node], mut node: Node) -> Node {
+            while parent[node] != node {
+                node = parent[node];
+            }
+            node
+        }
+        for &(left, right) in &self.equalities {
+            let left_root = find(&mut parent, left);
+            let right_root = find(&mut parent, right);
+            if left_root != right_root {
+                let representative = left_root.min(right_root);
+                let other = left_root.max(right_root);
+                parent[other] = representative;
+            }
+        }
+        let representatives: Vec<Node> = (0..node_count)
+            .map(|node| find(&mut parent, node))
+            .collect();
+        let mut adjacency = vec![Vec::<Node>::new(); node_count];
+        for &(left, right) in &self.equalities {
+            adjacency[left].push(right);
+            adjacency[right].push(left);
+        }
+        let paths = (0..node_count)
+            .map(|source| {
+                let target = representatives[source];
+                if source == target {
+                    return Vec::new();
+                }
+                let mut predecessor = vec![None; node_count];
+                let mut queue = std::collections::VecDeque::from([source]);
+                predecessor[source] = Some(source);
+                while let Some(node) = queue.pop_front() {
+                    if node == target {
+                        break;
+                    }
+                    for &next in &adjacency[node] {
+                        if predecessor[next].is_none() {
+                            predecessor[next] = Some(node);
+                            queue.push_back(next);
+                        }
+                    }
+                }
+                debug_assert!(predecessor[target].is_some());
+                let mut reversed = Vec::new();
+                let mut node = target;
+                while node != source {
+                    reversed.push(node);
+                    node = predecessor[node].expect("union path must use recorded equalities");
+                }
+                reversed.reverse();
+                reversed
+            })
+            .collect();
+        (representatives, paths)
+    }
+
+    fn equivalent(&self, left: Node, right: Node) -> bool {
+        if left == right {
+            return true;
+        }
+        let (representatives, _) = self.representatives_and_paths(self.active_nodes);
+        representatives[left] == representatives[right]
+    }
+
+    fn equality_wire_state(&self, node_count: usize) -> LeanHtEqState {
+        let (representatives, representative_paths) =
+            self.representatives_and_paths(node_count);
+        LeanHtEqState {
+            labels: self
+                .label_order
+                .iter()
+                .map(|&(node, literal)| LeanHtLabel {
+                    node,
+                    literal: Ht::lean_wire_lit(literal),
+                })
+                .collect(),
+            edges: self
+                .edge_order
+                .iter()
+                .map(|&(role, source, target)| LeanHtEdge {
+                    role: role as usize,
+                    source,
+                    target,
+                })
+                .collect(),
+            obligations: self
+                .obligation_order
+                .iter()
+                .map(|&(role, filler, node)| LeanHtObligation {
+                    role: role as usize,
+                    filler: Ht::lean_wire_lit(filler),
+                    node,
+                })
+                .collect(),
+            equalities: self
+                .equalities
+                .iter()
+                .rev()
+                .map(|&(left, right)| LeanHtEquality { left, right })
+                .collect(),
+            representatives,
+            representative_paths,
         }
     }
 
@@ -2310,57 +2479,90 @@ impl LeanHtRefutationState {
                 self.obligations
                     .contains(&(*r, *fil, assignment[*t as usize]))
             }
-            Atom::Eq { s, t } => assignment[*s as usize] == assignment[*t as usize],
+            Atom::Eq { s, t } => self.equivalent(
+                assignment[*s as usize],
+                assignment[*t as usize],
+            ),
         }
     }
 
     fn insert(&mut self, atom: &Atom, assignment: &[Node]) -> bool {
         match atom {
             Atom::Concept { lit, t } => {
-                self.labels.insert((assignment[*t as usize], *lit))
+                let fact = (assignment[*t as usize], *lit);
+                if self.labels.insert(fact) {
+                    self.label_order.insert(0, fact);
+                    true
+                } else {
+                    false
+                }
             }
-            Atom::Role { r, s, t } => self.edges.insert((
-                *r,
-                assignment[*s as usize],
-                assignment[*t as usize],
-            )),
+            Atom::Role { r, s, t } => {
+                let fact = (*r, assignment[*s as usize], assignment[*t as usize]);
+                if self.edges.insert(fact) {
+                    self.edge_order.insert(0, fact);
+                    true
+                } else {
+                    false
+                }
+            }
             Atom::Exists { r, fil, t } => {
-                self.obligations
-                    .insert((*r, *fil, assignment[*t as usize]))
+                let fact = (*r, *fil, assignment[*t as usize]);
+                if self.obligations.insert(fact) {
+                    self.obligation_order.insert(0, fact);
+                    true
+                } else {
+                    false
+                }
             }
-            Atom::Eq { .. } => false,
+            Atom::Eq { s, t } => {
+                let left = assignment[*s as usize];
+                let right = assignment[*t as usize];
+                if self.equivalent(left, right) {
+                    false
+                } else {
+                    self.equalities.push((left, right));
+                    true
+                }
+            }
         }
     }
 
     fn remove(&mut self, atom: &Atom, assignment: &[Node]) {
         match atom {
             Atom::Concept { lit, t } => {
-                self.labels.remove(&(assignment[*t as usize], *lit));
+                let fact = (assignment[*t as usize], *lit);
+                self.labels.remove(&fact);
+                debug_assert_eq!(self.label_order.first(), Some(&fact));
+                self.label_order.remove(0);
             }
             Atom::Role { r, s, t } => {
-                self.edges.remove(&(
-                    *r,
-                    assignment[*s as usize],
-                    assignment[*t as usize],
-                ));
+                let fact = (*r, assignment[*s as usize], assignment[*t as usize]);
+                self.edges.remove(&fact);
+                debug_assert_eq!(self.edge_order.first(), Some(&fact));
+                self.edge_order.remove(0);
             }
             Atom::Exists { r, fil, t } => {
-                self.obligations
-                    .remove(&(*r, *fil, assignment[*t as usize]));
+                let fact = (*r, *fil, assignment[*t as usize]);
+                self.obligations.remove(&fact);
+                debug_assert_eq!(self.obligation_order.first(), Some(&fact));
+                self.obligation_order.remove(0);
             }
-            Atom::Eq { .. } => {}
+            Atom::Eq { s, t } => {
+                let expected = (assignment[*s as usize], assignment[*t as usize]);
+                let removed = self.equalities.pop();
+                debug_assert_eq!(removed, Some(expected));
+            }
         }
     }
 
     fn clashes(&self) -> bool {
         self.labels.iter().any(|(node, literal)| {
-            self.labels.contains(&(
-                *node,
-                CLit {
-                    c: literal.c,
-                    neg: !literal.neg,
-                },
-            ))
+            self.labels.iter().any(|(other, candidate)| {
+                candidate.c == literal.c
+                    && candidate.neg != literal.neg
+                    && self.equivalent(*node, *other)
+            })
         })
     }
 
@@ -7925,6 +8127,148 @@ impl Ht {
         None
     }
 
+    fn lean_eq_refutation(
+        &self,
+        state: &mut LeanHtRefutationState,
+        variable_count: usize,
+        node_budget: usize,
+    ) -> Option<(LeanHtEqRefutationTree, usize)> {
+        if state.clashes() {
+            return Some((LeanHtEqRefutationTree::Clash, state.active_nodes));
+        }
+
+        let assignments =
+            Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
+        for (clause_id, record) in self.clauses.iter().enumerate() {
+            let clause = &record.0;
+            for assignment in &assignments {
+                if !clause.body.iter().all(|atom| state.holds(atom, assignment))
+                    || clause.head.iter().any(|atom| state.holds(atom, assignment))
+                {
+                    continue;
+                }
+                let mut children = Vec::with_capacity(clause.head.len());
+                let mut max_used = state.active_nodes;
+                for atom in &clause.head {
+                    let inserted = state.insert(atom, assignment);
+                    debug_assert!(inserted, "an unsatisfied equality-aware head must be absent");
+                    let successor = state.equality_wire_state(node_budget);
+                    let result = self.lean_eq_refutation(state, variable_count, node_budget);
+                    state.remove(atom, assignment);
+                    let (child, child_used) = result?;
+                    max_used = max_used.max(child_used);
+                    children.push((successor, child));
+                }
+                return Some((
+                    LeanHtEqRefutationTree::Branch {
+                        clause: clause_id,
+                        assignment: assignment.clone(),
+                        children,
+                    },
+                    max_used,
+                ));
+            }
+        }
+
+        let obligation = state
+            .obligations
+            .iter()
+            .copied()
+            .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            .min();
+        if let Some((role, filler, source)) = obligation {
+            if state.active_nodes >= node_budget {
+                return None;
+            }
+            let target = state.active_nodes;
+            state.active_nodes += 1;
+            let edge = (role, source, target);
+            let label = (target, filler);
+            let inserted_edge = state.edges.insert(edge);
+            let inserted_label = state.labels.insert(label);
+            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            state.edge_order.insert(0, edge);
+            state.label_order.insert(0, label);
+            let result = self.lean_eq_refutation(state, variable_count, node_budget);
+            state.label_order.remove(0);
+            state.edge_order.remove(0);
+            state.labels.remove(&label);
+            state.edges.remove(&edge);
+            state.active_nodes -= 1;
+            let (child, max_used) = result?;
+            return Some((
+                LeanHtEqRefutationTree::Witness {
+                    source,
+                    target,
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    child: Box::new(child),
+                },
+                max_used,
+            ));
+        }
+        None
+    }
+
+    fn lean_eq_unsat_certificate_json(&self) -> Result<String, String> {
+        let mut variable_count = 0usize;
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1);
+                        variable_count = variable_count.max(*t as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1);
+                        variable_count = variable_count.max(*t as usize + 1);
+                    }
+                }
+            }
+        }
+        let ontology = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|&value| (1..=64).contains(&value))
+            .unwrap_or(8);
+        let mut state = LeanHtRefutationState::root(&[]);
+        let (tree, _node_count) = self
+            .lean_eq_refutation(&mut state, variable_count, node_budget)
+            .ok_or_else(|| "ontology has an open or node-capped equality refutation branch".to_string())?;
+        let root_state = state.equality_wire_state(node_budget);
+        serde_json::to_string(&LeanHtEqCertificate {
+            version: 2,
+            node_count: node_budget,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            state: root_state,
+            evidence: LeanHtEqEvidence::Unsat { tree },
+        })
+        .map_err(|error| error.to_string())
+    }
+
     /// Construct an exhaustive empty-root refutation for the exact normalized
     /// ontology. Concept, role, and existential heads are monotone finite facts.
     /// Unwitnessed existential obligations may allocate a fresh finite node; the
@@ -8022,6 +8366,13 @@ impl Ht {
     }
 
     pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
+        if self
+            .clauses
+            .iter()
+            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
+        {
+            return self.lean_eq_unsat_certificate_json();
+        }
         self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
     }
 
@@ -17120,12 +17471,55 @@ mod tests {
     }
 
     #[test]
-    fn lean_unsat_wire_refuses_equality_heads() {
-        let t = ht(vec![Clause::new(
-            Vec::new(),
-            vec![Atom::Eq { s: X, t: 1 }],
-        )]);
-        assert!(t.lean_unsat_certificate_json().is_err());
+    fn lean_unsat_wire_serializes_equality_merges() {
+        let t = ht(vec![
+            Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
+            Clause::new(
+                vec![role(R0, X, 1)],
+                vec![con(true, A, X)],
+            ),
+            Clause::new(
+                vec![role(R0, X, 1)],
+                vec![Atom::Eq { s: X, t: 1 }],
+            ),
+        ]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_unsat_certificate_json()
+                .expect("the equality merge closes complementary labels"),
+        )
+        .expect("equality certificate is JSON");
+        assert_eq!(wire["version"], 2);
+        assert_eq!(wire["state"]["representatives"].as_array().unwrap().len(), 8);
+        let encoded = serde_json::to_string(&wire).unwrap();
+        assert!(encoded.contains("equalities"));
+        assert!(encoded.contains("representative_paths"));
+    }
+
+    #[test]
+    fn lean_equality_unsat_wire_passes_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let t = ht(vec![
+            Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
+            Clause::new(vec![role(R0, X, 1)], vec![con(true, A, X)]),
+            Clause::new(vec![role(R0, X, 1)], vec![Atom::Eq { s: X, t: 1 }]),
+        ]);
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-eq-unsat-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, t.lean_unsat_certificate_json().unwrap()).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean equality HT checker")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the Rust equality UNSAT tree");
     }
 
     #[test]

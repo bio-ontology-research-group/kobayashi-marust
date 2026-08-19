@@ -572,6 +572,33 @@ theorem FiniteEqRefutationTree.check_unsatisfiable
     ¬certificate.state.RealizableWith certificate.base.ontology :=
   (tree.check_sound certificate hcheck).sound
 
+def FiniteEqCertificate.EmptyRoot
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) : Prop :=
+  certificate.base.labels = [] ∧ certificate.base.edges = [] ∧
+    certificate.base.obligations = []
+
+/-- A checked equality-aware refutation from an empty graph excludes every
+nonempty-domain model of the exact ontology. A constant node valuation respects
+any certified equality quotient, so no unique-name assumption is introduced. -/
+theorem FiniteEqRefutationTree.check_ontology_unsatisfiable
+    [Nonempty (Fin nodeCount)]
+    (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hempty : certificate.EmptyRoot)
+    (hcheck : tree.check certificate = true) :
+    ¬∃ (Domain : Type) (I : Interp Domain (Fin conceptCount) (Fin roleCount)),
+      Nonempty Domain ∧ I.models certificate.base.ontology := by
+  rintro ⟨Domain, I, hdomain, hmodels⟩
+  apply tree.check_unsatisfiable certificate hcheck
+  let value : Fin nodeCount → Domain := fun _ => Classical.choice hdomain
+  refine ⟨Domain, I, value, hmodels, ?_⟩
+  rcases hempty with ⟨hlabels, hedges, hobligations⟩
+  refine ⟨?_, ?_⟩
+  · simp [FiniteEqCertificate.state, FiniteSatCertificate.state, State.RealizedBy,
+      hlabels, hedges, hobligations]
+  · intro left right _
+    rfl
+
 namespace EqualityRefutationCheckerTests
 
 private def transitiveBase : FiniteSatCertificate 3 1 1 1 where
@@ -639,5 +666,6 @@ end EqualityRefutationCheckerTests
 #print axioms FiniteEqCertificate.equalityClosureValidB_sound
 #print axioms FiniteEqRefutationTree.check_sound
 #print axioms FiniteEqRefutationTree.check_unsatisfiable
+#print axioms FiniteEqRefutationTree.check_ontology_unsatisfiable
 
 end ContextCalculus.Hypertableau

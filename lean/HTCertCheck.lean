@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauWire
+import ContextCalculus.HypertableauEqualityWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -8,8 +8,14 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      let document : WireCertificate ← fromJson? json
-      document.check
+      let versionValue ← json.getObjVal? "version"
+      let version : Nat ← fromJson? versionValue
+      if version = 2 then
+        let document : WireEqCertificate ← fromJson? json
+        document.check
+      else
+        let document : WireCertificate ← fromJson? json
+        document.check
     match result with
     | .ok true =>
         IO.println "HT certificate accepted"

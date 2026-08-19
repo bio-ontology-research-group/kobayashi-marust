@@ -28,6 +28,7 @@ import ContextCalculus.Certification
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauEquality
 import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauCertificate
 import ContextCalculus.HypertableauBlockingCertificate
 import ContextCalculus.HypertableauRefutationCertificate

@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.45] – 2026-08-19
+
+### Connect equality-aware HT refutations to the runtime
+
+- Add a bounds-checked version-2 JSON format for equality-aware HT
+  refutations. Every branch child carries the exact successor graph, equality
+  history, representative vector, and checked paths to representatives.
+- Prove that an accepted version-2 empty-root document excludes every
+  nonempty-domain model of its exact normalized ontology.
+- Extend `ht-cert-check` to dispatch version 1 equality-free documents and
+  version 2 equality-aware documents without weakening either checker. Add a
+  dedicated `ht-eq-cert-check` executable for diagnostics.
+- Extend the bounded Rust refutation producer with reversible equality merges,
+  equality-aware body matching and clashes, deterministic state histories, and
+  representative-path witnesses. Rust-produced equality certificates pass the
+  native Lean checker.
+- Permit equality/number inputs through the certified global-consistency gate.
+  Publication still requires checker acceptance. Equality-aware SAT evidence,
+  taxonomy evidence, inverse roles, nominals, and native ABoxes remain
+  fail-closed.
+
+This release connects certified equality-aware UNSAT evidence to the concrete
+runtime. It does not certify all HT termination or completeness, and it does
+not make the complete Rust executable formally verified.
+
 ## [0.3.44] – 2026-08-19
 
 ### Certify finite equality-aware HT refutations

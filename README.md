@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.44`.
+`v0.3.45`.
 
 ## Classify an ontology
 
@@ -141,6 +141,7 @@ lake build
 # Native checker linking can otherwise use one compiler per workstation core.
 LEAN_NUM_THREADS=2 lake build elc-cert-check
 LEAN_NUM_THREADS=2 lake build ht-cert-check
+LEAN_NUM_THREADS=2 lake build ht-eq-cert-check
 LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check
 ```
 
@@ -178,12 +179,13 @@ the trust boundary. For inconsistent clause sets admitting a bounded finite
 refutation, Rust independently constructs an exhaustive empty-root tree over
 concept, role, and existential facts. An existential obligation may bind a
 fresh certificate node to its semantic witness; Lean checks freshness before
-accepting the added edge and filler label. Global inconsistency is published
-only after Lean accepts every branch. Open, node-capped, or assignment-capped
-search declines, and equality heads remain rejected because they require
-certified merging. Equality/cardinality, inverse roles, nominals, native ABoxes,
-QO, and complete termination/blocking correspondence remain separate HT
-certification tasks.
+accepting the added edge and filler label. Version 2 also checks global UNSAT
+refutations with equality heads: every child includes the exact equality
+history, representative vector, and paths witnessing the quotient. Global
+inconsistency is published only after Lean accepts every branch. Open,
+node-capped, or assignment-capped search declines. Equality-aware SAT and
+taxonomy evidence, inverse roles, nominals, native ABoxes, QO, and complete
+termination/blocking correspondence remain separate HT certification tasks.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered
@@ -196,8 +198,8 @@ duplicated, or reassigned cells. Set both
 with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
 The worker derives its published taxonomy directly from the accepted matrix and
 publishes nothing if either the global or taxonomy checker rejects. This covers
-only the same equality-free ALC(H) certificate fragment described above; it is
-not a certificate for all HT inputs or for automatic routing.
+only the equality-free ALC(H) certificate fragment described above; it is not a
+certificate for all HT inputs or for automatic routing.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

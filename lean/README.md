@@ -209,7 +209,7 @@ published flag equivalent to semantic unsatisfiability. The Rust worker invokes 
 serialization, process execution, or verification fails. On acceptance it
 publishes the checked named relation directly.
 
-### Hypertableau certificate checker — `ContextCalculus/HypertableauWire.lean`
+### Hypertableau certificate checkers — `ContextCalculus/HypertableauWire.lean`
 
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
@@ -221,10 +221,20 @@ only decoded evidence to those proved checkers. Build the native executable with
 decoder is built with
 `LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
 
+`HypertableauEqualityCertificate.lean` and
+`HypertableauEqualityWire.lean` add version-2 global UNSAT evidence with exact
+finite equality closure. The checker validates every merge, representative,
+and path to that representative without assuming distinct certificate nodes
+denote distinct domain elements. `ht-cert-check` dispatches both versions; the
+same version-2 decoder is available separately with
+`LEAN_NUM_THREADS=2 lake build ht-eq-cert-check`. Equality-aware SAT and
+taxonomy evidence remain fail-closed.
+
 The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H) and materializes default anywhere-subset blocking folds as
 ordinary candidate edges. It also emits exhaustive global UNSAT refutations
-when bounded finite search closes over concept, role, and existential facts.
+when bounded finite search closes over concept, role, existential, and equality
+facts.
 It can also emit individual subsumption and unsatisfiable-concept refutations,
 plus finite countermodels for non-subsumption and concept satisfiability. The
 checker verifies that each refutation starts from exactly the declared query

@@ -5236,9 +5236,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     "HT Lean certification requires the global consistency route".to_string(),
                 );
             }
-            if inp.number || inp.inverse || !inp.nominals.is_empty() || native_abox_active {
+            if inp.inverse || !inp.nominals.is_empty() || native_abox_active {
                 return Err(
-                    "HT Lean certificate v1 requires equality-free ALC(H) input".to_string(),
+                    "HT Lean certification does not yet cover inverse roles, nominals, or native ABoxes"
+                        .to_string(),
+                );
+            }
+            if lean_taxonomy_requested && inp.number {
+                return Err(
+                    "HT Lean taxonomy certification does not yet cover equality or number restrictions"
+                        .to_string(),
                 );
             }
             if std::env::var_os("KM_HT_QO").is_some() {
