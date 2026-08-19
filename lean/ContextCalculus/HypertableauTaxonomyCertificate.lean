@@ -165,6 +165,40 @@ structure SomeFiniteSubsumptionDecision
   sup : Fin conceptCount
   decision : FiniteSubsumptionDecision ontology sub sup
 
+structure SomeConceptDecision
+    (ontology : List (Clause Variable Concept Role)) where
+  concept : Concept
+  decision : ConceptDecision ontology concept
+
+structure SomeSubsumptionDecision
+    (ontology : List (Clause Variable Concept Role)) where
+  sub : Concept
+  sup : Concept
+  decision : SubsumptionDecision ontology sub sup
+
+/-- A heterogeneous checked-evidence pool. Individual cells may come from
+ordinary finite HT certificates or equality-quotient certificates; only their
+proved semantic decisions are retained at this boundary. -/
+structure CoveredTaxonomyCertificate
+    (ontology : List (Clause Variable Concept Role)) (named : List Concept) where
+  concepts : List (SomeConceptDecision ontology)
+  subsumptions : List (SomeSubsumptionDecision ontology)
+  conceptCovered : ∀ concept, concept ∈ named →
+    { entry // entry ∈ concepts ∧ entry.concept = concept }
+  subsumptionCovered : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    { entry // entry ∈ subsumptions ∧ entry.sub = sub ∧ entry.sup = sup }
+
+def CoveredTaxonomyCertificate.sound
+    (certificate : CoveredTaxonomyCertificate ontology named) :
+    CompleteTaxonomyCertificate ontology named where
+  concept candidate hnamed := by
+    rcases certificate.conceptCovered candidate hnamed with ⟨entry, _, heq⟩
+    exact heq ▸ entry.decision
+  subsumption sub hsub sup hsup := by
+    rcases certificate.subsumptionCovered sub hsub sup hsup with
+      ⟨entry, _, hsubEq, hsupEq⟩
+    exact hsupEq ▸ hsubEq ▸ entry.decision
+
 /-- A finite evidence pool is complete when every named concept and every
 ordered named pair occurs. Extra evidence is harmless; missing cells are not. -/
 structure FiniteCoveredTaxonomyCertificate
@@ -258,6 +292,7 @@ theorem CompleteTaxonomyCertificate.subsumptions_exact
 
 #print axioms ConceptDecision.answer_eq_true_iff
 #print axioms SubsumptionDecision.answer_eq_true_iff
+#print axioms CoveredTaxonomyCertificate.sound
 #print axioms CompleteTaxonomyCertificate.unsatisfiable_exact
 #print axioms CompleteTaxonomyCertificate.subsumptions_exact
 #print axioms FiniteConceptDecision.sound

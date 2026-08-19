@@ -5242,9 +5242,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if lean_taxonomy_requested && inp.number {
+            if lean_taxonomy_requested && inp.number && !inp.card_defs.is_empty() {
                 return Err(
-                    "HT Lean taxonomy certification does not yet cover equality or number restrictions"
+                    "HT Lean taxonomy certification does not yet cover number-restriction side data"
                         .to_string(),
                 );
             }
@@ -5456,11 +5456,17 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             })
                     })
                     .collect::<Result<_, _>>()?;
+                fn evidence(entry: &serde_json::Value) -> Option<&serde_json::Value> {
+                    entry
+                        .get("evidence")
+                        .or_else(|| entry.get("plain")?.get("payload")?.get("evidence"))
+                        .or_else(|| entry.get("equality")?.get("evidence"))
+                }
                 let certified_unsat: Vec<C> = concepts
                     .iter()
                     .zip(ids.iter().copied())
                     .filter_map(|(entry, id)| {
-                        entry["evidence"]["unsatisfiable_concept"]
+                        evidence(entry)?["unsatisfiable_concept"]
                             .is_object()
                             .then_some(id)
                     })
@@ -5471,7 +5477,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .as_array()
                         .ok_or_else(|| "checked HT taxonomy has a non-array row".to_string())?;
                     for (sup, entry) in ids.iter().copied().zip(row) {
-                        if entry["evidence"]["subsumption"].is_object() {
+                        if evidence(entry)
+                            .is_some_and(|evidence| evidence["subsumption"].is_object())
+                        {
                             certified_subs.push((sub, sup));
                         }
                     }

@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.3.48] – 2026-08-19
+
+### Certify complete mixed-equality HT taxonomies
+
+- Define a heterogeneous covered-taxonomy certificate whose cells retain
+  semantic decisions after either an equality-free finite checker or an
+  equality-quotient checker accepts them. Prove that complete concept and
+  ordered-pair coverage yields an exact named taxonomy.
+- Add taxonomy wire version 2. Every row-major cell is explicitly tagged as a
+  version-1 payload or equality-aware payload, while the ontology and named
+  class vector remain shared and bounds checked. Missing, duplicated, or
+  position-swapped cells are rejected.
+- Extend the native taxonomy checker to dispatch unchanged version-1 documents
+  and mixed version-2 documents.
+- Emit version 2 from Rust only when equality-aware evidence occurs; pure
+  equality-free output remains version 1. Checker-gated publication reads the
+  accepted wrapped evidence and remains fail-closed on rejected matrices.
+- Permit checker-gated taxonomy certification for equality-bearing clause sets
+  without cardinality side data. Number-restriction side data, inverse roles,
+  nominals, and native ABoxes remain outside this endpoint.
+
+The native checker exposed an existing runtime completeness gap for an
+unguarded equality body such as `x=x → A(x)`: the producer omits `A`, and the
+checker rejects the resulting model. A regression test preserves this
+fail-closed behavior. Equality-body triggering, complete blocking/termination,
+and the remaining OWL features still require implementation and proof. This
+release does not certify the entire HT implementation.
+
 ## [0.3.47] – 2026-08-19
 
 ### Certify equality-aware HT query decisions

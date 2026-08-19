@@ -15,7 +15,29 @@ const WIRE: &str = r#"{
   "transitive":[]
 }"#;
 
-fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::process::Output {
+const MIXED_WIRE: &str = r#"{
+  "concepts":["A","B","Dormant"],
+  "roles":[],
+  "clauses":[{
+    "body":[{"k":"c","neg":false,"c":2,"t":0},{"k":"eq","s":0,"t":0}],
+    "head":[{"k":"c","neg":false,"c":0,"t":0}]
+  }],
+  "queries":[0,1],
+  "inverse":false,
+  "number":false,
+  "nominals":[],
+  "native_abox":{},
+  "card_defs":[],
+  "chains":[],
+  "transitive":[]
+}"#;
+
+fn run_with_input(
+    input: &str,
+    global_checker: &str,
+    taxonomy_checker: &str,
+    output_stem: &str,
+) -> std::process::Output {
     let root = std::env::temp_dir().join(format!(
         "km-ht-taxonomy-runtime-{}-{output_stem}",
         std::process::id()
@@ -38,7 +60,7 @@ fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::
         .stdin
         .take()
         .expect("tableau stdin")
-        .write_all(WIRE.as_bytes())
+        .write_all(input.as_bytes())
         .expect("write tableau wire input");
     let output = child.wait_with_output().expect("wait for tableau worker");
     assert!(global_out.is_file(), "global certificate must be persisted");
@@ -49,6 +71,10 @@ fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::
     let _ = std::fs::remove_file(global_out);
     let _ = std::fs::remove_file(taxonomy_out);
     output
+}
+
+fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::process::Output {
+    run_with_input(WIRE, global_checker, taxonomy_checker, output_stem)
 }
 
 #[test]
@@ -85,5 +111,32 @@ fn rejecting_taxonomy_checker_suppresses_publication() {
         String::from_utf8_lossy(&output.stderr).contains("rejected the certificate"),
         "{}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn accepted_mixed_taxonomy_is_read_from_wrapped_evidence() {
+    let global_checker =
+        std::env::var("KM_HT_TEST_LEAN_GLOBAL_CHECKER").unwrap_or_else(|_| "/bin/true".to_string());
+    let taxonomy_checker = std::env::var("KM_HT_TEST_LEAN_TAXONOMY_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let output = run_with_input(
+        MIXED_WIRE,
+        &global_checker,
+        &taxonomy_checker,
+        "mixed-accept",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("classification is JSON");
+    assert_eq!(value["consistent"], true);
+    assert_eq!(value["unsatisfiable"], serde_json::json!([]));
+    assert_eq!(
+        value["subsumptions"],
+        serde_json::json!([["A", "A"], ["B", "B"]])
     );
 }

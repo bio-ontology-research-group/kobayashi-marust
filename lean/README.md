@@ -249,6 +249,11 @@ from a complete set of either-polarity decisions.
 class and a square row-major decision matrix for all ordered pairs. The Rust
 worker publishes the named taxonomy directly from this matrix only after both
 the global and taxonomy native checkers accept.
+`HypertableauMixedTaxonomyWire.lean` preserves that version-1 format and adds a
+version-2 matrix in which each cell may independently contain the ordinary
+finite evidence or equality-quotient evidence. Both variants refine to the
+same semantic decision before total matrix coverage is proved, so an accepted
+mixed matrix has the same exactness theorem as an equality-free matrix.
 The refutation checker has an explicit fresh-witness rule: it verifies that the
 target node occurs in no prior fact, binds that node to the semantic existential
 witness, and then checks the recursively materialized edge and filler label.

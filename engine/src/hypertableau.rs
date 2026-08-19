@@ -8746,30 +8746,64 @@ impl Ht {
             return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
         }
 
-        let payload = |document: String| -> Result<(serde_json::Value, serde_json::Value), String> {
+        let payload = |document: String| -> Result<
+            (
+                serde_json::Value,
+                Option<serde_json::Value>,
+                serde_json::Value,
+                bool,
+            ),
+            String,
+        > {
             let value: serde_json::Value =
                 serde_json::from_str(&document).map_err(|error| error.to_string())?;
             let object = value
                 .as_object()
                 .ok_or_else(|| "HT Lean query certificate is not an object".to_string())?;
-            let query = serde_json::json!({
-                "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
-                "labels": object.get("labels").cloned().ok_or("missing labels")?,
-                "edges": object.get("edges").cloned().ok_or("missing edges")?,
-                "obligations": object.get("obligations").cloned().ok_or("missing obligations")?,
-                "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
-            });
-            Ok((value, query))
+            let version = object
+                .get("version")
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| "HT Lean query certificate has no numeric version".to_string())?;
+            match version {
+                1 => {
+                    let query = serde_json::json!({
+                        "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
+                        "labels": object.get("labels").cloned().ok_or("missing labels")?,
+                        "edges": object.get("edges").cloned().ok_or("missing edges")?,
+                        "obligations": object.get("obligations").cloned().ok_or("missing obligations")?,
+                        "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+                    });
+                    let mixed = serde_json::json!({ "plain": { "payload": query.clone() } });
+                    Ok((value, Some(query), mixed, false))
+                }
+                2 => {
+                    let mixed = serde_json::json!({
+                        "equality": {
+                            "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
+                            "state": object.get("state").cloned().ok_or("missing equality state")?,
+                            "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+                        }
+                    });
+                    Ok((value, None, mixed, true))
+                }
+                other => Err(format!("unsupported HT query certificate version {other}")),
+            }
         };
 
-        let mut concept_payloads = Vec::with_capacity(named.len());
-        let mut subsumption_payloads = Vec::with_capacity(named.len());
+        let mut legacy_concepts = Vec::with_capacity(named.len());
+        let mut mixed_concepts = Vec::with_capacity(named.len());
+        let mut legacy_subsumptions = Vec::with_capacity(named.len());
+        let mut mixed_subsumptions = Vec::with_capacity(named.len());
         let mut base: Option<serde_json::Value> = None;
         let mut concept_count = 0u64;
+        let mut has_equality = false;
 
-        let mut note_document =
-            |document: String| -> Result<serde_json::Value, String> {
-                let (full, query) = payload(document)?;
+        let mut note_document = |document: String| -> Result<
+            (Option<serde_json::Value>, serde_json::Value),
+            String,
+        > {
+                let (full, legacy, mixed, equality) = payload(document)?;
+                has_equality |= equality;
                 concept_count = concept_count.max(
                     full["concept_count"]
                         .as_u64()
@@ -8786,7 +8820,7 @@ impl Ht {
                 } else {
                     base = Some(full);
                 }
-                Ok(query)
+                Ok((legacy, mixed))
             };
 
         for &concept in named {
@@ -8798,11 +8832,14 @@ impl Ht {
             } else {
                 self.lean_unsatisfiable_concept_certificate_json(concept)?
             };
-            concept_payloads.push(note_document(document)?);
+            let (legacy, mixed) = note_document(document)?;
+            legacy_concepts.push(legacy);
+            mixed_concepts.push(mixed);
         }
 
         for &sub in named {
-            let mut row = Vec::with_capacity(named.len());
+            let mut legacy_row = Vec::with_capacity(named.len());
+            let mut mixed_row = Vec::with_capacity(named.len());
             for &sup in named {
                 let satisfiable = self
                     .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
@@ -8812,9 +8849,12 @@ impl Ht {
                 } else {
                     self.lean_subsumption_certificate_json(sub, sup)?
                 };
-                row.push(note_document(document)?);
+                let (legacy, mixed) = note_document(document)?;
+                legacy_row.push(legacy);
+                mixed_row.push(mixed);
             }
-            subsumption_payloads.push(row);
+            legacy_subsumptions.push(legacy_row);
+            mixed_subsumptions.push(mixed_row);
         }
 
         let base = base.ok_or_else(|| "HT Lean taxonomy has no evidence".to_string())?;
@@ -8825,15 +8865,32 @@ impl Ht {
                 .max()
                 .unwrap_or(0),
         );
+        let (version, concepts, subsumptions) = if has_equality {
+            (2, mixed_concepts, mixed_subsumptions)
+        } else {
+            let concepts = legacy_concepts
+                .into_iter()
+                .map(|payload| payload.ok_or_else(|| "missing version-1 concept payload".to_string()))
+                .collect::<Result<Vec<_>, _>>()?;
+            let subsumptions = legacy_subsumptions
+                .into_iter()
+                .map(|row| {
+                    row.into_iter()
+                        .map(|payload| payload.ok_or_else(|| "missing version-1 subsumption payload".to_string()))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            (1, concepts, subsumptions)
+        };
         serde_json::to_string(&serde_json::json!({
-            "version": 1,
+            "version": version,
             "concept_count": concept_count,
             "role_count": base["role_count"],
             "variable_count": base["variable_count"],
             "ontology": base["ontology"],
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
-            "concepts": concept_payloads,
-            "subsumptions": subsumption_payloads,
+            "concepts": concepts,
+            "subsumptions": subsumptions,
         }))
         .map_err(|error| error.to_string())
     }
@@ -17718,6 +17775,23 @@ mod tests {
     }
 
     #[test]
+    fn lean_taxonomy_wire_mixes_plain_refutations_and_equality_models() {
+        let mut t = ht(vec![Clause::new(
+            vec![con(false, D, X), Atom::Eq { s: X, t: X }],
+            vec![con(false, A, X)],
+        )]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_taxonomy_certificate_json(&[A, B])
+                .expect("the equality-bearing ontology has evidence for every cell"),
+        )
+        .expect("mixed taxonomy certificate is JSON");
+        assert_eq!(wire["version"], 2);
+        assert!(wire["concepts"][0]["equality"].is_object());
+        assert!(wire["subsumptions"][0][0]["plain"].is_object());
+        assert!(wire["subsumptions"][0][1]["equality"].is_object());
+    }
+
+    #[test]
     fn lean_unsat_wire_closes_role_and_existential_branches() {
         let role_t = ht(vec![
             Clause::new(Vec::new(), vec![role(R0, X, X)]),
@@ -17913,24 +17987,37 @@ mod tests {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
             return;
         };
-        let mut t = ht(Vec::new());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-cert-{}.json",
             std::process::id()
         ));
-        let document = t
-            .lean_taxonomy_certificate_json(&[A, B])
-            .expect("produce complete two-concept taxonomy");
-        std::fs::write(&path, &document).expect("write temporary HT taxonomy certificate");
-        let accepted = std::process::Command::new(&checker)
-            .arg(&path)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .expect("run native Lean HT taxonomy checker")
-            .success();
+        let mut plain = ht(Vec::new());
+        let mut mixed = ht(vec![Clause::new(
+            vec![con(false, D, X), Atom::Eq { s: X, t: X }],
+            vec![con(false, A, X)],
+        )]);
+        let documents = [
+            plain
+                .lean_taxonomy_certificate_json(&[A, B])
+                .expect("produce complete equality-free taxonomy"),
+            mixed
+                .lean_taxonomy_certificate_json(&[A, B])
+                .expect("produce complete mixed equality taxonomy"),
+        ];
+        for document in &documents {
+            std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean HT taxonomy checker")
+                .success();
+            assert!(accepted, "Lean must accept the complete Rust taxonomy matrix");
+        }
+        let document = &documents[1];
         let mut tampered: serde_json::Value =
-            serde_json::from_str(&document).expect("taxonomy document is JSON");
+            serde_json::from_str(document).expect("taxonomy document is JSON");
         tampered["subsumptions"][0]
             .as_array_mut()
             .expect("first taxonomy row")
@@ -17945,7 +18032,34 @@ mod tests {
             .expect("run native Lean HT taxonomy checker on tampered matrix")
             .success();
         let _ = std::fs::remove_file(path);
-        assert!(accepted, "Lean must accept the complete Rust taxonomy matrix");
         assert!(rejected, "Lean must reject a taxonomy with one missing cell");
+    }
+
+    #[test]
+    fn lean_taxonomy_checker_rejects_an_unmaterialized_equality_body() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
+            return;
+        };
+        let mut t = ht(vec![Clause::new(
+            vec![Atom::Eq { s: X, t: X }],
+            vec![con(false, A, X)],
+        )]);
+        let document = t
+            .lean_taxonomy_certificate_json(&[A, B])
+            .expect("the producer exposes its incomplete equality-body state to the checker");
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-taxonomy-equality-body-gap-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, document).unwrap();
+        let rejected = !std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean checker on incomplete equality-body model")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(rejected, "the checker must keep this runtime gap fail-closed");
     }
 }
