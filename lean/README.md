@@ -219,9 +219,14 @@ refutation. `HypertableauWire.lean` bounds-checks versioned JSON and dispatches
 only decoded evidence to those proved checkers. Build the native executable with
 `LEAN_NUM_THREADS=2 lake build ht-cert-check`.
 
-This is not yet a certification claim for the production Rust HT worker. Rust
-emission, blocking and termination correspondence, equality/cardinality,
-nominals, and taxonomy publication remain to be connected or proved.
+The production Rust worker emits checker-gated global SAT evidence for
+equality-free ALC(H) and materializes default anywhere-subset blocking folds as
+ordinary candidate edges. It also emits exhaustive global UNSAT refutations for
+concept-only clauses. The Lean checker treats all Rust choices as untrusted and
+accepts only an exact finite model or a closed refutation tree. Role-bearing
+UNSAT, blocking termination correspondence, equality/cardinality, inverse
+roles, nominals, native ABoxes, and taxonomy publication remain to be connected
+or proved.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

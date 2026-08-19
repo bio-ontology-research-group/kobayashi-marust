@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.36`.
+`v0.3.37`.
 
 ## Classify an ontology
 
@@ -173,9 +173,13 @@ It publishes global consistency only after Lean accepts the exact normalized
 clauses and terminal model, and otherwise fails closed. For default
 anywhere-subset blocking, Rust materializes the finite fold as ordinary edges;
 Lean exhaustively checks the folded graph, so blocker selection remains outside
-the trust boundary. Equality/cardinality, inverse roles, nominals, native
-ABoxes, QO, UNSAT, termination, and taxonomy publication remain separate HT
-certification tasks.
+the trust boundary. For inconsistent concept-only clause sets, Rust
+independently constructs an exhaustive empty-root refutation tree and publishes
+global inconsistency only after the same Lean checker accepts every branch. Any
+open valuation or non-concept atom makes that producer decline.
+Equality/cardinality, inverse roles, nominals, native ABoxes, QO, role-bearing
+UNSAT, termination, and taxonomy publication remain separate HT certification
+tasks.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

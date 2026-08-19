@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.37] – 2026-08-19
+
+### Certify concept-only HT inconsistency publication
+
+- Add a Rust producer for exhaustive finite refutation trees over exact
+  concept-only normalized HT clauses. Each recursive branch asserts one absent
+  head literal; a clash or an empty-head clause closes it.
+- Refuse evidence when any valuation remains open or any role, existential, or
+  equality atom occurs. This keeps role-bearing and quotient-dependent UNSAT
+  outside the certified runtime slice.
+- Serialize the producer's tree in the version-1 HT wire format and require the
+  native Lean checker before the worker can publish global inconsistency.
+- Test exhaustive binary closure, open-branch refusal, non-concept refusal, the
+  exact Rust-to-JSON-to-Lean path, and checker-gated `tableau_cli` publication.
+- Validate the production example: `[] -> A | B`, `A -> []`, and `B -> []`
+  emits two exhaustive children, is accepted by `ht-cert-check`, and publishes
+  `consistent:false`.
+
+This release certifies global HT inconsistency publication for the concept-only
+fragment. Role-bearing UNSAT, equality/cardinality, inverse roles, nominals,
+native ABoxes, termination correspondence, and taxonomy publication remain
+outstanding.
+
 ## [0.3.36] – 2026-08-17
 
 ### Certify finite HT model folding

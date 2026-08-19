@@ -16598,4 +16598,36 @@ mod tests {
         )]);
         assert!(t.lean_concept_unsat_certificate_json().is_err());
     }
+
+    #[test]
+    fn lean_concept_unsat_wire_passes_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let t = ht(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
+            Clause::new(vec![con(false, A, X)], Vec::new()),
+            Clause::new(vec![con(false, B, X)], Vec::new()),
+        ]);
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-unsat-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(
+            &path,
+            t.lean_concept_unsat_certificate_json()
+                .expect("closed concept ontology has a refutation"),
+        )
+        .expect("write temporary HT certificate");
+        let accepted = std::process::Command::new(checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean HT checker")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the exact Rust UNSAT tree");
+    }
 }
