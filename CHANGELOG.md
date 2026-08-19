@@ -2,6 +2,37 @@
 
 ## [unreleased]
 
+## [0.3.54] – 2026-08-20
+
+### Check HT trigger absorption and contrapositives from the source ontology
+
+- Add proof-producing wire decoders for the exact trigger-absorption pass. The
+  checker requires one decision per source clause, checks retained clauses by
+  equality, bounds-checks every identifier, and reconstructs absorbed clauses
+  from a checked positive/negative head partition.
+- Add proof-producing contrapositive decoding. Every appended clause carries a
+  bounds-checked source-clause index and exact selected, left, and right literal
+  split. Lean reconstructs the target and proves that its source belongs to the
+  absorbed ontology.
+- Compose trigger absorption, contrapositive extension, and equality-premise
+  normalization in one executable source-equivalence checker. Truncated output,
+  fabricated source indices, wrong partitions, wrong splits, and mismatched
+  intermediate ontologies are rejected.
+- Add individual and complete-taxonomy wire version 4. Both transfer accepted
+  SAT, UNSAT, concept, subsumption, and complete-matrix evidence back to the
+  original source ontology through the checked preprocessing equivalence.
+- Make Rust retain and serialize exact preprocessing evidence. Rust-produced
+  individual and complete-taxonomy documents pass their native Lean checkers;
+  tampered contrapositive evidence is rejected.
+- Keep certificate publication fail-closed when later clause-changing
+  optimizations invalidate the recorded correspondence. `KM_HT_HARVEST` and
+  the previously excluded inverse, nominal, native-ABox, chain, and unsupported
+  cardinality paths remain outside this certificate route.
+
+This release closes the source-correspondence gap for HT trigger absorption and
+clash contrapositives. It does not prove that every HT search terminates or
+produces finite evidence, and it does not certify the complete SROIQ runtime.
+
 ## [0.3.53] – 2026-08-19
 
 ### Cover interleaved HT trigger-absorption heads

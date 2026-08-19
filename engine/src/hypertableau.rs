@@ -1650,6 +1650,33 @@ struct BodyEqualityNormalizationEvidence {
     had_equality: bool,
 }
 
+#[derive(Clone)]
+enum TriggerAbsorptionEvidence {
+    Keep,
+    Absorb {
+        node: Var,
+        negative: Vec<C>,
+        positive: Vec<C>,
+    },
+}
+
+#[derive(Clone)]
+struct ContrapositiveEvidence {
+    source_clause: usize,
+    node: Var,
+    selected: CLit,
+    left_literals: Vec<CLit>,
+    right_literals: Vec<CLit>,
+}
+
+#[derive(Clone)]
+struct PreprocessingEvidence {
+    source: Vec<Clause>,
+    absorbed: Vec<Clause>,
+    trigger_steps: Vec<TriggerAbsorptionEvidence>,
+    contrapositives: Vec<ContrapositiveEvidence>,
+}
+
 fn eliminate_body_equalities(clause: &mut Clause) -> BodyEqualityNormalizationEvidence {
     let source = clause.clone();
     let equalities: Vec<(Var, Var)> = clause
@@ -2320,6 +2347,34 @@ struct LeanHtClauseNormalization {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtTriggerStep {
+    Keep,
+    Absorb {
+        node: usize,
+        negative: Vec<usize>,
+        positive: Vec<usize>,
+    },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtContrapositive {
+    source_clause: usize,
+    node: usize,
+    selected: LeanHtLit,
+    left_literals: Vec<LeanHtLit>,
+    right_literals: Vec<LeanHtLit>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtPreprocessingEvidence {
+    source: Vec<LeanHtClause>,
+    absorbed: Vec<LeanHtClause>,
+    trigger_steps: Vec<LeanHtTriggerStep>,
+    contrapositives: Vec<LeanHtContrapositive>,
+}
+
+#[derive(serde::Serialize)]
 struct LeanHtLabel {
     node: usize,
     literal: LeanHtLit,
@@ -2855,6 +2910,7 @@ impl HtModelSnapshot {
 pub struct Ht {
     clauses: Vec<ClauseRec>,
     cert_body_normalization: Option<Vec<BodyEqualityNormalizationEvidence>>,
+    cert_preprocessing: Option<PreprocessingEvidence>,
     /// Concepts whose last per-concept QoSat saturation had a shared filler
     /// (in-degree ≥ 2 non-root node) and so may carry over-approximated subsumers.
     /// Set by `qo_classify_perconcept`, consumed by the verification pass.
@@ -3117,9 +3173,10 @@ pub struct Ht {
 /// negative facts in through ordinary Horn firing, so unit propagation can fire on
 /// complementary disjunctions and the negative branch's own consequences
 /// (`¬A ⊑ ∃r.B`) get derived. Each added clause is entailed ⇒ sound.
-fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
+fn contrapositives(clauses: &[Clause]) -> (Vec<Clause>, Vec<ContrapositiveEvidence>) {
     let mut extra = Vec::new();
-    for cl in clauses {
+    let mut evidence = Vec::new();
+    for (source_clause, cl) in clauses.iter().enumerate() {
         if !cl.head.is_empty() || cl.body.len() < 2 {
             continue;
         }
@@ -3164,9 +3221,16 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
                 body,
                 head: vec![Atom::Concept { lit: comp, t: v }],
             });
+            evidence.push(ContrapositiveEvidence {
+                source_clause,
+                node: v,
+                selected: lits[i],
+                left_literals: lits[..i].to_vec(),
+                right_literals: lits[i + 1..].to_vec(),
+            });
         }
     }
-    extra
+    (extra, evidence)
 }
 
 /// Trigger-keyed (binary/n-ary) absorption (KM_HT_TRIGABS). A global GCI clause
@@ -3186,10 +3250,12 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
 /// containing non-Concept atoms (existential / role disjuncts) are also left
 /// untouched (conservative). All-negative heads `⊤ ⊑ ¬C1 ⊔ … ⊔ ¬Ck` correctly
 /// become the clash clause `C1 ⊓ … ⊓ Ck ⊑ ⊥`. Rewrites in place; returns count.
-fn trigger_absorb(clauses: &mut [Clause]) -> usize {
+fn trigger_absorb(clauses: &mut [Clause]) -> (usize, Vec<TriggerAbsorptionEvidence>) {
     let mut count = 0usize;
+    let mut evidence = Vec::with_capacity(clauses.len());
     for cl in clauses.iter_mut() {
         if !cl.body.is_empty() || cl.head.is_empty() {
+            evidence.push(TriggerAbsorptionEvidence::Keep);
             continue;
         }
         // Head must be all-Concept atoms on a single variable, with ≥1 negative.
@@ -3218,14 +3284,18 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
             }
         }
         if !all_concept_one_var || !has_neg {
+            evidence.push(TriggerAbsorptionEvidence::Keep);
             continue;
         }
         // Move every negative concept disjunct ¬Ci into the body as +Ci.
         let mut new_body: Vec<Atom> = Vec::new();
         let mut new_head: Vec<Atom> = Vec::new();
+        let mut negative = Vec::new();
+        let mut positive = Vec::new();
         for a in &cl.head {
             if let Atom::Concept { lit, t } = a {
                 if lit.neg {
+                    negative.push(lit.c);
                     new_body.push(Atom::Concept {
                         lit: CLit {
                             neg: false,
@@ -3235,14 +3305,20 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
                     });
                     continue;
                 }
+                positive.push(lit.c);
             }
             new_head.push(a.clone());
         }
         cl.body = new_body;
         cl.head = new_head;
+        evidence.push(TriggerAbsorptionEvidence::Absorb {
+            node: var.expect("an absorbed nonempty concept head has a variable"),
+            negative,
+            positive,
+        });
         count += 1;
     }
-    count
+    (count, evidence)
 }
 
 /// Index the ∀-clauses for Konclude optimized blocking B2a (KM_HT_BLOCK=5). A
@@ -8183,6 +8259,61 @@ impl Ht {
         ))
     }
 
+    fn lean_wire_clause(clause: &Clause) -> LeanHtClause {
+        LeanHtClause {
+            body: clause.body.iter().map(Self::lean_wire_atom).collect(),
+            head: clause.head.iter().map(Self::lean_wire_atom).collect(),
+        }
+    }
+
+    fn lean_wire_preprocessing(&self) -> Option<LeanHtPreprocessingEvidence> {
+        self.cert_preprocessing.as_ref().map(|evidence| {
+            LeanHtPreprocessingEvidence {
+                source: evidence.source.iter().map(Self::lean_wire_clause).collect(),
+                absorbed: evidence
+                    .absorbed
+                    .iter()
+                    .map(Self::lean_wire_clause)
+                    .collect(),
+                trigger_steps: evidence
+                    .trigger_steps
+                    .iter()
+                    .map(|step| match step {
+                        TriggerAbsorptionEvidence::Keep => LeanHtTriggerStep::Keep,
+                        TriggerAbsorptionEvidence::Absorb {
+                            node,
+                            negative,
+                            positive,
+                        } => LeanHtTriggerStep::Absorb {
+                            node: *node as usize,
+                            negative: negative.iter().map(|concept| *concept as usize).collect(),
+                            positive: positive.iter().map(|concept| *concept as usize).collect(),
+                        },
+                    })
+                    .collect(),
+                contrapositives: evidence
+                    .contrapositives
+                    .iter()
+                    .map(|item| LeanHtContrapositive {
+                        source_clause: item.source_clause,
+                        node: item.node as usize,
+                        selected: Self::lean_wire_lit(item.selected),
+                        left_literals: item
+                            .left_literals
+                            .iter()
+                            .map(|literal| Self::lean_wire_lit(*literal))
+                            .collect(),
+                        right_literals: item
+                            .right_literals
+                            .iter()
+                            .map(|literal| Self::lean_wire_lit(*literal))
+                            .collect(),
+                    })
+                    .collect(),
+            }
+        })
+    }
+
     fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
         let Some(normalization) = self.lean_wire_normalization()? else {
             return Ok(payload);
@@ -8197,9 +8328,11 @@ impl Ht {
             2 => serde_json::json!({ "equality": { "certificate": payload } }),
             version => return Err(format!("cannot normalize HT payload version {version}")),
         };
+        let preprocessing = self.lean_wire_preprocessing();
         serde_json::to_string(&serde_json::json!({
-            "version": 3,
+            "version": if preprocessing.is_some() { 4 } else { 3 },
             "normalization": normalization,
+            "preprocessing": preprocessing,
             "payload": payload,
         }))
         .map_err(|error| error.to_string())
@@ -8222,9 +8355,11 @@ impl Ht {
             2 => serde_json::json!({ "mixed": { "certificate": payload } }),
             version => return Err(format!("cannot normalize HT taxonomy payload version {version}")),
         };
+        let preprocessing = self.lean_wire_preprocessing();
         serde_json::to_string(&serde_json::json!({
-            "version": 3,
+            "version": if preprocessing.is_some() { 4 } else { 3 },
             "normalization": normalization,
+            "preprocessing": preprocessing,
             "payload": payload,
         }))
         .map_err(|error| error.to_string())
@@ -9203,25 +9338,43 @@ impl Ht {
 
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
+        let preprocessing_source = clauses.clone();
+        let trigger_enabled = std::env::var_os("KM_HT_TRIGABS").is_some();
+        let contra_enabled = std::env::var_os("KM_HT_CONTRA").is_some();
         // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
         // ⊤-disjunctions with negated disjuncts into dormant triggered clauses so
         // they no longer fire on every node. Run BEFORE contrapositives so the
         // clash clauses freshly produced by all-negative heads get enriched too.
-        if std::env::var_os("KM_HT_TRIGABS").is_some() {
-            let absorbed = trigger_absorb(&mut clauses);
+        let trigger_steps = if trigger_enabled {
+            let (absorbed, evidence) = trigger_absorb(&mut clauses);
             if std::env::var_os("KM_HT_STATS").is_some() {
                 eprintln!("KM_HT_STATS trigger_absorb absorbed={}", absorbed);
             }
-        }
+            evidence
+        } else {
+            vec![TriggerAbsorptionEvidence::Keep; clauses.len()]
+        };
+        let absorbed_clauses = clauses.clone();
         // KM_HT_CONTRA: enrich clash clauses with their contrapositives so negative
         // literals propagate, feeding Ht's existing unit-propagation (eval_disj).
-        if std::env::var_os("KM_HT_CONTRA").is_some() {
-            let extra = contrapositives(&clauses);
+        let contrapositive_evidence = if contra_enabled {
+            let (extra, evidence) = contrapositives(&clauses);
             if std::env::var_os("KM_HT_STATS").is_some() {
                 eprintln!("KM_HT_STATS contrapositives added={}", extra.len());
             }
             clauses.extend(extra);
-        }
+            evidence
+        } else {
+            Vec::new()
+        };
+        let preprocessing_evidence = (trigger_enabled || contra_enabled).then(|| {
+            PreprocessingEvidence {
+                source: preprocessing_source,
+                absorbed: absorbed_clauses,
+                trigger_steps,
+                contrapositives: contrapositive_evidence,
+            }
+        });
         let normalization: Vec<_> = clauses
             .iter_mut()
             .map(eliminate_body_equalities)
@@ -9289,10 +9442,15 @@ impl Ht {
             .collect();
         let ht = Ht {
             clauses: recs,
-            cert_body_normalization: if has_body_equality
+            cert_body_normalization: if (has_body_equality || preprocessing_evidence.is_some())
                 && !std::env::var_os("KM_HT_HARVEST").is_some()
             {
                 Some(normalization)
+            } else {
+                None
+            },
+            cert_preprocessing: if std::env::var_os("KM_HT_HARVEST").is_none() {
+                preprocessing_evidence
             } else {
                 None
             },
@@ -14758,6 +14916,7 @@ impl Ht {
             }
             self.clauses = mk_recs(&composed);
             self.cert_body_normalization = None;
+            self.cert_preprocessing = None;
             // The tableau trigger indexes were built in `new` from the ORIGINAL
             // clauses; rebuild them for the composed set so the per-concept verify
             // tableau (`consistent`) fires valid `(cid, pos)` anchors. Without this
@@ -17865,7 +18024,7 @@ mod tests {
                 "km-ht-eq-query-cert-{}-{index}.json",
                 std::process::id()
             ));
-            std::fs::write(&path, document).unwrap();
+            std::fs::write(&path, &document).unwrap();
             let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
@@ -18155,6 +18314,110 @@ mod tests {
                 .success();
             let _ = std::fs::remove_file(path);
             assert!(accepted, "Lean must accept the source-normalized HT certificate");
+        }
+    }
+
+    #[test]
+    fn lean_preprocessing_wire_certifies_trigger_and_contrapositives() {
+        let source = vec![Clause::new(
+            Vec::new(),
+            vec![con(true, A, X), con(true, B, X)],
+        )];
+        let mut preprocessed = source.clone();
+        let (_, trigger_steps) = trigger_absorb(&mut preprocessed);
+        let absorbed = preprocessed.clone();
+        let (extra, contrapositives) = contrapositives(&absorbed);
+        preprocessed.extend(extra);
+        let mut normalized = preprocessed.clone();
+        let normalization: Vec<_> = normalized
+            .iter_mut()
+            .map(eliminate_body_equalities)
+            .collect();
+
+        let mut t = ht(normalized);
+        t.cert_body_normalization = Some(normalization);
+        t.cert_preprocessing = Some(PreprocessingEvidence {
+            source,
+            absorbed,
+            trigger_steps,
+            contrapositives,
+        });
+        assert_eq!(t.consistent(&[]), Some(true));
+        let document = t
+            .lean_sat_certificate_json()
+            .expect("preprocessed finite model has source-aware evidence");
+        let wire: serde_json::Value =
+            serde_json::from_str(&document).expect("preprocessed certificate is JSON");
+        assert_eq!(wire["version"], 4);
+        assert_eq!(wire["preprocessing"]["source"].as_array().unwrap().len(), 1);
+        assert_eq!(wire["preprocessing"]["absorbed"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            wire["preprocessing"]["contrapositives"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let taxonomy_document = t
+            .lean_taxonomy_certificate_json(&[A, B])
+            .expect("preprocessed taxonomy has source-aware evidence");
+        let taxonomy_wire: serde_json::Value = serde_json::from_str(&taxonomy_document)
+            .expect("preprocessed taxonomy certificate is JSON");
+        assert_eq!(taxonomy_wire["version"], 4);
+        assert!(taxonomy_wire["preprocessing"].is_object());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-preprocessing-cert-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let output = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run native Lean preprocessing checker");
+            let _ = std::fs::remove_file(&path);
+            assert!(
+                output.status.success(),
+                "Lean must accept Rust HT preprocessing evidence: {}\n{}",
+                String::from_utf8_lossy(&output.stderr),
+                document
+            );
+
+            let mut tampered = wire.clone();
+            tampered["preprocessing"]["contrapositives"][0]["source_clause"] =
+                serde_json::json!(1);
+            std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
+            let rejected = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run native Lean checker on tampered preprocessing evidence");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                !rejected.success(),
+                "Lean must reject a fabricated contrapositive source"
+            );
+        }
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-preprocessing-taxonomy-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, taxonomy_document).unwrap();
+            let output = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run native Lean preprocessing taxonomy checker");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                output.status.success(),
+                "Lean must accept Rust HT preprocessing taxonomy evidence: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
 

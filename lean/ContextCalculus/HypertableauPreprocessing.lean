@@ -157,12 +157,11 @@ theorem ClashContrapositive.entailed
     by simp, (I.satLit_complement_iff_not selected _).2 hnot⟩
 
 /-- A source clause and checked derivation for one appended contrapositive. -/
-structure ContrapositiveWitness
+inductive ContrapositiveWitness
     (base : List (Clause Variable Concept Role))
-    (target : Clause Variable Concept Role) where
-  source : Clause Variable Concept Role
-  source_mem : source ∈ base
-  proof : ClashContrapositive source target
+    (target : Clause Variable Concept Role) : Prop where
+  | intro (source : Clause Variable Concept Role) (source_mem : source ∈ base)
+      (proof : ClashContrapositive source target) : ContrapositiveWitness base target
 
 /-- Every appended clause has an explicit source clash clause in the base
 ontology and a checked contrapositive derivation from it. -/

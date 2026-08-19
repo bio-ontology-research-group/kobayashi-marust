@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauEqualityNormalizationWire
 import ContextCalculus.HypertableauEqualityWire
+import ContextCalculus.HypertableauPreprocessingWire
 
 /-!
 # Source-aware hypertableau certificate wire
@@ -22,6 +23,7 @@ deriving FromJson, ToJson, Repr
 structure WireNormalizedCertificate where
   version : Nat
   normalization : List WireClauseNormalization
+  preprocessing : Option WirePreprocessingEvidence := none
   payload : WireNormalizedPayload
 deriving FromJson, ToJson, Repr
 
@@ -38,13 +40,19 @@ def DecodedEqCertificate.ontology (decoded : DecodedEqCertificate) :
       .unsatisfiableConcept certificate _ _ _ | .nonSubsumption certificate _ _ _ |
       .satisfiableConcept certificate _ _ => certificate.base.ontology
 
+structure DecodedModelNormalization
+    (target : List (Clause (Fin variableCount) (Fin conceptCount)
+      (Fin roleCount))) where
+  source : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+  equivalent : ModelEquivalent source target
+
 structure DecodedNormalizedPlain where
   evidence : DecodedEvidence
-  normalization : DecodedOntologyNormalization evidence.base.certificate.ontology
+  normalization : DecodedModelNormalization evidence.base.certificate.ontology
 
 structure DecodedNormalizedEquality where
   evidence : DecodedEqCertificate
-  normalization : DecodedOntologyNormalization evidence.ontology
+  normalization : DecodedModelNormalization evidence.ontology
 
 inductive DecodedNormalizedCertificate where
   | plain (decoded : DecodedNormalizedPlain)
@@ -52,19 +60,39 @@ inductive DecodedNormalizedCertificate where
 
 def WireNormalizedCertificate.decode (wire : WireNormalizedCertificate) :
     Except String DecodedNormalizedCertificate := do
-  if wire.version != 3 then
+  if wire.version != 3 && wire.version != 4 then
     throw s!"unsupported normalized hypertableau certificate version {wire.version}"
   match wire.payload with
   | .plain certificate =>
       let evidence ← certificate.decode
       let base := evidence.base
-      let normalization ← decodeOntologyNormalization base.variableCount base.conceptCount
-        base.roleCount wire.normalization base.certificate.ontology
+      let normalization : DecodedModelNormalization base.certificate.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization base.variableCount base.conceptCount
+            base.roleCount wire.normalization base.certificate.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT certificate has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode base.variableCount base.conceptCount
+                base.roleCount wire.normalization base.certificate.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .plain ⟨evidence, normalization⟩
   | .equality certificate =>
       let evidence ← certificate.decode
-      let normalization ← decodeOntologyNormalization evidence.variableCount
-        evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
+      let normalization : DecodedModelNormalization evidence.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization evidence.variableCount
+            evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT certificate has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode evidence.variableCount
+                evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .equality ⟨evidence, normalization⟩
 
 def DecodedNormalizedCertificate.check : DecodedNormalizedCertificate → Bool
@@ -101,14 +129,14 @@ theorem DecodedNormalizedPlain.check_sound (decoded : DecodedNormalizedPlain)
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       rcases htarget with ⟨Domain, I, hdomain, hmodels⟩
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr hmodels⟩
   | unsat base tree =>
       have htarget := DecodedEvidence.check_sound (.unsat base tree) hcheck
       simp only [DecodedNormalizedPlain.SemanticallyValid]
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       rintro ⟨Domain, I, hdomain, hmodels⟩
       exact htarget ⟨Domain, I, hdomain, (equivalent Domain I).mp hmodels⟩
   | subsumption base root sub sup tree =>
@@ -116,7 +144,7 @@ theorem DecodedNormalizedPlain.check_sound (decoded : DecodedNormalizedPlain)
       simp only [DecodedNormalizedPlain.SemanticallyValid]
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact (equivalent.entailsSub_iff sub sup).mpr htarget
   | unsatisfiableConcept base root concept tree =>
       have htarget := DecodedEvidence.check_sound
@@ -124,14 +152,14 @@ theorem DecodedNormalizedPlain.check_sound (decoded : DecodedNormalizedPlain)
       simp only [DecodedNormalizedPlain.SemanticallyValid]
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact (equivalent.unsatisfiableConcept_iff concept).mpr htarget
   | nonSubsumption base root sub sup =>
       have htarget := DecodedEvidence.check_sound (.nonSubsumption base root sub sup) hcheck
       simp only [DecodedNormalizedPlain.SemanticallyValid]
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       intro hsource
       exact htarget ((equivalent.entailsSub_iff sub sup).mp hsource)
   | satisfiableConcept base root concept =>
@@ -139,7 +167,7 @@ theorem DecodedNormalizedPlain.check_sound (decoded : DecodedNormalizedPlain)
       simp only [DecodedNormalizedPlain.SemanticallyValid]
       simp only [DecodedEvidence.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source base.certificate.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       intro hsource
       exact htarget ((equivalent.unsatisfiableConcept_iff concept).mp hsource)
 
@@ -173,7 +201,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       rcases htarget with ⟨Domain, I, hdomain, hmodels⟩
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr hmodels⟩
   | unsat certificate tree =>
       have htarget := DecodedEqCertificate.check_sound
@@ -181,7 +209,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedNormalizedEquality.SemanticallyValid]
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       rintro ⟨Domain, I, hdomain, hmodels⟩
       exact htarget ⟨Domain, I, hdomain, (equivalent Domain I).mp hmodels⟩
   | subsumption certificate root sub sup tree =>
@@ -191,7 +219,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedNormalizedEquality.SemanticallyValid]
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact (equivalent.entailsSub_iff sub sup).mpr htarget
   | unsatisfiableConcept certificate root concept tree =>
       have htarget := DecodedEqCertificate.check_sound
@@ -200,7 +228,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedNormalizedEquality.SemanticallyValid]
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       exact (equivalent.unsatisfiableConcept_iff concept).mpr htarget
   | nonSubsumption certificate root sub sup =>
       have htarget := DecodedEqCertificate.check_sound
@@ -209,7 +237,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedNormalizedEquality.SemanticallyValid]
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       intro hsource
       exact htarget ((equivalent.entailsSub_iff sub sup).mp hsource)
   | satisfiableConcept certificate root concept =>
@@ -219,7 +247,7 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       simp only [DecodedNormalizedEquality.SemanticallyValid]
       simp only [DecodedEqCertificate.SemanticallyValid] at htarget
       have equivalent : ModelEquivalent normalization.source certificate.base.ontology :=
-        fun Domain I => normalization.proof.models_iff I
+        normalization.equivalent
       intro hsource
       exact htarget ((equivalent.unsatisfiableConcept_iff concept).mp hsource)
 
@@ -280,6 +308,60 @@ private def wrongSourceDocument : WireNormalizedCertificate :=
       { sourceNormalization with source := { body := [], head := [] } }] }
 
 example : rejected wrongSourceDocument.check = true := by native_decide
+
+private def absorbedClash : WireClause where
+  body := [
+    .concept { concept := 0, neg := false } 0,
+    .concept { concept := 1, neg := false } 0]
+  head := []
+
+private def triggerSource : WireClause where
+  body := []
+  head := [
+    .concept { concept := 0, neg := true } 0,
+    .concept { concept := 1, neg := true } 0]
+
+private def preprocessedContradiction : WireCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 0
+  variable_count := 1
+  ontology := [absorbedClash]
+  labels := []
+  edges := []
+  obligations := []
+  evidence := .sat
+
+private def identityClashNormalization : WireClauseNormalization where
+  source := absorbedClash
+  representatives := [0]
+  representative_paths := [[0]]
+
+private def triggerPreprocessing : WirePreprocessingEvidence where
+  source := [triggerSource]
+  absorbed := [absorbedClash]
+  trigger_steps := [.absorb 0 [0, 1] []]
+  contrapositives := []
+
+private def validPreprocessedDocument : WireNormalizedCertificate where
+  version := 4
+  normalization := [identityClashNormalization]
+  preprocessing := some triggerPreprocessing
+  payload := .plain preprocessedContradiction
+
+example : validPreprocessedDocument.check = .ok true := by native_decide
+
+private def missingPreprocessingDocument : WireNormalizedCertificate :=
+  { validPreprocessedDocument with preprocessing := none }
+
+example : rejected missingPreprocessingDocument.check = true := by native_decide
+
+private def forgedPreprocessingDocument : WireNormalizedCertificate :=
+  { validPreprocessedDocument with preprocessing := some {
+      triggerPreprocessing with trigger_steps := [.absorb 0 [0] [1]] } }
+
+example : rejected forgedPreprocessingDocument.check = true := by native_decide
 
 end Tests
 

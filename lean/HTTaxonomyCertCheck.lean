@@ -10,7 +10,7 @@ def checkTaxonomyFile (path : System.FilePath) : IO UInt32 := do
       let json ← Json.parse input
       let versionValue ← json.getObjVal? "version"
       let version : Nat ← fromJson? versionValue
-      if version = 3 then
+      if version = 3 || version = 4 then
         let document : WireNormalizedTaxonomyCertificate ← fromJson? json
         let _ ← document.decode
         return ()

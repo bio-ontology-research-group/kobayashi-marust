@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauEqualityNormalizationWire
 import ContextCalculus.HypertableauMixedTaxonomyWire
+import ContextCalculus.HypertableauNormalizedWire
 
 /-!
 # Source-aware complete hypertableau taxonomy certificates
@@ -22,6 +23,7 @@ deriving FromJson, ToJson, Repr
 structure WireNormalizedTaxonomyCertificate where
   version : Nat
   normalization : List WireClauseNormalization
+  preprocessing : Option WirePreprocessingEvidence := none
   payload : WireNormalizedTaxonomyPayload
 deriving FromJson, ToJson, Repr
 
@@ -51,11 +53,11 @@ def CompleteTaxonomyCertificate.transfer
 
 structure DecodedNormalizedPlainTaxonomy where
   target : DecodedTaxonomyCertificate
-  normalization : DecodedOntologyNormalization target.ontology
+  normalization : DecodedModelNormalization target.ontology
 
 structure DecodedNormalizedMixedTaxonomy where
   target : DecodedMixedTaxonomyCertificate
-  normalization : DecodedOntologyNormalization target.ontology
+  normalization : DecodedModelNormalization target.ontology
 
 inductive DecodedNormalizedTaxonomyCertificate where
   | plain (decoded : DecodedNormalizedPlainTaxonomy)
@@ -64,18 +66,38 @@ inductive DecodedNormalizedTaxonomyCertificate where
 def WireNormalizedTaxonomyCertificate.decode
     (wire : WireNormalizedTaxonomyCertificate) :
     Except String DecodedNormalizedTaxonomyCertificate := do
-  if wire.version != 3 then
+  if wire.version != 3 && wire.version != 4 then
     throw s!"unsupported normalized hypertableau taxonomy certificate version {wire.version}"
   match wire.payload with
   | .plain certificate =>
       let target ← certificate.decode
-      let normalization ← decodeOntologyNormalization target.variableCount
-        target.conceptCount target.roleCount wire.normalization target.ontology
+      let normalization : DecodedModelNormalization target.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization target.variableCount
+            target.conceptCount target.roleCount wire.normalization target.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT taxonomy has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode target.variableCount target.conceptCount
+                target.roleCount wire.normalization target.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .plain ⟨target, normalization⟩
   | .mixed certificate =>
       let target ← certificate.decode
-      let normalization ← decodeOntologyNormalization target.variableCount
-        target.conceptCount target.roleCount wire.normalization target.ontology
+      let normalization : DecodedModelNormalization target.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization target.variableCount
+            target.conceptCount target.roleCount wire.normalization target.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT taxonomy has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode target.variableCount target.conceptCount
+                target.roleCount wire.normalization target.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .mixed ⟨target, normalization⟩
 
 def WireNormalizedTaxonomyCertificate.check
@@ -85,16 +107,12 @@ def WireNormalizedTaxonomyCertificate.check
 def DecodedNormalizedPlainTaxonomy.semantic
     (decoded : DecodedNormalizedPlainTaxonomy) :
     CompleteTaxonomyCertificate decoded.normalization.source decoded.target.named :=
-  let equivalent : ModelEquivalent decoded.normalization.source decoded.target.ontology :=
-    fun Domain I => decoded.normalization.proof.models_iff I
-  decoded.target.semantic.transfer equivalent
+  decoded.target.semantic.transfer decoded.normalization.equivalent
 
 def DecodedNormalizedMixedTaxonomy.semantic
     (decoded : DecodedNormalizedMixedTaxonomy) :
     CompleteTaxonomyCertificate decoded.normalization.source decoded.target.named :=
-  let equivalent : ModelEquivalent decoded.normalization.source decoded.target.ontology :=
-    fun Domain I => decoded.normalization.proof.models_iff I
-  decoded.target.semantic.transfer equivalent
+  decoded.target.semantic.transfer decoded.normalization.equivalent
 
 def DecodedNormalizedTaxonomyCertificate.SemanticallyComplete :
     DecodedNormalizedTaxonomyCertificate → Prop

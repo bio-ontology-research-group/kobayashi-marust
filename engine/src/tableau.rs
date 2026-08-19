@@ -5265,12 +5265,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            for optimization in ["KM_HT_TRIGABS", "KM_HT_CONTRA", "KM_HT_HARVEST"] {
-                if std::env::var_os(optimization).is_some() {
-                    return Err(format!(
-                        "HT Lean certificate v1 does not certify {optimization} preprocessing"
-                    ));
-                }
+            if std::env::var_os("KM_HT_HARVEST").is_some() {
+                return Err(
+                    "HT Lean certification does not yet cover KM_HT_HARVEST preprocessing"
+                        .to_string(),
+                );
             }
         }
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
