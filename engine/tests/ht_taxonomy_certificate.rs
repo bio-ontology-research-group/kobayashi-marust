@@ -51,6 +51,20 @@ const ROLE_CHAIN_WIRE: &str = r#"{
   "transitive":[0]
 }"#;
 
+const CARDINALITY_SIDE_WIRE: &str = r#"{
+  "concepts":["AtLeastTwo","Filler"],
+  "roles":["r"],
+  "clauses":[],
+  "queries":[0,1],
+  "inverse":false,
+  "number":true,
+  "nominals":[],
+  "native_abox":{},
+  "card_defs":[{"marker":0,"min":true,"n":2,"role":0,"filler":1}],
+  "chains":[],
+  "transitive":[]
+}"#;
+
 fn run_with_input(
     input: &str,
     global_checker: &str,
@@ -65,7 +79,11 @@ fn run_with_input(
     let taxonomy_out = root.with_extension("taxonomy.json");
     let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
         .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
+        // Certification must select the exact source calculus even when the
+        // ordinary performance route requests harvested consequences.
+        .env("KM_HT_HARVEST", "1")
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -185,4 +203,33 @@ fn certified_taxonomy_restores_and_checks_raw_role_chain_axioms() {
         .as_array()
         .expect("unsatisfiable array")
         .contains(&serde_json::json!("A")));
+}
+
+#[test]
+fn first_class_cardinality_side_data_fails_closed_before_publication() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .expect("tableau stdin")
+        .write_all(CARDINALITY_SIDE_WIRE.as_bytes())
+        .expect("write cardinality wire input");
+    let output = child.wait_with_output().expect("wait for tableau worker");
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "unchecked result was published");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("does not yet cover first-class number-restriction side data"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

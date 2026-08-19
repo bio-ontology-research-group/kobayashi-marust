@@ -9337,6 +9337,20 @@ impl Ht {
     }
 
     pub fn new(clauses: Vec<Clause>) -> Ht {
+        let harvest = std::env::var_os("KM_HT_HARVEST").is_some();
+        Self::new_with_harvest(clauses, harvest)
+    }
+
+    /// Construct the exact proof-producing calculus. Environment-selected
+    /// harvest facts are deliberately disabled because they are an optimization
+    /// side channel rather than source clauses. Trigger absorption and
+    /// contrapositives remain enabled when requested because their source
+    /// correspondence is carried in the version-4 Lean evidence.
+    pub fn new_certified(clauses: Vec<Clause>) -> Ht {
+        Self::new_with_harvest(clauses, false)
+    }
+
+    fn new_with_harvest(clauses: Vec<Clause>, harvest_enabled: bool) -> Ht {
         let mut clauses = clauses;
         let preprocessing_source = clauses.clone();
         let trigger_enabled = std::env::var_os("KM_HT_TRIGABS").is_some();
@@ -9388,7 +9402,7 @@ impl Ht {
         // the tableau derives them deterministically instead of re-branching them
         // on every node (the live ∀+⊔ family lever). Reuses only QoSat's sound
         // saturation, not its residue test.
-        if std::env::var_os("KM_HT_HARVEST").is_some() {
+        if harvest_enabled {
             let extra = harvest_global(&recs);
             if std::env::var_os("KM_HT_STATS").is_some() {
                 eprintln!("KM_HT_STATS harvest global_facts={}", extra.len());
@@ -9443,13 +9457,13 @@ impl Ht {
         let ht = Ht {
             clauses: recs,
             cert_body_normalization: if (has_body_equality || preprocessing_evidence.is_some())
-                && !std::env::var_os("KM_HT_HARVEST").is_some()
+                && !harvest_enabled
             {
                 Some(normalization)
             } else {
                 None
             },
-            cert_preprocessing: if std::env::var_os("KM_HT_HARVEST").is_none() {
+            cert_preprocessing: if !harvest_enabled {
                 preprocessing_evidence
             } else {
                 None

@@ -5294,9 +5294,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if lean_taxonomy_requested && inp.number && !inp.card_defs.is_empty() {
+            if !inp.card_defs.is_empty() {
                 return Err(
-                    "HT Lean taxonomy certification does not yet cover number-restriction side data"
+                    "HT Lean certification does not yet cover first-class number-restriction side data"
                         .to_string(),
                 );
             }
@@ -5308,12 +5308,6 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             {
                 return Err(
                     "certified HT taxonomy publication requires both the global and taxonomy Lean checkers"
-                        .to_string(),
-                );
-            }
-            if std::env::var_os("KM_HT_HARVEST").is_some() {
-                return Err(
-                    "HT Lean certification does not yet cover KM_HT_HARVEST preprocessing"
                         .to_string(),
                 );
             }
@@ -5338,7 +5332,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             // tail costs nothing.
             .stack_size(4usize << 30)
             .spawn(move || {
-                let mut ht = hypertableau::Ht::new(ht_clauses);
+                let mut ht = if lean_cert_requested {
+                    hypertableau::Ht::new_certified(ht_clauses)
+                } else {
+                    hypertableau::Ht::new(ht_clauses)
+                };
                 ht.set_nominals(noms);
                 ht.set_native_abox(abox_individuals, abox_different, abox_roles);
                 // KM_KEEP_CHAIN_AXIOMS: install the detected role chains for the
