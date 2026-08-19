@@ -12,7 +12,7 @@ clash.
 
 namespace ContextCalculus.Hypertableau
 
-structure DistinctEqState (Node Concept Role : Type) where
+structure DistinctEqState (Node : Type u) (Concept Role : Type) where
   base : EqState Node Concept Role
   apart : Node → Node → Prop
 
@@ -94,8 +94,122 @@ theorem DistinctEqState.materializeMinimum_realized
     exact hrealized.2 left right hapart
   · exact fun hequal => hne (htargets hequal)
 
+inductive DistinctCardinalityRefutes (Node : Type u)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) :
+    DistinctEqState Node Concept Role → Prop where
+  | equalityApart (state) (left right : Node)
+      (hequal : state.base.equiv left right)
+      (hapart : state.apart left right) :
+      DistinctCardinalityRefutes Node ontology definitions state
+  | maximum (state) (definition : CardinalityDef Concept Role)
+      (hdefinition : definition ∈ definitions)
+      (hkind : definition.kind = .maximum)
+      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (witnesses : Fin (definition.bound + 1) → Node)
+      (hedge : ∀ index,
+        state.base.base.edge definition.role source (witnesses index))
+      (hfiller : ∀ index,
+        state.base.base.label (witnesses index) (.pos definition.filler))
+      (children : ∀ left right, left ≠ right →
+        DistinctCardinalityRefutes Node ontology definitions
+          (state.merge (witnesses left) (witnesses right))) :
+      DistinctCardinalityRefutes Node ontology definitions state
+  | minimum (state) (definition : CardinalityDef Concept Role)
+      (hdefinition : definition ∈ definitions)
+      (hkind : definition.kind = .minimum)
+      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (targets : Fin definition.bound → Node)
+      (hfresh : state.FreshFamily targets)
+      (child : DistinctCardinalityRefutes Node ontology definitions
+        (state.materializeMinimum source targets definition.role definition.filler)) :
+      DistinctCardinalityRefutes Node ontology definitions state
+
+theorem DistinctCardinalityRefutes.sound
+    (hrefutes : DistinctCardinalityRefutes Node ontology definitions state) :
+    ¬state.RealizableWithCardinality ontology definitions := by
+  induction hrefutes with
+  | equalityApart state left right hequal hapart =>
+      exact state.equality_apart_clash left right hequal hapart
+  | maximum state definition hdefinition hkind source hmarker witnesses
+      hedge hfiller children ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      have hmarkerSat : I.concept definition.marker (value source) :=
+        hrealized.1.1.1 source (.pos definition.marker) hmarker
+      have hdefinitionModels : I.modelsCardinalityDef definition :=
+        hcardinality definition hdefinition
+      have hsuccessors : ∀ index,
+          I.cardinalitySuccessor definition (value source) (value (witnesses index)) := by
+        intro index
+        exact ⟨hrealized.1.1.2.1 definition.role source (witnesses index) (hedge index),
+          hrealized.1.1.1 (witnesses index) (.pos definition.filler) (hfiller index)⟩
+      have hnotInjective :
+          ¬Function.Injective (fun index => value (witnesses index)) :=
+        Interp.maximum_forces_merge (I := I) definition hkind
+          hdefinitionModels (value source) hmarkerSat
+          (fun index => value (witnesses index)) hsuccessors
+      have hpair : ∃ left right, left ≠ right ∧
+          value (witnesses left) = value (witnesses right) := by
+        by_contra hnone
+        push Not at hnone
+        apply hnotInjective
+        intro left right hequal
+        by_contra hne
+        exact hnone left right hne hequal
+      rcases hpair with ⟨left, right, hne, hequal⟩
+      exact ih left right hne ⟨Domain, I, value, hmodels, hcardinality,
+        state.merge_realized I value hrealized (witnesses left) (witnesses right) hequal⟩
+  | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      have hmarkerSat : I.concept definition.marker (value source) :=
+        hrealized.1.1.1 source (.pos definition.marker) hmarker
+      have hdefinitionModels : I.modelsCardinalityDef definition :=
+        hcardinality definition hdefinition
+      rcases I.minimum_witnesses definition hkind hdefinitionModels (value source)
+          hmarkerSat with ⟨witnesses, hinjective, hsuccessors⟩
+      rcases state.materializeMinimum_realized I value hrealized source targets
+          definition.role definition.filler definition.marker hmarker hfresh witnesses
+          hinjective hsuccessors with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
+
+def minimumDefinition (marker : Concept) (bound : Nat) (role : Role)
+    (filler : Concept) : CardinalityDef Concept Role :=
+  { marker, kind := .minimum, bound, role, filler }
+
+def maximumDefinition (marker : Concept) (bound : Nat) (role : Role)
+    (filler : Concept) : CardinalityDef Concept Role :=
+  { marker, kind := .maximum, bound, role, filler }
+
+/-- The pure pigeonhole contradiction: an active `≥ n+1 R.C` and `≤ n R.C`
+restriction has a finite distinct-aware HT refutation. -/
+theorem DistinctCardinalityRefutes.pigeonhole
+    (state : DistinctEqState Node Concept Role)
+    (source : Node) (marker filler : Concept) (role : Role) (bound : Nat)
+    (targets : Fin (bound + 1) → Node)
+    (hmarker : state.base.base.label source (.pos marker))
+    (hfresh : state.FreshFamily targets) :
+    DistinctCardinalityRefutes Node ontology
+      [minimumDefinition marker (bound + 1) role filler,
+       maximumDefinition marker bound role filler] state := by
+  refine DistinctCardinalityRefutes.minimum state
+    (minimumDefinition marker (bound + 1) role filler) (by simp) rfl
+    source hmarker targets hfresh ?_
+  refine DistinctCardinalityRefutes.maximum _
+    (maximumDefinition marker bound role filler) (by simp) rfl
+    source (Or.inl hmarker) targets ?_ ?_ ?_
+  · intro index
+    exact Or.inr ⟨index, rfl, rfl, rfl⟩
+  · intro index
+    exact Or.inr ⟨index, rfl, rfl⟩
+  · intro left right hne
+    apply DistinctCardinalityRefutes.equalityApart _ (targets left) (targets right)
+    · exact EqState.merge_pair _ _ _
+    · exact Or.inr ⟨left, right, hne, rfl, rfl⟩
+
 #print axioms DistinctEqState.equality_apart_clash
 #print axioms DistinctEqState.merge_realized
 #print axioms DistinctEqState.materializeMinimum_realized
+#print axioms DistinctCardinalityRefutes.sound
+#print axioms DistinctCardinalityRefutes.pigeonhole
 
 end ContextCalculus.Hypertableau
