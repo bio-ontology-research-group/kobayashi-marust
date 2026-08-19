@@ -1,0 +1,89 @@
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+const WIRE: &str = r#"{
+  "concepts":["A","B"],
+  "roles":[],
+  "clauses":[],
+  "queries":[0,1],
+  "inverse":false,
+  "number":false,
+  "nominals":[],
+  "native_abox":{},
+  "card_defs":[],
+  "chains":[],
+  "transitive":[]
+}"#;
+
+fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::process::Output {
+    let root = std::env::temp_dir().join(format!(
+        "km-ht-taxonomy-runtime-{}-{output_stem}",
+        std::process::id()
+    ));
+    let global_out = root.with_extension("global.json");
+    let taxonomy_out = root.with_extension("taxonomy.json");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+        .env("KM_HT", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
+        .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
+        .env("KM_HT_LEAN_CERT_OUT", &global_out)
+        .env("KM_HT_LEAN_TAXONOMY_CERT_OUT", &taxonomy_out)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .expect("tableau stdin")
+        .write_all(WIRE.as_bytes())
+        .expect("write tableau wire input");
+    let output = child.wait_with_output().expect("wait for tableau worker");
+    assert!(global_out.is_file(), "global certificate must be persisted");
+    assert!(
+        taxonomy_out.is_file(),
+        "taxonomy certificate must be persisted"
+    );
+    let _ = std::fs::remove_file(global_out);
+    let _ = std::fs::remove_file(taxonomy_out);
+    output
+}
+
+#[test]
+fn accepted_complete_taxonomy_is_the_published_classification() {
+    let global_checker =
+        std::env::var("KM_HT_TEST_LEAN_GLOBAL_CHECKER").unwrap_or_else(|_| "/bin/true".to_string());
+    let taxonomy_checker = std::env::var("KM_HT_TEST_LEAN_TAXONOMY_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let output = run(&global_checker, &taxonomy_checker, "accept");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("classification is JSON");
+    assert_eq!(value["consistent"], true);
+    assert_eq!(value["unsatisfiable"], serde_json::json!([]));
+    assert_eq!(
+        value["subsumptions"],
+        serde_json::json!([["A", "A"], ["B", "B"]])
+    );
+}
+
+#[test]
+fn rejecting_taxonomy_checker_suppresses_publication() {
+    let output = run("/bin/true", "/bin/false", "reject");
+    assert!(!output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "unchecked classification was published"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("rejected the certificate"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

@@ -217,7 +217,9 @@ hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
 `HypertableauRefutationCertificate.lean` checks every child of a finite UNSAT
 refutation. `HypertableauWire.lean` bounds-checks versioned JSON and dispatches
 only decoded evidence to those proved checkers. Build the native executable with
-`LEAN_NUM_THREADS=2 lake build ht-cert-check`.
+`LEAN_NUM_THREADS=2 lake build ht-cert-check`. The separate complete-taxonomy
+decoder is built with
+`LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
 
 The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H) and materializes default anywhere-subset blocking folds as
@@ -226,16 +228,20 @@ when bounded finite search closes over concept, role, and existential facts.
 It can also emit individual subsumption and unsatisfiable-concept refutations,
 plus finite countermodels for non-subsumption and concept satisfiability. The
 checker verifies that each refutation starts from exactly the declared query
-labels and that every countermodel contains its declared query labels. These
-query certificates are not yet assembled into the batch taxonomy publication
-path.
+labels and that every countermodel contains its declared query labels.
+`HypertableauTaxonomyCertificate.lean` proves exact taxonomy materialization
+from a complete set of either-polarity decisions.
+`HypertableauTaxonomyWire.lean` accepts exactly one concept decision per named
+class and a square row-major decision matrix for all ordered pairs. The Rust
+worker publishes the named taxonomy directly from this matrix only after both
+the global and taxonomy native checkers accept.
 The refutation checker has an explicit fresh-witness rule: it verifies that the
 target node occurs in no prior fact, binds that node to the semantic existential
 witness, and then checks the recursively materialized edge and filler label.
 The Lean checker treats all Rust choices as untrusted and accepts only an exact
 finite model or a closed refutation tree. Complete blocking/termination
-correspondence, equality/cardinality, inverse roles, nominals, native ABoxes,
-and batch taxonomy publication remain to be connected or proved.
+correspondence, equality/cardinality, inverse roles, nominals, and native ABoxes
+remain to be connected or proved.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

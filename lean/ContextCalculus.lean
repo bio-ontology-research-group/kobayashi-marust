@@ -30,3 +30,5 @@ import ContextCalculus.HypertableauCertificate
 import ContextCalculus.HypertableauBlockingCertificate
 import ContextCalculus.HypertableauRefutationCertificate
 import ContextCalculus.HypertableauWire
+import ContextCalculus.HypertableauTaxonomyCertificate
+import ContextCalculus.HypertableauTaxonomyWire

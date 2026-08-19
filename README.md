@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.41`.
+`v0.3.42`.
 
 ## Classify an ontology
 
@@ -141,6 +141,7 @@ lake build
 # Native checker linking can otherwise use one compiler per workstation core.
 LEAN_NUM_THREADS=2 lake build elc-cert-check
 LEAN_NUM_THREADS=2 lake build ht-cert-check
+LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check
 ```
 
 The formalization proves soundness and canonical-model completeness for the
@@ -181,8 +182,22 @@ accepting the added edge and filler label. Global inconsistency is published
 only after Lean accepts every branch. Open, node-capped, or assignment-capped
 search declines, and equality heads remain rejected because they require
 certified merging. Equality/cardinality, inverse roles, nominals, native ABoxes,
-QO, complete termination/blocking correspondence, and taxonomy publication
-remain separate HT certification tasks.
+QO, and complete termination/blocking correspondence remain separate HT
+certification tasks.
+
+`ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
+decision for every named class and one subsumption decision for every ordered
+pair. Positive answers carry bounded refutations and negative answers carry
+finite countermodels. Position checks, exact row widths, exact row count,
+bounded identifiers, and duplicate-free named classes prevent omitted,
+duplicated, or reassigned cells. Set both
+`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and
+`KM_HT_LEAN_TAXONOMY_CERT_CHECKER=/path/to/ht-taxonomy-cert-check`, together
+with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
+The worker derives its published taxonomy directly from the accepted matrix and
+publishes nothing if either the global or taxonomy checker rejects. This covers
+only the same equality-free ALC(H) certificate fragment described above; it is
+not a certificate for all HT inputs or for automatic routing.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

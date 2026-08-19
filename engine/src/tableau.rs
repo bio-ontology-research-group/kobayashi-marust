@@ -5222,11 +5222,18 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_cert_path = std::env::var_os("KM_HT_LEAN_CERT_OUT").map(std::path::PathBuf::from);
         let lean_cert_checker =
             std::env::var_os("KM_HT_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
-        let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
+        let lean_taxonomy_path =
+            std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_OUT").map(std::path::PathBuf::from);
+        let lean_taxonomy_checker =
+            std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_CHECKER").map(std::path::PathBuf::from);
+        let lean_taxonomy_requested =
+            lean_taxonomy_path.is_some() || lean_taxonomy_checker.is_some();
+        let lean_cert_requested =
+            lean_cert_path.is_some() || lean_cert_checker.is_some() || lean_taxonomy_requested;
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
                 return Err(
-                    "HT Lean certificate v1 certifies global consistency only".to_string(),
+                    "HT Lean certification requires the global consistency route".to_string(),
                 );
             }
             if inp.number || inp.inverse || !inp.nominals.is_empty() || native_abox_active {
@@ -5236,6 +5243,14 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             }
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
+            }
+            if lean_taxonomy_requested
+                && (lean_cert_checker.is_none() || lean_taxonomy_checker.is_none())
+            {
+                return Err(
+                    "certified HT taxonomy publication requires both the global and taxonomy Lean checkers"
+                        .to_string(),
+                );
             }
             if !inp.chains.is_empty() || !inp.transitive.is_empty() {
                 return Err(
@@ -5293,7 +5308,15 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     } else {
                         ht.lean_unsat_certificate_json().ok()?
                     };
-                    return Some(((consistent, Vec::new(), Vec::new()), Some(certificate)));
+                    let taxonomy = if lean_taxonomy_requested {
+                        Some(ht.lean_taxonomy_certificate_json(&q).ok()?)
+                    } else {
+                        None
+                    };
+                    return Some((
+                        (consistent, Vec::new(), Vec::new()),
+                        Some((certificate, taxonomy)),
+                    ));
                 }
                 let classification = if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
@@ -5325,7 +5348,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
         }
         if let Some(((consistent, unsat, subs), lean_certificate)) = res {
-            if let Some(certificate) = lean_certificate {
+            let mut validated_taxonomy = None;
+            if let Some((certificate, taxonomy_certificate)) = lean_certificate {
                 let temporary_path;
                 let path = if let Some(path) = lean_cert_path.as_deref() {
                     path
@@ -5361,6 +5385,105 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         ));
                     }
                 }
+                if let Some(taxonomy_certificate) = taxonomy_certificate {
+                    let taxonomy_value: serde_json::Value =
+                        serde_json::from_str(&taxonomy_certificate).map_err(|error| {
+                            format!("KM_HT_LEAN_TAXONOMY_CERT produced invalid JSON: {error}")
+                        })?;
+                    let temporary_taxonomy_path;
+                    let taxonomy_path = if let Some(path) = lean_taxonomy_path.as_deref() {
+                        path
+                    } else {
+                        temporary_taxonomy_path = std::env::temp_dir()
+                            .join(format!("km-ht-taxonomy-cert-{}.json", std::process::id()));
+                        temporary_taxonomy_path.as_path()
+                    };
+                    std::fs::write(taxonomy_path, &taxonomy_certificate).map_err(|error| {
+                        format!(
+                            "KM_HT_LEAN_TAXONOMY_CERT cannot write {}: {error}",
+                            taxonomy_path.display()
+                        )
+                    })?;
+                    let checker = lean_taxonomy_checker
+                        .as_deref()
+                        .ok_or_else(|| "missing HT taxonomy Lean checker".to_string())?;
+                    let status = std::process::Command::new(checker)
+                        .arg(taxonomy_path)
+                        .stdout(std::process::Stdio::null())
+                        .status()
+                        .map_err(|error| {
+                            format!(
+                                "KM_HT_LEAN_TAXONOMY_CERT cannot execute {}: {error}",
+                                checker.display()
+                            )
+                        })?;
+                    if lean_taxonomy_path.is_none() {
+                        let _ = std::fs::remove_file(taxonomy_path);
+                    }
+                    if !status.success() {
+                        return Err(format!(
+                            "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate ({status})",
+                            checker.display()
+                        ));
+                    }
+                    validated_taxonomy = Some(taxonomy_value);
+                }
+            }
+            if let Some(taxonomy) = validated_taxonomy {
+                let named = taxonomy["named"]
+                    .as_array()
+                    .ok_or_else(|| "checked HT taxonomy omitted named classes".to_string())?;
+                let concepts = taxonomy["concepts"]
+                    .as_array()
+                    .ok_or_else(|| "checked HT taxonomy omitted concept evidence".to_string())?;
+                let rows = taxonomy["subsumptions"].as_array().ok_or_else(|| {
+                    "checked HT taxonomy omitted subsumption evidence".to_string()
+                })?;
+                let ids: Vec<C> = named
+                    .iter()
+                    .map(|id| {
+                        id.as_u64()
+                            .and_then(|id| C::try_from(id).ok())
+                            .ok_or_else(|| {
+                                "checked HT taxonomy has an invalid class id".to_string()
+                            })
+                    })
+                    .collect::<Result<_, _>>()?;
+                let certified_unsat: Vec<C> = concepts
+                    .iter()
+                    .zip(ids.iter().copied())
+                    .filter_map(|(entry, id)| {
+                        entry["evidence"]["unsatisfiable_concept"]
+                            .is_object()
+                            .then_some(id)
+                    })
+                    .collect();
+                let mut certified_subs = Vec::new();
+                for (sub, row) in ids.iter().copied().zip(rows) {
+                    let row = row
+                        .as_array()
+                        .ok_or_else(|| "checked HT taxonomy has a non-array row".to_string())?;
+                    for (sup, entry) in ids.iter().copied().zip(row) {
+                        if entry["evidence"]["subsumption"].is_object() {
+                            certified_subs.push((sub, sup));
+                        }
+                    }
+                }
+                let name = |c: C| {
+                    inp.concepts
+                        .get(c as usize)
+                        .cloned()
+                        .unwrap_or_else(|| format!("C{c}"))
+                };
+                let out = TOutput {
+                    consistent,
+                    unsatisfiable: certified_unsat.into_iter().map(|c| name(c)).collect(),
+                    subsumptions: certified_subs
+                        .into_iter()
+                        .map(|(sub, sup)| [name(sub), name(sup)])
+                        .collect(),
+                };
+                return serde_json::to_string(&out).map_err(|error| error.to_string());
             }
             // The per-concept model-label candidate sets can miss an entailed
             // A ⊑ C when A ⊑ B ⊑ C and C is absent from A's one captured model

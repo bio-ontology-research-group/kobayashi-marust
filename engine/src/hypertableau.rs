@@ -8270,6 +8270,110 @@ impl Ht {
         })
     }
 
+    /// Produce a complete checker-ready named taxonomy. Every concept and every
+    /// ordered pair receives either a bounded refutation or a checked finite
+    /// countermodel. Failure of any cell rejects the entire matrix.
+    pub fn lean_taxonomy_certificate_json(&mut self, named: &[C]) -> Result<String, String> {
+        if named.is_empty() {
+            return Err("HT Lean taxonomy certificate requires named concepts".to_string());
+        }
+        let mut unique = HashSet::with_capacity(named.len());
+        if !named.iter().all(|concept| unique.insert(*concept)) {
+            return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
+        }
+
+        let payload = |document: String| -> Result<(serde_json::Value, serde_json::Value), String> {
+            let value: serde_json::Value =
+                serde_json::from_str(&document).map_err(|error| error.to_string())?;
+            let object = value
+                .as_object()
+                .ok_or_else(|| "HT Lean query certificate is not an object".to_string())?;
+            let query = serde_json::json!({
+                "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
+                "labels": object.get("labels").cloned().ok_or("missing labels")?,
+                "edges": object.get("edges").cloned().ok_or("missing edges")?,
+                "obligations": object.get("obligations").cloned().ok_or("missing obligations")?,
+                "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+            });
+            Ok((value, query))
+        };
+
+        let mut concept_payloads = Vec::with_capacity(named.len());
+        let mut subsumption_payloads = Vec::with_capacity(named.len());
+        let mut base: Option<serde_json::Value> = None;
+        let mut concept_count = 0u64;
+
+        let mut note_document =
+            |document: String| -> Result<serde_json::Value, String> {
+                let (full, query) = payload(document)?;
+                concept_count = concept_count.max(
+                    full["concept_count"]
+                        .as_u64()
+                        .ok_or_else(|| "invalid concept_count".to_string())?,
+                );
+                if let Some(previous) = &base {
+                    for field in ["role_count", "variable_count", "ontology"] {
+                        if previous[field] != full[field] {
+                            return Err(format!(
+                                "HT Lean taxonomy query changed shared {field}"
+                            ));
+                        }
+                    }
+                } else {
+                    base = Some(full);
+                }
+                Ok(query)
+            };
+
+        for &concept in named {
+            let satisfiable = self
+                .consistent(&[CLit::pos(concept)])
+                .ok_or_else(|| "HT concept probe left the certified fragment".to_string())?;
+            let document = if satisfiable {
+                self.lean_satisfiable_concept_certificate_json(concept)?
+            } else {
+                self.lean_unsatisfiable_concept_certificate_json(concept)?
+            };
+            concept_payloads.push(note_document(document)?);
+        }
+
+        for &sub in named {
+            let mut row = Vec::with_capacity(named.len());
+            for &sup in named {
+                let satisfiable = self
+                    .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
+                    .ok_or_else(|| "HT subsumption probe left the certified fragment".to_string())?;
+                let document = if satisfiable {
+                    self.lean_non_subsumption_certificate_json(sub, sup)?
+                } else {
+                    self.lean_subsumption_certificate_json(sub, sup)?
+                };
+                row.push(note_document(document)?);
+            }
+            subsumption_payloads.push(row);
+        }
+
+        let base = base.ok_or_else(|| "HT Lean taxonomy has no evidence".to_string())?;
+        concept_count = concept_count.max(
+            named
+                .iter()
+                .map(|&concept| concept as u64 + 1)
+                .max()
+                .unwrap_or(0),
+        );
+        serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "concept_count": concept_count,
+            "role_count": base["role_count"],
+            "variable_count": base["variable_count"],
+            "ontology": base["ontology"],
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concepts": concept_payloads,
+            "subsumptions": subsumption_payloads,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     /// Recompute the tableau trigger indexes (`concept_triggers`,
     /// `role_triggers`, `global_clauses`, `global_disj`) from the CURRENT
     /// `self.clauses`. Must be called whenever `self.clauses` is replaced after
@@ -16970,6 +17074,24 @@ mod tests {
     }
 
     #[test]
+    fn lean_taxonomy_wire_covers_every_concept_and_ordered_pair() {
+        let mut t = ht(Vec::new());
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_taxonomy_certificate_json(&[A, B])
+                .expect("the empty ontology has finite evidence for every cell"),
+        )
+        .expect("taxonomy certificate is JSON");
+        assert_eq!(wire["named"], serde_json::json!([A, B]));
+        assert_eq!(wire["concepts"].as_array().unwrap().len(), 2);
+        let rows = wire["subsumptions"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|row| row.as_array().unwrap().len() == 2));
+        assert!(wire["subsumptions"][0][0]["evidence"]["subsumption"].is_object());
+        assert!(wire["subsumptions"][0][1]["evidence"]["non_subsumption"].is_object());
+        assert!(t.lean_taxonomy_certificate_json(&[A, A]).is_err());
+    }
+
+    #[test]
     fn lean_unsat_wire_closes_role_and_existential_branches() {
         let role_t = ht(vec![
             Clause::new(Vec::new(), vec![role(R0, X, X)]),
@@ -17057,7 +17179,7 @@ mod tests {
                 .expect("the fresh existential witness closes"),
         )
         .expect("write temporary HT certificate");
-        let accepted = std::process::Command::new(checker)
+        let accepted = std::process::Command::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -17115,5 +17237,46 @@ mod tests {
             let _ = std::fs::remove_file(path);
             assert!(accepted, "Lean must accept Rust query certificate {index}");
         }
+    }
+
+    #[test]
+    fn lean_taxonomy_wire_passes_native_checker_when_configured() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
+            return;
+        };
+        let mut t = ht(Vec::new());
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-taxonomy-cert-{}.json",
+            std::process::id()
+        ));
+        let document = t
+            .lean_taxonomy_certificate_json(&[A, B])
+            .expect("produce complete two-concept taxonomy");
+        std::fs::write(&path, &document).expect("write temporary HT taxonomy certificate");
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean HT taxonomy checker")
+            .success();
+        let mut tampered: serde_json::Value =
+            serde_json::from_str(&document).expect("taxonomy document is JSON");
+        tampered["subsumptions"][0]
+            .as_array_mut()
+            .expect("first taxonomy row")
+            .pop();
+        std::fs::write(&path, serde_json::to_vec(&tampered).unwrap())
+            .expect("write tampered HT taxonomy certificate");
+        let rejected = !std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean HT taxonomy checker on tampered matrix")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the complete Rust taxonomy matrix");
+        assert!(rejected, "Lean must reject a taxonomy with one missing cell");
     }
 }

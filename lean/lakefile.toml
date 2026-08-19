@@ -19,3 +19,7 @@ root = "ELCertCheck"
 [[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
+
+[[lean_exe]]
+name = "ht-taxonomy-cert-check"
+root = "HTTaxonomyCertCheck"

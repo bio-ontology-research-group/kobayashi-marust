@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.3.42] – 2026-08-19
+
+### Certify complete HT taxonomy matrices
+
+- Define complete semantic HT taxonomy certificates and prove exact
+  unsatisfiable-class and subsumption materialization from either-polarity
+  decisions.
+- Add finite and indexed certificate refinements that connect accepted finite
+  refutations and countermodels to those semantic decisions.
+- Add a versioned batch wire decoder with bounded identifiers, duplicate-free
+  named classes, exact concept coverage, and an exact square row-major matrix
+  covering every ordered named-class pair.
+- Add the native `ht-taxonomy-cert-check` executable. It accepts a complete
+  Rust-produced two-class matrix and rejects missing, duplicated, or
+  position-mismatched cells.
+- Add fail-closed Rust publication for the equality-free ALC(H) certificate
+  fragment. Publication requires both global-consistency and taxonomy checker
+  acceptance, and the returned taxonomy is derived directly from the accepted
+  matrix.
+- Add worker-boundary tests against the native Lean checkers and verify that a
+  rejecting taxonomy checker suppresses all classification output.
+
+This release certifies complete named taxonomy output whenever bounded HT
+evidence exists for every matrix cell in the supported certificate fragment.
+It does not prove HT termination or cover equality/cardinality, inverse roles,
+nominals, native ABoxes, QO, CB, complete ELC residuals, or automatic routing.
+
 ## [0.3.41] – 2026-08-19
 
 ### Certify HT taxonomy countermodels
