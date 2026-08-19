@@ -2181,13 +2181,13 @@ enum Out {
     Restart,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, Copy, serde::Serialize)]
 struct LeanHtLit {
     concept: usize,
     neg: bool,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtAtom {
     Concept { literal: LeanHtLit, node: usize },
@@ -2196,7 +2196,7 @@ enum LeanHtAtom {
     Eq { left: usize, right: usize },
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtClause {
     body: Vec<LeanHtAtom>,
     head: Vec<LeanHtAtom>,
@@ -2223,7 +2223,25 @@ struct LeanHtObligation {
 }
 
 #[derive(serde::Serialize)]
-struct LeanHtSatCertificate {
+#[serde(rename_all = "snake_case")]
+enum LeanHtRefutationTree {
+    Clash,
+    Branch {
+        clause: usize,
+        assignment: Vec<usize>,
+        children: Vec<LeanHtRefutationTree>,
+    },
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtEvidence {
+    Sat,
+    Unsat { tree: LeanHtRefutationTree },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtCertificate {
     version: usize,
     node_count: usize,
     concept_count: usize,
@@ -2233,7 +2251,7 @@ struct LeanHtSatCertificate {
     labels: Vec<LeanHtLabel>,
     edges: Vec<LeanHtEdge>,
     obligations: Vec<LeanHtObligation>,
-    evidence: &'static str,
+    evidence: LeanHtEvidence,
 }
 enum Scan {
     Sat,
@@ -7672,6 +7690,115 @@ impl Ht {
         }
     }
 
+    fn lean_concept_refutation(
+        &self,
+        labels: &mut HashSet<CLit>,
+        variable_count: usize,
+    ) -> Option<LeanHtRefutationTree> {
+        if labels.iter().any(|literal| {
+            labels.contains(&CLit {
+                c: literal.c,
+                neg: !literal.neg,
+            })
+        }) {
+            return Some(LeanHtRefutationTree::Clash);
+        }
+
+        for (clause_id, record) in self.clauses.iter().enumerate() {
+            let clause = &record.0;
+            let body_holds = clause.body.iter().all(|atom| match atom {
+                Atom::Concept { lit, .. } => labels.contains(lit),
+                _ => false,
+            });
+            if !body_holds {
+                continue;
+            }
+            let head_holds = clause.head.iter().any(|atom| match atom {
+                Atom::Concept { lit, .. } => labels.contains(lit),
+                _ => false,
+            });
+            if head_holds {
+                continue;
+            }
+
+            let mut children = Vec::with_capacity(clause.head.len());
+            for atom in &clause.head {
+                let Atom::Concept { lit, .. } = atom else {
+                    return None;
+                };
+                let inserted = labels.insert(*lit);
+                debug_assert!(inserted, "an unsatisfied concept head must be absent");
+                let child = self.lean_concept_refutation(labels, variable_count)?;
+                labels.remove(lit);
+                children.push(child);
+            }
+            return Some(LeanHtRefutationTree::Branch {
+                clause: clause_id,
+                assignment: vec![0; variable_count],
+                children,
+            });
+        }
+
+        None
+    }
+
+    /// Construct an exhaustive empty-root refutation for the exact normalized
+    /// concept-only ontology. Each recursive edge adds a previously absent
+    /// literal, so search terminates over the finite literal signature. An open
+    /// valuation makes the producer decline. Publication still requires Lean
+    /// checker acceptance.
+    pub fn lean_concept_unsat_certificate_json(&self) -> Result<String, String> {
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .body
+                .iter()
+                .chain(record.0.head.iter())
+                .any(|atom| !matches!(atom, Atom::Concept { .. }))
+        }) {
+            return Err(
+                "HT Lean UNSAT certificate v1 supports concept-only clauses".to_string(),
+            );
+        }
+
+        let mut variable_count = 0usize;
+        let mut concept_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                let Atom::Concept { lit, t } = atom else {
+                    unreachable!()
+                };
+                variable_count = variable_count.max(*t as usize + 1);
+                concept_count = concept_count.max(lit.c as usize + 1);
+            }
+        }
+        let ontology = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        let tree = self
+            .lean_concept_refutation(&mut HashSet::new(), variable_count)
+            .ok_or_else(|| "concept-only ontology has an open valuation".to_string())?;
+
+        serde_json::to_string(&LeanHtCertificate {
+            version: 1,
+            node_count: 1,
+            concept_count,
+            role_count: 0,
+            variable_count,
+            ontology,
+            labels: Vec::new(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
+            evidence: LeanHtEvidence::Unsat { tree },
+        })
+        .map_err(|error| error.to_string())
+    }
+
     /// Serialize the exact terminal completion graph and normalized HT clauses
     /// consumed by Lean's version-1 finite-model checker.
     ///
@@ -7819,7 +7946,7 @@ impl Ht {
             )
         });
 
-        serde_json::to_string(&LeanHtSatCertificate {
+        serde_json::to_string(&LeanHtCertificate {
             version: 1,
             node_count: self.ext.num_nodes(),
             concept_count,
@@ -7829,7 +7956,7 @@ impl Ht {
             labels,
             edges,
             obligations,
-            evidence: "sat",
+            evidence: LeanHtEvidence::Sat,
         })
         .map_err(|error| error.to_string())
     }
@@ -16432,5 +16559,43 @@ mod tests {
             vec![Atom::Eq { s: X, t: 1 }],
         )]);
         assert!(t.lean_sat_certificate_json().is_err());
+    }
+
+    #[test]
+    fn lean_concept_unsat_wire_exhausts_every_disjunct() {
+        let t = ht(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X), con(false, B, X)]),
+            Clause::new(vec![con(false, A, X)], Vec::new()),
+            Clause::new(vec![con(false, B, X)], Vec::new()),
+        ]);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_concept_unsat_certificate_json()
+                .expect("both concept branches close"),
+        )
+        .expect("certificate is JSON");
+        assert_eq!(wire["version"], 1);
+        let root = &wire["evidence"]["unsat"]["tree"]["branch"];
+        assert_eq!(root["clause"], 0);
+        assert_eq!(root["assignment"], serde_json::json!([0]));
+        assert_eq!(root["children"].as_array().unwrap().len(), 2);
+        assert!(wire["labels"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn lean_concept_unsat_wire_refuses_an_open_branch() {
+        let t = ht(vec![Clause::new(
+            Vec::new(),
+            vec![con(false, A, X), con(false, B, X)],
+        )]);
+        assert!(t.lean_concept_unsat_certificate_json().is_err());
+    }
+
+    #[test]
+    fn lean_concept_unsat_wire_refuses_nonconcept_atoms() {
+        let t = ht(vec![Clause::new(
+            vec![role(R0, X, 1)],
+            vec![con(false, A, X)],
+        )]);
+        assert!(t.lean_concept_unsat_certificate_json().is_err());
     }
 }

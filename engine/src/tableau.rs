@@ -5286,15 +5286,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 if !card_raw.is_empty() && std::env::var_os("KM_HT_QO").is_none() {
                     ht.set_card_defs_raw(&card_raw);
                 }
-                let classification = if lean_cert_requested {
+                if lean_cert_requested {
                     let consistent = ht.consistent(&[])?;
-                    if !consistent {
-                        // Runtime UNSAT publication requires a refutation tree;
-                        // v1's Rust producer currently emits SAT models only.
-                        return None;
-                    }
-                    Some((true, Vec::new(), Vec::new()))
-                } else if std::env::var_os("KM_HT_QO").is_some() {
+                    let certificate = if consistent {
+                        ht.lean_sat_certificate_json().ok()?
+                    } else {
+                        ht.lean_concept_unsat_certificate_json().ok()?
+                    };
+                    return Some(((consistent, Vec::new(), Vec::new()), Some(certificate)));
+                }
+                let classification = if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),
                         // QO bailed. In router mode (KM_HT_QO_CERTIFY_ONLY) this is
@@ -5315,12 +5316,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 } else {
                     ht.classify(&q)
                 };
-                let certificate = if lean_cert_requested {
-                    Some(ht.lean_sat_certificate_json().ok()?)
-                } else {
-                    None
-                };
-                Some((classification?, certificate))
+                Some((classification?, None))
             })
             .map_err(|e| e.to_string())?
             .join()
