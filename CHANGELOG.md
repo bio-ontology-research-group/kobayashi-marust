@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.55] – 2026-08-20
+
+### Check role-chain and transitivity source axioms directly
+
+- Restore every typed `R1∘R2⊑R` side-data entry as the exact clause
+  `R1(x,y) ∧ R2(y,z) → R(x,z)` on the Lean-certified HT path.
+- Restore every typed transitive-role entry as the exact clause
+  `R(x,y) ∧ R(y,z) → R(x,z)`.
+- Run these source clauses through ordinary HT branching instead of trusting
+  the optimized role-automaton marker compilation. The existing Lean finite
+  model and refutation checkers therefore verify the original role semantics
+  directly for SAT, UNSAT, and complete-taxonomy evidence.
+- Keep the optimized side-data implementation unchanged on the ordinary
+  performance route. Only certification requests select the exact source-clause
+  path.
+- Add Rust reconstruction tests, a chain-dependent refutation accepted by the
+  native Lean checker, and an end-to-end complete-taxonomy test containing both
+  a role chain and a transitivity axiom.
+
+This release removes the role-chain/transitivity side-data exclusion from the
+HT certificate gate. It certifies evidence that terminates and is emitted; a
+general termination and evidence-production proof remains part of the complete
+HT certification objective.
+
 ## [0.3.54] – 2026-08-20
 
 ### Check HT trigger absorption and contrapositives from the source ontology

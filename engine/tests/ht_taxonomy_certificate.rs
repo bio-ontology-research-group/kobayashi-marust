@@ -32,6 +32,25 @@ const MIXED_WIRE: &str = r#"{
   "transitive":[]
 }"#;
 
+const ROLE_CHAIN_WIRE: &str = r#"{
+  "concepts":["A","B","C","D"],
+  "roles":["r0","r1","r2"],
+  "clauses":[
+    {"body":[{"k":"c","neg":false,"c":0,"t":0}],"head":[{"k":"e","r":0,"neg":false,"c":1,"t":0}]},
+    {"body":[{"k":"c","neg":false,"c":1,"t":0}],"head":[{"k":"e","r":1,"neg":false,"c":3,"t":0}]},
+    {"body":[{"k":"c","neg":false,"c":0,"t":0},{"k":"r","r":2,"s":0,"t":1}],"head":[{"k":"c","neg":false,"c":2,"t":1}]},
+    {"body":[{"k":"c","neg":false,"c":3,"t":0}],"head":[{"k":"c","neg":true,"c":2,"t":0}]}
+  ],
+  "queries":[0,1,2,3],
+  "inverse":false,
+  "number":false,
+  "nominals":[],
+  "native_abox":{},
+  "card_defs":[],
+  "chains":[[0,1,2]],
+  "transitive":[0]
+}"#;
+
 fn run_with_input(
     input: &str,
     global_checker: &str,
@@ -139,4 +158,31 @@ fn accepted_mixed_taxonomy_is_read_from_wrapped_evidence() {
         value["subsumptions"],
         serde_json::json!([["A", "A"], ["B", "B"]])
     );
+}
+
+#[test]
+fn certified_taxonomy_restores_and_checks_raw_role_chain_axioms() {
+    let global_checker = std::env::var("KM_HT_TEST_LEAN_GLOBAL_CHECKER")
+        .or_else(|_| std::env::var("KM_HT_TEST_LEAN_CHECKER"))
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let taxonomy_checker = std::env::var("KM_HT_TEST_LEAN_TAXONOMY_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let output = run_with_input(
+        ROLE_CHAIN_WIRE,
+        &global_checker,
+        &taxonomy_checker,
+        "raw-role-chain",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("classification is JSON");
+    assert_eq!(value["consistent"], true);
+    assert!(value["unsatisfiable"]
+        .as_array()
+        .expect("unsatisfiable array")
+        .contains(&serde_json::json!("A")));
 }

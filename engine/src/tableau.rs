@@ -4911,6 +4911,58 @@ pub struct TOutput {
     pub subsumptions: Vec<[String; 2]>,
 }
 
+/// Reconstruct the exact role-chain clauses removed from the ordinary clause
+/// stream by `cb_to_ht`.  The Lean-certified path consumes these clauses
+/// directly instead of relying on the optimized role-automaton side channel.
+/// This keeps the certificate ontology equal to the source semantics: no
+/// generated marker concept or unchecked compilation theorem is needed.
+fn certified_role_chain_clauses(chains: &[(C, C, C)], transitive: &[C]) -> Vec<Clause> {
+    let mut clauses = Vec::with_capacity(chains.len() + transitive.len());
+    for &(first, second, head) in chains {
+        clauses.push(Clause {
+            body: vec![
+                Atom::Role {
+                    r: first,
+                    s: X,
+                    t: 1,
+                },
+                Atom::Role {
+                    r: second,
+                    s: 1,
+                    t: 2,
+                },
+            ],
+            head: vec![Atom::Role {
+                r: head,
+                s: X,
+                t: 2,
+            }],
+        });
+    }
+    for &role in transitive {
+        clauses.push(Clause {
+            body: vec![
+                Atom::Role {
+                    r: role,
+                    s: X,
+                    t: 1,
+                },
+                Atom::Role {
+                    r: role,
+                    s: 1,
+                    t: 2,
+                },
+            ],
+            head: vec![Atom::Role {
+                r: role,
+                s: X,
+                t: 2,
+            }],
+        });
+    }
+    clauses
+}
+
 fn atom_of(j: &JAtom) -> Atom {
     match *j {
         JAtom::Concept { neg, c, t } => Atom::Concept {
@@ -5212,7 +5264,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             || (!inp.number && !inp.inverse && inp.nominals.is_empty())
             || (ht_nom && !inp.inverse))
     {
-        let ht_clauses = clauses.clone();
+        let mut ht_clauses = clauses.clone();
         let q = queries.clone();
         let noms = inp.nominals.clone();
         let abox_individuals = native_individuals.clone();
@@ -5259,18 +5311,19 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if !inp.chains.is_empty() || !inp.transitive.is_empty() {
-                return Err(
-                    "HT Lean certificate v1 does not certify role-chain side-data compilation"
-                        .to_string(),
-                );
-            }
             if std::env::var_os("KM_HT_HARVEST").is_some() {
                 return Err(
                     "HT Lean certification does not yet cover KM_HT_HARVEST preprocessing"
                         .to_string(),
                 );
             }
+        }
+        if lean_cert_requested {
+            // The optimized route keeps these source axioms in typed side data.
+            // For certification, restore their exact clausal semantics and let
+            // the ordinary HT evidence plus Lean's exhaustive checker account
+            // for them directly.
+            ht_clauses.extend(certified_role_chain_clauses(&inp.chains, &inp.transitive));
         }
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
         let card_raw: Vec<(C, bool, u32, R, C)> = inp
@@ -5292,7 +5345,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 // Ht chain-unfolding (faithful Konclude generateRoleChainAutomat
                 // Concept).  The chains are side data in the TInput (the raw
                 // axioms are excluded from the clause set to avoid cb_to_ht bloat).
-                if !inp.chains.is_empty() {
+                if !lean_cert_requested && (!inp.chains.is_empty() || !inp.transitive.is_empty()) {
                     ht.set_chains(inp.chains.clone(), inp.transitive.clone());
                 }
                 // A number KB routed to the fast Ht (e.g. under KM_HT_FORCE or the
@@ -5704,6 +5757,72 @@ mod tests {
         let input = serde_json::to_string(&native_wire_input()).unwrap();
         let error = run_json_inner(&input, Some(false)).unwrap_err();
         assert!(error.contains("requires the hypertableau mechanism"));
+    }
+
+    #[test]
+    fn certified_role_chain_side_data_reconstructs_exact_source_clauses() {
+        let clauses = certified_role_chain_clauses(&[(R0, R1, 2)], &[3]);
+        assert_eq!(clauses.len(), 2);
+        assert!(matches!(
+            clauses[0].body.as_slice(),
+            [
+                Atom::Role { r: R0, s: X, t: 1 },
+                Atom::Role { r: R1, s: 1, t: 2 }
+            ]
+        ));
+        assert!(matches!(
+            clauses[0].head.as_slice(),
+            [Atom::Role { r: 2, s: X, t: 2 }]
+        ));
+        assert!(matches!(
+            clauses[1].body.as_slice(),
+            [
+                Atom::Role { r: 3, s: X, t: 1 },
+                Atom::Role { r: 3, s: 1, t: 2 }
+            ]
+        ));
+        assert!(matches!(
+            clauses[1].head.as_slice(),
+            [Atom::Role { r: 3, s: X, t: 2 }]
+        ));
+    }
+
+    #[test]
+    fn certified_raw_role_chain_participates_in_ht_refutation() {
+        let mut clauses = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R1, false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X), role(2, X, 1)],
+                vec![con(false, 2, 1)],
+            ),
+            Clause::new(vec![con(false, D, X)], vec![con(true, 2, X)]),
+        ];
+        clauses.extend(certified_role_chain_clauses(&[(R0, R1, 2)], &[]));
+        let mut ht = hypertableau::Ht::new(clauses);
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+        let document = ht
+            .lean_unsatisfiable_concept_certificate_json(A)
+            .expect("raw role-chain refutation has finite Lean evidence");
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-raw-chain-cert-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let output = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run native Lean checker on raw role-chain refutation");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                output.status.success(),
+                "Lean rejected raw role-chain evidence: {}\n{}",
+                String::from_utf8_lossy(&output.stderr),
+                document
+            );
+        }
     }
 
     #[test]
