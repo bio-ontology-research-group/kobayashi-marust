@@ -1,13 +1,12 @@
 import ContextCalculus.HypertableauCardinalityCertificate
-import ContextCalculus.HypertableauEqualityWire
+import ContextCalculus.HypertableauCardinalityRefutationWire
 import Lean
 
 /-!
 # Wire certificates for first-class hypertableau cardinality
 
-This layer currently accepts positive model evidence: SAT, non-subsumption, and
-satisfiable-concept certificates. Cardinality-driven refutations need explicit
-minimum-witness and maximum-merge proof-tree nodes and remain fail closed.
+Positive evidence checks the exact quotient model. Refutational evidence checks
+an explicit depth-indexed tree whose maximum nodes close every possible merge.
 -/
 
 namespace ContextCalculus.Hypertableau
@@ -37,21 +36,41 @@ structure WireCardinalityEqCertificate where
   version : Nat
   certificate : WireEqCertificate
   definitions : List WireCardinalityDef
+  refutation_depth : Nat := 0
+  refutation : Option WireCardinalityEqRefutationTree := none
 deriving FromJson, ToJson, Repr
+
+def DecodedEqCertificate.rootCertificate (decoded : DecodedEqCertificate) :
+    FiniteEqCertificate decoded.nodeCount decoded.conceptCount decoded.roleCount
+      decoded.variableCount :=
+  match decoded.evidence with
+  | .sat certificate | .unsat certificate _ | .subsumption certificate .. |
+      .unsatisfiableConcept certificate .. | .nonSubsumption certificate .. |
+      .satisfiableConcept certificate .. => certificate
 
 structure DecodedCardinalityEqCertificate where
   base : DecodedEqCertificate
   definitions : List
     (CardinalityDef (Fin base.conceptCount) (Fin base.roleCount))
+  refutation : Option (DecodedCardinalityEqRefutation base.nodeCount base.conceptCount
+    base.roleCount base.variableCount)
 
 def WireCardinalityEqCertificate.decode (wire : WireCardinalityEqCertificate) :
     Except String DecodedCardinalityEqCertificate := do
-  if wire.version != 1 then
+  if wire.version != 1 && wire.version != 2 then
     throw s!"unsupported cardinality hypertableau certificate version {wire.version}"
   let base ← wire.certificate.decode
   let definitions ← wire.definitions.mapM
     (WireCardinalityDef.decode base.conceptCount base.roleCount)
-  return ⟨base, definitions⟩
+  let refutation : Option (DecodedCardinalityEqRefutation base.nodeCount
+      base.conceptCount base.roleCount base.variableCount) ← match wire.refutation with
+    | none => pure none
+    | some tree => do
+        let certificate := base.rootCertificate
+        let decoded ← tree.decode base.nodeCount base.conceptCount base.roleCount
+          base.variableCount wire.refutation_depth certificate.base.ontology definitions
+        pure (some decoded)
+  return ⟨base, definitions, refutation⟩
 
 def DecodedCardinalityEqCertificate.check
     (decoded : DecodedCardinalityEqCertificate) : Bool :=
@@ -66,7 +85,26 @@ def DecodedCardinalityEqCertificate.check
   | .satisfiableConcept certificate root concept =>
       decide ((root, .pos concept) ∈ certificate.base.labels) &&
         certificate.checkEqSatWithCardinality decoded.definitions
-  | .unsat .. | .subsumption .. | .unsatisfiableConcept .. => false
+  | .unsat certificate _ =>
+      match decoded.refutation with
+      | none => false
+      | some refutation =>
+          decide (0 < decoded.base.nodeCount) &&
+          certificate.base.labels.isEmpty && certificate.base.edges.isEmpty &&
+          certificate.base.obligations.isEmpty &&
+          refutation.tree.check decoded.definitions certificate
+  | .subsumption certificate root sub sup _ =>
+      match decoded.refutation with
+      | none => false
+      | some refutation =>
+          certificate.checkSubsumptionRoot root sub sup &&
+          refutation.tree.check decoded.definitions certificate
+  | .unsatisfiableConcept certificate root concept _ =>
+      match decoded.refutation with
+      | none => false
+      | some refutation =>
+          certificate.checkUnsatisfiableRoot root concept &&
+          refutation.tree.check decoded.definitions certificate
 
 def WireCardinalityEqCertificate.check (wire : WireCardinalityEqCertificate) :
     Except String Bool := do
@@ -85,7 +123,15 @@ def DecodedCardinalityEqCertificate.SemanticallyValid
   | .satisfiableConcept certificate _ concept =>
       ¬UnsatisfiableConceptWithCardinality certificate.base.ontology
         decoded.definitions concept
-  | .unsat .. | .subsumption .. | .unsatisfiableConcept .. => False
+  | .unsat certificate _ =>
+      ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.base.conceptCount)
+          (Fin decoded.base.roleCount)), Nonempty Domain ∧
+        I.models certificate.base.ontology ∧ I.modelsCardinalityDefs decoded.definitions
+  | .subsumption certificate _ sub sup _ =>
+      EntailsSubWithCardinality certificate.base.ontology decoded.definitions sub sup
+  | .unsatisfiableConcept certificate _ concept _ =>
+      UnsatisfiableConceptWithCardinality certificate.base.ontology
+        decoded.definitions concept
 
 theorem DecodedCardinalityEqCertificate.check_sound
     (decoded : DecodedCardinalityEqCertificate)
@@ -113,11 +159,36 @@ theorem DecodedCardinalityEqCertificate.check_sound
       simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
       exact certificate.checkEqSatWithCardinality_not_unsatisfiableConcept
         decoded.definitions root concept hcheck.1 hcheck.2
-  | unsat certificate tree => simp [DecodedCardinalityEqCertificate.check, hevidence] at hcheck
+  | unsat certificate tree =>
+      cases hrefutation : decoded.refutation with
+      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      | some refutation =>
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+            Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hcheck
+          rcases hcheck with
+            ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
+          haveI : Nonempty (Fin decoded.base.nodeCount) := ⟨⟨0, hpositive⟩⟩
+          simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+          exact refutation.tree.check_ontology_unsatisfiable decoded.definitions certificate
+            ⟨hlabels, hedges, hobligations⟩ htree
   | subsumption certificate root sub sup tree =>
-      simp [DecodedCardinalityEqCertificate.check, hevidence] at hcheck
+      cases hrefutation : decoded.refutation with
+      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      | some refutation =>
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+            Bool.and_eq_true] at hcheck
+          simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+          exact refutation.tree.check_subsumption decoded.definitions certificate root sub sup
+            (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
   | unsatisfiableConcept certificate root concept tree =>
-      simp [DecodedCardinalityEqCertificate.check, hevidence] at hcheck
+      cases hrefutation : decoded.refutation with
+      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      | some refutation =>
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+            Bool.and_eq_true] at hcheck
+          simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+          exact refutation.tree.check_unsatisfiable_concept decoded.definitions certificate
+            root concept (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
 
 namespace CardinalityWireTests
 
@@ -162,6 +233,54 @@ example : isError ({ accepted with
   native_decide
 example : ({ accepted with definitions := [{ minimumTwo with bound := 3 }] }).check = .ok false := by
   native_decide
+
+private def maximumZeroClause : WireClause :=
+  { body := [.concept { concept := 0, neg := false } 0], head := [.role 0 0 0] }
+
+private def maximumZeroRoot : WireEqState where
+  labels := [{ node := 0, literal := { concept := 0, neg := false } }]
+  edges := []
+  obligations := []
+  equalities := []
+  representatives := [0]
+  representative_paths := [[]]
+
+private def maximumZeroActive : WireEqState :=
+  { maximumZeroRoot with edges := [{ role := 0, source := 0, target := 0 }] }
+
+private def maximumZeroBase : WireEqCertificate where
+  version := 2
+  node_count := 1
+  concept_count := 1
+  role_count := 1
+  variable_count := 1
+  ontology := [maximumZeroClause]
+  state := maximumZeroRoot
+  evidence := .unsatisfiable_concept 0 0 .clash
+
+private def maximumZero : WireCardinalityDef :=
+  { marker := 0, minimum := false, bound := 0, role := 0, filler := 0 }
+
+private def maximumZeroRefutation : WireCardinalityEqRefutationTree :=
+  .branch 0 [0] [(maximumZeroActive,
+    .maximum 0 0 [0] [[(maximumZeroActive, .clash)]])]
+
+private def acceptedMaximumZero : WireCardinalityEqCertificate where
+  version := 2
+  certificate := maximumZeroBase
+  definitions := [maximumZero]
+  refutation_depth := 2
+  refutation := some maximumZeroRefutation
+
+example : acceptedMaximumZero.check = .ok true := by native_decide
+
+private def missingMaximumChildTree : WireCardinalityEqRefutationTree :=
+  .branch 0 [0] [(maximumZeroActive, .maximum 0 0 [0] [])]
+
+private def missingMaximumChild : WireCardinalityEqCertificate :=
+  { acceptedMaximumZero with refutation := some missingMaximumChildTree }
+
+example : isError missingMaximumChild.check = true := by native_decide
 
 end CardinalityWireTests
 

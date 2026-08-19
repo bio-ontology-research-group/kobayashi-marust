@@ -25,6 +25,25 @@ inductive CardinalityEqRefutes (Node : Type u)
     EqState Node Concept Role → Prop where
   | equality (state) (tree : EqRefutes Node ontology state) :
       CardinalityEqRefutes Node ontology definitions state
+  | clash (state)
+      (hclash : ∃ positiveNode negativeNode concept,
+        state.equiv positiveNode negativeNode ∧
+          state.base.label positiveNode (.pos concept) ∧
+          state.base.label negativeNode (.negated concept)) :
+      CardinalityEqRefutes Node ontology definitions state
+  | branch (state) (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology) (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body, state.holdsAtom assignment atom)
+      (children : ∀ atom, atom ∈ clause.head →
+        CardinalityEqRefutes Node ontology definitions
+          (state.assertAtom assignment atom)) :
+      CardinalityEqRefutes Node ontology definitions state
+  | witness (state) (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.base.obligation role filler source)
+      (hfresh : state.Fresh target)
+      (child : CardinalityEqRefutes Node ontology definitions
+        (state.materializeWitness source target role filler)) :
+      CardinalityEqRefutes Node ontology definitions state
   | maximum (state) (definition : CardinalityDef Concept Role)
       (hdefinition : definition ∈ definitions)
       (hkind : definition.kind = .maximum)
@@ -46,6 +65,26 @@ theorem CardinalityEqRefutes.sound
   | equality state tree =>
       rintro ⟨Domain, I, value, hmodels, _, hrealized⟩
       exact tree.sound ⟨Domain, I, value, hmodels, hrealized⟩
+  | clash state hclash =>
+      rintro ⟨Domain, I, value, _, _, hrealized⟩
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hpositiveSat := hrealized.1.1 positiveNode (.pos concept) hpositive
+      have hnegativeSat := hrealized.1.1 negativeNode (.negated concept) hnegative
+      have hvalue := hrealized.2 positiveNode negativeNode hequiv
+      rw [← hvalue] at hnegativeSat
+      exact hnegativeSat hpositiveSat
+  | branch state clause hclause assignment hbody children ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      rcases state.hyper_branch_sound I value hrealized clause
+          (hmodels clause hclause) assignment hbody with
+        ⟨atom, hatom, hchild⟩
+      exact ih atom hatom ⟨Domain, I, value, hmodels, hcardinality, hchild⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      rcases state.materializeWitness_realized I value hrealized source target
+          role filler hobligation hfresh with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
   | maximum state definition hdefinition hkind source hmarker witnesses
       hedge hfiller children ih =>
       rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩

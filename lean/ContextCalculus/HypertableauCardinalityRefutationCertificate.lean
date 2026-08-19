@@ -51,6 +51,8 @@ inductive FiniteCardinalityEqRefutationTree
   | equality
       (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
       : FiniteCardinalityEqRefutationTree nodeCount conceptCount roleCount variableCount 0
+  | clash : FiniteCardinalityEqRefutationTree
+      nodeCount conceptCount roleCount variableCount 0
   | delay
       (child : FiniteCardinalityEqRefutationTree
         nodeCount conceptCount roleCount variableCount depth)
@@ -67,6 +69,22 @@ inductive FiniteCardinalityEqRefutationTree
           nodeCount conceptCount roleCount variableCount depth)
       : FiniteCardinalityEqRefutationTree
         nodeCount conceptCount roleCount variableCount (depth + 1)
+  | branch
+      (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+      (assignment : Fin variableCount → Fin nodeCount)
+      (next : Fin clause.head.length →
+        FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (children : Fin clause.head.length → FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount depth)
+      : FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount (depth + 1)
+  | witness
+      (source target : Fin nodeCount) (role : Fin roleCount)
+      (filler : Lit (Fin conceptCount))
+      (child : FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount depth)
+      : FiniteCardinalityEqRefutationTree
+        nodeCount conceptCount roleCount variableCount (depth + 1)
 
 def FiniteCardinalityEqRefutationTree.check
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
@@ -74,6 +92,7 @@ def FiniteCardinalityEqRefutationTree.check
     FiniteCardinalityEqRefutationTree
       nodeCount conceptCount roleCount variableCount depth → Bool
   | .equality tree => tree.check certificate
+  | .clash => certificate.equalityClosureValidB && certificate.closedClashB
   | .delay child => child.check definitions certificate
   | .maximum definition source witnesses next children =>
       decide (definition ∈ definitions) &&
@@ -84,6 +103,18 @@ def FiniteCardinalityEqRefutationTree.check
       decide (∀ left right, left ≠ right →
         certificate.mergeTransitionB (next left right) (witnesses left) (witnesses right) = true ∧
         (children left right).check definitions (next left right) = true)
+  | .branch clause assignment next children =>
+      certificate.equalityClosureValidB &&
+      decide (clause ∈ certificate.base.ontology) &&
+      clause.body.all (certificate.closedHoldsAtomB assignment) &&
+      decide (∀ index,
+        certificate.transitionB (next index) assignment (clause.head.get index) = true ∧
+        (children index).check definitions (next index) = true)
+  | .witness source target role filler child =>
+      certificate.equalityClosureValidB &&
+      decide ((role, filler, source) ∈ certificate.base.obligations) &&
+      certificate.freshNodeB target &&
+      child.check definitions (certificate.materializeWitness source target role filler)
 
 theorem FiniteCardinalityEqRefutationTree.check_sound
     (tree : FiniteCardinalityEqRefutationTree
@@ -97,6 +128,10 @@ theorem FiniteCardinalityEqRefutationTree.check_sound
   | equality tree =>
       exact .equality certificate.state
         (tree.check_sound certificate (by simpa [FiniteCardinalityEqRefutationTree.check] using hcheck))
+  | clash =>
+      simp only [FiniteCardinalityEqRefutationTree.check, Bool.and_eq_true] at hcheck
+      exact .clash certificate.state
+        (certificate.closedClashB_sound hcheck.1 hcheck.2)
   | delay child ih =>
       exact ih certificate (by simpa [FiniteCardinalityEqRefutationTree.check] using hcheck)
   | maximum definition source witnesses next children ih =>
@@ -120,6 +155,34 @@ theorem FiniteCardinalityEqRefutationTree.check_sound
         simp only [hnext, hcurrent] at hontology hlabels hedges hobligations
         simp_all
       simpa only [hbase] using ih left right (next left right) hchild
+  | branch clause assignment next children ih =>
+      simp only [FiniteCardinalityEqRefutationTree.check, Bool.and_eq_true,
+        List.all_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨⟨hvalid, hclause⟩, hbody⟩, hchildren⟩
+      apply CardinalityEqRefutes.branch certificate.state clause hclause assignment
+      · intro atom hatom
+        exact (certificate.closedHoldsAtomB_eq_true hvalid assignment atom).mp
+          (hbody atom hatom)
+      · intro atom hatom
+        rcases List.mem_iff_get.mp hatom with ⟨index, hindex⟩
+        rw [← hindex]
+        rcases hchildren index with ⟨htransition, hchild⟩
+        rw [← certificate.transitionB_state (next index) assignment
+          (clause.head.get index) htransition]
+        have hbase := certificate.transitionB_base (next index) assignment
+          (clause.head.get index) htransition
+        have hontology : (next index).base.ontology = certificate.base.ontology := by
+          rw [hbase]
+          cases clause.head.get index <;> rfl
+        simpa only [hontology] using ih index (next index) hchild
+  | witness source target role filler child ih =>
+      simp only [FiniteCardinalityEqRefutationTree.check, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨⟨hvalid, hobligation⟩, hfresh⟩, hchild⟩
+      apply CardinalityEqRefutes.witness certificate.state source target role filler
+        hobligation ((certificate.freshNodeB_eq_true hvalid target).mp hfresh)
+      rw [← certificate.state_materializeWitness source target role filler]
+      exact ih (certificate.materializeWitness source target role filler) hchild
 
 theorem FiniteCardinalityEqRefutationTree.check_unsatisfiable
     (tree : FiniteCardinalityEqRefutationTree
