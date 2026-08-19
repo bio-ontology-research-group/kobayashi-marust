@@ -16,6 +16,14 @@ structure DistinctEqState (Node : Type u) (Concept Role : Type) where
   base : EqState Node Concept Role
   apart : Node → Node → Prop
 
+@[ext] theorem DistinctEqState.ext
+    {left right : DistinctEqState Node Concept Role}
+    (hbase : left.base = right.base) (hapart : left.apart = right.apart) :
+    left = right := by
+  cases left
+  cases right
+  simp_all
+
 def DistinctEqState.RealizedBy (state : DistinctEqState Node Concept Role)
     (I : Interp Domain Concept Role) (value : Node → Domain) : Prop :=
   state.base.RealizedBy I value ∧

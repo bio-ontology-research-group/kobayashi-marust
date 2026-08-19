@@ -2,6 +2,36 @@
 
 ## [unreleased]
 
+## [0.3.56] – 2026-08-20
+
+### Certify first-class HT cardinality evidence and pigeonhole closure
+
+- Define exact arbitrary-domain semantics for HT minimum and maximum
+  cardinality definitions without a unique-name assumption.
+- Check positive SAT, non-subsumption, and satisfiable-concept evidence against
+  the canonical equality quotient, including exhaustive finite assignments for
+  each active cardinality definition.
+- Prove the maximum rule sound: `n+1` qualifying successors under `≤n R.C`
+  force an exhaustive equality-merge branch.
+- Prove simultaneous `≥n R.C` witness materialization sound and preserve the
+  injectivity of its fresh witness family.
+- Add an explicit apart relation so minimum-witness distinctness survives later
+  equality reasoning. Equality closure meeting an apart pair is a checked
+  contradiction, not a unique-name assumption.
+- Prove the general pigeonhole closure for active `≥n+1 R.C` and `≤n R.C`.
+- Add finite, depth-indexed certificate checkers and bounds-checked JSON wire
+  decoders for minimum, maximum, equality/apart, and cardinality refutation
+  trees.
+  The apart transition is compared extensionally over every finite node pair.
+- Add native tests accepting a complete `≥2 R.C` plus `≤1 R.C` public wire
+  certificate and rejecting missing apart information and malformed child
+  matrices.
+
+This release certifies cardinality evidence that is supplied to the Lean
+checker. It does not yet prove HT termination or that the Rust reasoner always
+emits a certificate; those remain requirements of the complete certification
+objective.
+
 ## [0.3.55] – 2026-08-20
 
 ### Check role-chain and transitivity source axioms directly

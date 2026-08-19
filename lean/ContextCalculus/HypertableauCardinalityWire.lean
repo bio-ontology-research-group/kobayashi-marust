@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauCardinalityCertificate
 import ContextCalculus.HypertableauCardinalityRefutationWire
+import ContextCalculus.HypertableauCardinalityDistinctWire
 import Lean
 
 /-!
@@ -38,6 +39,8 @@ structure WireCardinalityEqCertificate where
   definitions : List WireCardinalityDef
   refutation_depth : Nat := 0
   refutation : Option WireCardinalityEqRefutationTree := none
+  distinct_refutation_depth : Nat := 0
+  distinct_refutation : Option WireDistinctCardinalityRefutationTree := none
 deriving FromJson, ToJson, Repr
 
 def DecodedEqCertificate.rootCertificate (decoded : DecodedEqCertificate) :
@@ -54,6 +57,8 @@ structure DecodedCardinalityEqCertificate where
     (CardinalityDef (Fin base.conceptCount) (Fin base.roleCount))
   refutation : Option (DecodedCardinalityEqRefutation base.nodeCount base.conceptCount
     base.roleCount base.variableCount)
+  distinctRefutation : Option (DecodedDistinctCardinalityRefutation base.nodeCount
+    base.conceptCount base.roleCount base.variableCount)
 
 def WireCardinalityEqCertificate.decode (wire : WireCardinalityEqCertificate) :
     Except String DecodedCardinalityEqCertificate := do
@@ -70,7 +75,15 @@ def WireCardinalityEqCertificate.decode (wire : WireCardinalityEqCertificate) :
         let decoded ← tree.decode base.nodeCount base.conceptCount base.roleCount
           base.variableCount wire.refutation_depth certificate.base.ontology definitions
         pure (some decoded)
-  return ⟨base, definitions, refutation⟩
+  let distinctRefutation : Option (DecodedDistinctCardinalityRefutation base.nodeCount
+      base.conceptCount base.roleCount base.variableCount) ← match wire.distinct_refutation with
+    | none => pure none
+    | some tree => do
+        let certificate := base.rootCertificate
+        let decoded ← tree.decode base.nodeCount base.conceptCount base.roleCount
+          base.variableCount wire.distinct_refutation_depth certificate.base.ontology definitions
+        pure (some decoded)
+  return ⟨base, definitions, refutation, distinctRefutation⟩
 
 def DecodedCardinalityEqCertificate.check
     (decoded : DecodedCardinalityEqCertificate) : Bool :=
@@ -86,23 +99,37 @@ def DecodedCardinalityEqCertificate.check
       decide ((root, .pos concept) ∈ certificate.base.labels) &&
         certificate.checkEqSatWithCardinality decoded.definitions
   | .unsat certificate _ =>
-      match decoded.refutation with
-      | none => false
+      match decoded.distinctRefutation with
       | some refutation =>
+          decide (0 < decoded.base.nodeCount) &&
+          certificate.base.labels.isEmpty && certificate.base.edges.isEmpty &&
+          certificate.base.obligations.isEmpty &&
+          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+      | none => match decoded.refutation with
+        | none => false
+        | some refutation =>
           decide (0 < decoded.base.nodeCount) &&
           certificate.base.labels.isEmpty && certificate.base.edges.isEmpty &&
           certificate.base.obligations.isEmpty &&
           refutation.tree.check decoded.definitions certificate
   | .subsumption certificate root sub sup _ =>
-      match decoded.refutation with
-      | none => false
+      match decoded.distinctRefutation with
       | some refutation =>
+          certificate.checkSubsumptionRoot root sub sup &&
+          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+      | none => match decoded.refutation with
+        | none => false
+        | some refutation =>
           certificate.checkSubsumptionRoot root sub sup &&
           refutation.tree.check decoded.definitions certificate
   | .unsatisfiableConcept certificate root concept _ =>
-      match decoded.refutation with
-      | none => false
+      match decoded.distinctRefutation with
       | some refutation =>
+          certificate.checkUnsatisfiableRoot root concept &&
+          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+      | none => match decoded.refutation with
+        | none => false
+        | some refutation =>
           certificate.checkUnsatisfiableRoot root concept &&
           refutation.tree.check decoded.definitions certificate
 
@@ -160,35 +187,71 @@ theorem DecodedCardinalityEqCertificate.check_sound
       exact certificate.checkEqSatWithCardinality_not_unsatisfiableConcept
         decoded.definitions root concept hcheck.1 hcheck.2
   | unsat certificate tree =>
-      cases hrefutation : decoded.refutation with
-      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      cases hdistinct : decoded.distinctRefutation with
       | some refutation =>
-          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
             Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hcheck
           rcases hcheck with
             ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
           haveI : Nonempty (Fin decoded.base.nodeCount) := ⟨⟨0, hpositive⟩⟩
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_ontology_unsatisfiable decoded.definitions certificate
-            ⟨hlabels, hedges, hobligations⟩ htree
+          exact refutation.tree.check_ontology_unsatisfiable decoded.definitions
+            { base := certificate, apart := [] } ⟨hlabels, hedges, hobligations⟩ rfl htree
+      | none =>
+          cases hrefutation : decoded.refutation with
+          | none =>
+              simp [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation] at hcheck
+          | some refutation =>
+              simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation, Bool.and_eq_true, decide_eq_true_eq,
+                List.isEmpty_iff] at hcheck
+              rcases hcheck with
+                ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
+              haveI : Nonempty (Fin decoded.base.nodeCount) := ⟨⟨0, hpositive⟩⟩
+              simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+              exact refutation.tree.check_ontology_unsatisfiable decoded.definitions certificate
+                ⟨hlabels, hedges, hobligations⟩ htree
   | subsumption certificate root sub sup tree =>
-      cases hrefutation : decoded.refutation with
-      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      cases hdistinct : decoded.distinctRefutation with
       | some refutation =>
-          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
             Bool.and_eq_true] at hcheck
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_subsumption decoded.definitions certificate root sub sup
-            (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
+          exact refutation.tree.check_subsumption decoded.definitions
+            { base := certificate, apart := [] } root sub sup
+            (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) rfl hcheck.2
+      | none =>
+          cases hrefutation : decoded.refutation with
+          | none =>
+              simp [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation] at hcheck
+          | some refutation =>
+              simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation, Bool.and_eq_true] at hcheck
+              simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+              exact refutation.tree.check_subsumption decoded.definitions certificate root sub sup
+                (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
   | unsatisfiableConcept certificate root concept tree =>
-      cases hrefutation : decoded.refutation with
-      | none => simp [DecodedCardinalityEqCertificate.check, hevidence, hrefutation] at hcheck
+      cases hdistinct : decoded.distinctRefutation with
       | some refutation =>
-          simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+          simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
             Bool.and_eq_true] at hcheck
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_unsatisfiable_concept decoded.definitions certificate
-            root concept (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
+          exact refutation.tree.check_unsatisfiable_concept decoded.definitions
+            { base := certificate, apart := [] } root concept
+            (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) rfl hcheck.2
+      | none =>
+          cases hrefutation : decoded.refutation with
+          | none =>
+              simp [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation] at hcheck
+          | some refutation =>
+              simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
+                hrefutation, Bool.and_eq_true] at hcheck
+              simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
+              exact refutation.tree.check_unsatisfiable_concept decoded.definitions certificate
+                root concept (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
 
 namespace CardinalityWireTests
 
@@ -281,6 +344,71 @@ private def missingMaximumChild : WireCardinalityEqCertificate :=
   { acceptedMaximumZero with refutation := some missingMaximumChildTree }
 
 example : isError missingMaximumChild.check = true := by native_decide
+
+private def pigeonholeRootState : WireEqState where
+  labels := [{ node := 0, literal := { concept := 0, neg := false } }]
+  edges := []
+  obligations := []
+  equalities := []
+  representatives := [0, 1, 2]
+  representative_paths := [[], [], []]
+
+private def pigeonholeActiveBase : WireEqState where
+  labels := [
+    { node := 0, literal := { concept := 0, neg := false } },
+    { node := 1, literal := { concept := 0, neg := false } },
+    { node := 2, literal := { concept := 0, neg := false } }
+  ]
+  edges := [
+    { role := 0, source := 0, target := 1 },
+    { role := 0, source := 0, target := 2 }
+  ]
+  obligations := []
+  equalities := []
+  representatives := [0, 1, 2]
+  representative_paths := [[], [], []]
+
+private def pigeonholeActive : WireDistinctEqState where
+  base := pigeonholeActiveBase
+  apart := [{ left := 1, right := 2 }, { left := 2, right := 1 }]
+
+private def pigeonholeMerged (left right : Nat) : WireDistinctEqState where
+  base := { pigeonholeActiveBase with
+    equalities := [{ left, right }]
+    representatives := [0, 1, 1]
+    representative_paths := [[], [], [1]] }
+  apart := pigeonholeActive.apart
+
+private def pigeonholeBase : WireEqCertificate where
+  version := 2
+  node_count := 3
+  concept_count := 1
+  role_count := 1
+  variable_count := 0
+  ontology := []
+  state := pigeonholeRootState
+  evidence := .unsatisfiable_concept 0 0 .clash
+
+private def pigeonholeTree : WireDistinctCardinalityRefutationTree :=
+  .minimum 0 0 [1, 2] pigeonholeActive
+    (.maximum 1 0 [1, 2] [
+      [(pigeonholeActive, .equality_apart 1 1),
+       (pigeonholeMerged 1 2, .equality_apart 1 2)],
+      [(pigeonholeMerged 2 1, .equality_apart 2 1),
+       (pigeonholeActive, .equality_apart 2 2)]
+    ])
+
+private def acceptedPigeonhole : WireCardinalityEqCertificate where
+  version := 2
+  certificate := pigeonholeBase
+  definitions := [
+    { marker := 0, minimum := true, bound := 2, role := 0, filler := 0 },
+    { marker := 0, minimum := false, bound := 1, role := 0, filler := 0 }
+  ]
+  distinct_refutation_depth := 2
+  distinct_refutation := some pigeonholeTree
+
+example : acceptedPigeonhole.check = .ok true := by native_decide
 
 end CardinalityWireTests
 
