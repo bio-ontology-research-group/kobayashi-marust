@@ -18,6 +18,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Declare zero-size adapter marker structs.
 macro_rules! adapter {
@@ -266,7 +267,7 @@ pub struct SatisfiableTaskClassificationMessageAdapter {
     /// `CClassificationMessageDataObserver* mMessageObserver`. [api] opaque.
     pub classification_message_data_observer: Cint64,
     /// `QHash<CConcept*,CClassificationSatisfiableCalculationConceptReferenceLinking*>* mConRefLinkDataHash`.
-    pub concept_reference_linking_data_hash: HashMap<ConceptId, Cint64>,
+    pub concept_reference_linking_data_hash: Arc<HashMap<ConceptId, Cint64>>,
     /// `cint64 mExtractionFlags`.
     pub extraction_flags: Cint64,
 }
@@ -277,7 +278,7 @@ impl Default for SatisfiableTaskClassificationMessageAdapter {
             testing_concept: ConceptId::NONE,
             testing_ontology: INVALID,
             classification_message_data_observer: INVALID,
-            concept_reference_linking_data_hash: HashMap::new(),
+            concept_reference_linking_data_hash: Arc::new(HashMap::new()),
             extraction_flags: 0,
         }
     }
@@ -290,7 +291,7 @@ impl SatisfiableTaskClassificationMessageAdapter {
             testing_concept,
             testing_ontology: INVALID,
             classification_message_data_observer: INVALID,
-            concept_reference_linking_data_hash: HashMap::new(),
+            concept_reference_linking_data_hash: Arc::new(HashMap::new()),
             extraction_flags,
         }
     }
@@ -301,6 +302,25 @@ impl SatisfiableTaskClassificationMessageAdapter {
         testing_ontology: Cint64,
         classification_message_data_observer: Cint64,
         concept_reference_linking_data_hash: HashMap<ConceptId, Cint64>,
+        extraction_flags: Cint64,
+    ) -> Self {
+        Self {
+            testing_concept,
+            testing_ontology,
+            classification_message_data_observer,
+            concept_reference_linking_data_hash: Arc::new(concept_reference_linking_data_hash),
+            extraction_flags,
+        }
+    }
+
+    /// Construct an adapter over an immutable ontology-wide reference table.
+    /// Classification jobs only read this table, so sharing it mirrors the C++
+    /// adapter's pointer semantics and avoids copying it for every job.
+    pub fn new_with_shared_handles(
+        testing_concept: ConceptId,
+        testing_ontology: Cint64,
+        classification_message_data_observer: Cint64,
+        concept_reference_linking_data_hash: Arc<HashMap<ConceptId, Cint64>>,
         extraction_flags: Cint64,
     ) -> Self {
         Self {
@@ -353,14 +373,14 @@ impl SatisfiableTaskClassificationMessageAdapter {
     pub fn get_concept_reference_linking_data_hash_mut(
         &mut self,
     ) -> &mut HashMap<ConceptId, Cint64> {
-        &mut self.concept_reference_linking_data_hash
+        Arc::make_mut(&mut self.concept_reference_linking_data_hash)
     }
 
     pub fn set_concept_reference_linking_data_hash(
         &mut self,
         con_ref_linking_hash: HashMap<ConceptId, Cint64>,
     ) -> &mut Self {
-        self.concept_reference_linking_data_hash = con_ref_linking_hash;
+        self.concept_reference_linking_data_hash = Arc::new(con_ref_linking_hash);
         self
     }
 
@@ -618,6 +638,32 @@ mod tests {
 
         assert_eq!(adapter.get_testing_ontology(), 17);
         assert_eq!(adapter.get_classification_message_data_observer(), 19);
+        assert_eq!(
+            adapter
+                .get_concept_reference_linking_data_hash()
+                .get(&concept),
+            Some(&101)
+        );
+    }
+
+    #[test]
+    fn classification_message_adapter_shares_immutable_reference_table() {
+        let concept = Id::<concept::Concept>::new(5);
+        let linked_concept = Id::<concept::Concept>::new(7);
+        let shared = Arc::new(HashMap::from([(linked_concept, 97)]));
+        let mut adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
+            concept,
+            11,
+            13,
+            shared.clone(),
+            EFEXTRACTALL,
+        );
+
+        assert!(Arc::ptr_eq(&shared, &adapter.concept_reference_linking_data_hash));
+        adapter
+            .get_concept_reference_linking_data_hash_mut()
+            .insert(concept, 101);
+        assert!(!shared.contains_key(&concept));
         assert_eq!(
             adapter
                 .get_concept_reference_linking_data_hash()

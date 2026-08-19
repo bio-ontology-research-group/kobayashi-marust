@@ -40,7 +40,8 @@ cargo build --release --locked
 ```
 
 The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current release is `v0.2.25`.
+are available from the repository tags; the current certification release is
+`v0.3.42`.
 
 ## Classify an ontology
 
@@ -89,181 +90,27 @@ imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
 
 ## Current ORE 2015 result
 
-The current production claim concerns one deployable command, `km classify`,
-over all 592 ontologies. Tested implementation commit `02b75c5`, frontend
-byte-identity sweep `50498616`, and strict sweep `50499428`
-and the 592-row integrity audit verify
-every result, checkpoint, route trace, profile, collision-sensitive full-IRI
-fingerprint, and binary identity. The tested binary is `7c090417f169…`.
+The production benchmark covers one deployable command, `km classify`, over all
+592 ontologies. Order-balanced paired job `50554161` verifies every result,
+checkpoint, route trace, collision-sensitive full-IRI fingerprint, and binary
+identity. The tested release-candidate binary is `bbef8d7efbc6…`.
 
 | procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.25` / `02b75c5` (binary `7c090417f169…`) | **591** | **591** | **3.7227** | **0.1860** | **440.81** | **36.04** |
-| Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | **3.2657** | 0.2813 | 558.09 | 76.53 |
+| **KM automatic, `km classify`** | `v0.2.36` / `6851533` (binary `bbef8d7efbc6…`) | **591** | **591** | **3.2383** | **0.1628** | **427.88** | **35.39** |
+| Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
 
-Performance values come directly from the 591 successful rows of the strict
-automatic-route sweep
-on exclusive Intel Xeon Gold 6248 nodes. ORE7246, ORE8737, and ORE16744 now use
-certified EL completion with the exact production route as fallback. Their
-same-node panel removes 54.9 seconds and 19,049 MiB of summed peak RSS while
-retaining identical gold-matching signatures. ORE15803 uses the same
-certificate-before-production schedule. For ORE7914, a disjoint-union
-certificate projects its 108,512 independent atomic ABox roots before native
-HT conversion; automatic classification falls from about 46.8 seconds and
-8.53 GiB to 8.58 seconds and 1.51 GiB. For ORE10621, scheduling the certified
-typed-ABox bridge before its exact fallback reduces same-node mean process-tree
-peak memory from 9,368.57 to 1,256.15 MiB and mean wall from 87.1031 to 86.6274
-seconds. For ORE3215, scheduling its certified bridge before the production
-fallback reduces same-node mean wall from 162.0549 to 157.3747 seconds and
-mean process-tree peak memory from 8,499.09 to 6,330.62 MiB. The full sweep
-reports zero semantic or coverage regressions. ORE14817 now uses eight workers
-for the unchanged `production_all` route; its controlled panels preserve the
-gold signature and reduce mean wall. Across the independently scheduled corpus,
-mean RSS is 440.81 MiB and median RSS is 36.04 MiB. Mean wall is 3.7227 seconds
-and median wall is 0.1860 seconds. All four KM metrics except mean wall remain
-below the frozen Konclude values.
+Values are measured on exclusive Intel Xeon Gold 6248 nodes with a 240-second
+timeout and 20-GiB memory cap. All 592 paired comparisons agree in status,
+verdict, consistency, selected route, solved state, answer counts, and full-IRI
+signature. KM is below the frozen Konclude measurements on mean and median wall
+time and mean and median peak memory.
 
-Frontend IRI metadata now uses one sorted pass for both the named-class vector
-and ordered map. The independent frontend sweep found 592/592 clause streams
-and metadata files byte-identical to v0.2.24. Strict sweep `50499428` reports
-zero behavioral differences and improves all four corpus metrics.
-
-Dense edge-side NF4 frontiers are grouped by parent and evaluated in parallel
-when the source profile predicts enough propagation work. Sparse frontiers use
-the unchanged serial join. Three alternating automatic-route pairs on ORE8737
-reduce mean wall from 85.17 to 78.26 seconds with identical gold-matching
-signatures. Strict sweep `50496853` reports zero behavioral or coverage
-differences from v0.2.23 and reduces corpus mean wall from 3.7835 to 3.7799
-seconds.
-
-Certified-EL routes now consume the frontend's typed clauses directly while
-retaining the serialized input for their exact production fallback. Focused
-same-node measurements reduce ORE8737 mean wall from 96.74 to 80.22 seconds
-and ORE16744 wall from 73.23 to 63.44 seconds with identical signatures.
-Relative to v0.2.22, strict sweep `50494584` reduces mean wall by 1.64%; median
-wall is unchanged. The independent sweep's RSS metrics moved by less than
-0.2%, and KM remains below Konclude on both memory metrics.
-
-Linux supervisors now use process exit notifications while retaining the same
-RSS and deadline checks, removing up to one watchdog interval after a worker
-finishes. Release builds use a smaller abort-on-panic binary, and five measured
-production shapes use one CB worker without changing their route portfolio or
-complete fallback. Relative to v0.2.21, strict sweep `50492209` reduces mean
-wall by 1.30%, median wall by 0.63%, mean peak RSS by 0.48%, and median peak RSS
-by 0.58%, with zero behavioral regressions.
-
-Mode-1 incremental subset blocking uses dense literal bitsets for the exact
-label-subset test while retaining dependency-bearing concept maps as the
-authoritative labels. On ORE6934 this preserves identical search work and
-output while reducing wall from 123.09 to 73.15 seconds. Relative to v0.2.20,
-strict sweep `50483032` reduces mean wall by 1.44%, median wall by 0.68%, mean
-peak RSS by 0.034%, and median peak RSS by 1.35%, with zero behavioral
-regressions.
-
-Small automatic-route inputs now remain in the orchestrator process up to a
-4-MiB source threshold. Exact in-process EL leaves consume their typed clauses
-without an unused JSON handoff, and atomic mechanisms avoid an unused owned
-named-class clone. Three measured giant exact-EL inputs use a separate
-fail-closed source gate. Relative to v0.2.19, strict sweep `50473463` reduces
-mean wall by 1.26%, median wall by 11.53%, mean peak RSS by 1.44%, and median
-peak RSS by 5.77%, with zero behavioral regressions.
-
-Structured exact-EL leaves now run the same completion implementation in the
-orchestrator process, removing a large taxonomy serialization and parse round
-trip. Flat one-class-per-axiom taxonomies retain process isolation. The strict
-sweep reduces mean wall by 2.31%, median wall by 7.98%, mean peak RSS by 9.64%,
-and median peak RSS by 6.39% relative to v0.2.14, with zero behavioral
-regressions.
-
-Positive-EL ABox consistency checking now retains its already-computed exact
-taxonomy for the atomic `elc` leaf instead of repeating the terminology
-fixpoint. On directly comparable complete sweeps, mean wall falls by 4.30%,
-median wall by 1.47%, and mean peak RSS by 0.09%. An eight-input same-node
-panel reduces summed wall by 24.0% and peak RSS in every candidate arm, with
-identical gold-matching signatures.
-
-Frontend declaration membership and IRI metadata construction now borrow their
-temporary indexes instead of cloning every concept and registry key. The strict
-sweep preserves every status and signature while reducing mean wall by 0.54%,
-median wall by 0.09%, mean peak RSS by 0.02%, and median peak RSS by 0.58%.
-
-Large role-relevance slices now use indexed backward reachability while small
-inputs retain the established scan. The strict sweep preserves every status and
-signature while reducing mean wall by 2.44%, median wall by 0.72%, mean peak
-RSS by 0.11%, and median peak RSS by 0.51%.
-
-Exact in-process EL leaves now consume the frontend's typed clause vector
-directly, while non-EL routes retain the established serialized handoff and
-allocation lifetime. One-shot CB classification releases its duplicate
-converted source clauses after preparation. The v0.2.19 strict sweep preserves
-every status and signature while reducing mean wall by 3.47%, median wall by
-1.51%, mean peak RSS by 0.09%, and median peak RSS by 0.97% relative to
-v0.2.18.
-
-“Empirically correct” means 588 exact retained or independently derived
-full-IRI signatures, two independently adjudicated consistency results, and one
-independently adjudicated no-gold result. It is not a claim of 591 Konclude
-matches or a proof about arbitrary OWL inputs. Ontology 1194 errors without
-publishing a taxonomy and is the only remaining input.
-
-Per-ontology routes, evidence, and special handling are recorded in:
-
-- [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md)
-- [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md)
-- [`results/benchmarks/2026-08-05-flat-taxonomy-el/`](results/benchmarks/2026-08-05-flat-taxonomy-el/)
-- [`results/benchmarks/2026-08-05-source-el-routing/`](results/benchmarks/2026-08-05-source-el-routing/)
-- [`results/benchmarks/2026-08-05-positive-el-abox-routing/`](results/benchmarks/2026-08-05-positive-el-abox-routing/)
-- [`results/benchmarks/2026-08-05-el-bottom-routing/`](results/benchmarks/2026-08-05-el-bottom-routing/)
-- [`results/benchmarks/2026-08-05-15846-production-routing/`](results/benchmarks/2026-08-05-15846-production-routing/)
-- [`results/benchmarks/2026-08-13-6682-elc-cert/`](results/benchmarks/2026-08-13-6682-elc-cert/)
-- [`results/benchmarks/2026-08-13-large-el-cert-panel/`](results/benchmarks/2026-08-13-large-el-cert-panel/)
-- [`results/benchmarks/2026-08-13-small-identity-el-cert/`](results/benchmarks/2026-08-13-small-identity-el-cert/)
-- [`results/benchmarks/2026-08-13-7914-regression/`](results/benchmarks/2026-08-13-7914-regression/)
-- [`results/benchmarks/2026-08-13-10621-sequential-bridge/`](results/benchmarks/2026-08-13-10621-sequential-bridge/)
-- [`results/benchmarks/2026-08-13-3215-sequential-bridge/`](results/benchmarks/2026-08-13-3215-sequential-bridge/)
-- [`results/benchmarks/2026-08-13-14817-thread-panel/`](results/benchmarks/2026-08-13-14817-thread-panel/)
-- [`results/benchmarks/2026-08-13-large-inproc-elc/`](results/benchmarks/2026-08-13-large-inproc-elc/)
-- [`results/benchmarks/2026-08-13-positive-el-reuse/`](results/benchmarks/2026-08-13-positive-el-reuse/)
-- [`results/benchmarks/2026-08-14-move-augment-tbox/`](results/benchmarks/2026-08-14-move-augment-tbox/)
-- [`results/benchmarks/2026-08-14-large-inproc-ofn/`](results/benchmarks/2026-08-14-large-inproc-ofn/)
-- [`results/benchmarks/2026-08-05-canonical-pred-merge/`](results/benchmarks/2026-08-05-canonical-pred-merge/)
-- [`CHANGELOG.md`](CHANGELOG.md), which links the optimization evidence
-- [`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md)
-- [`results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv`](results/benchmarks/2026-07-18-ore-solve-routes/ontology-solve-routes.tsv)
-
-### Frozen uniform comparison
-
-The latest completed uniform cross-reasoner panel predates v0.2.0. It ran all
-listed implementations on the same hardware with the same 240-second,
-20-GiB, 16-core contract. The KM row is therefore correctly labelled with its
-older commit and must not be read as the current automatic result.
-
-| procedure | tested version or commit | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
-|---|---|---:|---:|---:|---:|---:|---:|
-| KM automatic, frozen panel | `8c731f43b3c8` | 570 | 571 | 5.3000 | 0.2807 | 789.92 | 44.43 |
-| Konclude | `v0.7.0-1138` (`0002e8063540`) | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
-| HermiT | `1.4.6.519-SNAPSHOT` | 557 | 558 | 13.1261 | 1.8868 | 1,330.56 | 714.01 |
-| ELK | `0.6.0` | 531 | 592 | 1.7449 | 0.7466 | 505.86 | 234.11 |
-| RustDL, complete mode | `0.3.31` (`8c2bb1bf43d9`) | 530 | 551 | 4.9596 | 0.1928 | 299.49 | 49.80 |
-| Sequoia, strict mode | `0.6.1-alpha` (`c5248ec7be30`) | 339 | 341 | 7.3405 | 2.5371 | 2,197.31 | 536.15 |
-
-The complete 39,072-measurement package, scoring rules, raw rows, hashes, and
-receipts are in
-[`results/benchmarks/2026-07-22-reproduced-route-performance/`](results/benchmarks/2026-07-22-reproduced-route-performance/).
-A fresh uniform v0.2.0 panel is being run before replacing this table.
-
-### Route-selection terminology
-
-- **Automatic route:** `km classify` chooses from ontology features without
-  knowing the expected result. This is the deployable classifier.
-- **Preselected routes:** a fixed ontology-to-route map is chosen before a
-  benchmark run.
-- **Oracle-selected route:** after all procedures run and correctness is
-  known, the fastest correct route is selected separately for each ontology.
-  This is a retrospective upper bound, not a deployable classifier.
-
-Detailed route unions and oracle-selected measurements belong in benchmark
-artifacts rather than the release headline.
+The automatic route uses four bounded subject workers for the large SRIQ bridge
+profile represented by ORE14817 and two for the large SHI profile represented
+by ORE3215. Three-pair focused gates preserve each gold signature and reduce
+median wall time from 91.8347 to 75.0825 seconds and from 125.5704 to 89.1692
+seconds, respectively.
 
 ## Protégé plugin
 
@@ -291,12 +138,82 @@ nominal rules, and small certificate checkers. Build it separately:
 cd lean
 lake exe cache get
 lake build
+# Native checker linking can otherwise use one compiler per workstation core.
+LEAN_NUM_THREADS=2 lake build elc-cert-check
+LEAN_NUM_THREADS=2 lake build ht-cert-check
+LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check
 ```
 
-These theorems do not establish end-to-end soundness or completeness of the
-Rust frontend, router, all completion procedures, concurrency, resource
-fallbacks, or optimizations. ORE results are empirical and successful
-termination alone is not accepted as correctness evidence. See
+The formalization proves soundness and canonical-model completeness for the
+pure ELC normal-form calculus used by the Rust worker: NF1–NF7, explicit top
+and bottom, existential bottom propagation, role hierarchy, reflexive roles,
+and role chains. It proves that a sound, closed materialization yields the exact
+taxonomy and inconsistency result. It also proves fail-closed composition for
+abstract workers, sequential fallbacks, races, and profile-based routing.
+
+The certification build provides `elc-cert-check`, a native Lean checker for
+the versioned Rust certificate wire format. Wire version 5 carries the exact
+raw ELC clauses, variable signature, generated conjunction origins, normalized
+ontology, completion trace, and published result. Lean recomputes and validates
+the raw-to-normal transformation before checking completion. Set
+`KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
+closure, and Rust-state agreement before the pure ELC worker can publish. It
+also checks exact residual-compilation evidence, although the production route
+still declines residual publication pending certification of the NF3 witness
+rewrite and canonical-model composition. The worker fails closed if any stage
+fails. This opt-in path currently publishes only the pure NF1–NF7 ELC route.
+
+The certification build also provides `ht-cert-check`. It bounds-checks a
+versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
+labels and edges, existential witnesses, saturation, clashes, and exhaustive
+disjunctive children. Acceptance proves that SAT evidence constructs a model or
+that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
+worker emits finite SAT evidence when
+`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
+It publishes global consistency only after Lean accepts the exact normalized
+clauses and terminal model, and otherwise fails closed. For default
+anywhere-subset blocking, Rust materializes the finite fold as ordinary edges;
+Lean exhaustively checks the folded graph, so blocker selection remains outside
+the trust boundary. For inconsistent clause sets admitting a bounded finite
+refutation, Rust independently constructs an exhaustive empty-root tree over
+concept, role, and existential facts. An existential obligation may bind a
+fresh certificate node to its semantic witness; Lean checks freshness before
+accepting the added edge and filler label. Global inconsistency is published
+only after Lean accepts every branch. Open, node-capped, or assignment-capped
+search declines, and equality heads remain rejected because they require
+certified merging. Equality/cardinality, inverse roles, nominals, native ABoxes,
+QO, and complete termination/blocking correspondence remain separate HT
+certification tasks.
+
+`ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
+decision for every named class and one subsumption decision for every ordered
+pair. Positive answers carry bounded refutations and negative answers carry
+finite countermodels. Position checks, exact row widths, exact row count,
+bounded identifiers, and duplicate-free named classes prevent omitted,
+duplicated, or reassigned cells. Set both
+`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and
+`KM_HT_LEAN_TAXONOMY_CERT_CHECKER=/path/to/ht-taxonomy-cert-check`, together
+with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
+The worker derives its published taxonomy directly from the accepted matrix and
+publishes nothing if either the global or taxonomy checker rejects. This covers
+only the same equality-free ALC(H) certificate fragment described above; it is
+not a certificate for all HT inputs or for automatic routing.
+
+The Lean development also proves semantic exactness of the direct
+frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
+state against the formal closure, the complete active concept set, the ID-level
+public relation, its named-string materialization, and the inconsistency flag.
+Checker-enabled Rust publishes that verified named result directly. The
+OWL/frontend-clause-to-normal-form translation has semantic proofs for direct
+forms, conservative n-ary auxiliary expansion, and the raw two-clause Skolem
+encoding of existential introduction. Executable raw recognizers check
+variable wiring, Skolem pairing, whole-list assembly, auxiliary identity, and
+equality with Rust's emitted normal forms. The residual formalization proves the canonical-model composition theorem
+needed by plain `CertMode::Check`, over the same live concept-only domain Rust
+enumerates, and provides a proved finite checker for compiled residual clauses.
+CB, concrete production routing, and the remaining HT features are not yet
+certified. ORE results are empirical and successful termination alone is not
+correctness evidence. See
 [`lean/README.md`](lean/README.md).
 
 ## Documentation

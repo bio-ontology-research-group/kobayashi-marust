@@ -77,6 +77,189 @@ All of `CompletenessEL` is **fully constructive — no axioms at all**, `sorry`-
 This is genuinely first-order (∃R.C, roles, role hierarchy, canonical model),
 not propositional.
 
+### Full pure ELC normal forms — `ContextCalculus/ELCompletion.lean`
+
+The Rust ELC worker's pure route accepts this normal-form vocabulary: NF1–NF7,
+explicit top and bottom, existential bottom propagation, role hierarchy,
+reflexive roles, and role chains.
+
+- `sub_sound` / `edge_sound` prove soundness of every completion rule;
+- `canon_models` constructs the canonical model over contexts not labelled
+  bottom and proves that it satisfies every normal form;
+- `top_bottom_sound` / `top_bottom_complete` justify the ELC inconsistency
+  readout;
+- `subsumption_complete` proves named-concept completeness, with an
+  unsatisfiable subject represented by its bottom label.
+
+These results certify the mathematical closure relation. The executable wire
+checker connects the optimized materialization and ID-level output filter to
+this relation. The normal-form recognizer, OWL translation, residual certificate
+modes, and ID-to-IRI presentation remain separate obligations.
+
+### ELC frontend normalization — `ContextCalculus/ELNormalization.lean`
+
+`SourceAxiom` gives semantics to the EL axioms reconstructed from normalized
+frontend Horn clauses. `normalizeDirect` covers top inclusion, unary and binary
+conjunction, bottom, existential introduction and elimination, role inclusion,
+role chains, and reflexivity. `normalizeDirect_sat_iff` proves each successful
+translation preserves and reflects satisfaction, while `models_direct_iff`
+lifts the result to complete directly normalized axiom lists. N-ary conjunction
+expansion uses an extended concept signature whose fresh concepts denote exact
+prefix intersections. `compileConjunction_sub_reflects` and
+`compileConjunction_sub_preserves` prove subclass expansion in both directions;
+the corresponding bottom theorems prove the same for disjointness chains.
+Executable whole-list normalization, deterministic sorting, auxiliary-name
+validation, and certificate-wire integration remain open parts of the frontend
+refinement.
+
+`ContextCalculus/ELRawNormalization.lean` models the recursive raw term and
+equality-free atom envelope and supplies executable recognizers for direct ELC
+clauses and paired existential-introduction clauses. The recognizers reject
+split or collapsed variables, reversed role wiring, nested Skolem arguments,
+and mismatched source/function pairs. `rawExistentialPair_sat_iff` proves the
+paired raw clauses equisatisfiable with `A ⊑ ∃R.B` by extracting and extending
+the Skolem function interpretation. The same module proves semantic
+equivalence for every canonical direct raw family: subclass and bottom bodies,
+existential elimination in both atom orders and its top-filler form, role
+inclusion, reflexivity, and connected role chains in both orders. The remaining
+`RawDirectEvidence` and `RawDirectCertificate` types make normalization
+proof-producing: `certifyRawDirect` returns the source axiom together with the
+exact canonical input equality and semantic witness, or fails closed. Whole-list
+normalization is certified for direct forms by `RawDirectListEvidence.models_iff`
+and executable `certifyRawDirectList`. For already paired existential entries,
+`modelsRawExistentials_sat_iff` proves that globally unique Skolem IDs permit
+one shared raw interpretation and preserve and reflect the complete source
+existential list. `certifyRawELList` then produces indexed evidence for a mixed
+list of direct clauses and frontend-adjacent existential pairs, rejects orphaned
+halves and reused function IDs, and yields the whole-list equivalence theorem
+`RawELListCertificate.models_iff`. Proving the adjacency invariant against the
+Rust stream and the certificate-wire connection remain open. For conjunction
+normalization, `certifyNaryConjunction` validates the exact NF2 prefix chain and
+`NaryConjunctionCertificate.sat_iff` proves that the chain preserves and
+reflects source models while fixing all source symbols. Whole-ontology
+composition is carried by `SourceOntologyNormalEvidence.models_iff`, and
+`RawToNormalCertificate.models_iff` connects an exact mixed raw stream to its
+complete shared NF1–NF7 ontology. Wire version 5 carries that raw stream,
+finite variable signature, Rust's symbol table, and exact conjunction-prefix
+origins. `ELCompletionWire` checks the reconstructed normal ontology against
+Rust's emitted ontology before accepting its completion certificate.
+
+### Fail-closed portfolios and routing — `ContextCalculus/Certification.lean`
+
+Workers have four explicit outcomes: publish, defer, error, and timeout. The
+module proves that sequential fallback preserves soundness and completeness
+when the selected portfolio is sound and covers the input. It proves the same
+for races under explicit faithfulness and liveness obligations, then composes
+the result through profile-based routing. Engine-specific and router-refinement
+proofs must discharge those obligations; the generic theorems do not assume
+that the Rust implementations already do so.
+
+### Exact ELC state contract — `ContextCalculus/ELCompletionRefinement.lean`
+
+This module isolates the representation-refinement target for
+`elcomplete.rs`. `ClosedState` says that a materialized pair of subsumption and
+edge relations contains Rust's initialization facts and is closed under every
+pure ELC rule. `SoundState` says every stored fact has a derivation.
+
+- `ClosedState.sub_complete` / `edge_complete` prove closure completeness;
+- `sub_iff_of_exact` / `edge_iff_of_exact` prove extensional equality when the
+  state is also sound;
+- `entails_iff_materialized` proves the taxonomy readout exact;
+- `unsat_iff_materialized` proves the inconsistency readout exact.
+
+The executable proof must still show that Rust's recognizer and worklist
+produce a state satisfying these two structures. The contract makes this a
+finite list of implementation obligations rather than another semantic-model
+proof.
+
+### Executable ELC proof traces — `ContextCalculus/ELCompletionCertificate.lean`
+
+This module defines a finite certificate step for every pure ELC inference and
+an executable `checkTrace`. The checker validates source normal forms and
+requires each premise to occur later in the reverse dependency trace.
+`checkTrace_sound` proves every accepted fact derivable, while
+`checkedTrace_soundState` turns acceptance into the `SoundState`
+obligation used by the materialization theorem. `checkClosedTrace` exhaustively
+checks the complementary `ClosedState` obligation over finite interned
+signatures. `checkedTrace_exact` proves that passing both executable checks
+yields exact taxonomy and inconsistency answers. `ELCompletionWire.lean`
+discharges the finite Rust certificate wire obligation for normalized pure ELC.
+
+### ELC wire checker — `ContextCalculus/ELCompletionWire.lean`
+
+The versioned JSON decoder validates every numeric id against a finite `Fin n`
+signature before constructing clauses or proof steps. Version 4 also validates
+the exact raw ontology, variable IDs, and collision-free semantic origin table,
+then invokes `certifyRawToNormal` and compares the resulting normal ontology
+extensionally with Rust's emitted forms. The native
+`elc-cert-check` executable checks the trace, closure, complete active Rust
+context set, materialized Rust subsumption and edge stores, ID-level output,
+finite symbol table, named output, and inconsistency flag.
+It decodes residual source clauses, local variable/function origins, compiled
+atoms, and canonical witness pins, then independently checks the exact formal
+compilation relation. The production worker does not yet publish residual
+answers through this certificate.
+`active_subsumption_exact` proves the active materialization semantically
+exact. `public_subsumption_sound` and
+`public_named_subsumption_sound` prove publication soundness; their
+`complete_of_satisfiable` counterparts prove completeness for reportable
+subsumptions of satisfiable subjects. `public_inconsistent_exact` proves the
+published flag equivalent to semantic unsatisfiability. The Rust worker invokes this executable when
+`KM_ELC_LEAN_CERT_CHECKER` is set and declines without output if generation,
+serialization, process execution, or verification fails. On acceptance it
+publishes the checked named relation directly.
+
+### Hypertableau certificate checker — `ContextCalculus/HypertableauWire.lean`
+
+`Hypertableau.lean` defines the guarded finite-branch semantics, sound
+hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
+`HypertableauCertificate.lean` checks finite saturated SAT branches, while
+`HypertableauRefutationCertificate.lean` checks every child of a finite UNSAT
+refutation. `HypertableauWire.lean` bounds-checks versioned JSON and dispatches
+only decoded evidence to those proved checkers. Build the native executable with
+`LEAN_NUM_THREADS=2 lake build ht-cert-check`. The separate complete-taxonomy
+decoder is built with
+`LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
+
+The production Rust worker emits checker-gated global SAT evidence for
+equality-free ALC(H) and materializes default anywhere-subset blocking folds as
+ordinary candidate edges. It also emits exhaustive global UNSAT refutations
+when bounded finite search closes over concept, role, and existential facts.
+It can also emit individual subsumption and unsatisfiable-concept refutations,
+plus finite countermodels for non-subsumption and concept satisfiability. The
+checker verifies that each refutation starts from exactly the declared query
+labels and that every countermodel contains its declared query labels.
+`HypertableauTaxonomyCertificate.lean` proves exact taxonomy materialization
+from a complete set of either-polarity decisions.
+`HypertableauTaxonomyWire.lean` accepts exactly one concept decision per named
+class and a square row-major decision matrix for all ordered pairs. The Rust
+worker publishes the named taxonomy directly from this matrix only after both
+the global and taxonomy native checkers accept.
+The refutation checker has an explicit fresh-witness rule: it verifies that the
+target node occurs in no prior fact, binds that node to the semantic existential
+witness, and then checks the recursively materialized edge and filler label.
+The Lean checker treats all Rust choices as untrusted and accepts only an exact
+finite model or a closed refutation tree. Complete blocking/termination
+correspondence, equality/cardinality, inverse roles, nominals, and native ABoxes
+remain to be connected or proved.
+
+### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
+
+This module proves the semantic principle used by plain `CertMode::Check`.
+Adding arbitrary residual axioms preserves soundness of the ELC closure. If the
+ELC canonical model satisfies those residual axioms, the same closure is also
+complete for taxonomy and exact for inconsistency. The executable corollaries
+compose this result with `ClosedState` and `SoundState`.
+
+The canonical domain is restricted to live members of an explicit,
+signature-closed concept set. This matches Rust's `concept_names` enumeration
+and excludes role-only interned IDs. The module also defines Rust's compiled
+concept/role/equality atom language with pinned witness variables and proves an
+independent finite Boolean checker equivalent to its clause semantics. The
+remaining boundary is proving Rust's source residual compiler and optimized
+join checker refine this finite contract. Model-repair mode requires a separate
+model-transformation certificate.
+
 ### Completeness, disjunction × existential interaction — `ContextCalculus/CompletenessContext.lean`
 The propositional and EL files settle the two directions *separately*.  Their
 **interaction** — disjunction *and* existentials at once — is the genuinely open

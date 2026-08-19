@@ -128,26 +128,38 @@ struct OfnClausesOnly {
     rules: Vec<crate::json_io::JRule>,
 }
 
-/// `args` are the post-subcommand arguments: `args[0]` = ontology path, optional
-/// `args[1] == "--meta"` and `args[2]` = meta-file path. (For the standalone
-/// `ofn` binary this is `env::args()[1..]`; for `km ofn` it is `env::args()[2..]`.)
+/// `args` are the post-subcommand arguments: `args[0]` = ontology path, with
+/// optional `--meta <meta.json>` and `--elc-binary <clauses.bin>` outputs. (For
+/// the standalone `ofn` binary this is `env::args()[1..]`; for `km ofn` it is
+/// `env::args()[2..]`.)
 pub fn run_ofn(args: &[String]) {
     use crate::frontend::ofn_to_clauses;
     if args.is_empty() {
-        eprintln!("usage: ofn <ontology.ofn> [--meta <meta.json>]");
+        eprintln!(
+            "usage: ofn <ontology.ofn> [--meta <meta.json>] [--elc-binary <clauses.bin>]"
+        );
         exit(2);
     }
     let path = &args[0];
-    let meta_path: Option<&str> = match args.get(1).map(String::as_str) {
-        Some("--meta") => match args.get(2) {
-            Some(p) => Some(p.as_str()),
-            None => {
-                eprintln!("--meta requires a path argument");
+    let mut meta_path: Option<&str> = None;
+    let mut elc_binary_path: Option<&str> = None;
+    let mut index = 1;
+    while index < args.len() {
+        let (slot, name) = match args[index].as_str() {
+            "--meta" => (&mut meta_path, "--meta"),
+            "--elc-binary" => (&mut elc_binary_path, "--elc-binary"),
+            option => {
+                eprintln!("unknown ofn option: {option}");
                 exit(2);
             }
-        },
-        _ => None,
-    };
+        };
+        let Some(value) = args.get(index + 1) else {
+            eprintln!("{name} requires a path argument");
+            exit(2);
+        };
+        *slot = Some(value);
+        index += 2;
+    }
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => {
@@ -162,6 +174,38 @@ pub fn run_ofn(args: &[String]) {
             exit(3);
         }
     };
+    let binary_route = result
+        .route
+        .parse::<crate::routing::Route>()
+        .ok();
+    // Both EL-first routes can consume the compact typed-clause sidecar. A
+    // CertifiedElProduction refusal recursively reruns the frontend under its
+    // mandatory ProductionAll fallback, so pre-serialising a giant JSON clause
+    // stream that the successful EL arm never reads is unnecessary.
+    // Exact EL always benefits from the compact handoff. For a certified EL
+    // route, measurements show that paying for both the binary encoding and
+    // its isolated worker only amortises on very large source documents. Keep
+    // the established JSON handoff below 512 MiB.
+    let binary_el_route = matches!(binary_route, Some(crate::routing::Route::Elc))
+        || (matches!(
+            binary_route,
+            Some(crate::routing::Route::CertifiedElProduction)
+        ) && text.len() >= 512 * 1024 * 1024);
+    let mut binary_written = false;
+    if result.el_rbox_safe && binary_el_route {
+        if let Some(binary_path) = elc_binary_path {
+            let write_result = std::fs::File::create(binary_path).and_then(|file| {
+                let mut writer = std::io::BufWriter::new(file);
+                crate::json_io::write_elc_binary(&mut writer, &result.clauses)?;
+                writer.flush()
+            });
+            if let Err(error) = write_result {
+                eprintln!("ELC binary serialise error: {error}");
+                exit(1);
+            }
+            binary_written = true;
+        }
+    }
     // The frontend result owns everything needed below. Release the potentially
     // very large source document before serialising the clause array so both do
     // not contribute to the same peak.
@@ -169,6 +213,9 @@ pub fn run_ofn(args: &[String]) {
     // Stream JSON to a buffered stdout (the clause array dominates peak memory).
     let stdout = std::io::stdout();
     let mut w = std::io::BufWriter::new(stdout.lock());
+    let binary_only = binary_written
+        && !result.profile.positive_el_abox_materializable
+        && result.profile.source.rule_axioms == 0;
 
     if let Some(mp) = meta_path {
         let meta = OfnMeta {
@@ -194,6 +241,15 @@ pub fn run_ofn(args: &[String]) {
                 eprintln!("failed to write meta {}: {}", mp, e);
                 exit(1);
             }
+        }
+        // Successful EL-first routes consume the compact sidecar. Emitting the
+        // same multi-gigabyte clause set as JSON is dead serialization and disk
+        // traffic; a certified-route refusal reruns this frontend under the
+        // production fallback. Positive ABox and rule checks still consume the
+        // full JSON side channels and therefore retain established output.
+        if binary_only {
+            let _ = w.flush();
+            return;
         }
         let out = OfnClausesOnly {
             clauses: result.clauses,
@@ -265,10 +321,17 @@ pub fn run_elc() {
         );
     }
     let t1 = Instant::now();
-    let input: JInput = match serde_json::from_slice(&buf) {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("bad input JSON: {}", e);
+    let clauses = match crate::json_io::decode_elc_binary(&buf) {
+        Ok(Some(clauses)) => clauses,
+        Ok(None) => match serde_json::from_slice::<JInput>(&buf) {
+            Ok(input) => input.clauses,
+            Err(e) => {
+                eprintln!("bad input JSON: {}", e);
+                exit(1);
+            }
+        },
+        Err(error) => {
+            eprintln!("bad ELC binary input: {error}");
             exit(1);
         }
     };
@@ -277,11 +340,11 @@ pub fn run_elc() {
         eprintln!(
             "KM_ELC_TIMING parse={:.2}s ({} clauses)",
             t1.elapsed().as_secs_f64(),
-            input.clauses.len()
+            clauses.len()
         );
     }
     let t2 = Instant::now();
-    match elcomplete::classify(input.clauses) {
+    match elcomplete::classify(clauses) {
         Some(res) => {
             if timing {
                 eprintln!(
@@ -300,14 +363,43 @@ pub fn run_elc() {
             };
             let stdout = std::io::stdout();
             let mut w = std::io::BufWriter::new(stdout.lock());
-            if let Err(e) = serde_json::to_writer(&mut w, &out) {
+            // Keep the established JSON path for the ORE median band.  The
+            // compact handoff is reserved for very dense taxonomies, where
+            // repeated superclass strings dominate transfer and decoding.
+            let compact = !partial
+                // Two million relations require a large subject set in the
+                // production taxonomies.  This guard keeps the relation-count
+                // scan entirely off the sparse path.
+                && out.subsumptions.len() >= 1_000
+                && std::env::var_os("KM_ELC_OUTPUT_BINARY").is_some()
+                && std::env::var_os("KM_NO_ELC_OUTPUT_BINARY").is_none()
+                && {
+                    let compact_min_relations =
+                        std::env::var("KM_ELC_OUTPUT_BINARY_MIN_RELATIONS")
+                            .ok()
+                            .and_then(|value| value.parse::<usize>().ok())
+                            .unwrap_or(2_000_000);
+                    out.subsumptions.values().map(Vec::len).sum::<usize>()
+                        >= compact_min_relations
+                };
+            let write_result = if compact {
+                crate::json_io::write_elc_output_binary(
+                    &mut w,
+                    &out.subsumptions,
+                    out.inconsistent,
+                    out.dropped,
+                )
+            } else {
+                serde_json::to_writer(&mut w, &out).map_err(std::io::Error::other)
+            };
+            if let Err(e) = write_result {
                 eprintln!("serialise error: {}", e);
                 exit(1);
             }
             let _ = w.flush();
             if timing {
                 eprintln!(
-                    "KM_ELC_TIMING serialise={:.2}s total={:.2}s",
+                    "KM_ELC_TIMING serialise={:.2}s total={:.2}s compact={compact}",
                     t3.elapsed().as_secs_f64(),
                     t0.elapsed().as_secs_f64()
                 );

@@ -1,0 +1,27 @@
+{
+  "baseline": "v0.2.25",
+  "baseline_binary_sha256": "7c090417f169d5ee60992f5203e2fe62aee4e8244b50e1aadf7a03b08bf1a71a",
+  "baseline_metrics": {
+    "mean_peak_mb": 440.80619289340103,
+    "mean_wall_s": 3.722682233502538,
+    "median_peak_mb": 36.04,
+    "median_wall_s": 0.186,
+    "ok": 591
+  },
+  "behavior_differences": [],
+  "candidate_binary_sha256": "4d8d81378d565d6b5d0b33b8fe352d2e6aa076b7c82a0c196bb58bc167401071",
+  "candidate_metrics": {
+    "mean_peak_mb": 436.37235194585446,
+    "mean_wall_s": 3.6077455160744503,
+    "median_peak_mb": 36.16,
+    "median_wall_s": 0.1839,
+    "ok": 591
+  },
+  "route_differences": [
+    {
+      "baseline": "nominal_ni_abox",
+      "candidate": "ht_general",
+      "ontology": "ore_ont_6934.owl"
+    }
+  ]
+}

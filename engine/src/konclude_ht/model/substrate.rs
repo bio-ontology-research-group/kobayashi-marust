@@ -314,14 +314,13 @@ mod tests {
         for value in 0..32 {
             arena.push(value);
         }
-        let items_capacity = arena.items.capacity();
-        let items_ptr = arena.items.as_ptr();
-
         arena.push_epoch();
         *arena.get_mut_journaled(super::Id::new(0)) = 99;
         arena.push(32);
         assert!(arena.epoch_open());
         assert!(!arena.journal_stack.is_empty());
+        let items_capacity = arena.items.capacity();
+        let items_ptr = arena.items.as_ptr();
 
         arena.clear_preserving_capacity();
 

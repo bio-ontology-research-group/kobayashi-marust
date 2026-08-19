@@ -1,0 +1,38 @@
+{
+  "baseline": {
+    "mean_peak_mb": 423.9698138747885,
+    "mean_wall_s": 3.577662774957699,
+    "median_peak_mb": 35.22,
+    "median_wall_s": 0.1839,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591
+  },
+  "baseline_binary_sha256": "4aa2370c8cebac9b78fcd64cfbfa6d4be0af2bd87bb6b5c0f351c478d88056af",
+  "candidate": {
+    "mean_peak_mb": 424.0731979695432,
+    "mean_wall_s": 3.5539116751269035,
+    "median_peak_mb": 34.62,
+    "median_wall_s": 0.1797,
+    "rows": 592,
+    "status": {
+      "error": 1,
+      "ok": 591
+    },
+    "successful": 591
+  },
+  "candidate_binary_sha256": "c5b85fea05cae73db5f66ec3a0b86c8439fd58ec207a612b07e85c91d08081dd",
+  "job_id": 50532459,
+  "ontologies": 592,
+  "paired_candidate_minus_baseline": {
+    "mean_peak_mb": 0.10338409475465699,
+    "mean_wall_s": -0.023751099830795337,
+    "median_peak_mb": 0.030000000000001137,
+    "median_wall_s": -0.00029999999999996696,
+    "sum_wall_s": -14.03690000000004
+  },
+  "semantic_differences": 0
+}

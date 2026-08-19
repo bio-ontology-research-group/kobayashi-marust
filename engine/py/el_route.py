@@ -73,7 +73,9 @@ def to_nf(clauses):
                 names = sorted(a["concept"] for a in bc)
                 acc = names[0]
                 for j in range(1, len(names) - 1):
-                    aux = "__conj__" + "/".join(names[: j + 1])
+                    aux = "__conj__" + "".join(
+                        f"{len(name.encode('utf-8'))}:{name}" for name in names[: j + 1]
+                    )
                     ax.append(NF2(acc, names[j], aux)); acc = aux
                 ax.append(NF2(acc, names[-1], BOTTOM))
                 continue
@@ -99,7 +101,9 @@ def to_nf(clauses):
                     names = sorted(a["concept"] for a in bc)
                     acc = names[0]
                     for j in range(1, len(names) - 1):
-                        aux = "__conj__" + "/".join(names[: j + 1])
+                        aux = "__conj__" + "".join(
+                            f"{len(name.encode('utf-8'))}:{name}" for name in names[: j + 1]
+                        )
                         ax.append(NF2(acc, names[j], aux))
                         acc = aux
                     ax.append(NF2(acc, names[-1], hd))

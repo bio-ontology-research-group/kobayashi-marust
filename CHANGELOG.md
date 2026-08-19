@@ -2,6 +2,1284 @@
 
 ## [unreleased]
 
+## [0.3.42] – 2026-08-19
+
+### Certify complete HT taxonomy matrices
+
+- Define complete semantic HT taxonomy certificates and prove exact
+  unsatisfiable-class and subsumption materialization from either-polarity
+  decisions.
+- Add finite and indexed certificate refinements that connect accepted finite
+  refutations and countermodels to those semantic decisions.
+- Add a versioned batch wire decoder with bounded identifiers, duplicate-free
+  named classes, exact concept coverage, and an exact square row-major matrix
+  covering every ordered named-class pair.
+- Add the native `ht-taxonomy-cert-check` executable. It accepts a complete
+  Rust-produced two-class matrix and rejects missing, duplicated, or
+  position-mismatched cells.
+- Add fail-closed Rust publication for the equality-free ALC(H) certificate
+  fragment. Publication requires both global-consistency and taxonomy checker
+  acceptance, and the returned taxonomy is derived directly from the accepted
+  matrix.
+- Add worker-boundary tests against the native Lean checkers and verify that a
+  rejecting taxonomy checker suppresses all classification output.
+
+This release certifies complete named taxonomy output whenever bounded HT
+evidence exists for every matrix cell in the supported certificate fragment.
+It does not prove HT termination or cover equality/cardinality, inverse roles,
+nominals, native ABoxes, QO, CB, complete ELC residuals, or automatic routing.
+
+## [0.3.41] – 2026-08-19
+
+### Certify HT taxonomy countermodels
+
+- Prove that a checked finite model carrying `A` and `¬B` at one node refutes
+  `A ⊑ B`.
+- Prove that a checked finite model carrying `A` refutes the claim that `A` is
+  unsatisfiable.
+- Extend the version-1 HT wire format with bounds-checked `non_subsumption` and
+  `satisfiable_concept` evidence. The checker requires the declared query
+  literals to occur in the accepted finite model.
+- Extend the Rust producer to serialize retained terminal models for both query
+  kinds and reject calls that do not match the model root.
+- Validate all four individual taxonomy outcomes through the native Lean
+  checker: subsumption, non-subsumption, unsatisfiable concept, and satisfiable
+  concept.
+
+This release certifies either polarity of an individual HT taxonomy query when
+bounded refutation or finite-model evidence is available. A complete batch
+taxonomy certificate remains the next milestone.
+
+## [0.3.40] – 2026-08-19
+
+### Certify individual HT taxonomy refutations
+
+- Define semantic named-concept subsumption and concept-unsatisfiability
+  judgments for the normalized hypertableau ontology.
+- Prove that a checked refutation rooted at exactly `A` and `¬B` entails
+  `A ⊑ B`, and that one rooted at exactly `A` proves `A` unsatisfiable.
+- Extend the version-1 wire format with bounds-checked `subsumption` and
+  `unsatisfiable_concept` evidence. The executable checker verifies the exact
+  root labels and rejects query/root mismatches.
+- Generalize the Rust bounded refutation producer to start from query labels
+  and emit both evidence kinds. Rust-generated documents pass the native Lean
+  checker; open branches still decline without evidence.
+
+This release certifies individual HT taxonomy answers that have bounded closed
+refutations. Batch taxonomy publication, complete HT termination, and
+equality-dependent refutations remain outstanding.
+
+## [0.3.39] – 2026-08-19
+
+### Certify fresh existential witnesses in HT refutations
+
+- Add a semantic `State.materializeWitness` operation and prove that an
+  existential obligation can bind a completely fresh finite node to its model
+  witness without invalidating any existing label, edge, or obligation.
+- Extend abstract HT refutations with a witness step and preserve the global
+  `Refutes.sound` theorem.
+- Extend the finite checker with executable freshness checks, witness
+  materialization, and a proved refinement to the semantic operation.
+- Extend the version-1 JSON tree with bounds-checked witness nodes, roles, and
+  fillers. Lean accepts a two-node role/filler contradiction and rejects reuse
+  of a non-fresh node.
+- Generalize the Rust producer to bounded multi-node search. It enumerates
+  grounded clauses over active nodes, materializes unmet obligations, caps
+  assignments at one million and nodes at eight by default, and declines on
+  every open or capped branch.
+- Validate the exact Rust-to-JSON-to-Lean-to-`tableau_cli` path and confirm that
+  checker rejection suppresses publication.
+
+This release certifies global HT inconsistency for finite refutations that fit
+the producer bounds, including contradictions reached only after creating an
+existential witness. It does not claim complete HT termination or equality
+merging.
+
+## [0.3.38] – 2026-08-19
+
+### Certify one-node HT role and existential refutations
+
+- Generalize the finite HT refutation producer from concept labels to the
+  checker's complete monotone branch vocabulary: concept labels, role edges,
+  and existential obligations.
+- Evaluate every clause under the explicit one-node assignment, including
+  equality tests in bodies, while continuing to reject equality heads that
+  would require an uncertified node merge.
+- Preserve fail-closed behavior: each recursive child adds one absent finite
+  fact, every disjunct receives a child, and any open branch declines without
+  publication.
+- Pass the native Lean checker on one mixed tree whose first disjunct closes
+  through a forced role edge and whose second closes through a forced
+  existential obligation.
+- Validate the production `tableau_cli` boundary and confirm checker rejection
+  suppresses publication.
+
+This release certifies global HT inconsistency whenever the exact normalized
+ontology has a closed one-node refutation over concept, role, and existential
+facts. Multi-node role refutations and equality-dependent branches remain
+outstanding.
+
+## [0.3.37] – 2026-08-19
+
+### Certify concept-only HT inconsistency publication
+
+- Add a Rust producer for exhaustive finite refutation trees over exact
+  concept-only normalized HT clauses. Each recursive branch asserts one absent
+  head literal; a clash or an empty-head clause closes it.
+- Refuse evidence when any valuation remains open or any role, existential, or
+  equality atom occurs. This keeps role-bearing and quotient-dependent UNSAT
+  outside the certified runtime slice.
+- Serialize the producer's tree in the version-1 HT wire format and require the
+  native Lean checker before the worker can publish global inconsistency.
+- Test exhaustive binary closure, open-branch refusal, non-concept refusal, the
+  exact Rust-to-JSON-to-Lean path, and checker-gated `tableau_cli` publication.
+- Validate the production example: `[] -> A | B`, `A -> []`, and `B -> []`
+  emits two exhaustive children, is accepted by `ht-cert-check`, and publishes
+  `consistent:false`.
+
+This release certifies global HT inconsistency publication for the concept-only
+fragment. Role-bearing UNSAT, equality/cardinality, inverse roles, nominals,
+native ABoxes, termination correspondence, and taxonomy publication remain
+outstanding.
+
+## [0.3.36] – 2026-08-17
+
+### Certify finite HT model folding
+
+- Add a Lean finite-fold certificate that treats blocker pairs as untrusted
+  model-construction hints, materializes copied blocker edges, and reruns the
+  exhaustive finite SAT checker.
+- Prove that accepted folds preserve the exact ontology and construct a model
+  without assuming that any supplied blocker pair is valid.
+- Add a native cyclic-existential reduction test whose incomplete blocked graph
+  is rejected and whose materialized fold is accepted.
+- Make the Rust HT producer reconstruct the exact default anywhere-subset
+  blocker relation and emit the copied continuation edges as ordinary wire
+  evidence. Other blocking modes remain fenced.
+- Validate the cyclic Rust-to-JSON-to-Lean path: the terminal blocked node gains
+  its folded self-loop and `ht-cert-check` accepts the resulting finite model.
+
+This release certifies SAT model folding by validation, not by trusting the
+Rust blocking algorithm. HT UNSAT and taxonomy publication remain outstanding.
+
+## [0.3.35] – 2026-08-17
+
+### Connect Rust HT SAT evidence to the Lean checker
+
+- Serialize the exact normalized HT clauses and completed equality-free graph
+  into the version-1 Lean certificate wire format.
+- Gate checker-backed HT publication on successful execution of the native
+  `ht-cert-check` executable. Producer failure, checker rejection, and
+  unsupported evidence all defer without publishing a legacy fallback answer.
+- Restrict the integrated endpoint to global SAT results for equality-free
+  ALC(H). Taxonomy, UNSAT, QO, inverse, cardinality, nominal, and native-ABox
+  results remain fenced.
+- Add Rust tests for terminal-model serialization and equality rejection, plus
+  an end-to-end Rust-to-JSON-to-Lean acceptance test during release validation.
+- Confirm that Lean rejects a blocked existential completion graph that lacks
+  its folded model edges. This keeps cyclic blocking outside the certified
+  runtime slice until the blocking/model-folding theorem is complete.
+
+This release certifies publication only when the emitted finite SAT model is
+accepted by Lean. It does not certify HT taxonomy or UNSAT publication.
+
+## [0.3.34] – 2026-08-17
+
+### Certify the hypertableau JSON trust boundary
+
+- Add a versioned JSON schema for finite HT SAT and UNSAT evidence, with
+  separate node, concept, role, and variable signature bounds.
+- Check every untrusted numeric id, assignment arity, ontology clause index,
+  and refutation child count before constructing finite semantic objects.
+- Dispatch decoded evidence only to the proved SAT or UNSAT checker and prove
+  soundness of both decoded verdict forms.
+- Add the standalone `ht-cert-check` executable, which fails closed on parsing,
+  decoding, or semantic-checking errors.
+- Add native end-to-end tests for accepted SAT and UNSAT documents, out-of-range
+  concepts, missing branches, equality branches, and unsupported versions.
+- Audit the decoded-verdict theorems with `#print axioms`; neither uses
+  `sorryAx`.
+
+Rust HT evidence emission is not enabled in this release. Blocking,
+termination, equality/cardinality, nominals, taxonomy publication, CB, and
+concrete routing remain outstanding.
+
+## [0.3.33] – 2026-08-17
+
+### Certify executable hypertableau UNSAT refutations
+
+- Add mutually inductive finite refutation trees and child spines with an
+  executable checker for clashes, ontology-clause membership, grounded bodies,
+  legal branch heads, exact child order, and every recursive child.
+- Prove checker acceptance constructs the abstract exhaustive `Refutes`
+  judgment and therefore excludes every realization of the checked root.
+- Prove that an accepted empty-root certificate over a nonempty node set
+  excludes every nonempty-domain model of the exact encoded ontology.
+- Reject equality branches until node merging has a certified quotient
+  construction.
+- Add native tests for an empty-head contradiction, exhaustive binary
+  disjunction closure, a missing branch, and an unsupported equality branch.
+- Audit all public UNSAT acceptance theorems with `#print axioms`; none uses
+  `sorryAx`.
+
+This release certifies the finite Lean UNSAT checker. Rust emission and a
+serialized wire decoder remain outstanding, as do blocking, termination,
+equality/cardinality, nominals, taxonomy publication, CB, and concrete routing.
+
+## [0.3.32] – 2026-08-17
+
+### Certify finite hypertableau SAT certificates
+
+- Add an executable finite open-branch checker that validates guarded clause
+  bodies, clash freedom, existential witnesses, and every finite clause
+  grounding.
+- Use a computable exhaustive assignment enumeration and prove that it contains
+  every variable assignment, avoiding a classical decision procedure in the
+  checker implementation.
+- Prove that checker acceptance establishes the abstract saturation premises,
+  constructs the canonical model of the exact encoded ontology, and therefore
+  witnesses satisfiability.
+- Add native reduction tests accepting a valid branch and rejecting a clash, a
+  missing existential witness, and an undischarged grounding.
+- Audit the public acceptance theorems with `#print axioms`; none uses
+  `sorryAx`.
+
+This is a finite exhaustive Lean checker. Rust does not yet emit this SAT
+certificate, and the UNSAT refutation tree has no wire decoder yet. Blocking,
+termination, equality/cardinality, nominals, taxonomy publication, CB, and
+concrete routing remain outstanding.
+
+## [0.3.31] – 2026-08-17
+
+### Certify exhaustive hypertableau branch refutations
+
+- Define monotone concept, role, and existential head assertion on HT states and
+  prove that asserting a semantically true head preserves every realization.
+- Define an exhaustive HT refutation tree whose internal nodes record a matched
+  ontology clause and one refuting child for every legal head disjunct.
+- Prove `Refutes.sound`: a complete refutation tree excludes every interpretation
+  that both models the ontology and realizes the root branch.
+- Keep equality heads outside this monotone tree; their node-merge semantics need
+  a quotient-preservation theorem before Rust may certify cardinality branches.
+- Audit the new public theorems with `#print axioms`; neither uses `sorryAx`.
+
+Rust emission and executable checking of the tree, branch-state correspondence,
+blocking and termination, SAT/taxonomy publication, equality/cardinality,
+nominals, HT routing, CB, and concrete routing remain outstanding.
+
+## [0.3.30] – 2026-08-17
+
+### Certify the guarded hypertableau semantic core
+
+- Add a Lean semantics for signed concept atoms, role atoms, existential
+  obligations, equality, guarded clauses, completion states, and realization.
+- Prove soundness of complementary-label clash detection, forced unit heads,
+  disjunctive hyper-rule branching, and semantic existential witnesses.
+- Construct the canonical interpretation of a clash-free branch and prove that
+  every witness-complete, clause-saturated guarded branch models its ontology.
+- Derive the refutational-completeness endpoint: an ontology with no model on
+  the branch domain cannot have a clash-free, witness-complete, saturated open
+  branch.
+- Audit the public theorems with `#print axioms`; none uses `sorryAx`.
+
+This milestone certifies the abstract guarded ALC(H) hypertableau core. Rust
+state-transition correspondence, exhaustive search, blocking and termination,
+taxonomy publication, cardinality and nominal extensions, HT routing, CB, and
+the concrete router remain outstanding.
+
+## [0.3.29] – 2026-08-17
+
+### Close the remaining checker-backed ELC runtime trust boundaries
+
+- Disable inverse-bridge preprocessing whenever a Lean certificate is
+  requested, so the checked source theory is the exact input clause stream and
+  never the output of an unproved rewrite.
+- Keep inverse-bridge preprocessing for non-Lean certificate modes, preserving
+  the existing optimized route without extending the certification claim.
+- Verify through the real checker path that search-based repair output is never
+  published by checker-backed execution: a rejected base-model certificate
+  falls through before repair can contribute an answer.
+
+The checker-backed ELC clause route now publishes only results covered by the
+wire-v5 soundness and completeness theorems. OWL frontend translation,
+inverse-bridge preprocessing outside that route, repair publication outside
+that route, HT, CB, and concrete routing remain separate certification tasks.
+
+## [0.3.28] – 2026-08-17
+
+### Enable checker-backed residual ELC publication
+
+- Partition the retained source clause stream exactly into direct EL clauses,
+  canonical Skolem-witness pairs, and compiled residual clauses.
+- Preserve duplicate source clauses while matching residuals as a multiset and
+  fail closed if a rewritten Skolem function lacks either source half.
+- Emit the canonical witness records and residual compilation evidence consumed
+  by the wire-v5 Lean theorem, then publish only the taxonomy returned by an
+  accepting Lean checker.
+- Add an end-to-end regression that checks the native partition, complete
+  certificate, production publication path, and adversarial pin/origin changes.
+
+This certifies residual publication for the retained clause stream after the
+current inverse-bridge preprocessing step. Certification of that preprocessing
+step, repair mode, HT, CB, and concrete routing remains outstanding.
+
+## [0.3.27] – 2026-08-17
+
+### Prove end-to-end residual source semantics and public exactness
+
+- Connect direct normalization, canonical witness rewrites, compiled residual
+  evidence, finite residual truth, and the checked source partition into one
+  model of the exact original raw clause stream.
+- Prove exact source-level subsumption and inconsistency for accepted
+  partitioned wire-v5 certificates, including a separate inconsistent-core
+  argument that does not fabricate live canonical witnesses.
+- Prove source-level soundness of public subsumptions and satisfiable-case
+  completeness of numeric and named public taxonomy output.
+- Add an executable signature-closure check and prove it equivalent to the
+  finite canonical model's `SignatureClosed` premise. Malformed certificates
+  can no longer rely on an incomplete active-concept domain.
+
+Production still declines Lean-certified residual publication until Rust emits
+the exact direct/witness/residual source partition consumed by these theorems.
+Repair mode, HT, CB, and concrete routing remain uncertified.
+
+## [0.3.26] – 2026-08-17
+
+### Prove one global Skolem interpretation for residual publication
+
+- Prove that every accepted canonical-witness record and every function-origin
+  residual variable agrees with one shared function-to-witness interpretation.
+- Reject conflicting or dead bindings semantically, then lift each accepted
+  residual compilation into a whole-theory entry carrying its checked
+  compilation evidence, compiled truth, and global pin compatibility.
+- Prove that packaging the independently numbered residual entries preserves
+  the exact raw residual-clause stream.
+
+Production still declines Lean-certified residual publication until the
+materialized direct, witness, and residual partitions are connected to the
+public taxonomy theorem. Repair mode, HT, CB, and concrete routing remain
+uncertified.
+
+## [0.3.25] – 2026-08-17
+
+### Check residual truth on the finite materialization
+
+- Make wire-v5 acceptance exhaustively evaluate every compiled residual clause
+  over the active-and-alive trace domain. Already inconsistent ELC cores remain
+  valid without constructing a countermodel.
+- Reject residual and canonical-witness function bindings that name dead nodes,
+  disagree for one function, or omit the corresponding rewritten NF3/NF1
+  clauses.
+- Prove that accepted compiled clauses hold in the finite materialized canonical
+  interpretation, and prove that their independently checked compilation
+  evidence remains valid after restricting pins to that domain.
+- Lift canonical NF3 witness refinement and complete three-way source partition
+  composition from the abstract canonical model to the exact executable
+  materialization.
+- Add a native end-to-end mutation test: a structurally exact residual tautology
+  passes, while a structurally exact clause false in the finite canonical model
+  fails closed.
+
+Production still declines Lean-certified residual publication until the checked
+global function-binding table is connected to the whole-source composition
+theorem. Repair mode, HT, CB, and concrete routing remain uncertified.
+
+## [0.3.24] – 2026-08-17
+
+### Prove exact residual reasoning on the executable finite domain
+
+- Define the finite canonical domain as the active concepts that the checked
+  trace does not label with bottom, with concept and role interpretation taken
+  directly from the trace materialization.
+- Prove that fixpoint closure makes this finite interpretation a model of every
+  checked NF1–NF7 and reflexive axiom. The NF3 case proves that each required
+  filler remains active and alive.
+- Prove exact taxonomy and inconsistency theorems when the residual theory holds
+  on this same finite interpretation. These are the semantic theorems needed by
+  an exhaustive native residual-clause checker, rather than corollaries that
+  assume truth in a separate abstract canonical model.
+
+The executable wire does not yet invoke the finite residual-clause checker, so
+production still declines Lean-certified residual publication. Repair mode,
+HT, CB, and concrete routing remain uncertified.
+
+## [0.3.23] – 2026-08-17
+
+### Check exact source partitions and symbol origins
+
+- Add wire version 5 with the complete residual-capable source ontology,
+  direct-clause partition, canonical-witness records, and residual compilation
+  entries. Lean rejects omitted source clauses, out-of-range fields, origin
+  mismatches, and wire downgrades.
+- Prove direct-only raw normalization preserves the exact shared term
+  interpretation, avoiding an existential-choice mismatch with globally pinned
+  residual functions.
+- Prove arbitrary normalized models project to source models, including models
+  whose conjunction auxiliaries were materialized independently.
+- Prove exact concept-renaming invariance for models, named subsumption, and
+  inconsistency under any origin map with a left inverse. The decoder constructs
+  injectivity evidence from its checked, full-length, duplicate-free origin
+  table, and the wire checks the normalized ontology against that renaming.
+- Add an end-to-end native Rust-to-Lean v5 test. Exact source evidence passes;
+  source omission and version downgrade mutations fail closed.
+
+Production still declines Lean-certified residual publication. The next
+plain-residual obligation is executable truth checking of every compiled clause
+over the alive canonical domain, followed by the final semantic composition.
+Repair mode, HT, CB, and concrete routing remain uncertified.
+
+## [0.3.22] – 2026-08-17
+
+### Compose all plain-residual source partitions
+
+- Embed ordinary equality-free frontend clauses into the residual source
+  language and prove that clause and ontology satisfaction are preserved in
+  both directions.
+- Lift the canonical NF3 witness refinement from one Skolem pair to any finite
+  list of witness records under one shared pinned function interpretation.
+- Compose directly normalized clauses, rewritten existential witness pairs,
+  and independently compiled equality/disjunctive residual clauses. The main
+  theorem proves satisfaction of the exact original source stream when the
+  executable partition equality holds. Its axiom audit is
+  `[propext, Quot.sound]`.
+
+The next plain-residual obligation is checking this exact partition across the
+source-symbol/normalization-symbol boundary in the executable wire. Production
+still declines Lean-certified residual publication. Repair mode, HT, CB, and
+concrete routing remain uncertified.
+
+## [0.3.21] – 2026-08-17
+
+### Prove canonical NF3 witness refinement
+
+- Add `ELResidualWitness.lean` and prove the exact rewrite used by Rust:
+  replacing `A ⊑ ∃R.B` with `A ⊑ ∃R.W` and `W ⊑ B` satisfies both
+  original frontend Skolem clauses when the source function is pinned to the
+  alive canonical `W` node.
+- State the theorem over the signature-restricted canonical model used by the
+  executable residual certificate. Its axiom audit is `[propext]`.
+- Make Rust decline a residual certificate if any pin points outside the alive
+  canonical domain. Add focused regression coverage for live and dead pins.
+
+The remaining plain-residual obligation is whole-list executable rewrite
+evidence and composition with the accepted residual clauses. Repair mode, HT,
+CB, and concrete routing remain uncertified.
+
+## [0.3.20] – 2026-08-17
+
+### Check residual compilation evidence executable end to end
+
+- Make residual term, atom, clause-list, and pin evidence computationally
+  checkable in Lean and prove each Boolean check equivalent to the semantic
+  `ResidualCompilationEvidence` contract.
+- Extend certificate wire version 4 with bounded residual source clauses,
+  independently numbered slot origins, compiled atoms, and exact witness pins.
+  Preserve decoded evidence objects for later whole-ontology composition.
+- Extend `elc-cert-check` with a standalone residual-compilation mode. A real
+  Rust `compile_residual` payload passes the native Lean checker; independent
+  pin and origin mutations fail closed.
+- Retain source-variable names in Rust's compilation metadata and emit source
+  and Skolem-function origins from separate namespaces.
+
+The production route still declines Lean certification when residual clauses
+are present. The remaining ELC obligation is certifying the NF3 witness rewrite
+and composing accepted residual clauses with the canonical model. Repair mode,
+HT, CB, and concrete routing remain uncertified.
+
+## [0.3.19] – 2026-08-17
+
+### Prove whole-theory residual compilation refinement
+
+- Add `ELResidualCompilation.lean` and formalize the exact source residual
+  language accepted by Rust, including concepts, roles, equality, ordinary
+  variables, and one-level Skolem terms.
+- Define proof-carrying compilation evidence for each term, atom, body, head,
+  and pin, then prove compiled-clause satisfaction implies satisfaction of the
+  original source clause under the pinned constant-function interpretation.
+- Compose independently numbered per-clause variable tables into a whole
+  residual theory with one shared Skolem-function interpretation. The
+  principal theorem audits at `[propext, Quot.sound]`.
+- Separate source-variable and Skolem-function namespaces in Rust's residual
+  compiler. Previously equal strings in those two namespaces could alias one
+  slot and incorrectly pin a universally quantified source variable. Add a
+  focused regression test for this collision.
+
+The executable wire still declines residual certificates until it can check
+and construct this evidence from Rust output. Repair mode, HT, CB, and concrete
+routing remain uncertified.
+
+## [0.3.18] – 2026-08-17
+
+### Prove canonical-model exactness with residual axioms
+
+- Add `ELResidualCertificate.lean` and formalize the semantic contract of the
+  plain ELC residual route: an exact ELC materialization remains sound after
+  adding arbitrary residual axioms, and becomes complete when its canonical
+  model satisfies those axioms.
+- Prove exact named-class taxonomy and inconsistency theorems, both for the
+  inductive ELC closure and for the executable `ClosedState`/`SoundState`
+  materialization contract.
+- Correct the canonical domain to match Rust: quantify only over live IDs in a
+  signature-closed concept set, excluding role-only interned IDs. Prove this
+  restricted canonical interpretation models every NF1–NF7 and reflexive axiom.
+- Define the exact compiled residual language used by Rust, including concept,
+  role, equality, and pinned canonical-witness variables.
+- Add an independent finite checker and prove its Boolean acceptance equivalent
+  to compiled-clause satisfaction. A kernel-evaluated example exercises it.
+- Audit the principal exactness theorems at `[propext, Classical.choice,
+  Quot.sound]`.
+
+The remaining plain-residual obligation is to prove that Rust's residual
+compiler and optimized join checker establish this finite semantic contract
+for the original source clauses. Repair mode, HT, CB, and concrete routing
+remain uncertified.
+
+## [0.3.17] – 2026-08-17
+
+### Connect Rust ELC normalization to the Lean checker
+
+- Extend the ELC certificate wire to version 3 with the exact raw clause
+  stream, finite variable signature, and one checked semantic origin for every
+  interned symbol.
+- Record each generated n-ary conjunction auxiliary as its sorted source-prefix
+  identity. The decoder rejects out-of-bounds or duplicate origins, source
+  concepts relabelled as auxiliaries, and auxiliary aliases.
+- Reconstruct Rust's emitted normal ontology over the extended concept
+  signature and run `certifyRawToNormal` inside the executable checker. The
+  checker accepts only when this ontology equals the one computed from the raw
+  stream, up to order and duplicate entries.
+- Compose raw normalization with the existing trace, closure, Rust-state,
+  public-output, symbol-table, and inconsistency checks. A mixed
+  NF2/NF3/NF4 production certificate passes the native checker; independent
+  mutations of its raw stream, normal forms, and origin table all fail closed.
+- Add Rust regression coverage for the exact sorted conjunction-prefix IDs.
+
+This closes the concrete raw-to-normal wire obligation for the pure ELC route.
+Residual ELC modes, HT, CB, and concrete routing remain uncertified.
+
+## [0.3.16] – 2026-08-17
+
+### Prove whole-ontology raw-to-normal ELC equivalence
+
+- Add a collision-free embedding of every direct NF1–NF7 clause into the
+  extended concept signature and prove clause satisfaction unchanged under
+  source projection.
+- Add `SourceOntologyNormalEvidence`, which flattens a complete reconstructed
+  source ontology into one normal-form ontology while sharing conjunction
+  auxiliaries by structural prefix identity.
+- Implement fail-closed `certifySourceOntologyNormal` for direct clauses,
+  binary and n-ary subclass conjunctions, and binary and n-ary bottom chains.
+- Prove `SourceOntologyNormalEvidence.models_iff` for the entire source list,
+  not only pointwise axioms. Its axiom audit is `[propext, Quot.sound]`.
+- Compose raw-list and source-normal certificates as `RawToNormalCertificate`
+  and prove `models_iff`: the exact raw stream is satisfiable under a shared
+  term interpretation exactly when the generated NF1–NF7 ontology models the
+  source interpretation. Its additional `Classical.choice` axiom constructs
+  existential witnesses.
+- Add a kernel-evaluated mixed example spanning an n-ary NF2 chain, NF3
+  existential pairing, and NF4 existential elimination.
+
+The remaining ELC normalization obligation is connecting this certificate to
+the concrete Rust symbol table and emitted wire ontology. HT, CB, and concrete
+routing remain uncertified.
+
+## [0.3.15] – 2026-08-17
+
+### Certify exact conjunction-prefix expansion and remove name collisions
+
+- Prove that every binary or n-ary subclass and bottom conjunction is
+  equisatisfiable with its complete NF2 prefix chain while preserving the
+  interpretation of every source concept and role.
+- Add proof-producing `certifyNaryConjunction`, which accepts only the exact
+  deterministic chain and fails closed on missing, reordered, or altered NF2
+  clauses. `NaryConjunctionCertificate.sat_iff` has the axiom audit
+  `[propext, Quot.sound]`.
+- Replace Rust and Python's slash-joined `__conj__` names with byte-length-
+  prefixed components. Slash joining was not injective: prefixes `["a/b","c"]`
+  and `["a","b/c"]` produced the same internal concept and could contaminate
+  otherwise unrelated completion chains.
+- Add a Rust regression covering the collision witness and UTF-8 byte lengths,
+  plus Lean acceptance and tamper-rejection examples.
+
+Whole-ontology normal-form assembly and the raw-to-wire certificate connection
+remain open. HT, CB, and concrete routing remain uncertified.
+
+## [0.3.14] – 2026-08-17
+
+### Add proof-producing mixed raw ELC list assembly
+
+- Add indexed evidence for the exact two raw clauses of an existential
+  introduction, retaining body variables, role/filler order, and shared
+  Skolem function ID.
+- Implement `certifyRawExistentialPair` for both frontend clause orders with
+  exact shape and variable-wiring checks.
+- Add `RawELListEvidence` to compose direct clauses and adjacent existential
+  pairs while exposing every used Skolem ID.
+- Implement recursive `certifyRawELList`; malformed and orphaned halves and
+  reused function IDs fail closed.
+- Prove `RawELListCertificate.models_iff`: every accepted mixed raw list is
+  equisatisfiable with its complete reconstructed source list under one shared
+  term interpretation.
+- Add kernel-evaluated acceptance tests for mixed and reverse-order lists and
+  rejection tests for orphan halves and duplicate function IDs. The theorem's
+  axiom audit is `propext`, `Classical.choice`, and `Quot.sound`.
+
+The assembler currently relies on the frontend invariant that each existential
+pair is adjacent. Connecting that invariant to Rust's emitted stream, adding
+deterministic n-ary auxiliary-name validation, and certificate-wire integration
+remain open. HT, CB, and concrete routing remain uncertified.
+
+## [0.3.13] – 2026-08-17
+
+### Prove shared existential-pair normalization exact
+
+- Model a list of paired existential-introduction clauses whose entries share
+  one raw term interpretation.
+- Prove each pair depends only on its named Skolem function, so extending the
+  interpretation at another globally distinct function ID preserves it.
+- Construct a shared interpretation from all source existential witnesses by
+  installing one choice function per entry.
+- Prove `modelsRawExistentials_sat_iff`: under global Skolem-ID uniqueness, a
+  shared interpretation satisfies every raw role/filler pair exactly when the
+  source interpretation satisfies every reconstructed existential axiom.
+- Audit the milestone theorem: its axioms are `propext`, `Classical.choice`,
+  and `Quot.sound`; choice supplies the source existential witnesses.
+
+This closes the semantic whole-list composition obligation for already paired
+existential clauses. Executable discovery of pairs in an unordered raw list,
+composition with direct-list evidence, deterministic n-ary auxiliary-name
+validation, and certificate-wire integration remain open. HT, CB, and concrete
+routing remain uncertified.
+
+## [0.3.12] – 2026-08-17
+
+### Prove proof-producing direct-list normalization exact
+
+- Define raw-ontology semantics over one shared term interpretation and prove
+  its cons decomposition.
+- Add `RawDirectListEvidence`, indexed by the exact raw clause list and complete
+  reconstructed source ontology.
+- Prove `RawDirectListEvidence.models_iff`: a pointwise list certificate
+  preserves and reflects models for the entire ontology.
+- Implement recursive executable `certifyRawDirectList`; every clause must
+  return a `RawDirectCertificate`, otherwise the complete list normalization
+  fails closed.
+- Add kernel-evaluated examples for a mixed subclass/restriction/role-chain
+  list and rejection when a later clause has split concept variables.
+
+This certifies whole-list assembly for direct single-clause forms. The next
+ELC frontend obligation is adding globally unique existential-half pairs to
+the same list certificate, followed by deterministic n-ary auxiliary-name
+validation and certificate wire integration. HT, CB, and concrete routing
+remain uncertified.
+
+## [0.3.11] – 2026-08-17
+
+### Add a proof-producing executable direct ELC normalizer
+
+- Add `RawDirectEvidence`, indexed by the exact raw clause and reconstructed
+  source axiom. Its constructors retain concept-body decoding equations and
+  every required variable inequality and role-chain wiring fact.
+- Prove `RawDirectEvidence.sat_iff` by dispatching each constructor to the
+  direct raw semantic theorems from v0.3.10.
+- Add `RawDirectCertificate`, which carries the source axiom, canonical raw
+  clause, typed evidence, and an equality tying the actual input to that
+  canonical clause. Prove every such certificate semantically exact.
+- Implement proof-producing concept-head, bottom, and role-head normalizers,
+  then compose them as total executable `certifyRawDirect`.
+- Cover subclass and arbitrary conjunction bodies, bottom, all three
+  existential-elimination layouts, role inclusion, reflexivity, and both role
+  chain body orders. Malformed terms and collapsed or split variables return
+  `none`.
+- Add kernel-evaluated examples for accepted subclass, restriction, and both
+  chain orders, plus rejection of a collapsed role implication.
+
+This closes the semantic trust gap for successful single-clause direct raw
+normalization without requiring inversion of a Rust-authored result. Remaining
+ELC frontend work is proof-producing whole-list assembly, existential-half
+pairing in that assembly, deterministic n-ary auxiliary-name validation, and
+certificate wire integration. HT, CB, and concrete routing remain uncertified.
+
+## [0.3.10] – 2026-08-17
+
+### Prove direct raw ELC clause families semantically exact
+
+- Prove that every body accepted by `allConceptsOn` has exactly the decoded
+  conjunction semantics at its checked variable.
+- Prove raw concept-head subclass clauses and empty-head bottom clauses
+  equivalent to their reconstructed source axioms for arbitrary conjunction
+  length.
+- Prove raw existential-elimination clauses equivalent to `∃R.A ⊑ B` in
+  role-first, concept-first, and top-filler/domain forms.
+- Prove correctly wired raw role inclusions, reflexive role facts, and connected
+  three-variable role chains equivalent to their source semantics. Both role
+  chain body orders are covered.
+- Connect the executable empty-head recognizer branch directly to the bottom
+  equivalence theorem.
+- Refine existential-elimination recognition to return a typed shape that
+  records atom order and checked source/target variables, preparing small
+  constructor-specific inversion proofs instead of one brittle global split.
+
+The concept-head and role-head recognizer branches still need their executable
+inversion theorems before the whole `recognizeRawClause` result can be connected
+to these family proofs. Whole-list pairing, deterministic n-ary auxiliary-name
+validation, and certificate wire integration also remain open. HT, CB, and
+concrete routing remain uncertified.
+
+## [0.3.9] – 2026-08-17
+
+### Prove raw Skolem-pair normalization exact
+
+- Add a typed Lean model of the frontend's recursive raw terms, equality-free
+  atoms, clauses, term interpretation, and universally quantified Horn
+  semantics.
+- Add executable raw-clause recognition for direct ELC forms, with explicit
+  checks for concept-variable sharing, role orientation, distinct role
+  endpoints, connected three-variable role chains, and both body atom orders
+  for existential elimination.
+- Add executable recognition of the two raw clauses that share a Skolem
+  function for `A ⊑ ∃R.B`; reject mismatched body/source/argument variables,
+  source concepts, function ids, and nested terms.
+- Prove `rawExistentialPair_sat_iff`: the paired raw Skolem clauses are
+  equisatisfiable with the reconstructed source existential axiom. The forward
+  proof extracts the function value as a witness; the reverse proof extends an
+  arbitrary raw interpretation with a choice function.
+- Harden both Rust `to_nf` and its zero-copy routing screen with the same
+  variable-distinctness and Skolem-argument checks. Malformed raw JSON now
+  fails closed instead of being read as a stronger EL axiom.
+
+The raw clauses are not yet carried in certificate wire version 2, so the
+production checker does not yet invoke these recognizers. The direct raw-form
+semantic bridge, deterministic n-ary auxiliary-name check, whole-list pairing,
+and wire integration remain open. HT, CB, and concrete routing remain
+uncertified.
+
+## [0.3.8] – 2026-08-17
+
+### Prove n-ary ELC conjunction expansion conservative
+
+- Extend `ELNormalization.lean` with the left-associated NF2 prefix-chain
+  construction used for n-ary subclass and bottom axioms.
+- Model fresh conjunction concepts in an extended signature, indexed by their
+  exact source prefixes.
+- Define source-model extension by interpreting each auxiliary as the
+  intersection of its prefix, and define projection back to the original
+  concept signature.
+- Prove subclass and bottom expansion in both directions: every generated-chain
+  model projects to a source-axiom model, and every source model extends to a
+  generated-chain model.
+- Add an executable four-conjunct example pinning the exact three-clause NF2
+  chain shape.
+
+The remaining ELC frontend obligation is executable recognition of raw JSON
+clauses, including variable wiring, Skolem role/filler pairing, deterministic
+sorting and auxiliary-name validation, and equality with Rust's emitted normal
+forms. HT, CB, and concrete routing remain uncertified.
+
+## [0.3.7] – 2026-08-17
+
+### Prove direct ELC frontend normalization exact
+
+- Add `ELNormalization.lean`, a semantic source language for the EL axioms
+  reconstructed from frontend Horn clauses. It represents conjunction bodies,
+  bottom axioms, existential introduction and elimination, role inclusion,
+  role chains, and reflexivity.
+- Define `normalizeDirect` for every translation that introduces no auxiliary
+  conjunction concept: top inclusion and NF1–NF7.
+- Prove `normalizeDirect_sat_iff`: every successful direct translation
+  preserves and reflects satisfaction in every interpretation.
+- Prove `models_direct_iff`: pointwise successful direct normalization
+  preserves and reflects models of a complete source-axiom list.
+
+This establishes the semantic frontend boundary for direct forms. The
+remaining ELC normalization proof must cover n-ary conjunction auxiliary
+expansion and executable reconstruction of paired Skolem clauses from the raw
+frontend JSON. HT, CB, and concrete routing remain uncertified.
+
+## [0.3.6] – 2026-08-17
+
+### Certify named ELC publication and inconsistency
+
+- Extend the ELC wire certificate to version 2 with the complete finite symbol
+  table, named public subsumptions, and the public inconsistency flag.
+- Require the active context set to match every concept position in the
+  normalized ontology, with `TOP` always active and `BOTTOM` excluded as a
+  subject context. This prevents a certificate from proving a selected subset
+  while silently omitting another taxonomy subject.
+- Prove soundness and satisfiable-subject completeness for both ID-level and
+  named public subsumptions. Prove the checked public inconsistency flag
+  equivalent to semantic unsatisfiability.
+- Make checker-enabled Rust publish directly from the verified named result,
+  leaving no unchecked result conversion after checker acceptance.
+- Initialize the Rust `TOP` completion context unconditionally. The public
+  inconsistency test queried this context even when no normalized axiom had
+  caused it to be initialized.
+- Isolate checker stdout from the worker JSON protocol. Valid and tampered
+  end-to-end tests confirm byte-valid JSON, equality with the ordinary pure ELC
+  result, and fail-closed rejection of named-output, active-context, and
+  consistency-flag alterations.
+
+The remaining end-to-end ELC boundary is OWL/frontend-clause normalization.
+Residual ELC modes, HT, CB, and concrete routing remain uncertified.
+
+## [0.3.5] – 2026-08-17
+
+### Certify pure ELC result materialization
+
+- Extend the Rust certificate with the exact ID-level subsumption relation
+  materialized by the public output loop.
+- Check both directions between that relation and the certified Rust state
+  after applying the public conventions: omit top and bottom subjects,
+  reflexive pairs, and top objects; retain bottom objects for unsatisfiable
+  classes.
+- Prove `public_subsumption_sound`: every subsumption accepted for publication
+  is semantically entailed by the normalized pure ELC ontology.
+- Test a complete Rust-to-native-Lean run and rejection after injecting a
+  forbidden public-output pair.
+- Pin the optional `dhat` dependency to the available 0.3.3 release, repairing
+  clean locked builds after crates.io stopped offering the locked 0.3.4 package.
+
+This milestone certifies normalized ID-level output. OWL frontend translation,
+ID-to-IRI presentation, residual ELC modes, HT, CB, and concrete routing remain
+outside the certified boundary.
+
+## [0.3.4] – 2026-08-17
+
+### ELC Rust-to-Lean refinement path
+
+- Add a deterministic Rust certificate reconstruction pass that records NF1–NF7
+  derivations and compares the reconstructed formal closure with the optimized
+  production state on every active concept context.
+- Add a versioned JSON wire decoder with checked finite symbol ids and a native
+  `elc-cert-check` executable.
+- Include the active Rust contexts and complete Rust subsumption and edge stores
+  in the certificate. Lean verifies both directions of state agreement, and
+  `active_subsumption_exact` proves accepted active-context taxonomy answers
+  semantically exact.
+- Add fail-closed Rust invocation through `KM_ELC_LEAN_CERT_CHECKER`; checker
+  rejection produces no reasoner output. `KM_ELC_LEAN_CERT_OUT` retains a
+  certificate for inspection.
+- Replace exhaustive irrelevant symbol-tuple enumeration with a premise-driven
+  closure checker. The representative NF1–NF7 smoke certificate fell from about
+  30 seconds to 0.07 seconds end to end on the workstation.
+
+## [0.3.3] – 2026-08-17
+
+### Prove executable ELC certificate exactness
+
+`checkClosedTrace` exhaustively checks initialization and closure under every
+pure ELC rule over the finite interned concept and role signature.
+`checkClosedTrace_closed` proves that acceptance constructs the v0.4.0
+`ClosedState` contract. `checkedTrace_exact` combines this result with the
+v0.3.2 proof-trace soundness theorem and proves that an accepted certificate's
+taxonomy and inconsistency readouts are semantically exact.
+
+The default Lean build includes executable positive and negative checker
+examples and contains no `sorry` or `admit`. The remaining ELC refinement work
+is to serialize the Rust worker's normal forms and completed state into this
+certificate, invoke the checker fail closed, and prove the wire translation.
+
+## [0.3.2] – 2026-08-17
+
+### Verify executable ELC proof traces
+
+`ContextCalculus/ELCompletionCertificate.lean` defines finite proof steps for
+every pure ELC rule, including initialization, NF1–NF7, reflexivity, and
+backward bottom propagation. `checkTrace` is executable and accepts a step only
+when all premises and the source normal form occur in the certificate.
+
+`validStep_derivable` proves each accepted step semantically derivable.
+`checkTrace_sound` lifts this result to complete traces, and
+`checkedTrace_soundState` constructs the v0.4.0 `SoundState` contract for the
+materialization represented by any accepted trace. The module is part of the
+default Lean build and contains no `sorry` or `admit`.
+
+This release does not yet provide the exhaustive finite closure checker or the
+Rust certificate serialization and fail-closed invocation needed to establish
+the `ClosedState` half and executable ELC refinement.
+
+## [0.4.0] – 2026-08-17
+
+### Prove the exact ELC materialization contract
+
+`ContextCalculus/ELCompletionRefinement.lean` introduces the abstract view of
+the Rust worker's completed `sub_super` and `edges` stores. `ClosedState` lists
+the precise initialization and closure obligations for NF1–NF7, reflexive
+roles, and backward bottom propagation. `SoundState` requires every stored
+subsumption and edge to have a derivation in the v0.3.0 semantic calculus.
+
+`ClosedState.sub_complete` and `ClosedState.edge_complete` prove by mutual
+induction that a closed state contains every derivable fact. Combined with
+`SoundState`, `sub_iff_of_exact` and `edge_iff_of_exact` prove extensional
+equality with the semantic closure. `entails_iff_materialized` then proves the
+materialized taxonomy exact, including unsatisfiable subjects, and
+`unsat_iff_materialized` proves the materialized `TOP ⊑ BOTTOM` test equivalent
+to semantic ontology inconsistency.
+
+The module is `sorry`-free and part of the default Lean target. The remaining
+ELC executable-refinement obligation is concrete: prove that
+`elcomplete.rs`'s final indexed state satisfies `ClosedState` and `SoundState`,
+including the normal-form recognizer, queue execution, batched NF4 schedule,
+certificate modes, and output conversion. This release does not claim that
+remaining step, nor HT, CB, or concrete routing certification.
+
+## [0.3.0] – 2026-08-17
+
+### Certify the full pure ELC calculus and fail-closed composition
+
+`ContextCalculus/ELCompletion.lean` formalizes every pure normal form accepted
+by the Rust ELC worker: NF1–NF7 and reflexive roles. Its closure includes
+explicit top and bottom, conjunction, existential introduction and
+elimination, backward bottom propagation, role hierarchy, role-chain
+composition, and reflexivity. `sub_sound` and `edge_sound` prove every closure
+fact valid in every interpretation of those normal forms.
+
+The canonical interpretation contains exactly the contexts not labelled
+bottom. `canon_models` proves that this nonempty alive-context interpretation
+models every accepted axiom. `top_bottom_sound` and `top_bottom_complete`
+justify the worker's `TOP ⊑ BOTTOM` inconsistency criterion, and
+`subsumption_complete` proves that every named-class entailment is represented
+either directly or by the stronger result that its subject is unsatisfiable.
+
+`ContextCalculus/Certification.lean` formalizes the supervisor boundary as
+four outcomes: publish, defer, error, and timeout. It proves soundness and
+completeness composition for sequential portfolios, faithful and live races,
+and profile-based routers. Non-publication outcomes are fail-closed by type.
+
+The complete default Lean target builds successfully with no `sorry`. The new
+ELC soundness and canonical-model theorems use no axioms; the semantic
+subsumption capstone uses Lean's standard classical quotient axioms. This
+release does not claim executable ELC certification: refinement of Rust's
+normal-form recognizer, indexed worklist, output mapping, and certificate modes
+remains open, as do HT, CB, and concrete routing refinement.
+
+## [0.2.36] – 2026-08-15
+
+### Partition two large production-bridge profiles
+
+The automatic `production_all` route now assigns four bounded, independent
+subject-classification workers to the large SRIQ bridge profile represented by
+ORE14817 and two workers to the large SHI bridge profile represented by
+ORE3215. Every worker receives the complete ontology and candidate-superclass
+universe. The bridge publishes a merged answer only when every partition
+completes; otherwise it defers to the existing exact fallback. This changes
+scheduling only, not routing, inference rules, or accepted certificates.
+
+Three alternating same-node pairs in jobs `50554126` and `50554127` preserve
+the gold-matching full-IRI signatures and all answer metadata. ORE14817 median
+wall falls from 91.8347 to 75.0825 seconds; ORE3215 falls from 125.5704 to
+89.1692 seconds. Their median process-tree peak RSS rises from 2,799.62 to
+5,963.04 MiB and from 6,278.98 to 9,643.82 MiB, respectively, within the
+20-GiB benchmark contract.
+
+Order-balanced full-corpus job `50554161` contains exactly 1,184 terminal
+records, 1,184 checkpoints, 592 pair-completion markers, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI
+signature. Mean wall falls from 3.32327 to 3.23825 seconds. Candidate median
+wall is 0.1628 seconds, mean peak RSS is 427.88 MiB, and median peak RSS is
+35.39 MiB. All four are below the frozen Konclude measurements of 3.2657
+seconds, 0.2813 seconds, 558.09 MiB, and 76.53 MiB.
+
+The complete serial release-mode suite passes 2,006 library tests with eight
+ignored tests and every integration test, including the issue #3 pigeonhole
+regression. Evidence is in
+[`results/benchmarks/2026-08-15-large-bridge-subjects/`](results/benchmarks/2026-08-15-large-bridge-subjects/README.md).
+
+## [0.2.35] – 2026-08-15
+
+### Partition large certified-bridge subjects
+
+The automatic `certified_nominals` route now partitions ORE10621's independent
+named-class jobs across four bounded bridge workers. Every worker receives the
+complete ontology and candidate-superclass universe. Results are merged,
+sorted, and deduplicated only after every worker returns a complete answer; a
+decline from any worker defers the entire bridge to the existing exact
+fallback. This changes scheduling only, not routing, inference rules, or
+accepted certificates.
+
+Three alternating same-node pairs in job `50552259` preserve the
+gold-matching full-IRI signature and `certified_nominals` route. Median wall
+falls from 83.2711 to 38.9416 seconds. Median process-tree peak RSS rises from
+1,273.03 to 1,555.85 MiB and remains below Konclude's measured 2,470 MiB on
+this ontology.
+
+Order-balanced full-corpus job `50552285` contains exactly 1,184 terminal
+records, 1,184 checkpoints, 592 pair-completion markers, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI
+signature. Mean wall falls from 3.41986 to 3.33021 seconds, median wall from
+0.1625 to 0.1621 seconds, and median peak RSS from 35.14 to 35.02 MiB. Mean
+peak RSS changes from 416.34 to 417.04 MiB and remains below Konclude's 558.09
+MiB.
+
+The complete release-mode suite passes 2,006 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole
+regression. Evidence is in
+[`results/benchmarks/2026-08-15-parallel-bridge-subjects/`](results/benchmarks/2026-08-15-parallel-bridge-subjects/README.md).
+
+## [0.2.34] – 2026-08-15
+
+### Schedule the large SRIQ bridge before CB fallback
+
+The automatic `production_all` route now schedules the already certified,
+complete hypertableau bridge before its consequence-based fallback for the
+large SRIQ profile used by ORE14817. A successful bridge answer is published;
+decline, error, or resource exhaustion retains the exact production fallback.
+The selected route and all certificates are unchanged. This is a scheduling
+change only and does not alter either reasoner's inference rules.
+
+Three alternating same-node pairs on ORE14817 preserve the gold-matching
+full-IRI signature and `production_all` route. Mean wall is flat at 92.099
+versus 92.205 seconds, while mean process-tree peak RSS falls from 5,100.81 to
+2,800.43 MiB. Order-balanced full-corpus job `50548596` contains exactly 1,184
+terminal rows, 1,184 matching checkpoints, 592 complete pairs, and no temporary
+outputs. Both arms report 591 successful classifications and ORE1194 as the
+sole fail-closed error. There are zero differences in status, verdict,
+consistency, selected route, solved state, answer counts, or full-IRI signature.
+Mean peak RSS falls from 420.39 to 416.06 MiB and summed peak RSS falls by
+2,555.49 MiB. Corpus wall is treated as flat measurement noise; the candidate
+reports 3.43423 seconds mean and 0.1623 seconds median wall.
+
+The complete release-mode suite passes 2,005 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole regression.
+
+Evidence is in
+[`results/benchmarks/2026-08-15-sequential-sriq-bridge/`](results/benchmarks/2026-08-15-sequential-sriq-bridge/README.md).
+
+## [0.2.33] – 2026-08-15
+
+### Pay-as-needed certified EL fallback serialization
+
+Certified EL classification no longer serializes a complete JSON clause copy
+before it knows that the production fallback is needed. In-process certified
+routes retain their typed clauses directly and rebuild the production input
+only after a certificate declines. For subprocess routes, source documents of
+at least 512 MiB use the existing checked binary clause handoff and omit the
+dead JSON stream after that handoff succeeds. Smaller certified subprocess
+routes keep the established JSON path because repeated paired measurements
+show that the extra encoding does not amortize there. Exact EL behavior is
+unchanged. This changes representation and scheduling only; routing,
+certificates, completion rules, and accepted answers are unchanged.
+
+Order-balanced full-corpus job `50547528` contains exactly 1,184 terminal rows,
+1,184 matching checkpoints, 592 complete pairs, and no temporary outputs. Both
+arms report 591 successful classifications and ORE1194 as the sole fail-closed
+error. There are zero differences in status, verdict, consistency, selected
+route, solved state, answer counts, or full-IRI signature. Mean wall falls from
+3.45100 to 3.43487 seconds, median wall from 0.1627 to 0.1622 seconds, mean peak
+RSS from 424.24 to 420.40 MiB, and median peak RSS from 35.05 to 34.39 MiB.
+Summed wall falls by 9.5335 seconds. ORE16744 accounts for the intended large
+handoff gain: wall falls from 63.2610 to 60.1049 seconds and peak RSS from
+5,668.39 to 3,570.22 MiB.
+
+The complete release-mode suite passes 2,005 library tests with eight ignored
+tests and every integration test, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-certified-el-payg/`](results/benchmarks/2026-08-15-certified-el-payg/README.md).
+
+## [0.2.32] – 2026-08-15
+
+### Compact dense EL taxonomy handoff
+
+Complete subprocess EL results with at least two million subsumptions now use
+a versioned dictionary-coded handoff. Each class name is owned once and row
+endpoints use checked integer identifiers. Sparse results and partial
+certificate residues retain the established JSON contract. Decoding rejects
+bad identifiers, truncation, trailing bytes, and excessive lengths without
+publishing an answer. This changes transfer representation only; EL
+completion, routing, certificates, and the final ordered JSON result are
+unchanged.
+
+Order-balanced full-corpus job `50546048` contains exactly 1,184 terminal rows
+over all 592 ontologies, with no temporary outputs. Both arms report 591
+successful classifications and ORE1194 as the sole fail-closed error. There
+are zero differences in status, verdict, consistency, selected route, solved
+state, answer counts, or full-IRI signature. Mean wall falls from 3.44657 to
+3.41502 seconds, saving 18.645 seconds over the 591 successful pairs. Mean and
+median peak RSS, and the sub-millisecond median-wall movement, are treated as
+flat measurement noise, so this release makes no memory or median claim.
+
+Three preceding threshold-selection replications (`50543902`, `50544635`, and
+`50544636`) each produced 1,184 validated rows with zero semantic differences.
+The release suite passes 1,997 library tests with eight ignored tests and all
+integration tests, including malformed compact-output checks and the issue #3
+pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-compact-elc-output/`](results/benchmarks/2026-08-15-compact-elc-output/README.md).
+
+## [0.2.31] – 2026-08-15
+
+### Share classification reference tables across jobs
+
+KPSet classification message adapters now share their immutable ontology-wide
+concept-reference table through `Arc` instead of cloning the complete table for
+every classified concept. The mutable adapter API retains copy-on-write
+semantics, so any future mutation remains isolated. This changes representation
+and allocation only; model construction, message order, routing, and accepted
+answers are unchanged.
+
+Three order-balanced full-corpus jobs (`50537280`, `50538368`, and `50539369`)
+each produced 1,184 terminal rows over all 592 ontologies. Every arm reports 591
+successful classifications and ORE1194 as the sole fail-closed error. Across
+all three jobs there are zero differences in status, verdict, consistency,
+selected route, solved state, answer counts, or full-IRI signature. The pooled
+1,776 classifications per arm reduce mean wall from 3.52007 to 3.50786 seconds,
+median wall from 0.16145 to 0.16075 seconds, and median peak RSS from 35.125 to
+34.965 MiB. Summed wall falls by 21.681 seconds. Mean peak RSS is statistically
+flat at 454.246 versus 454.347 MiB; its 0.022% difference changes direction
+between replications, so this release makes no mean-memory improvement claim.
+
+The focused same-node ORE3215 gate (`50537191`) reduces mean wall from 128.120
+to 124.495 seconds while preserving byte-identical 367-MiB JSON output in both
+orderings. The complete serial release suite passes 1,995 library tests with
+eight ignored tests and all integration tests, including the issue #3
+pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-shared-classification-references/`](results/benchmarks/2026-08-15-shared-classification-references/README.md).
+
+## [0.2.30] – 2026-08-15
+
+### Hash repeated taxonomy IRI lookups
+
+The JSON output mapper now uses a hash index for its lookup-only local-name to
+IRI-ID table. Serialized ordering remains owned by the sorted IRI vector and
+ordered row map. The grouped JSON path also avoids a redundant ordered-map
+lookup for every subject. This changes only final output representation and
+lookup cost; reasoning, routing, accepted answers, and serialized bytes are
+unchanged.
+
+Order-balanced same-node job `50535110` runs v0.2.29 and binary
+`1da5c66a9642…` on all 592 ontologies. Both arms report 591 successful
+classifications and ORE1194 as the sole fail-closed error. Every status,
+verdict, consistency result, selected route, and full-IRI signature is
+identical. Mean wall falls from 3.52441 to 3.47996 seconds, median wall from
+0.1874 to 0.1617 seconds, mean peak RSS from 424.010 to 423.700 MiB, and median
+peak RSS from 35.38 to 34.41 MiB. The paired wall reduction sums to 26.267
+seconds.
+
+Node-local byte comparisons on ORE10689, ORE868, and ORE1012 confirm identical
+JSON output and reduce wall by 2.66, 2.42, and 0.68 seconds respectively. The
+complete serial release suite passes 1,994 library tests with eight ignored
+tests and all integration tests, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-iri-hash/`](results/benchmarks/2026-08-15-iri-hash/README.md).
+
+## [0.2.29] – 2026-08-15
+
+### Skip redundant closure of certified bridge taxonomies
+
+The completion bridge publishes a taxonomy only after its complete-answer
+certificate succeeds. Its result is already transitively closed, so the worker
+now bypasses the generic hypertableau closure repair on that successful branch.
+Other hypertableau branches retain the repair. This removes a repeated scan of
+large bridge taxonomies without changing inference rules, route selection, or
+the accepted answer contract.
+
+Strict sweep `50531678` contains exactly 592 terminal rows for binary
+`c5b85fea05ca…`: 591 are successful and ORE1194 remains the sole fail-closed
+error. Every status, verdict, consistency result, selected route, and full-IRI
+signature is identical to v0.2.28. Mean wall falls from 3.55523 to 3.52876
+seconds, a 15.6-second reduction over the 591 successful ontologies. The strict
+sweep reports 424.09 MiB mean and 35.23 MiB median peak RSS.
+
+Order-balanced same-node job `50532459` runs both binaries for all 592
+ontologies and finds zero semantic differences. Its candidate arm reduces
+summed wall by 14.04 seconds, mean wall from 3.57766 to 3.55391 seconds,
+absolute median wall from 0.1839 to 0.1797 seconds, and absolute median peak RSS
+from 35.22 to 34.62 MiB. Mean RSS is flat within 0.10 MiB, so this release makes
+no memory-improvement claim. The complete serial release suite passes 1,994
+library tests with eight ignored tests and all integration tests, including the
+issue #3 pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-el-binary-handoff/`](results/benchmarks/2026-08-15-el-binary-handoff/README.md).
+
+## [0.2.28] – 2026-08-15
+
+### Compact exact-EL handoff and reduce orchestration overlap
+
+Large exact-EL subprocess routes now pass normalized clauses through a compact,
+versioned binary representation. The worker accepts both this representation
+and the established JSON contract. Exact EL leaves omit the dead JSON copy;
+certified EL routes retain JSON for their mandatory complete fallback. The
+codec is lossless and fail-closed, and route selection and completion rules are
+unchanged.
+
+Public-output lookup tables are now built after classification, so their bucket
+allocations do not overlap frontend and reasoner high-water marks. Temporary
+worker paths reuse one process-local directory and collision nonce instead of
+querying the clock and environment for every handoff. These are lifetime and
+orchestration changes only; they do not alter the calculus or derived fixpoint.
+
+Strict sweep `50528307` contains 592 terminal rows for binary `4aa2370c8ceb…`:
+591 are successful and ORE1194 remains the sole fail-closed error. Every status,
+verdict, consistency result, selected route, and full-IRI signature is identical
+to v0.2.27, including all four collision-sensitive fingerprints. Relative to
+the published v0.2.27 measurements, mean wall falls from 3.58613 to 3.55523
+seconds, median wall from 0.1848 to 0.1635 seconds, mean peak RSS from 433.282
+to 423.840 MiB, and median peak RSS from 35.04 to 34.60 MiB.
+
+Order-balanced full pair `50526676` independently verifies the compact
+handoff's mean wall and memory reductions. Median-boundary panel `50527646`
+runs 270 alternating pairs over 90 ontologies and preserves every signature;
+the final overhead changes reduce panel mean wall by 1.03 milliseconds and
+mean peak RSS by 0.213 MiB. The complete release suite passes 1,994 library
+tests with eight ignored tests and all integration tests, including the issue
+#3 pigeonhole regression. Evidence is in
+[`results/benchmarks/2026-08-15-el-binary-handoff/`](results/benchmarks/2026-08-15-el-binary-handoff/README.md).
+
+## [0.2.27] – 2026-08-15
+
+### Reuse KPSet labels and extend exact EL routing
+
+KPSet classification now reuses equivalent-candidate sets, possible-subsumer
+templates, and root-label tags within each completed model. These are cached
+representations of the same model labels and tests; the change does not alter
+blocking, branching, calculus rules, or the derived fixpoint.
+
+The automatic classifier now recognizes four role-free, ABox-free exact OWL EL
+terminologies containing named intersections and sends them to the existing EL
+completion implementation. A fail-closed source certificate excludes RBox,
+property, data, disjunction, complement, quantifier, cardinality, nominal, and
+datatype constructs. Small flat and intersection-only terminologies keep typed
+EL completion in the orchestrator process, while larger inputs retain process
+isolation. The ELC worker still validates normalized clauses before publishing.
+
+Strict sweep `50517606` contains 592 terminal rows for binary
+`628b11d8e95d…`: 591 are successful and ORE1194 remains the sole fail-closed
+error. It has zero semantic differences from v0.2.26 and exactly four expected
+route changes, from `production_all` to `elc` for ORE868, ORE9590, ORE10806,
+and ORE13664. Order-balanced same-node sweep `50518274` independently ran both
+binaries for every ontology. Relative to v0.2.26, mean wall falls from 3.65019
+to 3.58613 seconds, median wall from 0.1893 to 0.1848 seconds, mean peak RSS
+from 436.020 to 433.282 MiB, and median peak RSS from 35.85 to 35.04 MiB. The
+complete serial release suite passes 1,991 library tests with eight ignored
+tests and all integration tests, including the issue #3 pigeonhole regression.
+Evidence is in
+[`results/benchmarks/2026-08-15-flat-inproc-elc/`](results/benchmarks/2026-08-15-flat-inproc-elc/README.md).
+
+## [0.2.26] – 2026-08-14
+
+### Restore the isolated complete ground-clause route
+
+The automatic classifier now selects the retained general HT route for the
+compact SHOIF(D) ground-clause profile represented by ORE6934. An explicit
+`general` worker preserves the complete normalized clause input and no longer
+activates typed-ABox specialist state or installs the same ABox a second time.
+The reasoning input and result are unchanged; only scheduling and duplicate
+worker state change.
+
+Strict sweep jobs `50503499`, `50503695`, and `50503696` contain 592 validated
+terminal rows for binary `4d8d81378d565…`: 591 are successful and ORE1194
+remains the sole fail-closed error. Comparison with v0.2.25 finds zero
+differences in status, verdict, consistency, or signature. ORE6934 is the only
+route change, from `nominal_ni_abox` to `ht_general`; it falls from 68.9191
+seconds and 2,948.33 MiB to 0.1565 seconds and 44.02 MiB with the same exact
+gold signature. Across the 591 successful rows, mean wall falls from 3.72268
+to 3.60775 seconds, median wall from 0.1860 to 0.1839 seconds, and mean peak RSS
+from 440.806 to 436.372 MiB. Median peak RSS is 36.16 MiB versus 36.04 MiB in
+the independent baseline sweep. Evidence is in
+[`results/benchmarks/2026-08-14-6934-route-recovery/`](results/benchmarks/2026-08-14-6934-route-recovery/README.md).
+
 ## [0.2.25] – 2026-08-14
 
 ### Build frontend IRI metadata in one sorted pass

@@ -1074,6 +1074,11 @@ mod tests {
         };
         // absorption OFF: positive-only negation still emits both.
         let mut cf = Clausifier::new();
+        // `Clausifier::new` reads the process-wide production setting. Other
+        // frontend tests intentionally exercise route bundles in parallel, so
+        // make this unit test's requested mode explicit instead of depending
+        // on ambient `KM_ABSORB` timing.
+        cf.absorb = false;
         cf.mark_polarity(&not_a(), false);
         cf.q(&not_a());
         assert!(excluded_middle(&cf) && constraint_clause(&cf));

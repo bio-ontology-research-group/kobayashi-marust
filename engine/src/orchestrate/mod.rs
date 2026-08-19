@@ -21,9 +21,9 @@ pub mod mirror;
 pub mod race;
 pub mod tmpfile;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -66,7 +66,11 @@ struct GroupedJsonTaxonomy {
 }
 
 struct JsonIriIds<'a> {
-    local_ids: BTreeMap<&'a str, u32>,
+    // Output mapping probes this table once per emitted superclass. Ordering is
+    // carried by `iris`/`by_iri`, not this lookup-only index, so a hash table
+    // avoids a logarithmic string-tree walk for every taxonomy pair without
+    // changing the serialized order or relation.
+    local_ids: HashMap<&'a str, u32>,
     by_iri: BTreeMap<Arc<str>, u32>,
     iris: Vec<Arc<str>>,
     appended_fallback: bool,
@@ -219,6 +223,11 @@ impl From<serde_json::Error> for OrchestrateError {
 #[derive(serde::Deserialize, Default)]
 pub struct EngineOut {
     pub subsumptions: BTreeMap<String, Vec<String>>,
+    /// Complete ELC workers may retain one copy of each concept name and use
+    /// integer relation endpoints. Other workers and partial ELC answers keep
+    /// the established map representation.
+    #[serde(skip)]
+    pub compact_subsumptions: Option<crate::json_io::CompactElcOutput>,
     pub inconsistent: bool,
     pub dropped: usize,
     /// elc exit-4 residue (named subjects the certificate could not determine)
@@ -247,9 +256,25 @@ pub(crate) struct ClassificationEvidence {
 }
 
 pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
-    Ok(serde_json::from_reader(BufReader::new(File::open(
-        res.stdout.path(),
-    )?))?)
+    parse_out_path(res.stdout.path())
+}
+
+pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let mut reader = BufReader::new(File::open(path)?);
+    if crate::json_io::is_elc_output_binary(reader.fill_buf()?) {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+        let compact = crate::json_io::decode_elc_output_binary(&bytes)?
+            .ok_or_else(|| std::io::Error::other("missing compact ELC output header"))?;
+        return Ok(EngineOut {
+            inconsistent: compact.inconsistent,
+            dropped: compact.dropped,
+            subsumptions: BTreeMap::new(),
+            compact_subsumptions: Some(compact),
+            unresolved: Vec::new(),
+        });
+    }
+    Ok(serde_json::from_reader(reader)?)
 }
 
 /// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
@@ -351,6 +376,7 @@ fn run_atomic_elc(
             )),
             Some(res) => Ok(EngineOut {
                 subsumptions: res.subsumptions,
+                compact_subsumptions: None,
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
@@ -365,7 +391,7 @@ fn run_atomic_elc(
         None,
         Some(cfg.par_mem_gb),
         None,
-        &[],
+        &[("KM_ELC_OUTPUT_BINARY", "1")],
         false,
     )?;
     match res.code {
@@ -436,6 +462,7 @@ fn run_atomic_cb(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, Orchest
 fn run_atomic_mechanism(
     cfg: &Config,
     clauses_path: &Path,
+    elc_input_path: &Path,
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
@@ -443,14 +470,22 @@ fn run_atomic_mechanism(
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
-        Mechanism::Elc => run_atomic_elc(
-            cfg,
-            clauses_path,
-            use_atomic_inproc_elc(selected_route, profile)
-                && std::env::var_os("KM_NO_INPROC_ELC").is_none(),
-            cached_input.take(),
-        )
-        .map(Some),
+        Mechanism::Elc => {
+            let in_process = use_atomic_inproc_elc(selected_route, profile)
+                && std::env::var_os("KM_NO_INPROC_ELC").is_none()
+                && (cached_input.is_some() || elc_input_path == clauses_path);
+            run_atomic_elc(
+                cfg,
+                if in_process {
+                    clauses_path
+                } else {
+                    elc_input_path
+                },
+                in_process,
+                cached_input.take(),
+            )
+            .map(Some)
+        }
         Mechanism::Cb => {
             drop(cached_input.take());
             run_atomic_cb(cfg, clauses_path).map(Some)
@@ -479,12 +514,39 @@ fn use_atomic_inproc_elc(
     selected_route: crate::routing::Route,
     profile: &crate::frontend::profile::OntologyProfile,
 ) -> bool {
-    matches!(
+    if !matches!(
         selected_route,
         crate::routing::Route::Elc | crate::routing::Route::CertifiedElProduction
-    ) && profile.source.logical_axioms > 0
-        && profile.source.distinct_classes.saturating_mul(10)
-            < profile.source.logical_axioms.saturating_mul(9)
+    ) || profile.source.logical_axioms == 0
+    {
+        return false;
+    }
+    let structured = profile.source.distinct_classes.saturating_mul(10)
+        < profile.source.logical_axioms.saturating_mul(9);
+    // Small role-free class hierarchies with only named intersections cannot
+    // create EL completion edges. Their completion state is bounded by the
+    // same class/NF2 graph that the worker would build, so keeping the
+    // historical subprocess boundary only adds clause serialization,
+    // fork/exec, and taxonomy reparsing. Retain that boundary for larger
+    // hierarchies, where allocator high-water during public-output mapping was
+    // measurable.
+    let flat_small = profile.source.file_bytes < INPROC_ELC_MAX
+        && profile.source.abox_axioms == 0
+        && profile.source.rbox_axioms == 0
+        && profile.source.distinct_object_properties == 0
+        && profile.source.distinct_data_properties == 0
+        && profile.source.unions == 0
+        && profile.source.complements == 0
+        && profile.source.existentials == 0
+        && profile.source.universals == 0
+        && profile.source.min_cardinalities == 0
+        && profile.source.max_cardinalities == 0
+        && profile.source.exact_cardinalities == 0
+        && profile.source.nominals == 0
+        && profile.source.has_values == 0
+        && profile.source.has_self == 0
+        && profile.source.datatype_constructors == 0;
+    structured || flat_small
 }
 
 #[inline]
@@ -608,6 +670,7 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
             .into_iter()
             .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
             .collect(),
+        compact_subsumptions: None,
         inconsistent: r.inconsistent(),
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
@@ -631,6 +694,7 @@ fn try_inproc_elc(
         Some(res) => {
             let out = EngineOut {
                 subsumptions: res.subsumptions,
+                compact_subsumptions: None,
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: res.unresolved,
@@ -765,8 +829,12 @@ fn classify_with_evidence_mode(
             consistency_certified: true,
         });
     }
-    let (clauses_path, meta, mut cached_input) =
+    let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
+    let elc_input_path = elc_binary
+        .as_ref()
+        .map(|path| path.path())
+        .unwrap_or_else(|| clauses_path.path());
     let selected_route = meta
         .route
         .parse::<crate::routing::Route>()
@@ -787,11 +855,20 @@ fn classify_with_evidence_mode(
             && crate::routing::sequential_typed_bridge_candidate(&meta.profile)
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+            // Subject classifications share only immutable ontology input and
+            // are merged deterministically after all complete-or-defer jobs.
+            std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "4");
         }
         if selected_route == crate::routing::Route::ProductionAll
-            && crate::routing::sequential_large_shi_bridge_candidate(&meta.profile)
+            && (crate::routing::sequential_large_shi_bridge_candidate(&meta.profile)
+                || crate::routing::eight_thread_large_sriq_candidate(&meta.profile))
         {
             std::env::set_var("KM_HT_BRIDGE_SEQUENTIAL", "1");
+            if crate::routing::eight_thread_large_sriq_candidate(&meta.profile) {
+                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "4");
+            } else if crate::routing::sequential_large_shi_bridge_candidate(&meta.profile) {
+                std::env::set_var("KM_BRIDGE_SUBJECT_WORKERS", "2");
+            }
         }
         if selected_route == crate::routing::Route::CertifiedElProduction
             && crate::routing::parallel_nf4_frontier_candidate(&meta.profile)
@@ -886,6 +963,7 @@ fn classify_with_evidence_mode(
                         if classification.unresolved.is_empty() {
                             certified_el_out = Some(EngineOut {
                                 subsumptions: classification.subsumptions,
+                                compact_subsumptions: None,
                                 inconsistent: classification.inconsistent,
                                 dropped: 0,
                                 unresolved: Vec::new(),
@@ -939,8 +1017,6 @@ fn classify_with_evidence_mode(
         }
     }
 
-    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
-    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
     // Owned declaration set consumed by the CB-to-HT conversion. A declared
     // class is always a query even when its spelling resembles an internal
     // frontend symbol.
@@ -955,19 +1031,6 @@ fn classify_with_evidence_mode(
     } else {
         HashSet::new()
     };
-    // In the Rust-frontend path the per-ontology short registry is empty, so
-    // `short(n) == n`; is_internal keys directly on the internal name.
-    let is_internal = |n: &str| -> bool {
-        if named.contains(n) {
-            return false;
-        }
-        n.starts_with("Q_")
-            || n.starts_with("__")
-            || n.starts_with("aux_")
-            || n.starts_with("def_")
-            || (n.contains(':') && !is_bottom(n))
-    };
-
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.
@@ -986,6 +1049,7 @@ fn classify_with_evidence_mode(
             run_atomic_mechanism(
                 cfg,
                 clauses_path.path(),
+                elc_input_path,
                 &named_set,
                 selected_route,
                 &meta.profile,
@@ -996,6 +1060,7 @@ fn classify_with_evidence_mode(
         run_atomic_mechanism(
             cfg,
             clauses_path.path(),
+            elc_input_path,
             &named_set,
             selected_route,
             &meta.profile,
@@ -1063,11 +1128,11 @@ fn classify_with_evidence_mode(
                 let res = engine_run::run_engine(
                     &elc_prog,
                     &elc_pre,
-                    clauses_path.path(),
+                    elc_input_path,
                     None,
                     None,
                     None,
-                    &[],
+                    &[("KM_ELC_OUTPUT_BINARY", "1")],
                     false,
                 )?;
                 out = handle_elc_result(cfg, res, clauses_path.path())?;
@@ -1088,11 +1153,11 @@ fn classify_with_evidence_mode(
                     let res = engine_run::run_engine(
                         &elc_prog,
                         &elc_pre,
-                        clauses_path.path(),
+                        elc_input_path,
                         None,
                         Some(cfg.elc_force_mem_gb),
                         Some(cfg.elc_force_budget_s),
-                        &[("KM_ELC_CERT", "2")],
+                        &[("KM_ELC_CERT", "2"), ("KM_ELC_OUTPUT_BINARY", "1")],
                         false,
                     )?;
                     if !(res.oom || res.timed_out) {
@@ -1111,7 +1176,7 @@ fn classify_with_evidence_mode(
                     None,
                     Some(cfg.elc_force_mem_gb),
                     Some(cfg.elc_force_budget_s),
-                    &[("KM_ELC_CERT", "2")],
+                    &[("KM_ELC_CERT", "2"), ("KM_ELC_OUTPUT_BINARY", "1")],
                     false,
                 )?;
                 if !(res.oom || res.timed_out) {
@@ -1183,12 +1248,33 @@ fn classify_with_evidence_mode(
     };
 
     if timing {
+        let subs_keys = out
+            .compact_subsumptions
+            .as_ref()
+            .map_or(out.subsumptions.len(), |compact| compact.rows.len());
         eprintln!(
             "KM_TIMING engine block done @ {:.2}s (subs_keys={})",
             t_start.elapsed().as_secs_f64(),
-            out.subsumptions.len()
+            subs_keys
         );
     }
+    // These borrowed lookup tables are consumed only by public-output mapping.
+    // Constructing them before classification made their bucket allocations
+    // overlap the frontend and reasoner high-water marks on every route.
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    // In the Rust-frontend path the per-ontology short registry is empty, so
+    // `short(n) == n`; is_internal keys directly on the internal name.
+    let is_internal = |n: &str| -> bool {
+        if named.contains(n) {
+            return false;
+        }
+        n.starts_with("Q_")
+            || n.starts_with("__")
+            || n.starts_with("aux_")
+            || n.starts_with("def_")
+            || (n.contains(':') && !is_bottom(n))
+    };
     // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
     // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
     // Preserve Python's lexicographic pair ordering without globally sorting
@@ -1205,51 +1291,99 @@ fn classify_with_evidence_mode(
     let mut unsat_set: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
-    for (a, sups) in &out.subsumptions {
-        if is_internal(a) {
-            continue;
+    if let Some(compact) = &out.compact_subsumptions {
+        for (subject, super_ids) in &compact.rows {
+            let a = &compact.names[*subject as usize];
+            if is_internal(a) {
+                continue;
+            }
+            if retain_grouped_output {
+                let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
+                let mut mapped_supers = Vec::with_capacity(super_ids.len());
+                for superclass in super_ids {
+                    let s = &compact.names[*superclass as usize];
+                    if is_bottom(s) {
+                        if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(iri_ids.id(s));
+                    }
+                }
+                if !mapped_supers.is_empty() {
+                    grouped_json
+                        .entry(iri_ids.id(a))
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            } else {
+                let fa = mapped_iri(&meta.iri_map, a);
+                let mut mapped_supers = Vec::with_capacity(super_ids.len());
+                for superclass in super_ids {
+                    let s = &compact.names[*superclass as usize];
+                    if is_bottom(s) {
+                        if unsat_set.insert(fa.to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
+                    }
+                }
+                if !mapped_supers.is_empty() {
+                    grouped_subs
+                        .entry(fa.to_string())
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            }
         }
-        let fa = mapped_iri(&meta.iri_map, a);
-        if retain_grouped_output {
-            let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
-            let mut mapped_supers = Vec::with_capacity(sups.len());
-            for s in sups {
-                if is_bottom(s) {
-                    // Preserve the previous first-full-IRI-representative
-                    // behaviour when multiple local aliases map to one class.
-                    if unsat_set.insert(fa.to_string()) {
-                        unsat_names.insert(a.as_str());
+    } else {
+        for (a, sups) in &out.subsumptions {
+            if is_internal(a) {
+                continue;
+            }
+            if retain_grouped_output {
+                let iri_ids = iri_ids.as_mut().expect("JSON IRI ids are initialized");
+                let mut mapped_supers = Vec::with_capacity(sups.len());
+                for s in sups {
+                    if is_bottom(s) {
+                        // Preserve the previous first-full-IRI-representative
+                        // behaviour when multiple local aliases map to one class.
+                        if unsat_set.insert(mapped_iri(&meta.iri_map, a).to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(iri_ids.id(s));
                     }
-                } else if !is_internal(s) && s != a {
-                    mapped_supers.push(iri_ids.id(s));
                 }
-            }
-            if !mapped_supers.is_empty() {
-                grouped_json
-                    .entry(iri_ids.id(a))
-                    .or_default()
-                    .extend(mapped_supers);
-            }
-        } else {
-            let mut mapped_supers = Vec::with_capacity(sups.len());
-            for s in sups {
-                if is_bottom(s) {
-                    // Preserve the previous first-full-IRI-representative
-                    // behaviour when multiple local aliases map to one class.
-                    if unsat_set.insert(fa.to_string()) {
-                        unsat_names.insert(a.as_str());
+                if !mapped_supers.is_empty() {
+                    grouped_json
+                        .entry(iri_ids.id(a))
+                        .or_default()
+                        .extend(mapped_supers);
+                }
+            } else {
+                let fa = mapped_iri(&meta.iri_map, a);
+                let mut mapped_supers = Vec::with_capacity(sups.len());
+                for s in sups {
+                    if is_bottom(s) {
+                        // Preserve the previous first-full-IRI-representative
+                        // behaviour when multiple local aliases map to one class.
+                        if unsat_set.insert(fa.to_string()) {
+                            unsat_names.insert(a.as_str());
+                        }
+                    } else if !is_internal(s) && s != a {
+                        mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
                     }
-                } else if !is_internal(s) && s != a {
-                    mapped_supers.push(mapped_iri(&meta.iri_map, s).to_string());
                 }
-            }
-            if !mapped_supers.is_empty() {
-                // Moving `fa` here avoids cloning the same subject once per
-                // superclass. Aliases that map to one full IRI merge into one row.
-                grouped_subs
-                    .entry(fa.to_string())
-                    .or_default()
-                    .extend(mapped_supers);
+                if !mapped_supers.is_empty() {
+                    // Moving `fa` here avoids cloning the same subject once per
+                    // superclass. Aliases that map to one full IRI merge into one row.
+                    grouped_subs
+                        .entry(fa.to_string())
+                        .or_default()
+                        .extend(mapped_supers);
+                }
             }
         }
     }
@@ -1618,7 +1752,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_inproc_elc_admits_certified_el_and_excludes_other_non_el_leaves() {
+    fn atomic_inproc_elc_admits_structured_and_small_flat_exact_el() {
         use crate::frontend::profile::OntologyProfile;
         use crate::routing::Route;
         let mut profile = OntologyProfile::default();
@@ -1631,6 +1765,15 @@ mod tests {
         ));
         assert!(!use_atomic_inproc_elc(Route::ProductionAll, &profile));
         profile.source.distinct_classes = 90;
+        profile.source.file_bytes = super::INPROC_ELC_MAX - 1;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.intersections = 2;
+        profile.source.max_concept_depth = 2;
+        assert!(use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.file_bytes = super::INPROC_ELC_MAX;
+        assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
+        profile.source.file_bytes = super::INPROC_ELC_MAX - 1;
+        profile.source.existentials = 1;
         assert!(!use_atomic_inproc_elc(Route::Elc, &profile));
     }
 

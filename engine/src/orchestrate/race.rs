@@ -51,6 +51,7 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
     }
     EngineOut {
         subsumptions: subs,
+        compact_subsumptions: None,
         inconsistent: !t.consistent,
         dropped: 0,
         unresolved: Vec::new(),
@@ -334,6 +335,7 @@ fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tm
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
     let (elc_prog, elc_pre) = cfg.elc_cmd();
     let mut cmd = Command::new(&elc_prog);
+    cmd.env("KM_ELC_OUTPUT_BINARY", "1");
     cmd.args(&elc_pre)
         .stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
@@ -391,10 +393,7 @@ pub fn race_adaptive_vs_elc(
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
 
-    let read_tout = |p: &Path| -> Option<EngineOut> {
-        let f = File::open(p).ok()?;
-        serde_json::from_reader::<_, EngineOut>(BufReader::new(f)).ok()
-    };
+    let read_tout = |p: &Path| super::parse_out_path(p).ok();
 
     let cb_done = Arc::new(AtomicBool::new(false));
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
@@ -612,6 +611,13 @@ fn specialist_route_allows(
         Some("features") | Some("full") => true,
         Some(_) => false,
     }
+}
+
+/// An explicit `general` worker must preserve the legacy clause-only input.
+/// Specialist candidates may otherwise inject native ABox state and worker
+/// flags merely because the ontology happens to satisfy their feature gate.
+fn general_only_route(requested: Option<&str>) -> bool {
+    requested == Some("general")
 }
 
 /// Gate for `KM_HT_BRIDGE_ONLY`: the worker must produce NO answer when the
@@ -1515,6 +1521,8 @@ fn spawn_ht(
     };
     let _tconv = Instant::now();
     let certified_tbox_only = std::env::var_os("KM_HT_CERT_TBOX_ONLY").is_some();
+    let specialist_only = std::env::var("KM_HT_ONLY").ok();
+    let general_only = general_only_route(specialist_only.as_deref());
     let nominal_bridge_view = native_nominal_bridge_clauses(
         &cl,
         &nominal_abox,
@@ -1572,7 +1580,7 @@ fn spawn_ht(
             tin.queries.dedup();
             proxy_abox_certificate = Some(certificate);
         }
-    } else if !certified_tbox_only {
+    } else if !certified_tbox_only && !general_only {
         if let Some(certificate) = atomic_component_abox_certificate(&tin, &nominal_abox) {
             proxy_abox_certificate = Some(certificate);
         } else {
@@ -1648,8 +1656,10 @@ fn spawn_ht(
     // nominal-predecessor premise missing from the fast HT while inverse axioms
     // themselves remain exact. Uncertified inverse+cardinality inputs stay out;
     // datatype inputs always stay out (no concrete-domain oracle in the Ht).
-    let card_candidate = card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
-    let qo_candidate = cfg.qo_router
+    let card_candidate = !general_only
+        && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
+    let qo_candidate = !general_only
+        && cfg.qo_router
         && !card_candidate
         && tin.dropped == 0
         && tin.fenced.is_empty()
@@ -1664,7 +1674,8 @@ fn spawn_ht(
     // Ht IS unsound (shared-filler ∀ pollution) — those stay on CB. Datatype onts
     // are excluded (no concrete-domain oracle in the Ht; cf 10621). Monotone-safe:
     // fallback mode keeps CB's answer whenever CB finishes.
-    let shoq_candidate = cfg.ht_shoq
+    let shoq_candidate = !general_only
+        && cfg.ht_shoq
         && !card_candidate
         && tin.dropped == 0
         && tin.fenced.is_empty()
@@ -1677,7 +1688,8 @@ fn spawn_ht(
     // neighbour that is not a direct successor of its root, which is the NI
     // premise. The automatic TBox-only use is separately restricted by the
     // source-layout gate in routing.rs; ordinary nominal inputs retain CB.
-    let no_blocking_shoiq_candidate = cfg.ht_shoq
+    let no_blocking_shoiq_candidate = !general_only
+        && cfg.ht_shoq
         && !card_candidate
         && tin.dropped == 0
         && !tin.nominals.is_empty()
@@ -1731,7 +1743,6 @@ fn spawn_ht(
         std::env::var_os("KM_HT_BRIDGE").is_some() || trigger_bridge,
         source_tbox,
     );
-    let specialist_only = std::env::var("KM_HT_ONLY").ok();
     if !specialist_route_allows(
         specialist_only.as_deref(),
         qo_candidate,
@@ -3129,6 +3140,14 @@ mod tests {
             !bridge_candidate_from(&tin, true, true),
             "an unsupported number fence must remain outside the bridge"
         );
+    }
+
+    #[test]
+    fn explicit_general_route_does_not_activate_specialist_state() {
+        assert!(general_only_route(Some("general")));
+        for route in [None, Some("certified"), Some("shoq"), Some("card")] {
+            assert!(!general_only_route(route));
+        }
     }
 
     #[test]

@@ -172,6 +172,8 @@ struct Nfs {
     reflexive_roles: HashSet<u32>,
     concept_names: HashSet<u32>,
     role_names: HashSet<u32>,
+    /// Exact source-prefix identity of every generated conjunction concept.
+    conjunction_origins: HashMap<u32, Vec<u32>>,
 }
 
 /// Set view of direct normal forms. Most addition transactions extend this set
@@ -233,9 +235,8 @@ fn normal_form_keys(nfs: &Nfs) -> HashSet<NormalFormKey> {
 /// per-clause scan.
 enum Tk<'a> {
     Var(&'a str),
-    /// existential filler term `f(x)`: the function name (the bound var is
-    /// irrelevant to the EL mapping, exactly as in `_tk`).
-    Fun(&'a str),
+    /// existential filler term `f(x)`: function and exact argument variable.
+    Fun(&'a str, &'a str),
     /// `ind` / `aux`: not an EL normal-form tree term.
     Other,
 }
@@ -243,7 +244,10 @@ enum Tk<'a> {
 fn tk(t: &JTerm) -> Tk<'_> {
     match t {
         JTerm::Var { name } => Tk::Var(name),
-        JTerm::Fun { function, .. } => Tk::Fun(function),
+        JTerm::Fun { function, arg } => match arg.as_ref() {
+            JTerm::Var { name } => Tk::Fun(function, name),
+            _ => Tk::Other,
+        },
         _ => Tk::Other,
     }
 }
@@ -274,9 +278,9 @@ fn var_name(term: &JTerm) -> Option<&str> {
     }
 }
 
-fn fun_name(term: &JTerm) -> Option<&str> {
-    if let JTerm::Fun { function, .. } = term {
-        Some(function)
+fn fun_parts(term: &JTerm) -> Option<(&str, &str)> {
+    if let JTerm::Fun { function, arg } = term {
+        Some((function, var_name(arg)?))
     } else {
         None
     }
@@ -393,7 +397,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
             }
             JAtom::Concept { term, .. } => {
                 // Existential filler half: A(x) -> B(f(x)).
-                let Some(function) = fun_name(term) else {
+                let Some((function, argument)) = fun_parts(term) else {
                     return false;
                 };
                 let [JAtom::Concept {
@@ -403,7 +407,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 else {
                     return false;
                 };
-                if var_name(sub_term).is_none() {
+                if var_name(sub_term) != Some(argument) {
                     return false;
                 }
                 pending_ex.entry((sub, function)).or_default().1 = true;
@@ -418,14 +422,14 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 }
 
                 // Existential role half: A(x) -> R(x,f(x)).
-                if let Some(function) = fun_name(target) {
-                    if var_name(source).is_some() {
+                if let Some((function, argument)) = fun_parts(target) {
+                    if var_name(source) == Some(argument) {
                         if let [JAtom::Concept {
                             concept: sub,
                             term: sub_term,
                         }] = clause.body.as_slice()
                         {
-                            if var_name(sub_term).is_some() {
+                            if var_name(sub_term) == Some(argument) {
                                 pending_ex.entry((sub, function)).or_default().0 = true;
                                 continue;
                             }
@@ -444,6 +448,7 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                 {
                     if var_name(body_source).is_some()
                         && var_name(body_target).is_some()
+                        && var_name(body_source) != var_name(body_target)
                         && var_name(body_source) == var_name(source)
                         && var_name(body_target) == var_name(target)
                     {
@@ -462,10 +467,16 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                     ..
                 }] = clause.body.as_slice()
                 {
-                    let ordered = var_name(a1) == var_name(b0)
+                    let ordered = var_name(a0) != var_name(a1)
+                        && var_name(a1) != var_name(b1)
+                        && var_name(a0) != var_name(b1)
+                        && var_name(a1) == var_name(b0)
                         && var_name(source) == var_name(a0)
                         && var_name(target) == var_name(b1);
-                    let reversed = var_name(b1) == var_name(a0)
+                    let reversed = var_name(b0) != var_name(b1)
+                        && var_name(b1) != var_name(a1)
+                        && var_name(b0) != var_name(a1)
+                        && var_name(b1) == var_name(a0)
                         && var_name(source) == var_name(b0)
                         && var_name(target) == var_name(a1);
                     let all_variables = [a0, a1, b0, b1, source, target]
@@ -831,6 +842,20 @@ fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, u
 /// against the canonical model (the completeness certificate). Returns `None`
 /// only for an orphan existential-filler half-clause (a shape we don't model
 /// at all).
+/// Collision-free internal name for a conjunction prefix. Length prefixes make
+/// component boundaries unambiguous even when source IRIs contain `/`, `:`, or
+/// decimal digits. Source names that use KM's reserved prefix are escaped by
+/// the frontend; the certificate wire additionally validates distinct IDs.
+fn conjunction_aux_name(names: &[String]) -> String {
+    let mut out = String::from("__conj__");
+    for name in names {
+        out.push_str(&name.len().to_string());
+        out.push(':');
+        out.push_str(name);
+    }
+    out
+}
+
 fn to_nf(
     clauses: &[JClause],
     it: &mut Interner,
@@ -845,6 +870,7 @@ fn to_nf(
     let mut reflexive_roles: HashSet<u32> = HashSet::default();
     let mut concept_names: HashSet<u32> = HashSet::default();
     let mut role_names: HashSet<u32> = HashSet::default();
+    let mut conjunction_origins: HashMap<u32, Vec<u32>> = HashMap::default();
 
     // (sub_concept, skolem_fn) -> (role, filler) halves of an A ⊑ ∃R.B axiom.
     let mut pending_ex: HashMap<(u32, u32), (Option<u32>, Option<u32>)> = HashMap::default();
@@ -915,10 +941,15 @@ fn to_nf(
                 names.sort();
                 let mut acc = names[0].clone();
                 for j in 1..names.len() - 1 {
-                    let aux = format!("__conj__{}", names[..=j].join("/"));
+                    let aux = conjunction_aux_name(&names[..=j]);
                     let s1 = addc!(&acc);
                     let s2 = addc!(&names[j]);
                     let sup = addc!(&aux);
+                    let prefix_ids = names[..=j]
+                        .iter()
+                        .map(|name| addc!(name))
+                        .collect::<Vec<_>>();
+                    conjunction_origins.insert(sup, prefix_ids);
                     nf2.push(Nf2 {
                         sub1: s1,
                         sub2: s2,
@@ -993,10 +1024,15 @@ fn to_nf(
                                 names.sort();
                                 let mut acc = names[0].clone();
                                 for j in 1..names.len() - 1 {
-                                    let aux = format!("__conj__{}", names[..=j].join("/"));
+                                    let aux = conjunction_aux_name(&names[..=j]);
                                     let s1 = addc!(&acc);
                                     let s2 = addc!(&names[j]);
                                     let sup = addc!(&aux);
+                                    let prefix_ids = names[..=j]
+                                        .iter()
+                                        .map(|name| addc!(name))
+                                        .collect::<Vec<_>>();
+                                    conjunction_origins.insert(sup, prefix_ids);
                                     nf2.push(Nf2 {
                                         sub1: s1,
                                         sub2: s2,
@@ -1068,11 +1104,11 @@ fn to_nf(
                     residual.push(c.clone());
                     continue;
                 }
-                Tk::Fun(fname) => {
+                Tk::Fun(fname, argument) => {
                     // existential filler: A(x) -> B(f(x))
                     if bc.len() == 1
                         && br.is_empty()
-                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(_))
+                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(body) if body == argument)
                     {
                         let sub = addc!(concept_of(bc[0]).unwrap().0);
                         let fnid = it.intern(fname);
@@ -1116,11 +1152,11 @@ fn to_nf(
                     }
                 }
                 // existential role: A(x) -> R(x, f(x))
-                if let Tk::Fun(fname) = st {
-                    if matches!(sxs, Tk::Var(_))
+                if let Tk::Fun(fname, argument) = st {
+                    if matches!(sxs, Tk::Var(source) if source == argument)
                         && bc.len() == 1
                         && br.is_empty()
-                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(_))
+                        && matches!(tk(concept_of(bc[0]).unwrap().1), Tk::Var(body) if body == argument)
                     {
                         let sub = addc!(concept_of(bc[0]).unwrap().0);
                         let fnid = it.intern(fname);
@@ -1142,7 +1178,7 @@ fn to_nf(
                     } = br[0]
                     {
                         let fwd = match (vname(&tk(bs)), vname(&tk(bt)), vname(&sxs), vname(&st)) {
-                            (Some(a), Some(b), Some(c), Some(d)) => a == c && b == d,
+                            (Some(a), Some(b), Some(c), Some(d)) => a != b && a == c && b == d,
                             _ => false,
                         };
                         if !fwd {
@@ -1186,9 +1222,16 @@ fn to_nf(
                             vname(&tk(bt)),
                         );
                         let ordered = if let (Some(a0), Some(a1), Some(b0), Some(b1)) = w {
-                            if a1 == b0 && hs == a0 && ht == b1 {
+                            if a0 != a1 && a1 != b1 && a0 != b1 && a1 == b0 && hs == a0 && ht == b1
+                            {
                                 Some((ra, rb)) // R=br0, S=br1
-                            } else if b1 == a0 && hs == b0 && ht == a1 {
+                            } else if b0 != b1
+                                && b1 != a1
+                                && b0 != a1
+                                && b1 == a0
+                                && hs == b0
+                                && ht == a1
+                            {
                                 Some((rb, ra)) // R=br1, S=br0
                             } else {
                                 None
@@ -1266,6 +1309,7 @@ fn to_nf(
             reflexive_roles,
             concept_names,
             role_names,
+            conjunction_origins,
         },
         residual,
         skolem_target,
@@ -1384,6 +1428,592 @@ struct State {
     // certify that every `edges[c]` iterates exactly as it did before, which is
     // what the certificate's role-keyed edge index is built from.
     edge_epoch: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Lean ELC certificate wire model
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanElStep {
+    Refl { a: u32 },
+    Top { a: u32 },
+    Nf1 { a: u32, sub: u32, sup: u32 },
+    Nf2 { a: u32, left: u32, right: u32, sup: u32 },
+    Nf5 { a: u32, sub: u32 },
+    Nf4 { a: u32, target: u32, filler: u32, sup: u32, role: u32 },
+    BottomEdge { a: u32, target: u32, role: u32 },
+    Nf3 { a: u32, sub: u32, filler: u32, role: u32 },
+    Nf6 { a: u32, target: u32, sub: u32, sup: u32 },
+    Nf7 {
+        a: u32,
+        middle: u32,
+        target: u32,
+        first: u32,
+        second: u32,
+        sup: u32,
+    },
+    Reflexive { a: u32, role: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanElClause {
+    Nf1 { sub: u32, sup: u32 },
+    Nf2 { left: u32, right: u32, sup: u32 },
+    Nf3 { sub: u32, role: u32, filler: u32 },
+    Nf4 { role: u32, filler: u32, sup: u32 },
+    Nf5 { sub: u32 },
+    Nf6 { sub: u32, sup: u32 },
+    Nf7 { first: u32, second: u32, sup: u32 },
+    Reflexive { role: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanRawTerm {
+    Var { name: u32 },
+    Fun { function: u32, argument: Box<LeanRawTerm> },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanRawAtom {
+    Concept { concept: u32, term: LeanRawTerm },
+    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanResidualAtom {
+    Concept { concept: u32, term: LeanRawTerm },
+    Role { role: u32, source: LeanRawTerm, target: LeanRawTerm },
+    Eq { left: LeanRawTerm, right: LeanRawTerm },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanResidualClause {
+    body: Vec<LeanResidualAtom>,
+    head: Vec<LeanResidualAtom>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanResidualOrigin {
+    Source { name: usize },
+    Function { function: u32, witness: u32 },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanCompiledResidualAtom {
+    Concept { concept: u32, slot: usize },
+    Role { role: u32, source: usize, target: usize },
+    Eq { left: usize, right: usize },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanResidualCompilation {
+    variable_count: usize,
+    origins: Vec<LeanResidualOrigin>,
+    raw: LeanResidualClause,
+    body: Vec<LeanCompiledResidualAtom>,
+    head: Vec<LeanCompiledResidualAtom>,
+    pins: Vec<(usize, u32)>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanCanonicalWitnessRecord {
+    sub: u32,
+    role: u32,
+    filler: u32,
+    witness: u32,
+    function: u32,
+    role_variable: u32,
+    filler_variable: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanRawClause {
+    body: Vec<LeanRawAtom>,
+    head: Vec<LeanRawAtom>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanConceptOrigin {
+    Source,
+    Conjunction { prefix_ids: Vec<u32> },
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElCertificate {
+    version: u32,
+    symbol_count: u32,
+    top: u32,
+    bottom: u32,
+    variable_count: u32,
+    source_ontology: Vec<LeanResidualClause>,
+    raw_ontology: Vec<LeanRawClause>,
+    witness_records: Vec<LeanCanonicalWitnessRecord>,
+    residual_compilations: Vec<LeanResidualCompilation>,
+    concept_origins: Vec<LeanConceptOrigin>,
+    ontology: Vec<LeanElClause>,
+    /// Reverse dependency order, as required by Lean's `checkTrace`.
+    trace: Vec<LeanElStep>,
+    active_concepts: Vec<u32>,
+    rust_subsumptions: Vec<LeanElSubFact>,
+    rust_edges: Vec<LeanElEdgeFact>,
+    /// The exact ID-level relation materialised by the public output loop.
+    /// Names are a presentation concern; Lean checks the semantic filtering.
+    public_subsumptions: Vec<LeanElSubFact>,
+    symbols: Vec<String>,
+    public_named_subsumptions: Vec<LeanElNamedSubFact>,
+    public_inconsistent: bool,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElSubFact {
+    sub: u32,
+    sup: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElEdgeFact {
+    source: u32,
+    role: u32,
+    target: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct LeanElNamedSubFact {
+    sub: String,
+    sup: String,
+}
+
+impl LeanElCertificate {
+    /// Materialize exactly the named result checked by Lean. Checker-enabled
+    /// publication returns this value directly, so no unchecked conversion can
+    /// intervene between acceptance and the worker's public result.
+    fn verified_result(&self) -> ElResult {
+        let mut subsumptions = std::collections::BTreeMap::<String, Vec<String>>::new();
+        for fact in &self.public_named_subsumptions {
+            subsumptions
+                .entry(fact.sub.clone())
+                .or_default()
+                .push(fact.sup.clone());
+        }
+        ElResult {
+            unresolved: Vec::new(),
+            subsumptions,
+            inconsistent: self.public_inconsistent,
+        }
+    }
+}
+
+/// Reconstruct the unoptimised formal NF1–NF7 closure and record one proof for
+/// every fact. This path is intentionally separate from the indexed production
+/// worklist: Lean checks the resulting derivations, and equality against `State`
+/// detects either implementation disagreeing with the formal closure.
+fn build_lean_el_certificate(
+    nfs: &Nfs,
+    st: &State,
+    interner: &Interner,
+    raw_clauses: &[JClause],
+    witness_records: Vec<LeanCanonicalWitnessRecord>,
+    residual_compilations: Vec<LeanResidualCompilation>,
+) -> Result<LeanElCertificate, String> {
+    use std::collections::BTreeSet;
+
+    let symbol_count = interner.len();
+
+    let mut subs: BTreeSet<(u32, u32)> = BTreeSet::new();
+    let mut edges: BTreeSet<(u32, u32, u32)> = BTreeSet::new();
+    let mut steps = Vec::new();
+    let mut add_sub = |fact: (u32, u32), step: LeanElStep| {
+        if subs.insert(fact) {
+            steps.push(step);
+            true
+        } else {
+            false
+        }
+    };
+    for a in 0..symbol_count as u32 {
+        add_sub((a, a), LeanElStep::Refl { a });
+        add_sub((a, TOP), LeanElStep::Top { a });
+    }
+    drop(add_sub);
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let sub_snapshot: Vec<_> = subs.iter().copied().collect();
+        let edge_snapshot: Vec<_> = edges.iter().copied().collect();
+
+        for &(a, known) in &sub_snapshot {
+            for nf in &nfs.nf1 {
+                if known == nf.sub && subs.insert((a, nf.sup)) {
+                    steps.push(LeanElStep::Nf1 { a, sub: nf.sub, sup: nf.sup });
+                    changed = true;
+                }
+            }
+            for nf in &nfs.nf2 {
+                if known == nf.sub1 && subs.contains(&(a, nf.sub2))
+                    || known == nf.sub2 && subs.contains(&(a, nf.sub1))
+                {
+                    if subs.insert((a, nf.sup)) {
+                        steps.push(LeanElStep::Nf2 {
+                            a,
+                            left: nf.sub1,
+                            right: nf.sub2,
+                            sup: nf.sup,
+                        });
+                        changed = true;
+                    }
+                }
+            }
+            if nfs.nf5.contains(&known) && subs.insert((a, BOTTOM)) {
+                steps.push(LeanElStep::Nf5 { a, sub: known });
+                changed = true;
+            }
+            for nf in &nfs.nf3 {
+                if known == nf.sub && edges.insert((a, nf.role, nf.filler)) {
+                    steps.push(LeanElStep::Nf3 {
+                        a,
+                        sub: nf.sub,
+                        filler: nf.filler,
+                        role: nf.role,
+                    });
+                    changed = true;
+                }
+            }
+        }
+
+        for &(a, role, target) in &edge_snapshot {
+            if subs.contains(&(target, BOTTOM)) && subs.insert((a, BOTTOM)) {
+                steps.push(LeanElStep::BottomEdge { a, target, role });
+                changed = true;
+            }
+            for nf in &nfs.nf4 {
+                if role == nf.role && subs.contains(&(target, nf.filler))
+                    && subs.insert((a, nf.sup))
+                {
+                    steps.push(LeanElStep::Nf4 {
+                        a,
+                        target,
+                        filler: nf.filler,
+                        sup: nf.sup,
+                        role,
+                    });
+                    changed = true;
+                }
+            }
+            for nf in &nfs.nf6 {
+                if role == nf.sub && edges.insert((a, nf.sup, target)) {
+                    steps.push(LeanElStep::Nf6 {
+                        a,
+                        target,
+                        sub: nf.sub,
+                        sup: nf.sup,
+                    });
+                    changed = true;
+                }
+            }
+            for &(middle, second, end) in &edge_snapshot {
+                if middle != target {
+                    continue;
+                }
+                for nf in &nfs.nf7 {
+                    if role == nf.r1 && second == nf.r2
+                        && edges.insert((a, nf.sup, end))
+                    {
+                        steps.push(LeanElStep::Nf7 {
+                            a,
+                            middle,
+                            target: end,
+                            first: nf.r1,
+                            second: nf.r2,
+                            sup: nf.sup,
+                        });
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        for a in 0..symbol_count as u32 {
+            for &role in &nfs.reflexive_roles {
+                if edges.insert((a, role, a)) {
+                    steps.push(LeanElStep::Reflexive { a, role });
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    // Every production fact must have a formal derivation. For active concept
+    // contexts other than bottom, production must also contain every formal
+    // fact. Role-only ids and bottom receive formal initialization facts but are
+    // intentionally not allocated as Rust completion contexts.
+    for (a, rust_supers) in st.sub_super.iter().enumerate() {
+        for &sup in rust_supers {
+            if !subs.contains(&(a as u32, sup)) {
+                return Err(format!("Rust-only subsumption ({a},{sup})"));
+            }
+        }
+    }
+    for (a, rust_edges) in st.edges.iter().enumerate() {
+        for &(role, target) in rust_edges {
+            if !edges.contains(&(a as u32, role, target)) {
+                return Err(format!("Rust-only edge ({a},{role},{target})"));
+            }
+        }
+    }
+    for &a in &nfs.concept_names {
+        if a == BOTTOM {
+            continue;
+        }
+        let formal_subs: BTreeSet<u32> = subs
+            .range((a, 0)..=(a, u32::MAX))
+            .map(|&(_, sup)| sup)
+            .collect();
+        let rust_subs: BTreeSet<u32> = st.sub_super[a as usize].iter().copied().collect();
+        if formal_subs != rust_subs {
+            return Err(format!("subsumption closure mismatch at context {a}"));
+        }
+        let formal_edges: BTreeSet<(u32, u32)> = edges
+            .range((a, 0, 0)..=(a, u32::MAX, u32::MAX))
+            .map(|&(_, role, target)| (role, target))
+            .collect();
+        let rust_edges: BTreeSet<(u32, u32)> = st.edges[a as usize].iter().copied().collect();
+        if formal_edges != rust_edges {
+            return Err(format!("edge closure mismatch at context {a}"));
+        }
+    }
+
+    let mut ontology = Vec::new();
+    ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 { sub: x.sub, sup: x.sup }));
+    ontology.extend(nfs.nf2.iter().map(|x| LeanElClause::Nf2 {
+        left: x.sub1, right: x.sub2, sup: x.sup,
+    }));
+    ontology.extend(nfs.nf3.iter().map(|x| LeanElClause::Nf3 {
+        sub: x.sub, role: x.role, filler: x.filler,
+    }));
+    ontology.extend(nfs.nf4.iter().map(|x| LeanElClause::Nf4 {
+        role: x.role, filler: x.filler, sup: x.sup,
+    }));
+    ontology.extend(nfs.nf5.iter().map(|&sub| LeanElClause::Nf5 { sub }));
+    ontology.extend(nfs.nf6.iter().map(|x| LeanElClause::Nf6 { sub: x.sub, sup: x.sup }));
+    ontology.extend(nfs.nf7.iter().map(|x| LeanElClause::Nf7 {
+        first: x.r1, second: x.r2, sup: x.sup,
+    }));
+    ontology.extend(nfs.reflexive_roles.iter().map(|&role| LeanElClause::Reflexive { role }));
+    steps.reverse();
+    let mut active_concepts: Vec<u32> = nfs
+        .concept_names
+        .iter()
+        .copied()
+        .filter(|&a| a != BOTTOM)
+        .collect();
+    // TOP is queried for the ontology inconsistency result even when it does
+    // not occur in an input normal form, so it is always an active context at
+    // the certificate boundary.
+    active_concepts.push(TOP);
+    active_concepts.sort_unstable();
+    active_concepts.dedup();
+    let mut rust_subsumptions = Vec::new();
+    let mut rust_edges = Vec::new();
+    for &sub in &active_concepts {
+        rust_subsumptions.extend(st.sub_super[sub as usize].iter().map(|&sup| {
+            LeanElSubFact { sub, sup }
+        }));
+        rust_edges.extend(st.edges[sub as usize].iter().map(|&(role, target)| {
+            LeanElEdgeFact { source: sub, role, target }
+        }));
+    }
+    rust_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
+    rust_edges.sort_unstable_by_key(|fact| (fact.source, fact.role, fact.target));
+    let mut public_subsumptions: Vec<_> = rust_subsumptions
+        .iter()
+        .filter(|fact| {
+            fact.sub != TOP
+                && fact.sub != BOTTOM
+                && fact.sup != fact.sub
+                && fact.sup != TOP
+        })
+        .cloned()
+        .collect();
+    public_subsumptions.sort_unstable_by_key(|fact| (fact.sub, fact.sup));
+    let public_named_subsumptions = public_subsumptions
+        .iter()
+        .map(|fact| LeanElNamedSubFact {
+            sub: interner.name(fact.sub).to_string(),
+            sup: if fact.sup == BOTTOM {
+                "owl:Nothing".to_string()
+            } else {
+                interner.name(fact.sup).to_string()
+            },
+        })
+        .collect();
+    let mut variables: HashMap<String, u32> = HashMap::default();
+    fn raw_term(
+        term: &JTerm,
+        interner: &Interner,
+        variables: &mut HashMap<String, u32>,
+    ) -> Result<LeanRawTerm, String> {
+        match term {
+            JTerm::Var { name } => {
+                let next = variables.len() as u32;
+                let id = *variables.entry(name.clone()).or_insert(next);
+                Ok(LeanRawTerm::Var { name: id })
+            }
+            JTerm::Fun { function, arg } => Ok(LeanRawTerm::Fun {
+                function: interner.id(function).ok_or_else(|| format!("uninterned function {function}"))?,
+                argument: Box::new(raw_term(arg, interner, variables)?),
+            }),
+            JTerm::Ind { .. } | JTerm::Aux { .. } => Err("non-EL raw term in Lean certificate".into()),
+        }
+    }
+    fn raw_atom(
+        atom: &JAtom,
+        interner: &Interner,
+        variables: &mut HashMap<String, u32>,
+    ) -> Result<LeanRawAtom, String> {
+        match atom {
+            JAtom::Concept { concept, term } => Ok(LeanRawAtom::Concept {
+                concept: interner.id(concept).ok_or_else(|| format!("uninterned concept {concept}"))?,
+                term: raw_term(term, interner, variables)?,
+            }),
+            JAtom::Role { role, source, target } => Ok(LeanRawAtom::Role {
+                role: interner.id(role).ok_or_else(|| format!("uninterned role {role}"))?,
+                source: raw_term(source, interner, variables)?,
+                target: raw_term(target, interner, variables)?,
+            }),
+            JAtom::Eq { .. } => Err("equality atom in Lean ELC certificate".into()),
+        }
+    }
+    let mut raw_ontology = Vec::with_capacity(raw_clauses.len());
+    for clause in raw_clauses {
+        raw_ontology.push(LeanRawClause {
+            body: clause.body.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
+            head: clause.head.iter().map(|a| raw_atom(a, interner, &mut variables)).collect::<Result<_, _>>()?,
+        });
+    }
+    let mut source_ontology: Vec<_> = raw_ontology
+        .iter()
+        .map(|clause| LeanResidualClause {
+            body: clause
+                .body
+                .iter()
+                .map(|atom| match atom {
+                    LeanRawAtom::Concept { concept, term } => LeanResidualAtom::Concept {
+                        concept: *concept,
+                        term: term.clone(),
+                    },
+                    LeanRawAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => LeanResidualAtom::Role {
+                        role: *role,
+                        source: source.clone(),
+                        target: target.clone(),
+                    },
+                })
+                .collect(),
+            head: clause
+                .head
+                .iter()
+                .map(|atom| match atom {
+                    LeanRawAtom::Concept { concept, term } => LeanResidualAtom::Concept {
+                        concept: *concept,
+                        term: term.clone(),
+                    },
+                    LeanRawAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => LeanResidualAtom::Role {
+                        role: *role,
+                        source: source.clone(),
+                        target: target.clone(),
+                    },
+                })
+                .collect(),
+        })
+        .collect();
+    for record in &witness_records {
+        let role_variable = LeanRawTerm::Var {
+            name: record.role_variable,
+        };
+        let filler_variable = LeanRawTerm::Var {
+            name: record.filler_variable,
+        };
+        source_ontology.push(LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: record.sub,
+                term: role_variable.clone(),
+            }],
+            head: vec![LeanResidualAtom::Role {
+                role: record.role,
+                source: role_variable.clone(),
+                target: LeanRawTerm::Fun {
+                    function: record.function,
+                    argument: Box::new(role_variable),
+                },
+            }],
+        });
+        source_ontology.push(LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: record.sub,
+                term: filler_variable.clone(),
+            }],
+            head: vec![LeanResidualAtom::Concept {
+                concept: record.filler,
+                term: LeanRawTerm::Fun {
+                    function: record.function,
+                    argument: Box::new(filler_variable),
+                },
+            }],
+        });
+    }
+    source_ontology.extend(
+        residual_compilations
+            .iter()
+            .map(|compilation| compilation.raw.clone()),
+    );
+    let witness_variable_count = witness_records
+        .iter()
+        .flat_map(|record| [record.role_variable, record.filler_variable])
+        .max()
+        .map_or(0, |maximum| maximum + 1);
+    let mut concept_origins = vec![LeanConceptOrigin::Source; symbol_count];
+    for (&id, prefix_ids) in &nfs.conjunction_origins {
+        let slot = concept_origins.get_mut(id as usize).ok_or_else(|| format!("origin id {id} out of bounds"))?;
+        *slot = LeanConceptOrigin::Conjunction { prefix_ids: prefix_ids.clone() };
+    }
+    Ok(LeanElCertificate {
+        version: 5,
+        symbol_count: symbol_count as u32,
+        top: TOP,
+        bottom: BOTTOM,
+        variable_count: (variables.len() as u32).max(witness_variable_count),
+        source_ontology,
+        raw_ontology,
+        witness_records,
+        residual_compilations,
+        concept_origins,
+        ontology,
+        trace: steps,
+        active_concepts,
+        rust_subsumptions,
+        rust_edges,
+        public_subsumptions,
+        symbols: interner.names.clone(),
+        public_named_subsumptions,
+        public_inconsistent: st.sub_super[TOP as usize].contains(&BOTTOM),
+    })
 }
 
 /// Ceiling on `State::sub_journal`. Above it the delta is no cheaper to merge
@@ -2005,6 +2635,12 @@ enum RAtom {
     Eq { s: usize, t: usize },
 }
 
+#[derive(Clone)]
+enum ROrigin {
+    Source { source: String, name: usize },
+    Function { function: u32, witness: u32 },
+}
+
 /// A residual clause: `body -> head`, universally quantified over `nvars`
 /// variables.  Skolem terms `f(x)` are compiled to *pinned* variables, fixed
 /// to a dedicated canonical witness for that skolem function. Each witness is
@@ -2016,10 +2652,20 @@ enum RAtom {
 /// have the same filler concept.
 struct RClause {
     nvars: usize,
+    /// Exact source/function namespace origin for every compiled slot. This is
+    /// emitted to Lean, which independently reconstructs compilation evidence.
+    origins: Vec<ROrigin>,
     body: Vec<RAtom>,
     head: Vec<RAtom>,
     /// (variable index, canonical node) fixed before evaluation
     pins: Vec<(usize, u32)>,
+}
+
+struct CompiledResidual {
+    clauses: Vec<RClause>,
+    /// One dedicated canonical concept for every Skolem function whose value
+    /// occurs in a compiled residual clause.
+    skolem_witnesses: HashMap<u32, u32>,
 }
 
 /// Compile the residual clauses for certificate checking. Returns `None` if
@@ -2033,7 +2679,12 @@ fn compile_residual(
     it: &mut Interner,
     nfs: &mut Nfs,
     skolem_target: &HashMap<u32, (u32, u32, u32)>,
-) -> Option<Vec<RClause>> {
+) -> Option<CompiledResidual> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ResidualVarKey<'a> {
+        Source(&'a str),
+        Function(&'a str),
+    }
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
     macro_rules! bail {
         ($c:expr, $why:expr) => {{
@@ -2048,17 +2699,17 @@ fn compile_residual(
         }};
     }
     // tiny per-clause var sets: linear scan beats hashing
-    fn vid<'a>(vars: &mut Vec<&'a str>, name: &'a str) -> usize {
-        if let Some(i) = vars.iter().position(|v| *v == name) {
+    fn vid<'a>(vars: &mut Vec<ResidualVarKey<'a>>, key: ResidualVarKey<'a>) -> usize {
+        if let Some(i) = vars.iter().position(|v| *v == key) {
             return i;
         }
-        vars.push(name);
+        vars.push(key);
         vars.len() - 1
     }
     let mut out = Vec::with_capacity(residual.len());
     let mut skolem_witness: HashMap<u32, u32> = HashMap::default();
     for c in residual {
-        let mut vars: Vec<&str> = Vec::new();
+        let mut vars: Vec<ResidualVarKey<'_>> = Vec::new();
         let mut pins: Vec<(usize, u32)> = Vec::new();
         let mut body = Vec::with_capacity(c.body.len());
         let mut head = Vec::with_capacity(c.head.len());
@@ -2066,7 +2717,7 @@ fn compile_residual(
         macro_rules! term_v {
             ($t:expr) => {
                 match $t {
-                    JTerm::Var { name } => vid(&mut vars, name),
+                    JTerm::Var { name } => vid(&mut vars, ResidualVarKey::Source(name)),
                     JTerm::Fun { function, arg } => {
                         if !matches!(arg.as_ref(), JTerm::Var { .. }) {
                             bail!(c, "nested fun term");
@@ -2096,7 +2747,7 @@ fn compile_residual(
                                 witness
                             }
                         };
-                        let v = vid(&mut vars, function);
+                        let v = vid(&mut vars, ResidualVarKey::Function(function));
                         if !pins.iter().any(|&(pv, _)| pv == v) {
                             pins.push((v, witness));
                         }
@@ -2165,12 +2816,282 @@ fn compile_residual(
         }
         out.push(RClause {
             nvars: vars.len(),
+            origins: vars
+                .iter()
+                .enumerate()
+                .map(|(slot, key)| match key {
+                    ResidualVarKey::Source(source) => Some(ROrigin::Source {
+                        source: (*source).to_string(),
+                        name: slot,
+                    }),
+                    ResidualVarKey::Function(function) => {
+                        let function = it.id(function)?;
+                        let witness = *skolem_witness.get(&function)?;
+                        Some(ROrigin::Function { function, witness })
+                    }
+                })
+                .collect::<Option<Vec<_>>>()?,
             body,
             head,
             pins,
         });
     }
-    Some(out)
+    Some(CompiledResidual {
+        clauses: out,
+        skolem_witnesses: skolem_witness,
+    })
+}
+
+fn build_lean_residual_compilations(
+    residual: &[JClause],
+    compiled: &[RClause],
+    interner: &Interner,
+) -> Result<Vec<LeanResidualCompilation>, String> {
+    if residual.len() != compiled.len() {
+        return Err("residual source/compiled clause count mismatch".into());
+    }
+    fn raw_term(
+        term: &JTerm,
+        clause: &RClause,
+        interner: &Interner,
+    ) -> Result<LeanRawTerm, String> {
+        match term {
+            JTerm::Var { name } => {
+                let source_name = clause.origins.iter().find_map(|origin| match origin {
+                    ROrigin::Source { source, name: source_name } if source == name => {
+                        Some(*source_name)
+                    }
+                    _ => None,
+                });
+                // A variable occurring only as the ignored argument of a
+                // constant Skolem interpretation need not own a compiled slot.
+                let name = source_name.or_else(|| (clause.nvars > 0).then_some(0))
+                    .ok_or_else(|| format!("residual variable {name} has no slot"))?;
+                Ok(LeanRawTerm::Var { name: name as u32 })
+            }
+            JTerm::Fun { function, arg } => Ok(LeanRawTerm::Fun {
+                function: interner
+                    .id(function)
+                    .ok_or_else(|| format!("uninterned residual function {function}"))?,
+                argument: Box::new(raw_term(arg, clause, interner)?),
+            }),
+            JTerm::Ind { .. } | JTerm::Aux { .. } => {
+                Err("unsupported residual term reached Lean payload".into())
+            }
+        }
+    }
+    fn raw_atom(
+        atom: &JAtom,
+        clause: &RClause,
+        interner: &Interner,
+    ) -> Result<LeanResidualAtom, String> {
+        match atom {
+            JAtom::Concept { concept, term } => Ok(LeanResidualAtom::Concept {
+                concept: interner
+                    .id(concept)
+                    .ok_or_else(|| format!("uninterned residual concept {concept}"))?,
+                term: raw_term(term, clause, interner)?,
+            }),
+            JAtom::Role { role, source, target } => Ok(LeanResidualAtom::Role {
+                role: interner
+                    .id(role)
+                    .ok_or_else(|| format!("uninterned residual role {role}"))?,
+                source: raw_term(source, clause, interner)?,
+                target: raw_term(target, clause, interner)?,
+            }),
+            JAtom::Eq { left, right } => Ok(LeanResidualAtom::Eq {
+                left: raw_term(left, clause, interner)?,
+                right: raw_term(right, clause, interner)?,
+            }),
+        }
+    }
+    fn compiled_atom(atom: &RAtom) -> LeanCompiledResidualAtom {
+        match *atom {
+            RAtom::C { cid, v } => LeanCompiledResidualAtom::Concept {
+                concept: cid,
+                slot: v,
+            },
+            RAtom::R { rid, s, t } => LeanCompiledResidualAtom::Role {
+                role: rid,
+                source: s,
+                target: t,
+            },
+            RAtom::Eq { s, t } => LeanCompiledResidualAtom::Eq { left: s, right: t },
+        }
+    }
+
+    residual
+        .iter()
+        .zip(compiled)
+        .map(|(raw, clause)| {
+            let origins = clause
+                .origins
+                .iter()
+                .map(|origin| match origin {
+                    ROrigin::Source { name, .. } => LeanResidualOrigin::Source { name: *name },
+                    ROrigin::Function { function, witness } => LeanResidualOrigin::Function {
+                        function: *function,
+                        witness: *witness,
+                    },
+                })
+                .collect();
+            Ok(LeanResidualCompilation {
+                variable_count: clause.nvars,
+                origins,
+                raw: LeanResidualClause {
+                    body: raw
+                        .body
+                        .iter()
+                        .map(|atom| raw_atom(atom, clause, interner))
+                        .collect::<Result<_, _>>()?,
+                    head: raw
+                        .head
+                        .iter()
+                        .map(|atom| raw_atom(atom, clause, interner))
+                        .collect::<Result<_, _>>()?,
+                },
+                body: clause.body.iter().map(compiled_atom).collect(),
+                head: clause.head.iter().map(compiled_atom).collect(),
+                pins: clause.pins.clone(),
+            })
+        })
+        .collect()
+}
+
+/// Recover the exact source partition consumed by the Lean wire-v5 checker.
+/// Residual clauses are matched as a multiset first. Every Skolem function
+/// rewritten by `compile_residual` then claims its original NF3 role/filler
+/// pair. All remaining clauses stay in the direct EL normalization input.
+fn build_lean_source_partition(
+    source: &[JClause],
+    residual: &[JClause],
+    skolem_target: &HashMap<u32, (u32, u32, u32)>,
+    skolem_witnesses: &HashMap<u32, u32>,
+    interner: &Interner,
+) -> Result<(Vec<JClause>, Vec<LeanCanonicalWitnessRecord>), String> {
+    let mut claimed = vec![false; source.len()];
+    for clause in residual {
+        let Some(index) = source
+            .iter()
+            .enumerate()
+            .position(|(index, candidate)| !claimed[index] && candidate == clause)
+        else {
+            return Err("residual clause is absent from retained source stream".into());
+        };
+        claimed[index] = true;
+    }
+
+    fn source_var(term: &JTerm) -> Option<&str> {
+        match term {
+            JTerm::Var { name } => Some(name),
+            _ => None,
+        }
+    }
+    fn matching_fun(term: &JTerm, function: &str, variable: &str) -> bool {
+        matches!(term,
+            JTerm::Fun { function: candidate, arg }
+                if candidate == function && source_var(arg) == Some(variable))
+    }
+    fn is_role_half(
+        clause: &JClause,
+        sub: &str,
+        role: &str,
+        function: &str,
+    ) -> bool {
+        let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
+            return false;
+        };
+        let Some(variable) = source_var(term) else {
+            return false;
+        };
+        let [JAtom::Role {
+            role: candidate_role,
+            source,
+            target,
+        }] = clause.head.as_slice()
+        else {
+            return false;
+        };
+        concept == sub
+            && candidate_role == role
+            && source_var(source) == Some(variable)
+            && matching_fun(target, function, variable)
+    }
+    fn is_filler_half(
+        clause: &JClause,
+        sub: &str,
+        filler: &str,
+        function: &str,
+    ) -> bool {
+        let [JAtom::Concept { concept, term }] = clause.body.as_slice() else {
+            return false;
+        };
+        let Some(variable) = source_var(term) else {
+            return false;
+        };
+        let [JAtom::Concept {
+            concept: candidate_filler,
+            term: target,
+        }] = clause.head.as_slice()
+        else {
+            return false;
+        };
+        concept == sub
+            && candidate_filler == filler
+            && matching_fun(target, function, variable)
+    }
+
+    let mut witnesses: Vec<_> = skolem_witnesses.iter().collect();
+    witnesses.sort_unstable_by_key(|&(function, _)| *function);
+    let mut records = Vec::with_capacity(witnesses.len());
+    for (&function, &witness) in witnesses {
+        let &(sub, role, filler) = skolem_target
+            .get(&function)
+            .ok_or_else(|| format!("rewritten Skolem function {function} has no NF3 target"))?;
+        let function_name = interner.name(function);
+        let sub_name = interner.name(sub);
+        let role_name = interner.name(role);
+        let filler_name = interner.name(filler);
+        let mut found_role = false;
+        let mut found_filler = false;
+        for (index, clause) in source.iter().enumerate() {
+            if claimed[index] {
+                continue;
+            }
+            if is_role_half(clause, sub_name, role_name, function_name) {
+                claimed[index] = true;
+                found_role = true;
+            } else if is_filler_half(clause, sub_name, filler_name, function_name) {
+                claimed[index] = true;
+                found_filler = true;
+            }
+        }
+        if !found_role || !found_filler {
+            return Err(format!(
+                "rewritten Skolem function {function_name} is missing its exact source pair"
+            ));
+        }
+        records.push(LeanCanonicalWitnessRecord {
+            sub,
+            role,
+            filler,
+            witness,
+            function,
+            // Variables are scoped by their clause. Canonical zero-based
+            // renaming keeps the emitted source pair alpha-equivalent to the
+            // retained JSON clauses and minimizes the wire domain.
+            role_variable: 0,
+            filler_variable: 0,
+        });
+    }
+
+    let direct = source
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !claimed[*index])
+        .map(|(_, clause)| clause.clone())
+        .collect();
+    Ok((direct, records))
 }
 
 // ---------------------------------------------------------------------------
@@ -2789,6 +3710,14 @@ fn cert_audit() -> bool {
 /// to [`REPAIR_VIOL_CAP`] per round. Returns `true` iff no violation was found
 /// and the budget survived. On `false`: an empty `out` means budget exhaustion
 /// (the caller must fail conservatively); a non-empty `out` is repair work.
+fn residual_pins_are_alive(rcs: &[RClause], alive: &[bool]) -> bool {
+    rcs.iter().all(|rc| {
+        rc.pins
+            .iter()
+            .all(|&(_, node)| alive.get(node as usize).copied().unwrap_or(false))
+    })
+}
+
 fn cert_round(
     rcs: &[RClause],
     concept_names: &HashSet<u32>,
@@ -2821,6 +3750,17 @@ fn cert_round(
     } = &*idx;
     let empty_m: Vec<u32> = Vec::new();
     let empty_e: Vec<(u32, u32)> = Vec::new();
+
+    // Pins denote elements of the canonical model, whose domain contains only
+    // alive concept nodes. A dead witness cannot interpret a source Skolem
+    // function. Decline instead of evaluating over a bottom-containing
+    // pseudo-domain that is larger than the certified model.
+    if !residual_pins_are_alive(rcs, alive) {
+        if debug {
+            eprintln!("KM_ELC_CERT fail: pinned witness is outside the alive canonical domain");
+        }
+        return false;
+    }
 
     // recursive join over one clause; returns false on a violating assignment
     // (collect == None), on a full violation round (collect cap reached), or
@@ -4728,18 +5668,30 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
+    let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
+    let lean_cert_checker =
+        std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
+    let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
     let mut unresolved: Vec<String> = Vec::new();
-    // Exact residual-shrinking rewrites, certificate routes only. Cert-off
-    // classify declines on the first residual clause anyway, and leaving that
-    // path byte-identical keeps `is_pure_el_shape` (the router's screen) in
-    // step with what cert-off `classify` accepts.
+    // Residual-shrinking inverse-bridge rewrites are not yet part of the Lean
+    // source theorem. A checker-backed run must retain the exact input stream;
+    // otherwise an accepted certificate would start after an uncertified
+    // preprocessing boundary. Non-Lean certificate modes keep the established
+    // optimization. Cert-off classify declines on the first residual clause.
     let mut clauses = clauses;
-    if cert != CertMode::Off && std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+    if cert != CertMode::Off
+        && !lean_cert_requested
+        && std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none()
+    {
         prepare_inverse_bridges(&mut clauses, debug);
     }
     let clauses = clauses;
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
+    // TOP is always a semantic concept context, even when no normalized axiom
+    // mentions it explicitly. The inconsistency readout queries TOP ⊑ BOTTOM,
+    // so omitting this initialization could miss an ontology-level clash.
+    nfs.concept_names.insert(TOP);
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
     // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
     // `residual`; the original `clauses` (millions of `JClause`, each owning
@@ -4747,9 +5699,9 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // Drop it BEFORE saturation so the parse tree never coexists with the peak
     // saturation state. On a pure-EL ont (`residual` empty) this is the whole
     // input freed; the saturation then peaks on the interned state alone.
-    drop(clauses);
-    let rcs = if residual.is_empty() {
-        Vec::new()
+    let certificate_clauses = lean_cert_requested.then_some(clauses);
+    let (rcs, residual_skolem_witnesses) = if residual.is_empty() {
+        (Vec::new(), HashMap::default())
     } else {
         if cert == CertMode::Off {
             if debug {
@@ -4765,7 +5717,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             return None;
         }
         match compile_residual(&residual, &mut it, &mut nfs, &skolem_target) {
-            Some(r) => r,
+            Some(compiled) => (compiled.clauses, compiled.skolem_witnesses),
             None => {
                 if debug {
                     eprintln!(
@@ -4801,7 +5753,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     // pure-EL path there is no residual certificate, so only concept_names is
     // read after this point. Release the duplicate normal forms before the
     // saturation peak.
-    if rcs.is_empty() {
+    if rcs.is_empty() && !lean_cert_requested {
         nfs.nf1 = Vec::new();
         nfs.nf2 = Vec::new();
         nfs.nf3 = Vec::new();
@@ -4814,6 +5766,95 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     }
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut prof);
+    if lean_cert_requested {
+        let source_clauses = certificate_clauses
+            .as_deref()
+            .expect("requested certificate retains source clauses");
+        let residual_compilations = match build_lean_residual_compilations(&residual, &rcs, &it) {
+            Ok(compilations) => compilations,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
+            }
+        };
+        let (direct_clauses, witness_records) = match build_lean_source_partition(
+            source_clauses,
+            &residual,
+            &skolem_target,
+            &residual_skolem_witnesses,
+            &it,
+        ) {
+            Ok(partition) => partition,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
+            }
+        };
+        let certificate = match build_lean_el_certificate(
+            &nfs,
+            &st,
+            &it,
+            &direct_clauses,
+            witness_records,
+            residual_compilations,
+        ) {
+            Ok(certificate) => certificate,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                return None;
+            }
+        };
+        let temporary_path;
+        let path = if let Some(path) = lean_cert_path.as_deref() {
+            path
+        } else {
+            temporary_path = std::env::temp_dir().join(format!(
+                "km-elc-cert-{}.json",
+                std::process::id()
+            ));
+            temporary_path.as_path()
+        };
+        let file = match std::fs::File::create(path) {
+            Ok(file) => file,
+            Err(error) => {
+                eprintln!("KM_ELC_LEAN_CERT cannot create {}: {error}", path.display());
+                return None;
+            }
+        };
+        if let Err(error) = serde_json::to_writer(file, &certificate) {
+            eprintln!("KM_ELC_LEAN_CERT cannot write {}: {error}", path.display());
+            return None;
+        }
+        if let Some(checker) = lean_cert_checker.as_deref() {
+            let status = match std::process::Command::new(checker)
+                .arg(path)
+                // The worker stdout is a JSON protocol. Checker diagnostics
+                // must never be allowed to corrupt that stream.
+                .stdout(std::process::Stdio::null())
+                .status()
+            {
+                Ok(status) => status,
+                Err(error) => {
+                    eprintln!(
+                        "KM_ELC_LEAN_CERT cannot execute {}: {error}",
+                        checker.display()
+                    );
+                    return None;
+                }
+            };
+            if lean_cert_path.is_none() {
+                let _ = std::fs::remove_file(path);
+            }
+            if !status.success() {
+                eprintln!(
+                    "KM_ELC_LEAN_CERT checker {} rejected the certificate ({status})",
+                    checker.display()
+                );
+                return None;
+            }
+            return Some(certificate.verified_result());
+        }
+    }
     if std::env::var_os("KM_ELC_PROFILE").is_some() {
         eprintln!(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
@@ -4946,6 +5987,73 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
 mod tests {
     use super::*;
 
+    #[test]
+    fn lean_certificate_reconstructs_and_audits_the_production_fixpoint() {
+        let mut concepts = HashSet::default();
+        concepts.extend([TOP, BOTTOM, 2, 3]);
+        let mut roles = HashSet::default();
+        roles.extend([4, 5, 6]);
+        let mut reflexive = HashSet::default();
+        reflexive.insert(4);
+        let nfs = Nfs {
+            nf1: vec![Nf1 { sub: 2, sup: 3 }],
+            nf2: vec![Nf2 { sub1: 2, sub2: 3, sup: TOP }],
+            nf3: vec![Nf3 { sub: 3, role: 4, filler: 2 }],
+            nf4: vec![Nf4 { role: 4, filler: 3, sup: 2 }],
+            nf5: vec![],
+            nf6: vec![Nf6 { sub: 4, sup: 5 }],
+            nf7: vec![Nf7 { r1: 5, r2: 4, sup: 6 }],
+            reflexive_roles: reflexive,
+            concept_names: concepts,
+            role_names: roles,
+            conjunction_origins: HashMap::default(),
+        };
+        let idx = build_idx(&nfs, 7);
+        let mut state = init_state(&nfs, 7);
+        for &a in &nfs.concept_names {
+            if a != BOTTOM {
+                for &role in &idx.reflexive_closed {
+                    state.add_edge(a, role, a);
+                }
+            }
+        }
+        run(&idx, &mut state, &mut Prof::default());
+
+        let mut interner = Interner::new();
+        for name in ["A", "B", "r", "s", "t"] {
+            interner.intern(name);
+        }
+        let cert = build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
+            .expect("exact certificate");
+        assert_eq!(cert.version, 5);
+        assert!(!cert.trace.is_empty());
+        let json = serde_json::to_string(&cert).expect("certificate JSON");
+        assert!(json.contains("\"nf7\""));
+        assert!(json.contains("\"reflexive\""));
+        assert!(json.contains("\"public_subsumptions\""));
+        assert!(json.contains("\"public_named_subsumptions\""));
+        assert!(cert.active_concepts.contains(&TOP));
+        assert_eq!(cert.symbols.len(), 7);
+        assert_eq!(
+            cert.public_subsumptions.len(),
+            cert.public_named_subsumptions.len()
+        );
+        let verified = cert.verified_result();
+        assert_eq!(verified.inconsistent, cert.public_inconsistent);
+        assert!(verified.unresolved.is_empty());
+        assert!(cert.public_subsumptions.iter().all(|fact| {
+            fact.sub != TOP
+                && fact.sub != BOTTOM
+                && fact.sup != fact.sub
+                && fact.sup != TOP
+        }));
+
+        state.sub_super[2].insert(6);
+        assert!(build_lean_el_certificate(&nfs, &state, &interner, &[], Vec::new(), Vec::new())
+            .unwrap_err()
+            .contains("Rust-only subsumption"));
+    }
+
     fn clauses(json: &str) -> Vec<JClause> {
         serde_json::from_str::<Vec<JClause>>(json).expect("test clause JSON")
     }
@@ -5059,6 +6167,111 @@ mod tests {
             body.join(","),
             head.join(",")
         )
+    }
+
+    #[test]
+    fn lean_v5_certificate_checks_source_partition_and_rejects_tampering() {
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let source = clauses(&format!("[{}]", cl(&[c("A", "x")], &[c("B", "x")])));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, _) = to_nf(&source, &mut interner).expect("direct EL source");
+        assert!(residual.is_empty());
+        nfs.concept_names.insert(TOP);
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        run(&idx, &mut state, &mut Prof::default());
+        let certificate = build_lean_el_certificate(
+            &nfs,
+            &state,
+            &interner,
+            &source,
+            Vec::new(),
+            Vec::new(),
+        )
+        .expect("v5 certificate");
+        let path = std::env::temp_dir().join(format!(
+            "km-elc-v5-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let run_checker = |payload: &LeanElCertificate| {
+            std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run Lean v5 checker")
+                .success()
+        };
+        assert!(run_checker(&certificate), "exact source partition must pass");
+
+        let a = interner.id("A").expect("A is interned");
+        let source_var = LeanRawTerm::Var { name: 0 };
+        let tautology_raw = LeanResidualClause {
+            body: vec![LeanResidualAtom::Concept {
+                concept: a,
+                term: source_var.clone(),
+            }],
+            head: vec![LeanResidualAtom::Concept {
+                concept: a,
+                term: source_var,
+            }],
+        };
+        let tautology = LeanResidualCompilation {
+            variable_count: 1,
+            origins: vec![LeanResidualOrigin::Source { name: 0 }],
+            raw: tautology_raw.clone(),
+            body: vec![LeanCompiledResidualAtom::Concept {
+                concept: a,
+                slot: 0,
+            }],
+            head: vec![LeanCompiledResidualAtom::Concept {
+                concept: a,
+                slot: 0,
+            }],
+            pins: Vec::new(),
+        };
+        let mut residual_certificate = certificate.clone();
+        residual_certificate.source_ontology.push(tautology_raw);
+        residual_certificate.residual_compilations.push(tautology);
+        assert!(
+            run_checker(&residual_certificate),
+            "a structurally exact residual tautology must pass the finite model check"
+        );
+
+        let mut false_residual = residual_certificate.clone();
+        let compilation = false_residual
+            .residual_compilations
+            .last_mut()
+            .expect("residual compilation");
+        compilation.raw.head = vec![LeanResidualAtom::Concept {
+            concept: BOTTOM,
+            term: LeanRawTerm::Var { name: 0 },
+        }];
+        compilation.head = vec![LeanCompiledResidualAtom::Concept {
+            concept: BOTTOM,
+            slot: 0,
+        }];
+        *false_residual
+            .source_ontology
+            .last_mut()
+            .expect("residual source clause") = compilation.raw.clone();
+        assert!(
+            !run_checker(&false_residual),
+            "a structurally exact but canonically false residual must fail closed"
+        );
+
+        let mut omitted_source = certificate.clone();
+        omitted_source.source_ontology.clear();
+        assert!(!run_checker(&omitted_source), "source omission must fail closed");
+
+        let mut old_version = certificate.clone();
+        old_version.version = 4;
+        assert!(!run_checker(&old_version), "wire downgrade must fail closed");
+        let _ = std::fs::remove_file(path);
     }
 
     /// `a ≈ b` over two plain variables (an at-most head).
@@ -5448,6 +6661,49 @@ mod tests {
         let split_bottom = clauses(&format!("[{}]", cl(&[c("A", "x"), c("B", "y")], &[])));
         assert!(!is_pure_el_shape(&split_bottom));
         assert!(classify_inner(split_bottom, CertMode::Off, false).is_none());
+
+        // R(x,x) → S(x,x) is a self-restriction implication, not R ⊑ S.
+        let collapsed_role_sub = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x")], &[r("S", "x", "x")])
+        ));
+        assert!(!is_pure_el_shape(&collapsed_role_sub));
+        assert!(classify_inner(collapsed_role_sub, CertMode::Off, false).is_none());
+
+        // R(x,x) ∧ S(x,z) → T(x,z) is not the unrestricted chain R∘S ⊑ T.
+        let collapsed_role_chain = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x"), r("S", "x", "z")], &[r("T", "x", "z")],)
+        ));
+        assert!(!is_pure_el_shape(&collapsed_role_chain));
+        assert!(classify_inner(collapsed_role_chain, CertMode::Off, false).is_none());
+
+        // The Skolem argument is the universally quantified source variable.
+        // Changing it produces a different first-order clause, not A ⊑ ∃R.B.
+        let mismatched_skolem_argument = clauses(&format!(
+            "[{},{}]",
+            cl(
+                &[c("A", "x")],
+                &[format!(
+                    "{{\"kind\":\"role\",\"role\":\"R\",\"source\":{},\"target\":{{\"kind\":\"fun\",\"function\":\"f\",\"arg\":{}}}}}",
+                    v("x"),
+                    v("y")
+                )],
+            ),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+        ));
+        assert!(!is_pure_el_shape(&mismatched_skolem_argument));
+        assert!(classify_inner(mismatched_skolem_argument, CertMode::Off, false).is_none());
+
+        // Both halves must quantify the same source variable as their Skolem
+        // argument; merely sharing a function name is insufficient.
+        let mismatched_filler_argument = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "y")]),
+        ));
+        assert!(!is_pure_el_shape(&mismatched_filler_argument));
+        assert!(classify_inner(mismatched_filler_argument, CertMode::Off, false).is_none());
     }
 
     #[test]
@@ -5705,6 +6961,133 @@ mod tests {
     }
 
     #[test]
+    fn residual_source_variables_cannot_alias_function_pin_slots() {
+        // The source variable is deliberately named exactly like the Skolem
+        // function. They inhabit different namespaces: pinning x(·) must not
+        // pin the universally quantified source variable `x`.
+        let cs = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("A", "u")], &[rf("R", "u", "x")]),
+            cl(&[c("A", "u")], &[cf("B", "x", "u")]),
+            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+        ));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, skolem_target) =
+            to_nf(&cs, &mut interner).expect("normalizable EL prefix");
+        assert_eq!(residual.len(), 1);
+        let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
+            .expect("supported residual");
+        assert_eq!(compiled.clauses[0].nvars, 2);
+        assert_eq!(compiled.clauses[0].pins.len(), 1);
+        assert_ne!(compiled.clauses[0].pins[0].0, 0, "source slot must remain unpinned");
+        assert!(matches!(compiled.clauses[0].body[0], RAtom::C { v: 0, .. }));
+    }
+
+    #[test]
+    fn lean_residual_compilation_payload_accepts_and_tampering_fails() {
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("A", "u")], &[rf("R", "u", "x")]),
+            cl(&[c("A", "u")], &[cf("B", "x", "u")]),
+            cl(&[c("A", "x")], &[cf("C", "x", "u")]),
+            cl(&[c("B", "z")], &[c("C", "z")]),
+        ));
+        let mut interner = Interner::new();
+        let (mut nfs, residual, skolem_target) =
+            to_nf(&cs, &mut interner).expect("normalizable EL prefix");
+        let compiled = compile_residual(&residual, &mut interner, &mut nfs, &skolem_target)
+            .expect("supported residual");
+        let payloads = build_lean_residual_compilations(&residual, &compiled.clauses, &interner)
+            .expect("exact residual payload");
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].origins.len(), payloads[0].variable_count);
+        let json = serde_json::to_string(&payloads[0]).expect("payload JSON");
+        assert!(json.contains("\"source\""));
+        assert!(json.contains("\"function\""));
+
+        let (direct, witnesses) = build_lean_source_partition(
+            &cs,
+            &residual,
+            &skolem_target,
+            &compiled.skolem_witnesses,
+            &interner,
+        )
+        .expect("exact direct/witness/residual partition");
+        assert_eq!(direct.len(), 1);
+        assert_eq!(witnesses.len(), 1);
+        nfs.concept_names.insert(TOP);
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        run(&idx, &mut state, &mut Prof::default());
+        let certificate = build_lean_el_certificate(
+            &nfs,
+            &state,
+            &interner,
+            &direct,
+            witnesses,
+            payloads.clone(),
+        )
+        .expect("whole residual certificate");
+
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        let path = std::env::temp_dir().join(format!(
+            "km-elc-residual-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let run = |payload: &LeanResidualCompilation| {
+            std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .args(["--residual", &interner.len().to_string()])
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run Lean residual checker")
+                .success()
+        };
+        assert!(run(&payloads[0]), "exact Rust compilation must be accepted");
+
+        std::fs::write(&path, serde_json::to_vec(&certificate).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run whole Lean checker")
+                .success(),
+            "native source partition must pass the whole Lean checker"
+        );
+
+        let previous_checker = std::env::var_os("KM_ELC_LEAN_CERT_CHECKER");
+        std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", &checker);
+        let production = classify_inner(cs.clone(), CertMode::Check, false);
+        match previous_checker {
+            Some(value) => std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", value),
+            None => std::env::remove_var("KM_ELC_LEAN_CERT_CHECKER"),
+        }
+        assert!(
+            production.is_some(),
+            "checker-backed production residual publication must succeed"
+        );
+
+        let mut pin_tamper = payloads[0].clone();
+        pin_tamper.pins[0].0 = 0;
+        assert!(!run(&pin_tamper), "pin mutation must fail closed");
+
+        let mut origin_tamper = payloads[0].clone();
+        origin_tamper.origins[0] = LeanResidualOrigin::Function {
+            function: 0,
+            witness: 0,
+        };
+        assert!(!run(&origin_tamper), "origin mutation must fail closed");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn cert_bails_on_nominal_terms_before_saturation() {
         // ind terms are not modelled: classify must return None (context engine).
         let cs = clauses(
@@ -5773,12 +7156,30 @@ mod tests {
             cl(&[c("C", "x")], &[c("D", "x")]),
         ));
         assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
-        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
+        let res = classify_inner(cs.clone(), CertMode::Repair, false).expect("repair certifies");
         assert!(subs_of(&res, "C").contains(&"D".to_string()));
         // The choices must not leak into the answer.
         assert!(!subs_of(&res, "C").contains(&"A".to_string()));
         assert!(!subs_of(&res, "C").contains(&"B".to_string()));
         assert!(!res.inconsistent);
+
+        // The search-based repair algorithm has no Lean theorem yet. Even
+        // when ordinary repair accepts this ontology, checker-backed repair
+        // must stop at the rejected base-model certificate and publish
+        // nothing from the uncertified search.
+        if let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") {
+            let previous = std::env::var_os("KM_ELC_LEAN_CERT_CHECKER");
+            std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", checker);
+            let certified = classify_inner(cs, CertMode::Repair, false);
+            match previous {
+                Some(value) => std::env::set_var("KM_ELC_LEAN_CERT_CHECKER", value),
+                None => std::env::remove_var("KM_ELC_LEAN_CERT_CHECKER"),
+            }
+            assert!(
+                certified.is_none(),
+                "checker-backed execution must not publish repair output"
+            );
+        }
     }
 
     #[test]
@@ -6067,10 +7468,34 @@ mod tests {
     fn rc(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>, pins: Vec<(usize, u32)>) -> RClause {
         RClause {
             nvars,
+            origins: (0..nvars)
+                .map(|name| ROrigin::Source {
+                    source: format!("v{name}"),
+                    name,
+                })
+                .collect(),
             body,
             head,
             pins,
         }
+    }
+
+    #[test]
+    fn residual_pin_must_name_an_alive_canonical_domain_element() {
+        let clause = rc(
+            1,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![(0, 3)],
+        );
+        assert!(residual_pins_are_alive(&[clause], &[true, false, true, true]));
+        let clause = rc(
+            1,
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![RAtom::C { cid: 2, v: 0 }],
+            vec![(0, 3)],
+        );
+        assert!(!residual_pins_are_alive(&[clause], &[true, false, true, false]));
     }
 
     /// `≤1 R.C` guarded by concept `g`, over variables `x, y1, y2`.
@@ -6512,6 +7937,7 @@ mod tests {
             reflexive_roles: HashSet::default(),
             concept_names: HashSet::default(),
             role_names: HashSet::default(),
+            conjunction_origins: HashMap::default(),
         };
         let idx = build_idx(&nfs, 8);
         assert_eq!(idx.sub_rules.len(), 3);
@@ -7058,6 +8484,12 @@ mod tests {
     fn rcl(nvars: usize, body: Vec<RAtom>, head: Vec<RAtom>) -> RClause {
         RClause {
             nvars,
+            origins: (0..nvars)
+                .map(|name| ROrigin::Source {
+                    source: format!("v{name}"),
+                    name,
+                })
+                .collect(),
             body,
             head,
             pins: Vec::new(),
@@ -7457,6 +8889,36 @@ mod tests {
             "the converse must cost the published taxonomy, got {:?} / {:?}",
             strong.subsumptions,
             strong.unresolved
+        );
+    }
+
+    #[test]
+    fn conjunction_aux_names_are_component_boundary_injective() {
+        let left = vec!["a/b".to_string(), "c".to_string()];
+        let right = vec!["a".to_string(), "b/c".to_string()];
+        assert_eq!(left.join("/"), right.join("/"), "regression witness must collide");
+        assert_ne!(conjunction_aux_name(&left), conjunction_aux_name(&right));
+        assert_eq!(
+            conjunction_aux_name(&["é".to_string(), "x/y".to_string()]),
+            "__conj__2:é3:x/y"
+        );
+    }
+
+    #[test]
+    fn conjunction_origins_record_exact_sorted_source_prefix_ids() {
+        let input = clauses(&format!(
+            "[{}]",
+            cl(&[c("C", "x"), c("A", "x"), c("B", "x")], &[c("D", "x")])
+        ));
+        let mut interner = Interner::new();
+        let (nfs, residual, _) = to_nf(&input, &mut interner).expect("EL normal form");
+        assert!(residual.is_empty());
+        let aux = interner
+            .id(&conjunction_aux_name(&["A".to_string(), "B".to_string()]))
+            .expect("conjunction auxiliary");
+        assert_eq!(
+            nfs.conjunction_origins.get(&aux),
+            Some(&vec![interner.id("A").unwrap(), interner.id("B").unwrap()])
         );
     }
 

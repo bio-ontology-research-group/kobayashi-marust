@@ -6538,17 +6538,14 @@ fn analyse_kpset_completion_model(
     ctx: &mut CalculationAlgorithmContextBase,
 ) {
     let analyser = SatisfiableTaskClassificationMessageAnalyser::default();
-    let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
+    let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_shared_handles(
         state
             .ontology_item
             .get_concept_satisfiable_test_item_container()[state.item_ids[subject].index()]
         .get_testing_concept(),
         0,
         0,
-        state
-            .ontology_item
-            .get_concept_reference_linking_data_hash()
-            .clone(),
+        state.concept_reference_linking_data_hash.clone(),
         EFEXTRACTALL,
     );
     let individual_vector = ctx
@@ -11754,6 +11751,79 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
+    let subject_workers = std::env::var("KM_BRIDGE_SUBJECT_WORKERS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1)
+        .clamp(1, 8);
+    bridged_classify_opts_with_trigger_absorption_workers(
+        tin,
+        use_saturation,
+        use_satcache,
+        trigger_absorb,
+        subject_workers,
+    )
+}
+
+fn bridged_classify_opts_with_trigger_absorption_workers(
+    tin: &TInput,
+    use_saturation: bool,
+    use_satcache: bool,
+    trigger_absorb: bool,
+    subject_workers: usize,
+) -> Option<BridgedClassification> {
+    let subject_workers = subject_workers.clamp(1, 8);
+    if subject_workers > 1 && tin.queries.len() >= subject_workers {
+        use rayon::prelude::*;
+        let chunk_size = tin.queries.len().div_ceil(subject_workers);
+        let pieces: Vec<Option<BridgedClassification>> = tin
+            .queries
+            .par_chunks(chunk_size)
+            .map(|queries| {
+                bridged_classify_opts_with_trigger_absorption_inner(
+                    tin,
+                    use_saturation,
+                    use_satcache,
+                    trigger_absorb,
+                    Some(queries),
+                )
+            })
+            .collect();
+        let mut merged = BridgedClassification {
+            consistent: true,
+            unsatisfiable: Vec::new(),
+            subsumptions: Vec::new(),
+        };
+        for piece in pieces {
+            let piece = piece?;
+            if !piece.consistent {
+                return Some(piece);
+            }
+            merged.unsatisfiable.extend(piece.unsatisfiable);
+            merged.subsumptions.extend(piece.subsumptions);
+        }
+        merged.unsatisfiable.sort_unstable();
+        merged.unsatisfiable.dedup();
+        merged.subsumptions.sort_unstable();
+        merged.subsumptions.dedup();
+        return Some(merged);
+    }
+    bridged_classify_opts_with_trigger_absorption_inner(
+        tin,
+        use_saturation,
+        use_satcache,
+        trigger_absorb,
+        None,
+    )
+}
+
+fn bridged_classify_opts_with_trigger_absorption_inner(
+    tin: &TInput,
+    use_saturation: bool,
+    use_satcache: bool,
+    trigger_absorb: bool,
+    subject_queries: Option<&[usize]>,
+) -> Option<BridgedClassification> {
     // Typed role facts are admitted only through the exact source-mode
     // metadata gate below. The terminology builder gives them the exact
     // existential/universal nominal encoding used by the source-mode concept
@@ -11849,7 +11919,9 @@ fn bridged_classify_opts_with_trigger_absorption(
         })
         .map(|(i, _)| i)
         .collect();
-    let subjects: Vec<usize> = if tin.queries.is_empty() {
+    let subjects: Vec<usize> = if let Some(queries) = subject_queries {
+        queries.to_vec()
+    } else if tin.queries.is_empty() {
         let mut v: Vec<usize> = universe.iter().copied().collect();
         v.sort_unstable();
         v
@@ -13284,6 +13356,34 @@ mod tests {
             ),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn parallel_subject_partition_matches_single_worker() {
+        use crate::frontend::syntax::Concept as C;
+
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "__nom__a".into()],
+            queries: vec![0, 1],
+            source_axioms: vec![
+                source_subclass(C::Name("A".into()), C::Nominal("a".into())),
+                source_subclass(C::Nominal("a".into()), C::Name("B".into())),
+            ],
+            nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
+            ..Default::default()
+        };
+        let single = bridged_classify_opts_with_trigger_absorption_workers(
+            &tin, false, false, true, 1,
+        )
+        .expect("single-worker bridge must complete");
+        let parallel = bridged_classify_opts_with_trigger_absorption_workers(
+            &tin, false, false, true, 2,
+        )
+        .expect("partitioned bridge must complete");
+
+        assert_eq!(parallel.consistent, single.consistent);
+        assert_eq!(parallel.unsatisfiable, single.unsatisfiable);
+        assert_eq!(parallel.subsumptions, single.subsumptions);
     }
 
     #[test]

@@ -158,13 +158,10 @@ fn run_ofn_in_process(
     if cacheable {
         out.clauses.shrink_to_fit();
     }
-    // Exact Elc consumes `out` directly and has no classifier fallback, so its
-    // serialized copy is dead work. CertifiedElProduction also consumes the
-    // typed input directly, but retains the authoritative JSON for its required
-    // ProductionAll fallback if the certificate declines or errors.
-    let needs_serialized_fallback =
-        selected_route == Some(crate::routing::Route::CertifiedElProduction);
-    if !cacheable || needs_serialized_fallback {
+    // Exact Elc consumes `out` directly. CertifiedElProduction also consumes
+    // it directly and recursively reruns this frontend under ProductionAll if
+    // its certificate declines, so neither needs an eager serialized copy.
+    if !cacheable {
         let f = File::create(clauses_path)?;
         let mut w = std::io::BufWriter::new(f);
         serde_json::to_writer(&mut w, &out)?;
@@ -175,7 +172,7 @@ fn run_ofn_in_process(
 }
 
 pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), OrchestrateError> {
-    let (clauses, meta, _cached) = run_ofn_split_cached(cfg, ont)?;
+    let (clauses, meta, _cached, _elc_binary) = run_ofn_split_cached(cfg, ont)?;
     Ok((clauses, meta))
 }
 
@@ -186,7 +183,15 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
 pub fn run_ofn_split_cached(
     cfg: &Config,
     ont: &Path,
-) -> Result<(TempPath, Meta, Option<crate::json_io::JInput>), OrchestrateError> {
+) -> Result<
+    (
+        TempPath,
+        Meta,
+        Option<crate::json_io::JInput>,
+        Option<TempPath>,
+    ),
+    OrchestrateError,
+> {
     let prepared = super::input::prepare(ont)?;
     let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
@@ -201,7 +206,7 @@ pub fn run_ofn_split_cached(
         .unwrap_or(false);
     if small && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
         match run_ofn_in_process(ont, clauses.path()) {
-            Ok((meta, cached)) => return Ok((clauses, meta, cached)),
+            Ok((meta, cached)) => return Ok((clauses, meta, cached, None)),
             // OutOfFragment is a real verdict (not a transient failure): surface it
             // exactly as the subprocess exit-3 path does, don't silently retry.
             Err(e @ OrchestrateError::OutOfFragment(_)) => return Err(e),
@@ -210,6 +215,7 @@ pub fn run_ofn_split_cached(
     }
 
     let meta = TempPath::new(".meta.json");
+    let elc_binary = TempPath::new(".elc.bin");
     let stderr = TempPath::new(".ofn.err");
 
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
@@ -218,6 +224,8 @@ pub fn run_ofn_split_cached(
         .arg(ont)
         .arg("--meta")
         .arg(meta.path())
+        .arg("--elc-binary")
+        .arg(elc_binary.path())
         .stdin(Stdio::null())
         .stdout(File::create(clauses.path())?)
         .stderr(File::create(stderr.path())?)
@@ -252,7 +260,11 @@ pub fn run_ofn_split_cached(
     // large ontologies (19 s → 5 s).
     let meta_bytes = std::fs::read(meta.path())?;
     let meta_parsed: Meta = serde_json::from_slice(&meta_bytes)?;
-    Ok((clauses, meta_parsed, None))
+    let elc_binary = std::fs::metadata(elc_binary.path())
+        .ok()
+        .filter(|metadata| metadata.len() > 8)
+        .map(|_| elc_binary);
+    Ok((clauses, meta_parsed, None, elc_binary))
 }
 
 /// Run `ofn` once with `KM_ABSORB` forced on/off, streaming the (full) clause

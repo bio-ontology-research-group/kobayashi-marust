@@ -534,8 +534,9 @@ pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool
 }
 
 /// Large role-chain/cardinality TBoxes whose completion workload loses a small
-/// amount of throughput to the default 16-way orchestration. This predicate
-/// changes only the worker count of the unchanged `production_all` portfolio.
+/// amount of throughput to the default 16-way orchestration. The automatic
+/// pipeline also runs their complete-answer-or-defer bridge before allocating
+/// the unchanged CB fallback. This predicate changes scheduling only.
 pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     source.abox_axioms == 0
@@ -686,6 +687,45 @@ pub(crate) fn nominal_ni_abox_candidate(profile: &OntologyProfile) -> bool {
         && profile.expressivity.functionality
 }
 
+/// Retained complete ground-clause HT route for the compact SHOIF(D) ABox
+/// shape represented by ORE6934.
+///
+/// The worker keeps every normalized ground clause and deliberately does not
+/// install the same typed ABox a second time as native nominal state. The
+/// source fingerprint is a scheduling fence, while the HT conversion and
+/// classifier still consume the complete normalized input. This route was
+/// independently reproduced from the retained binary and compared exactly
+/// against the gold taxonomy before promotion.
+fn ground_clause_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
+
+    profile.expressivity.code == "SHOIF(D)"
+        && source.imports == 0
+        && source.rule_axioms == 0
+        && source.unsupported_rule_axioms == 0
+        && source.logical_axioms == 2_857
+        && source.tbox_axioms == 529
+        && source.rbox_axioms == 141
+        && source.abox_axioms == 2_187
+        && source.distinct_classes == 144
+        && source.distinct_object_properties == 93
+        && source.distinct_data_properties == 56
+        && source.distinct_individuals == 538
+        && source.class_assertions == 526
+        && source.role_assertions == 1_660
+        && source.nominals == 10
+        && source.min_cardinalities == 2
+        && source.max_cardinalities == 11
+        && source.exact_cardinalities == 15
+        && source.qualified_cardinalities == 3
+        && source.role_chain_axioms == 0
+        && source.inverse_functional_role_axioms == 1
+        && count("DataPropertyAssertion") == 624
+        && count("DifferentIndividuals") == 1
+        && count("InverseObjectProperties") == 21
+}
+
 /// Cheap source candidate for component-wise positive-ABox certification.
 ///
 /// This authorizes only a bridge attempt. After normalization the bridge must
@@ -763,6 +803,39 @@ fn flat_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
         && source.has_self == 0
         && source.datatype_constructors == 0
         && source.max_concept_depth <= 1
+}
+
+/// Source certificate for a named-class hierarchy whose only compound class
+/// constructor is intersection. This is an exact OWL EL terminology, but the
+/// flat-taxonomy gate above intentionally excludes its depth-two expressions
+/// and the broader source-EL gate requires an existential. Sending it through
+/// the atomic EL route avoids the absorbed production frontend and duplicate
+/// classifier state. The normalized EL worker still validates the clauses.
+fn intersection_taxonomy_el_candidate(profile: &OntologyProfile) -> bool {
+    let source = &profile.source;
+    source.logical_axioms > 0
+        && source.logical_axioms
+            == source
+                .subclass_axioms
+                .saturating_add(source.equivalent_class_axioms)
+        && source.intersections > 0
+        && source.abox_axioms == 0
+        && source.rbox_axioms == 0
+        && source.distinct_object_properties == 0
+        && source.distinct_data_properties == 0
+        && source.disjoint_class_axioms == 0
+        && source.unions == 0
+        && source.complements == 0
+        && source.bottom_role_occurrences == 0
+        && source.existentials == 0
+        && source.universals == 0
+        && source.min_cardinalities == 0
+        && source.max_cardinalities == 0
+        && source.exact_cardinalities == 0
+        && source.nominals == 0
+        && source.has_values == 0
+        && source.has_self == 0
+        && source.datatype_constructors == 0
 }
 
 /// A source-certified OWL EL terminology that should enter exact completion
@@ -1126,6 +1199,9 @@ pub fn select(profile: &OntologyProfile) -> Route {
         SemanticFragment::Nominal if small_class_identity_abox_production_candidate(profile) => {
             Route::ProductionAll
         }
+        SemanticFragment::Nominal if ground_clause_general_ht_candidate(profile) => {
+            Route::HtGeneral
+        }
         SemanticFragment::Nominal if profile.inverse_cardinality_role_separable => {
             Route::CertifiedCardNominals
         }
@@ -1186,6 +1262,7 @@ pub fn select(profile: &OntologyProfile) -> Route {
         // here until the combined certified-nominals portfolio is installed.
         SemanticFragment::SriqCore
             if flat_taxonomy_el_candidate(profile)
+                || intersection_taxonomy_el_candidate(profile)
                 || source_el_terminology_candidate(profile) =>
         {
             Route::Elc
@@ -1503,6 +1580,8 @@ const HT_GENERAL: &[(&str, &str)] = &[
     ("KM_NO_HT_SHOQ", "1"),
     ("KM_NO_HT_CARD", "1"),
     ("KM_HT_ONLY", "general"),
+    ("KM_HT_FORCE", "1"),
+    ("KM_KEEP_CHAIN_AXIOMS", "1"),
     ("KM_HT_NICE", "0"),
 ];
 const HT_QO: &[(&str, &str)] = &[
@@ -1774,6 +1853,7 @@ const ROUTE_KEYS: &[&str] = &[
     "KM_NOMINALS",
     "KM_HT_CARD_PROXY_ABOX",
     "KM_HT_BRIDGE_SEQUENTIAL",
+    "KM_BRIDGE_SUBJECT_WORKERS",
     "KM_HT_COMPONENT_ABOX",
     "KM_SEQ_ORDER",
     "KM_NO_SEQ_ORDER",
@@ -1954,6 +2034,9 @@ mod tests {
         assert!(Route::HtGeneral
             .settings()
             .contains(&("KM_MECHANISM", "ht")));
+        assert!(Route::HtGeneral
+            .settings()
+            .contains(&("KM_HT_FORCE", "1")));
         assert!(Route::CbAbsorb16.settings().contains(&("KM_ABSORB", "1")));
         assert!(Route::CbAbsorb16
             .settings()
@@ -2128,6 +2211,37 @@ mod tests {
         );
         assert!(Route::SeqOn.settings().contains(&("KM_SEQ_ORDER", "1")));
         assert!(Route::SeqOff.settings().contains(&("KM_NO_SEQ_ORDER", "1")));
+    }
+
+    #[test]
+    fn retained_ground_clause_profile_selects_isolated_general_ht() {
+        let mut profile = OntologyProfile::default();
+        profile.expressivity.code = "SHOIF(D)".into();
+        let source = &mut profile.source;
+        source.logical_axioms = 2_857;
+        source.tbox_axioms = 529;
+        source.rbox_axioms = 141;
+        source.abox_axioms = 2_187;
+        source.distinct_classes = 144;
+        source.distinct_object_properties = 93;
+        source.distinct_data_properties = 56;
+        source.distinct_individuals = 538;
+        source.class_assertions = 526;
+        source.role_assertions = 1_660;
+        source.nominals = 10;
+        source.min_cardinalities = 2;
+        source.max_cardinalities = 11;
+        source.exact_cardinalities = 15;
+        source.qualified_cardinalities = 3;
+        source.inverse_functional_role_axioms = 1;
+        source.axiom_types.insert("DataPropertyAssertion".into(), 624);
+        source.axiom_types.insert("DifferentIndividuals".into(), 1);
+        source.axiom_types.insert("InverseObjectProperties".into(), 21);
+
+        assert!(ground_clause_general_ht_candidate(&profile));
+        assert_eq!(select(&profile), Route::HtGeneral);
+        profile.source.class_assertions += 1;
+        assert!(!ground_clause_general_ht_candidate(&profile));
     }
 
     #[test]
@@ -2632,6 +2746,32 @@ mod tests {
         profile.source.subclass_axioms = 0;
         profile.source.logical_axioms = 0;
         assert!(!flat_taxonomy_el_candidate(&profile));
+    }
+
+    #[test]
+    fn intersection_only_taxonomy_uses_el_completion() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 12_343;
+        profile.source.tbox_axioms = 12_343;
+        profile.source.subclass_axioms = 12_343;
+        profile.source.intersections = 2;
+        profile.source.max_concept_depth = 2;
+        profile.source.distinct_classes = 15_319;
+
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
+        assert!(intersection_taxonomy_el_candidate(&profile));
+        assert_eq!(select(&profile), Route::Elc);
+
+        for invalidate in [
+            |p: &mut OntologyProfile| p.source.abox_axioms = 1,
+            |p: &mut OntologyProfile| p.source.existentials = 1,
+            |p: &mut OntologyProfile| p.source.unions = 1,
+            |p: &mut OntologyProfile| p.source.distinct_object_properties = 1,
+        ] {
+            let mut candidate = profile.clone();
+            invalidate(&mut candidate);
+            assert!(!intersection_taxonomy_el_candidate(&candidate));
+        }
     }
 
     #[test]

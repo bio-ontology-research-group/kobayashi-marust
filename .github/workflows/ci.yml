@@ -12,7 +12,7 @@ jobs:
     name: Rust engine (build + test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -22,7 +22,18 @@ jobs:
         run: cargo build --release --locked
       - name: Test
         working-directory: engine
-        run: cargo test --release --locked
+        shell: bash
+        run: |
+          set +e
+          cargo test --release --locked -- --test-threads=1 2>&1 | tee /tmp/km-test.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if (( status != 0 )); then
+            excerpt=$(tail -120 /tmp/km-test.log | python3 -c \
+              'import sys; s=sys.stdin.read(); s=s[-3500:]; print(s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))')
+            echo "::error file=.github,line=1,title=Rust test failure::$excerpt"
+            exit "$status"
+          fi
       - name: Smoke test (disjunctive subsumption A ⊑ D)
         working-directory: engine
         run: |
@@ -34,7 +45,7 @@ jobs:
     name: Lean proofs (kernel-check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build and kernel-check the formalisation + all validation theorems
         uses: leanprover/lean-action@v1
         with:

@@ -1,6 +1,6 @@
 [package]
 name = "kobayashi-marust"
-version = "0.2.25"
+version = "0.3.42"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
@@ -37,7 +37,7 @@ thin-vec = "0.2.19"
 libc = "0.2"
 horned-owl = { version = "1.4", default-features = false }
 oxrdfio = "0.2"
-dhat = { version = "0.3", optional = true }
+dhat = { version = "=0.3.3", optional = true }
 
 [features]
 # Heap profiling: builds the binaries with dhat's instrumented global

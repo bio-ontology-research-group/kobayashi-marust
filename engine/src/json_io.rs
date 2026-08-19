@@ -30,6 +30,12 @@
 //!   - `{ "kind": "fun", "function": <str>, "arg": <term> }`
 
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use std::io::{self, Write};
+
+const ELC_BINARY_MAGIC: &[u8; 8] = b"KMELC\0\x01\0";
+const ELC_OUTPUT_BINARY_MAGIC: &[u8; 8] = b"KMELCO\x01\0";
+const MAX_BINARY_ITEMS: usize = 100_000_000;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
@@ -47,7 +53,7 @@ pub enum JTerm {
     Fun { function: String, arg: Box<JTerm> },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "kind")]
 pub enum JAtom {
     #[serde(rename = "concept")]
@@ -62,7 +68,7 @@ pub enum JAtom {
     Eq { left: JTerm, right: JTerm },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct JClause {
     pub body: Vec<JAtom>,
     pub head: Vec<JAtom>,
@@ -263,4 +269,412 @@ pub struct JOutput {
     /// role-automaton transformation). Soundness-preserving; nonzero only costs
     /// completeness. Zero on all benchmarks after the `augment` preprocessing.
     pub dropped: usize,
+}
+
+/// Dictionary-coded complete EL taxonomy used only for the worker-to-
+/// orchestrator handoff. Each concept name is owned once and relation rows
+/// carry integer endpoints, avoiding one allocated `String` per taxonomy pair.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompactElcOutput {
+    pub names: Vec<String>,
+    pub rows: Vec<(u32, Vec<u32>)>,
+    pub inconsistent: bool,
+    pub dropped: usize,
+}
+
+/// Write a complete EL result in a compact, versioned representation. The
+/// caller must retain JSON for partial results because their residue is merged
+/// with a CB taxonomy through the established map-based path.
+pub fn write_elc_output_binary<W: Write>(
+    mut writer: W,
+    subsumptions: &BTreeMap<String, Vec<String>>,
+    inconsistent: bool,
+    dropped: usize,
+) -> io::Result<()> {
+    let mut ids: HashMap<&str, u32> = HashMap::with_capacity(subsumptions.len());
+    let mut names: Vec<&str> = Vec::with_capacity(subsumptions.len());
+    for name in subsumptions.keys() {
+        let id = u32::try_from(names.len()).map_err(|_| invalid_binary("too many names"))?;
+        ids.insert(name.as_str(), id);
+        names.push(name);
+    }
+    for supers in subsumptions.values() {
+        for superclass in supers {
+            if !ids.contains_key(superclass.as_str()) {
+                let id =
+                    u32::try_from(names.len()).map_err(|_| invalid_binary("too many names"))?;
+                ids.insert(superclass.as_str(), id);
+                names.push(superclass);
+            }
+        }
+    }
+
+    writer.write_all(ELC_OUTPUT_BINARY_MAGIC)?;
+    writer.write_all(&[u8::from(inconsistent)])?;
+    write_len(&mut writer, dropped)?;
+    write_len(&mut writer, names.len())?;
+    for name in names {
+        write_string(&mut writer, name)?;
+    }
+    write_len(&mut writer, subsumptions.len())?;
+    for (subject, supers) in subsumptions {
+        writer.write_all(&ids[subject.as_str()].to_le_bytes())?;
+        write_len(&mut writer, supers.len())?;
+        for superclass in supers {
+            writer.write_all(&ids[superclass.as_str()].to_le_bytes())?;
+        }
+    }
+    Ok(())
+}
+
+/// Decode a compact complete EL result. `Ok(None)` preserves compatibility
+/// with the established JSON worker contract.
+pub fn decode_elc_output_binary(bytes: &[u8]) -> io::Result<Option<CompactElcOutput>> {
+    if !bytes.starts_with(ELC_OUTPUT_BINARY_MAGIC) {
+        return Ok(None);
+    }
+    let mut cursor = BinaryCursor {
+        bytes,
+        offset: ELC_OUTPUT_BINARY_MAGIC.len(),
+    };
+    let inconsistent = match cursor.byte()? {
+        0 => false,
+        1 => true,
+        _ => return Err(invalid_binary("invalid consistency flag")),
+    };
+    let dropped = cursor.len()?;
+    let name_count = cursor.len()?;
+    let mut names = Vec::with_capacity(name_count);
+    for _ in 0..name_count {
+        names.push(cursor.string()?);
+    }
+    let row_count = cursor.len()?;
+    let mut rows = Vec::with_capacity(row_count);
+    let mut pair_count = 0usize;
+    for _ in 0..row_count {
+        let subject = cursor.u32()?;
+        if subject as usize >= name_count {
+            return Err(invalid_binary("subject id out of range"));
+        }
+        let super_count = cursor.len()?;
+        pair_count = pair_count
+            .checked_add(super_count)
+            .ok_or_else(|| invalid_binary("pair count overflow"))?;
+        if pair_count > MAX_BINARY_ITEMS {
+            return Err(invalid_binary("pair count exceeds limit"));
+        }
+        let mut supers = Vec::with_capacity(super_count);
+        for _ in 0..super_count {
+            let superclass = cursor.u32()?;
+            if superclass as usize >= name_count {
+                return Err(invalid_binary("superclass id out of range"));
+            }
+            supers.push(superclass);
+        }
+        rows.push((subject, supers));
+    }
+    if cursor.offset != bytes.len() {
+        return Err(invalid_binary("trailing bytes"));
+    }
+    Ok(Some(CompactElcOutput {
+        names,
+        rows,
+        inconsistent,
+        dropped,
+    }))
+}
+
+#[inline]
+pub fn is_elc_output_binary(bytes: &[u8]) -> bool {
+    bytes.starts_with(ELC_OUTPUT_BINARY_MAGIC)
+}
+
+/// Write the clause-only input consumed by exact EL completion in a compact,
+/// versioned representation. The ordinary JSON file remains authoritative for
+/// every non-EL route and fallback.
+pub fn write_elc_binary<W: Write>(mut writer: W, clauses: &[JClause]) -> io::Result<()> {
+    writer.write_all(ELC_BINARY_MAGIC)?;
+    write_len(&mut writer, clauses.len())?;
+    for clause in clauses {
+        write_len(&mut writer, clause.body.len())?;
+        for atom in &clause.body {
+            write_atom(&mut writer, atom)?;
+        }
+        write_len(&mut writer, clause.head.len())?;
+        for atom in &clause.head {
+            write_atom(&mut writer, atom)?;
+        }
+    }
+    Ok(())
+}
+
+/// Decode a compact EL handoff. `Ok(None)` means the input uses the established
+/// JSON contract, allowing one worker entry point to accept both formats.
+pub fn decode_elc_binary(bytes: &[u8]) -> io::Result<Option<Vec<JClause>>> {
+    if !bytes.starts_with(ELC_BINARY_MAGIC) {
+        return Ok(None);
+    }
+    let mut cursor = BinaryCursor {
+        bytes,
+        offset: ELC_BINARY_MAGIC.len(),
+    };
+    let clause_count = cursor.len()?;
+    let mut clauses = Vec::with_capacity(clause_count);
+    for _ in 0..clause_count {
+        let body_count = cursor.len()?;
+        let mut body = Vec::with_capacity(body_count);
+        for _ in 0..body_count {
+            body.push(cursor.atom()?);
+        }
+        let head_count = cursor.len()?;
+        let mut head = Vec::with_capacity(head_count);
+        for _ in 0..head_count {
+            head.push(cursor.atom()?);
+        }
+        clauses.push(JClause { body, head });
+    }
+    if cursor.offset != bytes.len() {
+        return Err(invalid_binary("trailing bytes"));
+    }
+    Ok(Some(clauses))
+}
+
+fn write_len<W: Write>(writer: &mut W, len: usize) -> io::Result<()> {
+    let len = u32::try_from(len).map_err(|_| invalid_binary("length exceeds u32"))?;
+    writer.write_all(&len.to_le_bytes())
+}
+
+fn write_string<W: Write>(writer: &mut W, value: &str) -> io::Result<()> {
+    write_len(writer, value.len())?;
+    writer.write_all(value.as_bytes())
+}
+
+fn write_term<W: Write>(writer: &mut W, term: &JTerm) -> io::Result<()> {
+    match term {
+        JTerm::Var { name } => {
+            writer.write_all(&[0])?;
+            write_string(writer, name)
+        }
+        JTerm::Ind { name } => {
+            writer.write_all(&[1])?;
+            write_string(writer, name)
+        }
+        JTerm::Aux { root, label } => {
+            writer.write_all(&[2])?;
+            write_string(writer, root)?;
+            write_len(writer, label.len())?;
+            for (name, value) in label {
+                write_string(writer, name)?;
+                writer.write_all(&value.to_le_bytes())?;
+            }
+            Ok(())
+        }
+        JTerm::Fun { function, arg } => {
+            writer.write_all(&[3])?;
+            write_string(writer, function)?;
+            write_term(writer, arg)
+        }
+    }
+}
+
+fn write_atom<W: Write>(writer: &mut W, atom: &JAtom) -> io::Result<()> {
+    match atom {
+        JAtom::Concept { concept, term } => {
+            writer.write_all(&[0])?;
+            write_string(writer, concept)?;
+            write_term(writer, term)
+        }
+        JAtom::Role {
+            role,
+            source,
+            target,
+        } => {
+            writer.write_all(&[1])?;
+            write_string(writer, role)?;
+            write_term(writer, source)?;
+            write_term(writer, target)
+        }
+        JAtom::Eq { left, right } => {
+            writer.write_all(&[2])?;
+            write_term(writer, left)?;
+            write_term(writer, right)
+        }
+    }
+}
+
+fn invalid_binary(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+struct BinaryCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> BinaryCursor<'a> {
+    fn take(&mut self, len: usize) -> io::Result<&'a [u8]> {
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or_else(|| invalid_binary("offset overflow"))?;
+        let value = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or_else(|| invalid_binary("truncated input"))?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn byte(&mut self) -> io::Result<u8> {
+        Ok(self.take(1)?[0])
+    }
+
+    fn u32(&mut self) -> io::Result<u32> {
+        let bytes: [u8; 4] = self.take(4)?.try_into().unwrap();
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn i64(&mut self) -> io::Result<i64> {
+        let bytes: [u8; 8] = self.take(8)?.try_into().unwrap();
+        Ok(i64::from_le_bytes(bytes))
+    }
+
+    fn len(&mut self) -> io::Result<usize> {
+        let len = self.u32()? as usize;
+        if len > MAX_BINARY_ITEMS {
+            return Err(invalid_binary("item count exceeds limit"));
+        }
+        Ok(len)
+    }
+
+    fn string(&mut self) -> io::Result<String> {
+        let len = self.len()?;
+        let bytes = self.take(len)?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| invalid_binary("invalid UTF-8"))
+    }
+
+    fn term(&mut self) -> io::Result<JTerm> {
+        match self.byte()? {
+            0 => Ok(JTerm::Var {
+                name: self.string()?,
+            }),
+            1 => Ok(JTerm::Ind {
+                name: self.string()?,
+            }),
+            2 => {
+                let root = self.string()?;
+                let count = self.len()?;
+                let mut label = Vec::with_capacity(count);
+                for _ in 0..count {
+                    label.push((self.string()?, self.i64()?));
+                }
+                Ok(JTerm::Aux { root, label })
+            }
+            3 => Ok(JTerm::Fun {
+                function: self.string()?,
+                arg: Box::new(self.term()?),
+            }),
+            _ => Err(invalid_binary("unknown term tag")),
+        }
+    }
+
+    fn atom(&mut self) -> io::Result<JAtom> {
+        match self.byte()? {
+            0 => Ok(JAtom::Concept {
+                concept: self.string()?,
+                term: self.term()?,
+            }),
+            1 => Ok(JAtom::Role {
+                role: self.string()?,
+                source: self.term()?,
+                target: self.term()?,
+            }),
+            2 => Ok(JAtom::Eq {
+                left: self.term()?,
+                right: self.term()?,
+            }),
+            _ => Err(invalid_binary("unknown atom tag")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod elc_binary_tests {
+    use super::*;
+
+    #[test]
+    fn compact_elc_handoff_round_trips_every_atom_and_term_shape() {
+        let clauses = vec![JClause {
+            body: vec![
+                JAtom::Concept {
+                    concept: "A".into(),
+                    term: JTerm::Var { name: "x".into() },
+                },
+                JAtom::Role {
+                    role: "r".into(),
+                    source: JTerm::Ind { name: "i".into() },
+                    target: JTerm::Fun {
+                        function: "f".into(),
+                        arg: Box::new(JTerm::Aux {
+                            root: "root".into(),
+                            label: vec![("L".into(), -7)],
+                        }),
+                    },
+                },
+            ],
+            head: vec![JAtom::Eq {
+                left: JTerm::Var { name: "x".into() },
+                right: JTerm::Ind { name: "i".into() },
+            }],
+        }];
+        let mut bytes = Vec::new();
+        write_elc_binary(&mut bytes, &clauses).unwrap();
+        let decoded = decode_elc_binary(&bytes).unwrap().unwrap();
+        assert_eq!(
+            serde_json::to_vec(&clauses).unwrap(),
+            serde_json::to_vec(&decoded).unwrap()
+        );
+        assert!(decode_elc_binary(br#"{"clauses":[]}"#).unwrap().is_none());
+    }
+
+    #[test]
+    fn compact_elc_handoff_rejects_truncation_and_trailing_bytes() {
+        let mut bytes = Vec::new();
+        write_elc_binary(&mut bytes, &[]).unwrap();
+        assert!(decode_elc_binary(&bytes[..bytes.len() - 1]).is_err());
+        bytes.push(0);
+        assert!(decode_elc_binary(&bytes).is_err());
+    }
+
+    #[test]
+    fn compact_elc_output_shares_names_and_round_trips_rows() {
+        let subsumptions = BTreeMap::from([
+            ("A".to_string(), vec!["A".to_string(), "Top".to_string()]),
+            ("B".to_string(), vec!["Top".to_string()]),
+        ]);
+        let mut bytes = Vec::new();
+        write_elc_output_binary(&mut bytes, &subsumptions, true, 7).unwrap();
+        let decoded = decode_elc_output_binary(&bytes).unwrap().unwrap();
+        assert_eq!(decoded.names, vec!["A", "B", "Top"]);
+        assert_eq!(decoded.rows, vec![(0, vec![0, 2]), (1, vec![2])]);
+        assert!(decoded.inconsistent);
+        assert_eq!(decoded.dropped, 7);
+        assert!(decode_elc_output_binary(br#"{"subsumptions":{}}"#)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn compact_elc_output_rejects_bad_ids_and_truncation() {
+        let subsumptions = BTreeMap::from([("A".to_string(), vec!["A".to_string()])]);
+        let mut bytes = Vec::new();
+        write_elc_output_binary(&mut bytes, &subsumptions, false, 0).unwrap();
+        assert!(decode_elc_output_binary(&bytes[..bytes.len() - 1]).is_err());
+
+        // Header + flag + dropped + name-count + one length-prefixed name +
+        // row-count, followed by the first subject id.
+        let subject_offset = ELC_OUTPUT_BINARY_MAGIC.len() + 1 + 4 + 4 + 4 + 1 + 4;
+        bytes[subject_offset..subject_offset + 4].copy_from_slice(&9u32.to_le_bytes());
+        assert!(decode_elc_output_binary(&bytes).is_err());
+    }
 }
