@@ -25,6 +25,14 @@ structure EqState (Node : Type u) (Concept : Type v) (Role : Type w) where
   equiv : Node → Node → Prop
   equiv_equivalence : Equivalence equiv
 
+@[ext] theorem EqState.ext
+    {left right : EqState Node Concept Role}
+    (hbase : left.base = right.base)
+    (hequiv : left.equiv = right.equiv) : left = right := by
+  cases left
+  cases right
+  simp_all
+
 def EqState.holdsAtom (state : EqState Node Concept Role)
     (assignment : Variable → Node) : Atom Variable Concept Role → Prop
   | .eq left right => state.equiv (assignment left) (assignment right)
