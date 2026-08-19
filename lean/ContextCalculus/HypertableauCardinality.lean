@@ -79,6 +79,22 @@ def Interp.modelsCardinalityDefs
     (definitions : List (CardinalityDef Concept Role)) : Prop :=
   ∀ definition ∈ definitions, I.modelsCardinalityDef definition
 
+def EntailsSubWithCardinality
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (sub sup : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    I.models ontology → I.modelsCardinalityDefs definitions →
+      ∀ value, I.concept sub value → I.concept sup value
+
+def UnsatisfiableConceptWithCardinality
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (concept : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    I.models ontology → I.modelsCardinalityDefs definitions →
+      ∀ value, ¬I.concept concept value
+
 theorem Interp.modelsCardinalityDefs_cons
     (I : Interp Domain Concept Role)
     (definition : CardinalityDef Concept Role)
