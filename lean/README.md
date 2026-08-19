@@ -243,6 +243,21 @@ finite model or a closed refutation tree. Complete blocking/termination
 correspondence, equality/cardinality, inverse roles, nominals, and native ABoxes
 remain to be connected or proved.
 
+### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
+
+`HypertableauEquality.lean` extends abstract branch states with an explicit node
+equivalence relation. A realization must map equivalent nodes to one domain
+element. Equality-head assertion takes the generated equivalence closure, and
+`EqState.merge_realized` proves that every model satisfying the equality head
+realizes the merged branch. The generalized branch theorem accepts concept,
+role, existential, and equality heads without a semantic side condition.
+
+`EqRefutes.sound` composes equality merges with fresh existential witnesses and
+detects complementary labels modulo node equivalence. This is the semantic
+target for the implementation's union-find merge. The finite union-find
+checker, JSON refinement, and Rust equality-certificate producer are not yet
+connected, so the executable checker continues to reject equality heads.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
