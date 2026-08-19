@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.57] – 2026-08-20
+
+### Compose cardinality refutations with ordinary HT rules
+
+- Extend the distinct-aware cardinality semantics with equality refutations,
+  explicit concept clashes, exhaustive clause branching, and existential
+  witness materialization.
+- Prove that assigning an existential witness to a fresh node preserves every
+  previously recorded apart pair.
+- Extend the finite checker with exact apart-preserving branch transitions and
+  distinct-fresh witness checks.
+- Extend the bounds-checked wire tree with equality, clash, branch, and witness
+  nodes, allowing these rules to compose with minimum and maximum cardinality
+  rules in one checked refutation.
+- Add native tests for ordinary branch and witness recursion through the public
+  distinct-aware wire checker.
+
+This release certifies supplied mixed ordinary/cardinality HT refutations. It
+does not yet prove HT termination or guarantee that the Rust reasoner produces
+such evidence for every closed search.
+
 ## [0.3.56] – 2026-08-20
 
 ### Certify first-class HT cardinality evidence and pigeonhole closure

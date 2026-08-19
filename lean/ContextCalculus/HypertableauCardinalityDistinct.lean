@@ -51,6 +51,18 @@ def DistinctEqState.merge (state : DistinctEqState Node Concept Role)
   base := state.base.merge left right
   apart := state.apart
 
+def DistinctEqState.assertAtom (state : DistinctEqState Node Concept Role)
+    (assignment : Variable → Node) (atom : Atom Variable Concept Role) :
+    DistinctEqState Node Concept Role where
+  base := state.base.assertAtom assignment atom
+  apart := state.apart
+
+def DistinctEqState.materializeWitness (state : DistinctEqState Node Concept Role)
+    (source target : Node) (role : Role) (filler : Lit Concept) :
+    DistinctEqState Node Concept Role where
+  base := state.base.materializeWitness source target role filler
+  apart := state.apart
+
 def DistinctEqState.materializeMinimum (state : DistinctEqState Node Concept Role)
     (source : Node) (targets : Fin count → Node) (role : Role) (filler : Concept) :
     DistinctEqState Node Concept Role where
@@ -74,6 +86,78 @@ theorem DistinctEqState.merge_realized
     (hequal : value left = value right) :
     (state.merge left right).RealizedBy I value := by
   exact ⟨state.base.merge_realized I value hrealized.1 left right hequal, hrealized.2⟩
+
+theorem DistinctEqState.materializeWitness_realized
+    (state : DistinctEqState Node Concept Role) (I : Interp Domain Concept Role)
+    (value : Node → Domain) (hrealized : state.RealizedBy I value)
+    (source target : Node) (role : Role) (filler : Lit Concept)
+    (hobligation : state.base.base.obligation role filler source)
+    (hfresh : state.Fresh target) :
+    ∃ value', (state.materializeWitness source target role filler).RealizedBy I value' := by
+  classical
+  rcases hrealized.1.1.2.2 role filler source hobligation with
+    ⟨witness, hedge, hfiller⟩
+  have hsource : source ≠ target := by
+    intro heq
+    subst source
+    exact hfresh.1.1.2.2 role filler hobligation
+  let value' := Function.update value target witness
+  refine ⟨value', ⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_⟩
+  · intro node lit hlabel
+    rcases hlabel with hlabel | ⟨rfl, rfl⟩
+    · have hnode : node ≠ target := by
+        intro heq
+        subst node
+        exact hfresh.1.1.1 lit hlabel
+      simpa [value', Function.update_of_ne hnode] using
+        hrealized.1.1.1 node lit hlabel
+    · simpa [value'] using hfiller
+  · intro candidateRole candidateSource candidateTarget hedge'
+    rcases hedge' with hedge' | ⟨rfl, rfl, rfl⟩
+    · have hsource' : candidateSource ≠ target := by
+        intro heq
+        subst candidateSource
+        exact (hfresh.1.1.2.1 candidateRole candidateTarget).1 hedge'
+      have htarget' : candidateTarget ≠ target := by
+        intro heq
+        subst candidateTarget
+        exact (hfresh.1.1.2.1 candidateRole candidateSource).2 hedge'
+      simpa [value', Function.update_of_ne hsource', Function.update_of_ne htarget'] using
+        hrealized.1.1.2.1 candidateRole candidateSource candidateTarget hedge'
+    · simpa [value', Function.update_of_ne hsource] using hedge
+  · intro candidateRole candidateFiller node hobligation'
+    have hnode : node ≠ target := by
+      intro heq
+      subst node
+      exact hfresh.1.1.2.2 candidateRole candidateFiller hobligation'
+    rcases hrealized.1.1.2.2 candidateRole candidateFiller node hobligation' with
+      ⟨witness', hedge', hfiller'⟩
+    exact ⟨witness', by
+      simpa [value', Function.update_of_ne hnode] using hedge', hfiller'⟩
+  · intro left right hequiv
+    by_cases hleft : left = target
+    · subst left
+      have hright := hfresh.1.2 right hequiv
+      subst right
+      rfl
+    · by_cases hright : right = target
+      · subst right
+        have hleftTarget := hfresh.1.2 left
+          (state.base.equiv_equivalence.2 hequiv)
+        exact (hleft hleftTarget).elim
+      · have hold := hrealized.1.2 left right hequiv
+        simpa [value', Function.update_of_ne hleft, Function.update_of_ne hright] using hold
+  · intro left right hapart
+    have hleft : left ≠ target := by
+      intro heq
+      subst left
+      exact (hfresh.2 right).1 hapart
+    have hright : right ≠ target := by
+      intro heq
+      subst right
+      exact (hfresh.2 left).2 hapart
+    simpa [value', Function.update_of_ne hleft, Function.update_of_ne hright] using
+      hrealized.2 left right hapart
 
 theorem DistinctEqState.materializeMinimum_realized
     (state : DistinctEqState Node Concept Role)
@@ -106,6 +190,27 @@ inductive DistinctCardinalityRefutes (Node : Type u)
     (ontology : List (Clause Variable Concept Role))
     (definitions : List (CardinalityDef Concept Role)) :
     DistinctEqState Node Concept Role → Prop where
+  | equality (state) (tree : EqRefutes Node ontology state.base) :
+      DistinctCardinalityRefutes Node ontology definitions state
+  | clash (state)
+      (hclash : ∃ positiveNode negativeNode concept,
+        state.base.equiv positiveNode negativeNode ∧
+          state.base.base.label positiveNode (.pos concept) ∧
+          state.base.base.label negativeNode (.negated concept)) :
+      DistinctCardinalityRefutes Node ontology definitions state
+  | branch (state) (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology) (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body, state.base.holdsAtom assignment atom)
+      (children : ∀ atom, atom ∈ clause.head →
+        DistinctCardinalityRefutes Node ontology definitions
+          (state.assertAtom assignment atom)) :
+      DistinctCardinalityRefutes Node ontology definitions state
+  | witness (state) (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.base.base.obligation role filler source)
+      (hfresh : state.Fresh target)
+      (child : DistinctCardinalityRefutes Node ontology definitions
+        (state.materializeWitness source target role filler)) :
+      DistinctCardinalityRefutes Node ontology definitions state
   | equalityApart (state) (left right : Node)
       (hequal : state.base.equiv left right)
       (hapart : state.apart left right) :
@@ -137,6 +242,27 @@ theorem DistinctCardinalityRefutes.sound
     (hrefutes : DistinctCardinalityRefutes Node ontology definitions state) :
     ¬state.RealizableWithCardinality ontology definitions := by
   induction hrefutes with
+  | equality state tree =>
+      rintro ⟨Domain, I, value, hmodels, _, hrealized⟩
+      exact tree.sound ⟨Domain, I, value, hmodels, hrealized.1⟩
+  | clash state hclash =>
+      rintro ⟨Domain, I, value, _, _, hrealized⟩
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hpositiveSat := hrealized.1.1.1 positiveNode (.pos concept) hpositive
+      have hnegativeSat := hrealized.1.1.1 negativeNode (.negated concept) hnegative
+      rw [← hrealized.1.2 positiveNode negativeNode hequiv] at hnegativeSat
+      exact hnegativeSat hpositiveSat
+  | branch state clause hclause assignment hbody children ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      rcases state.base.hyper_branch_sound I value hrealized.1 clause
+          (hmodels clause hclause) assignment hbody with ⟨atom, hatom, hchild⟩
+      exact ih atom hatom ⟨Domain, I, value, hmodels, hcardinality, hchild, hrealized.2⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      rcases state.materializeWitness_realized I value hrealized source target role filler
+          hobligation hfresh with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
   | equalityApart state left right hequal hapart =>
       exact state.equality_apart_clash left right hequal hapart
   | maximum state definition hdefinition hkind source hmarker witnesses
@@ -216,6 +342,7 @@ theorem DistinctCardinalityRefutes.pigeonhole
 
 #print axioms DistinctEqState.equality_apart_clash
 #print axioms DistinctEqState.merge_realized
+#print axioms DistinctEqState.materializeWitness_realized
 #print axioms DistinctEqState.materializeMinimum_realized
 #print axioms DistinctCardinalityRefutes.sound
 #print axioms DistinctCardinalityRefutes.pigeonhole

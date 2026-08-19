@@ -35,8 +35,14 @@ def WireDistinctEqState.decode
   return ⟨base, apart⟩
 
 inductive WireDistinctCardinalityRefutationTree where
+  | equality (tree : WireEqRefutationTree)
+  | clash
   | equality_apart (left right : Nat)
   | delay (child : WireDistinctCardinalityRefutationTree)
+  | branch (clause : Nat) (assignment : List Nat)
+      (children : List (WireDistinctEqState × WireDistinctCardinalityRefutationTree))
+  | witness (source target role : Nat) (filler : WireLit)
+      (child : WireDistinctCardinalityRefutationTree)
   | maximum (definition source : Nat) (witnesses : List Nat)
       (children : List (List (WireDistinctEqState ×
         WireDistinctCardinalityRefutationTree)))
@@ -51,6 +57,9 @@ def WireDistinctCardinalityRefutationTree.decodeAtDepth
     (depth : Nat) → WireDistinctCardinalityRefutationTree → Except String
       (FiniteDistinctCardinalityRefutationTree
         nodeCount conceptCount roleCount variableCount depth)
+  | 0, .equality tree => do
+      return .equality (← tree.decode nodeCount conceptCount roleCount variableCount ontology)
+  | 0, .clash => return .clash
   | 0, .equality_apart left right => do
       return .equalityApart
         (← checkedFin "apart node" nodeCount left)
@@ -78,6 +87,29 @@ def WireDistinctCardinalityRefutationTree.decodeAtDepth
         witnessVector
         (fun left right => (childMatrix left right).1)
         (fun left right => (childMatrix left right).2)
+  | depth + 1, .branch clauseIndex assignment children => do
+      let clause ← match ontology[clauseIndex]? with
+        | some clause => pure clause
+        | none => throw s!"clause id {clauseIndex} is outside the ontology"
+      let decodedAssignment ← decodeAssignment nodeCount variableCount assignment
+      let decodedChildren ← children.mapM fun child => do
+        let state ← child.1.decode nodeCount conceptCount roleCount variableCount ontology
+        let tree ← child.2.decodeAtDepth nodeCount conceptCount roleCount variableCount
+          ontology definitions depth
+        return (state, tree)
+      let childVector ← decodeExactVector "distinct branch children"
+        clause.head.length decodedChildren
+      return .branch clause decodedAssignment
+        (fun index => (childVector index).1)
+        (fun index => (childVector index).2)
+  | depth + 1, .witness source target role filler child => do
+      return .witness
+        (← checkedFin "node" nodeCount source)
+        (← checkedFin "node" nodeCount target)
+        (← checkedFin "role" roleCount role)
+        (← filler.decode conceptCount)
+        (← child.decodeAtDepth nodeCount conceptCount roleCount variableCount
+          ontology definitions depth)
   | depth + 1, .minimum definitionIndex source targets next child => do
       let definition ← match definitions[definitionIndex]? with
         | some definition => pure definition
@@ -91,10 +123,14 @@ def WireDistinctCardinalityRefutationTree.decodeAtDepth
         (← child.decodeAtDepth nodeCount conceptCount roleCount variableCount
           ontology definitions depth)
   | 0, .delay _ => .error "delay node requires positive declared depth"
+  | 0, .branch .. => .error "branch node requires positive declared depth"
+  | 0, .witness .. => .error "witness node requires positive declared depth"
   | 0, .maximum .. => .error "maximum node requires positive declared depth"
   | 0, .minimum .. => .error "minimum node requires positive declared depth"
   | _ + 1, .equality_apart .. =>
       .error "equality-apart leaf requires declared depth zero"
+  | _ + 1, .equality _ => .error "equality leaf requires declared depth zero"
+  | _ + 1, .clash => .error "clash leaf requires declared depth zero"
 
 def WireDistinctCardinalityRefutationTree.check
     (nodeCount conceptCount roleCount variableCount depth : Nat)
@@ -195,6 +231,51 @@ private def badTree : WireDistinctCardinalityRefutationTree :=
     ])
 
 example : badTree.check 3 1 1 0 2 [] [minimum, maximum] root = .ok false := by
+  native_decide
+
+private def witnessRootBase : WireEqState where
+  labels := [
+    { node := 0, literal := { concept := 0, neg := false } },
+    { node := 0, literal := { concept := 0, neg := true } }
+  ]
+  edges := []
+  obligations := [{ role := 0, filler := { concept := 0, neg := false }, node := 0 }]
+  equalities := []
+  representatives := [0, 1]
+  representative_paths := [[], []]
+
+private def witnessRoot : WireDistinctEqState :=
+  { base := witnessRootBase, apart := [] }
+
+private def witnessTree : WireDistinctCardinalityRefutationTree :=
+  .witness 0 1 0 { concept := 0, neg := false } .clash
+
+example : witnessTree.check 2 1 1 0 1 [] [] witnessRoot = .ok true := by
+  native_decide
+
+private def branchClause : Clause (Fin 1) (Fin 1) (Fin 1) :=
+  { body := [], head := [.concept (.pos 0) 0] }
+
+private def branchRootBase : WireEqState where
+  labels := [{ node := 0, literal := { concept := 0, neg := true } }]
+  edges := []
+  obligations := []
+  equalities := []
+  representatives := [0]
+  representative_paths := [[]]
+
+private def branchNextBase : WireEqState :=
+  { branchRootBase with
+    labels := [
+      { node := 0, literal := { concept := 0, neg := false } },
+      { node := 0, literal := { concept := 0, neg := true } }
+    ] }
+
+private def branchTree : WireDistinctCardinalityRefutationTree :=
+  .branch 0 [0] [({ base := branchNextBase, apart := [] }, .clash)]
+
+example : branchTree.check 1 1 1 1 1 [branchClause] []
+    { base := branchRootBase, apart := [] } = .ok true := by
   native_decide
 
 end DistinctCardinalityWireTests
