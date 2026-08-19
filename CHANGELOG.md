@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.53] – 2026-08-19
+
+### Cover interleaved HT trigger-absorption heads
+
+- Generalize the trigger-absorption certificate so the original clause head
+  may interleave positive and negative concept literals in any order, exactly
+  as Rust preserves them.
+- Require a checked permutation between the original head and its negative and
+  positive partitions. The semantic proof uses this permutation in both
+  directions, so it neither assumes nor trusts a physical reorder.
+- Add a regression proof for the concrete interleaving `P₀ ∨ ¬N ∨ P₂`, whose
+  absorbed form is `N → P₀ ∨ P₂`.
+
+This corrects an overly narrow proof-object shape in v0.3.52. The theorem was
+sound for every certificate it admitted, but it did not cover every mixed-head
+ordering accepted by Rust. Runtime preprocessing certification remains
+fail-closed pending its executable correspondence checker.
+
 ## [0.3.52] – 2026-08-19
 
 ### Prove semantic preservation of HT clause preprocessing

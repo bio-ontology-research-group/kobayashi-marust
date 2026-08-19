@@ -33,10 +33,9 @@ structure TriggerAbsorption
   node : Variable
   negative : List Concept
   positive : List Concept
-  source_eq : source = {
-    body := []
-    head := negativeConceptAtoms node negative ++
-      positiveConceptAtoms node positive }
+  source_body : source.body = []
+  source_head : source.head.Perm
+    (negativeConceptAtoms node negative ++ positiveConceptAtoms node positive)
   target_eq : target = {
     body := positiveConceptAtoms node negative
     head := positiveConceptAtoms node positive }
@@ -46,10 +45,11 @@ theorem TriggerAbsorption.modelsClause_iff
     (certificate : TriggerAbsorption source target)
     (I : Interp Domain Concept Role) :
     I.modelsClause source ↔ I.modelsClause target := by
-  rcases certificate with ⟨node, negative, positive, rfl, rfl⟩
+  rcases certificate with ⟨node, negative, positive, sourceBody, sourceHead, rfl⟩
   constructor
   · intro hsource assignment hbody
-    rcases hsource assignment (by simp) with ⟨atom, hatom, hsat⟩
+    rcases hsource assignment (by simpa [sourceBody]) with ⟨atom, hatom, hsat⟩
+    have hatom := sourceHead.mem_iff.mp hatom
     rw [List.mem_append] at hatom
     rcases hatom with hnegative | hpositive
     · rcases List.mem_map.mp hnegative with ⟨concept, hconcept, rfl⟩
@@ -64,14 +64,14 @@ theorem TriggerAbsorption.modelsClause_iff
           intro atom hatom
           rcases List.mem_map.mp hatom with ⟨concept, hconcept, rfl⟩
           exact hall concept hconcept) with ⟨atom, hatom, hsat⟩
-      exact ⟨atom, List.mem_append_right _ hatom, hsat⟩
+      exact ⟨atom, sourceHead.mem_iff.mpr (List.mem_append_right _ hatom), hsat⟩
     · push Not at hall
       rcases hall with ⟨concept, hconcept, hmissing⟩
       let atom : Atom Variable Concept Role :=
         .concept (.negated concept) node
       have hatom : atom ∈ negativeConceptAtoms node negative :=
         List.mem_map.mpr ⟨concept, hconcept, rfl⟩
-      exact ⟨atom, List.mem_append_left _ hatom, hmissing⟩
+      exact ⟨atom, sourceHead.mem_iff.mpr (List.mem_append_left _ hatom), hmissing⟩
 
 theorem TriggerAbsorption.models_iff
     {source target : Clause Variable Concept Role}
@@ -223,6 +223,35 @@ def PreprocessingCertificate.modelEquivalent
     (certificate : PreprocessingCertificate source target) :
     ModelEquivalent source target :=
   fun _ I => certificate.models_iff I
+
+section Tests
+
+private def interleavedSource : Clause (Fin 1) (Fin 3) (Fin 0) := {
+  body := []
+  head := [
+    .concept (.pos 0) 0,
+    .concept (.negated 1) 0,
+    .concept (.pos 2) 0] }
+
+private def interleavedTarget : Clause (Fin 1) (Fin 3) (Fin 0) := {
+  body := [.concept (.pos 1) 0]
+  head := [.concept (.pos 0) 0, .concept (.pos 2) 0] }
+
+private def interleavedProof :
+    TriggerAbsorption interleavedSource interleavedTarget := {
+  node := 0
+  negative := [1]
+  positive := [0, 2]
+  source_body := rfl
+  source_head := by decide
+  target_eq := rfl
+}
+
+example (I : Interp Domain (Fin 3) (Fin 0)) :
+    I.modelsClause interleavedSource ↔ I.modelsClause interleavedTarget :=
+  interleavedProof.modelsClause_iff I
+
+end Tests
 
 #print axioms Interp.satLit_complement_iff_not
 #print axioms TriggerAbsorption.modelsClause_iff
