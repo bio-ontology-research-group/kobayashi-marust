@@ -2466,6 +2466,51 @@ enum LeanHtRefutationOutcome {
     Invalid(String),
 }
 
+#[derive(Clone, Copy)]
+enum LeanHtTaxonomyQuery {
+    Concept(C),
+    Subsumption(C, C),
+}
+
+impl LeanHtTaxonomyQuery {
+    fn initial_labels(self) -> Vec<(Node, CLit)> {
+        match self {
+            Self::Concept(concept) => vec![(0, CLit::pos(concept))],
+            Self::Subsumption(sub, sup) => {
+                vec![(0, CLit::pos(sub)), (0, CLit { c: sup, neg: true })]
+            }
+        }
+    }
+
+    fn plain_open_evidence(self) -> LeanHtEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEvidence::SatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEvidence::NonSubsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+            },
+        }
+    }
+
+    fn equality_open_evidence(self) -> LeanHtEqEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEqEvidence::SatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEqEvidence::NonSubsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+            },
+        }
+    }
+}
+
 struct LeanHtAddressFrontier {
     node_count: usize,
     addresses: Vec<Vec<(R, CLit)>>,
@@ -10661,6 +10706,155 @@ impl Ht {
         }
     }
 
+    /// Decide one taxonomy cell with the same total certification search used
+    /// for global consistency. The returned document is deliberately the raw
+    /// normalized-ontology evidence consumed by the complete taxonomy wrapper.
+    fn lean_taxonomy_query_decision_certificate_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String), String> {
+        let initial_labels = query.initial_labels();
+        let closed_document = || match query {
+            LeanHtTaxonomyQuery::Concept(concept) => {
+                self.lean_unsatisfiable_concept_certificate_json_raw(concept)
+            }
+            LeanHtTaxonomyQuery::Subsumption(sub, sup) => {
+                self.lean_subsumption_certificate_json_raw(sub, sup)
+            }
+        };
+        let (variable_count, mut concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        for &(_, literal) in &initial_labels {
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+
+        if !self.card_defs.is_empty() {
+            let mut definitions: Vec<(C, CardDef)> = self
+                .card_defs
+                .iter()
+                .map(|(&marker, &definition)| (marker, definition))
+                .collect();
+            definitions.sort_unstable_by_key(|&(marker, _)| marker);
+            loop {
+                let mut state = LeanHtRefutationState::root(&initial_labels);
+                match self.lean_distinct_cardinality_refutation(
+                    &mut state,
+                    &definitions,
+                    variable_count,
+                    node_budget,
+                ) {
+                    LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
+                        return Ok((false, closed_document()?));
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
+                        let node_count = state.representatives.len();
+                        let equality = serde_json::to_string(&LeanHtEqCertificate {
+                            version: 2,
+                            node_count,
+                            concept_count,
+                            role_count,
+                            variable_count,
+                            ontology,
+                            state,
+                            evidence: query.equality_open_evidence(),
+                        })
+                        .map_err(|error| error.to_string())?;
+                        return Ok((true, self.wrap_cardinality_lean_certificate(equality)?));
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
+                        return Err("taxonomy query reached the configured cardinality node cap"
+                            .to_string());
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) => {
+                        node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                            "cardinality taxonomy node budget overflowed usize".to_string()
+                        })?;
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                        return Err(error);
+                    }
+                }
+            }
+        }
+
+        let has_equality = self.clauses.iter().any(|record| {
+            record
+                .0
+                .body
+                .iter()
+                .chain(record.0.head.iter())
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        });
+        if has_equality {
+            loop {
+                let mut state = LeanHtRefutationState::root(&initial_labels);
+                match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                    LeanHtEqRefutationOutcome::Closed(_, _) => {
+                        return Ok((false, closed_document()?));
+                    }
+                    LeanHtEqRefutationOutcome::Open(state) => {
+                        let node_count = state.representatives.len();
+                        return Ok((
+                            true,
+                            serde_json::to_string(&LeanHtEqCertificate {
+                                version: 2,
+                                node_count,
+                                concept_count,
+                                role_count,
+                                variable_count,
+                                ontology,
+                                state,
+                                evidence: query.equality_open_evidence(),
+                            })
+                            .map_err(|error| error.to_string())?,
+                        ));
+                    }
+                    LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
+                        return Err(
+                            "taxonomy query reached the configured equality node cap".to_string()
+                        );
+                    }
+                    LeanHtEqRefutationOutcome::Frontier(_) => {
+                        node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                            "equality taxonomy node budget overflowed usize".to_string()
+                        })?;
+                    }
+                    LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
+                }
+            }
+        }
+
+        loop {
+            let mut state = LeanHtRefutationState::root(&initial_labels);
+            match self.lean_refutation(&mut state, variable_count, node_budget) {
+                LeanHtRefutationOutcome::Closed(_, _) => {
+                    return Ok((false, closed_document()?));
+                }
+                LeanHtRefutationOutcome::Open(leaf) => {
+                    return Ok((
+                        true,
+                        self.lean_blocked_open_certificate_json(
+                            &leaf,
+                            query.plain_open_evidence(),
+                        )?,
+                    ));
+                }
+                LeanHtRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "taxonomy query reached the configured equality-free node cap".to_string(),
+                    );
+                }
+                LeanHtRefutationOutcome::Frontier(_) => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "equality-free taxonomy node budget overflowed usize".to_string()
+                    })?;
+                }
+                LeanHtRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
+    }
+
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
     fn lean_subsumption_certificate_json_raw(&self, sub: C, sup: C) -> Result<String, String> {
         let labels = [
@@ -11312,30 +11506,18 @@ impl Ht {
         };
 
         for &concept in named {
-            let satisfiable = self
-                .consistent(&[CLit::pos(concept)])
-                .ok_or_else(|| "HT concept probe left the certified fragment".to_string())?;
-            let document = if satisfiable {
-                self.lean_satisfiable_concept_certificate_json_raw(concept)?
-            } else {
-                self.lean_unsatisfiable_concept_certificate_json_raw(concept)?
-            };
+            let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+                LeanHtTaxonomyQuery::Concept(concept),
+            )?;
             concepts.push(query_payload(document)?);
         }
 
         for &sub in named {
             let mut row = Vec::with_capacity(named.len());
             for &sup in named {
-                let satisfiable = self
-                    .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
-                    .ok_or_else(|| {
-                        "HT subsumption probe left the certified fragment".to_string()
-                    })?;
-                let document = if satisfiable {
-                    self.lean_non_subsumption_certificate_json_raw(sub, sup)?
-                } else {
-                    self.lean_subsumption_certificate_json_raw(sub, sup)?
-                };
+                let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+                    LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                )?;
                 row.push(query_payload(document)?);
             }
             subsumptions.push(row);
@@ -11454,14 +11636,9 @@ impl Ht {
             };
 
         for &concept in named {
-            let satisfiable = self
-                .consistent(&[CLit::pos(concept)])
-                .ok_or_else(|| "HT concept probe left the certified fragment".to_string())?;
-            let document = if satisfiable {
-                self.lean_satisfiable_concept_certificate_json_raw(concept)?
-            } else {
-                self.lean_unsatisfiable_concept_certificate_json_raw(concept)?
-            };
+            let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+                LeanHtTaxonomyQuery::Concept(concept),
+            )?;
             let (legacy, mixed) = note_document(document)?;
             legacy_concepts.push(legacy);
             mixed_concepts.push(mixed);
@@ -11471,16 +11648,9 @@ impl Ht {
             let mut legacy_row = Vec::with_capacity(named.len());
             let mut mixed_row = Vec::with_capacity(named.len());
             for &sup in named {
-                let satisfiable = self
-                    .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
-                    .ok_or_else(|| {
-                        "HT subsumption probe left the certified fragment".to_string()
-                    })?;
-                let document = if satisfiable {
-                    self.lean_non_subsumption_certificate_json_raw(sub, sup)?
-                } else {
-                    self.lean_subsumption_certificate_json_raw(sub, sup)?
-                };
+                let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+                    LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                )?;
                 let (legacy, mixed) = note_document(document)?;
                 legacy_row.push(legacy);
                 mixed_row.push(mixed);

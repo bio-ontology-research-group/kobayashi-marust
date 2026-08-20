@@ -312,9 +312,10 @@ supply required by exhaustive search.
 clash, an unwitnessed existential, an undischarged grounding, or an exact
 canonical model. `HypertableauRoleBlocking.lean` proves the certified full
 pairwise signature is finite and repeats on long paths, and the Rust certified
-constructor uses the corresponding direct blocking mode. Inverse roles,
-nominals, native ABoxes, and the complete taxonomy probe loop remain outside
-this total global-decision integration.
+constructor uses the corresponding direct blocking mode. Every concept and
+ordered subsumption cell in the complete taxonomy matrix now uses the same
+total certification search from its exact root labels. Inverse roles, nominals,
+and native ABoxes remain outside this certified HT fragment.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
 

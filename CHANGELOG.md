@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.91] – 2026-08-20
+
+### Use total certified search for every HT taxonomy cell
+
+- Add a certification-only taxonomy-query decision boundary for concept
+  satisfiability and ordered subsumption cells.
+- Dispatch each query to equality-free, equality-aware, or
+  distinct-cardinality iterative search from its exact root labels.
+- Construct positive cells from the returned checked finite model and negative
+  cells from the returned exhaustive refutation. No taxonomy verdict is read
+  from the optimized `consistent` probe.
+- Feed those independently decided cells into the existing Lean theorem for a
+  complete square taxonomy matrix. Publication still requires both native Lean
+  checkers to accept the global and matrix evidence.
+- Keep inverse roles, nominals, and native ABoxes outside the certified HT
+  fragment. Default and benchmark routes remain unchanged.
+- Validate the full Rust suite (2,066 passed, 8 ignored) and all six HT
+  publication integrations against the native global and taxonomy Lean
+  checkers.
+
+This removes the last optimized-tableau verdict oracle from checker-gated HT
+global consistency and complete taxonomy publication on the certified fragment.
+
 ## [0.3.90] – 2026-08-20
 
 ### Use total certified search as the HT global verdict boundary
