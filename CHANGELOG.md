@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.156] – 2026-08-21
+
+### Connect bounded equality decisions to closed grounding
+
+- Change the checked equality decision outcome's closed branch to require the
+  production quotient-closed recursive checker.
+- Re-prove closed-outcome inconsistency and the conclusive-outcome semantics
+  through `checkClosed_ontology_unsatisfiable`.
+- Remove the accidental decision-to-runtime import dependency and make the
+  equality certificate dependency explicit, keeping the Lean module graph
+  acyclic.
+- Build all 3,400 Lean targets and audit the decision capstone without
+  `sorryAx`.
+
+Constructing the concrete equality-aware round outcome from Rust-compatible
+selectors, cardinality runtime selection, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.155] – 2026-08-21
 
 ### Complete quotient-closed equality tree correspondence

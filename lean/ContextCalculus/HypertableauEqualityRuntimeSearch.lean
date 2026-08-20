@@ -1,5 +1,5 @@
 import ContextCalculus.HypertableauRuntimeSearch
-import ContextCalculus.HypertableauEqualitySearch
+import ContextCalculus.HypertableauEqualityCertificate
 import ContextCalculus.HypertableauEqualityBlocking
 
 /-!

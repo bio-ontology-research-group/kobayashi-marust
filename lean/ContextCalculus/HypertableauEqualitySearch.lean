@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauEqualityRuntimeSearch
 import ContextCalculus.HypertableauFrontierWire
 
 /-!
@@ -34,7 +34,7 @@ inductive CheckedEqualityDecisionOutcome
       (hontology : certificate.base.ontology = ontology)
       (hnonempty : 0 < nodeCount)
       (hempty : certificate.EmptyRoot)
-      (hcheck : tree.check certificate = true)
+      (hcheck : tree.checkClosed certificate = true)
   | frontier
       (document : WireAddressFrontier)
       (hconcepts : document.concept_count = conceptCount)
@@ -74,10 +74,10 @@ theorem CheckedEqualityDecisionOutcome.closed_semantics
     (hontology : certificate.base.ontology = ontology)
     (hnonempty : 0 < nodeCount)
     (hempty : certificate.EmptyRoot)
-    (hcheck : tree.check certificate = true) :
+    (hcheck : tree.checkClosed certificate = true) :
     ¬EqualityHasNonemptyModel ontology := by
   letI : Nonempty (Fin nodeCount) := ⟨⟨0, hnonempty⟩⟩
-  have hnot := tree.check_ontology_unsatisfiable certificate hempty hcheck
+  have hnot := tree.checkClosed_ontology_unsatisfiable certificate hempty hcheck
   simpa [EqualityHasNonemptyModel, hontology] using hnot
 
 theorem CheckedEqualityDecisionOutcome.conclusive_semantics
