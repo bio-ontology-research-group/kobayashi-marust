@@ -250,6 +250,10 @@ evidence remains fail-closed.
 guarded, quotient-clash-free, witness-complete, saturated endpoints are always
 accepted. Thus checker rejection corresponds to a concrete failed endpoint
 obligation rather than an uncharacterized implementation gap.
+The cardinality checker has the matching exactness result:
+`checkEqSatWithCardinality_eq_true_iff` proves acceptance exactly when that
+endpoint contract holds and the equality-quotient model satisfies every
+minimum or maximum cardinality definition.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

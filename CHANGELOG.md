@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.94] – 2026-08-20
+
+### Prove cardinality-aware HT SAT-checker completeness
+
+- Prove the finite equality-quotient checker complete for activated minimum
+  cardinality restrictions by selecting raw representatives for semantic
+  quotient witnesses.
+- Prove it complete for maximum restrictions by showing every enumerated
+  `(n + 1)`-tuple either misses the successor predicate or is non-injective in
+  the equality quotient.
+- Establish exact `checkCardinalityDef` and `checkCardinalityDefs` equivalences
+  with their semantic quotient-model contracts.
+- Combine these results with equality-aware SAT-checker exactness, proving
+  `checkEqSatWithCardinality = true` exactly when the finite endpoint is valid
+  and its quotient model satisfies every cardinality definition.
+
+All new results avoid `sorry` and `admit`; their axiom reports contain only
+standard Lean quotient/classical principles. Concrete blocked-fold acceptance,
+especially saturation preservation after folding, remains the next HT
+completeness obligation.
+
 ## [0.3.93] – 2026-08-20
 
 ### Prove equality-aware HT SAT-checker completeness

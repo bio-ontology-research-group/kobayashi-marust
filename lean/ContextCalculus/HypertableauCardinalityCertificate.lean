@@ -216,6 +216,92 @@ theorem FiniteEqCertificate.checkCardinalityDef_sound
           (certificate.quotientInjectiveB_eq_true hvalid witnesses).mpr hinjectiveRaw
         simp [hsuccessorsB, hinjectiveB] at hassignment
 
+theorem FiniteEqCertificate.checkCardinalityDef_complete
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount))
+    (hmodels : certificate.state.quotientCanonical.modelsCardinalityDef definition) :
+    certificate.checkCardinalityDef definition = true := by
+  rw [FiniteEqCertificate.checkCardinalityDef, List.all_eq_true]
+  intro source _
+  cases hmarkerB : certificate.quotientPositiveB source definition.marker with
+  | false => simp
+  | true =>
+      have hmarker := (certificate.quotientPositiveB_eq_true hvalid source
+        definition.marker).mp hmarkerB
+      have hsource := hmodels
+        (Quotient.mk certificate.state.nodeSetoid source) hmarker
+      simp only [Bool.not_true, Bool.false_or]
+      cases hkind : definition.kind with
+      | minimum =>
+          simp only [hkind] at hsource ⊢
+          rcases hsource with ⟨semanticWitnesses, hinjective, hsuccessors⟩
+          have representatives : ∀ index, ∃ node,
+              Quotient.mk certificate.state.nodeSetoid node = semanticWitnesses index :=
+            fun index => Quotient.exists_rep (semanticWitnesses index)
+          choose witnesses hwitnesses using representatives
+          rw [List.any_eq_true]
+          refine ⟨witnesses, mem_allAssignments nodeCount definition.bound witnesses, ?_⟩
+          rw [Bool.and_eq_true, certificate.quotientInjectiveB_eq_true hvalid,
+            List.all_eq_true]
+          refine ⟨?_, ?_⟩
+          · intro left right heq
+            apply hinjective
+            simpa only [hwitnesses] using heq
+          · intro index _
+            apply (certificate.cardinalitySuccessorB_eq_true hvalid definition source
+              (witnesses index)).mpr
+            simpa only [hwitnesses] using hsuccessors index
+      | maximum =>
+          simp only [hkind] at hsource ⊢
+          rw [List.all_eq_true]
+          intro witnesses _
+          by_cases hsuccessorsB :
+              (List.finRange (definition.bound + 1)).all (fun index =>
+                certificate.cardinalitySuccessorB definition source
+                  (witnesses index)) = true
+          · have hsuccessors : ∀ index,
+                certificate.state.quotientCanonical.cardinalitySuccessor definition
+                  (Quotient.mk certificate.state.nodeSetoid source)
+                  (Quotient.mk certificate.state.nodeSetoid (witnesses index)) := by
+              intro index
+              apply (certificate.cardinalitySuccessorB_eq_true hvalid definition source
+                (witnesses index)).mp
+              exact (List.all_eq_true.mp hsuccessorsB) index
+                (List.mem_finRange index)
+            have hnotInjective : ¬Function.Injective (fun index =>
+                Quotient.mk certificate.state.nodeSetoid (witnesses index)) :=
+              not_injective_of_hasAtMost hsource
+                (fun index => Quotient.mk certificate.state.nodeSetoid
+                  (witnesses index)) hsuccessors
+            have hinjectiveB : certificate.quotientInjectiveB witnesses = false := by
+              cases hcheck : certificate.quotientInjectiveB witnesses with
+              | false => rfl
+              | true =>
+                  exact False.elim (hnotInjective
+                    ((certificate.quotientInjectiveB_eq_true hvalid witnesses).mp hcheck))
+            simp [hsuccessorsB, hinjectiveB]
+          · have hsuccessorsFalse :
+                (List.finRange (definition.bound + 1)).all (fun index =>
+                  certificate.cardinalitySuccessorB definition source
+                    (witnesses index)) = false := by
+              cases hcheck : (List.finRange (definition.bound + 1)).all (fun index =>
+                  certificate.cardinalitySuccessorB definition source
+                    (witnesses index)) with
+              | false => rfl
+              | true => exact False.elim (hsuccessorsB hcheck)
+            simp [hsuccessorsFalse]
+
+theorem FiniteEqCertificate.checkCardinalityDef_eq_true_iff_models
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) :
+    certificate.checkCardinalityDef definition = true ↔
+      certificate.state.quotientCanonical.modelsCardinalityDef definition := by
+  constructor
+  · exact certificate.checkCardinalityDef_sound hvalid definition
+  · exact certificate.checkCardinalityDef_complete hvalid definition
+
 theorem FiniteEqCertificate.checkCardinalityDefs_sound
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
@@ -226,6 +312,28 @@ theorem FiniteEqCertificate.checkCardinalityDefs_sound
   intro definition hdefinition
   exact certificate.checkCardinalityDef_sound hcheck.1 definition
     (hcheck.2 definition hdefinition)
+
+theorem FiniteEqCertificate.checkCardinalityDefs_complete
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hvalid : certificate.equalityClosureValidB = true)
+    (hmodels : certificate.state.quotientCanonical.modelsCardinalityDefs definitions) :
+    certificate.checkCardinalityDefs definitions = true := by
+  simp only [FiniteEqCertificate.checkCardinalityDefs, Bool.and_eq_true,
+    List.all_eq_true]
+  exact ⟨hvalid, fun definition hdefinition =>
+    certificate.checkCardinalityDef_complete hvalid definition
+      (hmodels definition hdefinition)⟩
+
+theorem FiniteEqCertificate.checkCardinalityDefs_eq_true_iff_models
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hvalid : certificate.equalityClosureValidB = true) :
+    certificate.checkCardinalityDefs definitions = true ↔
+      certificate.state.quotientCanonical.modelsCardinalityDefs definitions := by
+  constructor
+  · exact certificate.checkCardinalityDefs_sound definitions
+  · exact certificate.checkCardinalityDefs_complete definitions hvalid
 
 def FiniteEqCertificate.checkEqSatWithCardinality
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -241,6 +349,22 @@ theorem FiniteEqCertificate.checkEqSatWithCardinality_models
   simp only [FiniteEqCertificate.checkEqSatWithCardinality, Bool.and_eq_true] at hcheck
   exact ⟨certificate.checkEqSat_models hcheck.1,
     certificate.checkCardinalityDefs_sound definitions hcheck.2⟩
+
+theorem FiniteEqCertificate.checkEqSatWithCardinality_eq_true_iff
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) :
+    certificate.checkEqSatWithCardinality definitions = true ↔
+      certificate.Valid ∧
+        certificate.state.quotientCanonical.modelsCardinalityDefs definitions := by
+  simp only [FiniteEqCertificate.checkEqSatWithCardinality, Bool.and_eq_true,
+    certificate.checkEqSat_eq_true_iff_valid]
+  constructor
+  · rintro ⟨hvalid, hcardinality⟩
+    exact ⟨hvalid,
+      certificate.checkCardinalityDefs_sound definitions hcardinality⟩
+  · rintro ⟨hvalid, hcardinality⟩
+    exact ⟨hvalid, certificate.checkCardinalityDefs_complete definitions hvalid.1
+      hcardinality⟩
 
 theorem FiniteEqCertificate.checkEqSatWithCardinality_not_entailsSub
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -328,8 +452,13 @@ end CardinalityCertificateTests
 
 #print axioms FiniteEqCertificate.quotientInjectiveB_eq_true
 #print axioms FiniteEqCertificate.checkCardinalityDef_sound
+#print axioms FiniteEqCertificate.checkCardinalityDef_complete
+#print axioms FiniteEqCertificate.checkCardinalityDef_eq_true_iff_models
 #print axioms FiniteEqCertificate.checkCardinalityDefs_sound
+#print axioms FiniteEqCertificate.checkCardinalityDefs_complete
+#print axioms FiniteEqCertificate.checkCardinalityDefs_eq_true_iff_models
 #print axioms FiniteEqCertificate.checkEqSatWithCardinality_models
+#print axioms FiniteEqCertificate.checkEqSatWithCardinality_eq_true_iff
 #print axioms FiniteEqCertificate.checkEqSatWithCardinality_not_entailsSub
 #print axioms FiniteEqCertificate.checkEqSatWithCardinality_not_unsatisfiableConcept
 
