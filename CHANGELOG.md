@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.161] – 2026-08-21
+
+### Begin exact cardinality runtime refinement
+
+- Add an executable cardinality-runtime module and mirror Rust's first
+  `apart.iter().find(...)` control over the exact serialized pair order.
+- Prove that a selected equality/apart pair constructs a sound
+  distinct-cardinality refutation.
+- Prove that exhausting the finite list is equivalent to absence of every
+  equality/apart clash represented by the runtime state.
+- Lift the existing quotient concept-clash selector into the
+  distinct-cardinality calculus, with selected and exhausted outcomes proved
+  against cardinality semantics.
+- Audit all new runtime theorems without `sorryAx`.
+
+The ordered clause, existential-witness, minimum, maximum, and terminal
+controls, concrete Rust field construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.160] – 2026-08-21
 
 ### Certify production equality SAT JSON acceptance
