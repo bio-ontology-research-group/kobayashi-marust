@@ -358,9 +358,17 @@ reconstructs and validates those exact addresses before deepening.
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
 excludes models satisfying both the exact ontology and its decoded cardinality
-definitions. Saturated cardinality leaves are now published through that
-checker, while exhausted frontiers remain inconclusive pending equality-aware
-blocking termination.
+definitions. `HypertableauCardinalityFrontierWire.lean` checks tagged rooted
+addresses for ordinary witnesses and for each minimum-definition witness
+index. `HypertableauCardinalitySearch.lean` proves that these checked frontiers
+cannot persist through iterative doubling. Equality-quotient pairwise blocking
+folds a saturated open branch into a finite candidate, and
+`FiniteEqFoldCertificate.checkWithCardinality_models` proves that an accepted
+candidate models both the exact ontology and all decoded cardinality
+definitions. Consequently the checker-gated distinct-cardinality fragment has
+a total sound and complete decision boundary: a checked model or checked
+refutation is conclusive, malformed evidence fails closed, and a checked
+frontier eventually disappears.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

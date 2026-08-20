@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauEqualityBlocking
 import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauCardinalityCertificate
 
 /-!
 # Checked finite equality-quotient folds
@@ -70,6 +71,28 @@ theorem FiniteEqFoldCertificate.check_satisfiable
   simpa [FiniteEqFoldCertificate.check] using
     certificate.materialize.checkEqSat_satisfiable hcheck
 
+def FiniteEqFoldCertificate.checkWithCardinality
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Bool :=
+  certificate.materialize.checkEqSatWithCardinality definitions
+
+/-- The same untrusted fold boundary for cardinality-aware search. Acceptance
+constructs one quotient interpretation satisfying both the exact ontology and
+the exact minimum/maximum definitions. -/
+theorem FiniteEqFoldCertificate.checkWithCardinality_models
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hcheck : certificate.checkWithCardinality definitions = true) :
+    ∃ (Domain : Type) (I : Interp Domain (Fin conceptCount) (Fin roleCount)),
+      I.models certificate.base.base.ontology ∧
+        I.modelsCardinalityDefs definitions := by
+  have hmodels := certificate.materialize.checkEqSatWithCardinality_models
+    definitions hcheck
+  exact ⟨certificate.materialize.state.QuotientDomain,
+    certificate.materialize.state.quotientCanonical, hmodels⟩
+
 namespace EqFoldTests
 
 private def cyclicBase : FiniteEqCertificate 3 1 1 1 where
@@ -98,5 +121,6 @@ example : cyclicFold.check = true := by native_decide
 end EqFoldTests
 
 #print axioms FiniteEqFoldCertificate.check_satisfiable
+#print axioms FiniteEqFoldCertificate.checkWithCardinality_models
 
 end ContextCalculus.Hypertableau

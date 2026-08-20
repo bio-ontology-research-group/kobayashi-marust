@@ -2486,6 +2486,39 @@ struct LeanHtFrontierDocument {
     addresses: Vec<Vec<LeanHtFrontierStep>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum LeanHtCardinalityAddressStep {
+    Ordinary(R, CLit),
+    Minimum { definition: usize, index: usize },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtCardinalityFrontierStep {
+    kind: usize,
+    role: usize,
+    filler: LeanHtLit,
+    definition: usize,
+    index: usize,
+}
+
+struct LeanHtCardinalityAddressFrontier {
+    node_count: usize,
+    definition_count: usize,
+    max_width: usize,
+    addresses: Vec<Vec<LeanHtCardinalityAddressStep>>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtCardinalityFrontierDocument {
+    version: usize,
+    node_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    definition_count: usize,
+    max_width: usize,
+    addresses: Vec<Vec<LeanHtCardinalityFrontierStep>>,
+}
+
 struct LeanHtBlockedOpenLeaf {
     node_count: usize,
     labels: Vec<(Node, CLit)>,
@@ -2580,7 +2613,8 @@ enum LeanHtDistinctCardinalityRefutationTree {
 enum LeanHtDistinctCardinalityRefutationOutcome {
     Closed(LeanHtDistinctCardinalityRefutationTree, usize),
     Open(LeanHtEqState),
-    Frontier,
+    Frontier(LeanHtCardinalityAddressFrontier),
+    Invalid(String),
 }
 
 #[derive(serde::Serialize)]
@@ -2719,6 +2753,8 @@ struct LeanHtRefutationState {
     /// certificate producers do not consult this certification-only field.
     witness_parent: Vec<Option<Node>>,
     witness_step: Vec<Option<(R, CLit)>>,
+    cardinality_parent: Vec<Option<Node>>,
+    cardinality_step: Vec<Option<LeanHtCardinalityAddressStep>>,
 }
 
 /// Lazy row-major enumeration of all assignments from the finite variable
@@ -2781,6 +2817,8 @@ impl LeanHtRefutationState {
             active_nodes: 1,
             witness_parent: vec![None],
             witness_step: vec![None],
+            cardinality_parent: vec![None],
+            cardinality_step: vec![None],
         }
     }
 
@@ -2817,6 +2855,61 @@ impl LeanHtRefutationState {
         }
         Ok(LeanHtAddressFrontier {
             node_count: self.active_nodes,
+            addresses,
+        })
+    }
+
+    fn cardinality_address_frontier(
+        &self,
+        definition_count: usize,
+        max_width: usize,
+    ) -> Result<LeanHtCardinalityAddressFrontier, String> {
+        if self.active_nodes != self.cardinality_parent.len()
+            || self.active_nodes != self.cardinality_step.len()
+        {
+            return Err("cardinality frontier address metadata length mismatch".to_string());
+        }
+        let mut addresses: Vec<Vec<LeanHtCardinalityAddressStep>> =
+            Vec::with_capacity(self.active_nodes);
+        let mut occupied = HashSet::with_capacity(self.active_nodes);
+        for node in 0..self.active_nodes {
+            let address = match (self.cardinality_parent[node], self.cardinality_step[node]) {
+                (None, None) if node == 0 => Vec::new(),
+                (Some(parent), Some(step)) if parent < node => {
+                    match step {
+                        LeanHtCardinalityAddressStep::Ordinary(_, _) => {}
+                        LeanHtCardinalityAddressStep::Minimum { definition, index } => {
+                            if definition >= definition_count || index >= max_width {
+                                return Err(format!(
+                                    "cardinality frontier node {node} has out-of-range minimum slot {definition}/{index}"
+                                ));
+                            }
+                        }
+                    }
+                    let mut address = addresses.get(parent).cloned().ok_or_else(|| {
+                        format!("cardinality frontier parent {parent} has no address")
+                    })?;
+                    address.push(step);
+                    address
+                }
+                (parent, step) => {
+                    return Err(format!(
+                        "cardinality frontier node {node} has malformed address metadata {parent:?}/{step:?}",
+                        step = step.map(|_| "step")
+                    ));
+                }
+            };
+            if !occupied.insert(address.clone()) {
+                return Err(format!(
+                    "cardinality frontier node {node} duplicates a rooted witness address"
+                ));
+            }
+            addresses.push(address);
+        }
+        Ok(LeanHtCardinalityAddressFrontier {
+            node_count: self.active_nodes,
+            definition_count,
+            max_width,
             addresses,
         })
     }
@@ -2879,16 +2972,14 @@ impl LeanHtRefutationState {
         let closed_labels_equal = |a: Node, b: Node| {
             self.labels.iter().all(|&(node, literal)| {
                 !self.equivalent(node, a)
-                    || self
-                        .labels
-                        .iter()
-                        .any(|&(other, candidate)| candidate == literal && self.equivalent(other, b))
+                    || self.labels.iter().any(|&(other, candidate)| {
+                        candidate == literal && self.equivalent(other, b)
+                    })
             }) && self.labels.iter().all(|&(node, literal)| {
                 !self.equivalent(node, b)
-                    || self
-                        .labels
-                        .iter()
-                        .any(|&(other, candidate)| candidate == literal && self.equivalent(other, a))
+                    || self.labels.iter().any(|&(other, candidate)| {
+                        candidate == literal && self.equivalent(other, a)
+                    })
             })
         };
         if !closed_labels_equal(left, right) {
@@ -2908,19 +2999,25 @@ impl LeanHtRefutationState {
                 self.edges.iter().all(|&(role, source, target)| {
                     !self.equivalent(source, a_source)
                         || !self.equivalent(target, a_target)
-                        || self.edges.iter().any(|&(candidate, other_source, other_target)| {
-                            candidate == role
-                                && self.equivalent(other_source, b_source)
-                                && self.equivalent(other_target, b_target)
-                        })
+                        || self
+                            .edges
+                            .iter()
+                            .any(|&(candidate, other_source, other_target)| {
+                                candidate == role
+                                    && self.equivalent(other_source, b_source)
+                                    && self.equivalent(other_target, b_target)
+                            })
                 }) && self.edges.iter().all(|&(role, source, target)| {
                     !self.equivalent(source, b_source)
                         || !self.equivalent(target, b_target)
-                        || self.edges.iter().any(|&(candidate, other_source, other_target)| {
-                            candidate == role
-                                && self.equivalent(other_source, a_source)
-                                && self.equivalent(other_target, a_target)
-                        })
+                        || self
+                            .edges
+                            .iter()
+                            .any(|&(candidate, other_source, other_target)| {
+                                candidate == role
+                                    && self.equivalent(other_source, a_source)
+                                    && self.equivalent(other_target, a_target)
+                            })
                 })
             };
         closed_roles_equal(left_parent, left, right_parent, right)
@@ -2952,6 +3049,31 @@ impl LeanHtRefutationState {
         folds.sort_unstable();
         folds.dedup();
         for (blocked, blocker) in folds {
+            for &(role, source, target) in &self.edge_order {
+                if self.equivalent(source, blocker) {
+                    state.edges.push(LeanHtEdge {
+                        role: role as usize,
+                        source: blocked,
+                        target,
+                    });
+                }
+            }
+        }
+        state
+            .edges
+            .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+            .edges
+            .dedup_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+    }
+
+    fn cardinality_blocked_open_state(&self) -> LeanHtEqState {
+        let mut state = self.equality_wire_state(self.active_nodes);
+        for blocked in 0..self.active_nodes {
+            let Some(blocker) = self.quotient_pairwise_blocker_ancestor(blocked) else {
+                continue;
+            };
             for &(role, source, target) in &self.edge_order {
                 if self.equivalent(source, blocker) {
                     state.edges.push(LeanHtEdge {
@@ -3164,6 +3286,12 @@ impl LeanHtRefutationState {
             }
             Atom::Eq { s, t } => self.equivalent(assignment[*s as usize], assignment[*t as usize]),
         }
+    }
+
+    fn closed_label(&self, node: Node, literal: CLit) -> bool {
+        self.labels
+            .iter()
+            .any(|&(source, candidate)| candidate == literal && self.equivalent(source, node))
     }
 
     fn holds(&self, atom: &Atom, assignment: &[Node]) -> bool {
@@ -8988,6 +9116,69 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_cardinality_address_frontier_json(
+        &self,
+        frontier: &LeanHtCardinalityAddressFrontier,
+    ) -> Result<String, String> {
+        if frontier.node_count != frontier.addresses.len() {
+            return Err("HT cardinality frontier node/address count mismatch".to_string());
+        }
+        let (_, mut concept_count, mut role_count, _) = self.lean_decision_signature();
+        for address in &frontier.addresses {
+            if !Self::role_blocking_signature_card_reaches(concept_count, role_count, address.len())
+            {
+                return Err(format!(
+                    "HT cardinality frontier address depth {} exceeds the full-signature bound",
+                    address.len()
+                ));
+            }
+        }
+        let addresses = frontier
+            .addresses
+            .iter()
+            .map(|address| {
+                address
+                    .iter()
+                    .map(|step| match *step {
+                        LeanHtCardinalityAddressStep::Ordinary(role, filler) => {
+                            concept_count = concept_count.max(filler.c as usize + 1);
+                            role_count = role_count.max(role as usize + 1);
+                            LeanHtCardinalityFrontierStep {
+                                kind: 0,
+                                role: role as usize,
+                                filler: Self::lean_wire_lit(filler),
+                                definition: 0,
+                                index: 0,
+                            }
+                        }
+                        LeanHtCardinalityAddressStep::Minimum { definition, index } => {
+                            LeanHtCardinalityFrontierStep {
+                                kind: 1,
+                                role: 0,
+                                filler: LeanHtLit {
+                                    concept: 0,
+                                    neg: false,
+                                },
+                                definition,
+                                index,
+                            }
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        serde_json::to_string(&LeanHtCardinalityFrontierDocument {
+            version: 1,
+            node_count: frontier.node_count,
+            concept_count,
+            role_count,
+            definition_count: frontier.definition_count,
+            max_width: frontier.max_width,
+            addresses,
+        })
+        .map_err(|error| error.to_string())
+    }
+
     fn capped_pow2_reaches(exponent: usize, cap: usize) -> usize {
         if cap <= 1 {
             return cap;
@@ -9405,9 +9596,7 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
-            .filter(|&(_, _, source)| {
-                state.quotient_pairwise_blocker_ancestor(source).is_none()
-            })
+            .filter(|&(_, _, source)| state.quotient_pairwise_blocker_ancestor(source).is_none())
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -9544,8 +9733,11 @@ impl Ht {
                         LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
                             return LeanHtDistinctCardinalityRefutationOutcome::Open(open);
                         }
-                        LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
-                            return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                        LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                            return LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier);
+                        }
+                        LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                            return LeanHtDistinctCardinalityRefutationOutcome::Invalid(error);
                         }
                     };
                     child_depth = child_depth.max(depth);
@@ -9576,14 +9768,30 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            .filter(|&(_, _, source)| state.quotient_pairwise_blocker_ancestor(source).is_none())
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                let max_width = definitions
+                    .iter()
+                    .filter(|(_, definition)| definition.kind == CardKind::Min)
+                    .map(|(_, definition)| definition.n as usize)
+                    .max()
+                    .unwrap_or(0);
+                return match state.cardinality_address_frontier(definitions.len(), max_width) {
+                    Ok(frontier) => LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier),
+                    Err(error) => LeanHtDistinctCardinalityRefutationOutcome::Invalid(error),
+                };
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
+            state.witness_parent.push(Some(source));
+            state.witness_step.push(Some((role, filler)));
+            state.cardinality_parent.push(Some(source));
+            state
+                .cardinality_step
+                .push(Some(LeanHtCardinalityAddressStep::Ordinary(role, filler)));
             let edge = (role, source, target);
             let label = (target, filler);
             let inserted_edge = state.edges.insert(edge);
@@ -9608,6 +9816,10 @@ impl Ht {
             state.edge_order.remove(0);
             state.labels.remove(&label);
             state.edges.remove(&edge);
+            state.cardinality_step.pop();
+            state.cardinality_parent.pop();
+            state.witness_step.pop();
+            state.witness_parent.pop();
             state.active_nodes -= 1;
             return match result {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(child, depth) => {
@@ -9625,8 +9837,11 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
                     LeanHtDistinctCardinalityRefutationOutcome::Open(open)
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
-                    LeanHtDistinctCardinalityRefutationOutcome::Frontier
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier)
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Invalid(error)
                 }
             };
         }
@@ -9640,17 +9855,33 @@ impl Ht {
                 neg: false,
             };
             for source in 0..state.active_nodes {
-                if !state.labels.contains(&(source, marker_lit))
-                    || state.minimums.contains(&(definition_id, source))
+                if !state.closed_label(source, marker_lit)
+                    || state.minimums.iter().any(|&(candidate, expanded)| {
+                        candidate == definition_id && state.equivalent(expanded, source)
+                    })
+                    || state.quotient_pairwise_blocker_ancestor(source).is_some()
                 {
                     continue;
                 }
                 let count = definition.n as usize;
                 let Some(required_nodes) = state.active_nodes.checked_add(count) else {
-                    return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                    return LeanHtDistinctCardinalityRefutationOutcome::Invalid(
+                        "cardinality minimum node count overflowed usize".to_string(),
+                    );
                 };
                 if required_nodes > node_budget {
-                    return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                    let max_width = definitions
+                        .iter()
+                        .filter(|(_, definition)| definition.kind == CardKind::Min)
+                        .map(|(_, definition)| definition.n as usize)
+                        .max()
+                        .unwrap_or(0);
+                    return match state.cardinality_address_frontier(definitions.len(), max_width) {
+                        Ok(frontier) => {
+                            LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier)
+                        }
+                        Err(error) => LeanHtDistinctCardinalityRefutationOutcome::Invalid(error),
+                    };
                 }
                 let progress_before = state.progress_measure();
                 state.minimums.insert((definition_id, source));
@@ -9660,7 +9891,18 @@ impl Ht {
                 let old_apart = state.apart.len();
                 let targets: Vec<Node> = (old_active..old_active + count).collect();
                 state.active_nodes += count;
-                for &target in &targets {
+                for (index, &target) in targets.iter().enumerate() {
+                    state.witness_parent.push(Some(source));
+                    state
+                        .witness_step
+                        .push(Some((definition.role, definition.filler)));
+                    state.cardinality_parent.push(Some(source));
+                    state
+                        .cardinality_step
+                        .push(Some(LeanHtCardinalityAddressStep::Minimum {
+                            definition: definition_id,
+                            index,
+                        }));
                     let label = (target, definition.filler);
                     let edge = (definition.role, source, target);
                     let inserted_label = state.labels.insert(label);
@@ -9699,6 +9941,10 @@ impl Ht {
                 state.label_order.truncate(old_labels);
                 state.edge_order.truncate(old_edges);
                 state.apart.truncate(old_apart);
+                state.cardinality_parent.truncate(old_active);
+                state.cardinality_step.truncate(old_active);
+                state.witness_parent.truncate(old_active);
+                state.witness_step.truncate(old_active);
                 state.active_nodes = old_active;
                 state.minimums.remove(&(definition_id, source));
                 return match result {
@@ -9717,8 +9963,11 @@ impl Ht {
                     LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
                         LeanHtDistinctCardinalityRefutationOutcome::Open(open)
                     }
-                    LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
-                        LeanHtDistinctCardinalityRefutationOutcome::Frontier
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier)
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Invalid(error)
                     }
                 };
             }
@@ -9733,7 +9982,7 @@ impl Ht {
                 neg: false,
             };
             for source in 0..state.active_nodes {
-                if !state.labels.contains(&(source, marker_lit)) {
+                if !state.closed_label(source, marker_lit) {
                     continue;
                 }
                 let mut candidates: Vec<Node> = state
@@ -9741,8 +9990,8 @@ impl Ht {
                     .iter()
                     .filter(|&&(role, edge_source, target)| {
                         role == definition.role
-                            && edge_source == source
-                            && state.labels.contains(&(target, definition.filler))
+                            && state.equivalent(edge_source, source)
+                            && state.closed_label(target, definition.filler)
                     })
                     .map(|&(_, _, target)| target)
                     .collect();
@@ -9792,8 +10041,13 @@ impl Ht {
                             LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
                                 return LeanHtDistinctCardinalityRefutationOutcome::Open(open);
                             }
-                            LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
-                                return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                            LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                                return LeanHtDistinctCardinalityRefutationOutcome::Frontier(
+                                    frontier,
+                                );
+                            }
+                            LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                                return LeanHtDistinctCardinalityRefutationOutcome::Invalid(error);
                             }
                         };
                         child_depth = child_depth.max(depth);
@@ -9833,9 +10087,7 @@ impl Ht {
                 );
             }
         }
-        LeanHtDistinctCardinalityRefutationOutcome::Open(
-            state.equality_wire_state(state.active_nodes),
-        )
+        LeanHtDistinctCardinalityRefutationOutcome::Open(state.cardinality_blocked_open_state())
     }
 
     fn lean_eq_refutation_certificate_json(
@@ -10005,13 +10257,14 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Open(_) => {
                     return Err("ontology has an open cardinality refutation branch".to_string());
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
                         "ontology reached the configured cardinality refutation node cap"
                             .to_string(),
                     );
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {}
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) => {}
+                LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -10371,16 +10624,17 @@ impl Ht {
                     let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
                     return Ok((true, self.finalize_lean_certificate(cardinality)?));
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
                         "ontology reached the configured cardinality decision node cap".to_string(),
                     );
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) => {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "cardinality decision node budget overflowed usize".to_string()
                     })?;
                 }
+                LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
     }
@@ -20759,17 +21013,13 @@ mod tests {
     fn equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle() {
         let mut cyclic = Ht::new_certified(vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
-            Clause::new(
-                vec![con(false, A, X)],
-                vec![exists(R0, false, A, X)],
-            ),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
             Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
         ]);
         cyclic.block_mode = 6;
 
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
-        let LeanHtEqRefutationOutcome::Open(open) =
-            cyclic.lean_eq_refutation(&mut state, 1, 4)
+        let LeanHtEqRefutationOutcome::Open(open) = cyclic.lean_eq_refutation(&mut state, 1, 4)
         else {
             panic!("the equality-aware cyclic branch must have a blocked finite model");
         };
@@ -20808,8 +21058,83 @@ mod tests {
         let mut frontier_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
             witness.lean_distinct_cardinality_refutation(&mut frontier_state, &[], 1, 1),
-            LeanHtDistinctCardinalityRefutationOutcome::Frontier
+            LeanHtDistinctCardinalityRefutationOutcome::Frontier(_)
         ));
+    }
+
+    #[test]
+    fn cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it() {
+        let mut reasoner = Ht::new_certified(Vec::new());
+        reasoner.set_card_defs(HashMap::from([(
+            B,
+            CardDef {
+                kind: CardKind::Min,
+                n: 2,
+                role: R0,
+                filler: CLit::pos(A),
+            },
+        )]));
+        let mut state = LeanHtRefutationState::root(&[]);
+        state.active_nodes = 3;
+        state.cardinality_parent.extend([Some(0), Some(0)]);
+        state.cardinality_step.extend([
+            Some(LeanHtCardinalityAddressStep::Minimum {
+                definition: 0,
+                index: 0,
+            }),
+            Some(LeanHtCardinalityAddressStep::Minimum {
+                definition: 0,
+                index: 1,
+            }),
+        ]);
+        let frontier = state
+            .cardinality_address_frontier(1, 2)
+            .expect("minimum child indices give distinct finite addresses");
+        let document = reasoner
+            .lean_cardinality_address_frontier_json(&frontier)
+            .expect("serialize the tagged cardinality frontier");
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(wire["addresses"][1][0]["kind"], serde_json::json!(1));
+        assert_eq!(wire["addresses"][1][0]["index"], serde_json::json!(0));
+        assert_eq!(wire["addresses"][2][0]["index"], serde_json::json!(1));
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let mut checker = std::path::PathBuf::from(checker);
+            checker.set_file_name("ht-cardinality-frontier-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-cardinality-frontier-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .status()
+                .expect("run the native Lean cardinality-frontier checker");
+            let _ = std::fs::remove_file(path);
+            assert!(accepted.success());
+        }
+    }
+
+    #[test]
+    fn cardinality_decision_blocks_and_checks_a_cyclic_minimum() {
+        let mut reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), vec![con(false, B, X)])]);
+        reasoner.block_mode = 6;
+        reasoner.set_card_defs(HashMap::from([(
+            B,
+            CardDef {
+                kind: CardKind::Min,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(B),
+            },
+        )]));
+        let (satisfiable, certificate) = reasoner
+            .lean_cardinality_decision_certificate_json()
+            .expect("cyclic minimum has a checked finite quotient model");
+        assert!(satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&certificate).unwrap();
+        assert_eq!(wire["certificate"]["evidence"], serde_json::json!("sat"));
     }
 
     #[test]

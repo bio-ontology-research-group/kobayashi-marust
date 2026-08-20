@@ -392,6 +392,21 @@ theorem node_card_le_witnessAddress_of_injective
     Fintype.card Node ≤ Fintype.card (WitnessAddress Root Concept Role) := by
   exact Fintype.card_le_of_injective address hinjective
 
+/-- The same finite-universe bound for an arbitrary finite successor-slot
+vocabulary. Cardinality search uses tagged ordinary and minimum-child slots. -/
+theorem node_card_le_rootedRoleBlockedAddress_of_injective
+    {Root Slot Node Concept Role : Type}
+    [Fintype Root]
+    [Fintype Slot]
+    [Fintype Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (address : Node → RootedRoleBlockedAddress Root Slot Concept Role)
+    (hinjective : Function.Injective address) :
+    Fintype.card Node ≤
+      Fintype.card (RootedRoleBlockedAddress Root Slot Concept Role) := by
+  exact Fintype.card_le_of_injective address hinjective
+
 /-- A runtime frontier that occupies every index below its node budget is
 impossible once that budget is larger than the finite rooted-address universe.
 This is the cardinality contradiction needed by iterative deepening. -/
@@ -406,6 +421,23 @@ theorem no_full_frontier_beyond_witnessAddress
     (hbudget : Fintype.card (WitnessAddress Root Concept Role) < budget) : False := by
   have hcard := node_card_le_witnessAddress_of_injective address hinjective
   have hcard' : budget ≤ Fintype.card (WitnessAddress Root Concept Role) := by
+    simpa using hcard
+  exact not_le_of_gt hbudget hcard'
+
+theorem no_full_frontier_beyond_rootedRoleBlockedAddress
+    {Root Slot Concept Role : Type}
+    [Fintype Root]
+    [Fintype Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (budget : Nat)
+    (address : Fin budget → RootedRoleBlockedAddress Root Slot Concept Role)
+    (hinjective : Function.Injective address)
+    (hbudget : Fintype.card
+      (RootedRoleBlockedAddress Root Slot Concept Role) < budget) : False := by
+  have hcard := node_card_le_rootedRoleBlockedAddress_of_injective address hinjective
+  have hcard' : budget ≤ Fintype.card
+      (RootedRoleBlockedAddress Root Slot Concept Role) := by
     simpa using hcard
   exact not_le_of_gt hbudget hcard'
 
@@ -436,6 +468,28 @@ theorem mode6_doubling_eventually_not_frontier
   intro hfrontier
   obtain ⟨address, hinjective⟩ := hrefines round hfrontier
   exact no_full_frontier_beyond_witnessAddress
+    (8 * 2 ^ round) address hinjective hbudget
+
+/-- Iterative doubling also terminates for any finite tagged child-slot
+vocabulary, including cardinality minimum witnesses. -/
+theorem role_blocked_doubling_eventually_not_frontier
+    {Root Slot Concept Role : Type}
+    [Fintype Root]
+    [Fintype Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (frontier : Nat → Prop)
+    (hrefines : ∀ round, frontier round →
+      ∃ address : Fin (8 * 2 ^ round) →
+          RootedRoleBlockedAddress Root Slot Concept Role,
+        Function.Injective address) :
+    ∃ round, ¬frontier round := by
+  obtain ⟨round, hbudget⟩ := exists_mode6_doubling_budget_gt
+    (Fintype.card (RootedRoleBlockedAddress Root Slot Concept Role))
+  refine ⟨round, ?_⟩
+  intro hfrontier
+  obtain ⟨address, hinjective⟩ := hrefines round hfrontier
+  exact no_full_frontier_beyond_rootedRoleBlockedAddress
     (8 * 2 ^ round) address hinjective hbudget
 
 /-- Runtime mode 6 assigns children strictly increasing node identifiers and
@@ -478,9 +532,12 @@ theorem State.roleBlockingDepth_lt_of_signature_injective
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
 #print axioms node_card_le_witnessAddress_of_injective
+#print axioms node_card_le_rootedRoleBlockedAddress_of_injective
 #print axioms no_full_frontier_beyond_witnessAddress
+#print axioms no_full_frontier_beyond_rootedRoleBlockedAddress
 #print axioms exists_mode6_doubling_budget_gt
 #print axioms mode6_doubling_eventually_not_frontier
+#print axioms role_blocked_doubling_eventually_not_frontier
 #print axioms State.fresh_extended_roleBlockedAddress
 #print axioms State.fresh_extended_rootedRoleBlockedAddress
 #print axioms State.atWitnessAddresses_obligationAddressInvariant

@@ -2,6 +2,35 @@
 
 ## [unreleased]
 
+## [0.3.89] – 2026-08-20
+
+### Prove checked distinct-cardinality HT search total
+
+- Generalize the finite rooted-address and iterative-doubling theorem to an
+  arbitrary finite witness-slot type.
+- Give ordinary existential witnesses and minimum-cardinality witnesses
+  distinct tagged slots. Minimum siblings retain their definition and witness
+  indices, so the checked address document cannot collapse them.
+- Add an executable Lean cardinality-frontier checker and make malformed,
+  duplicate, or inconsistent runtime frontier evidence fail closed.
+- Prove that checked cardinality frontiers cannot persist through KM's
+  doubling schedule.
+- Make certification-only blocking, labels, role reads, minimum expansion, and
+  maximum merging equality-quotient aware. A blocked open state copies all
+  quotient-visible blocker edges before the existing finite-model checker
+  accepts it.
+- Prove that acceptance of a finite equality fold by the cardinality checker
+  yields a model of both the exact normalized ontology and its decoded
+  distinct-cardinality definitions.
+- Add native-checker regressions for distinct minimum siblings and a cyclic
+  minimum-cardinality ontology.
+- Validate all 3,378 Lean jobs and the full Rust suite: 2,066 library tests
+  passed, 8 ignored benchmarks, and every integration suite passed.
+
+This closes total sound and complete decision search for the checker-gated
+distinct-cardinality HT fragment. The default classification route is
+unchanged.
+
 ## [0.3.88] – 2026-08-20
 
 ### Prove equality-aware iterative-deepening totality

@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauCardinalityDistinctCertificate
 import ContextCalculus.HypertableauCardinalityCertificate
+import ContextCalculus.HypertableauCardinalityFrontierWire
 
 /-!
 # Checked bounded cardinality-aware HT outcomes
@@ -41,6 +42,11 @@ inductive CheckedCardinalityDecisionOutcome
       (hapart : certificate.apart = [])
       (hcheck : tree.check definitions certificate = true)
   | frontier
+      (document : WireCardinalityAddressFrontier)
+      (hconcepts : document.concept_count = conceptCount)
+      (hroles : document.role_count = roleCount)
+      (hdefinitions : document.definition_count = definitions.length)
+      (hcheck : document.check = true)
 
 def CheckedCardinalityDecisionOutcome.Semantics
     {ontology : List
@@ -51,7 +57,7 @@ def CheckedCardinalityDecisionOutcome.Semantics
   match outcome with
   | .sat .. => CardinalityHasNonemptyModel ontology definitions
   | .closed .. => ¬CardinalityHasNonemptyModel ontology definitions
-  | .frontier => False
+  | .frontier .. => False
 
 theorem CheckedCardinalityDecisionOutcome.sat_semantics
     {ontology : List
@@ -96,7 +102,7 @@ theorem CheckedCardinalityDecisionOutcome.conclusive_semantics
     {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (outcome : CheckedCardinalityDecisionOutcome
       conceptCount roleCount variableCount ontology definitions) :
-    (match outcome with | .frontier => False | _ => True) →
+    (match outcome with | .frontier .. => False | _ => True) →
       outcome.Semantics := by
   cases outcome with
   | sat certificate hontology hnonempty hcheck =>
@@ -107,10 +113,61 @@ theorem CheckedCardinalityDecisionOutcome.conclusive_semantics
       intro _
       exact CheckedCardinalityDecisionOutcome.closed_semantics
         certificate tree hontology hnonempty hempty hapart hcheck
-  | frontier => simp
+  | frontier document hconcepts hroles hdefinitions hcheck => simp
+
+/-- For a fixed cardinality vocabulary and maximum minimum width, checked
+tagged frontiers cannot persist through iterative doubling. Hence some round
+returns a checked model or checked refutation. -/
+theorem checked_cardinality_doubling_decides
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (maxWidth : Nat)
+    (run : Nat → CheckedCardinalityDecisionOutcome
+      conceptCount roleCount variableCount ontology definitions)
+    (hnodes : ∀ round document hconcepts hroles hdefinitions hcheck,
+      run round = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.node_count = 8 * 2 ^ round)
+    (hwidth : ∀ round document hconcepts hroles hdefinitions hcheck,
+      run round = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.max_width = maxWidth) :
+    ∃ round, (run round).Semantics := by
+  classical
+  by_contra hconclusive
+  have hnone : ∀ round, ¬(run round).Semantics := not_exists.mp hconclusive
+  have hfrontier : ∀ round, ∃ document hconcepts hroles hdefinitions hcheck,
+      run round = .frontier document hconcepts hroles hdefinitions hcheck := by
+    intro round
+    generalize houtcome : run round = outcome
+    cases outcome with
+    | sat certificate hontology hnonempty hcheck =>
+        exfalso
+        exact hnone round (by
+          rw [houtcome]
+          exact CheckedCardinalityDecisionOutcome.sat_semantics
+            certificate hontology hnonempty hcheck)
+    | closed certificate tree hontology hnonempty hempty hapart hcheck =>
+        exfalso
+        exact hnone round (by
+          rw [houtcome]
+          exact CheckedCardinalityDecisionOutcome.closed_semantics
+            certificate tree hontology hnonempty hempty hapart hcheck)
+    | frontier document hconcepts hroles hdefinitions hcheck =>
+        exact ⟨document, hconcepts, hroles, hdefinitions, hcheck, rfl⟩
+  choose document hconcepts hroles hdefinitions hchecks heq using hfrontier
+  obtain ⟨round, hrejected⟩ :=
+    cardinality_doubling_eventually_rejects_checked_frontier
+      document conceptCount roleCount definitions.length maxWidth
+      (fun round => hnodes round (document round) (hconcepts round)
+        (hroles round) (hdefinitions round) (hchecks round) (heq round))
+      hconcepts hroles hdefinitions
+      (fun round => hwidth round (document round) (hconcepts round)
+        (hroles round) (hdefinitions round) (hchecks round) (heq round))
+  exact hrejected (hchecks round)
 
 #print axioms CheckedCardinalityDecisionOutcome.sat_semantics
 #print axioms CheckedCardinalityDecisionOutcome.closed_semantics
 #print axioms CheckedCardinalityDecisionOutcome.conclusive_semantics
+#print axioms checked_cardinality_doubling_decides
 
 end ContextCalculus.Hypertableau
