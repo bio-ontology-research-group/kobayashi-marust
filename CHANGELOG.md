@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.138] – 2026-08-20
+
+### Prove cardinality-aware HT refutation-tree completeness
+
+- Encode every finite semantic `CardinalityEqRefutes` derivation as an
+  executable checked cardinality refutation tree.
+- Pad independently derived finite branch children to a common indexed depth
+  without changing checker acceptance.
+- Construct canonical checked equality closures for maximum-rule merges,
+  minimum-rule witness families, and ordinary equality-head transitions.
+- Prove exact equivalence between semantic cardinality refutations and accepted
+  canonicalized finite certificates.
+- Correct equality-apart closure checking to recognize transitive equality
+  histories, with a regression covering a two-edge equality chain.
+
+This closes the finite equality/cardinality refutation-tree format relative to
+`CardinalityEqRefutes`. Completeness of the distinct-aware extension, exact
+Rust recursive outcome correspondence, and automatic routing remain unfinished.
+
 ## [0.3.137] – 2026-08-20
 
 ### Prove equality-aware HT refutation-tree checker completeness

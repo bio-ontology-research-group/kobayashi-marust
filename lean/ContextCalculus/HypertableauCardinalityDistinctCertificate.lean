@@ -216,7 +216,7 @@ def FiniteDistinctCardinalityRefutationTree.check
       nodeCount conceptCount roleCount variableCount depth → Bool
   | .equalityApart left right =>
       certificate.base.equalityClosureValidB &&
-      certificate.base.relatedB left right &&
+      certificate.base.closedRelatedB left right &&
       decide ((left, right) ∈ certificate.apart)
   | .equality tree => tree.check certificate.base
   | .clash => certificate.base.equalityClosureValidB && certificate.base.closedClashB
@@ -276,7 +276,7 @@ theorem FiniteDistinctCardinalityRefutationTree.check_sound
       simp only [FiniteDistinctCardinalityRefutationTree.check, Bool.and_eq_true,
         decide_eq_true_eq] at hcheck
       exact .equalityApart certificate.state left right
-        (certificate.base.relatedB_sound left right hcheck.1.2)
+        ((certificate.base.closedRelatedB_eq_true hcheck.1.1 left right).mp hcheck.1.2)
         hcheck.2
   | delay child ih =>
       exact ih certificate
@@ -346,6 +346,28 @@ theorem FiniteDistinctCardinalityRefutationTree.check_sound
           FiniteEqCertificate.minimumTransitionB, decide_eq_true_eq] at htransition
         exact htransition.1.1.1.1.1
       simpa only [hontology] using ih next hchild
+
+/-- Exact acceptance criterion for an equality-apart leaf. In particular, the
+equality may be obtained transitively from the complete asserted equality
+history; it need not be a single directly listed pair. -/
+theorem FiniteDistinctCardinalityRefutationTree.check_equalityApart_iff
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (left right : Fin nodeCount) :
+    (FiniteDistinctCardinalityRefutationTree.equalityApart left right).check
+        definitions certificate = true ↔
+      certificate.base.equalityClosureValidB = true ∧
+      certificate.state.base.equiv left right ∧ certificate.state.apart left right := by
+  simp only [FiniteDistinctCardinalityRefutationTree.check, Bool.and_eq_true,
+    decide_eq_true_eq, FiniteDistinctEqCertificate.state]
+  constructor
+  · rintro ⟨⟨hvalid, hrelated⟩, hapart⟩
+    exact ⟨hvalid, (certificate.base.closedRelatedB_eq_true hvalid left right).mp hrelated,
+      hapart⟩
+  · rintro ⟨hvalid, hequiv, hapart⟩
+    exact ⟨⟨hvalid, (certificate.base.closedRelatedB_eq_true hvalid left right).mpr hequiv⟩,
+      hapart⟩
 
 theorem FiniteDistinctCardinalityRefutationTree.check_unsatisfiable
     (tree : FiniteDistinctCardinalityRefutationTree
@@ -513,6 +535,22 @@ private def badTree : FiniteDistinctCardinalityRefutationTree 3 1 1 0 2 :=
 
 example : badTree.check [minimum, maximum] root = false := by native_decide
 
+private def transitiveEq : FiniteEqCertificate 3 1 1 0 where
+  base := rootEq.base
+  equalities := [(0, 1), (1, 2)]
+  representative := fun _ => 0
+  representativePath := fun node =>
+    if node = 2 then [1, 0] else if node = 1 then [0] else []
+
+private def transitiveApart : FiniteDistinctEqCertificate 3 1 1 0 :=
+  { base := transitiveEq, apart := [(0, 2)] }
+
+/-- Regression: equality-apart closure must detect a contradiction reached
+through two equality generators, not only a directly asserted pair. -/
+example :
+    (FiniteDistinctCardinalityRefutationTree.equalityApart 0 2).check []
+      transitiveApart = true := by native_decide
+
 end DistinctCardinalityCheckerTests
 
 #print axioms FiniteDistinctEqCertificate.mergeTransitionB_state
@@ -521,6 +559,7 @@ end DistinctCardinalityCheckerTests
 #print axioms FiniteDistinctEqCertificate.minimumTransitionB_state
 #print axioms FiniteDistinctEqCertificate.freshFamilyB_sound
 #print axioms FiniteDistinctCardinalityRefutationTree.check_sound
+#print axioms FiniteDistinctCardinalityRefutationTree.check_equalityApart_iff
 #print axioms FiniteDistinctCardinalityRefutationTree.check_ontology_unsatisfiable
 #print axioms FiniteDistinctCardinalityRefutationTree.check_subsumption
 #print axioms FiniteDistinctCardinalityRefutationTree.check_unsatisfiable_concept

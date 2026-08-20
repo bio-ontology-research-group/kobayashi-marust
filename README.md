@@ -41,11 +41,12 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.137`. Lean now proves both the finite equality-free and equality-aware HT
-refutation-tree formats sound and complete relative to their semantic finite
-refutation relations. The equality-aware result reconstructs and checks
-canonical representative paths after equality-head transitions. Connecting
-every conclusive Rust recursive run to these trees, cardinality recursion, and
+`v0.3.138`. Lean now proves the finite equality-free, equality-aware, and
+equality/cardinality HT refutation-tree formats sound and complete relative to
+their semantic finite refutation relations. Equality-changing transitions
+reconstruct checked canonical representative paths, and finite cardinality
+branches receive verified depth padding. Completeness of the distinct-aware
+cardinality extension, exact Rust recursive outcome correspondence, and
 automatic routing remain unfinished.
 
 ## Classify an ontology
