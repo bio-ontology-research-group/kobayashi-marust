@@ -68,6 +68,82 @@ class DecidableState (state : State Node Concept Role) where
   edge : ∀ role source target, Decidable (state.edge role source target)
   obligation : ∀ role filler node, Decidable (state.obligation role filler node)
 
+abbrev ClashCandidate (Node Concept : Type) := Node × Concept
+
+noncomputable def allClashCandidates
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept] :
+    List (ClashCandidate Node Concept) := by
+  classical
+  exact (Finset.univ.toList : List Node).flatMap fun node =>
+    (Finset.univ.toList : List Concept).map fun concept => (node, concept)
+
+theorem mem_allClashCandidates
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    (candidate : ClashCandidate Node Concept) :
+    candidate ∈ allClashCandidates := by
+  classical
+  rcases candidate with ⟨node, concept⟩
+  simp [allClashCandidates]
+
+def clashCandidateBool
+    (state : State Node Concept Role) [DecidableState state]
+    (candidate : ClashCandidate Node Concept) : Bool :=
+  letI : ∀ node literal, Decidable (state.label node literal) :=
+    DecidableState.label (state := state)
+  decide (state.label candidate.1 (.pos candidate.2)) &&
+    decide (state.label candidate.1 (.negated candidate.2))
+
+theorem clashCandidateBool_eq_true_iff
+    (state : State Node Concept Role) [DecidableState state]
+    (candidate : ClashCandidate Node Concept) :
+    clashCandidateBool state candidate = true ↔
+      state.label candidate.1 (.pos candidate.2) ∧
+      state.label candidate.1 (.negated candidate.2) := by
+  simp [clashCandidateBool]
+
+noncomputable def selectClash
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    (state : State Node Concept Role) [DecidableState state] :
+    Option (ClashCandidate Node Concept) :=
+  firstMatch (clashCandidateBool state) allClashCandidates
+
+theorem selectClash_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    (state : State Node Concept Role) [DecidableState state] :
+    selectClash state = none ↔ ¬state.HasClash := by
+  classical
+  rw [selectClash, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hclash
+    rcases hclash with ⟨node, concept, hpositive, hnegative⟩
+    have hfalse := hscan (node, concept)
+      (mem_allClashCandidates (node, concept))
+    rw [(clashCandidateBool_eq_true_iff state (node, concept)).mpr
+      ⟨hpositive, hnegative⟩] at hfalse
+    contradiction
+  · intro hnone candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hlabels := (clashCandidateBool_eq_true_iff state candidate).mp htrue
+    exact hnone ⟨candidate.1, candidate.2, hlabels.1, hlabels.2⟩
+
+theorem selectClash_refutes
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    {candidate : ClashCandidate Node Concept}
+    (hselect : selectClash state = some candidate) :
+    Refutes Node ontology state := by
+  classical
+  have hfound := firstMatch_eq_some_mem (by simpa [selectClash] using hselect)
+  have hlabels := (clashCandidateBool_eq_true_iff state candidate).mp hfound.2
+  exact .clash state ⟨candidate.1, candidate.2, hlabels.1, hlabels.2⟩
+
 def holdsAtomBool
     (state : State Node Concept Role)
     [DecidableEq Node]
@@ -468,6 +544,37 @@ theorem runtimeNextBlocked_firstObstructionStep
               exact selectUnblockedUnwitnessed_firstObstructionStep
                 ontology state blocked hclause hwitness hfresh
 
+/-- Exact top-level ordering of the equality-free recursive runtime: a selected
+clash closes immediately; only a clash-free state reaches the blocker-aware
+clause/witness transition selector. -/
+theorem clashFirst_runtime_control
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom) :
+    Refutes Node ontology state ∨
+      (¬state.HasClash ∧
+        ((runtimeNextBlocked ontology state blocked ≠ [] ∧
+          FirstObstructionStep ontology state
+            (runtimeNextBlocked ontology state blocked)) ∨
+        runtimeNextBlocked ontology state blocked = [])) := by
+  classical
+  generalize hclash : selectClash state = selectedClash
+  cases selectedClash with
+  | some candidate => exact Or.inl (selectClash_refutes ontology state hclash)
+  | none =>
+      right
+      refine ⟨(selectClash_eq_none_iff state).mp hclash, ?_⟩
+      by_cases hnext : runtimeNextBlocked ontology state blocked = []
+      · exact Or.inr hnext
+      · exact Or.inl ⟨hnext,
+          runtimeNextBlocked_firstObstructionStep ontology state blocked
+            hheads hnext⟩
+
 /-- Once clause scanning is exhausted, selected obligation and fresh-node
 scans construct exactly the runtime witness transition shape. -/
 theorem selectUnwitnessed_firstObstructionStep
@@ -671,6 +778,8 @@ theorem finite_runtimeNext_decides
         rw [State.stateOfGuardedFacts_guardedFacts]
   simpa only [runtimeNextFacts, hdecode] using hstep
 
+#print axioms selectClash_eq_none_iff
+#print axioms selectClash_refutes
 #print axioms selectClauseGrounding_eq_none_iff
 #print axioms selectClauseGrounding_firstObstructionStep
 #print axioms selectClauseGrounding_emptyHead_refutes
@@ -681,6 +790,7 @@ theorem finite_runtimeNext_decides
 #print axioms selectUnblockedUnwitnessed_firstObstructionStep
 #print axioms runtimeNext_firstObstructionStep
 #print axioms runtimeNextBlocked_firstObstructionStep
+#print axioms clashFirst_runtime_control
 #print axioms runtimeNext_empty_terminal
 #print axioms runtimeNext_empty_semantics
 #print axioms finite_runtimeNext_decides

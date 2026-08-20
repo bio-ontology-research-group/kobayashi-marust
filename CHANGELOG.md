@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.135] – 2026-08-20
+
+### Certify clash-first HT runtime control
+
+- Enumerate every node/concept pair in the finite branch state and execute the
+  complementary-label clash predicate.
+- Prove scan exhaustion is equivalent to semantic `HasClash` negation.
+- Prove every selected clash closes the exact current state through
+  `Refutes.clash`.
+- Compose clash detection with the blocker-aware clause/witness selector in
+  Rust's control-flow order: only a clash-free state can expand or reach an
+  empty outcome.
+
+This closes the first control branch of equality-free HT certificate recursion.
+Checked empty-outcome production, full recursive-tree correspondence, and the
+equality/cardinality variants remain certification tasks. It does not certify
+the complete HT runtime or automatic routing.
+
 ## [0.3.134] – 2026-08-20
 
 ### Close the ordinary HT wire soundness boundary
