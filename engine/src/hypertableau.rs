@@ -9144,6 +9144,33 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Compose an anchored equality SAT witness with the same checked source
+    /// normalization used by the ordinary finite HT certificates. Version 5
+    /// is deliberately distinct: the main checker must validate the dense
+    /// quotient and anchored unravelling rather than decode this as a plain
+    /// version-1 tableau document.
+    fn wrap_normalized_anchored_equality_certificate(
+        &self,
+        payload: String,
+    ) -> Result<String, String> {
+        let certificate: serde_json::Value =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let normalization = self.lean_wire_normalization()?;
+        let preprocessing = self.lean_wire_preprocessing();
+        if normalization.is_none() && preprocessing.is_some() {
+            return Err(
+                "HT anchored preprocessing has no source normalization evidence".to_string(),
+            );
+        }
+        serde_json::to_string(&serde_json::json!({
+            "version": 5,
+            "normalization": normalization,
+            "preprocessing": preprocessing,
+            "certificate": certificate,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     fn wrap_cardinality_lean_certificate(&self, payload: String) -> Result<String, String> {
         let certificate: serde_json::Value =
             serde_json::from_str(&payload).map_err(|error| error.to_string())?;
@@ -11316,6 +11343,7 @@ impl Ht {
                     return Ok((false, self.lean_unsat_certificate_json()?));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
+                    let anchored_state = state.clone();
                     let node_count = state.representatives.len();
                     let raw = serde_json::to_string(&LeanHtEqCertificate {
                         version: 2,
@@ -11331,6 +11359,15 @@ impl Ht {
                     let candidate = self.finalize_lean_certificate(raw)?;
                     if self.lean_decision_candidate_passes(&candidate)? {
                         return Ok((true, candidate));
+                    }
+                    if let Ok(anchored) =
+                        self.lean_anchored_equality_open_certificate_json(&anchored_state)
+                    {
+                        let anchored =
+                            self.wrap_normalized_anchored_equality_certificate(anchored)?;
+                        if self.lean_decision_candidate_passes(&anchored)? {
+                            return Ok((true, anchored));
+                        }
                     }
                     node_budget =
                         Self::deepen_after_rejected_candidate(node_budget, deepen, "equality")?;
@@ -21968,16 +22005,23 @@ mod tests {
             anchored_wire["equality_state"]["representatives"],
             serde_json::json!([0, 1, 2])
         );
+        let normalized_anchored = cyclic
+            .wrap_normalized_anchored_equality_certificate(anchored.clone())
+            .expect("compose anchored equality evidence with source normalization");
+        let normalized_wire: serde_json::Value =
+            serde_json::from_str(&normalized_anchored).unwrap();
+        assert_eq!(normalized_wire["version"], serde_json::json!(5));
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
-            let mut checker = std::path::PathBuf::from(checker);
-            checker.set_file_name("ht-anchored-eq-cert-check");
+            let main_checker = std::path::PathBuf::from(&checker);
+            let mut anchored_checker = main_checker.clone();
+            anchored_checker.set_file_name("ht-anchored-eq-cert-check");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-anchored-eq-sat-{}-{}.json",
                 std::process::id(),
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, anchored).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = std::process::Command::new(anchored_checker)
                 .arg(&path)
                 .output()
                 .expect("run native equality-backed anchored checker");
@@ -21986,6 +22030,43 @@ mod tests {
                 output.status.success(),
                 "Lean must accept Rust's equality-backed anchored model: {}",
                 String::from_utf8_lossy(&output.stderr)
+            );
+
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-normalized-anchored-eq-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, normalized_anchored).unwrap();
+            let output = std::process::Command::new(main_checker)
+                .arg(&path)
+                .output()
+                .expect("run main native HT checker on anchored equality evidence");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                output.status.success(),
+                "main Lean checker must accept normalized anchored equality evidence: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            let mut forged = normalized_wire.clone();
+            forged["normalization"] = serde_json::json!([]);
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-forged-normalized-anchored-eq-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
+            let output = std::process::Command::new(
+                std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap(),
+            )
+            .arg(&path)
+            .output()
+            .expect("run main native HT checker on forged normalization");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                !output.status.success(),
+                "main Lean checker must reject an incomplete source normalization"
             );
         }
 

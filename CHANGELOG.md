@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.124] – 2026-08-20
+
+### Publish source-aware anchored equality SAT witnesses
+
+- Compose the dense equality quotient and anchored-model checker with checked
+  source-clause normalization and preprocessing evidence.
+- Add version-5 support to the main native HT checker. Acceptance constructs a
+  nonempty model of the original source ontology, not only the normalized
+  runtime clauses.
+- Let global equality decision search try this anchored witness when its exact
+  finite quotient is not itself a checker-accepted model. A rejected witness
+  remains inconclusive and iterative deepening continues.
+- Exercise the Rust producer through both the specialized quotient checker and
+  the main source-aware checker. The regression also rejects an incomplete
+  normalization vector.
+
+This closes global SAT publication for checker-accepted blocked equality and
+nominal branches. HT taxonomy countermodels and cardinality-aware anchored
+models remain separate certification tasks. It does not certify the entire KM
+executable.
+
 ## [0.3.123] – 2026-08-20
 
 ### Certify dense equality quotients for anchored HT models

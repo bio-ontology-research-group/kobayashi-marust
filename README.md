@@ -41,9 +41,9 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.123`. This milestone checks the exact dense quotient from a finite HT
-equality state into its nominal-aware anchored model; it does not certify the
-entire Rust executable.
+`v0.3.124`. This milestone checks source-aware global SAT publication from a
+finite HT equality state through its dense nominal-aware anchored model; it
+does not certify the entire Rust executable.
 
 ## Classify an ontology
 

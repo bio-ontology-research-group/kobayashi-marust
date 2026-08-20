@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauNormalizedWire
 import ContextCalculus.HypertableauRegularDecisionWire
+import ContextCalculus.HypertableauAnchoredEqualityNormalizationWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -11,7 +12,10 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
       let json ← Json.parse input
       let versionValue ← json.getObjVal? "version"
       let version : Nat ← fromJson? versionValue
-      if version = 3 || version = 4 then
+      if version = 5 then
+        let document : WireNormalizedAnchoredEqCertificate ← fromJson? json
+        document.check
+      else if version = 3 || version = 4 then
         let document : WireNormalizedCertificate ← fromJson? json
         document.check
       else if version = 2 then
