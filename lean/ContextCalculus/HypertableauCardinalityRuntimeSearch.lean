@@ -786,6 +786,45 @@ def DistinctEqState.InactivePrefixFresh
     (state : DistinctEqState (Fin nodeCount) Concept Role) (active : Nat) : Prop :=
   ∀ target, active ≤ target.1 → state.Fresh target
 
+/-- Executable wire-state invariant corresponding to Rust's `active_nodes`.
+Every inactive finite ID must be fresh in the equality certificate and absent
+from both directions of the explicit disequality list. -/
+def FiniteDistinctEqCertificate.inactivePrefixFreshB
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat) : Bool :=
+  certificate.base.equalityClosureValidB && decide (active ≤ nodeCount) &&
+    (List.finRange nodeCount).all fun target =>
+      decide (target.1 < active) ||
+        (certificate.base.freshNodeB target &&
+          (List.finRange nodeCount).all fun node =>
+            decide ((target, node) ∉ certificate.apart) &&
+              decide ((node, target) ∉ certificate.apart))
+
+theorem FiniteDistinctEqCertificate.inactivePrefixFreshB_sound
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat)
+    (hcheck : certificate.inactivePrefixFreshB active = true) :
+    certificate.state.InactivePrefixFresh active := by
+  simp only [FiniteDistinctEqCertificate.inactivePrefixFreshB, Bool.and_eq_true,
+    List.all_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hcheck
+  intro target htarget
+  rcases hcheck.2 target (List.mem_finRange target) with hinactive | hfresh
+  · exact (Nat.not_lt_of_ge htarget hinactive).elim
+  · refine ⟨(certificate.base.freshNodeB_eq_true hcheck.1.1 target).mp hfresh.1, ?_⟩
+    intro node
+    exact hfresh.2 node (List.mem_finRange node)
+
+theorem FiniteDistinctEqCertificate.inactivePrefixFreshB_fit
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat)
+    (hcheck : certificate.inactivePrefixFreshB active = true) : active ≤ nodeCount := by
+  simp only [FiniteDistinctEqCertificate.inactivePrefixFreshB, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.1.2
+
 theorem rustConsecutiveTargets_freshFamily
     (state : DistinctEqState (Fin nodeCount) Concept Role)
     (hprefix : state.InactivePrefixFresh active)
@@ -795,6 +834,17 @@ theorem rustConsecutiveTargets_freshFamily
   intro index
   apply hprefix
   simp [rustConsecutiveTargets]
+
+theorem FiniteDistinctEqCertificate.rustConsecutiveTargets_freshFamily_of_check
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active count : Nat)
+    (hprefix : certificate.inactivePrefixFreshB active = true)
+    (hfit : active + count ≤ nodeCount) :
+    certificate.state.FreshFamily
+      (rustConsecutiveTargets active count nodeCount hfit) :=
+  rustConsecutiveTargets_freshFamily certificate.state
+    (certificate.inactivePrefixFreshB_sound active hprefix) hfit
 
 theorem selectRustExpandableMinimum_consecutive_closedRefutes
     [Fintype Concept] [DecidableEq Concept]
@@ -1345,6 +1395,9 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms rustConsecutiveTargets_injective
 #print axioms rustConsecutiveTargets_freshFamily
 #print axioms selectRustExpandableMinimum_consecutive_closedRefutes
+#print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_sound
+#print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_fit
+#print axioms FiniteDistinctEqCertificate.rustConsecutiveTargets_freshFamily_of_check
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted

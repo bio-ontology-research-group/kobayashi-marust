@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.172] – 2026-08-21
+
+### Check the active-node prefix invariant
+
+- Add an executable finite-certificate check matching Rust's `active_nodes`
+  discipline: every inactive ID must be equality-fresh and absent from both
+  directions of the explicit `apart` relation.
+- Prove checker acceptance yields semantic inactive-prefix freshness and that
+  the claimed active prefix fits within the finite node budget.
+- Derive freshness of Rust's complete consecutive minimum-target vector
+  directly from accepted wire-state data.
+- Audit the checker and correspondence endpoints without `sorryAx`.
+
+Proving Rust field construction preserves this checked invariant at every
+recursive transition, deterministic maximum witness selection, exact recursive
+outcome production, CB, and automatic routing remain unfinished.
+
 ## [0.3.171] – 2026-08-21
 
 ### Certify consecutive minimum targets
