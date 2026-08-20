@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.68`.
+`v0.3.69`.
 
 ## Classify an ontology
 
@@ -213,6 +213,13 @@ each absent branch head and fresh witness, and exact child closure for the
 disjunctive and existential `Refutes` constructors. The completeness theorem is
 specialized directly to this representation. Establishing the blocked fresh
 address supply and matching Rust's enumerator to these transitions remains.
+
+Lean characterizes fresh witness nodes exactly as addresses absent from the
+finite active-node set, proves a fresh node exists while that universe has
+capacity, and proves a blocked path below the signature depth can be extended
+by one successor slot. An unused obligation-specific extension is therefore a
+valid fresh witness. The remaining tree invariant must connect used extensions
+to already-discharged obligations.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered

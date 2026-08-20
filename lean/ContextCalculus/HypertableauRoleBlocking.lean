@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauTerminal
+import ContextCalculus.HypertableauSearch
 import Mathlib.Data.Fintype.Option
 
 /-!
@@ -137,6 +137,50 @@ noncomputable instance roleBlockedAddressFintype
   (List.finite_length_le Slot
     (Fintype.card (RoleBlockingSignature Concept Role))).fintype
 
+def RoleBlockedAddress.extend
+    {Slot Concept Role : Type}
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (address : RoleBlockedAddress Slot Concept Role) (slot : Slot)
+    (hdepth : address.1.length <
+      Fintype.card (RoleBlockingSignature Concept Role)) :
+    RoleBlockedAddress Slot Concept Role :=
+  ⟨address.1 ++ [slot], by simpa using Nat.succ_le_of_lt hdepth⟩
+
+@[simp] theorem RoleBlockedAddress.extend_length
+    {Slot Concept Role : Type}
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (address : RoleBlockedAddress Slot Concept Role) (slot : Slot)
+    (hdepth : address.1.length <
+      Fintype.card (RoleBlockingSignature Concept Role)) :
+    (address.extend slot hdepth).1.length = address.1.length + 1 := by
+  simp [RoleBlockedAddress.extend]
+
+/-- An obligation-specific child address below the blocking depth is a valid
+fresh witness whenever that exact address is not already active. -/
+theorem State.fresh_extended_roleBlockedAddress
+    {Slot Concept Role : Type}
+    [Fintype Slot] [DecidableEq Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State (RoleBlockedAddress Slot Concept Role) Concept Role)
+    (address : RoleBlockedAddress Slot Concept Role) (slot : Slot)
+    (hdepth : address.1.length <
+      Fintype.card (RoleBlockingSignature Concept Role))
+    (hunused : ¬state.NodeUsed (address.extend slot hdepth)) :
+    state.Fresh (address.extend slot hdepth) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro literal hlabel
+    exact hunused (Or.inl ⟨literal, hlabel⟩)
+  · intro candidateRole node
+    exact ⟨fun hedge => hunused
+        (Or.inr (Or.inl ⟨candidateRole, node, Or.inl hedge⟩)),
+      fun hedge => hunused
+        (Or.inr (Or.inl ⟨candidateRole, node, Or.inr hedge⟩))⟩
+  · intro candidateRole filler hobligation
+    exact hunused (Or.inr (Or.inr ⟨candidateRole, filler, hobligation⟩))
+
 /-- Finite successor choice together with role-sensitive blocking yields a
 finite node universe, not only finite individual predecessor paths. -/
 theorem role_blocked_node_universe_finite
@@ -170,6 +214,7 @@ theorem State.no_overlong_mode6_expansion
 #print axioms State.roleBlockingSignature_parent_context
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
+#print axioms State.fresh_extended_roleBlockedAddress
 #print axioms State.no_overlong_mode6_expansion
 
 end ContextCalculus.Hypertableau

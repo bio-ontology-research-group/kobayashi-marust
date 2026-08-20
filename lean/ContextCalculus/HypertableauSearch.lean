@@ -67,6 +67,75 @@ def stateOfGuardedFacts
   classical
   apply State.ext <;> funext <;> simp [stateOfGuardedFacts, State.holdsFact]
 
+def State.NodeUsed (state : State Node Concept Role) (node : Node) : Prop :=
+  (∃ literal, state.label node literal) ∨
+  (∃ role other, state.edge role node other ∨ state.edge role other node) ∨
+  (∃ role filler, state.obligation role filler node)
+
+noncomputable def State.activeNodes
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role) : Finset Node := by
+  classical
+  exact Finset.univ.filter state.NodeUsed
+
+@[simp] theorem State.mem_activeNodes
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role) (node : Node) :
+    node ∈ state.activeNodes ↔ state.NodeUsed node := by
+  classical
+  simp [State.activeNodes]
+
+theorem State.fresh_iff_not_mem_activeNodes
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role) (target : Node) :
+    state.Fresh target ↔ target ∉ state.activeNodes := by
+  classical
+  rw [State.mem_activeNodes]
+  constructor
+  · rintro ⟨hlabel, hedge, hobligation⟩ hused
+    rcases hused with ⟨literal, hliteral⟩ | ⟨role, node, hout | hin⟩ |
+      ⟨role, filler, hoblig⟩
+    · exact hlabel literal hliteral
+    · exact (hedge role node).1 hout
+    · exact (hedge role node).2 hin
+    · exact hobligation role filler hoblig
+  · intro hunused
+    refine ⟨?_, ?_, ?_⟩
+    · intro literal hlabel
+      exact hunused (Or.inl ⟨literal, hlabel⟩)
+    · intro role node
+      exact ⟨fun hedge => hunused (Or.inr (Or.inl ⟨role, node, Or.inl hedge⟩)),
+        fun hedge => hunused (Or.inr (Or.inl ⟨role, node, Or.inr hedge⟩))⟩
+    · intro role filler hobligation
+      exact hunused (Or.inr (Or.inr ⟨role, filler, hobligation⟩))
+
+/-- Any unused member of the finite blocked node universe is a semantic fresh
+witness target. The premise is the exact capacity condition the runtime must
+maintain before expanding an unwitnessed existential. -/
+theorem State.exists_fresh_of_activeNodes_card_lt
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role)
+    (hcapacity : state.activeNodes.card < Fintype.card Node) :
+    ∃ target, state.Fresh target := by
+  classical
+  have hnotall : ¬∀ node, node ∈ state.activeNodes := by
+    intro hall
+    have huniv : state.activeNodes = Finset.univ := Finset.eq_univ_of_forall hall
+    have : state.activeNodes.card = Fintype.card Node := by simpa [huniv]
+    omega
+  push_neg at hnotall
+  obtain ⟨target, htarget⟩ := hnotall
+  have hunused : ¬state.NodeUsed target := by
+    simpa using htarget
+  refine ⟨target, ?_, ?_, ?_⟩
+  · intro literal hlabel
+    exact hunused (Or.inl ⟨literal, hlabel⟩)
+  · intro role node
+    exact ⟨fun hedge => hunused (Or.inr (Or.inl ⟨role, node, Or.inl hedge⟩)),
+      fun hedge => hunused (Or.inr (Or.inl ⟨role, node, Or.inr hedge⟩))⟩
+  · intro role filler hobligation
+    exact hunused (Or.inr (Or.inr ⟨role, filler, hobligation⟩))
+
 /-- Every branchable head assertion is a strict finite-fact update when that
 head is not already discharged. -/
 theorem State.guardedFacts_assertAtom_ssubset
@@ -251,6 +320,8 @@ theorem finite_guarded_fact_ht_complete
 #print axioms State.guardedFacts_materializeWitness_ssubset
 #print axioms stateOfGuardedFacts_guardedFacts
 #print axioms State.stateOfGuardedFacts_guardedFacts
+#print axioms State.exists_fresh_of_activeNodes_card_lt
+#print axioms State.fresh_iff_not_mem_activeNodes
 #print axioms obstruction_has_exhaustive_step
 #print axioms finite_concrete_ht_complete
 #print axioms finite_guarded_fact_ht_complete

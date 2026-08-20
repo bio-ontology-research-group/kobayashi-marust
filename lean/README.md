@@ -302,7 +302,12 @@ exhaustive step type has exactly one child per disjunct or one fresh-witness
 child; refuting those children constructs the matching `Refutes` parent. The
 finite completeness theorem is specialized directly to these guarded facts.
 The blocked fresh-address supply and exact Rust-enumerator correspondence remain
-open.
+open. The active-node set is now defined exactly from labels, both edge
+endpoints, and obligations. Freshness is equivalent to absence from that set,
+and spare finite capacity yields a fresh target. A blocked address below the
+signature depth can be extended by one successor slot; an unused exact
+extension is fresh. It remains to prove that a used obligation extension already
+discharges that obligation.
 `HypertableauTerminal.lean` also proves that every branch exposes a
 clash, an unwitnessed existential, an undischarged grounding, or an exact
 canonical model. `HypertableauRoleBlocking.lean` proves the certified full

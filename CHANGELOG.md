@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.69] – 2026-08-20
+
+### Prove the finite blocked-address fresh-witness criterion
+
+- Define the exact active-node set induced by labels, both role-edge endpoints,
+  and existential obligations.
+- Prove a node is fresh exactly when it is absent from that set, and prove a
+  fresh target exists whenever active nodes do not fill the finite universe.
+- Define extension of a role-blocked path by one finite successor slot and prove
+  the extension remains within the signature depth bound.
+- Prove that an unused obligation-specific extension is a valid fresh witness
+  target.
+
+The remaining tree invariant must show that an unwitnessed obligation's exact
+extension is unused, or that an already-used extension discharges it.
+
 ## [0.3.68] – 2026-08-20
 
 ### Refine finite HT search to exact branch and witness transitions
