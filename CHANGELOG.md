@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.150] – 2026-08-21
+
+### Close equality-free finite runtime selection
+
+- Prove a capstone theorem for the concrete clause-first equality-free runtime
+  selector with no unchecked terminal-production premise.
+- Derive strict finite-fact growth from every nonempty clause or witness
+  successor family and combine exhaustive closed children through the formal HT
+  refutation rules.
+- Classify every empty successor family as an immediate refutation, a canonical
+  model, or an explicit node-exhaustion frontier with a still-unwitnessed
+  obligation and no fresh finite node.
+- Keep finite-node exhaustion semantically inconclusive, matching iterative
+  deepening; it is never interpreted as satisfiable.
+- Audit the capstone without `sorryAx`.
+
+Equality-aware and cardinality Rust transition-enumerator correspondence, CB,
+and automatic routing remain unfinished.
+
 ## [0.3.149] – 2026-08-21
 
 ### Make the global cardinality outcome boundary executable

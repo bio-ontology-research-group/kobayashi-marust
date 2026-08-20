@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.149`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.150`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -63,9 +63,11 @@ directed `apart` pair in checked successor states. Accepted production-global
 cardinality documents now pass an executable shape check and construct typed
 checked SAT or closed outcomes with their model or inconsistency semantics.
 Complete cardinality taxonomy documents already provide a positive-or-negative
-decision for every named concept and ordered named pair. Recursive Rust
-transition-enumerator correspondence, CB, and automatic routing remain
-unfinished.
+decision for every named concept and ordered named pair. The concrete
+equality-free clause-first runtime selector is total at each finite node budget:
+it refutes, reaches a canonical model, or reports explicit node exhaustion for
+iterative deepening. Equality-aware and cardinality transition-enumerator
+correspondence, CB, and automatic routing remain unfinished.
 
 ## Classify an ontology
 

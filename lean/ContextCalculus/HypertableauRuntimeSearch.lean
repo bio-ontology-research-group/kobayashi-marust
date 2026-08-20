@@ -778,6 +778,69 @@ theorem finite_runtimeNext_decides
         rw [State.stateOfGuardedFacts_guardedFacts]
   simpa only [runtimeNextFacts, hdecode] using hstep
 
+def RuntimeNodeFrontier
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) : Prop :=
+  ¬state.HasUndischarged ontology ∧ state.HasUnwitnessed ∧
+    ¬∃ target, state.Fresh target
+
+/-- Fully discharged equality-free runtime correspondence at one finite node
+budget. The concrete clause-first selector either refutes the root, reaches a
+canonical model, or reaches an explicit node-exhaustion frontier. No unchecked
+terminal-production premise remains, and frontier exhaustion is never
+classified as satisfiable. -/
+theorem finite_runtimeNext_semantic_or_frontier
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom) :
+    ∀ root,
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      ∃ leaf, SearchDescends (runtimeNextFacts ontology) root leaf ∧
+        ((stateOfGuardedFacts leaf).canonical.models ontology ∨
+          RuntimeNodeFrontier ontology (stateOfGuardedFacts leaf)) := by
+  apply finite_exhaustive_search_total (runtimeNextFacts ontology)
+    (fun facts => Refutes (Fin nodeCount) ontology (stateOfGuardedFacts facts))
+    (fun facts => (stateOfGuardedFacts facts).canonical.models ontology ∨
+      RuntimeNodeFrontier ontology (stateOfGuardedFacts facts))
+  · intro parent child hchild
+    have hnonempty : runtimeNextFacts ontology parent ≠ [] := by
+      intro hempty
+      simp [hempty] at hchild
+    have hruntime : runtimeNext ontology (stateOfGuardedFacts parent) ≠ [] := by
+      intro hempty
+      apply hnonempty
+      simp [runtimeNextFacts, hempty]
+    have hstep := runtimeNext_firstObstructionStep ontology
+      (stateOfGuardedFacts parent) hheads hruntime
+    rcases List.mem_map.mp hchild with ⟨runtimeChild, hruntimeChild, rfl⟩
+    simpa using hstep.children_strictGrowth hruntimeChild
+  · intro facts hempty
+    have hruntimeEmpty : runtimeNext ontology (stateOfGuardedFacts facts) = [] := by
+      simpa [runtimeNextFacts] using hempty
+    rcases runtimeNext_empty_semantics ontology (stateOfGuardedFacts facts)
+        hheads hruntimeEmpty with hrefutes | hterminal | hfrontier
+    · exact Or.inl hrefutes
+    · by_cases hclash : (stateOfGuardedFacts facts).HasClash
+      · exact Or.inl (.clash _ hclash)
+      · exact Or.inr (Or.inl (exhaustive_terminal_models
+          (stateOfGuardedFacts facts) ontology hguarded hclash hterminal.2 hterminal.1))
+    · by_cases hclash : (stateOfGuardedFacts facts).HasClash
+      · exact Or.inl (.clash _ hclash)
+      · exact Or.inr (Or.inr hfrontier)
+  · intro facts hnonempty hchildren
+    have hruntime : runtimeNext ontology (stateOfGuardedFacts facts) ≠ [] := by
+      intro hempty
+      apply hnonempty
+      simp [runtimeNextFacts, hempty]
+    have hstep := runtimeNext_firstObstructionStep ontology
+      (stateOfGuardedFacts facts) hheads hruntime
+    apply hstep.exhaustiveStep.refutes_of_children
+    intro child hchild
+    have hchildFacts : child.guardedFacts ∈ runtimeNextFacts ontology facts := by
+      exact List.mem_map_of_mem hchild
+    have hrefutes := hchildren child.guardedFacts hchildFacts
+    simpa using hrefutes
+
 #print axioms selectClash_eq_none_iff
 #print axioms selectClash_refutes
 #print axioms selectClauseGrounding_eq_none_iff
@@ -794,5 +857,6 @@ theorem finite_runtimeNext_decides
 #print axioms runtimeNext_empty_terminal
 #print axioms runtimeNext_empty_semantics
 #print axioms finite_runtimeNext_decides
+#print axioms finite_runtimeNext_semantic_or_frontier
 
 end ContextCalculus.Hypertableau
