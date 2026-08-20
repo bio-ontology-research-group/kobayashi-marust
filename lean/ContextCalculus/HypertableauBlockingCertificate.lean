@@ -137,6 +137,38 @@ def FiniteFoldCertificate.check
     (certificate : FiniteFoldCertificate nodeCount conceptCount roleCount variableCount) : Bool :=
   certificate.materialize.checkSat
 
+/-- Fold checking is exact for the materialized finite endpoint invariant. In
+particular, proving a runtime fold guarded, clash-free, witness-complete, and
+saturated is sufficient to prove executable acceptance rather than merely
+semantic model existence. -/
+theorem FiniteFoldCertificate.check_eq_true_iff_materialize_valid
+    (certificate : FiniteFoldCertificate nodeCount conceptCount roleCount variableCount) :
+    certificate.check = true ↔ certificate.materialize.Valid := by
+  exact certificate.materialize.checkSat_eq_true_iff_valid
+
+theorem FiniteFoldCertificate.check_complete
+    (certificate : FiniteFoldCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.materialize.Valid) :
+    certificate.check = true :=
+  certificate.materialize.checkSat_complete hvalid
+
+/-- Concrete acceptance contract for a blocked terminal. These are exactly the
+four properties the Rust terminal enumerator must establish; there is no
+additional hidden checker premise. -/
+theorem FiniteFoldCertificate.check_complete_of
+    (certificate : FiniteFoldCertificate nodeCount conceptCount roleCount variableCount)
+    (hguarded : ∀ clause ∈ certificate.base.ontology, clause.GuardedBody)
+    (hclash : certificate.materialize.state.ClashFree)
+    (hwitness : ∀ obligation ∈ certificate.base.obligations,
+      ∃ witness,
+        (obligation.1, obligation.2.2, witness) ∈ certificate.foldedEdges ∧
+        (witness, obligation.2.1) ∈ certificate.base.labels)
+    (hsaturated : certificate.materialize.state.SaturatedFor
+      certificate.base.ontology) :
+    certificate.check = true := by
+  apply certificate.check_complete
+  exact ⟨hguarded, hclash, hwitness, hsaturated⟩
+
 /-- A checked fold constructs a model of the exact, unchanged ontology.  No
 property of `folds` occurs among the assumptions. -/
 theorem FiniteFoldCertificate.check_satisfiable
@@ -176,6 +208,9 @@ example : cyclicFold.check = true := by native_decide
 end FoldTests
 
 #print axioms FiniteFoldCertificate.check_satisfiable
+#print axioms FiniteFoldCertificate.check_eq_true_iff_materialize_valid
+#print axioms FiniteFoldCertificate.check_complete
+#print axioms FiniteFoldCertificate.check_complete_of
 #print axioms State.blocks_preserve_canonical_label
 #print axioms State.exists_blocker_on_long_path
 

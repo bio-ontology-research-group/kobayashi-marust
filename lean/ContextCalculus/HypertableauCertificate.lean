@@ -165,6 +165,77 @@ theorem FiniteSatCertificate.checkSat_sound
     exact ⟨atom, hatom,
       (certificate.holdsAtomB_eq_true assignment atom).1 hholds⟩
 
+/-- The finite SAT checker is complete for its stated endpoint invariant. This
+direction is needed to prove that a structurally valid blocked fold cannot be
+rejected by the executable trust boundary. -/
+theorem FiniteSatCertificate.checkSat_complete
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.Valid) :
+    certificate.checkSat = true := by
+  simp only [FiniteSatCertificate.checkSat, Bool.and_eq_true,
+    List.all_eq_true]
+  refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+  · intro clause hclause atom hatom
+    have hbody := hvalid.1 clause hclause atom hatom
+    cases atom with
+    | concept lit node =>
+        rcases lit with ⟨concept, neg⟩
+        cases neg <;> simp_all [atomGuardedB, BodyAtom]
+    | role => simp [atomGuardedB]
+    | exists_ => contradiction
+    | eq => simp [atomGuardedB]
+  · rintro ⟨node, literal⟩ hlabel
+    simp only [decide_eq_true_eq]
+    rcases literal with ⟨concept, neg⟩
+    cases neg with
+    | false =>
+        intro hnegative
+        exact hvalid.2.1 node concept ⟨hlabel, hnegative⟩
+    | true =>
+        intro hpositive
+        exact hvalid.2.1 node concept ⟨hpositive, hlabel⟩
+  · intro obligation hobligation
+    rcases hvalid.2.2.1 obligation hobligation with
+      ⟨witness, hedge, hlabel⟩
+    rw [List.any_eq_true]
+    exact ⟨witness, List.mem_finRange witness, by
+      simp [hedge, hlabel]⟩
+  · intro clause hclause assignment _
+    by_cases hbody : ∀ atom ∈ clause.body,
+        certificate.state.holdsAtom assignment atom
+    · have hhead := hvalid.2.2.2 clause hclause assignment hbody
+      rcases hhead with ⟨atom, hatom, hholds⟩
+      have hbodyB : clause.body.all
+          (certificate.holdsAtomB assignment) = true := by
+        rw [List.all_eq_true]
+        intro bodyAtom hbodyAtom
+        exact (certificate.holdsAtomB_eq_true assignment bodyAtom).2
+          (hbody bodyAtom hbodyAtom)
+      have hheadB : clause.head.any
+          (certificate.holdsAtomB assignment) = true := by
+        rw [List.any_eq_true]
+        exact ⟨atom, hatom,
+          (certificate.holdsAtomB_eq_true assignment atom).2 hholds⟩
+      simp [hbodyB, hheadB]
+    · have hbodyB : clause.body.all
+          (certificate.holdsAtomB assignment) = false := by
+        generalize hall : clause.body.all
+          (certificate.holdsAtomB assignment) = value
+        cases value with
+        | false => rfl
+        | true =>
+            exfalso
+            apply hbody
+            intro atom hatom
+            exact (certificate.holdsAtomB_eq_true assignment atom).1
+              ((List.all_eq_true.mp hall) atom hatom)
+      simp [hbodyB]
+
+theorem FiniteSatCertificate.checkSat_eq_true_iff_valid
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount) :
+    certificate.checkSat = true ↔ certificate.Valid :=
+  ⟨certificate.checkSat_sound, certificate.checkSat_complete⟩
+
 /-- Checker acceptance constructs a model of the exact encoded ontology. -/
 theorem FiniteSatCertificate.checkSat_models
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
@@ -251,6 +322,8 @@ example : undischargedCertificate.checkSat = false := by native_decide
 end CheckerTests
 
 #print axioms FiniteSatCertificate.checkSat_sound
+#print axioms FiniteSatCertificate.checkSat_complete
+#print axioms FiniteSatCertificate.checkSat_eq_true_iff_valid
 #print axioms FiniteSatCertificate.checkSat_models
 #print axioms FiniteSatCertificate.checkSat_satisfiable
 #print axioms FiniteSatCertificate.checkSat_not_entailsSub

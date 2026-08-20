@@ -228,6 +228,11 @@ only decoded evidence to those proved checkers. Build the native executable with
 `LEAN_NUM_THREADS=2 lake build ht-cert-check`. The separate complete-taxonomy
 decoder is built with
 `LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
+The SAT checker is exact for its endpoint contract:
+`checkSat_eq_true_iff_valid` proves acceptance equivalent to guardedness, clash
+freedom, witness completion, and saturation. For a blocked fold,
+`FiniteFoldCertificate.check_complete_of` makes those same four properties the
+complete concrete acceptance obligation.
 
 `HypertableauEqualityCertificate.lean` and
 `HypertableauEqualityWire.lean` add version-2 evidence with exact

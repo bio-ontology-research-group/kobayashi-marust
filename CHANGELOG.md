@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.92] – 2026-08-20
+
+### Prove finite HT SAT-checker completeness
+
+- Prove the converse of the finite HT SAT checker's existing soundness theorem:
+  every guarded, clash-free, witness-complete, saturated finite endpoint is
+  accepted by `checkSat`.
+- Package both directions as `checkSat = true ↔ Valid`, so the executable
+  checker is exact for its stated endpoint invariant.
+- Lift checker completeness to blocked finite folds and state the exact four
+  concrete obligations sufficient for fold acceptance: guarded clauses, clash
+  freedom, witnesses after materializing blocker edges, and saturation.
+- Audit the theorems without `sorry` or `admit`; their axiom reports contain
+  only standard Lean quotient/classical principles.
+
+This converts blocked-fold acceptance from a one-way trust boundary into a
+provable target. The next HT obligation is deriving these four endpoint facts
+from every concrete certified blocker output, followed by the analogous
+equality/cardinality acceptance guarantees.
+
 ## [0.3.91] – 2026-08-20
 
 ### Use total certified search for every HT taxonomy cell
