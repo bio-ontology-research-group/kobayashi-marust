@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauEqualityRuntimeSearch
 import ContextCalculus.HypertableauWire
 import Lean
 
@@ -144,10 +144,8 @@ decreasing_by
     have htree : sizeOf child.2 < sizeOf child := by
       rcases child with ⟨state, tree⟩
       simp
-      omega
     omega
   · simp_wf
-    omega
 
 inductive DecodedEqEvidence (nodeCount conceptCount roleCount variableCount : Nat) where
   | sat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -254,11 +252,11 @@ def DecodedEqCertificate.check (decoded : DecodedEqCertificate) : Bool :=
       certificate.base.labels.isEmpty &&
       certificate.base.edges.isEmpty &&
       certificate.base.obligations.isEmpty &&
-      tree.check certificate
+      tree.checkClosed certificate
   | .subsumption certificate root sub sup tree =>
-      certificate.checkSubsumptionRoot root sub sup && tree.check certificate
+      certificate.checkSubsumptionRoot root sub sup && tree.checkClosed certificate
   | .unsatisfiableConcept certificate root concept tree =>
-      certificate.checkUnsatisfiableRoot root concept && tree.check certificate
+      certificate.checkUnsatisfiableRoot root concept && tree.checkClosed certificate
   | .nonSubsumption certificate root sub sup =>
       decide ((root, .pos sub) ∈ certificate.base.labels) &&
       decide ((root, .negated sup) ∈ certificate.base.labels) &&
@@ -306,17 +304,17 @@ theorem DecodedEqCertificate.check_sound (decoded : DecodedEqCertificate)
       rcases hcheck with ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
       haveI : Nonempty (Fin decoded.nodeCount) := ⟨⟨0, hpositive⟩⟩
       simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
-      exact tree.check_ontology_unsatisfiable certificate
+      exact tree.checkClosed_ontology_unsatisfiable certificate
         ⟨hlabels, hedges, hobligations⟩ htree
   | subsumption certificate root sub sup tree =>
       simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true] at hcheck
       simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
-      exact tree.check_subsumption certificate root sub sup
+      exact tree.checkClosed_subsumption certificate root sub sup
         (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) hcheck.2
   | unsatisfiableConcept certificate root concept tree =>
       simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true] at hcheck
       simp only [DecodedEqCertificate.SemanticallyValid, hevidence]
-      exact tree.check_unsatisfiable_concept certificate root concept
+      exact tree.checkClosed_unsatisfiable_concept certificate root concept
         (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) hcheck.2
   | nonSubsumption certificate root sub sup =>
       simp only [DecodedEqCertificate.check, hevidence, Bool.and_eq_true,

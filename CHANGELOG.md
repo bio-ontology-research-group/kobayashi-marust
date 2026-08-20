@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.154] – 2026-08-21
+
+### Integrate quotient-closed equality refutation checking
+
+- Add a terminating executable equality refutation-tree checker whose clause
+  branches evaluate concept, role, existential, and equality atoms modulo the
+  certificate's checked equivalence relation.
+- Prove mutually that every accepted tree and child vector constructs the
+  quotient-closed recursive equality refutation relation.
+- Derive ontology inconsistency, subsumption, and concept-unsatisfiability
+  soundness for accepted quotient-closed trees.
+- Switch the production equality UNSAT and query wire boundary to this checker,
+  matching the Rust runtime's closed grounding behavior. Equality SAT and
+  countermodel paths are unchanged.
+- Audit the new checker and semantic wrappers without `sorryAx`, build the full
+  Lean project, and pass all 47 Lean-integration Rust tests.
+
+Exact recursive wire representability of the quotient-closed checker,
+cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.153] – 2026-08-21
 
 ### Prove quotient-closed equality recursion sound

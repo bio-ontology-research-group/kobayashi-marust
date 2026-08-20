@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.153`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.154`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -75,9 +75,13 @@ blocking, unblocked explicit-witness selection, equality-fresh-node selection,
 and reconstruction of a closed recursive witness branch. A dedicated
 quotient-closed recursive equality refutation relation now matches Rust's
 grounding semantics and is proved sound; concrete clash, clause, and witness
-selectors reconstruct its constructors. Production checker integration for
-that relation, cardinality transition-enumerator correspondence, CB, and
-automatic routing remain unfinished.
+selectors reconstruct its constructors. The production equality UNSAT and
+query checker now evaluates branch bodies modulo the checked equality quotient,
+matching Rust's closed grounding semantics, and accepted trees prove ontology
+inconsistency, subsumption, or concept unsatisfiability as appropriate. Exact
+recursive representability of this quotient-closed checker, cardinality
+transition-enumerator correspondence, CB, and automatic routing remain
+unfinished. Equality SAT and countermodel paths are unchanged.
 
 ## Classify an ontology
 
