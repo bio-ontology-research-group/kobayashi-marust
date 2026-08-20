@@ -471,6 +471,220 @@ theorem selectEqWitness_refutes
   exact .witness state candidate.2.2 target candidate.1 candidate.2.1
     hproperties.1 ((eqFreshNodeBool_eq_true_iff state target).mp htarget.2) child
 
+/-- Exact clause-first successor family used by equality-aware finite search.
+Blocking applies only to witness expansion; clause branches always precede it. -/
+noncomputable def eqRuntimeNext
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) :
+    List (EqState Node Concept Role) :=
+  match selectEqClauseGrounding ontology state with
+  | some grounding => grounding.1.head.map (state.assertAtom grounding.2)
+  | none =>
+      match selectEqUnblockedUnwitnessed state parent ancestors with
+      | none => []
+      | some candidate =>
+          match selectEqFreshNode state with
+          | none => []
+          | some target =>
+              [state.materializeWitness candidate.2.2 target
+                candidate.1 candidate.2.1]
+
+/-- Semantic shape of one concrete equality-aware runtime expansion. -/
+inductive EqFirstObstructionStep
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) :
+    List (EqState Node Concept Role) → Prop where
+  | branch
+      (clause : Clause Variable Concept Role) (hclause : clause ∈ ontology)
+      (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body, state.closedHoldsAtom assignment atom)
+      (habsent : ∀ atom ∈ clause.head, ¬state.closedHoldsAtom assignment atom) :
+      EqFirstObstructionStep ontology state parent ancestors
+        (clause.head.map (state.assertAtom assignment))
+  | witness
+      (hnoClause : ¬state.HasClosedUndischarged ontology)
+      (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.base.obligation role filler source)
+      (hnowitness : ∀ witness,
+        ¬(state.base.edge role source witness ∧ state.base.label witness filler))
+      (hunblocked : quotientBlockedBool state parent ancestors source = false)
+      (hfresh : state.Fresh target) :
+      EqFirstObstructionStep ontology state parent ancestors
+        [state.materializeWitness source target role filler]
+
+theorem EqFirstObstructionStep.closedRefutes_of_children
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {state : EqState Node Concept Role}
+    {parent : Node → Option Node} {ancestors : Node → List Node}
+    {children : List (EqState Node Concept Role)}
+    (step : EqFirstObstructionStep ontology state parent ancestors children)
+    (hchildren : ∀ child, child ∈ children → ClosedEqRefutes Node ontology child) :
+    ClosedEqRefutes Node ontology state := by
+  cases step with
+  | branch clause hclause assignment hbody habsent =>
+      apply ClosedEqRefutes.branch state clause hclause assignment hbody
+      intro atom hatom
+      exact hchildren (state.assertAtom assignment atom)
+        (List.mem_map_of_mem hatom)
+  | witness hnoClause source target role filler hobligation hnowitness hunblocked hfresh =>
+      apply ClosedEqRefutes.witness state source target role filler hobligation hfresh
+      exact hchildren (state.materializeWitness source target role filler) (by simp)
+
+/-- A nonempty concrete equality successor family has exactly the certified
+clause-first transition shape. -/
+theorem eqRuntimeNext_firstObstructionStep
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (hnonempty : eqRuntimeNext ontology state parent ancestors ≠ []) :
+    EqFirstObstructionStep ontology state parent ancestors
+      (eqRuntimeNext ontology state parent ancestors) := by
+  classical
+  unfold eqRuntimeNext at hnonempty ⊢
+  generalize hclause : selectEqClauseGrounding ontology state = selectedClause
+  cases selectedClause with
+  | some grounding =>
+      have hfound := firstMatch_eq_some_mem
+        (by simpa [selectEqClauseGrounding] using hclause)
+      have hproperties := eqGroundingUndischarged_eq_true_iff.mp hfound.2
+      exact .branch grounding.1 (mem_allGroundings.mp hfound.1)
+        grounding.2 hproperties.1 hproperties.2
+  | none =>
+      generalize hwitness :
+        selectEqUnblockedUnwitnessed state parent ancestors = selectedWitness
+      cases selectedWitness with
+      | none => exact (hnonempty (by simp [hclause, hwitness])).elim
+      | some candidate =>
+          generalize hfresh : selectEqFreshNode state = selectedFresh
+          cases selectedFresh with
+          | none => exact (hnonempty (by simp [hclause, hwitness, hfresh])).elim
+          | some target =>
+              have hcandidate := firstMatch_eq_some_mem
+                (by simpa [selectEqUnblockedUnwitnessed] using hwitness)
+              have hp :=
+                (eqUnblockedWitnessCandidateBool_eq_true_iff
+                  state parent ancestors candidate).mp hcandidate.2
+              have htarget := firstMatch_eq_some_mem
+                (by simpa [selectEqFreshNode] using hfresh)
+              exact .witness
+                ((selectEqClauseGrounding_eq_none_iff ontology state).mp hclause)
+                candidate.2.2 target candidate.1 candidate.2.1
+                hp.1 hp.2.1 hp.2.2
+                ((eqFreshNodeBool_eq_true_iff state target).mp htarget.2)
+
+def EqRuntimeNodeFrontier
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) : Prop :=
+  ¬state.HasClosedUndischarged ontology ∧
+    state.HasUnblockedUnwitnessed parent ancestors ∧
+    ¬∃ target, state.Fresh target
+
+/-- Empty equality-aware successor enumeration means a zero-head refutation,
+a blocked/saturated terminal, or explicit finite-node exhaustion. -/
+theorem eqRuntimeNext_empty_semantics
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (hempty : eqRuntimeNext ontology state parent ancestors = []) :
+    ClosedEqRefutes Node ontology state ∨
+      (¬state.HasClosedUndischarged ontology ∧
+        ¬state.HasUnblockedUnwitnessed parent ancestors) ∨
+      EqRuntimeNodeFrontier ontology state parent ancestors := by
+  classical
+  unfold eqRuntimeNext at hempty
+  generalize hclause : selectEqClauseGrounding ontology state = selectedClause at hempty
+  cases selectedClause with
+  | some grounding =>
+      have hhead : grounding.1.head = [] := by simpa using hempty
+      left
+      have hfound := firstMatch_eq_some_mem
+        (by simpa [selectEqClauseGrounding] using hclause)
+      have hp := eqGroundingUndischarged_eq_true_iff.mp hfound.2
+      apply ClosedEqRefutes.branch state grounding.1 (mem_allGroundings.mp hfound.1)
+        grounding.2 hp.1
+      intro atom hatom
+      simp [hhead] at hatom
+  | none =>
+      have hnoClause := (selectEqClauseGrounding_eq_none_iff ontology state).mp hclause
+      generalize hwitness :
+        selectEqUnblockedUnwitnessed state parent ancestors = selectedWitness at hempty
+      cases selectedWitness with
+      | none =>
+          exact Or.inr (Or.inl ⟨hnoClause,
+            (selectEqUnblockedUnwitnessed_eq_none_iff state parent ancestors).mp hwitness⟩)
+      | some candidate =>
+          have hfound := firstMatch_eq_some_mem
+            (by simpa [selectEqUnblockedUnwitnessed] using hwitness)
+          have hp := (eqUnblockedWitnessCandidateBool_eq_true_iff
+            state parent ancestors candidate).mp hfound.2
+          have hunblocked : state.HasUnblockedUnwitnessed parent ancestors :=
+            ⟨candidate.2.2, candidate.1, candidate.2.1,
+              hp.1, hp.2.1, hp.2.2⟩
+          generalize hfresh : selectEqFreshNode state = selectedFresh at hempty
+          cases selectedFresh with
+          | none =>
+              exact Or.inr (Or.inr ⟨hnoClause, hunblocked,
+                (selectEqFreshNode_eq_none_iff state).mp hfresh⟩)
+          | some target => simp at hempty
+
+/-- Fully explicit top-level control for one equality-aware finite runtime
+state. Clash selection precedes clause and witness selection. A clash-free
+state then has either one certified nonempty transition, a blocked/saturated
+terminal, or an explicit finite-node frontier. -/
+theorem equality_runtime_control
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) :
+    ClosedEqRefutes Node ontology state ∨
+      (state.ClosedClashFree ∧
+        ((eqRuntimeNext ontology state parent ancestors ≠ [] ∧
+            EqFirstObstructionStep ontology state parent ancestors
+              (eqRuntimeNext ontology state parent ancestors)) ∨
+          (eqRuntimeNext ontology state parent ancestors = [] ∧
+            ((¬state.HasClosedUndischarged ontology ∧
+                ¬state.HasUnblockedUnwitnessed parent ancestors) ∨
+              EqRuntimeNodeFrontier ontology state parent ancestors)))) := by
+  classical
+  generalize hclash : selectEqClash state = selectedClash
+  cases selectedClash with
+  | some candidate =>
+      exact Or.inl (selectEqClash_closedRefutes ontology state hclash)
+  | none =>
+      have hclashFree := (selectEqClash_eq_none_iff state).mp hclash
+      by_cases hnext : eqRuntimeNext ontology state parent ancestors = []
+      · rcases eqRuntimeNext_empty_semantics ontology state parent ancestors hnext with
+          hrefutes | hterminal | hfrontier
+        · exact Or.inl hrefutes
+        · exact Or.inr ⟨hclashFree, Or.inr ⟨hnext, Or.inl hterminal⟩⟩
+        · exact Or.inr ⟨hclashFree, Or.inr ⟨hnext, Or.inr hfrontier⟩⟩
+      · exact Or.inr ⟨hclashFree, Or.inl ⟨hnext,
+          eqRuntimeNext_firstObstructionStep ontology state parent ancestors hnext⟩⟩
+
 mutual
   /-- Production-compatible recursive equality refutation check with full
   quotient-closed clause-body evaluation. -/
@@ -821,6 +1035,10 @@ theorem FiniteEqRefutationTree.checkClosed_unsatisfiable_concept
 #print axioms selectEqUnblockedUnwitnessed_eq_none_iff
 #print axioms selectEqFreshNode_eq_none_iff
 #print axioms selectEqWitness_refutes
+#print axioms EqFirstObstructionStep.closedRefutes_of_children
+#print axioms eqRuntimeNext_firstObstructionStep
+#print axioms eqRuntimeNext_empty_semantics
+#print axioms equality_runtime_control
 #print axioms FiniteEqRefutationTree.checkClosed_sound
 #print axioms ClosedEqRefutes.exists_checkClosed_tree
 #print axioms FiniteEqCertificate.closedRefutes_iff_exists_checkClosed_tree

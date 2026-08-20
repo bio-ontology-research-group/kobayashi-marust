@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.157] – 2026-08-21
+
+### Certify equality-aware runtime control
+
+- Define the concrete equality-aware clause-first successor enumerator with
+  quotient-closed clause matching, quotient pairwise blocking, and fresh-node
+  witness expansion.
+- Prove every nonempty successor family has exactly the corresponding certified
+  branch or witness transition shape.
+- Classify every empty successor family as a zero-head refutation, a
+  blocked/saturated terminal, or explicit finite-node exhaustion.
+- Prove the full clash-first control theorem: every finite state refutes,
+  advances through a certified transition, terminates, or reaches a frontier.
+  Frontier exhaustion is never classified as satisfiable.
+- Audit the new runtime-control theorems without `sorryAx`.
+
+Global finite equality search termination and checked SAT-terminal composition,
+cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.156] – 2026-08-21
 
 ### Connect bounded equality decisions to closed grounding
