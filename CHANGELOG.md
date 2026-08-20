@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.146] – 2026-08-21
+
+### Complete recursive cardinality-refutation wire representability
+
+- Prove that every checker-accepted finite equality/cardinality refutation has
+  a bounded wire document that decodes to a checker-accepted refutation at the
+  same declared depth.
+- Preserve every checked branch, witness, minimum, and off-diagonal maximum
+  successor through recursive decoding.
+- Replace only maximum-rule diagonal cells with canonical depth-indexed trees.
+  The executable checker intentionally ignores those cells, while their wire
+  payloads must still be well-formed and depth-correct.
+- Prove row-by-row decoding for dependent state/refutation matrices and audit
+  the main theorem without `sorryAx`.
+
+Distinct-cardinality wire completeness, exact Rust recursive outcome
+correspondence, CB, and automatic routing remain unfinished.
+
 ## [0.3.145] – 2026-08-20
 
 ### Prove the cardinality-refutation wire data boundary
