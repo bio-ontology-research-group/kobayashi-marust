@@ -181,6 +181,62 @@ theorem State.fresh_extended_roleBlockedAddress
   · intro candidateRole filler hobligation
     exact hunused (Or.inr (Or.inr ⟨candidateRole, filler, hobligation⟩))
 
+/-! Equality-free existential expansion assigns one canonical child slot to
+each role-and-filler obligation. The invariant below states the exact runtime
+condition needed by finite search: the canonical child is either unused or it
+already realizes that obligation. -/
+
+abbrev WitnessSlot (Concept Role : Type) := Role × Lit Concept
+
+abbrev WitnessAddress (Concept Role : Type)
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :=
+  RoleBlockedAddress (WitnessSlot Concept Role) Concept Role
+
+def State.ObligationAddressInvariant
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State (WitnessAddress Concept Role) Concept Role) : Prop :=
+  ∀ source role filler, state.obligation role filler source →
+    ∃ hdepth : source.1.length <
+        Fintype.card (RoleBlockingSignature Concept Role),
+      let target := source.extend (role, filler) hdepth
+      ¬state.NodeUsed target ∨
+        (state.edge role source target ∧ state.label target filler)
+
+/-- Under canonical obligation addressing, every unwitnessed existential has
+an unused, and therefore fresh, finite role-blocked child address. -/
+theorem State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State (WitnessAddress Concept Role) Concept Role)
+    (hinvariant : state.ObligationAddressInvariant)
+    (hunwitnessed : state.HasUnwitnessed) :
+    ∃ target, state.Fresh target := by
+  rcases hunwitnessed with
+    ⟨source, role, filler, hobligation, hnowitness⟩
+  obtain ⟨hdepth, hunused | hwitness⟩ :=
+    hinvariant source role filler hobligation
+  · let target := source.extend (role, filler) hdepth
+    exact ⟨target,
+      state.fresh_extended_roleBlockedAddress source (role, filler) hdepth
+        (by simpa [target] using hunused)⟩
+  · exact False.elim (hnowitness _ hwitness)
+
+/-- The address invariant discharges the abstract fresh-supply premise of the
+exact equality-free HT transition theorem. -/
+theorem State.obstruction_has_addressed_exhaustive_step
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State (WitnessAddress Concept Role) Concept Role)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hinvariant : state.ObligationAddressInvariant)
+    (hobstruction : state.HasUnwitnessed ∨ state.HasUndischarged ontology) :
+    ∃ children, ExhaustiveStep ontology state children := by
+  apply obstruction_has_exhaustive_step ontology state hheads _ hobstruction
+  exact state.exists_fresh_of_unwitnessed_of_obligationAddressInvariant hinvariant
+
 /-- Finite successor choice together with role-sensitive blocking yields a
 finite node universe, not only finite individual predecessor paths. -/
 theorem role_blocked_node_universe_finite
@@ -215,6 +271,8 @@ theorem State.no_overlong_mode6_expansion
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
 #print axioms State.fresh_extended_roleBlockedAddress
+#print axioms State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
+#print axioms State.obstruction_has_addressed_exhaustive_step
 #print axioms State.no_overlong_mode6_expansion
 
 end ContextCalculus.Hypertableau

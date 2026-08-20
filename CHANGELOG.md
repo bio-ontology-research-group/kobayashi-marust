@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.70] – 2026-08-20
+
+### Derive finite HT fresh supply from canonical obligation addresses
+
+- Define equality-free witness slots as exact `(role, filler)` obligation keys
+  and use them to form finite role-blocked node addresses.
+- State the concrete address invariant: an obligation's canonical child is
+  either unused or already connected to its source with the required label.
+- Prove that any unwitnessed obligation under this invariant has a fresh finite
+  child address.
+- Discharge the abstract fresh-supply premise of exhaustive equality-free HT
+  transitions directly from the address invariant.
+
+The remaining runtime refinement must prove that Rust's equality-free
+enumerator establishes and preserves this invariant. Cardinality successors
+will require an additional finite ordinal in each witness slot.
+
 ## [0.3.69] – 2026-08-20
 
 ### Prove the finite blocked-address fresh-witness criterion
