@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.86] – 2026-08-20
+
+### Bound equality-quotient blocking signatures
+
+- Align Rust equality and distinct-cardinality clause satisfaction with Lean's
+  existing closed-state semantics: concepts, roles, and existential obligations
+  are now read modulo the complete node equivalence relation. Equality-free
+  search and the already quotient-aware clash check remain unchanged.
+- Add a regression where concept, role, obligation, and clash facts are visible
+  through equality closure.
+- Define Lean's full equality-quotient pairwise blocking signature from closed
+  node and predecessor labels plus closed forward and backward role sets.
+- Prove equal signatures preserve the full closed predecessor context.
+- Prove every overlong equality-aware predecessor path repeats a quotient
+  signature, and every path with injective signatures is bounded by the finite
+  signature vocabulary.
+
+These results establish the finite combinatorial depth bound needed by
+equality-aware blocking. They do not yet prove that the concrete Rust fold
+refines a sound equality/cardinality blocking rule, so equality/cardinality
+frontier totality remains open.
+
 ## [0.3.85] – 2026-08-20
 
 ### Check equality and cardinality open-leaf models

@@ -337,6 +337,12 @@ model checker accepts them. Checked closure and checked quotient models cover
 both terminal meanings; complete taxonomy batching and equality-aware frontier
 termination remain separate obligations.
 
+`HypertableauEqualityBlocking.lean` defines the corresponding full pairwise
+signature over equality-closed labels and role edges. It proves finite
+signature repetition and the resulting injective-path depth bound. Connecting
+the concrete Rust blocker and its folded model to this quotient signature is
+still required before equality-aware frontier termination is certified.
+
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
 excludes models satisfying both the exact ontology and its decoded cardinality

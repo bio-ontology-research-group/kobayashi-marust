@@ -3040,6 +3040,35 @@ impl LeanHtRefutationState {
             .find(|&(left, right)| self.equivalent(left, right))
     }
 
+    fn closed_holds(&self, atom: &Atom, assignment: &[Node]) -> bool {
+        match atom {
+            Atom::Concept { lit, t } => {
+                let node = assignment[*t as usize];
+                self.labels
+                    .iter()
+                    .any(|&(source, candidate)| candidate == *lit && self.equivalent(source, node))
+            }
+            Atom::Role { r, s, t } => {
+                let source = assignment[*s as usize];
+                let target = assignment[*t as usize];
+                self.edges
+                    .iter()
+                    .any(|&(candidate, edge_source, edge_target)| {
+                        candidate == *r
+                            && self.equivalent(edge_source, source)
+                            && self.equivalent(edge_target, target)
+                    })
+            }
+            Atom::Exists { r, fil, t } => {
+                let node = assignment[*t as usize];
+                self.obligations.iter().any(|&(role, filler, source)| {
+                    role == *r && filler == *fil && self.equivalent(source, node)
+                })
+            }
+            Atom::Eq { s, t } => self.equivalent(assignment[*s as usize], assignment[*t as usize]),
+        }
+    }
+
     fn holds(&self, atom: &Atom, assignment: &[Node]) -> bool {
         match atom {
             Atom::Concept { lit, t } => self.labels.contains(&(assignment[*t as usize], *lit)),
@@ -9224,11 +9253,11 @@ impl Ht {
                 if !clause
                     .body
                     .iter()
-                    .all(|atom| state.holds(atom, &assignment))
+                    .all(|atom| state.closed_holds(atom, &assignment))
                     || clause
                         .head
                         .iter()
-                        .any(|atom| state.holds(atom, &assignment))
+                        .any(|atom| state.closed_holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -9364,11 +9393,11 @@ impl Ht {
                 if !clause
                     .body
                     .iter()
-                    .all(|atom| state.holds(atom, &assignment))
+                    .all(|atom| state.closed_holds(atom, &assignment))
                     || clause
                         .head
                         .iter()
-                        .any(|atom| state.holds(atom, &assignment))
+                        .any(|atom| state.closed_holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -10142,8 +10171,7 @@ impl Ht {
         }) {
             return Err("equality decision certificates require an equality atom".to_string());
         }
-        let (variable_count, concept_count, role_count, ontology) =
-            self.lean_decision_signature();
+        let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         loop {
             let mut state = LeanHtRefutationState::root(&[]);
@@ -10168,7 +10196,7 @@ impl Ht {
                 }
                 LeanHtEqRefutationOutcome::Frontier if !deepen => {
                     return Err(
-                        "ontology reached the configured equality decision node cap".to_string(),
+                        "ontology reached the configured equality decision node cap".to_string()
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier => {
@@ -10188,8 +10216,7 @@ impl Ht {
         if self.card_defs.is_empty() {
             return Err("cardinality decision certificates require definitions".to_string());
         }
-        let (variable_count, concept_count, role_count, ontology) =
-            self.lean_decision_signature();
+        let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let mut definitions: Vec<(C, CardDef)> = self
             .card_defs
             .iter()
@@ -10226,8 +10253,7 @@ impl Ht {
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
                     return Err(
-                        "ontology reached the configured cardinality decision node cap"
-                            .to_string(),
+                        "ontology reached the configured cardinality decision node cap".to_string(),
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
@@ -20586,6 +20612,27 @@ mod tests {
     }
 
     #[test]
+    fn equality_certificate_search_reads_all_facts_modulo_the_quotient() {
+        let mut state = LeanHtRefutationState::root(&[(0, CLit::pos(A))]);
+        state.active_nodes = 2;
+        state.witness_parent.push(Some(0));
+        state.witness_step.push(Some((R0, CLit::pos(B))));
+        state.labels.insert((1, CLit::neg(A)));
+        state.label_order.push((1, CLit::neg(A)));
+        state.edges.insert((R0, 0, 1));
+        state.edge_order.push((R0, 0, 1));
+        state.obligations.insert((R0, CLit::pos(B), 0));
+        state.obligation_order.push((R0, CLit::pos(B), 0));
+        state.equalities.push((0, 1));
+
+        let assignment = [1, 0];
+        assert!(state.closed_holds(&con(false, A, X), &assignment));
+        assert!(state.closed_holds(&role(R0, X, 1), &assignment));
+        assert!(state.closed_holds(&exists(R0, false, B, X), &assignment));
+        assert!(state.clashes(), "clashes were already quotient-aware");
+    }
+
+    #[test]
     fn cardinality_refutation_reports_closed_open_and_frontier_separately() {
         let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let mut closed_state = LeanHtRefutationState::root(&[]);
@@ -20792,10 +20839,8 @@ mod tests {
 
     #[test]
     fn equality_decision_emits_sat_or_unsat_checker_ready_evidence() {
-        let satisfiable = Ht::new_certified(vec![Clause::new(
-            Vec::new(),
-            vec![Atom::Eq { s: X, t: X }],
-        )]);
+        let satisfiable =
+            Ht::new_certified(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }])]);
         let (sat, sat_certificate) = satisfiable
             .lean_equality_decision_certificate_json()
             .expect("the reflexive equality branch has a checked quotient model");
@@ -20851,20 +20896,20 @@ mod tests {
             .expect("an unasserted cardinality marker has a checked quotient model");
         assert!(sat);
         let sat_wire: serde_json::Value = serde_json::from_str(&sat_certificate).unwrap();
-        assert_eq!(sat_wire["certificate"]["evidence"], serde_json::json!("sat"));
+        assert_eq!(
+            sat_wire["certificate"]["evidence"],
+            serde_json::json!("sat")
+        );
         assert_eq!(sat_wire["certificate"]["node_count"], serde_json::json!(1));
 
-        let mut inconsistent =
-            Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let mut inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         inconsistent.set_card_defs(HashMap::from([(A, definition)]));
         let (sat, unsat_certificate) = inconsistent
             .lean_cardinality_decision_certificate_json()
             .expect("the empty-head clause has a checked cardinality refutation");
         assert!(!sat);
         let unsat_wire: serde_json::Value = serde_json::from_str(&unsat_certificate).unwrap();
-        assert!(unsat_wire["certificate"]["evidence"]
-            .get("unsat")
-            .is_some());
+        assert!(unsat_wire["certificate"]["evidence"].get("unsat").is_some());
 
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             for (kind, certificate) in [("sat", sat_certificate), ("unsat", unsat_certificate)] {
