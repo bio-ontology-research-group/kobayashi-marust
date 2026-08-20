@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.166] – 2026-08-21
+
+### Certify cardinality terminal classification
+
+- Define cardinality runtime terminality as simultaneous absence of an
+  equality/apart clash, quotient concept clash, undischarged clause,
+  unblocked unwitnessed obligation, expandable minimum, and violating maximum.
+- Prove this semantic terminal predicate equivalent to exact exhaustion of all
+  six executable selectors in Rust's runtime order.
+- Add a direct constructor from the six exhausted selector results.
+- Keep terminality distinct from SAT: blocked obligations and the quotient
+  model still require independent executable certificate acceptance.
+- Audit terminal classification without `sorryAx`.
+
+Checked terminal-model composition, concrete minimum-target and maximum-
+candidate ordering, checker correspondence for quotient-closed bodies,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.165] – 2026-08-21
 
 ### Certify quotient-closed maximum selection

@@ -804,6 +804,71 @@ theorem selectViolatingMaximum_closedRefutes
     (fun index => (hproperties.2.2.1 index).1)
     (fun index => (hproperties.2.2.1 index).2) children
 
+def DistinctEqState.CardinalityRuntimeTerminal
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : DistinctEqState Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop) : Prop :=
+  state.EqualityApartClashFree ∧
+  state.base.ClosedClashFree ∧
+  ¬state.base.HasClosedUndischarged ontology ∧
+  ¬state.base.HasUnblockedUnwitnessed parent ancestors ∧
+  ¬state.HasExpandableMinimum definitions parent ancestors expanded ∧
+  ¬state.HasViolatingMaximum definitions
+
+/-- Exact terminal classification after all six ordered cardinality controls
+are exhausted.  This theorem deliberately does not turn terminality into SAT:
+blocked obligations and the finite quotient model still require their
+independent executable certificate check. -/
+theorem cardinalityRuntimeTerminal_iff_selectors_exhausted
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop) :
+    state.CardinalityRuntimeTerminal ontology definitions parent ancestors expanded ↔
+      selectEqualityApartClash state = none ∧
+      selectCardinalityConceptClash state = none ∧
+      selectCardinalityClauseGrounding ontology state = none ∧
+      selectEqUnblockedUnwitnessed state.base parent ancestors = none ∧
+      selectExpandableMinimum definitions state parent ancestors expanded = none ∧
+      selectViolatingMaximum definitions state = none := by
+  rw [DistinctEqState.CardinalityRuntimeTerminal,
+    selectEqualityApartClash_eq_none_iff,
+    selectCardinalityConceptClash_eq_none_iff,
+    selectCardinalityClauseGrounding_eq_none_iff,
+    selectEqUnblockedUnwitnessed_eq_none_iff,
+    selectExpandableMinimum_eq_none_iff,
+    selectViolatingMaximum_eq_none_iff]
+
+theorem cardinalityRuntimeTerminal_of_selectors_exhausted
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop)
+    (hapart : selectEqualityApartClash state = none)
+    (hclash : selectCardinalityConceptClash state = none)
+    (hclause : selectCardinalityClauseGrounding ontology state = none)
+    (hwitness : selectEqUnblockedUnwitnessed state.base parent ancestors = none)
+    (hminimum : selectExpandableMinimum definitions state parent ancestors expanded = none)
+    (hmaximum : selectViolatingMaximum definitions state = none) :
+    state.CardinalityRuntimeTerminal ontology definitions parent ancestors expanded :=
+  (cardinalityRuntimeTerminal_iff_selectors_exhausted ontology definitions state
+    parent ancestors expanded).2
+    ⟨hapart, hclash, hclause, hwitness, hminimum, hmaximum⟩
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -823,6 +888,8 @@ theorem selectViolatingMaximum_closedRefutes
 #print axioms selectExpandableMinimum_closedRefutes
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
+#print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted
+#print axioms cardinalityRuntimeTerminal_of_selectors_exhausted
 #print axioms EqState.realized_closedLabel
 #print axioms EqState.realized_closedEdge
 #print axioms DistinctEqState.materializeMinimum_closed_realized
