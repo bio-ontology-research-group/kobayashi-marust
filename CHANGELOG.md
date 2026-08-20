@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.96] – 2026-08-20
+
+### Prove role-free equality-fold acceptance
+
+- Prove materialized folds preserve equality-closure validation, quotient clash
+  freedom, witness completion, and every closed fact from the base endpoint.
+- Define the role-free-body fragment and prove adding fold edges cannot create
+  a new true body in that fragment.
+- Prove saturation preservation and executable fold acceptance for every valid
+  equality endpoint whose clause bodies are role-free.
+
+The remaining blocked-search proof is now limited to normalized clauses whose
+bodies contain role atoms. Added fold edges can activate those bodies, so their
+saturation requires the full pairwise blocker signature rather than generic
+edge monotonicity.
+
 ## [0.3.95] – 2026-08-20
 
 ### Characterize equality-aware blocked-fold acceptance exactly

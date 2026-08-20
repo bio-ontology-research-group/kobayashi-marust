@@ -258,6 +258,11 @@ The equality-aware blocked-fold boundary exposes the same contracts through
 `FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid` and
 `checkWithCardinality_eq_true_iff`. These theorems deliberately leave concrete
 fold saturation preservation as an explicit obligation.
+`FiniteEqFoldCertificate.check_of_base_valid_roleFree` discharges that
+obligation completely for role-free clause bodies. Supporting lemmas show that
+all folds preserve equality validation, quotient clash freedom, existing
+witnesses, and base closed facts. Role-bearing bodies remain the precise
+pairwise-blocking proof boundary.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

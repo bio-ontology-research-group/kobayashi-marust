@@ -55,6 +55,113 @@ def FiniteEqFoldCertificate.materialize
       nodeCount conceptCount roleCount variableCount) :
     certificate.materialize.representative = certificate.base.representative := rfl
 
+@[simp] theorem FiniteEqFoldCertificate.materialize_labels
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.materialize.base.labels = certificate.base.base.labels := rfl
+
+@[simp] theorem FiniteEqFoldCertificate.materialize_obligations
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.materialize.base.obligations =
+      certificate.base.base.obligations := rfl
+
+@[simp] theorem FiniteEqFoldCertificate.materialize_equalityClosureValidB
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.materialize.equalityClosureValidB =
+      certificate.base.equalityClosureValidB := rfl
+
+theorem FiniteEqFoldCertificate.base_edge_mem_foldedEdges
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (edge : Fin roleCount × Fin nodeCount × Fin nodeCount)
+    (hedge : edge ∈ certificate.base.base.edges) :
+    edge ∈ certificate.foldedEdges := by
+  exact List.mem_append_left _ hedge
+
+/-- Folding changes only the edge list, so equality-quotient clashes cannot be
+introduced. -/
+theorem FiniteEqFoldCertificate.closedClashFree_of_base
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hclash : certificate.base.state.ClosedClashFree) :
+    certificate.materialize.state.ClosedClashFree := by
+  intro positiveNode negativeNode concept hrelated hlabels
+  exact hclash positiveNode negativeNode concept hrelated hlabels
+
+/-- Existing witnesses remain witnesses because every base edge is retained by
+the materialized fold. -/
+theorem FiniteEqFoldCertificate.closedWitnessComplete_of_base
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hwitness : certificate.base.state.ClosedWitnessComplete) :
+    certificate.materialize.state.ClosedWitnessComplete := by
+  intro node role filler hobligation
+  rcases hwitness node role filler hobligation with ⟨witness, hedge, hlabel⟩
+  exact ⟨witness, certificate.base_edge_mem_foldedEdges _ hedge, hlabel⟩
+
+/-- Body atoms unaffected by adding role edges. -/
+def Atom.RoleFree : Atom Variable Concept Role → Prop
+  | .role .. => False
+  | _ => True
+
+def Clause.RoleFreeBody (clause : Clause Variable Concept Role) : Prop :=
+  ∀ atom ∈ clause.body, atom.RoleFree
+
+/-- Every closed fact true before folding remains true afterwards. -/
+theorem FiniteEqFoldCertificate.closedHoldsAtom_of_base
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hholds : certificate.base.state.closedHoldsAtom assignment atom) :
+    certificate.materialize.state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role role source target =>
+      rcases hholds with ⟨edgeSource, edgeTarget, hsource, htarget, hedge⟩
+      exact ⟨edgeSource, edgeTarget, hsource, htarget,
+        certificate.base_edge_mem_foldedEdges _ hedge⟩
+  | exists_ => exact hholds
+  | eq => exact hholds
+
+/-- A role-free closed body fact cannot become newly true merely because a fold
+adds role edges. -/
+theorem FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hroleFree : atom.RoleFree)
+    (hholds : certificate.materialize.state.closedHoldsAtom assignment atom) :
+    certificate.base.state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq => exact hholds
+
+/-- Adding fold edges preserves saturation for the role-free-body portion of
+the ontology. -/
+theorem FiniteEqFoldCertificate.closedSaturatedFor_of_roleFree
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hroleFree : ∀ clause ∈ certificate.base.base.ontology, clause.RoleFreeBody)
+    (hsaturated : certificate.base.state.ClosedSaturatedFor
+      certificate.base.base.ontology) :
+    certificate.materialize.state.ClosedSaturatedFor
+      certificate.base.base.ontology := by
+  intro clause hclause assignment hbody
+  have hbaseBody : ∀ atom ∈ clause.body,
+      certificate.base.state.closedHoldsAtom assignment atom := by
+    intro atom hatom
+    exact certificate.closedHoldsAtom_base_of_roleFree assignment atom
+      (hroleFree clause hclause atom hatom) (hbody atom hatom)
+  rcases hsaturated clause hclause assignment hbaseBody with ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom,
+    certificate.closedHoldsAtom_of_base assignment atom hholds⟩
+
 def FiniteEqFoldCertificate.check
     (certificate : FiniteEqFoldCertificate
       nodeCount conceptCount roleCount variableCount) : Bool :=
@@ -85,6 +192,20 @@ theorem FiniteEqFoldCertificate.check_complete_of
     certificate.check = true := by
   apply certificate.check_complete
   exact ⟨hequality, hguarded, hclash, hwitness, hsaturated⟩
+
+/-- Any fold over a valid equality endpoint is accepted when all clause bodies
+are role-free. This closes the complete role-free portion of blocked search;
+only clauses activated by newly copied role edges require pairwise reasoning. -/
+theorem FiniteEqFoldCertificate.check_of_base_valid_roleFree
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.Valid)
+    (hroleFree : ∀ clause ∈ certificate.base.base.ontology, clause.RoleFreeBody) :
+    certificate.check = true := by
+  apply certificate.check_complete_of hvalid.1 hvalid.2.1
+  · exact certificate.closedClashFree_of_base hvalid.2.2.1
+  · exact certificate.closedWitnessComplete_of_base hvalid.2.2.2.1
+  · exact certificate.closedSaturatedFor_of_roleFree hroleFree hvalid.2.2.2.2
 
 /-- Any accepted equality-aware fold is a model of the exact unchanged
 ontology. The theorem assumes no correctness property of the proposed folds. -/
@@ -157,9 +278,15 @@ example : cyclicFold.check = true := by native_decide
 end EqFoldTests
 
 #print axioms FiniteEqFoldCertificate.check_satisfiable
+#print axioms FiniteEqFoldCertificate.closedClashFree_of_base
+#print axioms FiniteEqFoldCertificate.closedWitnessComplete_of_base
+#print axioms FiniteEqFoldCertificate.closedHoldsAtom_of_base
+#print axioms FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
+#print axioms FiniteEqFoldCertificate.closedSaturatedFor_of_roleFree
 #print axioms FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid
 #print axioms FiniteEqFoldCertificate.check_complete
 #print axioms FiniteEqFoldCertificate.check_complete_of
+#print axioms FiniteEqFoldCertificate.check_of_base_valid_roleFree
 #print axioms FiniteEqFoldCertificate.checkWithCardinality_eq_true_iff
 #print axioms FiniteEqFoldCertificate.checkWithCardinality_models
 
