@@ -825,6 +825,40 @@ theorem FiniteDistinctEqCertificate.inactivePrefixFreshB_fit
     decide_eq_true_eq] at hcheck
   exact hcheck.1.2
 
+theorem DistinctEqState.lt_active_of_closedLabel
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (source : Fin nodeCount) (lit : Lit Concept)
+    (hlabel : state.base.closedLabel source lit) : source.1 < active := by
+  by_contra hnot
+  have hfresh := hprefix source (Nat.le_of_not_gt hnot)
+  rcases hlabel with ⟨origin, horigin, hlabel⟩
+  have horiginEq : origin = source :=
+    hfresh.1.2 origin (state.base.equiv_equivalence.2 horigin)
+  subst origin
+  exact hfresh.1.1.1 lit hlabel
+
+theorem selectRustExpandableMinimum_source_lt_active
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    {candidate : MinimumCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectRustExpandableMinimum definitions state parent ancestors expanded =
+      some candidate) : candidate.2.1 < active := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectRustExpandableMinimum] using hselect)
+  have hproperties :=
+    (minimumCandidateBool_eq_true_iff state parent ancestors expanded candidate).mp
+      hfound.2
+  exact state.lt_active_of_closedLabel active hprefix candidate.2
+    (.pos candidate.1.marker) hproperties.2.1
+
 theorem rustConsecutiveTargets_freshFamily
     (state : DistinctEqState (Fin nodeCount) Concept Role)
     (hprefix : state.InactivePrefixFresh active)
@@ -1622,6 +1656,20 @@ theorem selectRustViolatingMaximumSite_eq_none_iff
     exact hnone ⟨site.1, (mem_allRustMaximumSites.mp hmem), site.2, witnesses,
       hproperties.1, hproperties.2.1, hqualifies, hdistinct⟩
 
+theorem selectRustViolatingMaximumSite_source_lt_active
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    {site : RustMaximumSite nodeCount Concept Role}
+    (hselect : selectRustViolatingMaximumSite definitions state = some site) :
+    site.2.1 < active := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectRustViolatingMaximumSite] using hselect)
+  have hproperties := (rustMaximumSiteBool_eq_true_iff state site).mp hfound.2
+  exact state.lt_active_of_closedLabel active hprefix site.2
+    (.pos site.1.marker) hproperties.2.1
+
 theorem selectRustViolatingMaximumSite_closedRefutes
     (ontology : List (Clause Variable Concept Role))
     (definitions : List (CardinalityDef Concept Role))
@@ -1771,6 +1819,20 @@ theorem FiniteEqCertificate.closedLabelB_eq_true_iff
   · rintro ⟨source, hrelated, hmem⟩
     exact ⟨(source, lit), hmem, rfl,
       (certificate.closedRelatedB_eq_true hvalid source node).mpr hrelated⟩
+
+theorem FiniteDistinctEqCertificate.lt_active_of_closedLabelB
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat) (hprefix : certificate.inactivePrefixFreshB active = true)
+    (source : Fin nodeCount) (lit : Lit (Fin conceptCount))
+    (hlabel : certificate.base.closedLabelB source lit = true) : source.1 < active := by
+  have hparts := hprefix
+  have hvalid : certificate.base.equalityClosureValidB = true := by
+    simp only [FiniteDistinctEqCertificate.inactivePrefixFreshB, Bool.and_eq_true] at hparts
+    exact hparts.1.1
+  exact certificate.state.lt_active_of_closedLabel active
+    (certificate.inactivePrefixFreshB_sound active hprefix) source lit
+    ((certificate.base.closedLabelB_eq_true_iff hvalid source lit).mp hlabel)
 
 theorem FiniteEqCertificate.closedEdgeB_eq_true_iff
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -2078,6 +2140,9 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms selectRustExpandableMinimum_consecutive_closedRefutes
 #print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_sound
 #print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_fit
+#print axioms DistinctEqState.lt_active_of_closedLabel
+#print axioms FiniteDistinctEqCertificate.lt_active_of_closedLabelB
+#print axioms selectRustExpandableMinimum_source_lt_active
 #print axioms FiniteDistinctEqCertificate.rustConsecutiveTargets_freshFamily_of_check
 #print axioms DistinctEqState.inactivePrefixFresh_materializeWitness
 #print axioms DistinctEqState.inactivePrefixFresh_materializeMinimum
@@ -2103,6 +2168,7 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms mem_allRustMaximumSites
 #print axioms rustMaximumSiteBool_eq_true_iff
 #print axioms selectRustViolatingMaximumSite_eq_none_iff
+#print axioms selectRustViolatingMaximumSite_source_lt_active
 #print axioms selectRustViolatingMaximumSite_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_rustMaximum_exhausted
 #print axioms selectViolatingMaximum_eq_none_iff

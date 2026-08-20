@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.178`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.179`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -141,7 +141,10 @@ greedy width is equivalent to existence of a semantic `bound + 1`
 pairwise-distinct qualifying witness family. Maximum sites are now scanned in
 the production definition-major, ascending-source-ID order; selected sites are
 sound, exhaustive absence is exact, and finite terminal classification uses
-this concrete selector.
+this concrete selector. The checked active-prefix invariant now also proves
+that every selected minimum or maximum source lies below Rust's
+`active_nodes` boundary, reconciling the finite Lean scans with production's
+active-only loops.
 
 ## Classify an ontology
 

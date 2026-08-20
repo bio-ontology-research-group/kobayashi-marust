@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.179] – 2026-08-21
+
+### Certify active-source fidelity for cardinality scans
+
+- Prove that an inactive node cannot carry a quotient-closed label under the
+  checked active-prefix freshness invariant.
+- Lift that result to the executable finite certificate and its checked
+  quotient-closed label predicate.
+- Prove that every selected production-order minimum source and maximum source
+  lies below Rust's `active_nodes` boundary. This justifies the existing full
+  finite-ID Lean scans against Rust's active-prefix loops.
+- Audit all new active-source endpoints without `sorryAx`.
+
+Exact recursive outcome production, concrete Rust field construction, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.178] – 2026-08-21
 
 ### Certify production-order maximum scanning
