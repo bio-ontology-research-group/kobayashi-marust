@@ -2,6 +2,7 @@ import ContextCalculus.HypertableauEqualityNormalizationWire
 import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauCardinalityWire
 import ContextCalculus.HypertableauPreprocessingWire
+import ContextCalculus.HypertableauRegularDecisionWire
 
 /-!
 # Source-aware hypertableau certificate wire
@@ -20,6 +21,7 @@ inductive WireNormalizedPayload where
   | plain (certificate : WireCertificate)
   | equality (certificate : WireEqCertificate)
   | cardinality (certificate : WireCardinalityEqCertificate)
+  | regular (certificate : WireRegularDecisionCertificate)
 deriving FromJson, ToJson, Repr
 
 structure WireNormalizedCertificate where
@@ -64,10 +66,34 @@ structure DecodedNormalizedCardinality where
   evidence : DecodedCardinalityEqCertificate
   normalization : DecodedModelNormalization evidence.ontology
 
+def DecodedRegularDecision.variableCount : DecodedRegularDecision → Nat
+  | .regularSat decoded => decoded.variableCount
+  | .finiteUnsat decoded _ => decoded.variableCount
+
+def DecodedRegularDecision.conceptCount : DecodedRegularDecision → Nat
+  | .regularSat decoded => decoded.conceptCount
+  | .finiteUnsat decoded _ => decoded.conceptCount
+
+def DecodedRegularDecision.roleCount : DecodedRegularDecision → Nat
+  | .regularSat decoded => decoded.roleCount
+  | .finiteUnsat decoded _ => decoded.roleCount
+
+def DecodedRegularDecision.ontology (decoded : DecodedRegularDecision) :
+    List (Clause (Fin decoded.variableCount) (Fin decoded.conceptCount)
+      (Fin decoded.roleCount)) :=
+  match decoded with
+  | .regularSat regular => regular.certificate.ontology
+  | .finiteUnsat finite _ => finite.certificate.ontology
+
+structure DecodedNormalizedRegular where
+  evidence : DecodedRegularDecision
+  normalization : DecodedModelNormalization evidence.ontology
+
 inductive DecodedNormalizedCertificate where
   | plain (decoded : DecodedNormalizedPlain)
   | equality (decoded : DecodedNormalizedEquality)
   | cardinality (decoded : DecodedNormalizedCardinality)
+  | regular (decoded : DecodedNormalizedRegular)
 
 def WireNormalizedCertificate.decode (wire : WireNormalizedCertificate) :
     Except String DecodedNormalizedCertificate := do
@@ -121,11 +147,27 @@ def WireNormalizedCertificate.decode (wire : WireNormalizedCertificate) :
                 evidence.ontology
               pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .cardinality ⟨evidence, normalization⟩
+  | .regular certificate =>
+      let evidence ← certificate.decode
+      let normalization : DecodedModelNormalization evidence.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization evidence.variableCount
+            evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT certificate has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode evidence.variableCount
+                evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
+      return .regular ⟨evidence, normalization⟩
 
 def DecodedNormalizedCertificate.check : DecodedNormalizedCertificate → Bool
   | .plain decoded => decoded.evidence.check
   | .equality decoded => decoded.evidence.check
   | .cardinality decoded => decoded.evidence.check
+  | .regular decoded => decoded.evidence.check
 
 def WireNormalizedCertificate.check (wire : WireNormalizedCertificate) : Except String Bool := do
   return (← wire.decode).check
@@ -390,11 +432,45 @@ theorem DecodedNormalizedCardinality.check_sound
         ((equivalent Domain I).mpr hmodels')
         hdefinitions value hconcept
 
+def DecodedNormalizedRegular.SemanticallyValid
+    (decoded : DecodedNormalizedRegular) : Prop :=
+  match decoded.evidence with
+  | .regularSat _ =>
+      ∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.evidence.conceptCount)
+          (Fin decoded.evidence.roleCount)),
+        Nonempty Domain ∧ I.models decoded.normalization.source
+  | .finiteUnsat _ _ =>
+      ¬∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.evidence.conceptCount)
+          (Fin decoded.evidence.roleCount)),
+        Nonempty Domain ∧ I.models decoded.normalization.source
+
+theorem DecodedNormalizedRegular.check_sound
+    (decoded : DecodedNormalizedRegular)
+    (hcheck : decoded.evidence.check = true) : decoded.SemanticallyValid := by
+  rcases decoded with ⟨evidence, normalization⟩
+  have htarget := evidence.check_sound hcheck
+  cases evidence with
+  | regularSat regular =>
+      simp only [DecodedNormalizedRegular.SemanticallyValid]
+      simp only [DecodedRegularDecision.SemanticallyCorrect] at htarget
+      rcases htarget with ⟨Domain, I, hdomain, hmodels⟩
+      exact ⟨Domain, I, hdomain,
+        (normalization.equivalent Domain I).mpr hmodels⟩
+  | finiteUnsat finite tree =>
+      simp only [DecodedNormalizedRegular.SemanticallyValid]
+      simp only [DecodedRegularDecision.SemanticallyCorrect] at htarget
+      rintro ⟨Domain, I, hdomain, hmodels⟩
+      exact htarget ⟨Domain, I, hdomain,
+        (normalization.equivalent Domain I).mp hmodels⟩
+
 def DecodedNormalizedCertificate.SemanticallyValid :
     DecodedNormalizedCertificate → Prop
   | .plain decoded => decoded.SemanticallyValid
   | .equality decoded => decoded.SemanticallyValid
   | .cardinality decoded => decoded.SemanticallyValid
+  | .regular decoded => decoded.SemanticallyValid
 
 theorem DecodedNormalizedCertificate.check_sound
     (decoded : DecodedNormalizedCertificate) (hcheck : decoded.check = true) :
@@ -403,10 +479,12 @@ theorem DecodedNormalizedCertificate.check_sound
   | plain decoded => exact decoded.check_sound hcheck
   | equality decoded => exact decoded.check_sound hcheck
   | cardinality decoded => exact decoded.check_sound hcheck
+  | regular decoded => exact decoded.check_sound hcheck
 
 #print axioms DecodedNormalizedPlain.check_sound
 #print axioms DecodedNormalizedEquality.check_sound
 #print axioms DecodedNormalizedCardinality.check_sound
+#print axioms DecodedNormalizedRegular.check_sound
 #print axioms DecodedNormalizedCertificate.check_sound
 
 namespace Tests
@@ -504,6 +582,35 @@ private def forgedPreprocessingDocument : WireNormalizedCertificate :=
       triggerPreprocessing with trigger_steps := [.absorb 0 [0] [1]] } }
 
 example : rejected forgedPreprocessingDocument.check = true := by native_decide
+
+private def normalizedRegularSat : WireRegularCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 1
+  role_count := 0
+  variable_count := 1
+  labels := []
+  edges := []
+  obligations := []
+  redirect := [0]
+  cover := []
+  sub_roles := []
+  inverse_roles := []
+  chains := []
+  reflexive_roles := []
+  role_clauses := []
+  residual := []
+
+private def regularDecision : WireRegularDecisionCertificate where
+  version := 1
+  evidence := .regular_sat normalizedRegularSat
+
+private def normalizedRegularDocument : WireNormalizedCertificate where
+  version := 3
+  normalization := []
+  payload := .regular regularDecision
+
+example : normalizedRegularDocument.check = .ok true := by native_decide
 
 end Tests
 

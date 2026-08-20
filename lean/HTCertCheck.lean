@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauNormalizedWire
+import ContextCalculus.HypertableauRegularDecisionWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -20,8 +21,17 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
             let document : WireEqCertificate ← fromJson? json
             document.check
       else
-        let document : WireCertificate ← fromJson? json
-        document.check
+        match json.getObjVal? "evidence" >>= Json.getObj? with
+        | .ok evidence =>
+            if evidence.any fun key _ => key = "regular_sat" || key = "finite_unsat" then
+              let document : WireRegularDecisionCertificate ← fromJson? json
+              document.check
+            else
+              let document : WireCertificate ← fromJson? json
+              document.check
+        | .error _ =>
+            let document : WireCertificate ← fromJson? json
+            document.check
     match result with
     | .ok true =>
         IO.println "HT certificate accepted"

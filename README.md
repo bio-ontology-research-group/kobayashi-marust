@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.116`.
+`v0.3.117`.
 
 ## Classify an ontology
 
@@ -170,10 +170,14 @@ versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
 labels and edges, existential witnesses, saturation, clashes, and exhaustive
 disjunctive children. Acceptance proves that SAT evidence constructs a model or
 that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
-worker emits finite SAT evidence when
+worker emits checked decision evidence when
 `KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
-It publishes global consistency only after Lean accepts the exact normalized
-clauses and terminal model, and otherwise fails closed. For default
+For equality-free inputs, an open blocked branch produces a regular-unravelling
+model certificate while a closed search produces a finite refutation. The main
+checker transfers either result through checked trigger absorption,
+contrapositive extension, and body-equality normalization to the original
+source ontology. The worker publishes global consistency only after Lean
+accepts this source-aware document, and otherwise fails closed. For default
 certification-only full pairwise blocking, Rust materializes each proposed
 finite fold as ordinary edges in both predecessor directions. Lean exhaustively
 checks the folded graph, so blocker selection remains outside the trust
@@ -205,15 +209,15 @@ The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded
 regular wires and run the proved finite cover, residual-clause, witness, and
 cardinality checks. Acceptance constructs the infinite regular unravelling
-model rather than relying on a finite folded graph. The Rust producer does not
-yet publish this wire on its ordinary decision API, so these executables are
-explicit trust-boundary targets, not a claim that the production HT route is
-completely certified. The Rust producer can now emit checker-accepted regular
+model rather than relying on a finite folded graph. The Rust producer emits
+this wire through the equality-free global certification API. The dedicated
+executables remain useful lower-layer checker targets; this does not claim that
+the complete production HT route is certified for every SROIQ feature. The
+Rust producer emits checker-accepted regular
 documents for blocked equality-free branches, including normalized role-rule
 partitioning, redirect witnesses, and finite endpoint closure. Production
-publication now has a checked regular-SAT/finite-refutation decision envelope
-at the normalized-clause layer. Composing that envelope with source-clause
-normalization remains before the ordinary production API can switch to it.
+publication uses one checked regular-SAT/finite-refutation envelope and composes
+it with source preprocessing before the main checker accepts it.
 
 Certified mode 6 also checks before SAT serialization that every generated
 node has a strictly earlier predecessor and that no full-signature-blocked node

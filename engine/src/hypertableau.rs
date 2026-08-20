@@ -9094,21 +9094,30 @@ impl Ht {
     }
 
     fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
-        let Some(normalization) = self.lean_wire_normalization()? else {
-            return Ok(payload);
-        };
         let payload: serde_json::Value =
             serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let is_regular_decision = payload
+            .get("evidence")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|evidence| {
+                evidence.contains_key("regular_sat") || evidence.contains_key("finite_unsat")
+            });
+        let Some(normalization) = self.lean_wire_normalization()? else {
+            return Ok(payload.to_string());
+        };
         let payload_version = payload["version"]
             .as_u64()
             .ok_or_else(|| "HT certificate payload has no numeric version".to_string())?;
         let is_cardinality =
             payload.get("certificate").is_some() && payload.get("definitions").is_some();
-        let payload = match (payload_version, is_cardinality) {
-            (1, false) => serde_json::json!({ "plain": { "certificate": payload } }),
-            (2, false) => serde_json::json!({ "equality": { "certificate": payload } }),
-            (2, true) => serde_json::json!({ "cardinality": { "certificate": payload } }),
-            (version, _) => return Err(format!("cannot normalize HT payload version {version}")),
+        let payload = match (payload_version, is_cardinality, is_regular_decision) {
+            (1, false, true) => serde_json::json!({ "regular": { "certificate": payload } }),
+            (1, false, false) => serde_json::json!({ "plain": { "certificate": payload } }),
+            (2, false, false) => serde_json::json!({ "equality": { "certificate": payload } }),
+            (2, true, false) => serde_json::json!({ "cardinality": { "certificate": payload } }),
+            (version, _, _) => {
+                return Err(format!("cannot normalize HT payload version {version}"))
+            }
         };
         let preprocessing = self.lean_wire_preprocessing();
         serde_json::to_string(&serde_json::json!({
@@ -10046,8 +10055,8 @@ impl Ht {
 
     /// Certification decision search whose open outcome is an infinite regular
     /// model and whose closed outcome is an exhaustive finite refutation. This
-    /// raw envelope targets `ht-regular-decision-cert-check`; source-clause
-    /// normalization is composed by the outer publication layer separately.
+    /// The raw envelope targets `ht-regular-decision-cert-check`; callers at
+    /// the publication boundary compose source normalization around it.
     fn lean_regular_equality_free_decision_certificate_json(
         &self,
     ) -> Result<(bool, String), String> {
@@ -10085,11 +10094,13 @@ impl Ht {
             match self.lean_refutation(&mut state, variable_count, node_budget) {
                 LeanHtRefutationOutcome::Closed(_, _) => {
                     let finite = self.lean_unsat_certificate_json_raw()?;
-                    return Ok((false, Self::lean_regular_decision_envelope(finite, false)?));
+                    let envelope = Self::lean_regular_decision_envelope(finite, false)?;
+                    return Ok((false, self.finalize_lean_certificate(envelope)?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let regular = self.lean_regular_blocked_open_certificate_json(&leaf)?;
-                    return Ok((true, Self::lean_regular_decision_envelope(regular, true)?));
+                    let envelope = Self::lean_regular_decision_envelope(regular, true)?;
+                    return Ok((true, self.finalize_lean_certificate(envelope)?));
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -11266,7 +11277,7 @@ impl Ht {
         }) {
             self.lean_equality_decision_certificate_json()
         } else {
-            self.lean_equality_free_decision_certificate_json()
+            self.lean_regular_equality_free_decision_certificate_json()
         }
     }
 
@@ -21245,7 +21256,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -22164,6 +22175,45 @@ mod tests {
             assert!(
                 accepted.status.success(),
                 "Lean must accept Rust's finite UNSAT decision at {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn global_decision_wraps_regular_evidence_for_the_main_lean_checker() {
+        let source = Clause::new(Vec::new(), Vec::new());
+        let mut normalized = source.clone();
+        let normalization = vec![eliminate_body_equalities(&mut normalized)];
+        let mut reasoner = ht(vec![normalized]);
+        reasoner.cert_body_normalization = Some(normalization);
+
+        let (satisfiable, document) = reasoner
+            .lean_global_decision_certificate_json()
+            .expect("global equality-free decision uses source-aware regular evidence");
+        assert!(!satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(wire["version"], 3);
+        assert!(wire["payload"]["regular"]["certificate"]["evidence"]
+            .get("finite_unsat")
+            .is_some());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-normalized-regular-decision-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run the main Lean checker on normalized regular evidence");
+            assert!(
+                accepted.status.success(),
+                "main Lean checker must accept source-aware regular evidence at {}: {}",
                 path.display(),
                 String::from_utf8_lossy(&accepted.stderr),
             );

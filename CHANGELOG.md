@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.117] – 2026-08-20
+
+### Compose regular HT decisions with source preprocessing
+
+- Extend the source-aware HT certificate envelope with regular SAT and finite
+  UNSAT decisions.
+- Prove that either result transfers through checked trigger absorption,
+  contrapositive extension, and body-equality normalization to the original
+  source ontology.
+- Switch the equality-free global certification API from finite folded SAT to
+  the regular-model decision route. Publication remains fail closed through
+  the main `ht-cert-check` executable.
+- Teach the main checker to accept an unwrapped regular decision when no source
+  transformation occurred and a source-wrapped decision otherwise.
+- Add a Rust-to-Lean regression that emits a normalized regular decision and
+  requires acceptance by the main checker.
+- Fix a test-only checker-path ownership error exposed by the clean release
+  rebuild.
+
+The full Lean build passes 3,384 jobs. The locked serial release suite passes
+2,120 tests with 8 ignored, including native Lean acceptance of regular SAT,
+finite UNSAT, and source-wrapped regular evidence. Equality and cardinality
+global decisions retain their existing certified paths; extending regular
+models through those features remains separate work.
+
 ## [0.3.116] – 2026-08-20
 
 ### Certify the regular HT global decision envelope
