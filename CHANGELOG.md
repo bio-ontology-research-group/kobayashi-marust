@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.62] – 2026-08-20
+
+### Prove the HT terminal-state model dichotomy
+
+- Define the three exhaustive reasons a guarded HT branch is not a terminal
+  open model: a complementary-label clash, an existential obligation without a
+  witness, or a guarded clause grounding whose head is not discharged.
+- Prove that absence of those obstructions yields clash freedom, witness
+  completeness, and ontology saturation.
+- Compose those properties with the canonical-model theorem, proving that an
+  exhaustive obstruction-free terminal state models the exact ontology.
+- Prove the terminal dichotomy: every state exposes one of the three next
+  obstructions or its canonical interpretation is already a model.
+
+Together with v0.3.60's finite blocking-signature depth and v0.3.61's finite
+strict-progress traces, this completes the abstract finite-search termination
+and terminal-model argument. The remaining HT totality work is a refinement
+proof connecting Rust's role-sensitive blocking and obstruction enumeration to
+this abstract search.
+
 ## [0.3.61] – 2026-08-20
 
 ### Prove finite progress for blocked HT evidence search

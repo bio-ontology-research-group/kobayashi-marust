@@ -49,6 +49,7 @@ import ContextCalculus.HypertableauMixedTaxonomyWire
 import ContextCalculus.HypertableauCertificate
 import ContextCalculus.HypertableauBlockingCertificate
 import ContextCalculus.HypertableauTermination
+import ContextCalculus.HypertableauTerminal
 import ContextCalculus.HypertableauRefutationCertificate
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauTaxonomyCertificate

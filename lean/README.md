@@ -276,8 +276,11 @@ universe is fixed, `HypertableauTermination.lean` proves that ordinary,
 equality-aware, and cardinality-aware evidence search has only finitely many
 strict branch updates and finitely many duplicate-free progress traces. The
 Rust producer enforces that strict-progress premise at every recursive
-certificate call. Terminal-state totality, inverse roles, nominals, and native
-ABoxes remain to be connected or proved.
+certificate call. `HypertableauTerminal.lean` proves that every branch exposes a
+clash, an unwitnessed existential, an undischarged grounding, or an exact
+canonical model. Rust obstruction-enumeration and role-sensitive blocking
+refinement, inverse roles, nominals, and native ABoxes remain to be connected
+or proved.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
 
