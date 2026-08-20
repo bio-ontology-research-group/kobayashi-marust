@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.82] – 2026-08-20
+
+### Complete the checked equality-free HT decision composition
+
+- Define the exact checked outcome contract for each equality-free doubling
+  round: finite SAT certificate, finite UNSAT refutation, or checked rooted
+  address frontier.
+- Prove SAT terminals have a nonempty model of the exact normalized ontology.
+- Prove empty-root UNSAT terminals exclude every nonempty model of that
+  ontology.
+- Prove that any run returning one checked outcome per round must reach a
+  conclusive round: assuming only frontiers contradicts the checked finite
+  address bound for `8 * 2^round`.
+- Return the semantics of the actual conclusive outcome, rather than using an
+  unrelated classical SAT/UNSAT excluded-middle argument.
+
+This completes the typed checked-decision composition for equality-free HT.
+The next HT milestone extends total certification across equality and
+cardinality search.
+
 ## [0.3.81] – 2026-08-20
 
 ### Check the concrete equality-free HT frontier refinement
