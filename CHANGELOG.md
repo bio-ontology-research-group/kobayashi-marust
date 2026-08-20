@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.170] – 2026-08-21
+
+### Certify production-order minimum selection
+
+- Replace the abstract finite-set enumeration used for the correspondence
+  argument with a finite-ID minimum candidate list that matches Rust's nested
+  loop: cardinality definitions in stored order, then node IDs in ascending
+  `0..node_count` order.
+- Prove exact membership, exhaustive `none` correspondence, and sound
+  quotient-closed minimum recursion for the concrete selector.
+- Audit the production-order selector without `sorryAx`.
+
+The active-node prefix and consecutive fresh-target construction, deterministic
+maximum witness selection, exact recursive outcome production, concrete Rust
+field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.169] – 2026-08-21
 
 ### Connect quotient-closed cardinality checking to production

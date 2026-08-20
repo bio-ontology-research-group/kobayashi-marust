@@ -675,6 +675,93 @@ theorem selectExpandableMinimum_closedRefutes
   exact .minimum state candidate.1 (mem_allMinimumCandidates.mp hfound.1)
     hproperties.1 candidate.2 hproperties.2.1 targets hfresh child
 
+/-! The production recursion scans definitions in their stored order and then
+node identifiers in ascending numeric order.  The generic selector above is
+extensionally exact, but `Finset.univ.toList` does not expose that operational
+order.  This finite-ID specialization records the concrete Rust order. -/
+
+def allRustMinimumCandidates
+    (nodeCount : Nat)
+    (definitions : List (CardinalityDef Concept Role)) :
+    List (MinimumCandidate (Fin nodeCount) Concept Role) :=
+  definitions.flatMap fun definition =>
+    (List.finRange nodeCount).map fun source => (definition, source)
+
+theorem mem_allRustMinimumCandidates
+    {definitions : List (CardinalityDef Concept Role)}
+    {candidate : MinimumCandidate (Fin nodeCount) Concept Role} :
+    candidate ∈ allRustMinimumCandidates nodeCount definitions ↔
+      candidate.1 ∈ definitions := by
+  rcases candidate with ⟨definition, source⟩
+  simp [allRustMinimumCandidates]
+
+noncomputable def selectRustExpandableMinimum
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop) :
+    Option (MinimumCandidate (Fin nodeCount) Concept Role) :=
+  firstMatch (minimumCandidateBool state parent ancestors expanded)
+    (allRustMinimumCandidates nodeCount definitions)
+
+theorem selectRustExpandableMinimum_eq_none_iff
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop) :
+    selectRustExpandableMinimum definitions state parent ancestors expanded = none ↔
+      ¬state.HasExpandableMinimum definitions parent ancestors expanded := by
+  classical
+  rw [selectRustExpandableMinimum, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with
+      ⟨definition, hdefinition, source, hkind, hmarker, hexpanded, hunblocked⟩
+    have hfalse := hscan (definition, source)
+      ((mem_allRustMinimumCandidates).mpr hdefinition)
+    rw [(minimumCandidateBool_eq_true_iff state parent ancestors expanded _).mpr
+      ⟨hkind, hmarker, hexpanded, hunblocked⟩] at hfalse
+    contradiction
+  · intro hnone candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties :=
+      (minimumCandidateBool_eq_true_iff state parent ancestors expanded candidate).mp htrue
+    exact hnone ⟨candidate.1, (mem_allRustMinimumCandidates.mp hmem), candidate.2,
+      hproperties.1, hproperties.2.1, hproperties.2.2.1, hproperties.2.2.2⟩
+
+theorem selectRustExpandableMinimum_closedRefutes
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop)
+    {candidate : MinimumCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectRustExpandableMinimum definitions state parent ancestors expanded =
+      some candidate)
+    (targets : Fin candidate.1.bound → Fin nodeCount)
+    (hfresh : state.FreshFamily targets)
+    (child : ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions
+      (state.materializeMinimum candidate.2 targets candidate.1.role candidate.1.filler)) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectRustExpandableMinimum] using hselect)
+  have hproperties :=
+    (minimumCandidateBool_eq_true_iff state parent ancestors expanded candidate).mp
+      hfound.2
+  exact .minimum state candidate.1 (mem_allRustMinimumCandidates.mp hfound.1)
+    hproperties.1 candidate.2 hproperties.2.1 targets hfresh child
+
 abbrev MaximumCandidate (Node Concept Role : Type) :=
   Σ definition : CardinalityDef Concept Role,
     Node × (Fin (definition.bound + 1) → Node)
@@ -1195,6 +1282,9 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms selectCardinalityWitness_not_realizable
 #print axioms selectExpandableMinimum_eq_none_iff
 #print axioms selectExpandableMinimum_closedRefutes
+#print axioms mem_allRustMinimumCandidates
+#print axioms selectRustExpandableMinimum_eq_none_iff
+#print axioms selectRustExpandableMinimum_closedRefutes
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted
