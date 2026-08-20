@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.116] – 2026-08-20
+
+### Certify the regular HT global decision envelope
+
+- Add a versioned sum wire with exactly two global outcomes: regular SAT and
+  finite UNSAT.
+- Reject finite payloads carrying SAT, taxonomy, or query evidence under the
+  UNSAT tag.
+- Prove checker acceptance yields either a nonempty regular model of the exact
+  normalized ontology or excludes every nonempty model of that ontology.
+- Add `ht-regular-decision-cert-check` and checked SAT/UNSAT fixtures.
+- Make Rust's exhaustive equality-free decision search emit both envelope
+  branches and pass Rust-emitted SAT and UNSAT documents through Lean.
+
+The next bridge composes this normalized-ontology decision with the existing
+source body-equality normalization and preprocessing certificate. Production
+publication is not switched until that composition is checked end to end.
+The full Lean build passes 3,384 jobs. The locked release suite passes 2,119
+tests with one test thread; the parallel harness has unrelated tests that race
+through process-global environment variables.
+
 ## [0.3.115] – 2026-08-20
 
 ### Connect the Rust HT producer to regular-model evidence

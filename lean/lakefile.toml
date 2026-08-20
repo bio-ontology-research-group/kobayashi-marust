@@ -45,5 +45,9 @@ name = "ht-regular-cardinality-cert-check"
 root = "HTRegularCardinalityCertCheck"
 
 [[lean_exe]]
+name = "ht-regular-decision-cert-check"
+root = "HTRegularDecisionCertCheck"
+
+[[lean_exe]]
 name = "ht-taxonomy-cert-check"
 root = "HTTaxonomyCertCheck"

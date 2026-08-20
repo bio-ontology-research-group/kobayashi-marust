@@ -2451,6 +2451,19 @@ struct LeanHtRegularCertificate {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtRegularDecisionEvidence {
+    RegularSat { certificate: serde_json::Value },
+    FiniteUnsat { certificate: serde_json::Value },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtRegularDecisionCertificate {
+    version: usize,
+    evidence: LeanHtRegularDecisionEvidence,
+}
+
+#[derive(serde::Serialize)]
 struct LeanHtClauseNormalization {
     source: LeanHtClause,
     representatives: Vec<usize>,
@@ -10011,6 +10024,86 @@ impl Ht {
             residual,
         })
         .map_err(|error| error.to_string())
+    }
+
+    fn lean_regular_decision_envelope(
+        payload: String,
+        satisfiable: bool,
+    ) -> Result<String, String> {
+        let certificate =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let evidence = if satisfiable {
+            LeanHtRegularDecisionEvidence::RegularSat { certificate }
+        } else {
+            LeanHtRegularDecisionEvidence::FiniteUnsat { certificate }
+        };
+        serde_json::to_string(&LeanHtRegularDecisionCertificate {
+            version: 1,
+            evidence,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    /// Certification decision search whose open outcome is an infinite regular
+    /// model and whose closed outcome is an exhaustive finite refutation. This
+    /// raw envelope targets `ht-regular-decision-cert-check`; source-clause
+    /// normalization is composed by the outer publication layer separately.
+    fn lean_regular_equality_free_decision_certificate_json(
+        &self,
+    ) -> Result<(bool, String), String> {
+        if !self.card_defs.is_empty()
+            || self.clauses.iter().any(|record| {
+                record
+                    .0
+                    .body
+                    .iter()
+                    .chain(record.0.head.iter())
+                    .any(|atom| matches!(atom, Atom::Eq { .. }))
+            })
+        {
+            return Err(
+                "regular HT decision certificates do not yet support equality or cardinality"
+                    .to_string(),
+            );
+        }
+        let variable_count = self.lean_source_variable_count().max(
+            self.clauses
+                .iter()
+                .flat_map(|record| record.0.body.iter().chain(record.0.head.iter()))
+                .flat_map(|atom| match atom {
+                    Atom::Concept { t, .. } | Atom::Exists { t, .. } => vec![*t as usize + 1],
+                    Atom::Role { s, t, .. } | Atom::Eq { s, t } => {
+                        vec![*s as usize + 1, *t as usize + 1]
+                    }
+                })
+                .max()
+                .unwrap_or(0),
+        );
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let mut state = LeanHtRefutationState::root(&[]);
+            match self.lean_refutation(&mut state, variable_count, node_budget) {
+                LeanHtRefutationOutcome::Closed(_, _) => {
+                    let finite = self.lean_unsat_certificate_json_raw()?;
+                    return Ok((false, Self::lean_regular_decision_envelope(finite, false)?));
+                }
+                LeanHtRefutationOutcome::Open(leaf) => {
+                    let regular = self.lean_regular_blocked_open_certificate_json(&leaf)?;
+                    return Ok((true, Self::lean_regular_decision_envelope(regular, true)?));
+                }
+                LeanHtRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "ontology reached the configured regular decision node cap".to_string(),
+                    );
+                }
+                LeanHtRefutationOutcome::Frontier(_) => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "regular decision node budget overflowed usize".to_string()
+                    })?;
+                }
+                LeanHtRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
     }
 
     fn lean_eq_refutation(
@@ -21152,7 +21245,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = std::process::Command::new(checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -21427,7 +21520,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -21922,7 +22015,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, regular_raw).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -21933,6 +22026,30 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             let _ = std::fs::remove_file(path);
+
+            let mut decision_checker = std::path::PathBuf::from(checker);
+            decision_checker.set_file_name("ht-regular-decision-cert-check");
+            let (satisfiable, decision) = cyclic
+                .lean_regular_equality_free_decision_certificate_json()
+                .expect("regular decision search returns the cyclic model envelope");
+            assert!(satisfiable);
+            let decision_path = std::env::temp_dir().join(format!(
+                "km-ht-regular-decision-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&decision_path, decision).unwrap();
+            let accepted = std::process::Command::new(&decision_checker)
+                .arg(&decision_path)
+                .output()
+                .expect("run the native Lean regular decision checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept Rust's regular SAT decision at {}: {}",
+                decision_path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(decision_path);
         }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(
@@ -22015,6 +22132,38 @@ mod tests {
             assert!(
                 accepted.status.success(),
                 "Lean must accept Rust's normalized role cover at {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn regular_decision_envelope_carries_finite_unsat_and_lean_checks_it() {
+        let reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let (satisfiable, document) = reasoner
+            .lean_regular_equality_free_decision_certificate_json()
+            .expect("empty-head axiom has a finite refutation envelope");
+        assert!(!satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert!(wire["evidence"].get("finite_unsat").is_some());
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
+            let mut checker = std::path::PathBuf::from(checker);
+            checker.set_file_name("ht-regular-decision-cert-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-regular-decision-unsat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the native Lean regular decision checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept Rust's finite UNSAT decision at {}: {}",
                 path.display(),
                 String::from_utf8_lossy(&accepted.stderr),
             );

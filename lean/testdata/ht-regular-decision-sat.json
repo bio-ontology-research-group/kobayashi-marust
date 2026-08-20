@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "evidence": {
+    "regular_sat": {
+      "certificate": {
+        "version": 1,
+        "node_count": 1,
+        "concept_count": 1,
+        "role_count": 1,
+        "variable_count": 1,
+        "labels": [],
+        "edges": [],
+        "obligations": [],
+        "redirect": [0],
+        "cover": [],
+        "sub_roles": [],
+        "inverse_roles": [],
+        "chains": [],
+        "reflexive_roles": [],
+        "role_clauses": [],
+        "residual": []
+      }
+    }
+  }
+}

@@ -531,9 +531,18 @@ clause shapes, rejects non-liftable residual heads, records blocker redirects,
 supplies finite witnesses for blocked obligations, and computes the least
 finite closure under subrole, inverse, chain, and reflexive rules. Cross-language
 tests pass the emitted cyclic model and a combined four-rule role cover through
-`ht-regular-cert-check`. The production decision API still emits the older
-finite SAT/refutation envelope; a checked sum envelope is needed before it can
-publish regular SAT and finite UNSAT evidence through one fail-closed route.
+`ht-regular-cert-check`.
+
+`HypertableauRegularDecisionWire.lean` supplies a checked sum envelope at the
+exact normalized-ontology layer. Its decoder accepts only a regular SAT
+certificate or a finite document whose evidence constructor is global UNSAT.
+The executable checker validates the selected branch, and `check_sound` proves
+either a nonempty regular model or absence of every nonempty model. The native
+`ht-regular-decision-cert-check` accepts checked-in SAT and UNSAT documents.
+Rust emits both envelope branches from one exhaustive decision search, and
+cross-language tests pass each through Lean. The remaining publication bridge
+is composition with the already proved source normalization and preprocessing
+wire, not selection between SAT and UNSAT.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

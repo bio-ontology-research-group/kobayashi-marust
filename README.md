@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.115`.
+`v0.3.116`.
 
 ## Classify an ontology
 
@@ -211,8 +211,9 @@ explicit trust-boundary targets, not a claim that the production HT route is
 completely certified. The Rust producer can now emit checker-accepted regular
 documents for blocked equality-free branches, including normalized role-rule
 partitioning, redirect witnesses, and finite endpoint closure. Production
-publication still needs the checked regular-SAT/finite-refutation decision
-envelope.
+publication now has a checked regular-SAT/finite-refutation decision envelope
+at the normalized-clause layer. Composing that envelope with source-clause
+normalization remains before the ordinary production API can switch to it.
 
 Certified mode 6 also checks before SAT serialization that every generated
 node has a strictly earlier predecessor and that no full-signature-blocked node
