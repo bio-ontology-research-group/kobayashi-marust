@@ -637,6 +637,62 @@ example : cyclicFold.materialize.base.edges =
 
 example : cyclicFold.check = true := by native_decide
 
+/-! Pairwise labels and parent-role signatures do not make one-round folding
+closed under role chains.  The blocked node `2` has the same pairwise signature
+as blocker `1`: their respective parents `0` and `4` carry the same `R` edge.
+Copying the blocker's `S` successor creates `R(0,2), S(2,3)` and therefore a
+new `T(0,3)` obligation that was absent from the valid base endpoint. -/
+
+private def chainBase : FiniteEqCertificate 5 1 3 3 where
+  base := {
+    ontology := [{
+      body := [.role 0 0 1, .role 1 1 2]
+      head := [.role 2 0 2]
+    }]
+    labels := []
+    edges := [(0, 4, 1), (1, 1, 3), (2, 4, 3), (0, 0, 2)]
+    obligations := []
+  }
+  equalities := []
+  representative := id
+  representativePath := fun _ => []
+
+private def chainFold : FiniteEqFoldCertificate 5 1 3 3 where
+  base := chainBase
+  folds := [(2, 1)]
+
+private def chainParent : Fin 5 → Option (Fin 5)
+  | 1 => some 4
+  | 2 => some 0
+  | _ => none
+
+example : chainBase.Valid := by
+  apply chainBase.checkEqSat_eq_true_iff_valid.mp
+  native_decide
+
+example : chainBase.state.quotientRoleBlockingSignature chainParent 1 =
+    chainBase.state.quotientRoleBlockingSignature chainParent 2 := by
+  classical
+  have heqvgenFalse (left right : Fin 5) :
+      Relation.EqvGen (fun _ _ : Fin 5 => False) left right ↔ left = right := by
+    constructor
+    · intro h
+      induction h with
+      | rel _ _ hrel => contradiction
+      | refl => rfl
+      | symm _ _ _ ih => exact ih.symm
+      | trans _ _ _ _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+    · rintro rfl
+      exact Relation.EqvGen.refl _
+  simp [EqState.quotientRoleBlockingSignature, EqState.closedLabelSet,
+    EqState.closedForwardParentRoles, EqState.closedBackwardParentRoles,
+    EqState.closedLabel, EqState.closedEdge, heqvgenFalse, chainBase,
+    chainParent, FiniteEqCertificate.state, FiniteSatCertificate.state]
+
+example : (2, 0, 3) ∉ chainFold.foldedEdges := by native_decide
+
+example : chainFold.check = false := by native_decide
+
 end EqFoldTests
 
 #print axioms FiniteEqFoldCertificate.check_satisfiable

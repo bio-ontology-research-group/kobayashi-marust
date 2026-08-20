@@ -276,6 +276,11 @@ outgoing-only construction was incomplete for reversed role heads.
 `closedInverseRole_implication` proves the corrected fold preserves
 `R(x,y) → S(y,x)`, while the earlier propagation theorems now cover either
 orientation of copied premise edge.
+The `EqFoldTests.chainFold` counterexample proves that these conditions still do
+not preserve a binary role chain: a valid base endpoint and two nodes with equal
+full pairwise signatures can produce a new mixed chain grounding after the
+fold. The ordinary finite checker correctly rejects that candidate. This rules
+out completing the proof by claiming one-round finite fold saturation.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean
@@ -385,9 +390,10 @@ closed pairwise signature and fail-closed materialization boundary.
 
 `HypertableauEqualitySearch.lean` carries the same checked rooted-address
 frontier used by equality-free search. Its doubling theorem proves that a
-frontier cannot recur forever, so equality-aware search eventually returns a
-checked quotient model or checked refutation. The Rust frontier producer
-reconstructs and validates those exact addresses before deepening.
+genuine node-budget frontier cannot recur forever. The Rust frontier producer
+reconstructs and validates those exact addresses before deepening. A rejected
+finite fold is a different outcome: Rust now deepens and retries, but no theorem
+yet proves that such rejection eventually stops.
 
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
@@ -399,10 +405,13 @@ cannot persist through iterative doubling. Equality-quotient pairwise blocking
 folds a saturated open branch into a finite candidate, and
 `FiniteEqFoldCertificate.checkWithCardinality_models` proves that an accepted
 candidate models both the exact ontology and all decoded cardinality
-definitions. Consequently the checker-gated distinct-cardinality fragment has
-a total sound and complete decision boundary: a checked model or checked
-refutation is conclusive, malformed evidence fails closed, and a checked
-frontier eventually disappears.
+definitions. This is a sound acceptance boundary, not a completeness theorem:
+inverse roles with counting lack the finite-model property, so a complete
+certificate cannot require every satisfiable input to have an ordinary finite
+quotient model. The remaining HT work must define and check a regular cyclic
+completion graph together with its infinite unravelling, prove that the
+unravelling satisfies role chains and cardinality, and connect the Rust blocker
+and search to that certificate.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.100`.
+`v0.3.101`.
 
 ## Classify an ontology
 
@@ -174,10 +174,17 @@ worker emits finite SAT evidence when
 `KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
 It publishes global consistency only after Lean accepts the exact normalized
 clauses and terminal model, and otherwise fails closed. For default
-certification-only full pairwise blocking, Rust materializes each direct finite
-fold as ordinary edges;
-Lean exhaustively checks the folded graph, so blocker selection remains outside
-the trust boundary. For inconsistent clause sets admitting a finite
+certification-only full pairwise blocking, Rust materializes each proposed
+finite fold as ordinary edges in both predecessor directions. Lean exhaustively
+checks the folded graph, so blocker selection remains outside the trust
+boundary. A rejected fold resumes iterative deepening and is never published.
+Full pairwise-signature equality alone does not guarantee that one-round folding
+is closed under multi-edge role chains; Lean includes an executable
+counterexample. Moreover, inverse roles combined with counting do not have the
+finite-model property. Finite folded SAT evidence is therefore a sound
+acceptance path, not a completeness argument for full SROIQ. Completing HT
+certification requires a checked regular/unravelled-model certificate for that
+fragment. For inconsistent clause sets admitting a finite
 refutation, Rust independently constructs an exhaustive empty-root tree over
 concept, role, and existential facts. An existential obligation may bind a
 fresh certificate node to its semantic witness; Lean checks freshness before

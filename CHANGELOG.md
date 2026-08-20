@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.101] – 2026-08-20
+
+### Align equality-aware folds and expose the regular-model boundary
+
+- Copy incoming blocker-class edges in the equality-aware and
+  cardinality-aware Rust certificate producers. Their outgoing-only behavior
+  did not match the bidirectional Lean fold introduced in v0.3.99.
+- Add a Rust regression covering both producers on a cyclic blocked branch.
+- Add a Lean counterexample proving that full pairwise-signature equality does
+  not make one-round finite folding closed under a binary role chain. The base
+  endpoint is valid, but the fold creates a new chain grounding whose required
+  head edge is absent, and the exact checker rejects it.
+- State the resulting architecture accurately: finite folded models remain a
+  sound acceptance path, while complete SROIQ certification needs a checked
+  regular/unravelled model because inverse roles with counting do not have the
+  finite-model property.
+
+The full Lean build passes across 3,378 jobs. The locked Rust release suite
+passes with 2,068 tests, 8 intentional ignores, all integration suites, and the
+native Lean HT publication checker enabled. This milestone removes a concrete
+Rust/Lean mismatch and mechanically rules out an invalid finite-fold
+completeness argument.
+
 ## [0.3.100] – 2026-08-20
 
 ### Resume HT search after certificate rejection

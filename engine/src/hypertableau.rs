@@ -3102,6 +3102,13 @@ impl LeanHtRefutationState {
                         target,
                     });
                 }
+                if self.equivalent(target, blocker) {
+                    state.edges.push(LeanHtEdge {
+                        role: role as usize,
+                        source,
+                        target: blocked,
+                    });
+                }
             }
         }
         state
@@ -3125,6 +3132,13 @@ impl LeanHtRefutationState {
                         role: role as usize,
                         source: blocked,
                         target,
+                    });
+                }
+                if self.equivalent(target, blocker) {
+                    state.edges.push(LeanHtEdge {
+                        role: role as usize,
+                        source,
+                        target: blocked,
                     });
                 }
             }
@@ -21658,6 +21672,65 @@ mod tests {
                 assert!(accepted, "Lean must accept the {kind} equality evidence");
             }
         }
+    }
+
+    #[test]
+    fn equality_and_cardinality_folds_copy_incoming_blocker_edges() {
+        fn contains_edge(value: &serde_json::Value, role: R, source: Node, target: Node) -> bool {
+            if let Some(edges) = value.get("edges").and_then(serde_json::Value::as_array) {
+                if edges.iter().any(|edge| {
+                    edge["role"] == role
+                        && edge["source"] == source
+                        && edge["target"] == target
+                }) {
+                    return true;
+                }
+            }
+            match value {
+                serde_json::Value::Array(values) => values
+                    .iter()
+                    .any(|value| contains_edge(value, role, source, target)),
+                serde_json::Value::Object(values) => values
+                    .values()
+                    .any(|value| contains_edge(value, role, source, target)),
+                _ => false,
+            }
+        }
+
+        let clauses = vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![exists(R0, false, A, X)],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
+        ];
+        let equality = Ht::new_certified(clauses.clone());
+        let (sat, equality_document) = equality
+            .lean_equality_decision_certificate_json()
+            .expect("the equality-aware cyclic branch has a finite fold");
+        assert!(sat);
+        let equality_wire: serde_json::Value =
+            serde_json::from_str(&equality_document).unwrap();
+        assert!(contains_edge(&equality_wire, R0, 0, 2));
+
+        let mut cardinality = Ht::new_certified(clauses);
+        cardinality.set_card_defs(HashMap::from([(
+            B,
+            CardDef {
+                kind: CardKind::Min,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(A),
+            },
+        )]));
+        let (sat, cardinality_document) = cardinality
+            .lean_cardinality_decision_certificate_json()
+            .expect("the cardinality-aware cyclic branch has a finite fold");
+        assert!(sat);
+        let cardinality_wire: serde_json::Value =
+            serde_json::from_str(&cardinality_document).unwrap();
+        assert!(contains_edge(&cardinality_wire, R0, 0, 2));
     }
 
     #[test]
