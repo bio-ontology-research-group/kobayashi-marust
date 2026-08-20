@@ -188,17 +188,58 @@ already realizes that obligation. -/
 
 abbrev WitnessSlot (Concept Role : Type) := Role × Lit Concept
 
-abbrev WitnessAddress (Concept Role : Type)
+abbrev RootedRoleBlockedAddress (Root Slot Concept Role : Type)
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role] :=
-  RoleBlockedAddress (WitnessSlot Concept Role) Concept Role
+  Root × RoleBlockedAddress Slot Concept Role
 
-def State.ObligationAddressInvariant
+def RootedRoleBlockedAddress.extend
+    {Root Slot Concept Role : Type}
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
-    (state : State (WitnessAddress Concept Role) Concept Role) : Prop :=
+    (address : RootedRoleBlockedAddress Root Slot Concept Role) (slot : Slot)
+    (hdepth : address.2.1.length <
+      Fintype.card (RoleBlockingSignature Concept Role)) :
+    RootedRoleBlockedAddress Root Slot Concept Role :=
+  (address.1, address.2.extend slot hdepth)
+
+abbrev WitnessAddress (Root Concept Role : Type)
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :=
+  RootedRoleBlockedAddress Root (WitnessSlot Concept Role) Concept Role
+
+/-- Extending one rooted path preserves its root identity and gives a fresh
+node whenever that exact rooted address is not active. -/
+theorem State.fresh_extended_rootedRoleBlockedAddress
+    {Root Slot Concept Role : Type}
+    [Fintype Root] [DecidableEq Root]
+    [Fintype Slot] [DecidableEq Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State (RootedRoleBlockedAddress Root Slot Concept Role) Concept Role)
+    (address : RootedRoleBlockedAddress Root Slot Concept Role) (slot : Slot)
+    (hdepth : address.2.1.length <
+      Fintype.card (RoleBlockingSignature Concept Role))
+    (hunused : ¬state.NodeUsed (address.extend slot hdepth)) :
+    state.Fresh (address.extend slot hdepth) := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro literal hlabel
+    exact hunused (Or.inl ⟨literal, hlabel⟩)
+  · intro candidateRole node
+    exact ⟨fun hedge => hunused
+        (Or.inr (Or.inl ⟨candidateRole, node, Or.inl hedge⟩)),
+      fun hedge => hunused
+        (Or.inr (Or.inl ⟨candidateRole, node, Or.inr hedge⟩))⟩
+  · intro candidateRole filler hobligation
+    exact hunused (Or.inr (Or.inr ⟨candidateRole, filler, hobligation⟩))
+
+def State.ObligationAddressInvariant
+    {Root : Type} [Fintype Root] [DecidableEq Root]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State (WitnessAddress Root Concept Role) Concept Role) : Prop :=
   ∀ source role filler, state.obligation role filler source →
-    ∃ hdepth : source.1.length <
+    ∃ hdepth : source.2.1.length <
         Fintype.card (RoleBlockingSignature Concept Role),
       let target := source.extend (role, filler) hdepth
       ¬state.NodeUsed target ∨
@@ -207,9 +248,10 @@ def State.ObligationAddressInvariant
 /-- Under canonical obligation addressing, every unwitnessed existential has
 an unused, and therefore fresh, finite role-blocked child address. -/
 theorem State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
+    {Root : Type} [Fintype Root] [DecidableEq Root]
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
-    (state : State (WitnessAddress Concept Role) Concept Role)
+    (state : State (WitnessAddress Root Concept Role) Concept Role)
     (hinvariant : state.ObligationAddressInvariant)
     (hunwitnessed : state.HasUnwitnessed) :
     ∃ target, state.Fresh target := by
@@ -219,17 +261,18 @@ theorem State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
     hinvariant source role filler hobligation
   · let target := source.extend (role, filler) hdepth
     exact ⟨target,
-      state.fresh_extended_roleBlockedAddress source (role, filler) hdepth
+      state.fresh_extended_rootedRoleBlockedAddress source (role, filler) hdepth
         (by simpa [target] using hunused)⟩
   · exact False.elim (hnowitness _ hwitness)
 
 /-- The address invariant discharges the abstract fresh-supply premise of the
 exact equality-free HT transition theorem. -/
 theorem State.obstruction_has_addressed_exhaustive_step
+    {Root : Type} [Fintype Root] [DecidableEq Root]
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
     (ontology : List (Clause Variable Concept Role))
-    (state : State (WitnessAddress Concept Role) Concept Role)
+    (state : State (WitnessAddress Root Concept Role) Concept Role)
     (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
     (hinvariant : state.ObligationAddressInvariant)
     (hobstruction : state.HasUnwitnessed ∨ state.HasUndischarged ontology) :
@@ -271,6 +314,7 @@ theorem State.no_overlong_mode6_expansion
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
 #print axioms State.fresh_extended_roleBlockedAddress
+#print axioms State.fresh_extended_rootedRoleBlockedAddress
 #print axioms State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
 #print axioms State.obstruction_has_addressed_exhaustive_step
 #print axioms State.no_overlong_mode6_expansion

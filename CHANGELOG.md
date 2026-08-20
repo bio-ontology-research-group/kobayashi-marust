@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.3.71] – 2026-08-20
+
+### Distinguish roots in finite HT node addresses
+
+- Extend the finite blocked-address universe with an explicit finite root
+  identity, so separate roots no longer share the same empty path.
+- Prove that successor extension preserves the root identity and that an unused
+  rooted extension is fresh.
+- Generalize canonical obligation addressing and exhaustive equality-free HT
+  transitions to the rooted universe.
+
+The remaining Rust refinement must record each generated node's root and
+canonical successor-slot path and check this correspondence before publishing
+certified evidence.
+
 ## [0.3.70] – 2026-08-20
 
 ### Derive finite HT fresh supply from canonical obligation addresses
