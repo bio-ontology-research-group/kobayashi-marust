@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.177] – 2026-08-21
+
+### Prove greedy maximum completeness
+
+- Prove the greedy scan never removes a previously selected representative.
+- Prove every qualifying target is equality-equivalent to some retained
+  representative, including the branch where a candidate is skipped because
+  its class was already represented.
+- Construct an injective map from every semantic pairwise-distinct witness
+  family into positions of the greedy representative list.
+- Prove the exact equivalence between `bound + 1` greedy width and existence of
+  a qualifying pairwise quotient-distinct witness vector.
+- Audit all class-coverage and width-completeness endpoints without `sorryAx`.
+
+Production-order scanning over definitions and sources, exact recursive outcome
+production, concrete Rust field construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.176] – 2026-08-21
 
 ### Certify maximum width and truncation

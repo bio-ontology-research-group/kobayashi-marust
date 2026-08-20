@@ -1292,6 +1292,61 @@ theorem rustGreedyEquivRepresentatives_mem
   · simp at hselected
   · exact hcandidates
 
+theorem rustGreedyEquivRepresentativesAux_selected
+    (state : EqState Node Concept Role) (selected candidates : List Node) :
+    ∀ node, node ∈ selected →
+      node ∈ rustGreedyEquivRepresentativesAux state selected candidates := by
+  classical
+  induction candidates generalizing selected with
+  | nil => simp [rustGreedyEquivRepresentativesAux]
+  | cons candidate remaining ih =>
+      intro node hnode
+      simp only [rustGreedyEquivRepresentativesAux]
+      split
+      next hnew => exact ih (selected ++ [candidate]) node (by simp [hnode])
+      next hold => exact ih selected node hnode
+
+theorem rustGreedyEquivRepresentativesAux_covers
+    (state : EqState Node Concept Role) (selected candidates : List Node) :
+    ∀ node, node ∈ candidates →
+      ∃ representative,
+        representative ∈ rustGreedyEquivRepresentativesAux state selected candidates ∧
+          state.equiv node representative := by
+  classical
+  induction candidates generalizing selected with
+  | nil => simp
+  | cons candidate remaining ih =>
+      intro node hnode
+      simp only [List.mem_cons] at hnode
+      simp only [rustGreedyEquivRepresentativesAux]
+      split
+      next hnew =>
+        rcases hnode with heq | hremaining
+        · refine ⟨node, ?_, state.equiv_equivalence.1 node⟩
+          exact rustGreedyEquivRepresentativesAux_selected state
+            (selected ++ [candidate]) remaining node (by simp [heq])
+        · exact ih (selected ++ [candidate]) node hremaining
+      next hold =>
+        rcases hnode with heq | hremaining
+        · have hallfalse :
+              selected.all (fun other => decide (¬state.equiv node other)) = false := by
+            rw [heq]
+            exact Bool.eq_false_of_not_eq_true hold
+          rw [List.all_eq_false] at hallfalse
+          rcases hallfalse with ⟨representative, hselected, hrelated⟩
+          refine ⟨representative,
+            rustGreedyEquivRepresentativesAux_selected state selected remaining
+              representative hselected, ?_⟩
+          simpa using hrelated
+        · exact ih selected node hremaining
+
+theorem rustGreedyEquivRepresentatives_covers
+    (state : EqState Node Concept Role) (candidates : List Node) :
+    ∀ node, node ∈ candidates →
+      ∃ representative, representative ∈ rustGreedyEquivRepresentatives state candidates ∧
+        state.equiv node representative :=
+  rustGreedyEquivRepresentativesAux_covers state [] candidates
+
 theorem rustGreedyEquivRepresentativesAux_pairwise
     (state : EqState Node Concept Role) (selected candidates : List Node)
     (hselected : selected.Pairwise fun left right => ¬state.equiv left right) :
@@ -1365,6 +1420,53 @@ theorem rustMaximumRepresentatives_pairwise
   rustGreedyEquivRepresentatives_pairwise state.base
     (rustQualifyingMaximumTargets state definition source)
 
+theorem rustMaximumRepresentatives_cover
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source target : Fin nodeCount)
+    (hqualifies : state.base.closedEdge definition.role source target ∧
+      state.base.closedLabel target (.pos definition.filler)) :
+    ∃ representative, representative ∈ rustMaximumRepresentatives state definition source ∧
+      state.base.equiv target representative := by
+  apply rustGreedyEquivRepresentatives_covers state.base
+    (rustQualifyingMaximumTargets state definition source) target
+  exact (mem_rustQualifyingMaximumTargets state definition source target).mpr hqualifies
+
+theorem rustMaximumRepresentatives_length_of_witnesses
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount)
+    (witnesses : Fin (definition.bound + 1) → Fin nodeCount)
+    (hqualifies : ∀ index,
+      state.base.closedEdge definition.role source (witnesses index) ∧
+        state.base.closedLabel (witnesses index) (.pos definition.filler))
+    (hdistinct : ∀ left right, left ≠ right →
+      ¬state.base.equiv (witnesses left) (witnesses right)) :
+    definition.bound + 1 ≤
+      (rustMaximumRepresentatives state definition source).length := by
+  classical
+  let representatives := rustMaximumRepresentatives state definition source
+  have hcovered : ∀ index, ∃ representative,
+      representative ∈ representatives ∧
+        state.base.equiv (witnesses index) representative := by
+    intro index
+    exact rustMaximumRepresentatives_cover state definition source
+      (witnesses index) (hqualifies index)
+  choose representative hrepresentativeMem hrepresentativeEq using hcovered
+  have hposition : ∀ index, ∃ position : Fin representatives.length,
+      representatives.get position = representative index := by
+    intro index
+    exact List.mem_iff_get.mp (hrepresentativeMem index)
+  choose position hposition using hposition
+  have hinjective : Function.Injective position := by
+    intro left right heq
+    by_contra hne
+    have hrepEq : representative left = representative right := by
+      rw [← hposition left, ← hposition right, heq]
+    have hwitnessEq : state.base.equiv (witnesses left) (witnesses right) :=
+      state.base.equiv_equivalence.3 (hrepresentativeEq left)
+        (state.base.equiv_equivalence.2 (hrepEq ▸ hrepresentativeEq right))
+    exact hdistinct left right hne hwitnessEq
+  simpa [representatives] using Fintype.card_le_of_injective position hinjective
+
 def rustPrefixVector (values : List Node) (width : Nat)
     (hwidth : width ≤ values.length) : Fin width → Node :=
   fun index => values.get ⟨index.1, lt_of_lt_of_le index.2 hwidth⟩
@@ -1427,6 +1529,27 @@ theorem rustMaximumPrefixCandidate_true
   apply (maximumCandidateBool_eq_true_iff state _).mpr
   exact ⟨hkind, hmarker, rustMaximumPrefixVector_qualifies state definition source hwidth,
     rustMaximumPrefixVector_pairwise state definition source hwidth⟩
+
+theorem rustMaximumWidth_iff_exists_witnesses
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount) :
+    definition.bound + 1 ≤
+        (rustMaximumRepresentatives state definition source).length ↔
+      ∃ witnesses : Fin (definition.bound + 1) → Fin nodeCount,
+        (∀ index,
+          state.base.closedEdge definition.role source (witnesses index) ∧
+            state.base.closedLabel (witnesses index) (.pos definition.filler)) ∧
+        ∀ left right, left ≠ right →
+          ¬state.base.equiv (witnesses left) (witnesses right) := by
+  constructor
+  · intro hwidth
+    exact ⟨rustPrefixVector (rustMaximumRepresentatives state definition source)
+        (definition.bound + 1) hwidth,
+      rustMaximumPrefixVector_qualifies state definition source hwidth,
+      rustMaximumPrefixVector_pairwise state definition source hwidth⟩
+  · rintro ⟨witnesses, hqualifies, hdistinct⟩
+    exact rustMaximumRepresentatives_length_of_witnesses state definition source
+      witnesses hqualifies hdistinct
 
 def DistinctEqState.CardinalityRuntimeTerminal
     [Fintype Concept] [DecidableEq Concept]
@@ -1844,6 +1967,11 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms rustMaximumPrefixVector_qualifies
 #print axioms rustMaximumPrefixVector_pairwise
 #print axioms rustMaximumPrefixCandidate_true
+#print axioms rustGreedyEquivRepresentativesAux_selected
+#print axioms rustGreedyEquivRepresentatives_covers
+#print axioms rustMaximumRepresentatives_cover
+#print axioms rustMaximumRepresentatives_length_of_witnesses
+#print axioms rustMaximumWidth_iff_exists_witnesses
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted
