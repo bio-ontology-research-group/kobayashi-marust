@@ -117,8 +117,39 @@ theorem State.exists_role_blocker_on_long_path
   · exact ⟨left, right, hlt, heq⟩
   · exact ⟨right, left, hgt, heq.symm⟩
 
+/-! A finite branching vocabulary turns the signature depth bound into a finite
+node-address universe. A slot identifies one of the finitely many successor
+obligations available at a node. Blocking prevents an address from being longer
+than the number of pairwise signatures. -/
+
+def RoleBlockedAddress (Slot Concept Role : Type)
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :=
+  {address : List Slot //
+    address.length ≤ Fintype.card (RoleBlockingSignature Concept Role)}
+
+noncomputable instance roleBlockedAddressFintype
+    (Slot Concept Role : Type)
+    [Fintype Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :
+    Fintype (RoleBlockedAddress Slot Concept Role) :=
+  (List.finite_length_le Slot
+    (Fintype.card (RoleBlockingSignature Concept Role))).fintype
+
+/-- Finite successor choice together with role-sensitive blocking yields a
+finite node universe, not only finite individual predecessor paths. -/
+theorem role_blocked_node_universe_finite
+    (Slot Concept Role : Type)
+    [Fintype Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :
+    Set.Finite (Set.univ : Set (RoleBlockedAddress Slot Concept Role)) := by
+  exact Set.toFinite _
+
 #print axioms State.roleBlockingSignature_blocks
 #print axioms State.roleBlockingSignature_parent_context
 #print axioms State.exists_role_blocker_on_long_path
+#print axioms role_blocked_node_universe_finite
 
 end ContextCalculus.Hypertableau

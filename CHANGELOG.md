@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.3.65] – 2026-08-20
+
+### Derive a finite HT node universe from role-sensitive blocking
+
+- Define blocked node addresses as finite successor-slot paths bounded by the
+  complete pairwise blocking-signature vocabulary.
+- Construct the corresponding `Fintype` instance and prove that its universal
+  node set is finite.
+- Connect the role-sensitive path bound to the finite-node premise used by the
+  existing strict branch-progress theorem.
+
+This closes the abstract finite-node step. A runtime refinement must still show
+that certified Rust mode 6 represents each generated node by one of these
+bounded addresses and preserves that representation across branch updates.
+
 ## [0.3.64] – 2026-08-20
 
 ### Remove artificial HT UNSAT evidence limits

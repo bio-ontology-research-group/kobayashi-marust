@@ -273,7 +273,10 @@ finite model or a closed refutation tree. Lean also proves the finite signed-lab
 bound behind equality/subset blocking: every path longer than the number of
 possible signed labels contains an earlier exact-label blocker, and transfer to
 that blocker preserves all signed concept facts. The finite-fold checker then
-validates role and witness obligations on the materialized graph. Correspondence
+validates role and witness obligations on the materialized graph. Finite
+successor slots and the role-sensitive signature depth bound also construct a
+finite type of blocked node addresses, supplying the finite-node premise for
+the strict branch-progress theorem. Correspondence
 with Rust's blocking/search transitions remains open. Iterative deepening
 removes the producer's historical assignment and implicit node caps, but a
 proof that every unsatisfiable supported input reaches a finite closed
