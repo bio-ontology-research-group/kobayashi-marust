@@ -245,6 +245,105 @@ mutual
             · exact rest.check_sound certificate assignment heads hrest atom hatom
 end
 
+theorem exists_checked_children
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (heads : List (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hencode : ∀ atom, atom ∈ heads →
+      ∃ tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check (certificate.assertAtom assignment atom) = true) :
+    ∃ children : FiniteRefutationChildren
+        nodeCount conceptCount roleCount variableCount,
+      children.check certificate assignment heads = true := by
+  induction heads with
+  | nil => exact ⟨.nil, by simp [FiniteRefutationChildren.check]⟩
+  | cons head tail ih =>
+      obtain ⟨tree, htree⟩ := hencode head (by simp)
+      obtain ⟨rest, hrest⟩ := ih (fun atom hatom =>
+        hencode atom (by simp [hatom]))
+      exact ⟨.cons head tree rest, by
+        simp [FiniteRefutationChildren.check, htree, hrest]⟩
+
+/-- Completeness of the executable finite refutation-tree checker relative to
+the semantic finite `Refutes` derivation. Every such derivation over the exact
+list-backed certificate state can be serialized as a tree accepted by the
+Boolean checker. -/
+theorem Refutes.exists_checked_tree
+    {ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (hrefutes : Refutes (Fin nodeCount) ontology state) :
+    ∀ certificate : FiniteSatCertificate
+        nodeCount conceptCount roleCount variableCount,
+      certificate.ontology = ontology → certificate.state = state →
+      ∃ tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check certificate = true := by
+  induction hrefutes with
+  | clash state hclash =>
+      intro certificate hontology hstate
+      rcases hclash with ⟨node, concept, hpositive, hnegative⟩
+      have hpositive' : (node, .pos concept) ∈ certificate.labels := by
+        change certificate.state.label node (.pos concept)
+        rw [hstate]
+        exact hpositive
+      have hnegative' : (node, .negated concept) ∈ certificate.labels := by
+        change certificate.state.label node (.negated concept)
+        rw [hstate]
+        exact hnegative
+      refine ⟨.clash, ?_⟩
+      simp only [FiniteRefutationTree.check, List.any_eq_true, decide_eq_true_eq]
+      exact ⟨(node, .pos concept), hpositive', by
+        simpa [Lit.complement] using hnegative'⟩
+  | branch state clause hclause assignment hbody hbranchable children ih =>
+      intro certificate hontology hstate
+      have hclause' : clause ∈ certificate.ontology := by
+        simpa [hontology] using hclause
+      have hbody' : ∀ atom ∈ clause.body,
+          certificate.holdsAtomB assignment atom = true := by
+        intro atom hatom
+        apply (certificate.holdsAtomB_eq_true assignment atom).2
+        rw [hstate]
+        exact hbody atom hatom
+      have hbranchable' : ∀ atom ∈ clause.head, branchableB atom = true := by
+        intro atom hatom
+        exact (branchableB_eq_true atom).2 (hbranchable atom hatom)
+      obtain ⟨encodedChildren, hencodedChildren⟩ :=
+        exists_checked_children certificate assignment clause.head (fun atom hatom => by
+          apply ih atom hatom (certificate.assertAtom assignment atom)
+          · simpa [hontology]
+          · rw [certificate.state_assertAtom, hstate])
+      refine ⟨.branch clause assignment encodedChildren, ?_⟩
+      simp only [FiniteRefutationTree.check, Bool.and_eq_true,
+        decide_eq_true_eq, List.all_eq_true]
+      exact ⟨⟨⟨hclause', hbody'⟩, hbranchable'⟩, hencodedChildren⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      intro certificate hontology hstate
+      have hobligation' : (role, filler, source) ∈ certificate.obligations := by
+        change certificate.state.obligation role filler source
+        rw [hstate]
+        exact hobligation
+      have hfresh' : certificate.freshNodeB target = true :=
+        (certificate.freshNodeB_eq_true target).2 (by simpa [hstate] using hfresh)
+      obtain ⟨encodedChild, hencodedChild⟩ :=
+        ih (certificate.materializeWitness source target role filler)
+          (by simpa [hontology]) (by rw [certificate.state_materializeWitness, hstate])
+      refine ⟨.witness source target role filler encodedChild, ?_⟩
+      simp [FiniteRefutationTree.check, hobligation', hfresh', hencodedChild]
+
+/-- Exactness of the finite refutation certificate format: accepted trees and
+semantic finite HT refutations coincide for the certificate's ontology and
+list-backed state. -/
+theorem FiniteSatCertificate.refutes_iff_exists_checked_tree
+    (certificate : FiniteSatCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    Refutes (Fin nodeCount) certificate.ontology certificate.state ↔
+      ∃ tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check certificate = true := by
+  constructor
+  · intro hrefutes
+    exact hrefutes.exists_checked_tree certificate rfl rfl
+  · rintro ⟨tree, hcheck⟩
+    exact tree.check_sound certificate hcheck
+
 theorem FiniteRefutationTree.check_unsatisfiable
     (tree : FiniteRefutationTree nodeCount conceptCount roleCount variableCount)
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
@@ -414,6 +513,8 @@ example : nonfreshWitnessTree.check witnessCertificate = false := by native_deci
 end RefutationCheckerTests
 
 #print axioms FiniteRefutationTree.check_sound
+#print axioms Refutes.exists_checked_tree
+#print axioms FiniteSatCertificate.refutes_iff_exists_checked_tree
 #print axioms FiniteRefutationTree.check_unsatisfiable
 #print axioms FiniteRefutationTree.check_ontology_unsatisfiable
 #print axioms FiniteRefutationTree.check_subsumption

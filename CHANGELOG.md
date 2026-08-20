@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.136] – 2026-08-20
+
+### Prove finite HT refutation-tree checker completeness
+
+- Encode every finite semantic `Refutes` derivation as a
+  `FiniteRefutationTree` accepted by the executable Boolean checker.
+- Preserve the exact ontology and list-backed branch state through concept,
+  role, and existential head assertions and through fresh-witness
+  materialization.
+- Encode branch children in exact clause-head order, including zero-head
+  closure, and prove the child checker accepts the complete family.
+- Combine the new completeness direction with existing checker soundness to
+  prove accepted finite trees are equivalent to semantic finite HT
+  refutations for the certificate state.
+
+This closes soundness and completeness of the finite equality-free HT
+refutation-tree certificate format. Proving that every conclusive Rust recursive
+run emits the corresponding tree, plus equality/cardinality recursion and
+automatic routing, remains unfinished.
+
 ## [0.3.135] – 2026-08-20
 
 ### Certify clash-first HT runtime control

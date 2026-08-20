@@ -41,11 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.135`. Lean now executes the equality-free HT clash scan and proves the
-runtime's top-level ordering: selected clashes refute immediately, while only
-clash-free states reach blocker-aware clause/witness selection. Checked
-empty-outcome production, full recursive-tree correspondence, regular and
-equality/cardinality composition, and automatic routing remain unfinished.
+`v0.3.136`. Lean now proves the finite equality-free HT refutation-tree format
+sound and complete relative to semantic `Refutes`: a tree is checker-accepted
+exactly when the encoded finite branch state has such a refutation. Connecting
+every conclusive Rust recursive run to this tree, checked empty outcomes,
+equality/cardinality recursion, and automatic routing remain unfinished.
 
 ## Classify an ontology
 
