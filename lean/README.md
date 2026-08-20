@@ -242,8 +242,10 @@ subsumption and concept-satisfiability queries against quotient models or
 closed equality-aware refutations. Complete equality-aware taxonomy batch
 evidence remains fail-closed.
 
-The production Rust worker emits checker-gated global SAT evidence for
-equality-free ALC(H). Its certified constructor uses direct full-label pairwise
+The production Rust worker obtains its global consistency verdict and evidence
+from the total certification search, then publishes only after the native Lean
+checker accepts that evidence. It does not use the optimized tableau as a
+verdict oracle at this boundary. Its certified constructor uses direct full-label pairwise
 blocking, including predecessor labels and bidirectional connecting-role sets,
 and materializes those folds as ordinary candidate edges. It also emits
 exhaustive global UNSAT refutations when finite search closes over concept,
@@ -280,12 +282,9 @@ the strict branch-progress theorem. Lean further proves that strictly increasing
 child identifiers and refusing to expand an earlier-signature duplicate exclude
 every overlong all-expanded path. Certified Rust mode 6 checks those concrete
 predecessor and terminal expansion invariants before publishing SAT evidence.
-For ALC(H), terminal labels equal the relevant expansion-time parent labels;
-stronger dynamic correspondence for inverse roles, equality, and cardinality
-remains open. Iterative deepening
-removes the producer's historical assignment and implicit node caps, but a
-proof that every unsatisfiable supported input reaches a finite closed
-refutation remains part of that correspondence. Once a blocked node
+For ALC(H), terminal labels equal the relevant expansion-time parent labels.
+Iterative deepening removes the producer's historical assignment and implicit
+node caps. Once a blocked node
 universe is fixed, `HypertableauTermination.lean` proves that ordinary,
 equality-aware, and cardinality-aware evidence search has only finitely many
 strict branch updates and finitely many duplicate-free progress traces. The
@@ -301,20 +300,21 @@ proves strict growth for each absent branchable head and fresh witness. Its
 exhaustive step type has exactly one child per disjunct or one fresh-witness
 child; refuting those children constructs the matching `Refutes` parent. The
 finite completeness theorem is specialized directly to these guarded facts.
-The blocked fresh-address supply and exact Rust-enumerator correspondence remain
-open. The active-node set is now defined exactly from labels, both edge
+The active-node set is now defined exactly from labels, both edge
 endpoints, and obligations. Freshness is equivalent to absence from that set,
 and spare finite capacity yields a fresh target. A blocked address below the
 signature depth can be extended by one successor slot; an unused exact
-extension is fresh. It remains to prove that a used obligation extension already
-discharges that obligation.
+extension is fresh. `RootedAddressRefines` checks that an occupied canonical
+extension already carries the exact role edge and filler label, and
+`atWitnessAddresses_obligationAddressInvariant` turns that fact into the fresh
+supply required by exhaustive search.
 `HypertableauTerminal.lean` also proves that every branch exposes a
 clash, an unwitnessed existential, an undischarged grounding, or an exact
 canonical model. `HypertableauRoleBlocking.lean` proves the certified full
 pairwise signature is finite and repeats on long paths, and the Rust certified
-constructor uses the corresponding direct blocking mode. Checked exhaustive
-Rust obstruction enumeration, inverse roles, nominals, and native ABoxes remain
-to be connected or proved.
+constructor uses the corresponding direct blocking mode. Inverse roles,
+nominals, native ABoxes, and the complete taxonomy probe loop remain outside
+this total global-decision integration.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
 
@@ -334,14 +334,12 @@ refutation search and its Lean contract distinguish checked closure, an open
 branch, and an exhausted frontier. Saturated open leaves now retain their exact
 active-node quotient and become conclusive only when the executable equality
 model checker accepts them. Checked closure and checked quotient models cover
-both terminal meanings; complete taxonomy batching and equality-aware frontier
-termination remain separate obligations.
+both terminal meanings.
 
 `HypertableauEqualityBlocking.lean` defines the corresponding full pairwise
 signature over equality-closed labels and role edges. It proves finite
-signature repetition and the resulting injective-path depth bound. Connecting
-the signature bound to a total executable search remains required before
-equality-aware frontier termination is certified.
+signature repetition and the resulting injective-path depth bound. The checked
+frontier wire connects this bound to total executable iterative deepening.
 
 `HypertableauEqualityBlockingCertificate.lean` treats the concrete fold as
 untrusted input, materializes blocker edges modulo the supplied checked

@@ -5353,12 +5353,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     ht.set_card_defs_raw(&card_raw);
                 }
                 if lean_cert_requested {
-                    let consistent = ht.consistent(&[])?;
-                    let certificate = if consistent {
-                        ht.lean_sat_certificate_json().ok()?
-                    } else {
-                        ht.lean_unsat_certificate_json().ok()?
-                    };
+                    // The certification-only route obtains its verdict and its
+                    // evidence from the same total certificate search. The
+                    // optimized tableau is not an oracle at this trust boundary.
+                    let (consistent, certificate) =
+                        ht.lean_global_decision_certificate_json().ok()?;
                     let taxonomy = if lean_taxonomy_requested {
                         Some(ht.lean_taxonomy_certificate_json(&q).ok()?)
                     } else {

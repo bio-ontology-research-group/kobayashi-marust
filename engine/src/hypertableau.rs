@@ -10639,6 +10639,28 @@ impl Ht {
         }
     }
 
+    /// Decide global consistency using the total certification search for the
+    /// exact supported fragment and return the matching checker-ready evidence.
+    /// This is the certification route's verdict boundary: callers must not
+    /// obtain a verdict from the optimized tableau and merely certify it after
+    /// the fact.
+    pub fn lean_global_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        if !self.card_defs.is_empty() {
+            self.lean_cardinality_decision_certificate_json()
+        } else if self.clauses.iter().any(|record| {
+            record
+                .0
+                .body
+                .iter()
+                .chain(record.0.head.iter())
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
+            self.lean_equality_decision_certificate_json()
+        } else {
+            self.lean_equality_free_decision_certificate_json()
+        }
+    }
+
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
     fn lean_subsumption_certificate_json_raw(&self, sub: C, sup: C) -> Result<String, String> {
         let labels = [

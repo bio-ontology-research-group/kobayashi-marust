@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.90] – 2026-08-20
+
+### Use total certified search as the HT global verdict boundary
+
+- Add one certification-only global decision API that dispatches to the proved
+  equality-free, equality-aware, or distinct-cardinality iterative search for
+  the exact normalized clause set.
+- Make the production Lean-certified HT route obtain both its consistency
+  verdict and checker-ready evidence from that total decision API. It no longer
+  asks the optimized tableau for a verdict and attempts to certify it afterward.
+- Keep publication fail closed through the existing native Lean checker. The
+  default classification route and all benchmark paths remain unchanged.
+- Correct stale HT documentation: occupied canonical witness addresses and
+  equality/cardinality frontier termination are already proved. Inverse roles,
+  nominals, native ABoxes, and the taxonomy probe loop remain explicit
+  certification obligations.
+- Validate the full Rust suite (2,066 passed, 8 ignored) and all six HT
+  publication integrations against the native global and taxonomy Lean
+  checkers.
+
+This connects the total sound-and-complete HT global decision search to the
+runtime trust boundary for its certified fragment.
+
 ## [0.3.89] – 2026-08-20
 
 ### Prove checked distinct-cardinality HT search total
