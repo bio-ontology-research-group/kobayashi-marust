@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.118] – 2026-08-20
+
+### Prove canonical nominal roots for regular HT models
+
+- Add a rooted-forest path domain for the equality/nominal-aware regular model.
+- Preserve full path identity at anonymous endpoints while requiring every
+  designated anchor endpoint to use one canonical root value.
+- Prove any two anchored values with the same endpoint are equal and every
+  successor entering an anchor is redirected to that root.
+- Define the nominal concept interpretation by its selected root and prove each
+  selected nominal has exactly one extension element.
+
+These proofs establish the domain-identity layer needed before equality and
+nominals can use regular HT SAT publication. They do not yet prove that Rust's
+equality representatives and nominal carriers satisfy the anchor conditions,
+or that the full anchored role interpretation models every source clause.
+The full Lean build passes 3,385 jobs. The locked serial release suite remains
+green with 2,120 passed and 8 ignored tests.
+
 ## [0.3.117] – 2026-08-20
 
 ### Compose regular HT decisions with source preprocessing

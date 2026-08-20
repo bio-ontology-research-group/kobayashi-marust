@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.117`.
+`v0.3.118`.
 
 ## Classify an ontology
 
@@ -204,6 +204,14 @@ or an explicitly configured diagnostic node cap still declines. Equality-aware
 query countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
 QO, and runtime termination/blocking correspondence remain separate HT
 certification tasks.
+
+The formalization also defines the canonical rooted-forest domain for the
+next equality/nominal regular-model stage. Anonymous witnesses retain path
+identity, while every selected nominal root denotes one domain value; Lean
+proves the corresponding nominal concept has a singleton extension. Connecting
+Rust's equality representatives and nominal carriers to those anchors, and
+proving the full anchored role model, remain required before that stage can
+publish.
 
 The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded
