@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.166`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.167`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -109,7 +109,9 @@ enumerates the exact `n+1` quotient-distinct qualifying successors and proves
 all unequal merge children necessary and sound. Terminal classification now
 proves exact exhaustion of all six ordered controls. A terminal becomes SAT
 only through an independently checked quotient/fold model; that checker/runtime
-composition remains to be connected.
+composition now proves accepted finite equality/cardinality models sound and
+keeps closure, model, and frontier outcomes disjoint. Exact recursive runtime
+production of those outcomes remains to be connected.
 
 ## Classify an ontology
 

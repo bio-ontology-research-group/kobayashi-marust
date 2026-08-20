@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.167] – 2026-08-21
+
+### Compose cardinality terminals with checked models
+
+- Define the exact accepted cardinality-model obligation: positive finite node
+  domain, exact ontology identity, and successful equality/cardinality check.
+- Prove accepted evidence constructs a nonempty quotient model satisfying both
+  the ontology and every cardinality definition.
+- Add a typed bounded outcome separating quotient-closed refutation, checked
+  model, and explicit frontier.
+- Prove every bounded outcome is semantically conclusive or remains the exact
+  frontier constructor.
+- Compose runtime terminality with independently checked model evidence without
+  treating terminality itself as SAT.
+- Audit the composition without `sorryAx`.
+
+Exact recursive outcome production, concrete minimum-target and maximum-
+candidate ordering, checker correspondence for quotient-closed refutations,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.166] – 2026-08-21
 
 ### Certify cardinality terminal classification
