@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.151] – 2026-08-21
+
+### Certify the first equality-aware runtime controls
+
+- Define the exact finite quotient-clash scan used before equality-aware
+  recursive expansion and prove that a selected clash yields an `EqRefutes`
+  derivation.
+- Prove that exhausting the clash scan is equivalent to closed clash freedom.
+- Define the ontology-order and finite-assignment-order scan for clause bodies
+  and heads interpreted modulo the complete node equivalence.
+- Prove that exhausting this clause scan is equivalent to absence of any
+  quotient-closed undischarged grounding.
+- Audit all three selector theorems without `sorryAx`.
+
+Equality-aware witness and blocking selection, cardinality runtime selection,
+CB, and automatic routing remain unfinished.
+
 ## [0.3.150] – 2026-08-21
 
 ### Close equality-free finite runtime selection
