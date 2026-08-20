@@ -2462,7 +2462,13 @@ enum LeanHtRefutationTree {
 enum LeanHtRefutationOutcome {
     Closed(LeanHtRefutationTree, usize),
     Open(LeanHtBlockedOpenLeaf),
-    Frontier,
+    Frontier(LeanHtAddressFrontier),
+    Invalid(String),
+}
+
+struct LeanHtAddressFrontier {
+    node_count: usize,
+    addresses: Vec<Vec<(R, CLit)>>,
 }
 
 struct LeanHtBlockedOpenLeaf {
@@ -2684,6 +2690,7 @@ struct LeanHtRefutationState {
     /// have `None`; fresh existential witnesses append `Some(source)`. Other
     /// certificate producers do not consult this certification-only field.
     witness_parent: Vec<Option<Node>>,
+    witness_step: Vec<Option<(R, CLit)>>,
 }
 
 /// Lazy row-major enumeration of all assignments from the finite variable
@@ -2745,7 +2752,45 @@ impl LeanHtRefutationState {
             minimums: HashSet::new(),
             active_nodes: 1,
             witness_parent: vec![None],
+            witness_step: vec![None],
         }
+    }
+
+    fn address_frontier(&self) -> Result<LeanHtAddressFrontier, String> {
+        if self.active_nodes != self.witness_parent.len()
+            || self.active_nodes != self.witness_step.len()
+        {
+            return Err("equality-free frontier address metadata length mismatch".to_string());
+        }
+        let mut addresses: Vec<Vec<(R, CLit)>> = Vec::with_capacity(self.active_nodes);
+        let mut occupied = HashSet::with_capacity(self.active_nodes);
+        for node in 0..self.active_nodes {
+            let address = match (self.witness_parent[node], self.witness_step[node]) {
+                (None, None) if node == 0 => Vec::new(),
+                (Some(parent), Some(step)) if parent < node => {
+                    let mut address = addresses.get(parent).cloned().ok_or_else(|| {
+                        format!("equality-free frontier parent {parent} has no address")
+                    })?;
+                    address.push(step);
+                    address
+                }
+                (parent, step) => {
+                    return Err(format!(
+                        "equality-free frontier node {node} has malformed address metadata {parent:?}/{step:?}"
+                    ));
+                }
+            };
+            if !occupied.insert(address.clone()) {
+                return Err(format!(
+                    "equality-free frontier node {node} duplicates a rooted witness address"
+                ));
+            }
+            addresses.push(address);
+        }
+        Ok(LeanHtAddressFrontier {
+            node_count: self.active_nodes,
+            addresses,
+        })
     }
 
     fn same_pairwise_signature(&self, left: Node, right: Node) -> bool {
@@ -8807,8 +8852,11 @@ impl Ht {
                         LeanHtRefutationOutcome::Open(leaf) => {
                             return LeanHtRefutationOutcome::Open(leaf);
                         }
-                        LeanHtRefutationOutcome::Frontier => {
-                            return LeanHtRefutationOutcome::Frontier;
+                        LeanHtRefutationOutcome::Frontier(frontier) => {
+                            return LeanHtRefutationOutcome::Frontier(frontier);
+                        }
+                        LeanHtRefutationOutcome::Invalid(error) => {
+                            return LeanHtRefutationOutcome::Invalid(error);
                         }
                     };
                     max_used = max_used.max(child_used);
@@ -8837,12 +8885,16 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                return LeanHtRefutationOutcome::Frontier;
+                return match state.address_frontier() {
+                    Ok(frontier) => LeanHtRefutationOutcome::Frontier(frontier),
+                    Err(error) => LeanHtRefutationOutcome::Invalid(error),
+                };
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
             state.witness_parent.push(Some(source));
+            state.witness_step.push(Some((role, filler)));
             let inserted_edge = state.edges.insert((role, source, target));
             let inserted_label = state.labels.insert((target, filler));
             debug_assert!(
@@ -8856,6 +8908,7 @@ impl Ht {
             let result = self.lean_refutation(state, variable_count, node_budget);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
+            state.witness_step.pop();
             state.witness_parent.pop();
             state.active_nodes -= 1;
             return match result {
@@ -8872,7 +8925,10 @@ impl Ht {
                     )
                 }
                 LeanHtRefutationOutcome::Open(leaf) => LeanHtRefutationOutcome::Open(leaf),
-                LeanHtRefutationOutcome::Frontier => LeanHtRefutationOutcome::Frontier,
+                LeanHtRefutationOutcome::Frontier(frontier) => {
+                    LeanHtRefutationOutcome::Frontier(frontier)
+                }
+                LeanHtRefutationOutcome::Invalid(error) => LeanHtRefutationOutcome::Invalid(error),
             };
         }
 
@@ -9691,10 +9747,11 @@ impl Ht {
                 LeanHtRefutationOutcome::Open(_) => {
                     return Err("ontology has an open refutation branch".to_string());
                 }
-                LeanHtRefutationOutcome::Frontier if !deepen => {
+                LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err("ontology reached the configured refutation node cap".to_string());
                 }
-                LeanHtRefutationOutcome::Frontier => {}
+                LeanHtRefutationOutcome::Frontier(_) => {}
+                LeanHtRefutationOutcome::Invalid(error) => return Err(error),
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -9793,17 +9850,18 @@ impl Ht {
                         self.lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)?;
                     return Ok((true, self.finalize_lean_certificate(raw)?));
                 }
-                LeanHtRefutationOutcome::Frontier if !deepen => {
+                LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
                         "ontology reached the configured equality-free decision node cap"
                             .to_string(),
                     );
                 }
-                LeanHtRefutationOutcome::Frontier => {
+                LeanHtRefutationOutcome::Frontier(_) => {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality-free decision node budget overflowed usize".to_string()
                     })?;
                 }
+                LeanHtRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
     }
@@ -20120,10 +20178,13 @@ mod tests {
 
         let mut frontier_state = LeanHtRefutationState::root(&[]);
         frontier_state.obligations.insert((R0, lit(false, A), 0));
-        assert!(matches!(
-            open.lean_refutation(&mut frontier_state, 0, 1),
-            LeanHtRefutationOutcome::Frontier
-        ));
+        let LeanHtRefutationOutcome::Frontier(frontier) =
+            open.lean_refutation(&mut frontier_state, 0, 1)
+        else {
+            panic!("the full one-node universe must return an address frontier");
+        };
+        assert_eq!(frontier.node_count, 1);
+        assert_eq!(frontier.addresses, vec![Vec::<(R, CLit)>::new()]);
     }
 
     #[test]
@@ -20132,6 +20193,17 @@ mod tests {
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
         )]);
+        let mut bounded_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+        let LeanHtRefutationOutcome::Frontier(frontier) =
+            cyclic.lean_refutation(&mut bounded_state, 1, 2)
+        else {
+            panic!("the two-node prefix must expose its rooted address frontier");
+        };
+        assert_eq!(frontier.node_count, 2);
+        assert_eq!(
+            frontier.addresses,
+            vec![Vec::new(), vec![(R0, lit(false, A))]]
+        );
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
         let LeanHtRefutationOutcome::Open(leaf) = cyclic.lean_refutation(&mut state, 1, 4) else {
             panic!("the saturated cyclic branch must close with a blocked finite leaf");

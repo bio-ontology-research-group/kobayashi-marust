@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.80] – 2026-08-20
+
+### Bound equality-free HT iterative frontiers by rooted addresses
+
+- Record every certification-only existential witness step as its parent,
+  role, and signed filler literal.
+- Reconstruct each full bounded frontier as pairwise-distinct rooted witness
+  addresses. Malformed metadata and duplicate addresses fail closed instead
+  of producing a verdict.
+- Prove in Lean that injective concrete node addresses are bounded by the
+  finite `WitnessAddress` universe.
+- Prove that KM's node budgets `8 * 2^round` eventually exceed every such
+  finite universe, so frontiers satisfying the concrete refinement condition
+  cannot persist through every round.
+- Test both the one-node frontier and a two-node cyclic prefix before pairwise
+  blocking produces a finite checked model.
+
+This establishes the outer cardinality argument used by the equality-free
+decision loop. The remaining refinement work must connect the concrete Rust
+frontier fields and blocking signatures to their typed Lean counterparts;
+equality and cardinality certification remain separate.
+
 ## [0.3.79] – 2026-08-20
 
 ### Compose equality-free HT SAT and UNSAT evidence publication

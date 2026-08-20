@@ -367,6 +367,65 @@ theorem role_blocked_node_universe_finite
     Set.Finite (Set.univ : Set (RoleBlockedAddress Slot Concept Role)) := by
   exact Set.toFinite _
 
+/-- Injective rooted witness addresses bound every concrete finite runtime node
+set by the same finite universe used by exhaustive Lean search. -/
+theorem node_card_le_witnessAddress_of_injective
+    {Root Node Concept Role : Type}
+    [Fintype Root]
+    [Fintype Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (address : Node → WitnessAddress Root Concept Role)
+    (hinjective : Function.Injective address) :
+    Fintype.card Node ≤ Fintype.card (WitnessAddress Root Concept Role) := by
+  exact Fintype.card_le_of_injective address hinjective
+
+/-- A runtime frontier that occupies every index below its node budget is
+impossible once that budget is larger than the finite rooted-address universe.
+This is the cardinality contradiction needed by iterative deepening. -/
+theorem no_full_frontier_beyond_witnessAddress
+    {Root Concept Role : Type}
+    [Fintype Root]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (budget : Nat)
+    (address : Fin budget → WitnessAddress Root Concept Role)
+    (hinjective : Function.Injective address)
+    (hbudget : Fintype.card (WitnessAddress Root Concept Role) < budget) : False := by
+  have hcard := node_card_le_witnessAddress_of_injective address hinjective
+  have hcard' : budget ≤ Fintype.card (WitnessAddress Root Concept Role) := by
+    simpa using hcard
+  exact not_le_of_gt hbudget hcard'
+
+/-- KM starts equality-free evidence search at eight nodes and doubles after
+each bounded frontier. For every finite bound, one such budget is larger. -/
+theorem exists_mode6_doubling_budget_gt (bound : Nat) :
+    ∃ round, bound < 8 * 2 ^ round := by
+  refine ⟨bound, ?_⟩
+  exact lt_of_lt_of_le bound.lt_two_pow_self (by omega)
+
+/-- If every reported runtime frontier fills its budget with distinct valid
+rooted witness addresses, iterative doubling cannot report frontiers forever.
+Combined with finite strict-growth search inside each round, this is the outer
+termination argument for the equality-free decision loop. -/
+theorem mode6_doubling_eventually_not_frontier
+    {Root Concept Role : Type}
+    [Fintype Root]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (frontier : Nat → Prop)
+    (hrefines : ∀ round, frontier round →
+      ∃ address : Fin (8 * 2 ^ round) → WitnessAddress Root Concept Role,
+        Function.Injective address) :
+    ∃ round, ¬frontier round := by
+  obtain ⟨round, hbudget⟩ := exists_mode6_doubling_budget_gt
+    (Fintype.card (WitnessAddress Root Concept Role))
+  refine ⟨round, ?_⟩
+  intro hfrontier
+  obtain ⟨address, hinjective⟩ := hrefines round hfrontier
+  exact no_full_frontier_beyond_witnessAddress
+    (8 * 2 ^ round) address hinjective hbudget
+
 /-- Runtime mode 6 assigns children strictly increasing node identifiers and
 never expands a node if an earlier node has the same full pairwise signature.
 Under exactly those two refinement invariants, no path consisting entirely of
@@ -406,6 +465,10 @@ theorem State.roleBlockingDepth_lt_of_signature_injective
 #print axioms State.roleBlockingSignature_parent_context
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
+#print axioms node_card_le_witnessAddress_of_injective
+#print axioms no_full_frontier_beyond_witnessAddress
+#print axioms exists_mode6_doubling_budget_gt
+#print axioms mode6_doubling_eventually_not_frontier
 #print axioms State.fresh_extended_roleBlockedAddress
 #print axioms State.fresh_extended_rootedRoleBlockedAddress
 #print axioms State.atWitnessAddresses_obligationAddressInvariant
