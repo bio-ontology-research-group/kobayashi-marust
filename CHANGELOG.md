@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.176] – 2026-08-21
+
+### Certify maximum width and truncation
+
+- Define the exact dependent prefix vector used after Rust verifies that at
+  least `bound + 1` greedy representatives exist.
+- Prove every vector index denotes an element of the representative list and
+  therefore a quotient-closed qualifying role successor with the required
+  filler.
+- Prove unequal vector indices remain quotient-distinct, including the reverse
+  index-order case through symmetry of checked equality closure.
+- Prove the resulting definition, source, and prefix vector satisfy the exact
+  executable maximum-candidate predicate.
+- Audit all truncation endpoints without `sorryAx`.
+
+Completeness of greedy equality-class coverage, production-order scanning over
+definitions and sources, exact recursive outcome production, concrete Rust
+field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.175] – 2026-08-21
 
 ### Certify deterministic maximum representatives

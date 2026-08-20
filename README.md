@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.175`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.176`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -133,7 +133,9 @@ nodes are active, and accepted finite successor transitions transport these
 results to their decoded states. Maximum successor selection now mirrors
 Rust's ascending-ID scan and first-representative-per-equality-class greedy
 phase; every selected node is proved qualifying and all selected nodes are
-pairwise quotient-distinct.
+pairwise quotient-distinct. Once `bound + 1` representatives exist, their exact
+prefix is converted to the dependent witness vector and proved to satisfy the
+executable maximum-candidate predicate.
 
 ## Classify an ontology
 

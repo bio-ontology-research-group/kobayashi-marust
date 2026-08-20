@@ -1365,6 +1365,69 @@ theorem rustMaximumRepresentatives_pairwise
   rustGreedyEquivRepresentatives_pairwise state.base
     (rustQualifyingMaximumTargets state definition source)
 
+def rustPrefixVector (values : List Node) (width : Nat)
+    (hwidth : width ≤ values.length) : Fin width → Node :=
+  fun index => values.get ⟨index.1, lt_of_lt_of_le index.2 hwidth⟩
+
+theorem rustPrefixVector_mem
+    (values : List Node) (width : Nat) (hwidth : width ≤ values.length)
+    (index : Fin width) : rustPrefixVector values width hwidth index ∈ values :=
+  List.get_mem values ⟨index.1, lt_of_lt_of_le index.2 hwidth⟩
+
+theorem rustMaximumPrefixVector_qualifies
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount)
+    (hwidth : definition.bound + 1 ≤
+      (rustMaximumRepresentatives state definition source).length)
+    (index : Fin (definition.bound + 1)) :
+    state.base.closedEdge definition.role source
+        (rustPrefixVector (rustMaximumRepresentatives state definition source)
+          (definition.bound + 1) hwidth index) ∧
+      state.base.closedLabel
+        (rustPrefixVector (rustMaximumRepresentatives state definition source)
+          (definition.bound + 1) hwidth index) (.pos definition.filler) :=
+  rustMaximumRepresentatives_qualify state definition source _
+    (rustPrefixVector_mem _ _ hwidth index)
+
+theorem rustMaximumPrefixVector_pairwise
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount)
+    (hwidth : definition.bound + 1 ≤
+      (rustMaximumRepresentatives state definition source).length) :
+    ∀ left right : Fin (definition.bound + 1), left ≠ right →
+      ¬state.base.equiv
+        (rustPrefixVector (rustMaximumRepresentatives state definition source)
+          (definition.bound + 1) hwidth left)
+        (rustPrefixVector (rustMaximumRepresentatives state definition source)
+          (definition.bound + 1) hwidth right) := by
+  intro left right hne
+  let lifted (index : Fin (definition.bound + 1)) :
+      Fin (rustMaximumRepresentatives state definition source).length :=
+    ⟨index.1, lt_of_lt_of_le index.2 hwidth⟩
+  have hp := rustMaximumRepresentatives_pairwise state definition source
+  by_cases hlt : left < right
+  · exact hp.rel_get_of_lt (show lifted left < lifted right from hlt)
+  · have hrightLeft : right < left := lt_of_le_of_ne (Fin.le_iff_val_le_val.mpr
+        (Nat.le_of_not_gt hlt)) hne.symm
+    have hnot := hp.rel_get_of_lt (show lifted right < lifted left from hrightLeft)
+    exact fun hequiv => hnot (state.base.equiv_equivalence.2 hequiv)
+
+theorem rustMaximumPrefixCandidate_true
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount)
+    (hkind : definition.kind = .maximum)
+    (hmarker : state.base.closedLabel source (.pos definition.marker))
+    (hwidth : definition.bound + 1 ≤
+      (rustMaximumRepresentatives state definition source).length) :
+    maximumCandidateBool state
+      (⟨definition, source,
+        rustPrefixVector (rustMaximumRepresentatives state definition source)
+          (definition.bound + 1) hwidth⟩ :
+        MaximumCandidate (Fin nodeCount) Concept Role) = true := by
+  apply (maximumCandidateBool_eq_true_iff state _).mpr
+  exact ⟨hkind, hmarker, rustMaximumPrefixVector_qualifies state definition source hwidth,
+    rustMaximumPrefixVector_pairwise state definition source hwidth⟩
+
 def DistinctEqState.CardinalityRuntimeTerminal
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -1777,6 +1840,10 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms mem_rustQualifyingMaximumTargets
 #print axioms rustMaximumRepresentatives_qualify
 #print axioms rustMaximumRepresentatives_pairwise
+#print axioms rustPrefixVector_mem
+#print axioms rustMaximumPrefixVector_qualifies
+#print axioms rustMaximumPrefixVector_pairwise
+#print axioms rustMaximumPrefixCandidate_true
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted
