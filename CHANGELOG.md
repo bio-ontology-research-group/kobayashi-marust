@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.139] – 2026-08-20
+
+### Prove distinct-cardinality HT checker completeness
+
+- Encode every finite `DistinctCardinalityRefutes` derivation as an accepted
+  executable refutation tree.
+- Cover equality refutations, quotient clashes, transitive equality-apart
+  contradictions, ordinary branches and witnesses, maximum merges, and
+  minimum witness families.
+- Construct the exact finite pairwise-apart extension introduced by a minimum
+  rule and prove its transition checker accepts precisely that relation.
+- Rebuild canonical equality evidence after assertions and merges while
+  preserving the apart relation.
+- Prove exact equivalence between semantic distinct-cardinality refutations and
+  accepted canonicalized finite certificates.
+
+This closes soundness and completeness of all finite HT refutation-tree
+formats currently used by the ordinary, equality, cardinality, and
+distinct-cardinality certificate layers. Exact correspondence with Rust
+recursive outcomes and automatic routing remain unfinished.
+
 ## [0.3.138] – 2026-08-20
 
 ### Prove cardinality-aware HT refutation-tree completeness

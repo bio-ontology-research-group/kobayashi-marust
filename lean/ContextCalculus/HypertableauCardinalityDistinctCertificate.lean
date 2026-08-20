@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauCardinalityDistinct
 import ContextCalculus.HypertableauCardinalityRefutationCertificate
+import Mathlib.Data.Fintype.Order
 
 /-!
 # Finite distinct-aware cardinality certificates
@@ -23,6 +24,24 @@ def FiniteDistinctEqCertificate.state
   base := certificate.base.state
   apart left right := (left, right) ∈ certificate.apart
 
+noncomputable def FiniteDistinctEqCertificate.canonicalizeEqualityClosure
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    FiniteDistinctEqCertificate nodeCount conceptCount roleCount variableCount where
+  base := certificate.base.canonicalizeEqualityClosure
+  apart := certificate.apart
+
+@[simp] theorem FiniteDistinctEqCertificate.canonicalizeEqualityClosure_state
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.canonicalizeEqualityClosure.state = certificate.state := rfl
+
+theorem FiniteDistinctEqCertificate.canonicalizeEqualityClosure_valid
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.canonicalizeEqualityClosure.base.equalityClosureValidB = true :=
+  certificate.base.canonicalizeEqualityClosure_valid
+
 def FiniteDistinctEqCertificate.mergeTransitionB
     (current next : FiniteDistinctEqCertificate
       nodeCount conceptCount roleCount variableCount)
@@ -37,6 +56,26 @@ def FiniteDistinctEqCertificate.transitionB
     (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) : Bool :=
   current.base.transitionB next.base assignment atom &&
     decide (next.apart = current.apart)
+
+noncomputable def FiniteDistinctEqCertificate.canonicalAssertAtom
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    FiniteDistinctEqCertificate nodeCount conceptCount roleCount variableCount where
+  base := (certificate.base.assertAtom assignment atom).canonicalizeEqualityClosure
+  apart := certificate.apart
+
+theorem FiniteDistinctEqCertificate.transitionB_canonicalAssertAtom
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.transitionB (certificate.canonicalAssertAtom assignment atom)
+      assignment atom = true := by
+  simp [FiniteDistinctEqCertificate.transitionB,
+    FiniteDistinctEqCertificate.canonicalAssertAtom,
+    certificate.base.transitionB_canonicalized_assertAtom]
 
 theorem FiniteDistinctEqCertificate.transitionB_state
     (current next : FiniteDistinctEqCertificate
@@ -71,6 +110,19 @@ theorem FiniteDistinctEqCertificate.freshNodeB_sound
   simp only [FiniteDistinctEqCertificate.freshNodeB, Bool.and_eq_true,
     decide_eq_true_eq] at hcheck
   exact ⟨(certificate.base.freshNodeB_eq_true hvalid target).mp hcheck.1, hcheck.2⟩
+
+theorem FiniteDistinctEqCertificate.freshNodeB_eq_true
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (target : Fin nodeCount) (hvalid : certificate.base.equalityClosureValidB = true) :
+    certificate.freshNodeB target = true ↔ certificate.state.Fresh target := by
+  simp only [FiniteDistinctEqCertificate.freshNodeB, Bool.and_eq_true,
+    decide_eq_true_eq, DistinctEqState.Fresh, FiniteDistinctEqCertificate.state]
+  constructor
+  · rintro ⟨hbase, hapart⟩
+    exact ⟨(certificate.base.freshNodeB_eq_true hvalid target).mp hbase, hapart⟩
+  · rintro ⟨hbase, hapart⟩
+    exact ⟨(certificate.base.freshNodeB_eq_true hvalid target).mpr hbase, hapart⟩
 
 def FiniteDistinctEqCertificate.materializeWitness
     (certificate : FiniteDistinctEqCertificate
@@ -107,6 +159,23 @@ theorem FiniteDistinctEqCertificate.mergeTransitionB_state
     simp only [FiniteDistinctEqCertificate.state, DistinctEqState.merge]
     rw [hapart]
 
+noncomputable def FiniteDistinctEqCertificate.canonicalMerge
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (left right : Fin nodeCount) :
+    FiniteDistinctEqCertificate nodeCount conceptCount roleCount variableCount where
+  base := certificate.base.canonicalMerge left right
+  apart := certificate.apart
+
+theorem FiniteDistinctEqCertificate.mergeTransitionB_canonicalMerge
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (left right : Fin nodeCount) :
+    certificate.mergeTransitionB (certificate.canonicalMerge left right) left right = true := by
+  simp [FiniteDistinctEqCertificate.mergeTransitionB,
+    FiniteDistinctEqCertificate.canonicalMerge,
+    certificate.base.mergeTransitionB_canonicalMerge]
+
 def FiniteDistinctEqCertificate.minimumTransitionB
     (current next : FiniteDistinctEqCertificate
       nodeCount conceptCount roleCount variableCount)
@@ -118,6 +187,41 @@ def FiniteDistinctEqCertificate.minimumTransitionB
         (left, right) ∈ current.apart ∨
         ∃ first second, first ≠ second ∧
           left = targets first ∧ right = targets second)
+
+noncomputable def FiniteDistinctEqCertificate.canonicalMinimum
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (source : Fin nodeCount) (targets : Fin count → Fin nodeCount)
+    (role : Fin roleCount) (filler : Fin conceptCount) :
+    FiniteDistinctEqCertificate nodeCount conceptCount roleCount variableCount where
+  base := certificate.base.canonicalMinimum source targets role filler
+  apart := certificate.apart ++
+    ((Finset.univ : Finset { pair : Fin count × Fin count // pair.1 ≠ pair.2 }).toList.map
+      fun pair => (targets pair.1.1, targets pair.1.2))
+
+theorem FiniteDistinctEqCertificate.minimumTransitionB_canonicalMinimum
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (source : Fin nodeCount) (targets : Fin count → Fin nodeCount)
+    (role : Fin roleCount) (filler : Fin conceptCount) :
+    certificate.minimumTransitionB
+      (certificate.canonicalMinimum source targets role filler)
+      source targets role filler = true := by
+  simp only [FiniteDistinctEqCertificate.minimumTransitionB, Bool.and_eq_true]
+  constructor
+  · exact certificate.base.minimumTransitionB_canonicalMinimum source targets role filler
+  · simp only [decide_eq_true_eq]
+    intro left right
+    simp only [FiniteDistinctEqCertificate.canonicalMinimum, List.mem_append,
+      List.mem_map, Finset.mem_toList, Finset.mem_univ, true_and]
+    constructor
+    · rintro (hold | ⟨pair, hpair⟩)
+      · exact Or.inl hold
+      · exact Or.inr ⟨pair.1.1, pair.1.2, pair.2,
+          (congrArg Prod.fst hpair).symm, (congrArg Prod.snd hpair).symm⟩
+    · rintro (hold | ⟨first, second, hne, rfl, rfl⟩)
+      · exact Or.inl hold
+      · exact Or.inr ⟨⟨(first, second), hne⟩, rfl⟩
 
 theorem FiniteDistinctEqCertificate.minimumTransitionB_state
     (current next : FiniteDistinctEqCertificate
@@ -155,6 +259,23 @@ theorem FiniteDistinctEqCertificate.freshFamilyB_sound
   have hbase := certificate.base.freshFamilyB_sound targets hvalid hcheck.1
   exact ⟨hbase.1, fun index => ⟨hbase.2 index, fun node => hcheck.2 index node⟩⟩
 
+theorem FiniteDistinctEqCertificate.freshFamilyB_eq_true
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (targets : Fin count → Fin nodeCount)
+    (hvalid : certificate.base.equalityClosureValidB = true) :
+    certificate.freshFamilyB targets = true ↔ certificate.state.FreshFamily targets := by
+  simp only [FiniteDistinctEqCertificate.freshFamilyB, Bool.and_eq_true,
+    decide_eq_true_eq, DistinctEqState.FreshFamily, FiniteDistinctEqCertificate.state]
+  constructor
+  · rintro ⟨hbase, hapart⟩
+    have hfresh := (certificate.base.freshFamilyB_eq_true targets hvalid).mp hbase
+    exact ⟨hfresh.1, fun index => ⟨hfresh.2 index, hapart index⟩⟩
+  · rintro ⟨hinjective, hfresh⟩
+    exact ⟨(certificate.base.freshFamilyB_eq_true targets hvalid).mpr
+        ⟨hinjective, fun index => (hfresh index).1⟩,
+      fun index => (hfresh index).2⟩
+
 inductive FiniteDistinctCardinalityRefutationTree
     (nodeCount conceptCount roleCount variableCount : Nat) : Nat → Type where
   | equality
@@ -171,6 +292,7 @@ inductive FiniteDistinctCardinalityRefutationTree
         nodeCount conceptCount roleCount variableCount depth) :
       FiniteDistinctCardinalityRefutationTree
         nodeCount conceptCount roleCount variableCount (depth + 1)
+
   | maximum
       (definition : CardinalityDef (Fin conceptCount) (Fin roleCount))
       (source : Fin nodeCount)
@@ -207,6 +329,25 @@ inductive FiniteDistinctCardinalityRefutationTree
         nodeCount conceptCount roleCount variableCount depth) :
       FiniteDistinctCardinalityRefutationTree
         nodeCount conceptCount roleCount variableCount (depth + 1)
+
+def FiniteDistinctCardinalityRefutationTree.pad
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth) :
+    (extra : Nat) → FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount (depth + extra)
+  | 0 => tree
+  | extra + 1 => by
+      simpa [Nat.add_assoc] using
+        FiniteDistinctCardinalityRefutationTree.delay (tree.pad extra)
+
+def FiniteDistinctCardinalityRefutationTree.padTo
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (hle : depth ≤ targetDepth) : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount targetDepth :=
+  cast (congrArg (FiniteDistinctCardinalityRefutationTree
+    nodeCount conceptCount roleCount variableCount) (Nat.add_sub_of_le hle))
+    (tree.pad (targetDepth - depth))
 
 def FiniteDistinctCardinalityRefutationTree.check
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
@@ -253,6 +394,72 @@ def FiniteDistinctCardinalityRefutationTree.check
       certificate.freshFamilyB targets &&
       certificate.minimumTransitionB next source targets definition.role definition.filler &&
       child.check definitions next
+
+theorem FiniteDistinctCardinalityRefutationTree.check_pad
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) (extra : Nat) :
+    (tree.pad extra).check definitions certificate = tree.check definitions certificate := by
+  induction extra with
+  | zero => rfl
+  | succ extra ih =>
+      simpa [FiniteDistinctCardinalityRefutationTree.pad,
+        FiniteDistinctCardinalityRefutationTree.check] using ih
+
+theorem FiniteDistinctCardinalityRefutationTree.check_cast
+    {sourceDepth targetDepth : Nat} (heq : sourceDepth = targetDepth)
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount sourceDepth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    (cast (congrArg (FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount) heq) tree).check
+        definitions certificate = tree.check definitions certificate := by
+  subst targetDepth
+  rfl
+
+theorem FiniteDistinctCardinalityRefutationTree.check_padTo
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hle : depth ≤ targetDepth) :
+    (tree.padTo (targetDepth := targetDepth) hle).check definitions certificate =
+      tree.check definitions certificate := by
+  unfold FiniteDistinctCardinalityRefutationTree.padTo
+  exact (FiniteDistinctCardinalityRefutationTree.check_cast (Nat.add_sub_of_le hle)
+    (tree.pad (targetDepth - depth)) definitions certificate).trans
+      (tree.check_pad definitions certificate (targetDepth - depth))
+
+theorem exists_uniform_checked_distinct_cardinality_trees
+    {Index : Type} [Finite Index]
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : Index → FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hencode : ∀ index, ∃ depth,
+      ∃ tree : FiniteDistinctCardinalityRefutationTree
+          nodeCount conceptCount roleCount variableCount depth,
+        tree.check definitions (certificate index) = true) :
+    ∃ depth, ∃ trees : Index → FiniteDistinctCardinalityRefutationTree
+        nodeCount conceptCount roleCount variableCount depth,
+      ∀ index, (trees index).check definitions (certificate index) = true := by
+  classical
+  let childDepth : Index → Nat := fun index => (hencode index).choose
+  obtain ⟨depth, hdepth⟩ := Finite.exists_le childDepth
+  let rawTree (index : Index) : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount (childDepth index) :=
+    (hencode index).choose_spec.choose
+  let trees (index : Index) := (rawTree index).padTo (hdepth index)
+  refine ⟨depth, trees, ?_⟩
+  intro index
+  change ((rawTree index).padTo (hdepth index)).check definitions
+    (certificate index) = true
+  rw [FiniteDistinctCardinalityRefutationTree.check_padTo]
+  exact (hencode index).choose_spec.choose_spec
 
 theorem FiniteDistinctCardinalityRefutationTree.check_sound
     (tree : FiniteDistinctCardinalityRefutationTree
@@ -368,6 +575,209 @@ theorem FiniteDistinctCardinalityRefutationTree.check_equalityApart_iff
   · rintro ⟨hvalid, hequiv, hapart⟩
     exact ⟨⟨hvalid, (certificate.base.closedRelatedB_eq_true hvalid left right).mpr hequiv⟩,
       hapart⟩
+
+/-- Completeness of the distinct-aware cardinality checker relative to finite
+semantic `DistinctCardinalityRefutes` derivations. -/
+theorem DistinctCardinalityRefutes.exists_checked_tree
+    {ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    {state : DistinctEqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (hrefutes : DistinctCardinalityRefutes
+      (Fin nodeCount) ontology definitions state) :
+    ∀ certificate : FiniteDistinctEqCertificate
+        nodeCount conceptCount roleCount variableCount,
+      certificate.base.base.ontology = ontology → certificate.state = state →
+      certificate.base.equalityClosureValidB = true →
+      ∃ depth, ∃ tree : FiniteDistinctCardinalityRefutationTree
+          nodeCount conceptCount roleCount variableCount depth,
+        tree.check definitions certificate = true := by
+  induction hrefutes with
+  | equality state tree =>
+      intro certificate hontology hstate hvalid
+      obtain ⟨encoded, hencoded⟩ := tree.exists_checked_tree certificate.base hontology
+        (by exact congrArg DistinctEqState.base hstate) hvalid
+      exact ⟨0, .equality encoded, by
+        simpa [FiniteDistinctCardinalityRefutationTree.check] using hencoded⟩
+  | clash state hclash =>
+      intro certificate hontology hstate hvalid
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hclosed : certificate.base.closedClashB = true := by
+        cases hvalue : certificate.base.closedClashB with
+        | true => rfl
+        | false =>
+            have hfree := certificate.base.not_closedClashB_closedClashFree hvalid hvalue
+            have hbase : certificate.base.state = state.base :=
+              congrArg DistinctEqState.base hstate
+            rw [hbase] at hfree
+            exact (hfree positiveNode negativeNode concept hequiv
+              ⟨hpositive, hnegative⟩).elim
+      exact ⟨0, .clash, by
+        simp [FiniteDistinctCardinalityRefutationTree.check, hvalid, hclosed]⟩
+  | equalityApart state left right hequal hapart =>
+      intro certificate hontology hstate hvalid
+      refine ⟨0, .equalityApart left right, ?_⟩
+      apply (FiniteDistinctCardinalityRefutationTree.check_equalityApart_iff
+        definitions certificate left right).2
+      rw [hstate]
+      exact ⟨hvalid, hequal, hapart⟩
+  | branch state clause hclause assignment hbody children ih =>
+      intro certificate hontology hstate hvalid
+      have hclause' : clause ∈ certificate.base.base.ontology := by
+        simpa [hontology] using hclause
+      have hbody' : ∀ atom ∈ clause.body,
+          certificate.base.closedHoldsAtomB assignment atom = true := by
+        intro atom hatom
+        apply (certificate.base.closedHoldsAtomB_eq_true hvalid assignment atom).2
+        have hbase : certificate.base.state = state.base :=
+          congrArg DistinctEqState.base hstate
+        rw [hbase]
+        exact hbody atom hatom
+      let next (index : Fin clause.head.length) :=
+        certificate.canonicalAssertAtom assignment (clause.head.get index)
+      obtain ⟨depth, encodedChildren, hencodedChildren⟩ :=
+        exists_uniform_checked_distinct_cardinality_trees definitions next (fun index => by
+          have hatom : clause.head.get index ∈ clause.head := List.get_mem _ _
+          apply ih (clause.head.get index) hatom (next index)
+          · have htransition := certificate.transitionB_canonicalAssertAtom assignment
+                (clause.head.get index)
+            have hbase := certificate.base.transitionB_base (next index).base assignment
+              (clause.head.get index) (by
+                have hparts : certificate.base.transitionB (next index).base assignment
+                    (clause.head.get index) = true ∧
+                    (next index).apart = certificate.apart := by
+                  simpa [FiniteDistinctEqCertificate.transitionB, next] using htransition
+                exact hparts.1)
+            rw [hbase]
+            cases clause.head.get index <;> simpa using hontology
+          · calc
+              (next index).state = certificate.state.assertAtom assignment
+                  (clause.head.get index) :=
+                certificate.transitionB_state (next index) assignment
+                  (clause.head.get index) (by
+                    simpa [next] using certificate.transitionB_canonicalAssertAtom
+                      assignment (clause.head.get index))
+              _ = state.assertAtom assignment (clause.head.get index) := by rw [hstate]
+          · exact (certificate.base.assertAtom assignment
+              (clause.head.get index)).canonicalizeEqualityClosure_valid)
+      refine ⟨depth + 1, .branch clause assignment next encodedChildren, ?_⟩
+      simp only [FiniteDistinctCardinalityRefutationTree.check, Bool.and_eq_true,
+        List.all_eq_true, decide_eq_true_eq]
+      refine ⟨⟨⟨hvalid, hclause'⟩, hbody'⟩, ?_⟩
+      intro index
+      exact ⟨(by simpa [next] using
+          (certificate.transitionB_canonicalAssertAtom assignment
+            (clause.head.get index))), hencodedChildren index⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      intro certificate hontology hstate hvalid
+      have hobligation' : (role, filler, source) ∈ certificate.base.base.obligations := by
+        change certificate.state.base.base.obligation role filler source
+        rw [hstate]
+        exact hobligation
+      have hfresh' : certificate.freshNodeB target = true :=
+        (certificate.freshNodeB_eq_true target hvalid).2 (by simpa [hstate] using hfresh)
+      obtain ⟨depth, encodedChild, hencodedChild⟩ :=
+        ih (certificate.materializeWitness source target role filler)
+          (by simpa [hontology]) (by rw [certificate.state_materializeWitness, hstate]) hvalid
+      exact ⟨depth + 1, .witness source target role filler encodedChild, by
+        simp [FiniteDistinctCardinalityRefutationTree.check, hvalid, hobligation', hfresh',
+          hencodedChild]⟩
+  | maximum state definition hdefinition hkind source hmarker witnesses hedge hfiller
+      children ih =>
+      intro certificate hontology hstate hvalid
+      let Pair := { pair : Fin (definition.bound + 1) × Fin (definition.bound + 1) //
+        pair.1 ≠ pair.2 }
+      let nextPair (pair : Pair) :=
+        certificate.canonicalMerge (witnesses pair.1.1) (witnesses pair.1.2)
+      obtain ⟨depth, encodedPair, hencodedPair⟩ :=
+        exists_uniform_checked_distinct_cardinality_trees definitions nextPair (fun pair => by
+          apply ih pair.1.1 pair.1.2 pair.2 (nextPair pair)
+          · simp [nextPair, FiniteDistinctEqCertificate.canonicalMerge,
+              FiniteEqCertificate.canonicalMerge,
+              FiniteEqCertificate.canonicalizeEqualityClosure, hontology]
+          · calc
+              (nextPair pair).state = certificate.state.merge
+                  (witnesses pair.1.1) (witnesses pair.1.2) :=
+                certificate.mergeTransitionB_state (nextPair pair)
+                  (witnesses pair.1.1) (witnesses pair.1.2)
+                  (certificate.mergeTransitionB_canonicalMerge _ _)
+              _ = state.merge (witnesses pair.1.1) (witnesses pair.1.2) := by rw [hstate]
+          · exact certificate.base.canonicalMerge_valid _ _)
+      let next (left right : Fin (definition.bound + 1)) :=
+        if hne : left ≠ right then nextPair ⟨(left, right), hne⟩ else certificate
+      let encodedChildren (left right : Fin (definition.bound + 1)) :
+          FiniteDistinctCardinalityRefutationTree
+            nodeCount conceptCount roleCount variableCount depth :=
+        if hne : left ≠ right then encodedPair ⟨(left, right), hne⟩
+        else FiniteDistinctCardinalityRefutationTree.clash.padTo (Nat.zero_le depth)
+      have hmarker' : (source, .pos definition.marker) ∈ certificate.base.base.labels := by
+        change certificate.state.base.base.label source (.pos definition.marker)
+        rw [hstate]
+        exact hmarker
+      have hedge' : ∀ index,
+          (definition.role, source, witnesses index) ∈ certificate.base.base.edges := by
+        intro index
+        change certificate.state.base.base.edge definition.role source (witnesses index)
+        rw [hstate]
+        exact hedge index
+      have hfiller' : ∀ index,
+          (witnesses index, .pos definition.filler) ∈ certificate.base.base.labels := by
+        intro index
+        change certificate.state.base.base.label (witnesses index) (.pos definition.filler)
+        rw [hstate]
+        exact hfiller index
+      refine ⟨depth + 1, .maximum definition source witnesses next encodedChildren, ?_⟩
+      simp only [FiniteDistinctCardinalityRefutationTree.check, Bool.and_eq_true,
+        decide_eq_true_eq]
+      refine ⟨⟨⟨⟨⟨hdefinition, hkind⟩, hmarker'⟩, hedge'⟩, hfiller'⟩, ?_⟩
+      intro left right hne
+      constructor
+      · simpa [next, hne, nextPair] using certificate.mergeTransitionB_canonicalMerge
+          (witnesses left) (witnesses right)
+      · simp only [next, encodedChildren, dif_pos hne]
+        exact hencodedPair ⟨(left, right), hne⟩
+  | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
+      intro certificate hontology hstate hvalid
+      let next := certificate.canonicalMinimum source targets definition.role definition.filler
+      obtain ⟨depth, encodedChild, hencodedChild⟩ := ih next (by
+          simp [next, FiniteDistinctEqCertificate.canonicalMinimum,
+            FiniteEqCertificate.canonicalMinimum,
+            FiniteEqCertificate.canonicalizeEqualityClosure, hontology]) (by
+          calc
+            next.state = certificate.state.materializeMinimum source targets
+                definition.role definition.filler :=
+              certificate.minimumTransitionB_state next source targets definition.role
+                definition.filler (certificate.minimumTransitionB_canonicalMinimum
+                  source targets definition.role definition.filler)
+            _ = state.materializeMinimum source targets definition.role definition.filler := by
+              rw [hstate]) (certificate.base.canonicalMinimum_valid source targets
+            definition.role definition.filler)
+      have hmarker' : (source, .pos definition.marker) ∈ certificate.base.base.labels := by
+        change certificate.state.base.base.label source (.pos definition.marker)
+        rw [hstate]
+        exact hmarker
+      have hfresh' : certificate.freshFamilyB targets = true :=
+        (certificate.freshFamilyB_eq_true targets hvalid).2 (by simpa [hstate] using hfresh)
+      refine ⟨depth + 1, .minimum definition source targets next encodedChild, ?_⟩
+      simp [FiniteDistinctCardinalityRefutationTree.check, hvalid, hdefinition, hkind,
+        hmarker', hfresh', next, certificate.minimumTransitionB_canonicalMinimum,
+        hencodedChild]
+
+theorem FiniteDistinctEqCertificate.refutes_iff_exists_checked_tree
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) :
+    DistinctCardinalityRefutes (Fin nodeCount) certificate.base.base.ontology definitions
+        certificate.state ↔
+      ∃ depth, ∃ tree : FiniteDistinctCardinalityRefutationTree
+          nodeCount conceptCount roleCount variableCount depth,
+        tree.check definitions certificate.canonicalizeEqualityClosure = true := by
+  constructor
+  · intro hrefutes
+    exact hrefutes.exists_checked_tree certificate.canonicalizeEqualityClosure rfl rfl
+      certificate.canonicalizeEqualityClosure_valid
+  · rintro ⟨depth, tree, hcheck⟩
+    simpa using tree.check_sound definitions certificate.canonicalizeEqualityClosure hcheck
 
 theorem FiniteDistinctCardinalityRefutationTree.check_unsatisfiable
     (tree : FiniteDistinctCardinalityRefutationTree
@@ -560,6 +970,8 @@ end DistinctCardinalityCheckerTests
 #print axioms FiniteDistinctEqCertificate.freshFamilyB_sound
 #print axioms FiniteDistinctCardinalityRefutationTree.check_sound
 #print axioms FiniteDistinctCardinalityRefutationTree.check_equalityApart_iff
+#print axioms DistinctCardinalityRefutes.exists_checked_tree
+#print axioms FiniteDistinctEqCertificate.refutes_iff_exists_checked_tree
 #print axioms FiniteDistinctCardinalityRefutationTree.check_ontology_unsatisfiable
 #print axioms FiniteDistinctCardinalityRefutationTree.check_subsumption
 #print axioms FiniteDistinctCardinalityRefutationTree.check_unsatisfiable_concept
