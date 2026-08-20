@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.79] – 2026-08-20
+
+### Compose equality-free HT SAT and UNSAT evidence publication
+
+- Add a certification-only equality-free decision API that runs the concrete
+  first-obstruction search and returns a Boolean only with checker-ready
+  evidence.
+- Publish closed trees through the existing UNSAT refutation wire.
+- Publish blocked open leaves by materializing their finite fold through the
+  existing SAT wire.
+- Keep `Frontier` strictly internal: mode 6 deepens, while an explicit
+  diagnostic cap declines without a verdict.
+- Reject equality and cardinality inputs at this equality-free boundary.
+- Verify both sides through the native Lean checker: a cyclic existential
+  ontology returns SAT with a checked finite model, and an empty-head ontology
+  returns UNSAT with a checked refutation.
+
+The remaining equality-free task is the concrete termination/refinement proof
+for this loop. Equality and cardinality certification remain separate.
+
 ## [0.3.78] – 2026-08-20
 
 ### Add checked blocked terminals to equality-free HT evidence search

@@ -9747,6 +9747,67 @@ impl Ht {
         self.finalize_lean_certificate(self.lean_unsat_certificate_json_raw()?)
     }
 
+    /// Certification-only equality-free decision search. Closed exhaustive
+    /// trees are published through the ordinary UNSAT wire; blocked open leaves
+    /// are materialized and published through the ordinary finite SAT wire.
+    /// `Frontier` is never a verdict: mode 6 deepens, while an explicit
+    /// diagnostic node cap declines fail-closed.
+    pub fn lean_equality_free_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        if !self.card_defs.is_empty()
+            || self.clauses.iter().any(|record| {
+                record
+                    .0
+                    .body
+                    .iter()
+                    .chain(record.0.head.iter())
+                    .any(|atom| matches!(atom, Atom::Eq { .. }))
+            })
+        {
+            return Err(
+                "equality-free HT decision certificates do not support equality or cardinality"
+                    .to_string(),
+            );
+        }
+        let variable_count = self.lean_source_variable_count().max(
+            self.clauses
+                .iter()
+                .flat_map(|record| record.0.body.iter().chain(record.0.head.iter()))
+                .flat_map(|atom| match atom {
+                    Atom::Concept { t, .. } | Atom::Exists { t, .. } => vec![*t as usize + 1],
+                    Atom::Role { s, t, .. } | Atom::Eq { s, t } => {
+                        vec![*s as usize + 1, *t as usize + 1]
+                    }
+                })
+                .max()
+                .unwrap_or(0),
+        );
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let mut state = LeanHtRefutationState::root(&[]);
+            match self.lean_refutation(&mut state, variable_count, node_budget) {
+                LeanHtRefutationOutcome::Closed(_, _) => {
+                    return Ok((false, self.lean_unsat_certificate_json()?));
+                }
+                LeanHtRefutationOutcome::Open(leaf) => {
+                    let raw =
+                        self.lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)?;
+                    return Ok((true, self.finalize_lean_certificate(raw)?));
+                }
+                LeanHtRefutationOutcome::Frontier if !deepen => {
+                    return Err(
+                        "ontology reached the configured equality-free decision node cap"
+                            .to_string(),
+                    );
+                }
+                LeanHtRefutationOutcome::Frontier => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "equality-free decision node budget overflowed usize".to_string()
+                    })?;
+                }
+            }
+        }
+    }
+
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
     fn lean_subsumption_certificate_json_raw(&self, sub: C, sup: C) -> Result<String, String> {
         let labels = [
@@ -20141,6 +20202,48 @@ mod tests {
 
         state.labels.insert((0, lit(false, B)));
         assert!(!state.pairwise_blocked_by_ancestor(2));
+    }
+
+    #[test]
+    fn equality_free_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let cyclic = Ht::new_certified(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![exists(R0, false, A, X)],
+        )]);
+        let (sat, sat_certificate) = cyclic
+            .lean_equality_free_decision_certificate_json()
+            .expect("the blocked cyclic branch has a finite checked model candidate");
+        assert!(sat);
+        let sat_wire: serde_json::Value = serde_json::from_str(&sat_certificate).unwrap();
+        assert_eq!(sat_wire["evidence"], serde_json::json!("sat"));
+
+        let inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let (sat, unsat_certificate) = inconsistent
+            .lean_equality_free_decision_certificate_json()
+            .expect("the empty-head clause has a finite refutation");
+        assert!(!sat);
+        let unsat_wire: serde_json::Value = serde_json::from_str(&unsat_certificate).unwrap();
+        assert!(unsat_wire["evidence"].get("unsat").is_some());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            for (kind, certificate) in [("sat", sat_certificate), ("unsat", unsat_certificate)] {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-equality-free-decision-{kind}-{}-{}.json",
+                    std::process::id(),
+                    std::thread::current().name().unwrap_or("test")
+                ));
+                std::fs::write(&path, certificate).unwrap();
+                let accepted = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("run native Lean checker on equality-free decision evidence")
+                    .success();
+                let _ = std::fs::remove_file(path);
+                assert!(accepted, "Lean must accept the {kind} decision evidence");
+            }
+        }
     }
 
     #[test]
