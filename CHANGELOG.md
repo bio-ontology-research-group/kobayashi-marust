@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.147] – 2026-08-21
+
+### Complete recursive distinct-cardinality wire representability
+
+- Add a lossless bounded encoding for distinct-aware equality states, including
+  every directed `apart` pair.
+- Prove exact dependent-vector and row-by-row matrix decoding for recursive
+  distinct-cardinality successor states and refutations.
+- Prove that every checker-accepted finite distinct-cardinality refutation has
+  a wire document that decodes to an accepted refutation at the same depth.
+- Preserve checked branch, witness, minimum, and off-diagonal maximum
+  successors exactly. Canonicalize only ignored maximum-rule diagonal cells.
+- Audit the main theorem without `sorryAx`.
+
+Exact Rust recursive outcome correspondence, remaining HT runtime
+correspondence, CB, and automatic routing remain unfinished.
+
 ## [0.3.146] – 2026-08-21
 
 ### Complete recursive cardinality-refutation wire representability
