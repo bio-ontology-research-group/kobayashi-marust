@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.61] – 2026-08-20
+
+### Prove finite progress for blocked HT evidence search
+
+- Define the finite branch-fact vocabulary shared by ordinary,
+  equality-aware, and cardinality-aware HT evidence search: signed labels,
+  role edges, existential obligations, equalities, apartness facts, and
+  minimum-expansion markers.
+- Prove that no infinite sequence of strict monotone branch states exists once
+  blocking bounds the node universe.
+- Prove that the complete family of duplicate-free recursive progress traces is
+  finite. This covers every branch-local search path, including first-class
+  minimum and maximum cardinality steps.
+- Enforce the formal strict-progress premise in release Rust builds at every
+  recursive certificate transition. Certificate generation aborts if a clause
+  branch, witness, equality, minimum, or maximum step recurses without adding a
+  finite branch fact.
+
+This establishes branch-local termination under a finite blocked node universe.
+The remaining HT totality obligation is the runtime refinement showing that
+blocking always supplies that finite universe and that every terminal search
+state is either a checked model or a closed refutation.
+
 ## [0.3.60] – 2026-08-20
 
 ### Prove the finite HT blocking-signature bound

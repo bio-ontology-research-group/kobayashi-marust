@@ -271,7 +271,12 @@ bound behind equality/subset blocking: every path longer than the number of
 possible signed labels contains an earlier exact-label blocker, and transfer to
 that blocker preserves all signed concept facts. The finite-fold checker then
 validates role and witness obligations on the materialized graph. Correspondence
-with Rust's blocking/search transitions, inverse roles, nominals, and native
+with Rust's blocking/search transitions remains open. Once a blocked node
+universe is fixed, `HypertableauTermination.lean` proves that ordinary,
+equality-aware, and cardinality-aware evidence search has only finitely many
+strict branch updates and finitely many duplicate-free progress traces. The
+Rust producer enforces that strict-progress premise at every recursive
+certificate call. Terminal-state totality, inverse roles, nominals, and native
 ABoxes remain to be connected or proved.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`

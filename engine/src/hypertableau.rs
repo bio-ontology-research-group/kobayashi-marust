@@ -2652,6 +2652,19 @@ impl LeanHtRefutationState {
         }
     }
 
+    /// Cardinality of the extensional finite branch facts represented in Lean's
+    /// `BranchFact`. Every recursive evidence-search call must strictly increase
+    /// this measure; the assertion is intentionally active in release builds
+    /// because certificate production is a proof boundary, not a hot path.
+    fn progress_measure(&self) -> usize {
+        self.labels.len()
+            + self.edges.len()
+            + self.obligations.len()
+            + self.equalities.len()
+            + self.apart.len()
+            + self.minimums.len()
+    }
+
     fn representatives_and_paths(&self, node_count: usize) -> (Vec<Node>, Vec<Vec<Node>>) {
         debug_assert!(node_count >= self.active_nodes);
         let mut parent: Vec<Node> = (0..node_count).collect();
@@ -8589,8 +8602,11 @@ impl Ht {
                     if matches!(atom, Atom::Eq { .. }) {
                         return None;
                     }
+                    let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, assignment);
                     debug_assert!(inserted, "an unsatisfied branch head must be absent");
+                    assert!(state.progress_measure() > progress_before,
+                        "HT certificate branch recursion must add a finite fact");
                     let result = self.lean_refutation(state, variable_count, node_budget);
                     state.remove(atom, assignment);
                     let Some((child, child_used)) = result else {
@@ -8620,6 +8636,7 @@ impl Ht {
             if state.active_nodes >= node_budget {
                 return None;
             }
+            let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
             let inserted_edge = state.edges.insert((role, source, target));
@@ -8628,6 +8645,8 @@ impl Ht {
                 inserted_edge && inserted_label,
                 "the witness target is fresh"
             );
+            assert!(state.progress_measure() > progress_before,
+                "HT certificate witness recursion must add finite facts");
             let result = self.lean_refutation(state, variable_count, node_budget);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
@@ -8670,11 +8689,14 @@ impl Ht {
                 let mut children = Vec::with_capacity(clause.head.len());
                 let mut max_used = state.active_nodes;
                 for atom in &clause.head {
+                    let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, assignment);
                     debug_assert!(
                         inserted,
                         "an unsatisfied equality-aware head must be absent"
                     );
+                    assert!(state.progress_measure() > progress_before,
+                        "HT equality certificate recursion must add a finite fact");
                     let successor = state.equality_wire_state(node_budget);
                     let result = self.lean_eq_refutation(state, variable_count, node_budget);
                     state.remove(atom, assignment);
@@ -8703,6 +8725,7 @@ impl Ht {
             if state.active_nodes >= node_budget {
                 return None;
             }
+            let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
             let edge = (role, source, target);
@@ -8713,6 +8736,8 @@ impl Ht {
                 inserted_edge && inserted_label,
                 "the witness target is fresh"
             );
+            assert!(state.progress_measure() > progress_before,
+                "HT equality witness recursion must add finite facts");
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
             let result = self.lean_eq_refutation(state, variable_count, node_budget);
@@ -8778,8 +8803,11 @@ impl Ht {
                 let mut raw_children = Vec::with_capacity(clause.head.len());
                 let mut child_depth = 0;
                 for atom in &clause.head {
+                    let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, assignment);
                     debug_assert!(inserted, "an unsatisfied distinct head must be absent");
+                    assert!(state.progress_measure() > progress_before,
+                        "HT distinct certificate recursion must add a finite fact");
                     let successor = state.distinct_wire_state(node_budget);
                     let result = self.lean_distinct_cardinality_refutation(
                         state,
@@ -8822,6 +8850,7 @@ impl Ht {
             if state.active_nodes >= node_budget {
                 return None;
             }
+            let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
             let edge = (role, source, target);
@@ -8829,6 +8858,8 @@ impl Ht {
             let inserted_edge = state.edges.insert(edge);
             let inserted_label = state.labels.insert(label);
             debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            assert!(state.progress_measure() > progress_before,
+                "HT distinct witness recursion must add finite facts");
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
             let result = self.lean_distinct_cardinality_refutation(
@@ -8873,6 +8904,7 @@ impl Ht {
                 if state.active_nodes.checked_add(count)? > node_budget {
                     return None;
                 }
+                let progress_before = state.progress_measure();
                 state.minimums.insert((definition_id, source));
                 let old_active = state.active_nodes;
                 let old_labels = state.label_order.len();
@@ -8899,6 +8931,8 @@ impl Ht {
                         }
                     }
                 }
+                assert!(state.progress_measure() > progress_before,
+                    "HT minimum recursion must add finite facts");
                 let successor = state.distinct_wire_state(node_budget);
                 let result = self.lean_distinct_cardinality_refutation(
                     state,
@@ -8978,7 +9012,10 @@ impl Ht {
                             row.push(None);
                             continue;
                         }
+                        let progress_before = state.progress_measure();
                         state.equalities.push((witnesses[left], witnesses[right]));
+                        assert!(state.progress_measure() > progress_before,
+                            "HT maximum recursion must add an equality fact");
                         let successor = state.distinct_wire_state(node_budget);
                         let result = self.lean_distinct_cardinality_refutation(
                             state,
