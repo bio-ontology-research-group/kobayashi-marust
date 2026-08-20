@@ -520,6 +520,161 @@ inductive EqFirstObstructionStep
       EqFirstObstructionStep ontology state parent ancestors
         [state.materializeWitness source target role filler]
 
+/-- Finite extensional state vocabulary for equality-aware search. Equality
+pairs are tracked alongside every ordinary guarded HT fact. -/
+abbrev EqGuardedFact (Node Concept Role : Type) :=
+  GuardedFact Node Concept Role ⊕ (Node × Node)
+
+def EqState.holdsEqGuardedFact (state : EqState Node Concept Role) :
+    EqGuardedFact Node Concept Role → Prop
+  | .inl fact => state.base.holdsFact fact
+  | .inr (left, right) => state.equiv left right
+
+noncomputable def EqState.eqGuardedFacts
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) :
+    Finset (EqGuardedFact Node Concept Role) := by
+  classical
+  exact Finset.univ.filter state.holdsEqGuardedFact
+
+@[simp] theorem EqState.mem_eqGuardedFacts
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) (fact : EqGuardedFact Node Concept Role) :
+    fact ∈ state.eqGuardedFacts ↔ state.holdsEqGuardedFact fact := by
+  classical
+  simp [EqState.eqGuardedFacts]
+
+/-- Every absent quotient-closed head assertion strictly grows the complete
+finite equality-aware fact measure, including equality heads. -/
+theorem EqState.eqGuardedFacts_assertAtom_ssubset
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) (assignment : Variable → Node)
+    (atom : Atom Variable Concept Role)
+    (habsent : ¬state.closedHoldsAtom assignment atom) :
+    state.eqGuardedFacts ⊂ (state.assertAtom assignment atom).eqGuardedFacts := by
+  classical
+  rw [Finset.ssubset_iff_subset_ne]
+  constructor
+  · intro fact hfact
+    simp only [EqState.mem_eqGuardedFacts] at hfact ⊢
+    rcases fact with fact | ⟨left, right⟩
+    · change state.base.holdsFact fact at hfact
+      change (state.assertAtom assignment atom).base.holdsFact fact
+      cases atom with
+      | concept literal position =>
+          rcases fact with label | fact
+          · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using
+              (Or.inl hfact)
+          · rcases fact with edge | obligation
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+      | role role source target =>
+          rcases fact with label | fact
+          · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+          · rcases fact with edge | obligation
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using
+                (Or.inl hfact)
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+      | exists_ role filler position =>
+          rcases fact with label | fact
+          · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+          · rcases fact with edge | obligation
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using hfact
+            · simpa [EqState.assertAtom, State.holdsFact, State.assertAtom] using
+                (Or.inl hfact)
+      | eq eqLeft eqRight => simpa [EqState.assertAtom, EqState.merge] using hfact
+    · cases atom with
+      | eq eqLeft eqRight =>
+          exact state.merge_old (assignment eqLeft) (assignment eqRight)
+            left right hfact
+      | concept literal position => exact hfact
+      | role role source target => exact hfact
+      | exists_ role filler position => exact hfact
+  · intro hequal
+    cases atom with
+    | eq left right =>
+        have hnew : (Sum.inr (assignment left, assignment right) :
+            EqGuardedFact Node Concept Role) ∈
+            (state.assertAtom assignment (.eq left right)).eqGuardedFacts := by
+          simp [EqState.holdsEqGuardedFact, EqState.assertAtom, EqState.merge_pair]
+        rw [← hequal] at hnew
+        exact habsent (by
+          simpa [EqState.closedHoldsAtom, EqState.holdsEqGuardedFact] using hnew)
+    | concept literal position =>
+        have hdirect : ¬state.base.holdsAtom assignment (.concept literal position) :=
+          fun h => habsent (state.holdsAtom_implies_closedHoldsAtom assignment _ h)
+        have hstrict := state.base.guardedFacts_assertAtom_ssubset assignment
+          (.concept literal position) trivial hdirect
+        obtain ⟨fact, hchild, hparent⟩ := Finset.exists_of_ssubset hstrict
+        have hlift : (Sum.inl fact : EqGuardedFact Node Concept Role) ∈
+            (state.assertAtom assignment (.concept literal position)).eqGuardedFacts := by
+          simpa [EqState.holdsEqGuardedFact, EqState.assertAtom] using hchild
+        rw [← hequal] at hlift
+        exact hparent (by
+          simpa [EqState.holdsEqGuardedFact] using hlift)
+    | role role source target =>
+        have hdirect : ¬state.base.holdsAtom assignment (.role role source target) :=
+          fun h => habsent (state.holdsAtom_implies_closedHoldsAtom assignment _ h)
+        have hstrict := state.base.guardedFacts_assertAtom_ssubset assignment
+          (.role role source target) trivial hdirect
+        obtain ⟨fact, hchild, hparent⟩ := Finset.exists_of_ssubset hstrict
+        have hlift : (Sum.inl fact : EqGuardedFact Node Concept Role) ∈
+            (state.assertAtom assignment (.role role source target)).eqGuardedFacts := by
+          simpa [EqState.holdsEqGuardedFact, EqState.assertAtom] using hchild
+        rw [← hequal] at hlift
+        exact hparent (by simpa [EqState.holdsEqGuardedFact] using hlift)
+    | exists_ role filler position =>
+        have hdirect : ¬state.base.holdsAtom assignment (.exists_ role filler position) :=
+          fun h => habsent (state.holdsAtom_implies_closedHoldsAtom assignment _ h)
+        have hstrict := state.base.guardedFacts_assertAtom_ssubset assignment
+          (.exists_ role filler position) trivial hdirect
+        obtain ⟨fact, hchild, hparent⟩ := Finset.exists_of_ssubset hstrict
+        have hlift : (Sum.inl fact : EqGuardedFact Node Concept Role) ∈
+            (state.assertAtom assignment (.exists_ role filler position)).eqGuardedFacts := by
+          simpa [EqState.holdsEqGuardedFact, EqState.assertAtom] using hchild
+        rw [← hequal] at hlift
+        exact hparent (by simpa [EqState.holdsEqGuardedFact] using hlift)
+
+/-- Fresh witness materialization strictly grows the complete equality-aware
+fact measure while preserving every equality pair. -/
+theorem EqState.eqGuardedFacts_materializeWitness_ssubset
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (source target : Node) (role : Role) (filler : Lit Concept)
+    (hfresh : state.Fresh target) :
+    state.eqGuardedFacts ⊂
+      (state.materializeWitness source target role filler).eqGuardedFacts := by
+  classical
+  rw [Finset.ssubset_iff_subset_ne]
+  constructor
+  · intro fact hfact
+    simp only [EqState.mem_eqGuardedFacts] at hfact ⊢
+    rcases fact with fact | pair
+    · rcases fact with label | fact
+      · simp_all [EqState.holdsEqGuardedFact, EqState.materializeWitness,
+          State.holdsFact, State.materializeWitness]
+      · rcases fact with edge | obligation <;>
+          simp_all [EqState.holdsEqGuardedFact, EqState.materializeWitness,
+            State.holdsFact, State.materializeWitness]
+    · exact hfact
+  · intro hequal
+    have hstrict := state.base.guardedFacts_materializeWitness_ssubset
+      source target role filler hfresh.1
+    obtain ⟨fact, hchild, hparent⟩ := Finset.exists_of_ssubset hstrict
+    have hlift : (Sum.inl fact : EqGuardedFact Node Concept Role) ∈
+        (state.materializeWitness source target role filler).eqGuardedFacts := by
+      simpa [EqState.holdsEqGuardedFact, EqState.materializeWitness] using hchild
+    rw [← hequal] at hlift
+    exact hparent (by simpa [EqState.holdsEqGuardedFact] using hlift)
+
 theorem EqFirstObstructionStep.closedRefutes_of_children
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -539,6 +694,102 @@ theorem EqFirstObstructionStep.closedRefutes_of_children
   | witness hnoClause source target role filler hobligation hnowitness hunblocked hfresh =>
       apply ClosedEqRefutes.witness state source target role filler hobligation hfresh
       exact hchildren (state.materializeWitness source target role filler) (by simp)
+
+theorem EqFirstObstructionStep.children_strictGrowth
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {state child : EqState Node Concept Role}
+    {parent : Node → Option Node} {ancestors : Node → List Node}
+    {children : List (EqState Node Concept Role)}
+    (step : EqFirstObstructionStep ontology state parent ancestors children)
+    (hchild : child ∈ children) :
+    state.eqGuardedFacts ⊂ child.eqGuardedFacts := by
+  cases step with
+  | branch clause hclause assignment hbody habsent =>
+      rcases List.mem_map.mp hchild with ⟨atom, hatom, rfl⟩
+      exact state.eqGuardedFacts_assertAtom_ssubset assignment atom
+        (habsent atom hatom)
+  | witness hnoClause source target role filler hobligation hnowitness hunblocked hfresh =>
+      simp only [List.mem_singleton] at hchild
+      subst child
+      exact state.eqGuardedFacts_materializeWitness_ssubset
+        source target role filler hfresh
+
+def EqStrictGrowth
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (child parent : EqState Node Concept Role) : Prop :=
+  parent.eqGuardedFacts ⊂ child.eqGuardedFacts
+
+theorem eqStrictGrowth_wellFounded
+    (Node Concept Role : Type)
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :
+    WellFounded (@EqStrictGrowth Node Concept Role _ _ _ _ _ _) := by
+  classical
+  exact InvImage.wf EqState.eqGuardedFacts
+    (strictGrowth_wellFounded (EqGuardedFact Node Concept Role))
+
+/-- Generic finite exhaustive recursion directly over equality states. The
+well-founded measure is the complete finite equality-aware fact set. -/
+theorem finite_eq_exhaustive_search_total
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (next : EqState Node Concept Role → List (EqState Node Concept Role))
+    (Closed Open : EqState Node Concept Role → Prop)
+    (hgrowth : ∀ parent child, child ∈ next parent → EqStrictGrowth child parent)
+    (terminal : ∀ state, next state = [] → Closed state ∨ Open state)
+    (closeChildren : ∀ state, next state ≠ [] →
+      (∀ child, child ∈ next state → Closed child) → Closed state) :
+    ∀ root, Closed root ∨
+      ∃ leaf, SearchDescends next root leaf ∧ Open leaf := by
+  intro root
+  induction root using
+      (eqStrictGrowth_wellFounded Node Concept Role).induction with
+  | h state ih =>
+      by_cases hempty : next state = []
+      · rcases terminal state hempty with hclosed | hopen
+        · exact Or.inl hclosed
+        · exact Or.inr ⟨state, SearchDescends.refl state, hopen⟩
+      · by_cases hall : ∀ child, child ∈ next state → Closed child
+        · exact Or.inl (closeChildren state hempty hall)
+        · push_neg at hall
+          obtain ⟨child, hchild, hnotClosed⟩ := hall
+          rcases ih child (hgrowth state child hchild) with
+            hclosed | ⟨leaf, hpath, hopen⟩
+          · exact (hnotClosed hclosed).elim
+          · exact Or.inr ⟨leaf, SearchDescends.step hchild hpath, hopen⟩
+
+/-- Clash-first equality successor enumeration. A selected quotient clash
+closes locally and therefore has no recursive successors. -/
+noncomputable def eqRuntimeNextClashFirst
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (parent : EqState Node Concept Role → Node → Option Node)
+    (ancestors : EqState Node Concept Role → Node → List Node)
+    (state : EqState Node Concept Role) : List (EqState Node Concept Role) :=
+  match selectEqClash state with
+  | some _ => []
+  | none => eqRuntimeNext ontology state (parent state) (ancestors state)
+
+def EqRuntimeTerminal
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (parent : EqState Node Concept Role → Node → Option Node)
+    (ancestors : EqState Node Concept Role → Node → List Node)
+    (state : EqState Node Concept Role) : Prop :=
+  ¬state.HasClosedUndischarged ontology ∧
+    ¬state.HasUnblockedUnwitnessed (parent state) (ancestors state)
 
 /-- A nonempty concrete equality successor family has exactly the certified
 clause-first transition shape. -/
@@ -684,6 +935,58 @@ theorem equality_runtime_control
         · exact Or.inr ⟨hclashFree, Or.inr ⟨hnext, Or.inr hfrontier⟩⟩
       · exact Or.inr ⟨hclashFree, Or.inl ⟨hnext,
           eqRuntimeNext_firstObstructionStep ontology state parent ancestors hnext⟩⟩
+
+/-- Global finite equality-aware runtime termination at one fixed node budget.
+The clash-first concrete search either constructs a quotient-closed refutation
+or reaches a blocked/saturated terminal or explicit node frontier. -/
+theorem finite_eqRuntime_semantic_or_terminal
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : EqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount) →
+      Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : EqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount) →
+      Fin nodeCount → List (Fin nodeCount)) :
+    ∀ root,
+      ClosedEqRefutes (Fin nodeCount) ontology root ∨
+      ∃ leaf, SearchDescends
+          (eqRuntimeNextClashFirst ontology parent ancestors) root leaf ∧
+        (EqRuntimeTerminal ontology parent ancestors leaf ∨
+          EqRuntimeNodeFrontier ontology leaf (parent leaf) (ancestors leaf)) := by
+  apply finite_eq_exhaustive_search_total
+    (eqRuntimeNextClashFirst ontology parent ancestors)
+    (ClosedEqRefutes (Fin nodeCount) ontology)
+    (fun state => EqRuntimeTerminal ontology parent ancestors state ∨
+      EqRuntimeNodeFrontier ontology state (parent state) (ancestors state))
+  · intro state child hchild
+    unfold eqRuntimeNextClashFirst at hchild
+    split at hchild
+    · simp at hchild
+    · exact (eqRuntimeNext_firstObstructionStep ontology state
+        (parent state) (ancestors state) (by
+          intro hempty
+          simp [hempty] at hchild)).children_strictGrowth hchild
+  · intro state hempty
+    unfold eqRuntimeNextClashFirst at hempty
+    generalize hclash : selectEqClash state = selectedClash at hempty
+    cases selectedClash with
+    | some candidate =>
+        exact Or.inl (selectEqClash_closedRefutes ontology state hclash)
+    | none =>
+        rcases eqRuntimeNext_empty_semantics ontology state
+            (parent state) (ancestors state) hempty with
+          hrefutes | hterminal | hfrontier
+        · exact Or.inl hrefutes
+        · exact Or.inr (Or.inl hterminal)
+        · exact Or.inr (Or.inr hfrontier)
+  · intro state hnonempty hchildren
+    unfold eqRuntimeNextClashFirst at hnonempty hchildren
+    generalize hclash : selectEqClash state = selectedClash at hnonempty hchildren
+    cases selectedClash with
+    | some candidate => simp at hnonempty
+    | none =>
+        exact (eqRuntimeNext_firstObstructionStep ontology state
+          (parent state) (ancestors state) hnonempty).closedRefutes_of_children
+            hchildren
 
 mutual
   /-- Production-compatible recursive equality refutation check with full
@@ -1035,10 +1338,16 @@ theorem FiniteEqRefutationTree.checkClosed_unsatisfiable_concept
 #print axioms selectEqUnblockedUnwitnessed_eq_none_iff
 #print axioms selectEqFreshNode_eq_none_iff
 #print axioms selectEqWitness_refutes
+#print axioms EqState.eqGuardedFacts_assertAtom_ssubset
+#print axioms EqState.eqGuardedFacts_materializeWitness_ssubset
 #print axioms EqFirstObstructionStep.closedRefutes_of_children
+#print axioms EqFirstObstructionStep.children_strictGrowth
+#print axioms eqStrictGrowth_wellFounded
+#print axioms finite_eq_exhaustive_search_total
 #print axioms eqRuntimeNext_firstObstructionStep
 #print axioms eqRuntimeNext_empty_semantics
 #print axioms equality_runtime_control
+#print axioms finite_eqRuntime_semantic_or_terminal
 #print axioms FiniteEqRefutationTree.checkClosed_sound
 #print axioms ClosedEqRefutes.exists_checkClosed_tree
 #print axioms FiniteEqCertificate.closedRefutes_iff_exists_checkClosed_tree

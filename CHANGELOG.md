@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.158] – 2026-08-21
+
+### Prove global finite equality-runtime termination
+
+- Define a finite extensional equality-state measure containing every ordinary
+  HT fact and every ordered node-equivalence pair.
+- Prove that every absent quotient-closed head assertion, including an equality
+  merge, strictly grows this measure.
+- Prove that fresh witness materialization strictly grows the same measure and
+  preserves existing equality pairs.
+- Derive a well-founded strict-growth relation and a generic finite exhaustive
+  recursion theorem directly over equality states.
+- Instantiate it for clash-first equality search: at every fixed node budget,
+  search constructs a quotient-closed refutation or reaches a blocked/saturated
+  terminal or explicit node frontier.
+- Audit the new termination and recursion theorems without `sorryAx`.
+
+Checked SAT-terminal composition, cardinality runtime selection, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.157] – 2026-08-21
 
 ### Certify equality-aware runtime control
