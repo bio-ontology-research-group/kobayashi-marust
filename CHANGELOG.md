@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.144] – 2026-08-20
+
+### Prove equality-aware HT recursive wire completeness
+
+- Add lossless bounded encoders for equality-certificate labels, role edges,
+  existential obligations, asserted equalities, representative vectors, and
+  complete representative paths.
+- Prove the version-2 state decoder reconstructs every finite equality
+  certificate exactly, including dependent finite functions.
+- Replace the equality refutation decoder's opaque partial recursion with a
+  total size-decreasing definition.
+- Prove that every accepted finite equality-aware refutation tree has a
+  version-2 wire tree that decodes to the exact original tree and every exact
+  transitioned child certificate.
+
+This closes recursive JSON representability for ordinary and equality-aware
+finite HT refutations. Cardinality-layer external-format completeness, exact
+Rust recursive outcome correspondence, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.143] – 2026-08-20
 
 ### Prove ordinary HT recursive wire completeness
@@ -19,8 +39,7 @@
 
 This closes recursive JSON representability for ordinary finite HT
 refutations. Equivalent external-format completeness for the equality and
-cardinality tree layers, exact Rust recursive outcome correspondence, CB, and
-automatic routing remain unfinished.
+cardinality tree layers remained unfinished in this release.
 
 ## [0.3.142] – 2026-08-20
 

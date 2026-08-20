@@ -109,7 +109,7 @@ def buildEqChildren :
       return .cons head state tree (← buildEqChildren heads children)
   | _, _ => throw "decoded equality-refutation child count mismatch"
 
-partial def WireEqRefutationTree.decode
+def WireEqRefutationTree.decode
     (nodeCount conceptCount roleCount variableCount : Nat)
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
     WireEqRefutationTree → Except String
@@ -136,6 +136,18 @@ partial def WireEqRefutationTree.decode
         (← checkedFin "role" roleCount role)
         (← filler.decode conceptCount)
         (← child.decode nodeCount conceptCount roleCount variableCount ontology)
+termination_by tree => sizeOf tree
+decreasing_by
+  · simp_wf
+    rename_i child hchild
+    have hpair := List.sizeOf_lt_of_mem hchild
+    have htree : sizeOf child.2 < sizeOf child := by
+      rcases child with ⟨state, tree⟩
+      simp
+      omega
+    omega
+  · simp_wf
+    omega
 
 inductive DecodedEqEvidence (nodeCount conceptCount roleCount variableCount : Nat) where
   | sat (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
