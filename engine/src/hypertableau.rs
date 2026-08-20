@@ -2606,6 +2606,12 @@ enum LeanHtEqRefutationTree {
     },
 }
 
+enum LeanHtEqRefutationOutcome {
+    Closed(LeanHtEqRefutationTree, usize),
+    Open,
+    Frontier,
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtEqEvidence {
@@ -9197,10 +9203,12 @@ impl Ht {
         state: &mut LeanHtRefutationState,
         variable_count: usize,
         node_budget: usize,
-        hit_node_cap: &mut bool,
-    ) -> Option<(LeanHtEqRefutationTree, usize)> {
+    ) -> LeanHtEqRefutationOutcome {
         if state.clashes() {
-            return Some((LeanHtEqRefutationTree::Clash, state.active_nodes));
+            return LeanHtEqRefutationOutcome::Closed(
+                LeanHtEqRefutationTree::Clash,
+                state.active_nodes,
+            );
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
@@ -9232,21 +9240,28 @@ impl Ht {
                         "HT equality certificate recursion must add a finite fact"
                     );
                     let successor = state.equality_wire_state(node_budget);
-                    let result =
-                        self.lean_eq_refutation(state, variable_count, node_budget, hit_node_cap);
+                    let result = self.lean_eq_refutation(state, variable_count, node_budget);
                     state.remove(atom, &assignment);
-                    let (child, child_used) = result?;
+                    let (child, child_used) = match result {
+                        LeanHtEqRefutationOutcome::Closed(child, child_used) => (child, child_used),
+                        LeanHtEqRefutationOutcome::Open => {
+                            return LeanHtEqRefutationOutcome::Open;
+                        }
+                        LeanHtEqRefutationOutcome::Frontier => {
+                            return LeanHtEqRefutationOutcome::Frontier;
+                        }
+                    };
                     max_used = max_used.max(child_used);
                     children.push((successor, child));
                 }
-                return Some((
+                return LeanHtEqRefutationOutcome::Closed(
                     LeanHtEqRefutationTree::Branch {
                         clause: clause_id,
                         assignment: assignment.clone(),
                         children,
                     },
                     max_used,
-                ));
+                );
             }
         }
 
@@ -9258,8 +9273,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                *hit_node_cap = true;
-                return None;
+                return LeanHtEqRefutationOutcome::Frontier;
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
@@ -9278,25 +9292,30 @@ impl Ht {
             );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
-            let result = self.lean_eq_refutation(state, variable_count, node_budget, hit_node_cap);
+            let result = self.lean_eq_refutation(state, variable_count, node_budget);
             state.label_order.remove(0);
             state.edge_order.remove(0);
             state.labels.remove(&label);
             state.edges.remove(&edge);
             state.active_nodes -= 1;
-            let (child, max_used) = result?;
-            return Some((
-                LeanHtEqRefutationTree::Witness {
-                    source,
-                    target,
-                    role: role as usize,
-                    filler: Self::lean_wire_lit(filler),
-                    child: Box::new(child),
-                },
-                max_used,
-            ));
+            return match result {
+                LeanHtEqRefutationOutcome::Closed(child, max_used) => {
+                    LeanHtEqRefutationOutcome::Closed(
+                        LeanHtEqRefutationTree::Witness {
+                            source,
+                            target,
+                            role: role as usize,
+                            filler: Self::lean_wire_lit(filler),
+                            child: Box::new(child),
+                        },
+                        max_used,
+                    )
+                }
+                LeanHtEqRefutationOutcome::Open => LeanHtEqRefutationOutcome::Open,
+                LeanHtEqRefutationOutcome::Frontier => LeanHtEqRefutationOutcome::Frontier,
+            };
         }
-        None
+        LeanHtEqRefutationOutcome::Open
     }
 
     fn pad_distinct_cardinality_tree(
@@ -9681,19 +9700,19 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, root_state) = loop {
             let mut state = LeanHtRefutationState::root(initial_labels);
-            let mut hit_node_cap = false;
-            if let Some((tree, _node_count)) =
-                self.lean_eq_refutation(&mut state, variable_count, node_budget, &mut hit_node_cap)
-            {
-                break (tree, state.equality_wire_state(node_budget));
-            }
-            if !hit_node_cap {
-                return Err("ontology has an open equality refutation branch".to_string());
-            }
-            if !deepen {
-                return Err(
-                    "ontology reached the configured equality refutation node cap".to_string(),
-                );
+            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                LeanHtEqRefutationOutcome::Closed(tree, _node_count) => {
+                    break (tree, state.equality_wire_state(node_budget));
+                }
+                LeanHtEqRefutationOutcome::Open => {
+                    return Err("ontology has an open equality refutation branch".to_string());
+                }
+                LeanHtEqRefutationOutcome::Frontier if !deepen => {
+                    return Err(
+                        "ontology reached the configured equality refutation node cap".to_string(),
+                    );
+                }
+                LeanHtEqRefutationOutcome::Frontier => {}
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -20338,6 +20357,31 @@ mod tests {
         };
         assert_eq!(frontier.node_count, 1);
         assert_eq!(frontier.addresses, vec![Vec::<(R, CLit)>::new()]);
+    }
+
+    #[test]
+    fn equality_aware_refutation_reports_closed_open_and_frontier_separately() {
+        let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let mut closed_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            closed.lean_eq_refutation(&mut closed_state, 0, 1),
+            LeanHtEqRefutationOutcome::Closed(_, 1)
+        ));
+
+        let open = Ht::new_certified(Vec::new());
+        let mut open_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            open.lean_eq_refutation(&mut open_state, 0, 1),
+            LeanHtEqRefutationOutcome::Open
+        ));
+
+        let witness =
+            Ht::new_certified(vec![Clause::new(Vec::new(), vec![exists(R0, false, A, X)])]);
+        let mut frontier_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            witness.lean_eq_refutation(&mut frontier_state, 1, 1),
+            LeanHtEqRefutationOutcome::Frontier
+        ));
     }
 
     #[test]

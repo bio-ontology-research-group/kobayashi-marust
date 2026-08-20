@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.83] – 2026-08-20
+
+### Separate bounded equality-aware HT outcomes
+
+- Replace the equality-refutation search's ambiguous `Option` plus mutable
+  node-cap flag with explicit closed, open-branch, and frontier outcomes.
+- Propagate open branches and exhausted node budgets independently through
+  disjunctive and existential recursion, so iterative deepening retries only a
+  genuine frontier.
+- Add a Rust regression covering all three outcomes.
+- Define the matching typed Lean outcome boundary and prove that every checked
+  closed equality refutation excludes a nonempty model of the exact ontology.
+  The theorem deliberately leaves open branches and frontiers inconclusive.
+
+This removes an unsafe control-flow ambiguity but does not yet certify total
+equality-aware search. Equality-aware model extraction, blocking termination,
+and cardinality-search totality remain subsequent milestones.
+
 ## [0.3.82] – 2026-08-20
 
 ### Complete the checked equality-free HT decision composition

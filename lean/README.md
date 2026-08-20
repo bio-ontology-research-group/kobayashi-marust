@@ -329,8 +329,11 @@ role, existential, and equality heads without a semantic side condition.
 detects complementary labels modulo node equivalence. The finite equality
 checker refines the implementation's merge forest using explicit
 representatives and paths. Version-2 JSON and the Rust producer connect global
-and individual-query SAT/UNSAT evidence to this checker. Complete taxonomy
-batching and termination remain separate obligations.
+and individual-query SAT/UNSAT evidence to this checker. The bounded Rust
+refutation search and its Lean contract distinguish checked closure, an open
+branch, and an exhausted frontier; only checked closure is currently proved
+conclusive. Equality-aware model extraction, complete taxonomy batching, and
+termination remain separate obligations.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

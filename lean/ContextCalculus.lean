@@ -55,6 +55,7 @@ import ContextCalculus.HypertableauRoleBlocking
 import ContextCalculus.HypertableauBlockedSearch
 import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauEqualityFreeDecision
+import ContextCalculus.HypertableauEqualitySearch
 import ContextCalculus.HypertableauRefutationCertificate
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauTaxonomyCertificate
