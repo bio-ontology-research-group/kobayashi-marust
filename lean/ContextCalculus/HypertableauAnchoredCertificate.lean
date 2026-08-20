@@ -138,7 +138,8 @@ def anchoredHeadLiftableB
   | .exists_ .. => true
   | .role .. => false
   | .eq left right =>
-      nominalGuardB nominalRoot clause left || nominalGuardB nominalRoot clause right
+      decide (left = right) || nominalGuardB nominalRoot clause left ||
+        nominalGuardB nominalRoot clause right
 
 theorem anchoredHeadLiftableB_sound
     (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
@@ -151,9 +152,14 @@ theorem anchoredHeadLiftableB_sound
   | exists_ => trivial
   | role => contradiction
   | eq left right =>
-      simp only [anchoredHeadLiftableB, Bool.or_eq_true] at hcheck
-      exact hcheck.imp (nominalGuardB_sound nominalRoot clause left)
-        (nominalGuardB_sound nominalRoot clause right)
+      simp only [anchoredHeadLiftableB, Bool.or_eq_true,
+        decide_eq_true_eq] at hcheck
+      rcases hcheck with (heq | hleft) | hright
+      · exact Or.inl heq
+      · exact Or.inr (Or.inl
+          (nominalGuardB_sound nominalRoot clause left hleft))
+      · exact Or.inr (Or.inr
+          (nominalGuardB_sound nominalRoot clause right hright))
 
 def AnchoredRegularValid
     (certificate : FiniteRegularCertificate

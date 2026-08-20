@@ -53,5 +53,9 @@ name = "ht-anchored-premises-check"
 root = "HTAnchoredPremisesCheck"
 
 [[lean_exe]]
+name = "ht-anchored-eq-cert-check"
+root = "HTAnchoredEqCertCheck"
+
+[[lean_exe]]
 name = "ht-taxonomy-cert-check"
 root = "HTTaxonomyCertCheck"

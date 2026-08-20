@@ -2498,20 +2498,20 @@ struct LeanHtPreprocessingEvidence {
     contrapositives: Vec<LeanHtContrapositive>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtLabel {
     node: usize,
     literal: LeanHtLit,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtEdge {
     role: usize,
     source: usize,
     target: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtObligation {
     role: usize,
     filler: LeanHtLit,
@@ -2655,7 +2655,7 @@ struct LeanHtEquality {
     right: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtEqState {
     labels: Vec<LeanHtLabel>,
     edges: Vec<LeanHtEdge>,
@@ -2663,6 +2663,19 @@ struct LeanHtEqState {
     equalities: Vec<LeanHtEquality>,
     representatives: Vec<usize>,
     representative_paths: Vec<Vec<usize>>,
+    #[serde(skip_serializing)]
+    folds: Vec<(Node, Node)>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtAnchoredEqCertificate {
+    version: usize,
+    equality_node_count: usize,
+    regular: serde_json::Value,
+    equality_ontology: Vec<LeanHtClause>,
+    equality_state: LeanHtEqState,
+    class_map: Vec<usize>,
+    nominal_roots: Vec<Option<usize>>,
 }
 
 #[derive(serde::Serialize)]
@@ -3170,6 +3183,7 @@ impl LeanHtRefutationState {
             .collect();
         folds.sort_unstable();
         folds.dedup();
+        state.folds = folds.clone();
         for (blocked, blocker) in folds {
             for &(role, source, target) in &self.edge_order {
                 if self.equivalent(source, blocker) {
@@ -3374,6 +3388,7 @@ impl LeanHtRefutationState {
                 .collect(),
             representatives,
             representative_paths,
+            folds: Vec::new(),
         }
     }
 
@@ -9174,8 +9189,7 @@ impl Ht {
     /// checker here lets a rejected finite fold resume at a larger node budget
     /// instead of turning an inconclusive open branch into a terminal error.
     fn lean_decision_candidate_passes(&self, payload: &str) -> Result<bool, String> {
-        static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
+        static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let Some(checker) = std::env::var_os("KM_HT_LEAN_CERT_CHECKER") else {
             return Ok(true);
         };
@@ -9870,11 +9884,18 @@ impl Ht {
             }) {
                 return Err("regular HT residual clause has an unguarded body atom".to_string());
             }
-            if clause
-                .head
-                .iter()
-                .any(|atom| matches!(atom, Atom::Role { .. } | Atom::Eq { .. }))
-            {
+            let nominal_guard = |variable: Var| {
+                clause.body.iter().any(|atom| {
+                    matches!(atom, Atom::Concept { lit, t }
+                        if *t == variable && !lit.neg &&
+                          (self.ext.nominals.contains(&lit.c) || self.nom_set.contains(&lit.c)))
+                })
+            };
+            if clause.head.iter().any(|atom| match atom {
+                Atom::Role { .. } => true,
+                Atom::Eq { s, t } => s != t && !nominal_guard(*s) && !nominal_guard(*t),
+                Atom::Concept { .. } | Atom::Exists { .. } => false,
+            }) {
                 return Err("regular HT residual clause has a non-path-liftable head".to_string());
             }
             residual.push(LeanHtClause {
@@ -10035,12 +10056,151 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Build the equality-backed anchored SAT certificate consumed by
+    /// `ht-anchored-eq-cert-check`. Every completion fact is mapped to its
+    /// dense equality class. Blocker redirects remain separate from equality
+    /// and are checked again by the regular certificate.
+    fn lean_anchored_equality_open_certificate_json(
+        &self,
+        equality_state: &LeanHtEqState,
+    ) -> Result<String, String> {
+        let (variable_count, concept_count, role_count, equality_ontology) =
+            self.lean_decision_signature();
+        let node_count = equality_state.representatives.len();
+        if node_count == 0 {
+            return Err("anchored equality certificate requires a node".to_string());
+        }
+        let representative = |node: Node| -> Result<Node, String> {
+            equality_state
+                .representatives
+                .get(node)
+                .copied()
+                .ok_or_else(|| "anchored equality fact node is out of range".to_string())
+        };
+
+        let mut representatives = equality_state.representatives.clone();
+        representatives.sort_unstable();
+        representatives.dedup();
+        let dense_class: HashMap<Node, Node> = representatives
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(dense, root)| (root, dense))
+            .collect();
+        let class_map: Vec<Node> = equality_state
+            .representatives
+            .iter()
+            .map(|root| dense_class[root])
+            .collect();
+        let quotient = |node: Node| -> Result<Node, String> {
+            representative(node).and_then(|root| {
+                dense_class
+                    .get(&root)
+                    .copied()
+                    .ok_or_else(|| "equality representative has no dense class".to_string())
+            })
+        };
+
+        let mut labels = HashSet::new();
+        for label in &equality_state.labels {
+            labels.insert((
+                quotient(label.node)?,
+                CLit {
+                    c: label.literal.concept as C,
+                    neg: label.literal.neg,
+                },
+            ));
+        }
+        let mut edges = HashSet::new();
+        for edge in &equality_state.edges {
+            edges.insert((
+                edge.role as R,
+                quotient(edge.source)?,
+                quotient(edge.target)?,
+            ));
+        }
+        let mut obligations = HashSet::new();
+        for obligation in &equality_state.obligations {
+            obligations.insert((
+                obligation.role as R,
+                CLit {
+                    c: obligation.filler.concept as C,
+                    neg: obligation.filler.neg,
+                },
+                quotient(obligation.node)?,
+            ));
+        }
+        let mut folds = Vec::with_capacity(equality_state.folds.len());
+        for &(blocked, blocker) in &equality_state.folds {
+            folds.push((quotient(blocked)?, quotient(blocker)?));
+        }
+        folds.sort_unstable();
+        folds.dedup();
+
+        let mut labels: Vec<_> = labels.into_iter().collect();
+        labels.sort_unstable();
+        let mut edges: Vec<_> = edges.into_iter().collect();
+        edges.sort_unstable();
+        let mut obligations: Vec<_> = obligations.into_iter().collect();
+        obligations.sort_unstable();
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: representatives.len(),
+            labels: labels.clone(),
+            edges,
+            obligations,
+            folds,
+        };
+        let regular: serde_json::Value =
+            serde_json::from_str(&self.lean_regular_blocked_open_certificate_json(&leaf)?)
+                .map_err(|error| error.to_string())?;
+
+        let mut nominal_roots = vec![None; concept_count];
+        for concept in 0..concept_count {
+            if !self.ext.nominals.contains(&(concept as C))
+                && !self.nom_set.contains(&(concept as C))
+            {
+                continue;
+            }
+            let mut roots: Vec<Node> = labels
+                .iter()
+                .filter_map(|&(node, literal)| {
+                    (!literal.neg && literal.c as usize == concept).then_some(node)
+                })
+                .collect();
+            roots.sort_unstable();
+            roots.dedup();
+            match roots.as_slice() {
+                [root] => {
+                    nominal_roots[concept] = Some(*root);
+                }
+                [] => {
+                    return Err(format!("nominal concept {concept} has no quotient carrier"));
+                }
+                _ => {
+                    return Err(format!(
+                        "nominal concept {concept} has multiple quotient carriers"
+                    ));
+                }
+            }
+        }
+
+        serde_json::to_string(&LeanHtAnchoredEqCertificate {
+            version: 1,
+            equality_node_count: node_count,
+            regular,
+            equality_ontology,
+            equality_state: equality_state.clone(),
+            class_map,
+            nominal_roots,
+        })
+        .map_err(|error| error.to_string())
+    }
+
     fn lean_regular_decision_envelope(
         payload: String,
         satisfiable: bool,
     ) -> Result<String, String> {
-        let certificate =
-            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let certificate = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         let evidence = if satisfiable {
             LeanHtRegularDecisionEvidence::RegularSat { certificate }
         } else {
@@ -10104,7 +10264,7 @@ impl Ht {
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
-                        "ontology reached the configured regular decision node cap".to_string(),
+                        "ontology reached the configured regular decision node cap".to_string()
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(_) => {
@@ -11172,11 +11332,8 @@ impl Ht {
                     if self.lean_decision_candidate_passes(&candidate)? {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "equality",
-                    )?;
+                    node_budget =
+                        Self::deepen_after_rejected_candidate(node_budget, deepen, "equality")?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -11238,11 +11395,8 @@ impl Ht {
                     if self.lean_decision_candidate_passes(&candidate)? {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "cardinality",
-                    )?;
+                    node_budget =
+                        Self::deepen_after_rejected_candidate(node_budget, deepen, "cardinality")?;
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -11902,6 +12056,7 @@ impl Ht {
                     equalities,
                     representatives,
                     representative_paths,
+                    folds: Vec::new(),
                 },
                 evidence: equality_evidence,
             })
@@ -21804,12 +21959,91 @@ mod tests {
             .iter()
             .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 2));
 
+        let anchored = cyclic
+            .lean_anchored_equality_open_certificate_json(&open)
+            .expect("serialize the equality-backed anchored regular model");
+        let anchored_wire: serde_json::Value = serde_json::from_str(&anchored).unwrap();
+        assert_eq!(anchored_wire["version"], serde_json::json!(1));
+        assert_eq!(
+            anchored_wire["equality_state"]["representatives"],
+            serde_json::json!([0, 1, 2])
+        );
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let mut checker = std::path::PathBuf::from(checker);
+            checker.set_file_name("ht-anchored-eq-cert-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-anchored-eq-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, anchored).unwrap();
+            let output = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run native equality-backed anchored checker");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                output.status.success(),
+                "Lean must accept Rust's equality-backed anchored model: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
         let (satisfiable, certificate) = cyclic
             .lean_equality_decision_certificate_json()
             .expect("the equality-aware cycle has checker-accepted finite evidence");
         assert!(satisfiable);
         let wire: serde_json::Value = serde_json::from_str(&certificate).unwrap();
         assert_eq!(wire["evidence"], serde_json::json!("sat"));
+    }
+
+    #[test]
+    fn anchored_equality_producer_derives_a_unique_nominal_representative() {
+        const NOMINAL: C = 20;
+        let mut reasoner = Ht::new_certified(vec![
+            Clause::new(Vec::new(), vec![con(false, NOMINAL, X)]),
+            Clause::new(vec![con(false, NOMINAL, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(
+                vec![con(false, NOMINAL, X), con(false, NOMINAL, 1)],
+                vec![Atom::Eq { s: X, t: 1 }],
+            ),
+        ]);
+        reasoner.set_nominals(vec![NOMINAL]);
+        reasoner.block_mode = 6;
+        let mut state = LeanHtRefutationState::root(&[]);
+        let LeanHtEqRefutationOutcome::Open(open) = reasoner.lean_eq_refutation(&mut state, 2, 4)
+        else {
+            panic!("the nominal equality branch must have an open quotient model");
+        };
+        assert!(open.representatives.iter().any(|&node| node == 0));
+        let document = reasoner
+            .lean_anchored_equality_open_certificate_json(&open)
+            .expect("derive the representative image and nominal root");
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(
+            wire["nominal_roots"][NOMINAL as usize],
+            serde_json::json!(0)
+        );
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let mut checker = std::path::PathBuf::from(checker);
+            checker.set_file_name("ht-anchored-eq-cert-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-anchored-nominal-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let output = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run native anchored nominal checker");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                output.status.success(),
+                "Lean must accept Rust's nominal representative image: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
     #[test]
@@ -22299,9 +22533,11 @@ mod tests {
         );
         let error = Ht::deepen_after_rejected_candidate(8, false, "test").unwrap_err();
         assert!(error.contains("configured node cap"));
-        assert!(Ht::deepen_after_rejected_candidate(usize::MAX, true, "test")
-            .unwrap_err()
-            .contains("overflowed"));
+        assert!(
+            Ht::deepen_after_rejected_candidate(usize::MAX, true, "test")
+                .unwrap_err()
+                .contains("overflowed")
+        );
     }
 
     #[test]
@@ -22353,9 +22589,7 @@ mod tests {
         fn contains_edge(value: &serde_json::Value, role: R, source: Node, target: Node) -> bool {
             if let Some(edges) = value.get("edges").and_then(serde_json::Value::as_array) {
                 if edges.iter().any(|edge| {
-                    edge["role"] == role
-                        && edge["source"] == source
-                        && edge["target"] == target
+                    edge["role"] == role && edge["source"] == source && edge["target"] == target
                 }) {
                     return true;
                 }
@@ -22373,10 +22607,7 @@ mod tests {
 
         let clauses = vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
-            Clause::new(
-                vec![con(false, A, X)],
-                vec![exists(R0, false, A, X)],
-            ),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
             Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
         ];
         let equality = Ht::new_certified(clauses.clone());
@@ -22384,8 +22615,7 @@ mod tests {
             .lean_equality_decision_certificate_json()
             .expect("the equality-aware cyclic branch has a finite fold");
         assert!(sat);
-        let equality_wire: serde_json::Value =
-            serde_json::from_str(&equality_document).unwrap();
+        let equality_wire: serde_json::Value = serde_json::from_str(&equality_document).unwrap();
         assert!(contains_edge(&equality_wire, R0, 0, 2));
 
         let mut cardinality = Ht::new_certified(clauses);

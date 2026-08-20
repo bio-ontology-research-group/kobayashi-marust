@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.123] – 2026-08-20
+
+### Certify dense equality quotients for anchored HT models
+
+- Give the equality completion state and regular anchored model separate finite
+  node spaces, connected by an executable class map.
+- Prove checker acceptance identifies exactly the generated equality classes,
+  maps onto every regular node, and transports exactly every source label,
+  edge, and existential obligation.
+- Add a bounded wire and native checker for the complete equality-backed
+  anchored certificate. A valid two-node equality state compresses to one
+  regular node; a forged class split is rejected.
+- Generate dense quotient certificates from Rust union-find states, retain
+  blocker folds independently from equality, and derive nominal roots from the
+  quotient image. Certificate serialization now recognizes configured source
+  nominals as well as runtime-expanded nominal metadata.
+- Add end-to-end producer tests for cyclic blocking and nominal equality, each
+  invoking the native Lean checker when configured.
+
+This closes the representative-image publication gap identified in v0.3.122.
+It certifies the finite equality-to-anchored-model boundary, not the entire KM
+executable. The full Lean build passes 3,389 jobs. The complete locked release
+suite passes, including the issue #3 nominal-equality regression.
+
 ## [0.3.122] – 2026-08-20
 
 ### Certify nominal-guarded equality heads in anchored HT models

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "equality_node_count": 2,
+  "regular": {
+    "version": 1,
+    "node_count": 1,
+    "concept_count": 1,
+    "role_count": 1,
+    "variable_count": 1,
+    "labels": [{ "node": 0, "literal": { "concept": 0, "neg": false } }],
+    "edges": [],
+    "obligations": [],
+    "redirect": [0],
+    "cover": [],
+    "sub_roles": [],
+    "inverse_roles": [],
+    "chains": [],
+    "reflexive_roles": [],
+    "role_clauses": [],
+    "residual": []
+  },
+  "equality_ontology": [],
+  "equality_state": {
+    "labels": [{ "node": 1, "literal": { "concept": 0, "neg": false } }],
+    "edges": [],
+    "obligations": [],
+    "equalities": [{ "left": 0, "right": 1 }],
+    "representatives": [0, 0],
+    "representative_paths": [[], [0]]
+  },
+  "class_map": [0, 0],
+  "nominal_roots": [null]
+}

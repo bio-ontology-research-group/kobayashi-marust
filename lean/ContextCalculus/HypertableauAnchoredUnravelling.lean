@@ -467,6 +467,7 @@ def AnchoredHeadLiftable
   | .exists_ .. => True
   | .role .. => False
   | .eq left right =>
+      left = right ∨
       (∃ name root, nominalRoot name = some root ∧
         Atom.concept (.pos name) left ∈ clause.body) ∨
       (∃ name root, nominalRoot name = some root ∧
@@ -493,7 +494,9 @@ theorem coverHoldsAtom_lift_anchored
   | role => contradiction
   | exists_ => exact hholds
   | eq left right =>
-      rcases hliftable with hleft | hright
+      rcases hliftable with heq | hleft | hright
+      · subst right
+        rfl
       · rcases hleft with ⟨name, rootNode, hroot, hguard⟩
         have hlabel := hbody (.concept (.pos name) left) hguard
         have hanchor : anchor (assignment left).endpoint := by
