@@ -2874,6 +2874,102 @@ impl LeanHtRefutationState {
         self.pairwise_blocker_ancestor(node).is_some()
     }
 
+    fn same_quotient_pairwise_signature(&self, left: Node, right: Node) -> bool {
+        let closed_labels_equal = |a: Node, b: Node| {
+            self.labels.iter().all(|&(node, literal)| {
+                !self.equivalent(node, a)
+                    || self
+                        .labels
+                        .iter()
+                        .any(|&(other, candidate)| candidate == literal && self.equivalent(other, b))
+            }) && self.labels.iter().all(|&(node, literal)| {
+                !self.equivalent(node, b)
+                    || self
+                        .labels
+                        .iter()
+                        .any(|&(other, candidate)| candidate == literal && self.equivalent(other, a))
+            })
+        };
+        if !closed_labels_equal(left, right) {
+            return false;
+        }
+        let (Some(left_parent), Some(right_parent)) = (
+            self.witness_parent.get(left).copied().flatten(),
+            self.witness_parent.get(right).copied().flatten(),
+        ) else {
+            return false;
+        };
+        if !closed_labels_equal(left_parent, right_parent) {
+            return false;
+        }
+        let closed_roles_equal =
+            |a_source: Node, a_target: Node, b_source: Node, b_target: Node| {
+                self.edges.iter().all(|&(role, source, target)| {
+                    !self.equivalent(source, a_source)
+                        || !self.equivalent(target, a_target)
+                        || self.edges.iter().any(|&(candidate, other_source, other_target)| {
+                            candidate == role
+                                && self.equivalent(other_source, b_source)
+                                && self.equivalent(other_target, b_target)
+                        })
+                }) && self.edges.iter().all(|&(role, source, target)| {
+                    !self.equivalent(source, b_source)
+                        || !self.equivalent(target, b_target)
+                        || self.edges.iter().any(|&(candidate, other_source, other_target)| {
+                            candidate == role
+                                && self.equivalent(other_source, a_source)
+                                && self.equivalent(other_target, a_target)
+                        })
+                })
+            };
+        closed_roles_equal(left_parent, left, right_parent, right)
+            && closed_roles_equal(left, left_parent, right, right_parent)
+    }
+
+    fn quotient_pairwise_blocker_ancestor(&self, node: Node) -> Option<Node> {
+        let mut ancestor = self.witness_parent.get(node).copied().flatten();
+        while let Some(candidate) = ancestor {
+            if self.same_quotient_pairwise_signature(candidate, node) {
+                return Some(candidate);
+            }
+            ancestor = self.witness_parent.get(candidate).copied().flatten();
+        }
+        None
+    }
+
+    fn equality_blocked_open_state(&self) -> LeanHtEqState {
+        let mut state = self.equality_wire_state(self.active_nodes);
+        let mut folds: Vec<(Node, Node)> = self
+            .obligations
+            .iter()
+            .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
+            .filter_map(|&(_, _, source)| {
+                self.quotient_pairwise_blocker_ancestor(source)
+                    .map(|blocker| (source, blocker))
+            })
+            .collect();
+        folds.sort_unstable();
+        folds.dedup();
+        for (blocked, blocker) in folds {
+            for &(role, source, target) in &self.edge_order {
+                if self.equivalent(source, blocker) {
+                    state.edges.push(LeanHtEdge {
+                        role: role as usize,
+                        source: blocked,
+                        target,
+                    });
+                }
+            }
+        }
+        state
+            .edges
+            .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+            .edges
+            .dedup_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+    }
+
     fn blocked_open_leaf(&self) -> LeanHtBlockedOpenLeaf {
         let mut folds: Vec<(Node, Node)> = self
             .obligations
@@ -9305,6 +9401,9 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            .filter(|&(_, _, source)| {
+                state.quotient_pairwise_blocker_ancestor(source).is_none()
+            })
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -9313,6 +9412,8 @@ impl Ht {
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
+            state.witness_parent.push(Some(source));
+            state.witness_step.push(Some((role, filler)));
             let edge = (role, source, target);
             let label = (target, filler);
             let inserted_edge = state.edges.insert(edge);
@@ -9332,6 +9433,8 @@ impl Ht {
             state.edge_order.remove(0);
             state.labels.remove(&label);
             state.edges.remove(&edge);
+            state.witness_step.pop();
+            state.witness_parent.pop();
             state.active_nodes -= 1;
             return match result {
                 LeanHtEqRefutationOutcome::Closed(child, max_used) => {
@@ -9350,7 +9453,7 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Frontier => LeanHtEqRefutationOutcome::Frontier,
             };
         }
-        LeanHtEqRefutationOutcome::Open(state.equality_wire_state(state.active_nodes))
+        LeanHtEqRefutationOutcome::Open(state.equality_blocked_open_state())
     }
 
     fn pad_distinct_cardinality_tree(
@@ -20630,6 +20733,38 @@ mod tests {
         assert!(state.closed_holds(&role(R0, X, 1), &assignment));
         assert!(state.closed_holds(&exists(R0, false, B, X), &assignment));
         assert!(state.clashes(), "clashes were already quotient-aware");
+    }
+
+    #[test]
+    fn equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle() {
+        let mut cyclic = Ht::new_certified(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![exists(R0, false, A, X)],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
+        ]);
+        cyclic.block_mode = 6;
+
+        let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+        let LeanHtEqRefutationOutcome::Open(open) =
+            cyclic.lean_eq_refutation(&mut state, 1, 4)
+        else {
+            panic!("the equality-aware cyclic branch must have a blocked finite model");
+        };
+        assert_eq!(open.representatives.len(), 3);
+        assert!(open
+            .edges
+            .iter()
+            .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 2));
+
+        let (satisfiable, certificate) = cyclic
+            .lean_equality_decision_certificate_json()
+            .expect("the equality-aware cycle has checker-accepted finite evidence");
+        assert!(satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&certificate).unwrap();
+        assert_eq!(wire["evidence"], serde_json::json!("sat"));
     }
 
     #[test]

@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+## [0.3.87] – 2026-08-20
+
+### Check equality-aware finite blocking folds
+
+- Add an equality-quotient pairwise blocker to certification-only HT search.
+  It compares equality-closed node labels, predecessor labels, and role sets in
+  both predecessor directions.
+- Track exact witness ancestry during equality search and stop expanding an
+  unwitnessed obligation only when an ancestor has the same full quotient
+  signature.
+- Materialize every outgoing edge visible at the blocker's equality class at
+  the blocked node. The ordinary executable Lean equality checker still checks
+  all ontology groundings, clashes, equality closure, and witness obligations,
+  so an incorrect proposed fold cannot publish SAT.
+- Add `FiniteEqFoldCertificate` in Lean and prove that every accepted fold has
+  a model of the exact unchanged ontology, without assuming that the supplied
+  fold relation is valid.
+- Add a cyclic existential regression that terminates through quotient-aware
+  pairwise blocking and is accepted by the native Lean checker.
+- Validate the release with all 3,377 Lean build jobs and the complete Rust
+  suite: 2,064 library tests passed, 8 ignored benchmarks, and every integration
+  suite passed, including the issue #3 soundness regression.
+
+This closes checked finite-model folding for equality-aware HT search.
+Cardinality-aware blocking still needs a stronger signature preserving apart
+and number-restriction context before its frontier termination can be closed.
+
 ## [0.3.86] – 2026-08-20
 
 ### Bound equality-quotient blocking signatures

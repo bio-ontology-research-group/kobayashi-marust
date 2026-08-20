@@ -340,8 +340,14 @@ termination remain separate obligations.
 `HypertableauEqualityBlocking.lean` defines the corresponding full pairwise
 signature over equality-closed labels and role edges. It proves finite
 signature repetition and the resulting injective-path depth bound. Connecting
-the concrete Rust blocker and its folded model to this quotient signature is
-still required before equality-aware frontier termination is certified.
+the signature bound to a total executable search remains required before
+equality-aware frontier termination is certified.
+
+`HypertableauEqualityBlockingCertificate.lean` treats the concrete fold as
+untrusted input, materializes blocker edges modulo the supplied checked
+equality quotient, and proves that acceptance by the ordinary equality model
+checker yields a model of the exact ontology. The Rust producer uses the same
+closed pairwise signature and fail-closed materialization boundary.
 
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
