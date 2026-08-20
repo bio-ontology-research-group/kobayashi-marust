@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.65`.
+`v0.3.66`.
 
 ## Classify an ontology
 
@@ -188,10 +188,17 @@ the exact equality history, representative vector, and paths witnessing the
 quotient. Publication occurs only after Lean accepts the evidence. Certified
 full-pairwise mode lazily enumerates every finite variable assignment and
 deepens its node frontier whenever a branch reaches it. A genuinely open branch
-or an explicitly configured diagnostic node cap still declines. Equality-aware query
-countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
+or an explicitly configured diagnostic node cap still declines. Equality-aware
+query countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
 QO, and runtime termination/blocking correspondence remain separate HT
 certification tasks.
+
+Certified mode 6 also checks before SAT serialization that every generated
+node has a strictly earlier predecessor and that no full-signature-blocked node
+retains a generated child. Lean proves these invariants bound every expanded
+ALC(H) path by the finite role-sensitive signature vocabulary. Cross-query SAT
+caches are disabled in certified construction because they have no local
+blocker witness.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered

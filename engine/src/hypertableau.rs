@@ -9557,6 +9557,54 @@ impl Ht {
         )
     }
 
+    /// Check the concrete mode-6 invariant behind Lean's finite blocked-address
+    /// universe. Every generated node has a strictly earlier predecessor, and a
+    /// node whose final full pairwise signature is blocked has never generated a
+    /// direct successor retained in the terminal graph. For the certified
+    /// equality-free ALC(H) fragment labels do not flow from children to parents,
+    /// so this final-state check is also the expansion-time invariant.
+    fn certified_mode6_address_invariant(&self) -> Result<(), String> {
+        if self.block_mode != 6 {
+            return Ok(());
+        }
+        let node_count = self.ext.num_nodes();
+        for node in 0..node_count {
+            match self.ext.pred[node] {
+                Some(parent) if parent < node => {}
+                Some(parent) => {
+                    return Err(format!(
+                        "certified HT node {node} has non-earlier predecessor {parent}"
+                    ));
+                }
+                None if self.ext.blockable[node] => {
+                    return Err(format!(
+                        "certified HT blockable node {node} has no predecessor"
+                    ));
+                }
+                None => {}
+            }
+        }
+
+        let blocked = self.compute_blocked();
+        for (node, &is_blocked) in blocked.iter().enumerate() {
+            if !is_blocked {
+                continue;
+            }
+            if let Some(child) = self
+                .ext
+                .pred
+                .iter()
+                .enumerate()
+                .find_map(|(child, parent)| (*parent == Some(node)).then_some(child))
+            {
+                return Err(format!(
+                    "certified HT blocked node {node} retained direct successor {child}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Serialize the exact terminal completion graph and normalized HT clauses.
     /// Equality-free evidence uses wire version 1. Equality-aware SAT and
     /// query-countermodel evidence uses version 2 with the complete merge
@@ -9577,6 +9625,7 @@ impl Ht {
                     .to_string(),
             );
         }
+        self.certified_mode6_address_invariant()?;
         let has_equality = !self.card_defs.is_empty()
             || self.clauses.iter().any(|record| {
                 record
@@ -10244,6 +10293,12 @@ impl Ht {
         // blocking: every suppressed node carries an explicit earlier signature
         // witness matching Lean's finite `RoleBlockingSignature` exactly.
         ht.block_mode = 6;
+        // Cross-query SAT caches can suppress the first local occurrence of a
+        // signature without an in-run blocker node. That is a valid production
+        // optimization, but it does not refine the finite address construction
+        // checked by the certification path.
+        ht.satcache = false;
+        ht.satcache3 = false;
         ht
     }
 
@@ -16651,6 +16706,46 @@ mod tests {
             }
         }
     }
+
+    fn certified_repeating_pairwise_chain(with_blocked_child: bool) -> Ht {
+        let mut reasoner = Ht::new_certified(Vec::new());
+        let root = reasoner.ext.new_root();
+        reasoner.ext.add_concept(root, lit(false, 1), &dep_empty());
+        let first = reasoner.ext.new_node(Some(root));
+        reasoner.ext.add_edge(0, root, first, &dep_empty());
+        reasoner
+            .ext
+            .add_concept(first, lit(false, 1), &dep_empty());
+        let blocked = reasoner.ext.new_node(Some(first));
+        reasoner.ext.add_edge(0, first, blocked, &dep_empty());
+        reasoner
+            .ext
+            .add_concept(blocked, lit(false, 1), &dep_empty());
+        if with_blocked_child {
+            let child = reasoner.ext.new_node(Some(blocked));
+            reasoner.ext.add_edge(0, blocked, child, &dep_empty());
+            reasoner
+                .ext
+                .add_concept(child, lit(false, 1), &dep_empty());
+        }
+        reasoner
+    }
+
+    #[test]
+    fn certified_mode6_accepts_a_blocked_leaf_address_frontier() {
+        certified_repeating_pairwise_chain(false)
+            .certified_mode6_address_invariant()
+            .expect("the repeated pairwise signature is an unexpanded leaf");
+    }
+
+    #[test]
+    fn certified_mode6_rejects_expansion_beyond_a_blocked_address() {
+        let error = certified_repeating_pairwise_chain(true)
+            .certified_mode6_address_invariant()
+            .expect_err("a blocked node must not retain a generated child");
+        assert!(error.contains("retained direct successor"), "{error}");
+    }
+
     fn con(neg: bool, c: C, t: Var) -> Atom {
         Atom::Concept {
             lit: CLit { neg, c },

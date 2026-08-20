@@ -276,8 +276,13 @@ that blocker preserves all signed concept facts. The finite-fold checker then
 validates role and witness obligations on the materialized graph. Finite
 successor slots and the role-sensitive signature depth bound also construct a
 finite type of blocked node addresses, supplying the finite-node premise for
-the strict branch-progress theorem. Correspondence
-with Rust's blocking/search transitions remains open. Iterative deepening
+the strict branch-progress theorem. Lean further proves that strictly increasing
+child identifiers and refusing to expand an earlier-signature duplicate exclude
+every overlong all-expanded path. Certified Rust mode 6 checks those concrete
+predecessor and terminal expansion invariants before publishing SAT evidence.
+For ALC(H), terminal labels equal the relevant expansion-time parent labels;
+stronger dynamic correspondence for inverse roles, equality, and cardinality
+remains open. Iterative deepening
 removes the producer's historical assignment and implicit node caps, but a
 proof that every unsatisfiable supported input reaches a finite closed
 refutation remains part of that correspondence. Once a blocked node

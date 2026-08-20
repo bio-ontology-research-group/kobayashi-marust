@@ -147,9 +147,29 @@ theorem role_blocked_node_universe_finite
     Set.Finite (Set.univ : Set (RoleBlockedAddress Slot Concept Role)) := by
   exact Set.toFinite _
 
+/-- Runtime mode 6 assigns children strictly increasing node identifiers and
+never expands a node if an earlier node has the same full pairwise signature.
+Under exactly those two refinement invariants, no path consisting entirely of
+expanded nodes can exceed the finite signature vocabulary. -/
+theorem State.no_overlong_mode6_expansion
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Nat Concept Role) (parent : Nat → Option Nat)
+    (expanded : Nat → Prop)
+    (hsafe : ∀ {blocker blocked}, blocker < blocked → expanded blocked →
+      state.roleBlockingSignature parent blocker ≠
+        state.roleBlockingSignature parent blocked)
+    (path : Fin (Fintype.card (RoleBlockingSignature Concept Role) + 1) → Nat)
+    (hcreation : StrictMono path)
+    (hexpanded : ∀ position, expanded (path position)) : False := by
+  obtain ⟨earlier, later, hposition, hsignature⟩ :=
+    state.exists_role_blocker_on_long_path parent path
+  exact hsafe (hcreation hposition) (hexpanded later) hsignature
+
 #print axioms State.roleBlockingSignature_blocks
 #print axioms State.roleBlockingSignature_parent_context
 #print axioms State.exists_role_blocker_on_long_path
 #print axioms role_blocked_node_universe_finite
+#print axioms State.no_overlong_mode6_expansion
 
 end ContextCalculus.Hypertableau

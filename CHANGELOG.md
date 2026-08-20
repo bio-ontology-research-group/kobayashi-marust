@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.66] – 2026-08-20
+
+### Connect certified mode-6 expansion to the finite signature bound
+
+- Prove that strictly increasing child identifiers plus refusal to expand an
+  earlier-signature duplicate exclude every overlong all-expanded HT path.
+- Add a fail-closed Rust check for those exact mode-6 predecessor and expansion
+  invariants before SAT evidence is serialized.
+- Disable cross-query SAT caches in `Ht::new_certified`; cache-only blockers do
+  not provide the in-run witness required by the refinement theorem.
+- Test both an accepted blocked leaf frontier and rejection of a retained child
+  below a blocked node.
+
+For equality-free ALC(H), where labels do not propagate from children back to
+parents, the terminal check is also the expansion-time invariant. Inverse-role,
+equality, and cardinality refinements still require their stronger dynamic or
+indirect-blocking correspondence.
+
 ## [0.3.65] – 2026-08-20
 
 ### Derive a finite HT node universe from role-sensitive blocking
