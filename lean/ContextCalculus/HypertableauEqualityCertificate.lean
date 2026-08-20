@@ -1,5 +1,8 @@
 import ContextCalculus.HypertableauEqualityModel
 import ContextCalculus.HypertableauRefutationCertificate
+import Mathlib.Data.Fin.Basic
+import Mathlib.Data.Finset.Max
+import Mathlib.Data.Fintype.Basic
 
 /-!
 # Finite equality-aware hypertableau refutation certificates
@@ -97,6 +100,135 @@ theorem equalityPathB_sound
       exact Relation.EqvGen.trans _ _ _
         (equalityStepB_sound equalities source next hstep) (ih next hrest)
 
+theorem equalityStepB_symm
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (left right : Fin nodeCount) :
+    equalityStepB equalities left right = true →
+      equalityStepB equalities right left = true := by
+  simp only [equalityStepB, Bool.or_eq_true, decide_eq_true_eq]
+  exact fun h => h.elim Or.inr Or.inl
+
+theorem equalityPathB_append
+    (equalities : List (Fin nodeCount × Fin nodeCount))
+    (source middle target : Fin nodeCount)
+    (first second : List (Fin nodeCount))
+    (hfirst : equalityPathB equalities middle source first = true)
+    (hsecond : equalityPathB equalities target middle second = true) :
+    equalityPathB equalities target source (first ++ second) = true := by
+  induction first generalizing source with
+  | nil =>
+      simp only [equalityPathB, decide_eq_true_eq] at hfirst
+      simpa [hfirst] using hsecond
+  | cons next rest ih =>
+      simp only [List.cons_append, equalityPathB, Bool.and_eq_true] at hfirst ⊢
+      exact ⟨hfirst.1, ih next hfirst.2⟩
+
+theorem equalityPathB_reverse
+    (equalities : List (Fin nodeCount × Fin nodeCount))
+    (source target : Fin nodeCount) (path : List (Fin nodeCount))
+    (hpath : equalityPathB equalities target source path = true) :
+    ∃ reversePath, equalityPathB equalities source target reversePath = true := by
+  induction path generalizing source with
+  | nil =>
+      simp only [equalityPathB, decide_eq_true_eq] at hpath
+      subst target
+      exact ⟨[], by simp [equalityPathB]⟩
+  | cons next rest ih =>
+      simp only [equalityPathB, Bool.and_eq_true] at hpath
+      obtain ⟨reverseRest, hreverseRest⟩ := ih next hpath.2
+      refine ⟨reverseRest ++ [source], equalityPathB_append equalities target next source
+        reverseRest [source] hreverseRest ?_⟩
+      simp [equalityPathB, equalityStepB_symm equalities source next hpath.1]
+
+theorem equalityPathB_complete
+    (equalities : List (Fin nodeCount × Fin nodeCount))
+    (source target : Fin nodeCount)
+    (hequiv : Relation.EqvGen (fun x y => (x, y) ∈ equalities) source target) :
+    ∃ path, equalityPathB equalities target source path = true := by
+  induction hequiv with
+  | rel left right hmember =>
+      exact ⟨[right], by simp [equalityPathB, equalityStepB, hmember]⟩
+  | refl node => exact ⟨[], by simp [equalityPathB]⟩
+  | symm left right _ ih => exact equalityPathB_reverse equalities left right _ ih.choose_spec
+  | trans left middle right _ _ ih₁ ih₂ =>
+      exact ⟨ih₁.choose ++ ih₂.choose,
+        equalityPathB_append equalities left middle right ih₁.choose ih₂.choose
+          ih₁.choose_spec ih₂.choose_spec⟩
+
+noncomputable def equalityClass
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (node : Fin nodeCount) :
+    Finset (Fin nodeCount) := by
+  classical
+  exact Finset.univ.filter fun candidate =>
+    Relation.EqvGen (fun x y => (x, y) ∈ equalities) node candidate
+
+theorem equalityClass_nonempty
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (node : Fin nodeCount) :
+    (equalityClass equalities node).Nonempty := by
+  classical
+  refine ⟨node, ?_⟩
+  simp [equalityClass, Relation.EqvGen.refl]
+
+noncomputable def equalityRepresentative
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (node : Fin nodeCount) :
+    Fin nodeCount :=
+  (equalityClass equalities node).min' (equalityClass_nonempty equalities node)
+
+theorem equalityRepresentative_equiv
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (node : Fin nodeCount) :
+    Relation.EqvGen (fun x y => (x, y) ∈ equalities) node
+      (equalityRepresentative equalities node) := by
+  classical
+  have hmember := Finset.min'_mem (equalityClass equalities node)
+    (equalityClass_nonempty equalities node)
+  simpa [equalityClass, equalityRepresentative] using hmember
+
+theorem equalityClass_eq_of_equiv
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (left right : Fin nodeCount)
+    (hequiv : Relation.EqvGen (fun x y => (x, y) ∈ equalities) left right) :
+    equalityClass equalities left = equalityClass equalities right := by
+  classical
+  ext candidate
+  simp only [equalityClass, Finset.mem_filter, Finset.mem_univ, true_and]
+  constructor
+  · exact fun h => Relation.EqvGen.trans _ _ _
+      (Relation.EqvGen.symm _ _ hequiv) h
+  · exact fun h => Relation.EqvGen.trans _ _ _ hequiv h
+
+theorem equalityRepresentative_eq_of_equiv
+    (equalities : List (Fin nodeCount × Fin nodeCount)) (left right : Fin nodeCount)
+    (hequiv : Relation.EqvGen (fun x y => (x, y) ∈ equalities) left right) :
+    equalityRepresentative equalities left = equalityRepresentative equalities right := by
+  classical
+  simp only [equalityRepresentative]
+  apply le_antisymm
+  · apply Finset.min'_le
+    simp only [equalityClass, Finset.mem_filter, Finset.mem_univ, true_and]
+    exact Relation.EqvGen.trans _ _ _ hequiv (by
+      simpa only [equalityClass, Finset.mem_filter, Finset.mem_univ, true_and] using
+        Finset.min'_mem (equalityClass equalities right)
+          (equalityClass_nonempty equalities right))
+  · apply Finset.min'_le
+    simp only [equalityClass, Finset.mem_filter, Finset.mem_univ, true_and]
+    exact Relation.EqvGen.trans _ _ _ (Relation.EqvGen.symm _ _ hequiv) (by
+      simpa only [equalityClass, Finset.mem_filter, Finset.mem_univ, true_and] using
+        Finset.min'_mem (equalityClass equalities left)
+          (equalityClass_nonempty equalities left))
+
+noncomputable def FiniteEqCertificate.canonicalizeEqualityClosure
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    FiniteEqCertificate nodeCount conceptCount roleCount variableCount where
+  base := certificate.base
+  equalities := certificate.equalities
+  representative := equalityRepresentative certificate.equalities
+  representativePath := fun node => Classical.choose
+    (equalityPathB_complete certificate.equalities node
+      (equalityRepresentative certificate.equalities node)
+      (equalityRepresentative_equiv certificate.equalities node))
+
+@[simp] theorem FiniteEqCertificate.canonicalizeEqualityClosure_state
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    certificate.canonicalizeEqualityClosure.state = certificate.state := rfl
+
 /-- Executable validation that the supplied representative map is exactly the
 equivalence closure generated by `equalities`. Each node supplies a checked
 path to its representative; every generator must preserve representatives. -/
@@ -107,6 +239,23 @@ def FiniteEqCertificate.equalityClosureValidB
   (List.finRange nodeCount).all fun node =>
     equalityPathB certificate.equalities (certificate.representative node) node
       (certificate.representativePath node)
+
+theorem FiniteEqCertificate.canonicalizeEqualityClosure_valid
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    certificate.canonicalizeEqualityClosure.equalityClosureValidB = true := by
+  classical
+  simp only [FiniteEqCertificate.equalityClosureValidB,
+    FiniteEqCertificate.canonicalizeEqualityClosure, List.all_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq]
+  constructor
+  · rintro ⟨left, right⟩ hmember
+    exact equalityRepresentative_eq_of_equiv certificate.equalities left right
+      (Relation.EqvGen.rel _ _ hmember)
+  · intro node _
+    exact Classical.choose_spec
+      (equalityPathB_complete certificate.equalities node
+        (equalityRepresentative certificate.equalities node)
+        (equalityRepresentative_equiv certificate.equalities node))
 
 theorem FiniteEqCertificate.equalityClosureValidB_sound
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -734,6 +883,16 @@ def FiniteEqCertificate.transitionB
   decide (next.base.obligations = (current.assertAtom assignment atom).base.obligations) &&
   decide (next.equalities = (current.assertAtom assignment atom).equalities)
 
+theorem FiniteEqCertificate.transitionB_canonicalized_assertAtom
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.transitionB
+      (certificate.assertAtom assignment atom).canonicalizeEqualityClosure
+      assignment atom = true := by
+  simp [FiniteEqCertificate.transitionB,
+    FiniteEqCertificate.canonicalizeEqualityClosure]
+
 theorem FiniteEqCertificate.transitionB_base
     (current next : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (assignment : Fin variableCount → Fin nodeCount)
@@ -890,6 +1049,104 @@ mutual
             · exact rest.check_sound certificate assignment heads hrest atom hatom
 
 end
+
+theorem exists_checked_eq_children
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (heads : List (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hencode : ∀ atom, atom ∈ heads →
+      let next := (certificate.assertAtom assignment atom).canonicalizeEqualityClosure
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check next = true) :
+    ∃ children : FiniteEqRefutationChildren
+        nodeCount conceptCount roleCount variableCount,
+      children.check certificate assignment heads = true := by
+  induction heads with
+  | nil => exact ⟨.nil, by simp [FiniteEqRefutationChildren.check]⟩
+  | cons head tail ih =>
+      let next := (certificate.assertAtom assignment head).canonicalizeEqualityClosure
+      obtain ⟨tree, htree⟩ := hencode head (by simp)
+      obtain ⟨rest, hrest⟩ := ih (fun atom hatom => hencode atom (by simp [hatom]))
+      exact ⟨.cons head next tree rest, by
+        simp [FiniteEqRefutationChildren.check, next, htree, hrest,
+          certificate.transitionB_canonicalized_assertAtom assignment head]⟩
+
+/-- Completeness of the equality-aware executable tree checker relative to a
+finite semantic `EqRefutes` derivation. Canonicalization supplies fresh checked
+representative paths after equality-head transitions. -/
+theorem EqRefutes.exists_checked_tree
+    {ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {state : EqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (hrefutes : EqRefutes (Fin nodeCount) ontology state) :
+    ∀ certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount,
+      certificate.base.ontology = ontology → certificate.state = state →
+      certificate.equalityClosureValidB = true →
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check certificate = true := by
+  induction hrefutes with
+  | clash state hclash =>
+      intro certificate hontology hstate hvalid
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hclosed : certificate.closedClashB = true := by
+        cases hvalue : certificate.closedClashB with
+        | true => rfl
+        | false =>
+            have hfree := certificate.not_closedClashB_closedClashFree hvalid hvalue
+            rw [hstate] at hfree
+            exact (hfree positiveNode negativeNode concept hequiv
+              ⟨hpositive, hnegative⟩).elim
+      exact ⟨.clash, by simp [FiniteEqRefutationTree.check, hvalid, hclosed]⟩
+  | branch state clause hclause assignment hbody children ih =>
+      intro certificate hontology hstate hvalid
+      have hclause' : clause ∈ certificate.base.ontology := by simpa [hontology] using hclause
+      have hbody' : ∀ atom ∈ clause.body,
+          certificate.closedHoldsAtomB assignment atom = true := by
+        intro atom hatom
+        apply (certificate.closedHoldsAtomB_eq_true hvalid assignment atom).2
+        rw [hstate]
+        exact hbody atom hatom
+      obtain ⟨encodedChildren, hencodedChildren⟩ :=
+        exists_checked_eq_children certificate assignment clause.head (fun atom hatom => by
+          let next := (certificate.assertAtom assignment atom).canonicalizeEqualityClosure
+          apply ih atom hatom next
+          · cases atom <;>
+              simpa [next, FiniteEqCertificate.canonicalizeEqualityClosure,
+                FiniteEqCertificate.assertAtom] using hontology
+          · simp only [next, FiniteEqCertificate.canonicalizeEqualityClosure_state,
+              certificate.state_assertAtom, hstate]
+          · exact (certificate.assertAtom assignment atom).canonicalizeEqualityClosure_valid)
+      refine ⟨.branch clause assignment encodedChildren, ?_⟩
+      simp only [FiniteEqRefutationTree.check, Bool.and_eq_true,
+        decide_eq_true_eq, List.all_eq_true]
+      exact ⟨⟨⟨hvalid, hclause'⟩, hbody'⟩, hencodedChildren⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      intro certificate hontology hstate hvalid
+      have hobligation' : (role, filler, source) ∈ certificate.base.obligations := by
+        change certificate.state.base.obligation role filler source
+        rw [hstate]
+        exact hobligation
+      have hfresh' : certificate.freshNodeB target = true :=
+        (certificate.freshNodeB_eq_true hvalid target).2 (by simpa [hstate] using hfresh)
+      obtain ⟨encodedChild, hencodedChild⟩ :=
+        ih (certificate.materializeWitness source target role filler)
+          (by simpa [hontology]) (by rw [certificate.state_materializeWitness, hstate]) hvalid
+      refine ⟨.witness source target role filler encodedChild, ?_⟩
+      simp [FiniteEqRefutationTree.check, hvalid, hobligation', hfresh', hencodedChild]
+
+/-- Exactness for canonical finite equality certificates: semantic finite HT
+refutations and accepted exhaustive trees coincide. -/
+theorem FiniteEqCertificate.refutes_iff_exists_checked_tree
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    EqRefutes (Fin nodeCount) certificate.base.ontology certificate.state ↔
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.check certificate.canonicalizeEqualityClosure = true := by
+  constructor
+  · intro hrefutes
+    exact hrefutes.exists_checked_tree certificate.canonicalizeEqualityClosure rfl rfl
+      certificate.canonicalizeEqualityClosure_valid
+  · rintro ⟨tree, hcheck⟩
+    simpa using tree.check_sound certificate.canonicalizeEqualityClosure hcheck
 
 theorem FiniteEqRefutationTree.check_unsatisfiable
     (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
@@ -1094,6 +1351,8 @@ end EqualitySatCheckerTests
 #print axioms FiniteEqCertificate.checkEqSat_not_entailsSub
 #print axioms FiniteEqCertificate.checkEqSat_not_unsatisfiableConcept
 #print axioms FiniteEqRefutationTree.check_sound
+#print axioms EqRefutes.exists_checked_tree
+#print axioms FiniteEqCertificate.refutes_iff_exists_checked_tree
 #print axioms FiniteEqRefutationTree.check_unsatisfiable
 #print axioms FiniteEqRefutationTree.check_ontology_unsatisfiable
 #print axioms FiniteEqRefutationTree.check_subsumption
