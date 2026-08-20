@@ -5294,12 +5294,6 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if !inp.card_defs.is_empty() && lean_taxonomy_requested {
-                return Err(
-                    "HT Lean taxonomy certification does not yet cover first-class number-restriction side data"
-                        .to_string(),
-                );
-            }
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
             }
@@ -5483,7 +5477,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             checker.display()
                         ));
                     }
-                    let checked_payload = if taxonomy_value["version"] == 3 {
+                    let taxonomy_version = taxonomy_value["version"].as_u64();
+                    let checked_payload = if matches!(taxonomy_version, Some(6 | 7)) {
+                        taxonomy_value["certificate"]
+                            .as_object()
+                            .map(|_| taxonomy_value["certificate"].clone())
+                            .ok_or_else(|| {
+                                "checked normalized cardinality taxonomy omitted its certificate"
+                                    .to_string()
+                            })?
+                    } else if matches!(taxonomy_version, Some(3 | 4)) {
                         taxonomy_value["payload"]["plain"]["certificate"]
                             .as_object()
                             .map(|_| taxonomy_value["payload"]["plain"]["certificate"].clone())

@@ -241,32 +241,25 @@ fn first_class_cardinality_global_result_is_checker_gated() {
 }
 
 #[test]
-fn first_class_cardinality_taxonomy_still_fails_closed() {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
-        .env("KM_HT", "1")
-        .env("KM_HT_FORCE", "1")
-        .env("KM_HT_GLOBAL", "1")
-        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", "/bin/true")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn tableau worker");
-    child
-        .stdin
-        .take()
-        .expect("tableau stdin")
-        .write_all(CARDINALITY_SIDE_WIRE.as_bytes())
-        .expect("write cardinality wire input");
-    let output = child.wait_with_output().expect("wait for tableau worker");
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
+fn first_class_cardinality_taxonomy_is_checker_gated() {
+    let global_checker = std::env::var("KM_HT_TEST_LEAN_GLOBAL_CHECKER")
+        .or_else(|_| std::env::var("KM_HT_TEST_LEAN_CHECKER"))
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let taxonomy_checker = std::env::var("KM_HT_TEST_LEAN_TAXONOMY_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
+    let output = run_with_input(
+        CARDINALITY_SIDE_WIRE,
+        &global_checker,
+        &taxonomy_checker,
+        "cardinality-taxonomy",
+    );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(
-            "taxonomy certification does not yet cover first-class number-restriction side data"
-        ),
+        output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("classification is JSON");
+    assert_eq!(value["consistent"], true);
+    assert_eq!(value["unsatisfiable"], serde_json::json!([]));
 }

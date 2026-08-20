@@ -9742,6 +9742,132 @@ impl Ht {
         }
     }
 
+    fn wrap_normalized_cardinality_taxonomy_certificate(
+        &self,
+        payload: String,
+    ) -> Result<String, String> {
+        let Some(normalization) = self.lean_wire_normalization()? else {
+            return Ok(payload);
+        };
+        let certificate: serde_json::Value =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let preprocessing = self.lean_wire_preprocessing();
+        serde_json::to_string(&serde_json::json!({
+            "version": if preprocessing.is_some() { 7 } else { 6 },
+            "normalization": normalization,
+            "preprocessing": preprocessing,
+            "certificate": certificate,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
+    fn lean_cardinality_taxonomy_certificate_json(
+        &mut self,
+        named: &[C],
+    ) -> Result<String, String> {
+        let mut concepts = Vec::with_capacity(named.len());
+        let mut subsumptions = Vec::with_capacity(named.len());
+        let mut shared: Option<serde_json::Value> = None;
+        let mut concept_count = 0u64;
+
+        let mut query_payload = |document: String| -> Result<serde_json::Value, String> {
+            let full: serde_json::Value =
+                serde_json::from_str(&document).map_err(|error| error.to_string())?;
+            if full["version"] != 2 || !full["definitions"].is_array() {
+                return Err("HT cardinality taxonomy cell is not cardinality evidence".to_string());
+            }
+            let inner = full
+                .get("certificate")
+                .and_then(serde_json::Value::as_object)
+                .ok_or_else(|| "HT cardinality taxonomy cell has no equality certificate".to_string())?;
+            concept_count = concept_count.max(
+                inner
+                    .get("concept_count")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| "invalid cardinality taxonomy concept_count".to_string())?,
+            );
+            if let Some(previous) = &shared {
+                let previous_inner = &previous["certificate"];
+                for field in ["role_count", "variable_count", "ontology"] {
+                    if previous_inner[field] != full["certificate"][field] {
+                        return Err(format!(
+                            "HT cardinality taxonomy query changed shared {field}"
+                        ));
+                    }
+                }
+                if previous["definitions"] != full["definitions"] {
+                    return Err(
+                        "HT cardinality taxonomy query changed shared definitions".to_string()
+                    );
+                }
+            } else {
+                shared = Some(full.clone());
+            }
+            Ok(serde_json::json!({
+                "node_count": inner.get("node_count").cloned().ok_or("missing node_count")?,
+                "state": inner.get("state").cloned().ok_or("missing equality state")?,
+                "evidence": inner.get("evidence").cloned().ok_or("missing evidence")?,
+                "refutation_depth": full.get("refutation_depth").cloned().unwrap_or_else(|| serde_json::json!(0)),
+                "refutation": full.get("refutation").cloned().unwrap_or(serde_json::Value::Null),
+                "distinct_refutation_depth": full.get("distinct_refutation_depth").cloned().unwrap_or_else(|| serde_json::json!(0)),
+                "distinct_refutation": full.get("distinct_refutation").cloned().unwrap_or(serde_json::Value::Null),
+            }))
+        };
+
+        for &concept in named {
+            let satisfiable = self
+                .consistent(&[CLit::pos(concept)])
+                .ok_or_else(|| "HT concept probe left the certified fragment".to_string())?;
+            let document = if satisfiable {
+                self.lean_satisfiable_concept_certificate_json_raw(concept)?
+            } else {
+                self.lean_unsatisfiable_concept_certificate_json_raw(concept)?
+            };
+            concepts.push(query_payload(document)?);
+        }
+
+        for &sub in named {
+            let mut row = Vec::with_capacity(named.len());
+            for &sup in named {
+                let satisfiable = self
+                    .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
+                    .ok_or_else(|| {
+                        "HT subsumption probe left the certified fragment".to_string()
+                    })?;
+                let document = if satisfiable {
+                    self.lean_non_subsumption_certificate_json_raw(sub, sup)?
+                } else {
+                    self.lean_subsumption_certificate_json_raw(sub, sup)?
+                };
+                row.push(query_payload(document)?);
+            }
+            subsumptions.push(row);
+        }
+
+        let shared = shared.ok_or_else(|| "HT cardinality taxonomy has no evidence".to_string())?;
+        concept_count = concept_count.max(
+            named
+                .iter()
+                .map(|&concept| concept as u64 + 1)
+                .max()
+                .unwrap_or(0),
+        );
+        let inner = &shared["certificate"];
+        let payload = serde_json::to_string(&serde_json::json!({
+            "version": 5,
+            "concept_count": concept_count,
+            "role_count": inner["role_count"],
+            "variable_count": inner["variable_count"],
+            "ontology": inner["ontology"],
+            "definitions": shared["definitions"],
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concepts": concepts,
+            "subsumptions": subsumptions,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.wrap_normalized_cardinality_taxonomy_certificate(payload)
+    }
+
     /// Produce a complete checker-ready named taxonomy. Every concept and every
     /// ordered pair receives either a bounded refutation or a checked finite
     /// countermodel. Failure of any cell rejects the entire matrix.
@@ -9752,6 +9878,9 @@ impl Ht {
         let mut unique = HashSet::with_capacity(named.len());
         if !named.iter().all(|concept| unique.insert(*concept)) {
             return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
+        }
+        if !self.card_defs.is_empty() {
+            return self.lean_cardinality_taxonomy_certificate_json(named);
         }
 
         let payload = |document: String| -> Result<

@@ -2,6 +2,35 @@
 
 ## [unreleased]
 
+## [0.3.59] – 2026-08-20
+
+### Certify complete HT taxonomies with cardinality definitions
+
+- Define concept-status and subsumption decisions over the combined ontology
+  and cardinality-definition semantics, then require one decision for every
+  named concept and every ordered named pair.
+- Add a bounds-checked taxonomy wire with one shared ontology and one shared
+  cardinality-definition list. Query cells carry only their equality state,
+  evidence, and optional ordinary or distinct-aware refutation tree, so no cell
+  can substitute different bounds or axioms.
+- Prove that every accepted finite matrix yields a complete cardinality-aware
+  taxonomy. Missing rows, missing cells, duplicate named concepts, misplaced
+  query evidence, malformed definitions, and rejected models all fail closed.
+- Transfer the complete taxonomy through checked body-equality normalization
+  and preprocessing equivalence while preserving the shared cardinality
+  definitions.
+- Extend the native taxonomy checker with direct version-5 and normalized
+  version-6/7 documents.
+- Make Rust produce the shared matrix from its per-query cardinality models and
+  refutations, verify shared fields across all cells, and publish classification
+  results only after both global and taxonomy Lean checkers accept them.
+- Add native-decision malformed-matrix tests and an end-to-end normalized
+  `tableau_cli` test using first-class cardinality side data.
+
+This release certifies complete cardinality taxonomies when the finite HT
+searches terminate and produce evidence. A general HT termination and total
+evidence-production proof remains the next HT milestone.
+
 ## [0.3.58] – 2026-08-20
 
 ### Produce and check global HT cardinality certificates
