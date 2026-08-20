@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.63] – 2026-08-20
+
+### Connect certified HT to finite role-sensitive blocking
+
+- Define the full pairwise blocking signature in Lean: the blocked node's
+  signed label, its predecessor's signed label, and the sets of roles connecting
+  them in both directions.
+- Prove that equal signatures preserve all four semantic components and yield a
+  valid signed-label blocker.
+- Prove that every predecessor path longer than the finite full-signature
+  vocabulary contains an earlier exact pairwise blocker.
+- Add certification-only Rust blocking mode 6, which uses the same full signed
+  bidirectional signature and only direct blockers. It does not use mode 4's
+  indirect inverse-role optimization, so every suppressed node has an explicit
+  finite fold witness.
+- Make `Ht::new_certified` select mode 6. SAT evidence materializes each direct
+  blocker continuation as ordinary graph edges, after which the existing Lean
+  checker still validates every witness and guarded grounding without trusting
+  the blocker choice.
+- Keep all default and benchmark blocking modes unchanged.
+
+This connects certified SAT production to the finite role-sensitive blocking
+vocabulary. A complete Rust refinement still needs checked exhaustive
+obstruction enumeration for UNSAT branches; the independent refutation producer
+retains its fail-closed node cap.
+
 ## [0.3.62] – 2026-08-20
 
 ### Prove the HT terminal-state model dichotomy

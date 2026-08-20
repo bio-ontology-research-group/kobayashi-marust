@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.62`.
+`v0.3.63`.
 
 ## Classify an ontology
 
@@ -173,7 +173,8 @@ worker emits finite SAT evidence when
 `KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
 It publishes global consistency only after Lean accepts the exact normalized
 clauses and terminal model, and otherwise fails closed. For default
-anywhere-subset blocking, Rust materializes the finite fold as ordinary edges;
+certification-only full pairwise blocking, Rust materializes each direct finite
+fold as ordinary edges;
 Lean exhaustively checks the folded graph, so blocker selection remains outside
 the trust boundary. For inconsistent clause sets admitting a bounded finite
 refutation, Rust independently constructs an exhaustive empty-root tree over

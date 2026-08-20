@@ -9480,9 +9480,9 @@ impl Ht {
         if self.ext.unsupported {
             return Err("cannot certify an unsupported hypertableau state".to_string());
         }
-        if !self.anywhere || self.block_mode != 1 {
+        if !self.anywhere || !matches!(self.block_mode, 1 | 6) {
             return Err(
-                "HT Lean SAT certificate v1 supports default anywhere-subset blocking only"
+                "HT Lean SAT certificate supports anywhere subset or certified full-pairwise blocking only"
                     .to_string(),
             );
         }
@@ -9566,20 +9566,38 @@ impl Ht {
         // it exhaustively checks the resulting finite graph against every
         // ontology grounding, so a wrong fold is rejected rather than assumed.
         let mut blocked_by = vec![None; self.ext.num_nodes()];
-        let mut unblocked: Vec<Node> = Vec::new();
-        for node in 0..self.ext.num_nodes() {
-            let label = &self.ext.concepts[node];
-            if self.ext.blockable[node] && !label.is_empty() {
-                blocked_by[node] = unblocked.iter().copied().find(|&candidate| {
-                    let candidate_label = &self.ext.concepts[candidate];
-                    candidate_label.len() >= label.len()
-                        && label
-                            .keys()
-                            .all(|literal| candidate_label.contains_key(literal))
-                });
+        if self.block_mode == 6 {
+            let mut signatures: HashMap<Vec<u64>, Node> = HashMap::new();
+            for node in 0..self.ext.num_nodes() {
+                if !self.ext.blockable[node] {
+                    continue;
+                }
+                let Some(parent) = self.ext.pred[node] else {
+                    continue;
+                };
+                let signature = self.ext.i3_signature_full(node, parent);
+                if let Some(&blocker) = signatures.get(&signature) {
+                    blocked_by[node] = Some(blocker);
+                } else {
+                    signatures.insert(signature, node);
+                }
             }
-            if blocked_by[node].is_none() {
-                unblocked.push(node);
+        } else {
+            let mut unblocked: Vec<Node> = Vec::new();
+            for node in 0..self.ext.num_nodes() {
+                let label = &self.ext.concepts[node];
+                if self.ext.blockable[node] && !label.is_empty() {
+                    blocked_by[node] = unblocked.iter().copied().find(|&candidate| {
+                        let candidate_label = &self.ext.concepts[candidate];
+                        candidate_label.len() >= label.len()
+                            && label
+                                .keys()
+                                .all(|literal| candidate_label.contains_key(literal))
+                    });
+                }
+                if blocked_by[node].is_none() {
+                    unblocked.push(node);
+                }
             }
         }
         for (node, blocker) in blocked_by.into_iter().enumerate() {
@@ -10129,7 +10147,13 @@ impl Ht {
     /// contrapositives remain enabled when requested because their source
     /// correspondence is carried in the version-4 Lean evidence.
     pub fn new_certified(clauses: Vec<Clause>) -> Ht {
-        Self::new_with_harvest(clauses, false)
+        let mut ht = Self::new_with_harvest(clauses, false);
+        // Certification uses full-label bidirectional pairwise blocking. Unlike
+        // the production mode-4 inverse optimization, mode 6 has no indirect
+        // blocking: every suppressed node carries an explicit earlier signature
+        // witness matching Lean's finite `RoleBlockingSignature` exactly.
+        ht.block_mode = 6;
+        ht
     }
 
     fn new_with_harvest(clauses: Vec<Clause>, harvest_enabled: bool) -> Ht {
@@ -10879,7 +10903,7 @@ impl Ht {
                     blocked[n] = true;
                 }
             }
-        } else if mode == 4 {
+        } else if mode == 4 || mode == 6 {
             // DOUBLE BLOCKING (mode 4): the SOUND SHIQ pairwise condition for
             // ontologies WITH inverse roles (Horrocks/Sattler/Tobies). Block n by
             // the first earlier unblocked node with an identical FULL-label
@@ -10907,6 +10931,13 @@ impl Ht {
                 if !seen.insert(sig) {
                     blocked[n] = true;
                 }
+            }
+            // Mode 6 is the proof-producing direct variant: the finite signature
+            // theorem supplies an exact earlier blocker for every sufficiently
+            // long inverse-free path, and each blocked node therefore has explicit
+            // fold evidence. Mode 4 keeps the indirect inverse-role optimization.
+            if mode == 6 {
+                return blocked;
             }
             // INDIRECT blocking (Horrocks/Sattler/Tobies): a node with a (directly
             // or indirectly) blocked predecessor is itself blocked and must not be
@@ -18268,6 +18299,25 @@ mod tests {
 
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
     // (task #11 foundation; full-label bidirectional pairwise blocking)
+
+    #[test]
+    fn certified_mode6_uses_direct_full_pairwise_blocking() {
+        let cls = vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+        ];
+        let mut ht = Ht::new_certified(cls);
+        assert_eq!(ht.block_mode, 6);
+        assert_eq!(ht.consistent(&[]), Some(true));
+        assert!(
+            ht.compute_blocked().into_iter().any(|blocked| blocked),
+            "the cyclic certified model must have an explicit direct blocker"
+        );
+        assert!(
+            ht.lean_sat_certificate_json().is_ok(),
+            "the direct full-pairwise fold must materialize a checked finite model"
+        );
+    }
 
     #[test]
     fn mode4_terminates_on_inverse_cycle() {

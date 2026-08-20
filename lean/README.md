@@ -243,8 +243,10 @@ closed equality-aware refutations. Complete equality-aware taxonomy batch
 evidence remains fail-closed.
 
 The production Rust worker emits checker-gated global SAT evidence for
-equality-free ALC(H) and materializes default anywhere-subset blocking folds as
-ordinary candidate edges. It also emits exhaustive global UNSAT refutations
+equality-free ALC(H). Its certified constructor uses direct full-label pairwise
+blocking, including predecessor labels and bidirectional connecting-role sets,
+and materializes those folds as ordinary candidate edges. It also emits
+exhaustive global UNSAT refutations
 when bounded finite search closes over concept, role, existential, and equality
 facts.
 It can also emit individual subsumption and unsatisfiable-concept refutations,
@@ -278,9 +280,11 @@ strict branch updates and finitely many duplicate-free progress traces. The
 Rust producer enforces that strict-progress premise at every recursive
 certificate call. `HypertableauTerminal.lean` proves that every branch exposes a
 clash, an unwitnessed existential, an undischarged grounding, or an exact
-canonical model. Rust obstruction-enumeration and role-sensitive blocking
-refinement, inverse roles, nominals, and native ABoxes remain to be connected
-or proved.
+canonical model. `HypertableauRoleBlocking.lean` proves the certified full
+pairwise signature is finite and repeats on long paths, and the Rust certified
+constructor uses the corresponding direct blocking mode. Checked exhaustive
+Rust obstruction enumeration, inverse roles, nominals, and native ABoxes remain
+to be connected or proved.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
 
