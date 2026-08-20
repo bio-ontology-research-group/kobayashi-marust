@@ -41,11 +41,12 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.129`. This milestone adds a bounded native JSON checker proving that one
-finite-slot, nominal-aware anchored equality model satisfies its ontology and
-all minimum and maximum cardinality definitions. Taxonomy composition and Rust
-production of this certificate remain incomplete. It does not certify the
-entire Rust executable or automatic routing.
+`v0.3.130`. This milestone lets the Rust HT producer publish bounded anchored
+equality/cardinality countermodels inside complete taxonomy matrices. Lean
+checks the shared ontology, cardinality definitions, dimensions, source query
+labels, nominal roots, and explicit successor slots before accepting a negative
+cell. Complete runtime-transition correspondence remains unfinished. This does
+not certify the entire Rust executable or automatic routing.
 
 ## Classify an ontology
 
@@ -291,9 +292,9 @@ with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
 The worker derives its published taxonomy directly from the accepted matrix and
 publishes nothing if either the global or taxonomy checker rejects. This covers
 the equality-free ALC(H) fragment and checker-accepted finite or anchored
-equality and nominal countermodels. Cardinality-aware anchored taxonomy models
-and complete correspondence between every Rust transition and the formal
-search remain unfinished. This is not a certificate for all HT inputs or for
+equality, nominal, and cardinality countermodels. Complete correspondence
+between every Rust transition and the formal search remains unfinished. This
+is not a certificate for all HT inputs or for
 automatic routing.
 
 The Lean development also proves semantic exactness of the direct

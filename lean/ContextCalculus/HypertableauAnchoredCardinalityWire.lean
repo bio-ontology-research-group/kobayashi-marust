@@ -30,6 +30,14 @@ structure DecodedAnchoredCardinalityEqCertificate where
   certificate : FiniteAnchoredCardinalityEqCertificate
     eqNodeCount regularNodeCount conceptCount roleCount variableCount
 
+structure DecodedAnchoredCardinalityEqCertificateAt
+    (conceptCount roleCount variableCount : Nat) where
+  eqNodeCount : Nat
+  regularNodeCount : Nat
+  positive : 0 < regularNodeCount
+  certificate : FiniteAnchoredCardinalityEqCertificate
+    eqNodeCount regularNodeCount conceptCount roleCount variableCount
+
 def WireAnchoredCardinalityEqCertificate.decode
     (wire : WireAnchoredCardinalityEqCertificate) :
     Except String DecodedAnchoredCardinalityEqCertificate := do
@@ -50,6 +58,38 @@ def WireAnchoredCardinalityEqCertificate.decode
     conceptCount := wire.concept_count
     roleCount := wire.role_count
     variableCount := wire.variable_count
+    positive := decodedAnchored.positive
+    certificate := {
+      anchored := decodedAnchored.certificate
+      slots := slots
+      definitions := definitions
+    }
+  }
+
+def WireAnchoredCardinalityEqCertificate.decodeAt
+    (wire : WireAnchoredCardinalityEqCertificate)
+    (conceptCount roleCount variableCount : Nat) :
+    Except String (DecodedAnchoredCardinalityEqCertificateAt
+      conceptCount roleCount variableCount) := do
+  if wire.version != 1 then
+    throw s!"unsupported anchored cardinality certificate version {wire.version}"
+  if wire.concept_count != conceptCount then
+    throw "anchored cardinality certificate concept count does not match its container"
+  if wire.role_count != roleCount then
+    throw "anchored cardinality certificate role count does not match its container"
+  if wire.variable_count != variableCount then
+    throw "anchored cardinality certificate variable count does not match its container"
+  let decodedAnchored ← wire.anchored.decodeAt conceptCount roleCount variableCount
+  let slots ← wire.slots.mapM fun slot => do
+    return (← checkedFin "slot source" decodedAnchored.regularNodeCount slot.source,
+      ← checkedFin "slot role" roleCount slot.role,
+      ← checkedFin "slot target" decodedAnchored.regularNodeCount slot.target,
+      slot.slot)
+  let definitions ← wire.definitions.mapM
+    (WireCardinalityDef.decode conceptCount roleCount)
+  return {
+    eqNodeCount := decodedAnchored.eqNodeCount
+    regularNodeCount := decodedAnchored.regularNodeCount
     positive := decodedAnchored.positive
     certificate := {
       anchored := decodedAnchored.certificate

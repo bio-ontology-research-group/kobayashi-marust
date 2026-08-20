@@ -10223,6 +10223,93 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Extend the dense anchored equality image with explicit successor slots
+    /// and the exact cardinality definitions. Slot zero covers every quotient
+    /// edge. Additional equality-state edges that collapse to the same dense
+    /// triple receive fresh slots, preserving anonymous minimum witnesses while
+    /// leaving nominal collapse for the Lean checker to reject when unsafe.
+    fn lean_anchored_cardinality_open_certificate_json(
+        &self,
+        equality_state: &LeanHtEqState,
+    ) -> Result<serde_json::Value, String> {
+        let anchored: serde_json::Value = serde_json::from_str(
+            &self.lean_anchored_equality_open_certificate_json(equality_state)?,
+        )
+        .map_err(|error| error.to_string())?;
+        let class_map = anchored
+            .get("class_map")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "anchored cardinality certificate has no class map".to_string())?;
+        let dense = |node: usize| -> Result<usize, String> {
+            class_map
+                .get(node)
+                .and_then(serde_json::Value::as_u64)
+                .map(|value| value as usize)
+                .ok_or_else(|| "anchored cardinality edge node is out of range".to_string())
+        };
+        let mut multiplicity: HashMap<(usize, usize, usize), usize> = HashMap::new();
+        for edge in &equality_state.edges {
+            *multiplicity
+                .entry((dense(edge.source)?, edge.role, dense(edge.target)?))
+                .or_default() += 1;
+        }
+        for edge in anchored["regular"]["edges"]
+            .as_array()
+            .ok_or_else(|| "anchored cardinality regular model has no edge array".to_string())?
+        {
+            let field = |name: &str| -> Result<usize, String> {
+                edge.get(name)
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|value| value as usize)
+                    .ok_or_else(|| format!("anchored cardinality edge has no {name}"))
+            };
+            multiplicity
+                .entry((field("source")?, field("role")?, field("target")?))
+                .or_insert(1);
+        }
+        let mut slots = Vec::new();
+        let mut triples: Vec<_> = multiplicity.into_iter().collect();
+        triples.sort_unstable_by_key(|&(triple, _)| triple);
+        for ((source, role, target), count) in triples {
+            for slot in 0..count {
+                slots.push(serde_json::json!({
+                    "source": source,
+                    "role": role,
+                    "target": target,
+                    "slot": slot,
+                }));
+            }
+        }
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions: Vec<_> = definitions
+            .into_iter()
+            .map(|(marker, definition)| {
+                serde_json::json!({
+                    "marker": marker,
+                    "minimum": definition.kind == CardKind::Min,
+                    "bound": definition.n,
+                    "role": definition.role,
+                    "filler": definition.filler.c,
+                })
+            })
+            .collect();
+        let (variable_count, concept_count, role_count, _) = self.lean_decision_signature();
+        Ok(serde_json::json!({
+            "version": 1,
+            "concept_count": concept_count,
+            "role_count": role_count,
+            "variable_count": variable_count,
+            "anchored": anchored,
+            "slots": slots,
+            "definitions": definitions,
+        }))
+    }
+
     fn lean_regular_decision_envelope(
         payload: String,
         satisfiable: bool,
@@ -11515,6 +11602,9 @@ impl Ht {
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
                         let node_count = state.representatives.len();
+                        let anchored = self
+                            .lean_anchored_cardinality_open_certificate_json(&state)
+                            .ok();
                         let equality = serde_json::to_string(&LeanHtEqCertificate {
                             version: 2,
                             node_count,
@@ -11526,7 +11616,17 @@ impl Ht {
                             evidence: query.equality_open_evidence(),
                         })
                         .map_err(|error| error.to_string())?;
-                        return Ok((true, self.wrap_cardinality_lean_certificate(equality)?));
+                        let wrapped = self.wrap_cardinality_lean_certificate(equality)?;
+                        let mut document: serde_json::Value = serde_json::from_str(&wrapped)
+                            .map_err(|error| error.to_string())?;
+                        if let Some(anchored) = anchored {
+                            document["anchored"] = anchored;
+                        }
+                        return Ok((
+                            true,
+                            serde_json::to_string(&document)
+                                .map_err(|error| error.to_string())?,
+                        ));
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                         return Err("taxonomy query reached the configured cardinality node cap"
@@ -12296,6 +12396,7 @@ impl Ht {
                 "refutation": full.get("refutation").cloned().unwrap_or(serde_json::Value::Null),
                 "distinct_refutation_depth": full.get("distinct_refutation_depth").cloned().unwrap_or_else(|| serde_json::json!(0)),
                 "distinct_refutation": full.get("distinct_refutation").cloned().unwrap_or(serde_json::Value::Null),
+                "anchored": full.get("anchored").cloned().unwrap_or(serde_json::Value::Null),
             }))
         };
 
@@ -22915,6 +23016,8 @@ mod tests {
             vec![con(false, D, X)],
             vec![con(false, A, X), Atom::Eq { s: X, t: X }],
         )]);
+        let mut cardinality = ht(Vec::new());
+        cardinality.set_card_defs_raw(&[(A, true, 1, R0, B)]);
         let documents = [
             plain
                 .lean_taxonomy_certificate_json(&[A, B])
@@ -22922,6 +23025,9 @@ mod tests {
             mixed
                 .lean_taxonomy_certificate_json(&[A, B])
                 .expect("produce complete mixed equality taxonomy"),
+            cardinality
+                .lean_taxonomy_certificate_json(&[A, B])
+                .expect("produce complete anchored cardinality taxonomy"),
         ];
         let mixed_wire: serde_json::Value =
             serde_json::from_str(&documents[1]).expect("mixed taxonomy is JSON");
@@ -22935,6 +23041,21 @@ mod tests {
                 .as_array()
                 .is_some_and(|cells| cells.iter().any(|cell| cell.get("anchored").is_some())),
             "blocked equality taxonomy cells must publish anchored countermodels"
+        );
+        let cardinality_wire: serde_json::Value =
+            serde_json::from_str(&documents[2]).expect("cardinality taxonomy is JSON");
+        let cardinality_payload = if cardinality_wire["version"] == 6
+            || cardinality_wire["version"] == 7
+        {
+            &cardinality_wire["certificate"]
+        } else {
+            &cardinality_wire
+        };
+        assert!(
+            cardinality_payload["concepts"]
+                .as_array()
+                .is_some_and(|cells| cells.iter().any(|cell| !cell["anchored"].is_null())),
+            "cardinality taxonomy cells must publish anchored fallback countermodels"
         );
         for document in &documents {
             std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");

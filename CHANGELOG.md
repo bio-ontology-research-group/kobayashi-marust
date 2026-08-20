@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.130] – 2026-08-20
+
+### Certify anchored cardinality taxonomy countermodels
+
+- Extend cardinality taxonomy cells with an optional bounded anchored
+  equality/cardinality model. Positive cells retain the existing finite
+  refutation evidence.
+- Prove checker acceptance turns anchored positive/negative source labels into
+  satisfiable-concept and non-subsumption countermodels for the same ontology
+  and cardinality definitions.
+- Pin anchored cell decoding to the taxonomy's exact concept, role, and
+  variable dimensions. A rejected optional model falls back to the existing
+  finite cell, so adding the candidate cannot remove prior certified coverage.
+- Generate explicit slots from Rust equality-state edges, preserve multiplicity
+  after quotient collapse, and add slot-zero coverage for regular blocker-fold
+  edges.
+- Exercise the Rust producer with a minimum-cardinality taxonomy and require
+  the native Lean taxonomy checker to accept the complete generated matrix.
+
+This closes checker-gated publication of anchored cardinality countermodels in
+HT taxonomy cells. Complete runtime-transition correspondence and the
+remaining HT runtime features remain certification tasks. It does not certify
+the complete HT runtime or automatic router.
+
 ## [0.3.129] – 2026-08-20
 
 ### Bound and execute anchored cardinality certificates

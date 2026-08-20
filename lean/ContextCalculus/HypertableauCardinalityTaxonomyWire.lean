@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauCardinalityWire
+import ContextCalculus.HypertableauAnchoredCardinalityWire
 import ContextCalculus.HypertableauMixedTaxonomyWire
 import ContextCalculus.HypertableauEqualityNormalizationWire
 import ContextCalculus.HypertableauNormalizedWire
@@ -81,6 +82,7 @@ structure WireCardinalityQueryPayload where
   refutation : Option WireCardinalityEqRefutationTree := none
   distinct_refutation_depth : Nat := 0
   distinct_refutation : Option WireDistinctCardinalityRefutationTree := none
+  anchored : Option WireAnchoredCardinalityEqCertificate := none
 deriving FromJson, ToJson, Repr
 
 structure WireCardinalityTaxonomyCertificate where
@@ -209,12 +211,115 @@ private def WireCardinalityQueryPayload.decode
     exact certificateOntology
   return ⟨payload.node_count, evidence, sameOntology, refutation, distinctRefutation⟩
 
+private def decodeAnchoredCardinalityConcept
+    (wire : WireAnchoredCardinalityEqCertificate) (evidence : WireEqEvidence)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (expected : Fin conceptCount) :
+    Except String (CardinalityConceptDecision ontology definitions expected) := do
+  let decoded ← wire.decodeAt conceptCount roleCount variableCount
+  let certificate := decoded.certificate
+  if hontology : certificate.anchored.equality.base.ontology = ontology then
+    if hdefinitions : certificate.definitions = definitions then
+      match evidence with
+      | .satisfiable_concept root concept =>
+          let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
+          let concept ← checkedFin "concept" conceptCount concept
+          if hconcept : concept = expected then
+            if hlabel : (root, .pos expected) ∈ certificate.anchored.equality.base.labels then
+              if hmodel : certificate.check = true then
+                letI : NeZero decoded.regularNodeCount :=
+                  ⟨Nat.ne_of_gt decoded.positive⟩
+                let I := AnchoredForestDomain.interpretation
+                  certificate.anchored.regular.state certificate.anchored.regular.redirect
+                  certificate.slotAllowed
+                  (AnchoredForestDomain.NominalAnchor certificate.anchored.nominalRoot)
+                  certificate.anchored.regular.rules certificate.anchored.nominalRoot
+                let value := AnchoredForestDomain.root certificate.anchored.regular.state
+                  certificate.anchored.regular.redirect certificate.slotAllowed
+                  (AnchoredForestDomain.NominalAnchor certificate.anchored.nominalRoot)
+                  (certificate.anchored.classMap root)
+                have hmodels := certificate.check_models hmodel
+                have hsatisfies : I.concept expected value := by
+                  simpa [Interp.satLit] using
+                    certificate.check_sat_source_label hmodel root (.pos expected) hlabel
+                return .satisfiable (by
+                  intro hunsat
+                  exact hunsat _ I (hontology ▸ hmodels.1)
+                    (hdefinitions ▸ hmodels.2) value hsatisfies)
+              else throw "anchored cardinality concept model was rejected"
+            else throw "anchored cardinality concept model omits its declared root label"
+          else throw "anchored cardinality concept evidence is in the wrong matrix position"
+      | _ => throw "expected anchored cardinality concept countermodel evidence"
+    else throw "anchored cardinality concept model has different definitions"
+  else throw "anchored cardinality concept model has a different ontology"
+
+private def decodeAnchoredCardinalitySubsumption
+    (wire : WireAnchoredCardinalityEqCertificate) (evidence : WireEqEvidence)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (expectedSub expectedSup : Fin conceptCount) :
+    Except String (CardinalitySubsumptionDecision ontology definitions expectedSub expectedSup) := do
+  let decoded ← wire.decodeAt conceptCount roleCount variableCount
+  let certificate := decoded.certificate
+  if hontology : certificate.anchored.equality.base.ontology = ontology then
+    if hdefinitions : certificate.definitions = definitions then
+      match evidence with
+      | .non_subsumption root sub sup =>
+          let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
+          let sub ← checkedFin "concept" conceptCount sub
+          let sup ← checkedFin "concept" conceptCount sup
+          if hsub : sub = expectedSub then
+            if hsup : sup = expectedSup then
+              if hsubLabel : (root, .pos expectedSub) ∈
+                  certificate.anchored.equality.base.labels then
+                if hnotSupLabel : (root, .negated expectedSup) ∈
+                    certificate.anchored.equality.base.labels then
+                  if hmodel : certificate.check = true then
+                    letI : NeZero decoded.regularNodeCount :=
+                      ⟨Nat.ne_of_gt decoded.positive⟩
+                    let I := AnchoredForestDomain.interpretation
+                      certificate.anchored.regular.state
+                      certificate.anchored.regular.redirect certificate.slotAllowed
+                      (AnchoredForestDomain.NominalAnchor certificate.anchored.nominalRoot)
+                      certificate.anchored.regular.rules certificate.anchored.nominalRoot
+                    let value := AnchoredForestDomain.root
+                      certificate.anchored.regular.state
+                      certificate.anchored.regular.redirect certificate.slotAllowed
+                      (AnchoredForestDomain.NominalAnchor certificate.anchored.nominalRoot)
+                      (certificate.anchored.classMap root)
+                    have hmodels := certificate.check_models hmodel
+                    have hsubSat : I.concept expectedSub value := by
+                      simpa [Interp.satLit] using
+                        certificate.check_sat_source_label hmodel root
+                          (.pos expectedSub) hsubLabel
+                    have hnotSup : ¬I.concept expectedSup value := by
+                      simpa [Interp.satLit] using
+                        certificate.check_sat_source_label hmodel root
+                          (.negated expectedSup) hnotSupLabel
+                    return .notEntailed (by
+                      intro hentails
+                      exact hnotSup (hentails _ I (hontology ▸ hmodels.1)
+                        (hdefinitions ▸ hmodels.2) value hsubSat))
+                  else throw "anchored cardinality subsumption model was rejected"
+                else throw "anchored cardinality countermodel omits the negative superclass"
+              else throw "anchored cardinality countermodel omits the subclass"
+            else throw "anchored cardinality non-subsumption evidence has the wrong superclass"
+          else throw "anchored cardinality non-subsumption evidence has the wrong subclass"
+      | _ => throw "expected anchored cardinality subsumption countermodel evidence"
+    else throw "anchored cardinality subsumption model has different definitions"
+  else throw "anchored cardinality subsumption model has a different ontology"
+
 private def decodeCardinalityConcept
     (payload : WireCardinalityQueryPayload)
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
     (expected : Fin conceptCount) :
     Except String (CardinalityConceptDecision ontology definitions expected) := do
+  if let some anchored := payload.anchored then
+    match decodeAnchoredCardinalityConcept anchored payload.evidence ontology definitions expected with
+    | .ok decision => return decision
+    | .error _ => pure ()
   let decoded ← payload.decode ontology definitions
   let certificate := decoded.certificate
   if hcheck : certificate.check = true then
@@ -258,6 +363,11 @@ private def decodeCardinalitySubsumption
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
     (expectedSub expectedSup : Fin conceptCount) :
     Except String (CardinalitySubsumptionDecision ontology definitions expectedSub expectedSup) := do
+  if let some anchored := payload.anchored then
+    match decodeAnchoredCardinalitySubsumption anchored payload.evidence ontology definitions
+        expectedSub expectedSup with
+    | .ok decision => return decision
+    | .error _ => pure ()
   let decoded ← payload.decode ontology definitions
   let certificate := decoded.certificate
   if hcheck : certificate.check = true then
@@ -571,7 +681,62 @@ private def accepted : WireCardinalityTaxonomyCertificate where
   concepts := [conceptPayload]
   subsumptions := [[subsumptionPayload]]
 
+private def anchoredCardinalityCertificate : WireAnchoredCardinalityEqCertificate where
+  version := 1
+  concept_count := 1
+  role_count := 1
+  variable_count := 2
+  anchored := {
+    version := 1
+    equality_node_count := 2
+    regular := {
+      version := 1
+      node_count := 1
+      concept_count := 1
+      role_count := 1
+      variable_count := 2
+      labels := [{ node := 0, literal := { concept := 0, neg := false } }]
+      edges := []
+      obligations := []
+      redirect := [0]
+      cover := []
+      sub_roles := []
+      inverse_roles := []
+      chains := []
+      reflexive_roles := []
+      role_clauses := []
+      residual := []
+    }
+    equality_ontology := []
+    equality_state := {
+      labels := [{ node := 1, literal := { concept := 0, neg := false } }]
+      edges := []
+      obligations := []
+      equalities := [{ left := 0, right := 1 }]
+      representatives := [0, 0]
+      representative_paths := [[], [0]]
+    }
+    class_map := [0, 0]
+    nominal_roots := [none]
+  }
+  slots := []
+  definitions := [minimumZero]
+
+private def anchoredConceptPayload : WireCardinalityQueryPayload :=
+  { conceptPayload with
+    anchored := some anchoredCardinalityCertificate
+    evidence := .satisfiable_concept 1 0 }
+
+private def anchoredAccepted : WireCardinalityTaxonomyCertificate :=
+  { accepted with ontology := [], concepts := [anchoredConceptPayload] }
+
 example : accepted.check = true := by native_decide
+example : anchoredAccepted.check = true := by native_decide
+example : ({ anchoredAccepted with definitions := [
+    { minimumZero with bound := 1 }] }).check = false := by native_decide
+example : ({ anchoredAccepted with concepts := [
+    { anchoredConceptPayload with evidence := .satisfiable_concept 0 0 }] }).check = true := by
+  native_decide
 example : ({ accepted with concepts := [] }).check = false := by native_decide
 example : ({ accepted with subsumptions := [] }).check = false := by native_decide
 example : ({ accepted with named := [0, 0] }).check = false := by native_decide
