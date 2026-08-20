@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.78] – 2026-08-20
+
+### Add checked blocked terminals to equality-free HT evidence search
+
+- Track existential creation predecessors in the certification-only
+  equality-free refutation state.
+- Detect ancestor blocking with the exact signed full pairwise signature used
+  by Lean: node label, predecessor label, forward predecessor roles, and
+  backward predecessor roles.
+- Saturate all clause groundings before skipping blocked existential sources;
+  continue any unblocked obligations instead of treating one blocked source as
+  a terminal.
+- Return blocked open leaves with their complete labels, edges, obligations,
+  node count, and deduplicated `(blocked, blocker)` fold plan.
+- Materialize each fold as ordinary finite edges and emit an untrusted SAT
+  candidate for the existing Lean checker.
+- Verify adversarial signature differences and a cyclic existential model. The
+  native Lean checker accepts the three-node cycle with fold `(2, 1)`.
+
+The standalone UNSAT API still declines on an open leaf. Total-route
+composition must connect this checked open candidate to SAT publication and
+prove that every non-frontier terminal is conclusive.
+
 ## [0.3.77] – 2026-08-20
 
 ### Derive the finite equality-free HT decision capstone

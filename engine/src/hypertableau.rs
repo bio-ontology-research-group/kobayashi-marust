@@ -2461,8 +2461,16 @@ enum LeanHtRefutationTree {
 
 enum LeanHtRefutationOutcome {
     Closed(LeanHtRefutationTree, usize),
-    Open,
+    Open(LeanHtBlockedOpenLeaf),
     Frontier,
+}
+
+struct LeanHtBlockedOpenLeaf {
+    node_count: usize,
+    labels: Vec<(Node, CLit)>,
+    edges: Vec<(R, Node, Node)>,
+    obligations: Vec<(R, CLit, Node)>,
+    folds: Vec<(Node, Node)>,
 }
 
 #[derive(Clone, Copy, serde::Serialize)]
@@ -2672,6 +2680,10 @@ struct LeanHtRefutationState {
     apart: Vec<(Node, Node)>,
     minimums: HashSet<(usize, Node)>,
     active_nodes: usize,
+    /// Creation predecessor for the equality-free certificate search. Roots
+    /// have `None`; fresh existential witnesses append `Some(source)`. Other
+    /// certificate producers do not consult this certification-only field.
+    witness_parent: Vec<Option<Node>>,
 }
 
 /// Lazy row-major enumeration of all assignments from the finite variable
@@ -2732,6 +2744,88 @@ impl LeanHtRefutationState {
             apart: Vec::new(),
             minimums: HashSet::new(),
             active_nodes: 1,
+            witness_parent: vec![None],
+        }
+    }
+
+    fn same_pairwise_signature(&self, left: Node, right: Node) -> bool {
+        let labels_equal = |a: Node, b: Node| {
+            self.labels
+                .iter()
+                .filter(|(node, _)| *node == a)
+                .all(|(_, literal)| self.labels.contains(&(b, *literal)))
+                && self
+                    .labels
+                    .iter()
+                    .filter(|(node, _)| *node == b)
+                    .all(|(_, literal)| self.labels.contains(&(a, *literal)))
+        };
+        if !labels_equal(left, right) {
+            return false;
+        }
+        let (Some(left_parent), Some(right_parent)) = (
+            self.witness_parent.get(left).copied().flatten(),
+            self.witness_parent.get(right).copied().flatten(),
+        ) else {
+            return false;
+        };
+        if !labels_equal(left_parent, right_parent) {
+            return false;
+        }
+        let roles_equal = |a_source: Node, a_target: Node, b_source: Node, b_target: Node| {
+            self.edges
+                .iter()
+                .filter(|(_, source, target)| *source == a_source && *target == a_target)
+                .all(|(role, _, _)| self.edges.contains(&(*role, b_source, b_target)))
+                && self
+                    .edges
+                    .iter()
+                    .filter(|(_, source, target)| *source == b_source && *target == b_target)
+                    .all(|(role, _, _)| self.edges.contains(&(*role, a_source, a_target)))
+        };
+        roles_equal(left_parent, left, right_parent, right)
+            && roles_equal(left, left_parent, right, right_parent)
+    }
+
+    fn pairwise_blocker_ancestor(&self, node: Node) -> Option<Node> {
+        let mut ancestor = self.witness_parent.get(node).copied().flatten();
+        while let Some(candidate) = ancestor {
+            if self.same_pairwise_signature(candidate, node) {
+                return Some(candidate);
+            }
+            ancestor = self.witness_parent.get(candidate).copied().flatten();
+        }
+        None
+    }
+
+    fn pairwise_blocked_by_ancestor(&self, node: Node) -> bool {
+        self.pairwise_blocker_ancestor(node).is_some()
+    }
+
+    fn blocked_open_leaf(&self) -> LeanHtBlockedOpenLeaf {
+        let mut folds: Vec<(Node, Node)> = self
+            .obligations
+            .iter()
+            .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
+            .filter_map(|&(_, _, source)| {
+                self.pairwise_blocker_ancestor(source)
+                    .map(|blocker| (source, blocker))
+            })
+            .collect();
+        folds.sort_unstable();
+        folds.dedup();
+        let mut labels: Vec<_> = self.labels.iter().copied().collect();
+        labels.sort_unstable();
+        let mut edges: Vec<_> = self.edges.iter().copied().collect();
+        edges.sort_unstable();
+        let mut obligations: Vec<_> = self.obligations.iter().copied().collect();
+        obligations.sort_unstable();
+        LeanHtBlockedOpenLeaf {
+            node_count: self.active_nodes,
+            labels,
+            edges,
+            obligations,
+            folds,
         }
     }
 
@@ -8697,7 +8791,7 @@ impl Ht {
                 let mut max_used = state.active_nodes;
                 for atom in &clause.head {
                     if matches!(atom, Atom::Eq { .. }) {
-                        return LeanHtRefutationOutcome::Open;
+                        return LeanHtRefutationOutcome::Open(state.blocked_open_leaf());
                     }
                     let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, &assignment);
@@ -8710,7 +8804,9 @@ impl Ht {
                     state.remove(atom, &assignment);
                     let (child, child_used) = match result {
                         LeanHtRefutationOutcome::Closed(child, child_used) => (child, child_used),
-                        LeanHtRefutationOutcome::Open => return LeanHtRefutationOutcome::Open,
+                        LeanHtRefutationOutcome::Open(leaf) => {
+                            return LeanHtRefutationOutcome::Open(leaf);
+                        }
                         LeanHtRefutationOutcome::Frontier => {
                             return LeanHtRefutationOutcome::Frontier;
                         }
@@ -8734,6 +8830,10 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            // Clause saturation has already reached a global fixpoint in this
+            // state. A repeated full pairwise predecessor signature may fold
+            // this source; continue searching for any unblocked obligation.
+            .filter(|&(_, _, source)| !state.pairwise_blocked_by_ancestor(source))
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -8742,6 +8842,7 @@ impl Ht {
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
             state.active_nodes += 1;
+            state.witness_parent.push(Some(source));
             let inserted_edge = state.edges.insert((role, source, target));
             let inserted_label = state.labels.insert((target, filler));
             debug_assert!(
@@ -8755,6 +8856,7 @@ impl Ht {
             let result = self.lean_refutation(state, variable_count, node_budget);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
+            state.witness_parent.pop();
             state.active_nodes -= 1;
             return match result {
                 LeanHtRefutationOutcome::Closed(child, max_used) => {
@@ -8769,12 +8871,116 @@ impl Ht {
                         max_used,
                     )
                 }
-                LeanHtRefutationOutcome::Open => LeanHtRefutationOutcome::Open,
+                LeanHtRefutationOutcome::Open(leaf) => LeanHtRefutationOutcome::Open(leaf),
                 LeanHtRefutationOutcome::Frontier => LeanHtRefutationOutcome::Frontier,
             };
         }
 
-        LeanHtRefutationOutcome::Open
+        LeanHtRefutationOutcome::Open(state.blocked_open_leaf())
+    }
+
+    /// Materialize an untrusted blocked leaf as an ordinary finite SAT graph.
+    /// The Lean checker validates every ontology grounding and obligation, so a
+    /// wrong blocker or missing copied edge makes this candidate reject.
+    fn lean_blocked_open_certificate_json(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        evidence: LeanHtEvidence,
+    ) -> Result<String, String> {
+        let mut variable_count = self.lean_source_variable_count();
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1).max(*t as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { .. } => {
+                        return Err(
+                            "blocked equality-free HT leaf contains an equality atom".to_string()
+                        );
+                    }
+                }
+            }
+        }
+        let ontology = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        let labels = leaf
+            .labels
+            .iter()
+            .map(|&(node, literal)| {
+                concept_count = concept_count.max(literal.c as usize + 1);
+                LeanHtLabel {
+                    node,
+                    literal: Self::lean_wire_lit(literal),
+                }
+            })
+            .collect();
+        let mut materialized_edges = leaf.edges.clone();
+        for &(blocked, blocker) in &leaf.folds {
+            materialized_edges.extend(
+                leaf.edges
+                    .iter()
+                    .filter(|(_, source, _)| *source == blocker)
+                    .map(|&(role, _, target)| (role, blocked, target)),
+            );
+        }
+        materialized_edges.sort_unstable();
+        materialized_edges.dedup();
+        let edges = materialized_edges
+            .into_iter()
+            .map(|(role, source, target)| {
+                role_count = role_count.max(role as usize + 1);
+                LeanHtEdge {
+                    role: role as usize,
+                    source,
+                    target,
+                }
+            })
+            .collect();
+        let obligations = leaf
+            .obligations
+            .iter()
+            .map(|&(role, filler, node)| {
+                concept_count = concept_count.max(filler.c as usize + 1);
+                role_count = role_count.max(role as usize + 1);
+                LeanHtObligation {
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    node,
+                }
+            })
+            .collect();
+        serde_json::to_string(&LeanHtCertificate {
+            version: 1,
+            node_count: leaf.node_count,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            labels,
+            edges,
+            obligations,
+            evidence,
+        })
+        .map_err(|error| error.to_string())
     }
 
     fn lean_eq_refutation(
@@ -9482,7 +9688,7 @@ impl Ht {
             let mut state = LeanHtRefutationState::root(initial_labels);
             match self.lean_refutation(&mut state, variable_count, node_budget) {
                 LeanHtRefutationOutcome::Closed(tree, node_count) => break (tree, node_count),
-                LeanHtRefutationOutcome::Open => {
+                LeanHtRefutationOutcome::Open(_) => {
                     return Err("ontology has an open refutation branch".to_string());
                 }
                 LeanHtRefutationOutcome::Frontier if !deepen => {
@@ -19848,7 +20054,7 @@ mod tests {
         let mut open_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
             open.lean_refutation(&mut open_state, 0, 1),
-            LeanHtRefutationOutcome::Open
+            LeanHtRefutationOutcome::Open(_)
         ));
 
         let mut frontier_state = LeanHtRefutationState::root(&[]);
@@ -19860,16 +20066,81 @@ mod tests {
     }
 
     #[test]
-    fn equality_free_refutation_frontiers_on_an_unblocked_satisfiable_cycle() {
+    fn equality_free_refutation_pairwise_blocks_a_satisfiable_cycle() {
         let cyclic = Ht::new_certified(vec![Clause::new(
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
         )]);
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
-        assert!(matches!(
-            cyclic.lean_refutation(&mut state, 1, 4),
-            LeanHtRefutationOutcome::Frontier
-        ));
+        let LeanHtRefutationOutcome::Open(leaf) = cyclic.lean_refutation(&mut state, 1, 4) else {
+            panic!("the saturated cyclic branch must close with a blocked finite leaf");
+        };
+        assert_eq!(leaf.node_count, 3);
+        assert_eq!(leaf.folds, vec![(2, 1)]);
+        assert_eq!(leaf.labels.len(), 3);
+        assert_eq!(leaf.edges.len(), 2);
+        assert_eq!(leaf.obligations.len(), 3);
+        let raw_certificate = cyclic
+            .lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)
+            .expect("materialize the blocked leaf as a finite SAT candidate");
+        let certificate: serde_json::Value =
+            serde_json::from_str(&raw_certificate).expect("blocked finite SAT candidate is JSON");
+        assert!(certificate["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| { edge["role"] == R0 && edge["source"] == 2 && edge["target"] == 2 }));
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-blocked-open-cert-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(
+                &path,
+                cyclic
+                    .finalize_lean_certificate(raw_certificate)
+                    .expect("wrap the blocked SAT candidate with normalization evidence"),
+            )
+            .unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run the native Lean checker on the blocked SAT candidate")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(accepted, "Lean must accept the materialized blocked leaf");
+        }
+    }
+
+    #[test]
+    fn equality_free_refutation_blocking_signature_is_full_and_bidirectional() {
+        const R1: R = 1;
+        let a = lit(false, A);
+        let mut state = LeanHtRefutationState::root(&[(0, a)]);
+        state.active_nodes = 3;
+        state.witness_parent.extend([Some(0), Some(1)]);
+        state.labels.insert((1, a));
+        state.labels.insert((2, a));
+        state.edges.insert((R0, 0, 1));
+        state.edges.insert((R0, 1, 2));
+        assert!(state.pairwise_blocked_by_ancestor(2));
+
+        state.edges.remove(&(R0, 1, 2));
+        state.edges.insert((R1, 1, 2));
+        assert!(!state.pairwise_blocked_by_ancestor(2));
+
+        state.edges.remove(&(R1, 1, 2));
+        state.edges.insert((R0, 1, 2));
+        state.edges.insert((R1, 2, 1));
+        assert!(!state.pairwise_blocked_by_ancestor(2));
+        state.edges.insert((R1, 1, 0));
+        assert!(state.pairwise_blocked_by_ancestor(2));
+
+        state.labels.insert((0, lit(false, B)));
+        assert!(!state.pairwise_blocked_by_ancestor(2));
     }
 
     #[test]
