@@ -502,6 +502,69 @@ mutual
 end
 
 mutual
+  /-- The production quotient-closed checker accepts every tree accepted by the
+  earlier direct-premise checker. -/
+  theorem FiniteEqRefutationTree.check_implies_checkClosed
+      (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount) :
+      ∀ certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount,
+        tree.check certificate = true → tree.checkClosed certificate = true := by
+    cases tree with
+    | clash =>
+        intro certificate hcheck
+        simpa [FiniteEqRefutationTree.check, FiniteEqRefutationTree.checkClosed] using hcheck
+    | branch clause assignment children =>
+        intro certificate hcheck
+        simp only [FiniteEqRefutationTree.check, Bool.and_eq_true,
+          List.all_eq_true, decide_eq_true_eq] at hcheck
+        rcases hcheck with ⟨⟨⟨hvalid, hclause⟩, hbody⟩, hchildren⟩
+        simp only [FiniteEqRefutationTree.checkClosed, Bool.and_eq_true,
+          List.all_eq_true, decide_eq_true_eq]
+        refine ⟨⟨⟨hvalid, hclause⟩, ?_⟩, ?_⟩
+        · intro atom hatom
+          apply (certificate.quotientClosedHoldsAtomB_eq_true
+            hvalid assignment atom).2
+          exact certificate.state.holdsAtom_implies_closedHoldsAtom assignment atom
+            ((certificate.closedHoldsAtomB_eq_true hvalid assignment atom).1
+              (hbody atom hatom))
+        · exact children.check_implies_checkClosed certificate assignment clause.head hchildren
+    | witness source target role filler child =>
+        intro certificate hcheck
+        simp only [FiniteEqRefutationTree.check, Bool.and_eq_true,
+          decide_eq_true_eq] at hcheck
+        rcases hcheck with ⟨⟨⟨hvalid, hobligation⟩, hfresh⟩, hchild⟩
+        simp only [FiniteEqRefutationTree.checkClosed, Bool.and_eq_true,
+          decide_eq_true_eq]
+        exact ⟨⟨⟨hvalid, hobligation⟩, hfresh⟩,
+          child.check_implies_checkClosed
+            (certificate.materializeWitness source target role filler) hchild⟩
+
+  theorem FiniteEqRefutationChildren.check_implies_checkClosed
+      (children : FiniteEqRefutationChildren
+        nodeCount conceptCount roleCount variableCount) :
+      ∀ (certificate : FiniteEqCertificate
+          nodeCount conceptCount roleCount variableCount)
+        (assignment : Fin variableCount → Fin nodeCount) heads,
+        children.check certificate assignment heads = true →
+        children.checkClosed certificate assignment heads = true := by
+    cases children with
+    | nil =>
+        intro certificate assignment heads hcheck
+        simpa [FiniteEqRefutationChildren.check,
+          FiniteEqRefutationChildren.checkClosed] using hcheck
+    | cons recorded next child rest =>
+        intro certificate assignment heads hcheck
+        cases heads with
+        | nil => simp [FiniteEqRefutationChildren.check] at hcheck
+        | cons head heads =>
+            simp only [FiniteEqRefutationChildren.check, Bool.and_eq_true,
+              decide_eq_true_eq] at hcheck
+            rcases hcheck with ⟨⟨⟨hrecorded, htransition⟩, hchild⟩, hrest⟩
+            simp only [FiniteEqRefutationChildren.checkClosed, Bool.and_eq_true,
+              decide_eq_true_eq]
+            exact ⟨⟨⟨hrecorded, htransition⟩,
+              child.check_implies_checkClosed next hchild⟩,
+              rest.check_implies_checkClosed certificate assignment heads hrest⟩
+
   theorem FiniteEqRefutationTree.checkClosed_sound
       (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount) :
       ∀ certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount,
@@ -573,6 +636,106 @@ mutual
               simpa only [hontology] using child.checkClosed_sound next hchild
             · exact rest.checkClosed_sound certificate assignment heads hrest atom hatom
 end
+
+theorem exists_checkClosed_eq_children
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (heads : List (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hencode : ∀ atom, atom ∈ heads →
+      let next := (certificate.assertAtom assignment atom).canonicalizeEqualityClosure
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.checkClosed next = true) :
+    ∃ children : FiniteEqRefutationChildren
+        nodeCount conceptCount roleCount variableCount,
+      children.checkClosed certificate assignment heads = true := by
+  induction heads with
+  | nil => exact ⟨.nil, by simp [FiniteEqRefutationChildren.checkClosed]⟩
+  | cons head tail ih =>
+      let next := (certificate.assertAtom assignment head).canonicalizeEqualityClosure
+      obtain ⟨tree, htree⟩ := hencode head (by simp)
+      obtain ⟨rest, hrest⟩ := ih (fun atom hatom => hencode atom (by simp [hatom]))
+      exact ⟨.cons head next tree rest, by
+        simp [FiniteEqRefutationChildren.checkClosed, next, htree, hrest,
+          certificate.transitionB_canonicalized_assertAtom assignment head]⟩
+
+/-- Every finite quotient-closed equality refutation has an accepted production
+tree. Canonicalization reconstructs checked representative paths after each
+head transition. -/
+theorem ClosedEqRefutes.exists_checkClosed_tree
+    {ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {state : EqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (hrefutes : ClosedEqRefutes (Fin nodeCount) ontology state) :
+    ∀ certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount,
+      certificate.base.ontology = ontology → certificate.state = state →
+      certificate.equalityClosureValidB = true →
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.checkClosed certificate = true := by
+  induction hrefutes with
+  | clash state hclash =>
+      intro certificate hontology hstate hvalid
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hclosed : certificate.closedClashB = true := by
+        cases hvalue : certificate.closedClashB with
+        | true => rfl
+        | false =>
+            have hfree := certificate.not_closedClashB_closedClashFree hvalid hvalue
+            rw [hstate] at hfree
+            exact (hfree positiveNode negativeNode concept hequiv
+              ⟨hpositive, hnegative⟩).elim
+      exact ⟨.clash, by simp [FiniteEqRefutationTree.checkClosed, hvalid, hclosed]⟩
+  | branch state clause hclause assignment hbody children ih =>
+      intro certificate hontology hstate hvalid
+      have hclause' : clause ∈ certificate.base.ontology := by
+        simpa [hontology] using hclause
+      have hbody' : ∀ atom ∈ clause.body,
+          certificate.quotientClosedHoldsAtomB assignment atom = true := by
+        intro atom hatom
+        apply (certificate.quotientClosedHoldsAtomB_eq_true hvalid assignment atom).2
+        rw [hstate]
+        exact hbody atom hatom
+      obtain ⟨encodedChildren, hencodedChildren⟩ :=
+        exists_checkClosed_eq_children certificate assignment clause.head
+          (fun atom hatom => by
+            let next := (certificate.assertAtom assignment atom).canonicalizeEqualityClosure
+            apply ih atom hatom next
+            · cases atom <;>
+                simpa [next, FiniteEqCertificate.canonicalizeEqualityClosure,
+                  FiniteEqCertificate.assertAtom] using hontology
+            · simp only [next, FiniteEqCertificate.canonicalizeEqualityClosure_state,
+                certificate.state_assertAtom, hstate]
+            · exact (certificate.assertAtom assignment atom).canonicalizeEqualityClosure_valid)
+      refine ⟨.branch clause assignment encodedChildren, ?_⟩
+      simp only [FiniteEqRefutationTree.checkClosed, Bool.and_eq_true,
+        decide_eq_true_eq, List.all_eq_true]
+      exact ⟨⟨⟨hvalid, hclause'⟩, hbody'⟩, hencodedChildren⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      intro certificate hontology hstate hvalid
+      have hobligation' : (role, filler, source) ∈ certificate.base.obligations := by
+        change certificate.state.base.obligation role filler source
+        rw [hstate]
+        exact hobligation
+      have hfresh' : certificate.freshNodeB target = true :=
+        (certificate.freshNodeB_eq_true hvalid target).2 (by simpa [hstate] using hfresh)
+      obtain ⟨encodedChild, hencodedChild⟩ :=
+        ih (certificate.materializeWitness source target role filler)
+          (by simpa [hontology]) (by rw [certificate.state_materializeWitness, hstate]) hvalid
+      refine ⟨.witness source target role filler encodedChild, ?_⟩
+      simp [FiniteEqRefutationTree.checkClosed, hvalid, hobligation', hfresh', hencodedChild]
+
+/-- Exact correspondence between the production quotient-closed checker and
+its finite semantic refutation relation on canonical certificates. -/
+theorem FiniteEqCertificate.closedRefutes_iff_exists_checkClosed_tree
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    ClosedEqRefutes (Fin nodeCount) certificate.base.ontology certificate.state ↔
+      ∃ tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount,
+        tree.checkClosed certificate.canonicalizeEqualityClosure = true := by
+  constructor
+  · intro hrefutes
+    exact hrefutes.exists_checkClosed_tree certificate.canonicalizeEqualityClosure rfl rfl
+      certificate.canonicalizeEqualityClosure_valid
+  · rintro ⟨tree, hcheck⟩
+    simpa using tree.checkClosed_sound certificate.canonicalizeEqualityClosure hcheck
 
 theorem FiniteEqRefutationTree.checkClosed_unsatisfiable
     (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
@@ -659,6 +822,8 @@ theorem FiniteEqRefutationTree.checkClosed_unsatisfiable_concept
 #print axioms selectEqFreshNode_eq_none_iff
 #print axioms selectEqWitness_refutes
 #print axioms FiniteEqRefutationTree.checkClosed_sound
+#print axioms ClosedEqRefutes.exists_checkClosed_tree
+#print axioms FiniteEqCertificate.closedRefutes_iff_exists_checkClosed_tree
 #print axioms FiniteEqRefutationTree.checkClosed_ontology_unsatisfiable
 #print axioms FiniteEqRefutationTree.checkClosed_subsumption
 #print axioms FiniteEqRefutationTree.checkClosed_unsatisfiable_concept

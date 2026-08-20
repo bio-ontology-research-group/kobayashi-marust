@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.155] – 2026-08-21
+
+### Complete quotient-closed equality tree correspondence
+
+- Prove that every finite semantic `ClosedEqRefutes` derivation constructs a
+  production-accepted `checkClosed` tree, including canonical equality paths
+  after every head transition.
+- Prove the exact equivalence between finite quotient-closed refutation and an
+  accepted recursive tree on canonical equality certificates.
+- Update recursive equality wire representability to the production checker:
+  every accepted quotient-closed tree and child state has an exact version-2
+  JSON representation that decodes to the original typed evidence.
+- Audit the new completeness and exactness theorems without `sorryAx`.
+
+Equality finite-runtime termination and SAT composition, cardinality runtime
+selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.154] – 2026-08-21
 
 ### Integrate quotient-closed equality refutation checking

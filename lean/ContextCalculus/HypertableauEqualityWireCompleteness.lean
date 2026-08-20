@@ -197,7 +197,7 @@ mutual
           FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
         (ontology :
           List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))),
-        checked.base.ontology = ontology → tree.check checked = true →
+        checked.base.ontology = ontology → tree.checkClosed checked = true →
         ∃ wire : WireEqRefutationTree,
           wire.decode nodeCount conceptCount roleCount variableCount ontology =
             Except.ok tree := by
@@ -209,7 +209,7 @@ mutual
         rfl
     | branch clause assignment children =>
         intro checked ontology hontology hcheck
-        simp only [FiniteEqRefutationTree.check, Bool.and_eq_true,
+        simp only [FiniteEqRefutationTree.checkClosed, Bool.and_eq_true,
           List.all_eq_true, decide_eq_true_eq] at hcheck
         rcases hcheck with ⟨⟨⟨_, hclause⟩, _⟩, hchildren⟩
         obtain ⟨wires, hwiresLength, hwiresDecode, hbuild⟩ :=
@@ -230,7 +230,7 @@ mutual
         rfl
     | witness source target role filler child =>
         intro checked ontology hontology hcheck
-        simp only [FiniteEqRefutationTree.check, Bool.and_eq_true,
+        simp only [FiniteEqRefutationTree.checkClosed, Bool.and_eq_true,
           decide_eq_true_eq] at hcheck
         rcases hcheck with ⟨⟨⟨_, _⟩, _⟩, hchild⟩
         have hnextOntology :
@@ -256,7 +256,7 @@ mutual
         (heads :
           List (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))),
         checked.base.ontology = ontology →
-        children.check checked assignment heads = true →
+        children.checkClosed checked assignment heads = true →
         ∃ wires : List (WireEqState × WireEqRefutationTree),
           wires.length = heads.length ∧
           wires.mapM (fun child => do
@@ -268,15 +268,15 @@ mutual
     cases children with
     | nil =>
         intro checked ontology assignment heads hontology hcheck
-        simp only [FiniteEqRefutationChildren.check, List.isEmpty_iff] at hcheck
+        simp only [FiniteEqRefutationChildren.checkClosed, List.isEmpty_iff] at hcheck
         subst heads
         exact ⟨[], rfl, rfl, rfl⟩
     | cons atom next child rest =>
         intro checked ontology assignment heads hontology hcheck
         cases heads with
-        | nil => simp [FiniteEqRefutationChildren.check] at hcheck
+        | nil => simp [FiniteEqRefutationChildren.checkClosed] at hcheck
         | cons head heads =>
-            simp only [FiniteEqRefutationChildren.check, Bool.and_eq_true,
+            simp only [FiniteEqRefutationChildren.checkClosed, Bool.and_eq_true,
               decide_eq_true_eq] at hcheck
             rcases hcheck with ⟨⟨⟨hatom, htransition⟩, hchild⟩, hrest⟩
             subst atom
@@ -303,12 +303,12 @@ mutual
               rfl
 end
 
-/-- Every accepted finite equality-aware HT refutation is exactly
-representable by the version-2 JSON tree format. -/
+/-- Every production-accepted finite quotient-closed equality HT refutation is
+exactly representable by the version-2 JSON tree format. -/
 theorem FiniteEqRefutationTree.wire_complete
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
-    (hcheck : tree.check certificate = true) :
+    (hcheck : tree.checkClosed certificate = true) :
     ∃ wire : WireEqRefutationTree,
       wire.decode nodeCount conceptCount roleCount variableCount
         certificate.base.ontology = Except.ok tree :=

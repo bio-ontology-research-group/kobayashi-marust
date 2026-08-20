@@ -224,7 +224,8 @@ theorem FiniteCardinalityEqRefutationTree.exists_checked_wire
   | equality eqTree =>
       intro certificate ontology definitions hontology hcheck
       obtain ⟨wire, hwire⟩ := eqTree.exists_wire_of_check certificate
-        certificate.base.ontology rfl hcheck
+        certificate.base.ontology rfl
+          (eqTree.check_implies_checkClosed certificate hcheck)
       refine ⟨WireCardinalityEqRefutationTree.equality wire,
         FiniteCardinalityEqRefutationTree.equality eqTree, ?_, hcheck⟩
       simp only [WireCardinalityEqRefutationTree.decodeAtDepth]
