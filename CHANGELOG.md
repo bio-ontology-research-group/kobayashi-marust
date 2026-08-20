@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.113] – 2026-08-20
+
+### Add the bounded regular HT cardinality wire
+
+- Add a versioned JSON wrapper carrying the bounded regular graph certificate,
+  authorized `(source,role,target,slot)` tuples, and cardinality definitions.
+- Check every slot source, role, and target ID against the decoded base bounds.
+- Reuse the proved cardinality-definition decoder for marker, role, filler,
+  kind, and bound fields.
+- Prove `DecodedRegularCardinalityCertificate.check_models`: successful decode
+  and checker acceptance yield one interpretation modeling the exact ontology
+  and all decoded cardinality definitions.
+- Add native acceptance and out-of-range slot rejection regressions.
+
+The regular HT trust boundary now covers role closure, existential witnesses,
+and cardinality on equality-free completion graphs. Equality and nominal roots,
+then the Rust producer connection, remain.
+
+The full Lean build passes across 3,383 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.112] – 2026-08-20
 
 ### Add the executable regular HT cardinality checker

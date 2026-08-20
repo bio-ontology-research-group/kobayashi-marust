@@ -510,6 +510,14 @@ family back to slot-list indices and contradicts that exhaustive check.
 `check_models` is the executable capstone for the ontology plus cardinality
 semantics. Only the bounded cardinality wire remains at this layer.
 
+`HypertableauRegularCardinalityWire.lean` adds that bounded wrapper. It decodes
+authorized source/role/target/slot tuples against the base graph bounds and
+reuses the checked cardinality-definition decoder. Successful decode plus
+Boolean acceptance flows through
+`DecodedRegularCardinalityCertificate.check_models`, yielding one regular
+interpretation for the exact ontology and all cardinality definitions. The
+remaining regular HT semantic extensions are equality and nominal roots.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
