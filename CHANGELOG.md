@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.153] – 2026-08-21
+
+### Prove quotient-closed equality recursion sound
+
+- Prove that every concept, role, existential, or equality atom holding modulo
+  the complete node equivalence is true in every realization of the state.
+- Define the recursive `ClosedEqRefutes` relation matching Rust's
+  quotient-closed clause grounding, equality-aware head assertion, and fresh
+  explicit-witness recursion.
+- Prove the complete recursive relation sound for ontology inconsistency.
+- Embed the older direct-premise equality refutation relation into the new
+  quotient-closed relation.
+- Prove that the concrete clash, clause, and witness selectors reconstruct the
+  corresponding quotient-closed recursive constructors.
+- Audit the new semantic and selector theorems without `sorryAx`.
+
+Production refutation-checker integration for quotient-closed branches,
+cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.152] – 2026-08-21
 
 ### Certify equality witness and quotient matching controls

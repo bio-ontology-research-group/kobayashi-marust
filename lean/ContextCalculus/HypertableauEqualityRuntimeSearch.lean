@@ -12,6 +12,74 @@ scans clauses in ontology order and finite assignments in enumeration order.
 
 namespace ContextCalculus.Hypertableau
 
+/-- Exhaustive equality-aware refutations whose branch bodies use the complete
+quotient closure. This is the semantic recursion implemented by Rust's
+`closed_holds` grounding test. -/
+inductive ClosedEqRefutes (Node : Type u)
+    (ontology : List (Clause Variable Concept Role)) :
+    EqState Node Concept Role → Prop where
+  | clash (state)
+      (hclash : ∃ positiveNode negativeNode concept,
+        state.equiv positiveNode negativeNode ∧
+          state.base.label positiveNode (.pos concept) ∧
+          state.base.label negativeNode (.negated concept)) :
+      ClosedEqRefutes Node ontology state
+  | branch (state) (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology) (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body,
+        state.closedHoldsAtom assignment atom)
+      (children : ∀ atom, atom ∈ clause.head →
+        ClosedEqRefutes Node ontology (state.assertAtom assignment atom)) :
+      ClosedEqRefutes Node ontology state
+  | witness (state) (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.base.obligation role filler source)
+      (hfresh : state.Fresh target)
+      (child : ClosedEqRefutes Node ontology
+        (state.materializeWitness source target role filler)) :
+      ClosedEqRefutes Node ontology state
+
+theorem ClosedEqRefutes.sound
+    (hrefutes : ClosedEqRefutes Node ontology state) :
+    ¬state.RealizableWith ontology := by
+  induction hrefutes with
+  | clash state hclash =>
+      rintro ⟨Domain, I, value, _, hrealized⟩
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hpositiveSat := hrealized.1.1 positiveNode (.pos concept) hpositive
+      have hnegativeSat := hrealized.1.1 negativeNode (.negated concept) hnegative
+      have hvalue := hrealized.2 positiveNode negativeNode hequiv
+      rw [← hvalue] at hnegativeSat
+      exact hnegativeSat hpositiveSat
+  | branch state clause hclause assignment hbody children ih =>
+      rintro ⟨Domain, I, value, hmodels, hrealized⟩
+      have hsemanticBody : ∀ atom ∈ clause.body,
+          I.satAtom (value ∘ assignment) atom := by
+        intro atom hatom
+        exact state.realized_closedHoldsAtom I value hrealized assignment atom
+          (hbody atom hatom)
+      rcases hmodels clause hclause (value ∘ assignment) hsemanticBody with
+        ⟨atom, hatom, hsat⟩
+      exact ih atom hatom ⟨Domain, I, value, hmodels,
+        state.assertAtom_realized I value hrealized assignment atom hsat⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hrealized⟩
+      rcases state.materializeWitness_realized I value hrealized source target
+          role filler hobligation hfresh with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hchild⟩
+
+theorem EqRefutes.toClosed
+    (hrefutes : EqRefutes Node ontology state) :
+    ClosedEqRefutes Node ontology state := by
+  induction hrefutes with
+  | clash state hclash => exact .clash state hclash
+  | branch state clause hclause assignment hbody children ih =>
+      exact .branch state clause hclause assignment
+        (fun atom hatom => state.holdsAtom_implies_closedHoldsAtom assignment atom
+          (hbody atom hatom)) ih
+  | witness state source target role filler hobligation hfresh child ih =>
+      exact .witness state source target role filler hobligation hfresh ih
+
 abbrev EqClashCandidate (Node Concept : Type) := Node × Node × Concept
 
 noncomputable def allEqClashCandidates
@@ -90,6 +158,16 @@ theorem selectEqClash_refutes
   have hclash := (eqClashCandidateBool_eq_true_iff state candidate).mp hfound.2
   exact .clash state ⟨candidate.1, candidate.2.1, candidate.2.2,
     hclash.1, hclash.2.1, hclash.2.2⟩
+
+theorem selectEqClash_closedRefutes
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    {candidate : EqClashCandidate Node Concept}
+    (hselect : selectEqClash state = some candidate) :
+    ClosedEqRefutes Node ontology state :=
+  (selectEqClash_refutes ontology state hselect).toClosed
 
 noncomputable def closedHoldsAtomBool
     (state : EqState Node Concept Role)
@@ -217,6 +295,23 @@ theorem selectEqClauseGrounding_eq_none_iff
     have hgrounding := eqGroundingUndischarged_eq_true_iff.mp htrue
     exact hnone ⟨grounding.1, (mem_allGroundings.mp hmem), grounding.2,
       hgrounding.1, hgrounding.2⟩
+
+theorem selectEqClauseGrounding_closedRefutes
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    {grounding : Grounding Variable Node Concept Role}
+    (hselect : selectEqClauseGrounding ontology state = some grounding)
+    (children : ∀ atom, atom ∈ grounding.1.head →
+      ClosedEqRefutes Node ontology (state.assertAtom grounding.2 atom)) :
+    ClosedEqRefutes Node ontology state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectEqClauseGrounding] using hselect)
+  have hproperties := eqGroundingUndischarged_eq_true_iff.mp hfound.2
+  exact .branch state grounding.1 (mem_allGroundings.mp hfound.1)
+    grounding.2 hproperties.1 children
 
 /-- The runtime presents ancestors nearest-first. Blocking succeeds exactly
 when that finite list contains an ancestor with the same complete quotient
@@ -362,9 +457,9 @@ theorem selectEqWitness_refutes
     {candidate : WitnessCandidate Node Concept Role}
     (hwitness : selectEqUnblockedUnwitnessed state parent ancestors = some candidate)
     {target : Node} (hfresh : selectEqFreshNode state = some target)
-    (child : EqRefutes Node ontology
+    (child : ClosedEqRefutes Node ontology
       (state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1)) :
-    EqRefutes Node ontology state := by
+    ClosedEqRefutes Node ontology state := by
   classical
   have hcandidate := firstMatch_eq_some_mem
     (by simpa [selectEqUnblockedUnwitnessed] using hwitness)
@@ -377,8 +472,12 @@ theorem selectEqWitness_refutes
     hproperties.1 ((eqFreshNodeBool_eq_true_iff state target).mp htarget.2) child
 
 #print axioms selectEqClash_eq_none_iff
+#print axioms ClosedEqRefutes.sound
+#print axioms EqRefutes.toClosed
 #print axioms selectEqClash_refutes
+#print axioms selectEqClash_closedRefutes
 #print axioms selectEqClauseGrounding_eq_none_iff
+#print axioms selectEqClauseGrounding_closedRefutes
 #print axioms selectEqCertificateClauseGrounding_eq_runtime
 #print axioms quotientBlockedBool_eq_true_iff
 #print axioms selectEqUnblockedUnwitnessed_eq_none_iff

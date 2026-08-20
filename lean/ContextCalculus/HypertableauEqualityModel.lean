@@ -82,6 +82,53 @@ def EqState.ClosedSaturatedFor (state : EqState Node Concept Role)
     (∀ atom ∈ clause.body, state.closedHoldsAtom assignment atom) →
     ∃ atom ∈ clause.head, state.closedHoldsAtom assignment atom
 
+/-- Every atom that holds modulo the complete node equivalence is true in
+every realization of the equality state. -/
+theorem EqState.realized_closedHoldsAtom
+    (state : EqState Node Concept Role) (I : Interp Domain Concept Role)
+    (value : Node → Domain) (hrealized : state.RealizedBy I value)
+    (assignment : Variable → Node) (atom : Atom Variable Concept Role)
+    (hholds : state.closedHoldsAtom assignment atom) :
+    I.satAtom (value ∘ assignment) atom := by
+  cases atom with
+  | concept lit node =>
+      rcases hholds with ⟨source, hsource, hlabel⟩
+      have hsat := hrealized.1.1 source lit hlabel
+      have hvalue := hrealized.2 source (assignment node) hsource
+      simpa [Function.comp_apply, hvalue] using hsat
+  | role role source target =>
+      rcases hholds with
+        ⟨edgeSource, edgeTarget, hsource, htarget, hedge⟩
+      have hsat := hrealized.1.2.1 role edgeSource edgeTarget hedge
+      have hsourceValue := hrealized.2 edgeSource (assignment source) hsource
+      have htargetValue := hrealized.2 edgeTarget (assignment target) htarget
+      simpa [Function.comp_apply, hsourceValue, htargetValue] using hsat
+  | exists_ role filler node =>
+      rcases hholds with ⟨source, hsource, hobligation⟩
+      rcases hrealized.1.2.2 role filler source hobligation with
+        ⟨witness, hedge, hfiller⟩
+      have hsourceValue := hrealized.2 source (assignment node) hsource
+      exact ⟨witness, by simpa [Function.comp_apply, hsourceValue] using hedge,
+        hfiller⟩
+  | eq left right =>
+      simpa [Interp.satAtom, Function.comp_apply] using
+        hrealized.2 (assignment left) (assignment right) hholds
+
+theorem EqState.holdsAtom_implies_closedHoldsAtom
+    (state : EqState Node Concept Role) (assignment : Variable → Node)
+    (atom : Atom Variable Concept Role)
+    (hholds : state.holdsAtom assignment atom) :
+    state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept lit node =>
+      exact ⟨assignment node, state.equiv_equivalence.refl _, hholds⟩
+  | role role source target =>
+      exact ⟨assignment source, assignment target,
+        state.equiv_equivalence.refl _, state.equiv_equivalence.refl _, hholds⟩
+  | exists_ role filler node =>
+      exact ⟨assignment node, state.equiv_equivalence.refl _, hholds⟩
+  | eq left right => exact hholds
+
 def EqState.quotientCanonical (state : EqState Node Concept Role) :
     Interp state.QuotientDomain Concept Role where
   concept concept value := ∃ node,
@@ -188,6 +235,8 @@ theorem EqState.quotientCanonical_models_of_closed_saturated
 
 #print axioms EqState.closedLabel_congr
 #print axioms EqState.closedEdge_congr
+#print axioms EqState.realized_closedHoldsAtom
+#print axioms EqState.holdsAtom_implies_closedHoldsAtom
 #print axioms EqState.quotientCanonical_models_of_closed_saturated
 
 end ContextCalculus.Hypertableau
