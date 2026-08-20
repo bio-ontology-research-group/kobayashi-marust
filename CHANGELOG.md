@@ -2,6 +2,32 @@
 
 ## [unreleased]
 
+## [0.3.109] – 2026-08-20
+
+### Add the executable regular HT certificate checker
+
+- Add `FiniteRegularCertificate`, containing finite labels, edges,
+  obligations, redirects, role-cover tuples, normalized role rules and clauses,
+  and guarded residual clauses.
+- Implement explicit Boolean checks for role authorization, guarded bodies,
+  liftable heads, clashes, existential witnesses, redirect compatibility,
+  direct/subrole/inverse/chain/reflexive cover closure, and residual discharge
+  over every finite variable assignment.
+- Prove local cover closure contains the complete inductive endpoint role
+  relation.
+- Prove `check_sound` and `check_models`: checker acceptance constructs an
+  infinite regular unravelling that models the certificate's exact decoded
+  ontology.
+- Add native executable regressions showing an empty certificate accepts and a
+  certificate omitting a required direct cover edge rejects.
+
+The checker deliberately uses explicit finite loops rather than a classical
+decision instance. Cardinality slots, equality/nominal roots, JSON decoding,
+and the Rust producer connection remain to be added to this regular wire.
+
+The full Lean build passes across 3,380 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.108] – 2026-08-20
 
 ### Reduce regular HT saturation to a finite endpoint certificate

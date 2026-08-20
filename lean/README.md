@@ -468,6 +468,18 @@ sound and fail-closed because it only creates additional discharge obligations.
 This theorem is now the semantic target for the executable regular-certificate
 wire.
 
+`HypertableauRegularCertificate.lean` implements that finite trust boundary.
+`FiniteRegularCertificate` stores untrusted finite graph facts, redirect and
+role-cover tuples, decoded role rules, normalized role clauses, and residual
+clauses. Its Boolean checker explicitly enumerates all finite nodes and variable
+assignments. `coverClosedB_sound` proves accepted cover tuples contain every
+direct, subrole, inverse, chain/transitive, and reflexive endpoint edge.
+`check_models` proves acceptance yields an infinite regular model of the exact
+decoded ontology. The checker contains no classical `decide` shortcut; native
+tests exercise both acceptance and fail-closed rejection. Cardinality slots,
+equality/nominal roots, JSON decoding, and the Rust producer remain separate
+work.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
