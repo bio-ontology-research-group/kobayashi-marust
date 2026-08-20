@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.95] – 2026-08-20
+
+### Characterize equality-aware blocked-fold acceptance exactly
+
+- Prove an equality-aware fold is accepted exactly when its materialized
+  endpoint has a valid equality closure, guarded clauses, quotient clash
+  freedom, completed witnesses, and quotient saturation.
+- Add a direct acceptance theorem exposing those five concrete obligations.
+- Extend the equivalence through minimum and maximum cardinality definitions:
+  cardinality-aware fold checking succeeds exactly when the endpoint contract
+  holds and its quotient model satisfies every definition.
+
+These results make the remaining completeness boundary explicit. They do not
+assume or claim that every runtime blocker preserves saturation; that result
+must be proved for KM's normalized clause grammar and concrete pairwise fold.
+
 ## [0.3.94] – 2026-08-20
 
 ### Prove cardinality-aware HT SAT-checker completeness

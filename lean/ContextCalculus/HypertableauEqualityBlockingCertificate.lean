@@ -60,6 +60,32 @@ def FiniteEqFoldCertificate.check
       nodeCount conceptCount roleCount variableCount) : Bool :=
   certificate.materialize.checkEqSat
 
+theorem FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.check = true ↔ certificate.materialize.Valid := by
+  exact certificate.materialize.checkEqSat_eq_true_iff_valid
+
+theorem FiniteEqFoldCertificate.check_complete
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.materialize.Valid) :
+    certificate.check = true :=
+  certificate.materialize.checkEqSat_complete hvalid
+
+theorem FiniteEqFoldCertificate.check_complete_of
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hequality : certificate.base.equalityClosureValidB = true)
+    (hguarded : ∀ clause ∈ certificate.base.base.ontology, clause.GuardedBody)
+    (hclash : certificate.materialize.state.ClosedClashFree)
+    (hwitness : certificate.materialize.state.ClosedWitnessComplete)
+    (hsaturated : certificate.materialize.state.ClosedSaturatedFor
+      certificate.base.base.ontology) :
+    certificate.check = true := by
+  apply certificate.check_complete
+  exact ⟨hequality, hguarded, hclash, hwitness, hsaturated⟩
+
 /-- Any accepted equality-aware fold is a model of the exact unchanged
 ontology. The theorem assumes no correctness property of the proposed folds. -/
 theorem FiniteEqFoldCertificate.check_satisfiable
@@ -76,6 +102,16 @@ def FiniteEqFoldCertificate.checkWithCardinality
       nodeCount conceptCount roleCount variableCount)
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Bool :=
   certificate.materialize.checkEqSatWithCardinality definitions
+
+theorem FiniteEqFoldCertificate.checkWithCardinality_eq_true_iff
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) :
+    certificate.checkWithCardinality definitions = true ↔
+      certificate.materialize.Valid ∧
+        certificate.materialize.state.quotientCanonical.modelsCardinalityDefs
+          definitions := by
+  exact certificate.materialize.checkEqSatWithCardinality_eq_true_iff definitions
 
 /-- The same untrusted fold boundary for cardinality-aware search. Acceptance
 constructs one quotient interpretation satisfying both the exact ontology and
@@ -121,6 +157,10 @@ example : cyclicFold.check = true := by native_decide
 end EqFoldTests
 
 #print axioms FiniteEqFoldCertificate.check_satisfiable
+#print axioms FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid
+#print axioms FiniteEqFoldCertificate.check_complete
+#print axioms FiniteEqFoldCertificate.check_complete_of
+#print axioms FiniteEqFoldCertificate.checkWithCardinality_eq_true_iff
 #print axioms FiniteEqFoldCertificate.checkWithCardinality_models
 
 end ContextCalculus.Hypertableau

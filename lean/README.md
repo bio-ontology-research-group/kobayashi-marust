@@ -254,6 +254,10 @@ The cardinality checker has the matching exactness result:
 `checkEqSatWithCardinality_eq_true_iff` proves acceptance exactly when that
 endpoint contract holds and the equality-quotient model satisfies every
 minimum or maximum cardinality definition.
+The equality-aware blocked-fold boundary exposes the same contracts through
+`FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid` and
+`checkWithCardinality_eq_true_iff`. These theorems deliberately leave concrete
+fold saturation preservation as an explicit obligation.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean
