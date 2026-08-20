@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.64] – 2026-08-20
+
+### Remove artificial HT UNSAT evidence limits
+
+- Replace eager assignment-vector construction and its one-million-assignment
+  cutoff with lazy, exhaustive row-major enumeration using memory linear in the
+  number of variables.
+- Iteratively deepen the certified full-pairwise refutation node frontier only
+  when search reaches it. A branch that is open without touching the frontier
+  still declines immediately.
+- Preserve `KM_HT_LEAN_UNSAT_NODES` as an explicit, fail-closed diagnostic
+  limit for reproducible tests.
+- Exercise a certified existential refutation requiring eleven nodes, beyond
+  the historical default frontier of eight.
+
+This removes implementation cutoffs from certified UNSAT evidence production.
+It does not yet prove that every unsatisfiable input in the supported HT
+fragment has a finite refutation accepted by the producer; connecting blocked
+runtime search to that totality statement remains open.
+
 ## [0.3.63] – 2026-08-20
 
 ### Connect certified HT to finite role-sensitive blocking

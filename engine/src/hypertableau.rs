@@ -2636,6 +2636,51 @@ struct LeanHtRefutationState {
     active_nodes: usize,
 }
 
+/// Lazy row-major enumeration of all assignments from the finite variable
+/// signature to the active certificate nodes. This replaces the historical
+/// million-assignment allocation cap: memory is O(variable_count), while the
+/// iterator remains exhaustive for every finite state.
+struct LeanRefutationAssignments {
+    digits: Vec<Node>,
+    radix: usize,
+    first: bool,
+    done: bool,
+}
+
+impl LeanRefutationAssignments {
+    fn new(variable_count: usize, active_nodes: usize) -> Self {
+        Self {
+            digits: vec![0; variable_count],
+            radix: active_nodes,
+            first: true,
+            done: active_nodes == 0 && variable_count != 0,
+        }
+    }
+}
+
+impl Iterator for LeanRefutationAssignments {
+    type Item = Vec<Node>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        if self.first {
+            self.first = false;
+            return Some(self.digits.clone());
+        }
+        for position in (0..self.digits.len()).rev() {
+            if self.digits[position] + 1 < self.radix {
+                self.digits[position] += 1;
+                self.digits[position + 1..].fill(0);
+                return Some(self.digits.clone());
+            }
+        }
+        self.done = true;
+        None
+    }
+}
+
 impl LeanHtRefutationState {
     fn root(labels: &[(Node, CLit)]) -> Self {
         Self {
@@ -8552,25 +8597,30 @@ impl Ht {
     fn lean_refutation_assignments(
         variable_count: usize,
         active_nodes: usize,
-    ) -> Option<Vec<Vec<Node>>> {
-        let assignment_count =
-            (0..variable_count).try_fold(1usize, |count, _| count.checked_mul(active_nodes))?;
-        if assignment_count > 1_000_000 {
-            return None;
-        }
-        let mut assignments = vec![Vec::with_capacity(variable_count)];
-        for _ in 0..variable_count {
-            let mut next = Vec::with_capacity(assignments.len().saturating_mul(active_nodes));
-            for assignment in assignments {
-                for node in 0..active_nodes {
-                    let mut extended = assignment.clone();
-                    extended.push(node);
-                    next.push(extended);
-                }
+    ) -> LeanRefutationAssignments {
+        LeanRefutationAssignments::new(variable_count, active_nodes)
+    }
+
+    /// Explicit `KM_HT_LEAN_UNSAT_NODES` remains a one-shot diagnostic limit.
+    /// The certified full-pairwise route instead deepens only when an otherwise
+    /// finite search actually reaches its current node frontier.
+    fn lean_refutation_budget(&self) -> Result<(usize, bool), String> {
+        match std::env::var("KM_HT_LEAN_UNSAT_NODES") {
+            Ok(value) => {
+                let budget = value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|&budget| budget > 0)
+                    .ok_or_else(|| {
+                        "KM_HT_LEAN_UNSAT_NODES must be a positive integer".to_string()
+                    })?;
+                Ok((budget, false))
             }
-            assignments = next;
+            Err(std::env::VarError::NotPresent) => Ok((8, self.block_mode == 6)),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                Err("KM_HT_LEAN_UNSAT_NODES is not valid Unicode".to_string())
+            }
         }
-        Some(assignments)
     }
 
     fn lean_refutation(
@@ -8578,20 +8628,22 @@ impl Ht {
         state: &mut LeanHtRefutationState,
         variable_count: usize,
         node_budget: usize,
+        hit_node_cap: &mut bool,
     ) -> Option<(LeanHtRefutationTree, usize)> {
         if state.clashes() {
             return Some((LeanHtRefutationTree::Clash, state.active_nodes));
         }
 
-        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
+            let assignments =
+                Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
-            for assignment in &assignments {
-                let body_holds = clause.body.iter().all(|atom| state.holds(atom, assignment));
+            for assignment in assignments {
+                let body_holds = clause.body.iter().all(|atom| state.holds(atom, &assignment));
                 if !body_holds {
                     continue;
                 }
-                let head_holds = clause.head.iter().any(|atom| state.holds(atom, assignment));
+                let head_holds = clause.head.iter().any(|atom| state.holds(atom, &assignment));
                 if head_holds {
                     continue;
                 }
@@ -8603,12 +8655,13 @@ impl Ht {
                         return None;
                     }
                     let progress_before = state.progress_measure();
-                    let inserted = state.insert(atom, assignment);
+                    let inserted = state.insert(atom, &assignment);
                     debug_assert!(inserted, "an unsatisfied branch head must be absent");
                     assert!(state.progress_measure() > progress_before,
                         "HT certificate branch recursion must add a finite fact");
-                    let result = self.lean_refutation(state, variable_count, node_budget);
-                    state.remove(atom, assignment);
+                    let result = self.lean_refutation(
+                        state, variable_count, node_budget, hit_node_cap);
+                    state.remove(atom, &assignment);
                     let Some((child, child_used)) = result else {
                         return None;
                     };
@@ -8634,6 +8687,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
+                *hit_node_cap = true;
                 return None;
             }
             let progress_before = state.progress_measure();
@@ -8647,7 +8701,8 @@ impl Ht {
             );
             assert!(state.progress_measure() > progress_before,
                 "HT certificate witness recursion must add finite facts");
-            let result = self.lean_refutation(state, variable_count, node_budget);
+            let result = self.lean_refutation(
+                state, variable_count, node_budget, hit_node_cap);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
             state.active_nodes -= 1;
@@ -8672,17 +8727,19 @@ impl Ht {
         state: &mut LeanHtRefutationState,
         variable_count: usize,
         node_budget: usize,
+        hit_node_cap: &mut bool,
     ) -> Option<(LeanHtEqRefutationTree, usize)> {
         if state.clashes() {
             return Some((LeanHtEqRefutationTree::Clash, state.active_nodes));
         }
 
-        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
+            let assignments =
+                Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
-            for assignment in &assignments {
-                if !clause.body.iter().all(|atom| state.holds(atom, assignment))
-                    || clause.head.iter().any(|atom| state.holds(atom, assignment))
+            for assignment in assignments {
+                if !clause.body.iter().all(|atom| state.holds(atom, &assignment))
+                    || clause.head.iter().any(|atom| state.holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -8690,7 +8747,7 @@ impl Ht {
                 let mut max_used = state.active_nodes;
                 for atom in &clause.head {
                     let progress_before = state.progress_measure();
-                    let inserted = state.insert(atom, assignment);
+                    let inserted = state.insert(atom, &assignment);
                     debug_assert!(
                         inserted,
                         "an unsatisfied equality-aware head must be absent"
@@ -8698,8 +8755,9 @@ impl Ht {
                     assert!(state.progress_measure() > progress_before,
                         "HT equality certificate recursion must add a finite fact");
                     let successor = state.equality_wire_state(node_budget);
-                    let result = self.lean_eq_refutation(state, variable_count, node_budget);
-                    state.remove(atom, assignment);
+                    let result = self.lean_eq_refutation(
+                        state, variable_count, node_budget, hit_node_cap);
+                    state.remove(atom, &assignment);
                     let (child, child_used) = result?;
                     max_used = max_used.max(child_used);
                     children.push((successor, child));
@@ -8723,6 +8781,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
+                *hit_node_cap = true;
                 return None;
             }
             let progress_before = state.progress_measure();
@@ -8740,7 +8799,8 @@ impl Ht {
                 "HT equality witness recursion must add finite facts");
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
-            let result = self.lean_eq_refutation(state, variable_count, node_budget);
+            let result = self.lean_eq_refutation(
+                state, variable_count, node_budget, hit_node_cap);
             state.label_order.remove(0);
             state.edge_order.remove(0);
             state.labels.remove(&label);
@@ -8780,6 +8840,7 @@ impl Ht {
         definitions: &[(C, CardDef)],
         variable_count: usize,
         node_budget: usize,
+        hit_node_cap: &mut bool,
     ) -> Option<(LeanHtDistinctCardinalityRefutationTree, usize)> {
         if let Some((left, right)) = state.equality_apart_clash() {
             return Some((
@@ -8791,12 +8852,13 @@ impl Ht {
             return Some((LeanHtDistinctCardinalityRefutationTree::Clash, 0));
         }
 
-        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
+            let assignments =
+                Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
-            for assignment in &assignments {
-                if !clause.body.iter().all(|atom| state.holds(atom, assignment))
-                    || clause.head.iter().any(|atom| state.holds(atom, assignment))
+            for assignment in assignments {
+                if !clause.body.iter().all(|atom| state.holds(atom, &assignment))
+                    || clause.head.iter().any(|atom| state.holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -8804,7 +8866,7 @@ impl Ht {
                 let mut child_depth = 0;
                 for atom in &clause.head {
                     let progress_before = state.progress_measure();
-                    let inserted = state.insert(atom, assignment);
+                    let inserted = state.insert(atom, &assignment);
                     debug_assert!(inserted, "an unsatisfied distinct head must be absent");
                     assert!(state.progress_measure() > progress_before,
                         "HT distinct certificate recursion must add a finite fact");
@@ -8814,8 +8876,9 @@ impl Ht {
                         definitions,
                         variable_count,
                         node_budget,
+                        hit_node_cap,
                     );
-                    state.remove(atom, assignment);
+                    state.remove(atom, &assignment);
                     let (tree, depth) = result?;
                     child_depth = child_depth.max(depth);
                     raw_children.push((successor, tree, depth));
@@ -8848,6 +8911,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
+                *hit_node_cap = true;
                 return None;
             }
             let progress_before = state.progress_measure();
@@ -8867,6 +8931,7 @@ impl Ht {
                 definitions,
                 variable_count,
                 node_budget,
+                hit_node_cap,
             );
             state.label_order.remove(0);
             state.edge_order.remove(0);
@@ -8901,7 +8966,12 @@ impl Ht {
                     continue;
                 }
                 let count = definition.n as usize;
-                if state.active_nodes.checked_add(count)? > node_budget {
+                let Some(required_nodes) = state.active_nodes.checked_add(count) else {
+                    *hit_node_cap = true;
+                    return None;
+                };
+                if required_nodes > node_budget {
+                    *hit_node_cap = true;
                     return None;
                 }
                 let progress_before = state.progress_measure();
@@ -8939,6 +9009,7 @@ impl Ht {
                     definitions,
                     variable_count,
                     node_budget,
+                    hit_node_cap,
                 );
                 for &(node, literal) in &state.label_order[old_labels..] {
                     state.labels.remove(&(node, literal));
@@ -9022,6 +9093,7 @@ impl Ht {
                             definitions,
                             variable_count,
                             node_budget,
+                            hit_node_cap,
                         );
                         state.equalities.pop();
                         let (tree, depth) = result?;
@@ -9112,18 +9184,25 @@ impl Ht {
                 head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
             })
             .collect();
-        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|&value| (1..=64).contains(&value))
-            .unwrap_or(8);
-        let mut state = LeanHtRefutationState::root(initial_labels);
-        let (tree, _node_count) = self
-            .lean_eq_refutation(&mut state, variable_count, node_budget)
-            .ok_or_else(|| {
-                "ontology has an open or node-capped equality refutation branch".to_string()
-            })?;
-        let root_state = state.equality_wire_state(node_budget);
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let (tree, root_state) = loop {
+            let mut state = LeanHtRefutationState::root(initial_labels);
+            let mut hit_node_cap = false;
+            if let Some((tree, _node_count)) = self.lean_eq_refutation(
+                &mut state, variable_count, node_budget, &mut hit_node_cap)
+            {
+                break (tree, state.equality_wire_state(node_budget));
+            }
+            if !hit_node_cap {
+                return Err("ontology has an open equality refutation branch".to_string());
+            }
+            if !deepen {
+                return Err("ontology reached the configured equality refutation node cap"
+                    .to_string());
+            }
+            node_budget = node_budget.checked_mul(2).ok_or_else(||
+                "equality refutation node budget overflowed usize".to_string())?;
+        };
         serde_json::to_string(&LeanHtEqCertificate {
             version: 2,
             node_count: node_budget,
@@ -9207,23 +9286,29 @@ impl Ht {
                 head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
             })
             .collect();
-        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|&value| (1..=64).contains(&value))
-            .unwrap_or(8);
-        let mut state = LeanHtRefutationState::root(initial_labels);
-        let (tree, depth) = self
-            .lean_distinct_cardinality_refutation(
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let (tree, depth, root_state) = loop {
+            let mut state = LeanHtRefutationState::root(initial_labels);
+            let mut hit_node_cap = false;
+            if let Some((tree, depth)) = self.lean_distinct_cardinality_refutation(
                 &mut state,
                 &definitions,
                 variable_count,
                 node_budget,
-            )
-            .ok_or_else(|| {
-                "ontology has an open or node-capped cardinality refutation branch".to_string()
-            })?;
-        let root_state = state.equality_wire_state(node_budget);
+                &mut hit_node_cap,
+            ) {
+                break (tree, depth, state.equality_wire_state(node_budget));
+            }
+            if !hit_node_cap {
+                return Err("ontology has an open cardinality refutation branch".to_string());
+            }
+            if !deepen {
+                return Err("ontology reached the configured cardinality refutation node cap"
+                    .to_string());
+            }
+            node_budget = node_budget.checked_mul(2).ok_or_else(||
+                "cardinality refutation node budget overflowed usize".to_string())?;
+        };
         let placeholder = LeanHtDistinctCardinalityRefutationTree::Clash;
         Ok(serde_json::to_string(&LeanHtCardinalityCertificate {
             version: 2,
@@ -9309,18 +9394,24 @@ impl Ht {
                 head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
             })
             .collect();
-        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|&value| (1..=64).contains(&value))
-            .unwrap_or(8);
-        let (tree, node_count) = self
-            .lean_refutation(
-                &mut LeanHtRefutationState::root(initial_labels),
-                variable_count,
-                node_budget,
-            )
-            .ok_or_else(|| "ontology has an open or node-capped refutation branch".to_string())?;
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let (tree, node_count) = loop {
+            let mut state = LeanHtRefutationState::root(initial_labels);
+            let mut hit_node_cap = false;
+            if let Some(result) = self.lean_refutation(
+                &mut state, variable_count, node_budget, &mut hit_node_cap)
+            {
+                break result;
+            }
+            if !hit_node_cap {
+                return Err("ontology has an open refutation branch".to_string());
+            }
+            if !deepen {
+                return Err("ontology reached the configured refutation node cap".to_string());
+            }
+            node_budget = node_budget.checked_mul(2).ok_or_else(||
+                "refutation node budget overflowed usize".to_string())?;
+        };
 
         serde_json::to_string(&LeanHtCertificate {
             version: 1,
@@ -19389,9 +19480,38 @@ mod tests {
     }
 
     #[test]
-    fn lean_unsat_assignment_enumeration_is_bounded() {
-        assert_eq!(Ht::lean_refutation_assignments(2, 2).unwrap().len(), 4);
-        assert!(Ht::lean_refutation_assignments(10, 10).is_none());
+    fn lean_unsat_assignment_enumeration_is_lazy_and_exhaustive() {
+        assert_eq!(
+            Ht::lean_refutation_assignments(2, 2).collect::<Vec<_>>(),
+            vec![vec![0, 0], vec![0, 1], vec![1, 0], vec![1, 1]]
+        );
+        let mut large = Ht::lean_refutation_assignments(10, 10);
+        assert_eq!(large.next(), Some(vec![0; 10]));
+        assert_eq!(large.nth(8), Some(vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 9]));
+    }
+
+    #[test]
+    fn certified_unsat_refutation_deepens_past_the_historical_node_cap() {
+        const FIRST: C = 100;
+        const DEPTH: usize = 10;
+        let mut clauses = Vec::new();
+        for depth in 0..DEPTH {
+            clauses.push(Clause::new(
+                vec![con(false, FIRST + depth as C, X)],
+                vec![exists(R0, false, FIRST + depth as C + 1, X)],
+            ));
+        }
+        clauses.push(Clause::new(
+            vec![con(false, FIRST + DEPTH as C, X)],
+            Vec::new(),
+        ));
+        let t = Ht::new_certified(clauses);
+        let wire: serde_json::Value = serde_json::from_str(
+            &t.lean_unsatisfiable_concept_certificate_json(FIRST)
+                .expect("iterative deepening must reach the finite refutation"),
+        )
+        .expect("certificate is JSON");
+        assert_eq!(wire["node_count"], DEPTH + 1);
     }
 
     #[test]

@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.63`.
+`v0.3.64`.
 
 ## Classify an ontology
 
@@ -176,7 +176,7 @@ clauses and terminal model, and otherwise fails closed. For default
 certification-only full pairwise blocking, Rust materializes each direct finite
 fold as ordinary edges;
 Lean exhaustively checks the folded graph, so blocker selection remains outside
-the trust boundary. For inconsistent clause sets admitting a bounded finite
+the trust boundary. For inconsistent clause sets admitting a finite
 refutation, Rust independently constructs an exhaustive empty-root tree over
 concept, role, and existential facts. An existential obligation may bind a
 fresh certificate node to its semantic witness; Lean checks freshness before
@@ -185,15 +185,17 @@ UNSAT evidence with equality heads. SAT acceptance constructs a nonempty model
 on node-equivalence classes after exhaustively checking labels, edges,
 obligations, and every guarded grounding modulo equality. UNSAT children carry
 the exact equality history, representative vector, and paths witnessing the
-quotient. Publication occurs only after Lean accepts the evidence. Open,
-node-capped, or assignment-capped search declines. Equality-aware query
+quotient. Publication occurs only after Lean accepts the evidence. Certified
+full-pairwise mode lazily enumerates every finite variable assignment and
+deepens its node frontier whenever a branch reaches it. A genuinely open branch
+or an explicitly configured diagnostic node cap still declines. Equality-aware query
 countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
 QO, and runtime termination/blocking correspondence remain separate HT
 certification tasks.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered
-pair. Positive answers carry bounded refutations and negative answers carry
+pair. Positive answers carry finite refutations and negative answers carry
 finite countermodels. Position checks, exact row widths, exact row count,
 bounded identifiers, and duplicate-free named classes prevent omitted,
 duplicated, or reassigned cells. Set both

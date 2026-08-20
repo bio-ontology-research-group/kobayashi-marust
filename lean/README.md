@@ -246,9 +246,10 @@ The production Rust worker emits checker-gated global SAT evidence for
 equality-free ALC(H). Its certified constructor uses direct full-label pairwise
 blocking, including predecessor labels and bidirectional connecting-role sets,
 and materializes those folds as ordinary candidate edges. It also emits
-exhaustive global UNSAT refutations
-when bounded finite search closes over concept, role, existential, and equality
-facts.
+exhaustive global UNSAT refutations when finite search closes over concept,
+role, existential, and equality facts. Certified full-pairwise mode lazily
+enumerates every finite grounding and doubles the node frontier only when a
+branch reaches it. Explicit diagnostic node limits remain fail-closed.
 It can also emit individual subsumption and unsatisfiable-concept refutations,
 plus finite countermodels for non-subsumption and concept satisfiability. The
 checker verifies that each refutation starts from exactly the declared query
@@ -273,7 +274,10 @@ bound behind equality/subset blocking: every path longer than the number of
 possible signed labels contains an earlier exact-label blocker, and transfer to
 that blocker preserves all signed concept facts. The finite-fold checker then
 validates role and witness obligations on the materialized graph. Correspondence
-with Rust's blocking/search transitions remains open. Once a blocked node
+with Rust's blocking/search transitions remains open. Iterative deepening
+removes the producer's historical assignment and implicit node caps, but a
+proof that every unsatisfiable supported input reaches a finite closed
+refutation remains part of that correspondence. Once a blocked node
 universe is fixed, `HypertableauTermination.lean` proves that ordinary,
 equality-aware, and cardinality-aware evidence search has only finitely many
 strict branch updates and finitely many duplicate-free progress traces. The
