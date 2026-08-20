@@ -101,6 +101,182 @@ def State.unravelling
   concept concept value := state.label value.1 (.pos concept)
   role := UnravellingDirectRole state redirect slotAllowed root
 
+/-- Normalized role rules used by the regular path interpretation. Unary
+inclusions, inverse bridges, binary chains (including transitivity), and
+reflexivity cover the role-clause shapes emitted to HT. -/
+structure UnravellingRoleRules (Role : Type w) where
+  subRole : Role → Role → Prop
+  inverseRole : Role → Role → Prop
+  chain : Role → Role → Role → Prop
+  reflexive : Role → Prop
+
+inductive UnravellingRole
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role) :
+    Role → UnravellingDomain state redirect slotAllowed root →
+      UnravellingDomain state redirect slotAllowed root → Prop where
+  | direct {role source target}
+      (edge : UnravellingDirectRole state redirect slotAllowed root
+        role source target) :
+      UnravellingRole state redirect slotAllowed root rules role source target
+  | sub {premise conclusion source target}
+      (rule : rules.subRole premise conclusion)
+      (edge : UnravellingRole state redirect slotAllowed root rules
+        premise source target) :
+      UnravellingRole state redirect slotAllowed root rules
+        conclusion source target
+  | inverse {premise conclusion source target}
+      (rule : rules.inverseRole premise conclusion)
+      (edge : UnravellingRole state redirect slotAllowed root rules
+        premise source target) :
+      UnravellingRole state redirect slotAllowed root rules
+        conclusion target source
+  | chain {first second conclusion source middle target}
+      (rule : rules.chain first second conclusion)
+      (left : UnravellingRole state redirect slotAllowed root rules
+        first source middle)
+      (right : UnravellingRole state redirect slotAllowed root rules
+        second middle target) :
+      UnravellingRole state redirect slotAllowed root rules
+        conclusion source target
+  | refl {role source} (rule : rules.reflexive role) :
+      UnravellingRole state redirect slotAllowed root rules role source source
+
+def State.regularUnravelling
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role) :
+    Interp (UnravellingDomain state redirect slotAllowed root) Concept Role where
+  concept concept value := state.label value.1 (.pos concept)
+  role := UnravellingRole state redirect slotAllowed root rules
+
+theorem State.regularUnravelling_direct
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    {role : Role} {source target : UnravellingDomain state redirect slotAllowed root}
+    (edge : (state.unravelling redirect slotAllowed root).role role source target) :
+    (state.regularUnravelling redirect slotAllowed root rules).role
+      role source target :=
+  UnravellingRole.direct edge
+
+theorem State.regularUnravelling_subRole
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    {premise conclusion : Role} (rule : rules.subRole premise conclusion) :
+    ∀ source target,
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        premise source target →
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        conclusion source target :=
+  fun _ _ edge => UnravellingRole.sub rule edge
+
+theorem State.regularUnravelling_inverseRole
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    {premise conclusion : Role} (rule : rules.inverseRole premise conclusion) :
+    ∀ source target,
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        premise source target →
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        conclusion target source :=
+  fun _ _ edge => UnravellingRole.inverse rule edge
+
+theorem State.regularUnravelling_chain
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    {first second conclusion : Role} (rule : rules.chain first second conclusion) :
+    ∀ source middle target,
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        first source middle →
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        second middle target →
+      (state.regularUnravelling redirect slotAllowed root rules).role
+        conclusion source target :=
+  fun _ _ _ left right => UnravellingRole.chain rule left right
+
+theorem State.regularUnravelling_reflexive
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    {role : Role} (rule : rules.reflexive role) :
+    ∀ source, (state.regularUnravelling redirect slotAllowed root rules).role
+      role source source :=
+  fun _ => UnravellingRole.refl rule
+
+def UnravellingRoleRules.SimpleExact
+    (rules : UnravellingRoleRules Role)
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (role : Role) : Prop :=
+  ∀ source target,
+    UnravellingRole state redirect slotAllowed root rules role source target →
+      UnravellingDirectRole state redirect slotAllowed root role source target
+
+/-- Cardinality satisfaction transfers from the direct path interpretation to
+the regular role closure. Minimum witnesses remain edges by `direct`; maximum
+bounds require the SROIQ simple-role premise that closure is exact on the
+number-restricted role. -/
+theorem State.regularUnravelling_modelsCardinalityDef_of_direct
+    {Node : Type u} {Concept Role : Type}
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (definition : CardinalityDef Concept Role)
+    (hdirect : (state.unravelling redirect slotAllowed root).modelsCardinalityDef
+      definition)
+    (hsimple : definition.kind = .maximum →
+      rules.SimpleExact state redirect slotAllowed root definition.role) :
+    (state.regularUnravelling redirect slotAllowed root rules).modelsCardinalityDef
+      definition := by
+  intro source hmarker
+  cases hkind : definition.kind with
+  | minimum =>
+      have hminimum : HasAtLeast definition.bound
+          ((state.unravelling redirect slotAllowed root).cardinalitySuccessor
+            definition source) := by
+        simpa [Interp.modelsCardinalityDef, hkind] using hdirect source hmarker
+      rcases hminimum with ⟨witness, hinjective, hsuccessor⟩
+      refine ⟨witness, hinjective, ?_⟩
+      intro index
+      rcases hsuccessor index with ⟨hrole, hfiller⟩
+      exact ⟨state.regularUnravelling_direct redirect slotAllowed root rules hrole,
+        hfiller⟩
+  | maximum =>
+      have hmaximum : HasAtMost definition.bound
+          ((state.unravelling redirect slotAllowed root).cardinalitySuccessor
+            definition source) := by
+        simpa [Interp.modelsCardinalityDef, hkind] using hdirect source hmarker
+      intro hatLeast
+      apply hmaximum
+      rcases hatLeast with ⟨witness, hinjective, hsuccessor⟩
+      refine ⟨witness, hinjective, ?_⟩
+      intro index
+      rcases hsuccessor index with ⟨hrole, hfiller⟩
+      exact ⟨hsimple hkind source (witness index) hrole, hfiller⟩
+
+theorem State.regularUnravelling_modelsCardinalityDefs_of_direct
+    {Node : Type u} {Concept Role : Type}
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (hdirect : (state.unravelling redirect slotAllowed root).modelsCardinalityDefs
+      definitions)
+    (hsimple : ∀ definition ∈ definitions,
+      definition.kind = .maximum →
+      rules.SimpleExact state redirect slotAllowed root definition.role) :
+    (state.regularUnravelling redirect slotAllowed root rules).modelsCardinalityDefs
+      definitions := by
+  intro definition hdefinition
+  exact state.regularUnravelling_modelsCardinalityDef_of_direct
+    redirect slotAllowed root rules definition (hdirect definition hdefinition)
+    (hsimple definition hdefinition)
+
 theorem UnravellingDirectRole.target_depth
     {state : State Node Concept Role} {redirect : Node → Node}
     {slotAllowed : Node → Role → Node → Nat → Prop} {root : Node}
@@ -370,5 +546,12 @@ theorem State.unravelling_modelsCardinalityDefs
 #print axioms State.unravelling_direct_hasAtMost
 #print axioms State.unravelling_modelsCardinalityDef
 #print axioms State.unravelling_modelsCardinalityDefs
+#print axioms State.regularUnravelling_direct
+#print axioms State.regularUnravelling_subRole
+#print axioms State.regularUnravelling_inverseRole
+#print axioms State.regularUnravelling_chain
+#print axioms State.regularUnravelling_reflexive
+#print axioms State.regularUnravelling_modelsCardinalityDef_of_direct
+#print axioms State.regularUnravelling_modelsCardinalityDefs_of_direct
 
 end ContextCalculus.Hypertableau

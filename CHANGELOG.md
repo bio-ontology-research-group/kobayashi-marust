@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.105] – 2026-08-20
+
+### Construct regular HT role closure
+
+- Define the regular unravelling role relation as the least inductive closure
+  of authorized direct path edges under unary subroles, inverse-role bridges,
+  binary chains/transitivity, and reflexivity.
+- Prove each normalized role-rule family holds in the resulting interpretation
+  directly from its closure constructor.
+- Define `SimpleExact`: role closure adds no non-direct edge for a designated
+  number-restricted role.
+- Prove direct minimum-cardinality models lift into regular role closure without
+  an extra premise, while maximum cardinalities lift under `SimpleExact`.
+- Lift this simplicity bridge across the complete cardinality-definition list.
+
+The remaining role work is executable decoding and validation of regular role
+rules and simple-role declarations from the Rust wire. The full HT ontology
+model theorem must additionally transfer concept and existential clauses across
+the unravelling and handle equality/nominal roots.
+
+The full Lean build passes across 3,379 jobs, and the locked Rust release check
+passes. Rust reasoning code remains unchanged from v0.3.101's complete release
+suite.
+
 ## [0.3.104] – 2026-08-20
 
 ### Prove regular HT cardinality satisfaction
