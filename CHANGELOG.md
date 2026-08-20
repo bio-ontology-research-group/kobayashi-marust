@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.129] – 2026-08-20
+
+### Bound and execute anchored cardinality certificates
+
+- Add a versioned JSON container for the combined anchored equality and
+  cardinality certificate. Decode the anchored core at the container's exact
+  concept, role, and variable dimensions.
+- Bounds-check every slot endpoint and role against the decoded regular node
+  space, and bounds-check every cardinality definition before constructing any
+  finite type.
+- Expose the acceptance theorem that the decoded anchored interpretation
+  satisfies both the equality-source ontology and all decoded cardinality
+  definitions.
+- Add `ht-anchored-cardinality-cert-check`, with fixtures showing acceptance of
+  a valid empty model and fail-closed rejection of an out-of-range slot.
+
+This closes bounded decoding and native execution for anchored cardinality
+countermodels. Taxonomy-cell composition and Rust certificate production
+remain certification tasks. It does not certify the complete HT runtime or
+automatic router.
+
 ## [0.3.128] – 2026-08-20
 
 ### Check anchored equality and cardinality models together

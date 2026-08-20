@@ -41,11 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.128`. This milestone adds an executable combined checker proving that one
+`v0.3.129`. This milestone adds a bounded native JSON checker proving that one
 finite-slot, nominal-aware anchored equality model satisfies its ontology and
-all minimum and maximum cardinality definitions. Bounded decoding and taxonomy
-publication are still incomplete. It does not certify the entire Rust
-executable or automatic routing.
+all minimum and maximum cardinality definitions. Taxonomy composition and Rust
+production of this certificate remain incomplete. It does not certify the
+entire Rust executable or automatic routing.
 
 ## Classify an ontology
 
@@ -232,12 +232,17 @@ has a checked positive nominal guard in the same clause body. Lean proves that
 the guard makes the endpoint canonical, so finite endpoint equality entails
 semantic equality. Unguarded equality heads remain rejected.
 
-The build additionally provides `ht-regular-cert-check` and
-`ht-regular-cardinality-cert-check`. These executables decode the bounded
+The build additionally provides `ht-regular-cert-check`,
+`ht-regular-cardinality-cert-check`, and
+`ht-anchored-cardinality-cert-check`. These executables decode the bounded
 regular wires and run the proved finite cover, residual-clause, witness, and
-cardinality checks. Acceptance constructs the infinite regular unravelling
-model rather than relying on a finite folded graph. The Rust producer emits
-this wire through the equality-free global certification API. The dedicated
+cardinality checks. The anchored cardinality checker also validates the dense
+equality image, nominal roots, explicit successor slots, and exact shared
+dimensions; acceptance constructs one anchored interpretation satisfying the
+ontology and all cardinality definitions. The ordinary regular checker
+constructs the infinite regular unravelling model rather than relying on a
+finite folded graph. The Rust producer emits the ordinary regular wire through
+the equality-free global certification API. The dedicated
 executables remain useful lower-layer checker targets; this does not claim that
 the complete production HT route is certified for every SROIQ feature. The
 Rust producer emits checker-accepted regular

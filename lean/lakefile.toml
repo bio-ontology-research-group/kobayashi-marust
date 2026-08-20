@@ -57,5 +57,9 @@ name = "ht-anchored-eq-cert-check"
 root = "HTAnchoredEqCertCheck"
 
 [[lean_exe]]
+name = "ht-anchored-cardinality-cert-check"
+root = "HTAnchoredCardinalityCertCheck"
+
+[[lean_exe]]
 name = "ht-taxonomy-cert-check"
 root = "HTTaxonomyCertCheck"

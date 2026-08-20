@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "concept_count": 1,
+  "role_count": 1,
+  "variable_count": 1,
+  "anchored": {
+    "version": 1,
+    "equality_node_count": 1,
+    "regular": {
+      "version": 1,
+      "node_count": 1,
+      "concept_count": 1,
+      "role_count": 1,
+      "variable_count": 1,
+      "labels": [],
+      "edges": [],
+      "obligations": [],
+      "redirect": [0],
+      "cover": [],
+      "sub_roles": [],
+      "inverse_roles": [],
+      "chains": [],
+      "reflexive_roles": [],
+      "role_clauses": [],
+      "residual": []
+    },
+    "equality_ontology": [],
+    "equality_state": {
+      "labels": [],
+      "edges": [],
+      "obligations": [],
+      "equalities": [],
+      "representatives": [0],
+      "representative_paths": [[]]
+    },
+    "class_map": [0],
+    "nominal_roots": [null]
+  },
+  "slots": [],
+  "definitions": []
+}
