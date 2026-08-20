@@ -489,6 +489,18 @@ residual clauses. `DecodedRegularCertificate.check_models` carries successful
 decode and Boolean acceptance through to the exact model theorem. Cardinality
 slots, equality/nominal roots, and the Rust producer remain pending.
 
+`HypertableauRegularCardinalityCertificate.lean` extends the regular model with
+explicit authorized witness slots and complete minimum/maximum definitions.
+`SyntacticallySimple` excludes every role-closure constructor that could add an
+edge for a number-restricted role, and
+`simpleExact_of_syntacticallySimple` proves all such semantic edges remain
+direct. The finite certificate's Boolean simplicity test is proved sound.
+`FiniteRegularCardinalityCertificate.models` combines authorized minimum
+witnesses, finite maximum-key bounds, and simple-role exactness to produce one
+interpretation modeling both the exact ontology and all cardinality
+definitions. The minimum/maximum validity conditions still need their explicit
+Boolean checker and bounded wire representation.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.

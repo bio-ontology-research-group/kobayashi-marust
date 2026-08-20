@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.111] – 2026-08-20
+
+### Prove regular HT cardinality and simple-role integration
+
+- Define `SyntacticallySimple`: no subrole, inverse, chain, or reflexive rule
+  can introduce an edge for a designated number-restricted role.
+- Prove syntactic simplicity implies `SimpleExact`, so every regular semantic
+  edge of that role is a direct authorized path edge.
+- Add an executable Boolean simplicity test over decoded role-rule lists and
+  prove its soundness.
+- Add `FiniteRegularCardinalityCertificate` with explicit authorized witness
+  slots and complete cardinality definitions.
+- Prove certificate validity yields one regular interpretation that models both
+  the exact decoded ontology and every minimum/maximum cardinality definition.
+
+The cardinality validity contract is semantic in this release. The next step is
+the explicit Boolean minimum-slot and maximum-key checker, followed by its wire
+decoder.
+
+The full Lean build passes across 3,382 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.110] – 2026-08-20
 
 ### Add the bounded regular HT JSON wire

@@ -217,6 +217,29 @@ def UnravellingRoleRules.SimpleExact
     UnravellingRole state redirect slotAllowed root rules role source target →
       UnravellingDirectRole state redirect slotAllowed root role source target
 
+/-- Executable syntactic criterion for a simple role. No closure constructor
+may introduce an edge whose conclusion is the designated role. -/
+def UnravellingRoleRules.SyntacticallySimple
+    (rules : UnravellingRoleRules Role) (role : Role) : Prop :=
+  (∀ premise, ¬rules.subRole premise role) ∧
+  (∀ premise, ¬rules.inverseRole premise role) ∧
+  (∀ first second, ¬rules.chain first second role) ∧
+  ¬rules.reflexive role
+
+theorem UnravellingRoleRules.simpleExact_of_syntacticallySimple
+    (rules : UnravellingRoleRules Role)
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (role : Role) (hsimple : rules.SyntacticallySimple role) :
+    rules.SimpleExact state redirect slotAllowed root role := by
+  intro source target edge
+  cases edge with
+  | direct edge => exact edge
+  | sub rule edge => exact False.elim (hsimple.1 _ rule)
+  | inverse rule edge => exact False.elim (hsimple.2.1 _ rule)
+  | chain rule left right => exact False.elim (hsimple.2.2.1 _ _ rule)
+  | refl rule => exact False.elim (hsimple.2.2.2 rule)
+
 /-- Cardinality satisfaction transfers from the direct path interpretation to
 the regular role closure. Minimum witnesses remain edges by `direct`; maximum
 bounds require the SROIQ simple-role premise that closure is exact on the
@@ -1131,6 +1154,7 @@ theorem State.unravelling_modelsCardinalityDefs
 #print axioms State.regularUnravelling_reflexive
 #print axioms State.regularUnravelling_modelsCardinalityDef_of_direct
 #print axioms State.regularUnravelling_modelsCardinalityDefs_of_direct
+#print axioms UnravellingRoleRules.simpleExact_of_syntacticallySimple
 #print axioms State.regularUnravelling_sat_label
 #print axioms State.regularUnravelling_obligation_witness
 #print axioms State.regularUnravelling_regularHoldsAtom

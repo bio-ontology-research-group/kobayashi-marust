@@ -162,6 +162,33 @@ def FiniteRegularCertificate.coverClosedB
     (List.finRange nodeCount).all (fun source =>
       decide ((role, source, source) ∈ certificate.cover)))
 
+def FiniteRegularCertificate.syntacticallySimpleB
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (role : Fin roleCount) : Bool :=
+  certificate.subRoles.all (fun rule => decide (rule.2 ≠ role)) &&
+  certificate.inverseRoles.all (fun rule => decide (rule.2 ≠ role)) &&
+  certificate.chains.all (fun rule => decide (rule.2.2 ≠ role)) &&
+  decide (role ∉ certificate.reflexiveRoles)
+
+theorem FiniteRegularCertificate.syntacticallySimpleB_sound
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (role : Fin roleCount)
+    (hcheck : certificate.syntacticallySimpleB role = true) :
+    certificate.rules.SyntacticallySimple role := by
+  simp only [FiniteRegularCertificate.syntacticallySimpleB, Bool.and_eq_true,
+    List.all_eq_true, decide_eq_true_eq] at hcheck
+  rcases hcheck with ⟨⟨⟨hsub, hinverse⟩, hchain⟩, hrefl⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro premise hrule
+    exact hsub (premise, role) hrule rfl
+  · intro premise hrule
+    exact hinverse (premise, role) hrule rfl
+  · intro first second hrule
+    exact hchain (first, second, role) hrule rfl
+  · exact hrefl
+
 /-- Fully executable decision procedure. Every quantifier is represented by a
 finite list traversal, including variable assignments. -/
 def FiniteRegularCertificate.check
@@ -362,6 +389,7 @@ example : missingDirectCover.check = false := by native_decide
 
 #print axioms FiniteRegularCertificate.coverClosed_covers
 #print axioms FiniteRegularCertificate.coverClosedB_sound
+#print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
 #print axioms FiniteRegularCertificate.models
 #print axioms FiniteRegularCertificate.check_models
