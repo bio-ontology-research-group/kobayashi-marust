@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.112] – 2026-08-20
+
+### Add the executable regular HT cardinality checker
+
+- Check minimum restrictions by enumerating finite node witnesses and requiring
+  exact authorized slots for every `Fin bound` index.
+- Check maximum restrictions by enumerating selections from the finite slot
+  list. Every selection of `bound + 1` authorized slots must repeat a
+  `(target,slot)` key.
+- Prove any hypothetical injective semantic family of authorized maximum keys
+  maps back to a rejected slot selection, establishing `HasAtMost`.
+- Combine the regular base checker, zero-slot coverage, minimum/maximum checks,
+  and simple-role validation in one executable `check`.
+- Prove `check_models`: acceptance yields one interpretation modeling the exact
+  ontology and all decoded cardinality definitions.
+- Add native regressions accepting compatible minimum-one/maximum-one
+  restrictions and rejecting an activated maximum-zero violation.
+
+The maximum proof uses standard `Classical.choice` to select a slot-list index
+for each semantic membership witness. No `sorryAx` is present. The bounded
+cardinality JSON wire remains next.
+
+The full Lean build passes across 3,382 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.111] – 2026-08-20
 
 ### Prove regular HT cardinality and simple-role integration

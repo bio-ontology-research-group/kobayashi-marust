@@ -501,6 +501,15 @@ interpretation modeling both the exact ontology and all cardinality
 definitions. The minimum/maximum validity conditions still need their explicit
 Boolean checker and bounded wire representation.
 
+The same module now implements the explicit Boolean cardinality checker.
+Minimum definitions enumerate node witnesses and require their exact indexed
+slots. Maximum definitions enumerate every `bound + 1` selection from the
+finite slot list and reject any authorized selection with distinct
+`(target,slot)` keys. The soundness proof maps a hypothetical semantic key
+family back to slot-list indices and contradicts that exhaustive check.
+`check_models` is the executable capstone for the ontology plus cardinality
+semantics. Only the bounded cardinality wire remains at this layer.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
