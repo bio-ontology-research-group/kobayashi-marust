@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "node_count": 1,
+  "concept_count": 1,
+  "role_count": 1,
+  "labels": [
+    { "node": 0, "literal": { "concept": 0, "neg": false } }
+  ],
+  "edges": [],
+  "obligations": [],
+  "redirect": [0],
+  "nominal_roots": [0]
+}

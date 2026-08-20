@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.119`.
+`v0.3.120`.
 
 ## Classify an ontology
 
@@ -215,6 +215,12 @@ canonical-model theorem for guarded ontologies. Executable equality/nominal
 regular publication still requires a wire checker that derives the theorem's
 coherence, redirected-witness, and saturation premises from Rust's equality
 representatives, nominal carriers, and blocker evidence.
+
+The native `ht-anchored-premises-check` now bounds-checks nominal-root vectors
+and proves clash freedom, exact nominal-label coherence, and redirected witness
+completion from the decoded finite state. Regular saturation, RBox cover, and
+equality-closure evidence still need composition into the final anchored SAT
+wire before equality/nominal publication can use this checker.
 
 The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded

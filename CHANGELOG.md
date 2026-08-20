@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.120] – 2026-08-20
+
+### Check anchored HT premises through a bounded wire
+
+- Add executable Boolean checks for clash freedom, exact positive and negative
+  nominal-label coherence, and redirected existential witnesses.
+- Prove checker acceptance derives the corresponding semantic premises of the
+  anchored canonical-model theorem.
+- Add a versioned bounded wire with one optional nominal root per concept;
+  reject malformed lengths and out-of-range node, role, concept, redirect, and
+  nominal-root identifiers.
+- Add the native `ht-anchored-premises-check` executable and accepted/forged
+  JSON fixtures. The valid document is accepted and a forged nominal root exits
+  with rejection status 1.
+
+This checker does not yet carry regular saturation, RBox cover evidence, or the
+equality-closure proof connecting Rust's union-find representatives to nominal
+roots. Those must be composed into one SAT certificate before publication.
+The full Lean build passes 3,387 jobs. The locked serial release suite passes
+2,120 tests with 8 ignored.
+
 ## [0.3.119] – 2026-08-20
 
 ### Prove the anchored nominal-aware HT interpretation
