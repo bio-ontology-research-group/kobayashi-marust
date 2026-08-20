@@ -415,13 +415,16 @@ and search to that certificate.
 
 `HypertableauUnravelling.lean` begins that construction with a typed path domain.
 Each successor step records its finite target, role, and a natural-number witness
-slot. `unravelling_obligation_witness` proves redirected completion obligations
-have satisfying path successors at strictly greater depth.
+slot accepted by an explicit slot-admissibility relation.
+`unravelling_obligation_witness` proves redirected completion obligations have
+satisfying authorized path successors at strictly greater depth.
 `unravelling_minimum_witnesses` proves `n` finite witness slots become an
 injective family of `n` semantic successors even when slots reuse the same
-finite graph node. This establishes the existential and minimum-cardinality
-directions of the regular domain construction; it is not yet the full model
-theorem.
+finite graph node. `UnravellingDirectSuccessor.key_injective` proves all direct
+semantic successors inject into their authorized `(target-node, slot)` keys,
+which is the finite bound needed for the maximum-cardinality direction. These
+results establish the path-domain cardinality infrastructure; they are not yet
+the full model theorem.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

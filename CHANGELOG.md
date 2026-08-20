@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.103] – 2026-08-20
+
+### Bound regular HT successor slots
+
+- Refine the v0.3.102 path domain with an explicit slot-admissibility relation.
+  A path step and its direct semantic role edge now exist only when the finite
+  certificate authorizes that `(source, role, target, slot)` tuple.
+- Require existential and minimum-cardinality witness theorems to exhibit the
+  corresponding authorized slots.
+- Prove semantic direct successors inject into finite `(target-node, slot)`
+  keys. Unravelling therefore introduces no extra direct successors beyond the
+  authorized key set, reducing maximum-cardinality preservation to a finite
+  checker bound on that set.
+
+This refinement prevents unrestricted slot replication from violating at-most
+restrictions. The full role interpretation still needs regular role-hierarchy
+closure and its separate simplicity argument for number-restricted roles.
+
+The full Lean build passes across 3,379 jobs, and the locked Rust release check
+passes. Rust reasoning code remains unchanged from v0.3.101's complete release
+suite.
+
 ## [0.3.102] – 2026-08-20
 
 ### Construct the regular HT path domain
