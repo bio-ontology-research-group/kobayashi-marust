@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.106] – 2026-08-20
+
+### Construct the regular HT ontology model
+
+- Define path-level syntactic truth for concepts, full regular roles,
+  existential obligations, and equality.
+- Define regular discharge and saturation contracts over assignments into the
+  infinite path domain, including role matches introduced by subroles,
+  inverses, chains/transitivity, and reflexivity.
+- Prove every path-level atom in a discharged head is semantically true.
+  Existential obligations obtain fresh authorized path witnesses through the
+  redirected completion graph.
+- Prove `regularUnravelling_models_of_saturated`: every clash-free,
+  witness-complete regular saturation of a guarded ontology is a genuine model
+  of that ontology.
+
+This establishes the semantic model endpoint missing from finite-fold
+acceptance. The remaining HT work is to derive path-level saturation, redirect
+compatibility, role rules, simplicity, and authorized slots from an executable
+Rust completion-graph certificate, then handle equality and nominal roots in
+that wire connection.
+
+The full Lean build passes across 3,379 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.105] – 2026-08-20
 
 ### Construct regular HT role closure
