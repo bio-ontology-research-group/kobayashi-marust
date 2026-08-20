@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.97] – 2026-08-20
+
+### Preserve role implications across equality-aware folds
+
+- Prove exact provenance for every materialized fold edge: it is either a base
+  edge or was copied from a base edge through a specific supplied blocker pair
+  whose source lies in the blocker's equality class.
+- Use that provenance to prove every base closed-role implication remains valid
+  after folding. When a premise edge is copied, the corresponding base
+  conclusion is copied back through the same fold.
+- Correct the README's stale ELC statement: wire-v5 checker-backed production
+  already supports certified residual compilation, NF3 witnesses, and
+  canonical-model composition, while unchecked repair output remains excluded.
+
+This closes sub-role and same-orientation role-bridge transfer. Multi-edge role
+chains, inverse orientations, concept guards adjacent to copied edges, and
+equality/cardinality heads remain in the role-sensitive HT fold proof.
+
 ## [0.3.96] – 2026-08-20
 
 ### Prove role-free equality-fold acceptance

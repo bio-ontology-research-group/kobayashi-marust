@@ -80,6 +80,38 @@ theorem FiniteEqFoldCertificate.base_edge_mem_foldedEdges
     edge ∈ certificate.foldedEdges := by
   exact List.mem_append_left _ hedge
 
+/-- Every materialized edge is either an original edge or has exact provenance
+from one supplied `(blocked, blocker)` pair and one original edge whose source
+lies in the blocker's equality class. -/
+theorem FiniteEqFoldCertificate.mem_foldedEdges_iff
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (role : Fin roleCount) (source target : Fin nodeCount) :
+    (role, source, target) ∈ certificate.foldedEdges ↔
+      (role, source, target) ∈ certificate.base.base.edges ∨
+        ∃ blocker edgeSource,
+          (source, blocker) ∈ certificate.folds ∧
+          (role, edgeSource, target) ∈ certificate.base.base.edges ∧
+          certificate.base.representative edgeSource =
+            certificate.base.representative blocker := by
+  simp only [FiniteEqFoldCertificate.foldedEdges, List.mem_append,
+    List.mem_flatMap, List.mem_filterMap]
+  constructor
+  · rintro (hbase | ⟨fold, hfold, edge, hedge, hmap⟩)
+    · exact Or.inl hbase
+    · rcases fold with ⟨blocked, blocker⟩
+      rcases edge with ⟨edgeRole, edgeSource, edgeTarget⟩
+      split at hmap
+      · simp only [Option.some.injEq, Prod.mk.injEq] at hmap
+        rcases hmap with ⟨rfl, rfl, rfl⟩
+        exact Or.inr ⟨blocker, edgeSource, hfold, hedge, ‹_›⟩
+      · contradiction
+  · rintro (hbase | ⟨blocker, edgeSource, hfold, hedge, hrepresentative⟩)
+    · exact Or.inl hbase
+    · right
+      refine ⟨(source, blocker), hfold, (role, edgeSource, target), hedge, ?_⟩
+      simp [hrepresentative]
+
 /-- Folding changes only the edge list, so equality-quotient clashes cannot be
 introduced. -/
 theorem FiniteEqFoldCertificate.closedClashFree_of_base
@@ -141,6 +173,49 @@ theorem FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
   | role => contradiction
   | exists_ => exact hholds
   | eq => exact hholds
+
+/-- A role implication valid in the base closed graph remains valid after
+folding. If the premise edge was copied, provenance identifies its blocker edge;
+the implication produces a base conclusion there, and the same fold copies that
+conclusion back to the blocked source. -/
+theorem FiniteEqFoldCertificate.closedRole_implication
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.equalityClosureValidB = true)
+    (premise conclusion : Fin roleCount) (source target : Fin nodeCount)
+    (himplication : ∀ left right,
+      certificate.base.state.closedEdge premise left right →
+        certificate.base.state.closedEdge conclusion left right)
+    (hpremise : certificate.materialize.state.closedEdge premise source target) :
+    certificate.materialize.state.closedEdge conclusion source target := by
+  rcases hpremise with
+    ⟨rawSource, rawTarget, hsource, htarget, hedge⟩
+  rcases (certificate.mem_foldedEdges_iff premise rawSource rawTarget).mp hedge with
+    hbase | ⟨blocker, edgeSource, hfold, hbase, hrepresentative⟩
+  · rcases himplication source target
+        ⟨rawSource, rawTarget, hsource, htarget, hbase⟩ with
+      ⟨headSource, headTarget, hheadSource, hheadTarget, hheadEdge⟩
+    exact ⟨headSource, headTarget, hheadSource, hheadTarget,
+      certificate.base_edge_mem_foldedEdges _ hheadEdge⟩
+  · have hbasePremise : certificate.base.state.closedEdge premise
+        edgeSource rawTarget :=
+      ⟨edgeSource, rawTarget,
+        certificate.base.state.equiv_equivalence.1 edgeSource,
+        certificate.base.state.equiv_equivalence.1 rawTarget, hbase⟩
+    rcases himplication edgeSource rawTarget hbasePremise with
+      ⟨headSource, headTarget, hheadSource, hheadTarget, hheadEdge⟩
+    have hheadRepresentative :
+        certificate.base.representative headSource =
+          certificate.base.representative blocker := by
+      exact ((certificate.base.equalityClosureValidB_sound hvalid _ _).mp
+        hheadSource).trans hrepresentative
+    have hfoldedHead :
+        (conclusion, rawSource, headTarget) ∈ certificate.foldedEdges :=
+      (certificate.mem_foldedEdges_iff conclusion rawSource headTarget).mpr
+        (Or.inr ⟨blocker, headSource, hfold, hheadEdge, hheadRepresentative⟩)
+    exact ⟨rawSource, headTarget, hsource,
+      certificate.base.state.equiv_equivalence.trans hheadTarget htarget,
+      hfoldedHead⟩
 
 /-- Adding fold edges preserves saturation for the role-free-body portion of
 the ontology. -/
@@ -282,6 +357,8 @@ end EqFoldTests
 #print axioms FiniteEqFoldCertificate.closedWitnessComplete_of_base
 #print axioms FiniteEqFoldCertificate.closedHoldsAtom_of_base
 #print axioms FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
+#print axioms FiniteEqFoldCertificate.mem_foldedEdges_iff
+#print axioms FiniteEqFoldCertificate.closedRole_implication
 #print axioms FiniteEqFoldCertificate.closedSaturatedFor_of_roleFree
 #print axioms FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid
 #print axioms FiniteEqFoldCertificate.check_complete

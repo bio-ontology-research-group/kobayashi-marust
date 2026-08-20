@@ -263,6 +263,10 @@ obligation completely for role-free clause bodies. Supporting lemmas show that
 all folds preserve equality validation, quotient clash freedom, existing
 witnesses, and base closed facts. Role-bearing bodies remain the precise
 pairwise-blocking proof boundary.
+`FiniteEqFoldCertificate.mem_foldedEdges_iff` gives exact provenance for copied
+edges, and `closedRole_implication` uses it to preserve every base role
+implication through the fold. This covers the sub-role/same-orientation bridge
+part of the remaining role-bearing boundary.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

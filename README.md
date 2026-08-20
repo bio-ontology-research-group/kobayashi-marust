@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.96`.
+`v0.3.97`.
 
 ## Classify an ontology
 
@@ -159,10 +159,11 @@ ontology, completion trace, and published result. Lean recomputes and validates
 the raw-to-normal transformation before checking completion. Set
 `KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
 closure, and Rust-state agreement before the pure ELC worker can publish. It
-also checks exact residual-compilation evidence, although the production route
-still declines residual publication pending certification of the NF3 witness
-rewrite and canonical-model composition. The worker fails closed if any stage
-fails. This opt-in path currently publishes only the pure NF1–NF7 ELC route.
+also checks exact residual-compilation evidence, the NF3 witness rewrite, and
+canonical-model composition. The production worker can publish residual
+results only after this checker accepts the complete wire-v5 certificate; it
+fails closed if any stage fails. Unchecked repair output is never published by
+this opt-in path.
 
 The certification build also provides `ht-cert-check`. It bounds-checks a
 versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
