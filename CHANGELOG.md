@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.149] – 2026-08-21
+
+### Make the global cardinality outcome boundary executable
+
+- Add a Boolean production-shape check to the version-2 cardinality document
+  boundary. Global SAT requires no refutation payload; global UNSAT requires
+  exactly one distinct-cardinality refutation and no ordinary fallback.
+- Prove the Boolean shape check equivalent to the declarative production
+  contract.
+- Add `checkProductionGlobal` and prove that acceptance alone yields a decoded,
+  semantically conclusive checked SAT or closed outcome. No caller-supplied
+  shape proposition remains in this trust boundary.
+- Confirm that cardinality taxonomy query documents already decode into total
+  positive-or-negative concept and ordered subsumption decisions; no duplicate
+  query correspondence layer was introduced.
+
+The recursive Rust transition enumerator correspondence, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.148] – 2026-08-21
 
 ### Connect production cardinality documents to checked outcomes
