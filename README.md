@@ -41,11 +41,12 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.131`. Lean now executes the finite clause-first HT selector, proves that
-it enumerates every clause grounding, and proves that its selected branches are
-exactly certified `FirstObstructionStep` transitions. Existential selection and
-blocker-aware runtime terminals remain unfinished. This does not certify the
-entire Rust executable or automatic routing.
+`v0.3.132`. Lean now executes the finite clause-first and existential-witness
+HT selectors, proves their scans exhaustive, and instantiates finite HT search
+with their exact certified transitions. Blocker filtering, frontier and checked
+terminal correspondence, and equality/cardinality runtime recursion remain
+unfinished. This does not certify the entire Rust executable or automatic
+routing.
 
 ## Classify an ontology
 

@@ -175,7 +175,312 @@ theorem selectClauseGrounding_firstObstructionStep
   exact .branch clause hclause assignment hproperties.1 hproperties.2
     (hheads clause hclause)
 
+/-- An undischarged empty-head clause closes immediately. Although its
+successor list is empty, it is a zero-child refutation rule rather than an open
+search terminal. -/
+theorem selectClauseGrounding_emptyHead_refutes
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    {grounding : Grounding Variable Node Concept Role}
+    (hselect : selectClauseGrounding ontology state = some grounding)
+    (hempty : grounding.1.head = []) : Refutes Node ontology state := by
+  have hstep := selectClauseGrounding_firstObstructionStep ontology state
+    hheads hselect
+  apply hstep.exhaustiveStep.refutes_of_children
+  intro child hchild
+  simp [hempty] at hchild
+
+abbrev WitnessCandidate (Node Concept Role : Type) := Role × Lit Concept × Node
+
+noncomputable def allWitnessCandidates
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :
+    List (WitnessCandidate Node Concept Role) := by
+  classical
+  exact (Finset.univ.toList : List Role).flatMap fun role =>
+    (Finset.univ.toList : List Concept).flatMap fun concept =>
+    [false, true].flatMap fun neg =>
+    (Finset.univ.toList : List Node).map fun source =>
+      (role, ⟨concept, neg⟩, source)
+
+theorem mem_allWitnessCandidates
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (candidate : WitnessCandidate Node Concept Role) :
+    candidate ∈ allWitnessCandidates := by
+  classical
+  rcases candidate with ⟨role, ⟨concept, neg⟩, source⟩
+  cases neg <;> simp [allWitnessCandidates]
+
+noncomputable def witnessCandidateBool
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node] [DecidableState state]
+    (candidate : WitnessCandidate Node Concept Role) : Bool :=
+  letI : ∀ node literal, Decidable (state.label node literal) :=
+    DecidableState.label (state := state)
+  letI : ∀ role source target, Decidable (state.edge role source target) :=
+    DecidableState.edge (state := state)
+  letI : ∀ role filler node, Decidable (state.obligation role filler node) :=
+    DecidableState.obligation (state := state)
+  decide (state.obligation candidate.1 candidate.2.1 candidate.2.2) &&
+    (Finset.univ.toList : List Node).all fun witness =>
+      decide (¬(state.edge candidate.1 candidate.2.2 witness ∧
+        state.label witness candidate.2.1))
+
+theorem witnessCandidateBool_eq_true_iff
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node] [DecidableState state]
+    (candidate : WitnessCandidate Node Concept Role) :
+    witnessCandidateBool state candidate = true ↔
+      state.obligation candidate.1 candidate.2.1 candidate.2.2 ∧
+      ∀ witness, ¬(state.edge candidate.1 candidate.2.2 witness ∧
+        state.label witness candidate.2.1) := by
+  classical
+  letI : ∀ node literal, Decidable (state.label node literal) :=
+    DecidableState.label (state := state)
+  letI : ∀ role source target, Decidable (state.edge role source target) :=
+    DecidableState.edge (state := state)
+  letI : ∀ role filler node, Decidable (state.obligation role filler node) :=
+    DecidableState.obligation (state := state)
+  simp only [witnessCandidateBool, Bool.and_eq_true, decide_eq_true_eq,
+    List.all_eq_true, Finset.mem_toList, Finset.mem_univ, true_implies]
+
+noncomputable def selectUnwitnessed
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state] :
+    Option (WitnessCandidate Node Concept Role) :=
+  firstMatch (witnessCandidateBool state) allWitnessCandidates
+
+theorem selectUnwitnessed_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state] :
+    selectUnwitnessed state = none ↔ ¬state.HasUnwitnessed := by
+  classical
+  rw [selectUnwitnessed, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hunwitnessed
+    rcases hunwitnessed with ⟨source, role, filler, hobligation, hnowitness⟩
+    have hfalse := hscan (role, filler, source)
+      (mem_allWitnessCandidates (role, filler, source))
+    rw [(witnessCandidateBool_eq_true_iff state (role, filler, source)).mpr
+      ⟨hobligation, hnowitness⟩] at hfalse
+    contradiction
+  · intro hnone candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties := (witnessCandidateBool_eq_true_iff state candidate).mp htrue
+    exact hnone ⟨candidate.2.2, candidate.1, candidate.2.1,
+      hproperties.1, hproperties.2⟩
+
+noncomputable def freshNodeBool
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node]
+    (target : Node) : Bool := by
+  classical
+  exact decide (target ∉ state.activeNodes)
+
+@[simp] theorem freshNodeBool_eq_true_iff
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node]
+    (target : Node) : freshNodeBool state target = true ↔ state.Fresh target := by
+  classical
+  simp [freshNodeBool, state.fresh_iff_not_mem_activeNodes]
+
+noncomputable def selectFreshNode
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role) : Option Node :=
+  firstMatch (freshNodeBool state) Finset.univ.toList
+
+theorem selectFreshNode_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    (state : State Node Concept Role) :
+    selectFreshNode state = none ↔ ¬∃ target, state.Fresh target := by
+  classical
+  rw [selectFreshNode, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with ⟨target, hfresh⟩
+    have hfalse := hscan target (by simp)
+    rw [(freshNodeBool_eq_true_iff state target).mpr hfresh] at hfalse
+    contradiction
+  · intro hnone target _
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    exact hnone ⟨target, (freshNodeBool_eq_true_iff state target).mp htrue⟩
+
+/-- Once clause scanning is exhausted, selected obligation and fresh-node
+scans construct exactly the runtime witness transition shape. -/
+theorem selectUnwitnessed_firstObstructionStep
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (hclauses : selectClauseGrounding ontology state = none)
+    {candidate : WitnessCandidate Node Concept Role}
+    (hwitness : selectUnwitnessed state = some candidate)
+    {target : Node} (hfresh : selectFreshNode state = some target) :
+    FirstObstructionStep ontology state
+      [state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1] := by
+  classical
+  have hcandidate := firstMatch_eq_some_mem
+    (by simpa [selectUnwitnessed] using hwitness)
+  have htarget := firstMatch_eq_some_mem
+    (by simpa [selectFreshNode] using hfresh)
+  have hproperties := (witnessCandidateBool_eq_true_iff state candidate).mp hcandidate.2
+  exact .witness ((selectClauseGrounding_eq_none_iff ontology state).mp hclauses)
+    candidate.2.2 target candidate.1 candidate.2.1
+    hproperties.1 hproperties.2 ((freshNodeBool_eq_true_iff state target).mp htarget.2)
+
+/-- Concrete clause-first transition enumerator. An empty result means either
+there is no raw obstruction or an unwitnessed obligation has exhausted the
+finite node universe; callers must distinguish a checked terminal from that
+explicit frontier condition. -/
+noncomputable def runtimeNext
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state] :
+    List (State Node Concept Role) :=
+  match selectClauseGrounding ontology state with
+  | some grounding => grounding.1.head.map (state.assertAtom grounding.2)
+  | none =>
+      match selectUnwitnessed state with
+      | none => []
+      | some candidate =>
+          match selectFreshNode state with
+          | none => []
+          | some target =>
+              [state.materializeWitness candidate.2.2 target
+                candidate.1 candidate.2.1]
+
+/-- Every nonempty concrete runtime successor family is one exact certified
+clause-first HT transition. -/
+theorem runtimeNext_firstObstructionStep
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hnonempty : runtimeNext ontology state ≠ []) :
+    FirstObstructionStep ontology state (runtimeNext ontology state) := by
+  classical
+  unfold runtimeNext at hnonempty ⊢
+  generalize hclause : selectClauseGrounding ontology state = selectedClause
+  cases selectedClause with
+  | some grounding =>
+      exact selectClauseGrounding_firstObstructionStep ontology state hheads hclause
+  | none =>
+      generalize hwitness : selectUnwitnessed state = selectedWitness
+      cases selectedWitness with
+      | none =>
+          exfalso
+          apply hnonempty
+          simp [hclause, hwitness]
+      | some candidate =>
+          generalize hfresh : selectFreshNode state = selectedFresh
+          cases selectedFresh with
+          | none =>
+              exfalso
+              apply hnonempty
+              simp [hclause, hwitness, hfresh]
+          | some target =>
+              exact selectUnwitnessed_firstObstructionStep ontology state
+                hclause hwitness hfresh
+
+/-- Empty concrete search after both scans are exhausted is a raw semantic
+terminal: no clause grounding and no existential obligation remain. -/
+theorem runtimeNext_empty_terminal
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (hclause : selectClauseGrounding ontology state = none)
+    (hwitness : selectUnwitnessed state = none) :
+    runtimeNext ontology state = [] ∧
+      ¬state.HasUndischarged ontology ∧ ¬state.HasUnwitnessed := by
+  constructor
+  · simp [runtimeNext, hclause, hwitness]
+  · exact ⟨(selectClauseGrounding_eq_none_iff ontology state).mp hclause,
+      (selectUnwitnessed_eq_none_iff state).mp hwitness⟩
+
+noncomputable instance decidableState_stateOfGuardedFacts
+    [DecidableEq Node] [DecidableEq Concept] [DecidableEq Role]
+    (facts : Finset (GuardedFact Node Concept Role)) :
+    DecidableState (stateOfGuardedFacts facts) := by
+  classical
+  exact {
+    label := fun _ _ => inferInstance
+    edge := fun _ _ _ => inferInstance
+    obligation := fun _ _ _ => inferInstance
+  }
+
+noncomputable def runtimeNextFacts
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (facts : Finset (GuardedFact Node Concept Role)) :
+    List (Finset (GuardedFact Node Concept Role)) :=
+  (runtimeNext ontology (stateOfGuardedFacts facts)).map State.guardedFacts
+
+/-- The finite HT decision theorem instantiated with the concrete executable
+clause/witness selector. Only checked terminal production remains a runtime
+premise; transition validity and strict growth are now derived in Lean. -/
+theorem finite_runtimeNext_decides
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hterminal : ∀ facts, runtimeNextFacts ontology facts = [] →
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts facts) ∨
+      HasCheckedFoldModel (nodeCount := nodeCount) ontology) :
+    ∀ root, Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      HasModel ontology := by
+  apply finite_first_obstruction_ht_decides ontology
+    (runtimeNextFacts ontology) ?_ hterminal
+  intro facts hnonempty
+  have hruntime : runtimeNext ontology (stateOfGuardedFacts facts) ≠ [] := by
+    intro hempty
+    apply hnonempty
+    simp [runtimeNextFacts, hempty]
+  have hstep := runtimeNext_firstObstructionStep ontology
+    (stateOfGuardedFacts facts) hheads hruntime
+  have hdecode :
+      ((runtimeNext ontology (stateOfGuardedFacts facts)).map State.guardedFacts).map
+          stateOfGuardedFacts =
+        runtimeNext ontology (stateOfGuardedFacts facts) := by
+    rw [List.map_map]
+    induction runtimeNext ontology (stateOfGuardedFacts facts) with
+    | nil => rfl
+    | cons child rest ih =>
+        simp only [List.map_cons, Function.comp_apply, ih]
+        rw [State.stateOfGuardedFacts_guardedFacts]
+  simpa only [runtimeNextFacts, hdecode] using hstep
+
 #print axioms selectClauseGrounding_eq_none_iff
 #print axioms selectClauseGrounding_firstObstructionStep
+#print axioms selectClauseGrounding_emptyHead_refutes
+#print axioms selectUnwitnessed_eq_none_iff
+#print axioms selectFreshNode_eq_none_iff
+#print axioms selectUnwitnessed_firstObstructionStep
+#print axioms runtimeNext_firstObstructionStep
+#print axioms runtimeNext_empty_terminal
+#print axioms finite_runtimeNext_decides
 
 end ContextCalculus.Hypertableau

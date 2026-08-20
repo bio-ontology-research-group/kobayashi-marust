@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.132] – 2026-08-20
+
+### Certify HT witness selection and concrete transitions
+
+- Enumerate every finite role, filler, and source combination and prove that
+  exhaustion is equivalent to the absence of an unwitnessed obligation.
+- Select unused finite nodes and prove the selected node satisfies the semantic
+  freshness predicate required by witness materialization.
+- Compose clause-first and witness selection into one concrete `runtimeNext`
+  function, and prove every nonempty successor family is exactly a
+  `FirstObstructionStep`.
+- Instantiate the finite HT decision theorem with this concrete selector, so
+  transition validity, strict finite-fact growth, and child closure no longer
+  remain abstract runtime premises.
+- Prove that a selected empty-head grounding is a zero-child refutation, not an
+  open terminal.
+
+This closes the finite equality-free clause/witness transition enumerator.
+Rust blocker filtering, frontier correspondence, clash ordering, checked leaf
+production, equality/cardinality recursion, and the complete HT runtime remain
+certification tasks. It does not certify automatic routing.
+
 ## [0.3.131] – 2026-08-20
 
 ### Certify finite HT clause-first runtime selection
