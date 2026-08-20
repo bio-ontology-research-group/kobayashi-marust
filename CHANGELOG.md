@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.148] – 2026-08-21
+
+### Connect production cardinality documents to checked outcomes
+
+- Define the exact global shape emitted by the Rust version-2 cardinality
+  producer: SAT has no refutation payload; UNSAT has one distinct-cardinality
+  refutation and no ordinary fallback payload.
+- Prove that every successfully decoded and checker-accepted document of this
+  shape constructs a typed checked SAT or checked closed bounded-search
+  outcome, never a frontier.
+- Compose that outcome with the existing semantic theorems, yielding a
+  nonempty model for SAT and ontology inconsistency for UNSAT.
+- Reject query evidence and mixed or missing global refutation payloads at this
+  correspondence boundary. Audit both decoded and direct wire theorems without
+  `sorryAx`.
+
+Query-outcome correspondence, remaining HT runtime correspondence, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.147] – 2026-08-21
 
 ### Complete recursive distinct-cardinality wire representability

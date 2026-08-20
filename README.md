@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.147`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.148`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -59,8 +59,10 @@ accepted refutation at the same depth. Checked successors are preserved;
 maximum-rule diagonal cells alone are canonicalized because the checker does
 not inspect them. The same recursive representability result now covers
 distinct-cardinality refutations, including exact preservation of every
-directed `apart` pair in checked successor states. Exact HT Rust recursive
-outcome correspondence, CB, and automatic routing remain unfinished.
+directed `apart` pair in checked successor states. Accepted production-global
+cardinality documents now construct typed checked SAT or closed outcomes with
+their model or inconsistency semantics. Query-outcome and remaining HT runtime
+correspondence, CB, and automatic routing remain unfinished.
 
 ## Classify an ontology
 
