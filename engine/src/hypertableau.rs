@@ -2459,6 +2459,12 @@ enum LeanHtRefutationTree {
     },
 }
 
+enum LeanHtRefutationOutcome {
+    Closed(LeanHtRefutationTree, usize),
+    Open,
+    Frontier,
+}
+
 #[derive(Clone, Copy, serde::Serialize)]
 struct LeanHtEquality {
     left: usize,
@@ -8660,10 +8666,12 @@ impl Ht {
         state: &mut LeanHtRefutationState,
         variable_count: usize,
         node_budget: usize,
-        hit_node_cap: &mut bool,
-    ) -> Option<(LeanHtRefutationTree, usize)> {
+    ) -> LeanHtRefutationOutcome {
         if state.clashes() {
-            return Some((LeanHtRefutationTree::Clash, state.active_nodes));
+            return LeanHtRefutationOutcome::Closed(
+                LeanHtRefutationTree::Clash,
+                state.active_nodes,
+            );
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
@@ -8689,7 +8697,7 @@ impl Ht {
                 let mut max_used = state.active_nodes;
                 for atom in &clause.head {
                     if matches!(atom, Atom::Eq { .. }) {
-                        return None;
+                        return LeanHtRefutationOutcome::Open;
                     }
                     let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, &assignment);
@@ -8698,23 +8706,26 @@ impl Ht {
                         state.progress_measure() > progress_before,
                         "HT certificate branch recursion must add a finite fact"
                     );
-                    let result =
-                        self.lean_refutation(state, variable_count, node_budget, hit_node_cap);
+                    let result = self.lean_refutation(state, variable_count, node_budget);
                     state.remove(atom, &assignment);
-                    let Some((child, child_used)) = result else {
-                        return None;
+                    let (child, child_used) = match result {
+                        LeanHtRefutationOutcome::Closed(child, child_used) => (child, child_used),
+                        LeanHtRefutationOutcome::Open => return LeanHtRefutationOutcome::Open,
+                        LeanHtRefutationOutcome::Frontier => {
+                            return LeanHtRefutationOutcome::Frontier;
+                        }
                     };
                     max_used = max_used.max(child_used);
                     children.push(child);
                 }
-                return Some((
+                return LeanHtRefutationOutcome::Closed(
                     LeanHtRefutationTree::Branch {
                         clause: clause_id,
                         assignment: assignment.clone(),
                         children,
                     },
                     max_used,
-                ));
+                );
             }
         }
 
@@ -8726,8 +8737,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                *hit_node_cap = true;
-                return None;
+                return LeanHtRefutationOutcome::Frontier;
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
@@ -8742,24 +8752,29 @@ impl Ht {
                 state.progress_measure() > progress_before,
                 "HT certificate witness recursion must add finite facts"
             );
-            let result = self.lean_refutation(state, variable_count, node_budget, hit_node_cap);
+            let result = self.lean_refutation(state, variable_count, node_budget);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
             state.active_nodes -= 1;
-            let (child, max_used) = result?;
-            return Some((
-                LeanHtRefutationTree::Witness {
-                    source,
-                    target,
-                    role: role as usize,
-                    filler: Self::lean_wire_lit(filler),
-                    child: Box::new(child),
-                },
-                max_used,
-            ));
+            return match result {
+                LeanHtRefutationOutcome::Closed(child, max_used) => {
+                    LeanHtRefutationOutcome::Closed(
+                        LeanHtRefutationTree::Witness {
+                            source,
+                            target,
+                            role: role as usize,
+                            filler: Self::lean_wire_lit(filler),
+                            child: Box::new(child),
+                        },
+                        max_used,
+                    )
+                }
+                LeanHtRefutationOutcome::Open => LeanHtRefutationOutcome::Open,
+                LeanHtRefutationOutcome::Frontier => LeanHtRefutationOutcome::Frontier,
+            };
         }
 
-        None
+        LeanHtRefutationOutcome::Open
     }
 
     fn lean_eq_refutation(
@@ -9465,17 +9480,15 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, node_count) = loop {
             let mut state = LeanHtRefutationState::root(initial_labels);
-            let mut hit_node_cap = false;
-            if let Some(result) =
-                self.lean_refutation(&mut state, variable_count, node_budget, &mut hit_node_cap)
-            {
-                break result;
-            }
-            if !hit_node_cap {
-                return Err("ontology has an open refutation branch".to_string());
-            }
-            if !deepen {
-                return Err("ontology reached the configured refutation node cap".to_string());
+            match self.lean_refutation(&mut state, variable_count, node_budget) {
+                LeanHtRefutationOutcome::Closed(tree, node_count) => break (tree, node_count),
+                LeanHtRefutationOutcome::Open => {
+                    return Err("ontology has an open refutation branch".to_string());
+                }
+                LeanHtRefutationOutcome::Frontier if !deepen => {
+                    return Err("ontology reached the configured refutation node cap".to_string());
+                }
+                LeanHtRefutationOutcome::Frontier => {}
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -19820,6 +19833,30 @@ mod tests {
         let mut large = Ht::lean_refutation_assignments(10, 10);
         assert_eq!(large.next(), Some(vec![0; 10]));
         assert_eq!(large.nth(8), Some(vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 9]));
+    }
+
+    #[test]
+    fn lean_refutation_reports_closed_open_and_frontier_separately() {
+        let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let mut closed_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            closed.lean_refutation(&mut closed_state, 0, 1),
+            LeanHtRefutationOutcome::Closed(_, 1)
+        ));
+
+        let open = Ht::new_certified(Vec::new());
+        let mut open_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            open.lean_refutation(&mut open_state, 0, 1),
+            LeanHtRefutationOutcome::Open
+        ));
+
+        let mut frontier_state = LeanHtRefutationState::root(&[]);
+        frontier_state.obligations.insert((R0, lit(false, A), 0));
+        assert!(matches!(
+            open.lean_refutation(&mut frontier_state, 0, 1),
+            LeanHtRefutationOutcome::Frontier
+        ));
     }
 
     #[test]

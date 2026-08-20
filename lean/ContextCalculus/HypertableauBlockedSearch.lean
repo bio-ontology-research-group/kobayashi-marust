@@ -24,6 +24,17 @@ def HasCheckedFoldModel
       nodeCount conceptCount roleCount variableCount,
     certificate.base.ontology = ontology ∧ certificate.check = true
 
+/-- The three results of a finite-prefix equality-free search. `frontier` is
+the only inconclusive result: it requests a larger node universe and must not
+be interpreted as either a refutation or a model. -/
+inductive BoundedSearchOutcome
+    (nodeCount conceptCount roleCount variableCount : Nat)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount)) : Type where
+  | closed (proof : Refutes (Fin nodeCount) ontology state)
+  | model (fold : HasCheckedFoldModel (nodeCount := nodeCount) ontology)
+  | frontier
+
 /-- A checked finite fold is a model of the exact ontology named by the search
 terminal, regardless of the producer's blocker choices. -/
 theorem hasModel_of_hasCheckedFoldModel
@@ -33,6 +44,21 @@ theorem hasModel_of_hasCheckedFoldModel
   rcases hfold with ⟨certificate, hontology, hcheck⟩
   rcases certificate.check_satisfiable hcheck with ⟨interpretation, hmodels⟩
   exact ⟨Fin nodeCount, interpretation, by simpa [hontology] using hmodels⟩
+
+/-- A conclusive bounded-search result has its advertised semantics. The
+remaining constructor is explicitly exposed as a frontier, so callers cannot
+collapse bounded exhaustion into a semantic open branch. -/
+theorem BoundedSearchOutcome.semantic_or_frontier
+    {ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (result : BoundedSearchOutcome nodeCount conceptCount roleCount variableCount
+      ontology state) :
+    Refutes (Fin nodeCount) ontology state ∨ HasModel ontology ∨
+      result = .frontier := by
+  cases result with
+  | closed proof => exact Or.inl proof
+  | model fold => exact Or.inr (Or.inl (hasModel_of_hasCheckedFoldModel fold))
+  | frontier => exact Or.inr (Or.inr rfl)
 
 /-- Finite exhaustive equality-free search can terminate at either a direct
 open canonical state or a blocked state whose untrusted fold passes the exact
@@ -65,6 +91,7 @@ theorem finite_exhaustive_ht_complete_with_checked_folds
   · exact hcloseChildren
 
 #print axioms hasModel_of_hasCheckedFoldModel
+#print axioms BoundedSearchOutcome.semantic_or_frontier
 #print axioms finite_exhaustive_ht_complete_with_checked_folds
 
 end ContextCalculus.Hypertableau

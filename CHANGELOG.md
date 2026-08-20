@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.75] – 2026-08-20
+
+### Separate bounded equality-free HT search outcomes
+
+- Replace the equality-free UNSAT producer's ambiguous `Option` plus mutable
+  node-cap side channel with explicit `Closed`, `Open`, and `Frontier` results.
+- Propagate open branches and bounded frontiers distinctly through clause and
+  witness recursion; only a frontier triggers iterative deepening.
+- Test the three producer outcomes independently.
+- Define the matching bounded-search outcome in Lean and prove that every
+  conclusive result supplies either a refutation or a checked model, while the
+  frontier remains explicitly inconclusive.
+
+Equality and cardinality refutation producers retain their separate search
+implementations and are not covered by this milestone.
+
 ## [0.3.74] – 2026-08-20
 
 ### Connect HT predecessor paths to the blocking-depth bound
