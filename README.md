@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.158`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.159`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -84,8 +84,11 @@ quotient-closed refutation, and every accepted tree has an exact decodable JSON
 representation. A finite measure containing ordinary HT facts and equality
 pairs now proves global termination of the clash-first equality runtime at each
 node budget: it refutes or reaches a blocked/saturated terminal or explicit
-frontier. Checked SAT-terminal composition, cardinality transition-enumerator
-correspondence, CB, and automatic routing remain unfinished. Equality SAT and
+frontier. Blocked equality terminals become SAT only when an independently
+checked finite equality fold validates the fully materialized quotient graph;
+global search composes that check while preserving node exhaustion as
+inconclusive. Concrete Rust fold production, cardinality transition-enumerator
+correspondence, CB, and automatic routing remain unfinished. Equality
 countermodel paths are unchanged.
 
 ## Classify an ontology

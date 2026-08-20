@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.159] – 2026-08-21
+
+### Compose equality termination with checked blocked models
+
+- Define the equality-aware checked-fold model boundary over
+  `FiniteEqFoldCertificate`.
+- Prove that every accepted fold constructs a model of the exact unchanged
+  ontology, regardless of the producer's proposed blocker pairs.
+- Add a typed fixed-budget equality outcome whose frontier remains explicitly
+  inconclusive.
+- Compose globally terminating clash-first search with checked blocked
+  terminals: the result is a quotient-closed refutation, an independently
+  checked model, or an explicit node frontier.
+- Derive semantic decision when the finite budget has no frontier.
+- Audit the new composition theorems without `sorryAx`.
+
+The runtime still must produce an accepted fold at every blocked terminal.
+Cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.158] – 2026-08-21
 
 ### Prove global finite equality-runtime termination
