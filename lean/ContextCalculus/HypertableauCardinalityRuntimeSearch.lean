@@ -404,6 +404,82 @@ theorem selectCardinalityClauseGrounding_not_realizable
   (selectCardinalityClauseGrounding_closedRefutes ontology definitions state
     hselect children).sound
 
+noncomputable def distinctFreshNodeBool
+    (state : DistinctEqState Node Concept Role) (target : Node) : Bool := by
+  classical
+  exact decide (state.Fresh target)
+
+@[simp] theorem distinctFreshNodeBool_eq_true_iff
+    (state : DistinctEqState Node Concept Role) (target : Node) :
+    distinctFreshNodeBool state target = true ↔ state.Fresh target := by
+  simp [distinctFreshNodeBool]
+
+noncomputable def selectDistinctFreshNode
+    [Fintype Node] [DecidableEq Node]
+    (state : DistinctEqState Node Concept Role) : Option Node :=
+  firstMatch (distinctFreshNodeBool state) Finset.univ.toList
+
+theorem selectDistinctFreshNode_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    (state : DistinctEqState Node Concept Role) :
+    selectDistinctFreshNode state = none ↔ ¬∃ target, state.Fresh target := by
+  classical
+  rw [selectDistinctFreshNode, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with ⟨target, hfresh⟩
+    have hfalse := hscan target (by simp)
+    rw [(distinctFreshNodeBool_eq_true_iff state target).mpr hfresh] at hfalse
+    contradiction
+  · intro hnone target _
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    exact hnone ⟨target, (distinctFreshNodeBool_eq_true_iff state target).mp htrue⟩
+
+/-- The fourth Rust control combines the quotient-blocked unwitnessed scan
+with a fresh node that is also absent from every explicit disequality. -/
+theorem selectCardinalityWitness_closedRefutes
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    {candidate : WitnessCandidate Node Concept Role}
+    (hwitness : selectEqUnblockedUnwitnessed state.base parent ancestors = some candidate)
+    {target : Node} (hfresh : selectDistinctFreshNode state = some target)
+    (child : ClosedDistinctCardinalityRefutes Node ontology definitions
+      (state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1)) :
+    ClosedDistinctCardinalityRefutes Node ontology definitions state := by
+  classical
+  have hcandidate := firstMatch_eq_some_mem
+    (by simpa [selectEqUnblockedUnwitnessed] using hwitness)
+  have hproperties :=
+    (eqUnblockedWitnessCandidateBool_eq_true_iff state.base parent ancestors candidate).mp
+      hcandidate.2
+  have htarget := firstMatch_eq_some_mem
+    (by simpa [selectDistinctFreshNode] using hfresh)
+  exact .witness state candidate.2.2 target candidate.1 candidate.2.1
+    hproperties.1 ((distinctFreshNodeBool_eq_true_iff state target).mp htarget.2) child
+
+theorem selectCardinalityWitness_not_realizable
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    {candidate : WitnessCandidate Node Concept Role}
+    (hwitness : selectEqUnblockedUnwitnessed state.base parent ancestors = some candidate)
+    {target : Node} (hfresh : selectDistinctFreshNode state = some target)
+    (child : ClosedDistinctCardinalityRefutes Node ontology definitions
+      (state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1)) :
+    ¬state.RealizableWithCardinality ontology definitions :=
+  (selectCardinalityWitness_closedRefutes ontology definitions state parent ancestors
+    hwitness hfresh child).sound
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -416,6 +492,9 @@ theorem selectCardinalityClauseGrounding_not_realizable
 #print axioms selectCardinalityClauseGrounding_eq_none_iff
 #print axioms selectCardinalityClauseGrounding_closedRefutes
 #print axioms selectCardinalityClauseGrounding_not_realizable
+#print axioms selectDistinctFreshNode_eq_none_iff
+#print axioms selectCardinalityWitness_closedRefutes
+#print axioms selectCardinalityWitness_not_realizable
 #print axioms ClosedDistinctCardinalityRefutes.sound
 #print axioms DistinctCardinalityRefutes.toClosed
 

@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.163] – 2026-08-21
+
+### Certify cardinality witness selection
+
+- Add the executable distinct-fresh-node scan required by cardinality-created
+  disequalities.
+- Prove that scan exhaustion is equivalent to absence of every node fresh for
+  labels, edges, obligations, equality, and both directions of `apart`.
+- Compose the existing quotient-blocked unwitnessed-obligation selector with
+  the distinct-fresh selector, matching Rust's fourth ordered runtime control.
+- Prove that a selected obligation, selected target, and recursively closed
+  child construct a sound quotient-closed distinct-cardinality refutation.
+- Audit the new witness-control theorems without `sorryAx`.
+
+Minimum, maximum, terminal selection, checker correspondence for quotient-
+closed bodies, concrete Rust field construction, CB, and automatic routing
+remain unfinished.
+
 ## [0.3.162] – 2026-08-21
 
 ### Certify quotient-closed cardinality clause selection
