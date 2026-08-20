@@ -53,6 +53,7 @@ import ContextCalculus.HypertableauTerminal
 import ContextCalculus.HypertableauSearch
 import ContextCalculus.HypertableauRoleBlocking
 import ContextCalculus.HypertableauBlockedSearch
+import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauRefutationCertificate
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauTaxonomyCertificate

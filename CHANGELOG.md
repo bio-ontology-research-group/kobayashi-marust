@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.81] – 2026-08-20
+
+### Check the concrete equality-free HT frontier refinement
+
+- Add an executable Lean frontier checker for untrusted rooted witness paths.
+- Decode natural-number role and concept identifiers into finite types, reject
+  malformed counts, enforce the exact full-signature depth bound, and require
+  pairwise-distinct rooted addresses.
+- Prove that checker acceptance supplies the injective `WitnessAddress` map
+  consumed by the iterative-deepening theorem.
+- Compose the wire theorem with KM's `8 * 2^round` schedule, proving that a
+  fixed-vocabulary sequence of full checked frontiers cannot persist forever.
+- Serialize the concrete Rust frontier in that exact wire format and fail
+  closed before returning a frontier if its capped exact cardinality check
+  fails.
+- Verify that Lean accepts a real cyclic frontier and rejects a duplicate
+  address. The exact Rust cardinality routine is tested at four boundaries.
+
+This closes the concrete outer-frontier refinement for equality-free HT.
+Equality/cardinality HT and the remaining complete-runtime composition remain
+separate certification milestones.
+
 ## [0.3.80] – 2026-08-20
 
 ### Bound equality-free HT iterative frontiers by rooted addresses

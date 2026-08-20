@@ -2471,6 +2471,21 @@ struct LeanHtAddressFrontier {
     addresses: Vec<Vec<(R, CLit)>>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtFrontierStep {
+    role: usize,
+    filler: LeanHtLit,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtFrontierDocument {
+    version: usize,
+    node_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    addresses: Vec<Vec<LeanHtFrontierStep>>,
+}
+
 struct LeanHtBlockedOpenLeaf {
     node_count: usize,
     labels: Vec<(Node, CLit)>,
@@ -8778,6 +8793,141 @@ impl Ht {
         LeanRefutationAssignments::new(variable_count, active_nodes)
     }
 
+    /// Serialize the untrusted bounded frontier consumed by Lean's dedicated
+    /// rooted-address refinement checker. The checker independently validates
+    /// every identifier, address depth, node count, and address inequality.
+    fn lean_address_frontier_json(
+        &self,
+        frontier: &LeanHtAddressFrontier,
+    ) -> Result<String, String> {
+        if frontier.node_count != frontier.addresses.len() {
+            return Err("HT frontier node/address count mismatch".to_string());
+        }
+        self.validate_lean_address_frontier(frontier)?;
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, .. } => {
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, .. } => {
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, .. } => {
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { .. } => {}
+                }
+            }
+        }
+        let addresses = frontier
+            .addresses
+            .iter()
+            .map(|address| {
+                address
+                    .iter()
+                    .map(|&(role, filler)| {
+                        concept_count = concept_count.max(filler.c as usize + 1);
+                        role_count = role_count.max(role as usize + 1);
+                        LeanHtFrontierStep {
+                            role: role as usize,
+                            filler: Self::lean_wire_lit(filler),
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        serde_json::to_string(&LeanHtFrontierDocument {
+            version: 1,
+            node_count: frontier.node_count,
+            concept_count,
+            role_count,
+            addresses,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn capped_pow2_reaches(exponent: usize, cap: usize) -> usize {
+        if cap <= 1 {
+            return cap;
+        }
+        let mut value = 1usize;
+        for _ in 0..exponent {
+            value = value.saturating_mul(2).min(cap);
+            if value == cap {
+                return cap;
+            }
+        }
+        value
+    }
+
+    fn role_blocking_signature_card_reaches(
+        concept_count: usize,
+        role_count: usize,
+        target: usize,
+    ) -> bool {
+        if target == 0 {
+            return true;
+        }
+        let concept_bits = concept_count.saturating_mul(2);
+        let role_bits = role_count.saturating_mul(2);
+        let labels = Self::capped_pow2_reaches(concept_bits, target);
+        let parent_contexts =
+            Self::capped_pow2_reaches(concept_bits.saturating_add(role_bits), target);
+        let optional_parent = parent_contexts.saturating_add(1).min(target);
+        labels.saturating_mul(optional_parent).min(target) == target
+    }
+
+    /// Fail-closed producer-side counterpart of Lean's exact depth check. The
+    /// arithmetic is capped at the concrete path length, avoiding giant
+    /// integers while deciding the exact cardinality inequality.
+    fn validate_lean_address_frontier(
+        &self,
+        frontier: &LeanHtAddressFrontier,
+    ) -> Result<(), String> {
+        if frontier.node_count != frontier.addresses.len() {
+            return Err("HT frontier node/address count mismatch".to_string());
+        }
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, .. } => {
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Exists { r, fil, .. } => {
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Role { r, .. } => {
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { .. } => {}
+                }
+            }
+        }
+        for address in &frontier.addresses {
+            for &(role, filler) in address {
+                concept_count = concept_count.max(filler.c as usize + 1);
+                role_count = role_count.max(role as usize + 1);
+            }
+        }
+        for address in &frontier.addresses {
+            if !Self::role_blocking_signature_card_reaches(concept_count, role_count, address.len())
+            {
+                return Err(format!(
+                    "HT frontier address depth {} exceeds the full-signature bound for {concept_count} concepts and {role_count} roles",
+                    address.len(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Explicit `KM_HT_LEAN_UNSAT_NODES` remains a one-shot diagnostic limit.
     /// The certified full-pairwise route instead deepens only when an otherwise
     /// finite search actually reaches its current node frontier.
@@ -8886,7 +9036,10 @@ impl Ht {
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
                 return match state.address_frontier() {
-                    Ok(frontier) => LeanHtRefutationOutcome::Frontier(frontier),
+                    Ok(frontier) => match self.validate_lean_address_frontier(&frontier) {
+                        Ok(()) => LeanHtRefutationOutcome::Frontier(frontier),
+                        Err(error) => LeanHtRefutationOutcome::Invalid(error),
+                    },
                     Err(error) => LeanHtRefutationOutcome::Invalid(error),
                 };
             }
@@ -20188,6 +20341,20 @@ mod tests {
     }
 
     #[test]
+    fn equality_free_frontier_uses_the_exact_capped_signature_cardinality() {
+        for (concepts, roles, exact) in [(0, 0, 2), (1, 0, 20), (1, 1, 68), (2, 1, 1040)] {
+            assert!(Ht::role_blocking_signature_card_reaches(
+                concepts, roles, exact
+            ));
+            assert!(!Ht::role_blocking_signature_card_reaches(
+                concepts,
+                roles,
+                exact + 1
+            ));
+        }
+    }
+
+    #[test]
     fn equality_free_refutation_pairwise_blocks_a_satisfiable_cycle() {
         let cyclic = Ht::new_certified(vec![Clause::new(
             vec![con(false, A, X)],
@@ -20204,6 +20371,41 @@ mod tests {
             frontier.addresses,
             vec![Vec::new(), vec![(R0, lit(false, A))]]
         );
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let mut frontier_checker = std::path::PathBuf::from(checker);
+            frontier_checker.set_file_name("ht-frontier-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-address-frontier-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            let document = cyclic
+                .lean_address_frontier_json(&frontier)
+                .expect("serialize the cyclic rooted-address frontier");
+            std::fs::write(&path, &document).unwrap();
+            let accepted = std::process::Command::new(&frontier_checker)
+                .arg(&path)
+                .output()
+                .expect("run the native Lean frontier checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must refine the Rust frontier into finite addresses: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+
+            let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
+            duplicate["addresses"][1] = duplicate["addresses"][0].clone();
+            std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+            let rejected = std::process::Command::new(frontier_checker)
+                .arg(&path)
+                .status()
+                .expect("run the native Lean checker on a duplicate frontier");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                !rejected.success(),
+                "Lean must reject duplicate rooted frontier addresses"
+            );
+        }
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
         let LeanHtRefutationOutcome::Open(leaf) = cyclic.lean_refutation(&mut state, 1, 4) else {
             panic!("the saturated cyclic branch must close with a blocked finite leaf");

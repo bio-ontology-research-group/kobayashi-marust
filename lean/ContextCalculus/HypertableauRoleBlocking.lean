@@ -128,6 +128,18 @@ def RoleBlockedAddress (Slot Concept Role : Type)
   {address : List Slot //
     address.length ≤ Fintype.card (RoleBlockingSignature Concept Role)}
 
+instance roleBlockedAddressDecidableEq
+    (Slot Concept Role : Type)
+    [DecidableEq Slot]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role] :
+    DecidableEq (RoleBlockedAddress Slot Concept Role) := by
+  intro left right
+  if h : left.1 = right.1 then
+    exact isTrue (Subtype.ext h)
+  else
+    exact isFalse fun hequal => h (congrArg Subtype.val hequal)
+
 noncomputable instance roleBlockedAddressFintype
     (Slot Concept Role : Type)
     [Fintype Slot]
