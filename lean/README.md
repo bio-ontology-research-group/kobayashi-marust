@@ -246,6 +246,10 @@ guarded grounding modulo equality. It checks both polarities of individual
 subsumption and concept-satisfiability queries against quotient models or
 closed equality-aware refutations. Complete equality-aware taxonomy batch
 evidence remains fail-closed.
+`checkEqSat_eq_true_iff_valid` also proves the converse: equality-path-valid,
+guarded, quotient-clash-free, witness-complete, saturated endpoints are always
+accepted. Thus checker rejection corresponds to a concrete failed endpoint
+obligation rather than an uncharacterized implementation gap.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

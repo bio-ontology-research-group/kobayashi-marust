@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.93] – 2026-08-20
+
+### Prove equality-aware HT SAT-checker completeness
+
+- Define the exact semantic endpoint contract for an equality certificate:
+  checked equality closure, guarded clauses, quotient clash freedom, witness
+  completion, and saturation modulo the node equivalence.
+- Prove closed-clash detection complete when the supplied representative paths
+  correctly describe the equality closure.
+- Prove every endpoint satisfying that contract is accepted by `checkEqSat`.
+- Combine this with the existing soundness direction as
+  `checkEqSat = true ↔ Valid`.
+- Audit the new results without `sorry` or `admit`; their axiom reports contain
+  only standard Lean quotient/classical principles.
+
+This establishes the executable acceptance target for equality-aware folds.
+The next acceptance milestone extends exactness through cardinality definitions
+and proves concrete blocked endpoints satisfy these contracts.
+
 ## [0.3.92] – 2026-08-20
 
 ### Prove finite HT SAT-checker completeness
