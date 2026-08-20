@@ -480,6 +480,16 @@ struct CardReq {
     at: usize,
 }
 
+/// Untrusted creation metadata for reconstructing Lean's rooted finite witness
+/// addresses. Certificate publication checks this metadata against the actual
+/// predecessor, edge, label, and obligation state before using it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NodeAddressStep {
+    Root,
+    Witness { role: R, filler: CLit },
+    Other,
+}
+
 #[derive(Clone)]
 pub struct Ext {
     concepts: Vec<HashMap<CLit, DepSet>>,
@@ -498,6 +508,9 @@ pub struct Ext {
     /// `merge_into` re-targets a victim's distinct edges onto the survivor.
     distinct: Vec<Vec<(Node, DepSet)>>,
     pred: Vec<Option<Node>>,
+    /// Parallel to `pred`: the root marker or exact successor slot that created
+    /// this node. This is inert outside fail-closed certificate validation.
+    address_step: Option<Vec<NodeAddressStep>>,
     blockable: Vec<bool>,
     /// eager mode: per-node flag — its deferred global ⊤-disjunctions have fired.
     globals_fired: Vec<bool>,
@@ -646,6 +659,7 @@ impl Ext {
             in_edges: Vec::new(),
             distinct: Vec::new(),
             pred: Vec::new(),
+            address_step: None,
             blockable: Vec::new(),
             globals_fired: Vec::new(),
             blocked: Vec::new(),
@@ -1030,12 +1044,24 @@ impl Ext {
     }
 
     pub fn new_root(&mut self) -> Node {
-        self.push_node(None, false)
+        self.push_node(None, false, NodeAddressStep::Root)
     }
     pub fn new_node(&mut self, parent: Option<Node>) -> Node {
-        self.push_node(parent, parent.is_some())
+        self.push_node(parent, parent.is_some(), NodeAddressStep::Other)
     }
-    fn push_node(&mut self, parent: Option<Node>, blockable: bool) -> Node {
+    fn new_witness_node(&mut self, parent: Node, role: R, filler: CLit) -> Node {
+        self.push_node(
+            Some(parent),
+            true,
+            NodeAddressStep::Witness { role, filler },
+        )
+    }
+    fn push_node(
+        &mut self,
+        parent: Option<Node>,
+        blockable: bool,
+        address_step: NodeAddressStep,
+    ) -> Node {
         let id = self.concepts.len();
         self.concepts.push(HashMap::new());
         if let Some(block_bits) = &mut self.block_bits {
@@ -1045,6 +1071,9 @@ impl Ext {
         self.in_edges.push(Vec::new());
         self.distinct.push(Vec::new());
         self.pred.push(parent);
+        if let Some(steps) = &mut self.address_step {
+            steps.push(address_step);
+        }
         self.blockable.push(blockable);
         self.globals_fired.push(false);
         self.merged.push(None);
@@ -1394,6 +1423,9 @@ impl Ext {
                     self.in_edges.pop();
                     self.distinct.pop();
                     self.pred.pop();
+                    if let Some(steps) = &mut self.address_step {
+                        steps.pop();
+                    }
                     self.blockable.pop();
                     self.globals_fired.pop();
                     self.merged.pop();
@@ -8635,15 +8667,20 @@ impl Ht {
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
-            let assignments =
-                Self::lean_refutation_assignments(variable_count, state.active_nodes);
+            let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
-                let body_holds = clause.body.iter().all(|atom| state.holds(atom, &assignment));
+                let body_holds = clause
+                    .body
+                    .iter()
+                    .all(|atom| state.holds(atom, &assignment));
                 if !body_holds {
                     continue;
                 }
-                let head_holds = clause.head.iter().any(|atom| state.holds(atom, &assignment));
+                let head_holds = clause
+                    .head
+                    .iter()
+                    .any(|atom| state.holds(atom, &assignment));
                 if head_holds {
                     continue;
                 }
@@ -8657,10 +8694,12 @@ impl Ht {
                     let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, &assignment);
                     debug_assert!(inserted, "an unsatisfied branch head must be absent");
-                    assert!(state.progress_measure() > progress_before,
-                        "HT certificate branch recursion must add a finite fact");
-                    let result = self.lean_refutation(
-                        state, variable_count, node_budget, hit_node_cap);
+                    assert!(
+                        state.progress_measure() > progress_before,
+                        "HT certificate branch recursion must add a finite fact"
+                    );
+                    let result =
+                        self.lean_refutation(state, variable_count, node_budget, hit_node_cap);
                     state.remove(atom, &assignment);
                     let Some((child, child_used)) = result else {
                         return None;
@@ -8699,10 +8738,11 @@ impl Ht {
                 inserted_edge && inserted_label,
                 "the witness target is fresh"
             );
-            assert!(state.progress_measure() > progress_before,
-                "HT certificate witness recursion must add finite facts");
-            let result = self.lean_refutation(
-                state, variable_count, node_budget, hit_node_cap);
+            assert!(
+                state.progress_measure() > progress_before,
+                "HT certificate witness recursion must add finite facts"
+            );
+            let result = self.lean_refutation(state, variable_count, node_budget, hit_node_cap);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
             state.active_nodes -= 1;
@@ -8734,12 +8774,17 @@ impl Ht {
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
-            let assignments =
-                Self::lean_refutation_assignments(variable_count, state.active_nodes);
+            let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
-                if !clause.body.iter().all(|atom| state.holds(atom, &assignment))
-                    || clause.head.iter().any(|atom| state.holds(atom, &assignment))
+                if !clause
+                    .body
+                    .iter()
+                    .all(|atom| state.holds(atom, &assignment))
+                    || clause
+                        .head
+                        .iter()
+                        .any(|atom| state.holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -8752,11 +8797,13 @@ impl Ht {
                         inserted,
                         "an unsatisfied equality-aware head must be absent"
                     );
-                    assert!(state.progress_measure() > progress_before,
-                        "HT equality certificate recursion must add a finite fact");
+                    assert!(
+                        state.progress_measure() > progress_before,
+                        "HT equality certificate recursion must add a finite fact"
+                    );
                     let successor = state.equality_wire_state(node_budget);
-                    let result = self.lean_eq_refutation(
-                        state, variable_count, node_budget, hit_node_cap);
+                    let result =
+                        self.lean_eq_refutation(state, variable_count, node_budget, hit_node_cap);
                     state.remove(atom, &assignment);
                     let (child, child_used) = result?;
                     max_used = max_used.max(child_used);
@@ -8795,12 +8842,13 @@ impl Ht {
                 inserted_edge && inserted_label,
                 "the witness target is fresh"
             );
-            assert!(state.progress_measure() > progress_before,
-                "HT equality witness recursion must add finite facts");
+            assert!(
+                state.progress_measure() > progress_before,
+                "HT equality witness recursion must add finite facts"
+            );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
-            let result = self.lean_eq_refutation(
-                state, variable_count, node_budget, hit_node_cap);
+            let result = self.lean_eq_refutation(state, variable_count, node_budget, hit_node_cap);
             state.label_order.remove(0);
             state.edge_order.remove(0);
             state.labels.remove(&label);
@@ -8853,12 +8901,17 @@ impl Ht {
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
-            let assignments =
-                Self::lean_refutation_assignments(variable_count, state.active_nodes);
+            let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes);
             let clause = &record.0;
             for assignment in assignments {
-                if !clause.body.iter().all(|atom| state.holds(atom, &assignment))
-                    || clause.head.iter().any(|atom| state.holds(atom, &assignment))
+                if !clause
+                    .body
+                    .iter()
+                    .all(|atom| state.holds(atom, &assignment))
+                    || clause
+                        .head
+                        .iter()
+                        .any(|atom| state.holds(atom, &assignment))
                 {
                     continue;
                 }
@@ -8868,8 +8921,10 @@ impl Ht {
                     let progress_before = state.progress_measure();
                     let inserted = state.insert(atom, &assignment);
                     debug_assert!(inserted, "an unsatisfied distinct head must be absent");
-                    assert!(state.progress_measure() > progress_before,
-                        "HT distinct certificate recursion must add a finite fact");
+                    assert!(
+                        state.progress_measure() > progress_before,
+                        "HT distinct certificate recursion must add a finite fact"
+                    );
                     let successor = state.distinct_wire_state(node_budget);
                     let result = self.lean_distinct_cardinality_refutation(
                         state,
@@ -8921,9 +8976,14 @@ impl Ht {
             let label = (target, filler);
             let inserted_edge = state.edges.insert(edge);
             let inserted_label = state.labels.insert(label);
-            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
-            assert!(state.progress_measure() > progress_before,
-                "HT distinct witness recursion must add finite facts");
+            debug_assert!(
+                inserted_edge && inserted_label,
+                "the witness target is fresh"
+            );
+            assert!(
+                state.progress_measure() > progress_before,
+                "HT distinct witness recursion must add finite facts"
+            );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
             let result = self.lean_distinct_cardinality_refutation(
@@ -9001,8 +9061,10 @@ impl Ht {
                         }
                     }
                 }
-                assert!(state.progress_measure() > progress_before,
-                    "HT minimum recursion must add finite facts");
+                assert!(
+                    state.progress_measure() > progress_before,
+                    "HT minimum recursion must add finite facts"
+                );
                 let successor = state.distinct_wire_state(node_budget);
                 let result = self.lean_distinct_cardinality_refutation(
                     state,
@@ -9085,8 +9147,10 @@ impl Ht {
                         }
                         let progress_before = state.progress_measure();
                         state.equalities.push((witnesses[left], witnesses[right]));
-                        assert!(state.progress_measure() > progress_before,
-                            "HT maximum recursion must add an equality fact");
+                        assert!(
+                            state.progress_measure() > progress_before,
+                            "HT maximum recursion must add an equality fact"
+                        );
                         let successor = state.distinct_wire_state(node_budget);
                         let result = self.lean_distinct_cardinality_refutation(
                             state,
@@ -9188,8 +9252,8 @@ impl Ht {
         let (tree, root_state) = loop {
             let mut state = LeanHtRefutationState::root(initial_labels);
             let mut hit_node_cap = false;
-            if let Some((tree, _node_count)) = self.lean_eq_refutation(
-                &mut state, variable_count, node_budget, &mut hit_node_cap)
+            if let Some((tree, _node_count)) =
+                self.lean_eq_refutation(&mut state, variable_count, node_budget, &mut hit_node_cap)
             {
                 break (tree, state.equality_wire_state(node_budget));
             }
@@ -9197,11 +9261,13 @@ impl Ht {
                 return Err("ontology has an open equality refutation branch".to_string());
             }
             if !deepen {
-                return Err("ontology reached the configured equality refutation node cap"
-                    .to_string());
+                return Err(
+                    "ontology reached the configured equality refutation node cap".to_string(),
+                );
             }
-            node_budget = node_budget.checked_mul(2).ok_or_else(||
-                "equality refutation node budget overflowed usize".to_string())?;
+            node_budget = node_budget
+                .checked_mul(2)
+                .ok_or_else(|| "equality refutation node budget overflowed usize".to_string())?;
         };
         serde_json::to_string(&LeanHtEqCertificate {
             version: 2,
@@ -9303,11 +9369,13 @@ impl Ht {
                 return Err("ontology has an open cardinality refutation branch".to_string());
             }
             if !deepen {
-                return Err("ontology reached the configured cardinality refutation node cap"
-                    .to_string());
+                return Err(
+                    "ontology reached the configured cardinality refutation node cap".to_string(),
+                );
             }
-            node_budget = node_budget.checked_mul(2).ok_or_else(||
-                "cardinality refutation node budget overflowed usize".to_string())?;
+            node_budget = node_budget
+                .checked_mul(2)
+                .ok_or_else(|| "cardinality refutation node budget overflowed usize".to_string())?;
         };
         let placeholder = LeanHtDistinctCardinalityRefutationTree::Clash;
         Ok(serde_json::to_string(&LeanHtCardinalityCertificate {
@@ -9398,8 +9466,8 @@ impl Ht {
         let (tree, node_count) = loop {
             let mut state = LeanHtRefutationState::root(initial_labels);
             let mut hit_node_cap = false;
-            if let Some(result) = self.lean_refutation(
-                &mut state, variable_count, node_budget, &mut hit_node_cap)
+            if let Some(result) =
+                self.lean_refutation(&mut state, variable_count, node_budget, &mut hit_node_cap)
             {
                 break result;
             }
@@ -9409,8 +9477,9 @@ impl Ht {
             if !deepen {
                 return Err("ontology reached the configured refutation node cap".to_string());
             }
-            node_budget = node_budget.checked_mul(2).ok_or_else(||
-                "refutation node budget overflowed usize".to_string())?;
+            node_budget = node_budget
+                .checked_mul(2)
+                .ok_or_else(|| "refutation node budget overflowed usize".to_string())?;
         };
 
         serde_json::to_string(&LeanHtCertificate {
@@ -9605,6 +9674,80 @@ impl Ht {
         Ok(())
     }
 
+    /// Reconstruct and validate the exact rooted `(role, filler)` addresses used
+    /// by Lean's equality-free obligation-address invariant. Creation metadata
+    /// is not trusted: roots, predecessor order, address injectivity, and every
+    /// occupied canonical obligation slot are checked against the live graph.
+    fn certified_mode6_obligation_address_invariant(&self) -> Result<(), String> {
+        if self.block_mode != 6 {
+            return Ok(());
+        }
+        let node_count = self.ext.num_nodes();
+        let steps = self
+            .ext
+            .address_step
+            .as_ref()
+            .ok_or_else(|| "certified HT address metadata is disabled".to_string())?;
+        if steps.len() != node_count || self.ext.pred.len() != node_count {
+            return Err("certified HT address metadata length mismatch".to_string());
+        }
+
+        type Address = (Node, Vec<(R, CLit)>);
+        let mut addresses: Vec<Option<Address>> = vec![None; node_count];
+        let mut occupied: HashMap<Address, Node> = HashMap::new();
+        for node in 0..node_count {
+            let address = match (self.ext.pred[node], steps[node]) {
+                (None, NodeAddressStep::Root) => (node, Vec::new()),
+                (Some(parent), NodeAddressStep::Witness { role, filler }) if parent < node => {
+                    let (root, parent_path) = addresses[parent].as_ref().ok_or_else(|| {
+                        format!("certified HT parent {parent} has no rooted address")
+                    })?;
+                    let mut path = parent_path.clone();
+                    path.push((role, filler));
+                    (*root, path)
+                }
+                (None, step) => {
+                    return Err(format!(
+                        "certified HT root {node} has non-root address step {step:?}"
+                    ));
+                }
+                (Some(parent), step) => {
+                    return Err(format!(
+                        "certified HT node {node} with predecessor {parent} has non-witness address step {step:?}"
+                    ));
+                }
+            };
+            if let Some(previous) = occupied.insert(address.clone(), node) {
+                return Err(format!(
+                    "certified HT nodes {previous} and {node} share one rooted witness address"
+                ));
+            }
+            addresses[node] = Some(address);
+        }
+
+        for obligation in &self.ext.obligations {
+            let source = obligation.n;
+            let (root, source_path) = addresses
+                .get(source)
+                .and_then(Option::as_ref)
+                .ok_or_else(|| format!("certified HT obligation source {source} has no address"))?;
+            let mut target_path = source_path.clone();
+            target_path.push((obligation.r, obligation.fil));
+            if let Some(&target) = occupied.get(&(*root, target_path)) {
+                let has_edge = self.ext.out_edges[source]
+                    .iter()
+                    .any(|(role, candidate, _)| *role == obligation.r && *candidate == target);
+                let has_filler = self.ext.concepts[target].contains_key(&obligation.fil);
+                if !has_edge || !has_filler {
+                    return Err(format!(
+                        "certified HT occupied obligation address from {source} to {target} lacks its exact edge or filler"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Serialize the exact terminal completion graph and normalized HT clauses.
     /// Equality-free evidence uses wire version 1. Equality-aware SAT and
     /// query-countermodel evidence uses version 2 with the complete merge
@@ -9635,6 +9778,9 @@ impl Ht {
                     .chain(record.0.head.iter())
                     .any(|atom| matches!(atom, Atom::Eq { .. }))
             });
+        if !has_equality {
+            self.certified_mode6_obligation_address_invariant()?;
+        }
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -9974,7 +10120,9 @@ impl Ht {
             let inner = full
                 .get("certificate")
                 .and_then(serde_json::Value::as_object)
-                .ok_or_else(|| "HT cardinality taxonomy cell has no equality certificate".to_string())?;
+                .ok_or_else(|| {
+                    "HT cardinality taxonomy cell has no equality certificate".to_string()
+                })?;
             concept_count = concept_count.max(
                 inner
                     .get("concept_count")
@@ -10288,6 +10436,9 @@ impl Ht {
     /// correspondence is carried in the version-4 Lean evidence.
     pub fn new_certified(clauses: Vec<Clause>) -> Ht {
         let mut ht = Self::new_with_harvest(clauses, false);
+        // Rooted successor addresses are proof metadata. Keep their allocation
+        // entirely outside the default and benchmark node layout.
+        ht.ext.address_step = Some(Vec::new());
         // Certification uses full-label bidirectional pairwise blocking. Unlike
         // the production mode-4 inverse optimization, mode 6 has no indirect
         // blocking: every suppressed node carries an explicit earlier signature
@@ -11719,7 +11870,7 @@ impl Ht {
                     }
                     let dep = self.ext.obligations[i].dep.clone();
                     self.heartbeat("exp");
-                    let t = self.ext.new_node(Some(n));
+                    let t = self.ext.new_witness_node(n, r, fil);
                     self.ext.add_edge(r, n, t, &dep);
                     self.ext.add_concept(t, fil, &dep);
                     self.ext.oblig_sat[i] = true;
@@ -11743,7 +11894,7 @@ impl Ht {
                     }
                     let dep = self.ext.obligations[i].dep.clone();
                     self.heartbeat("exp");
-                    let t = self.ext.new_node(Some(n));
+                    let t = self.ext.new_witness_node(n, r, fil);
                     self.ext.add_edge(r, n, t, &dep);
                     self.ext.add_concept(t, fil, &dep);
                     made = true;
@@ -11768,7 +11919,7 @@ impl Ht {
                 }
                 let dep = self.ext.obligations[i].dep.clone();
                 self.heartbeat("exp");
-                let t = self.ext.new_node(Some(n));
+                let t = self.ext.new_witness_node(n, r, fil);
                 self.ext.add_edge(r, n, t, &dep);
                 self.ext.add_concept(t, fil, &dep);
                 made = true;
@@ -12890,7 +13041,11 @@ impl Ht {
             self.lng_fires = 0;
         }
         loop {
+            let certified_addresses = self.ext.address_step.is_some();
             self.ext = Ext::new();
+            if certified_addresses {
+                self.ext.address_step = Some(Vec::new());
+            }
             self.ext.watch = self.watch;
             // `set_fast_tableau` override: force the result-identical incremental
             // blocking / obligation paths on even without the env flags (Ext::new
@@ -16711,22 +16866,18 @@ mod tests {
         let mut reasoner = Ht::new_certified(Vec::new());
         let root = reasoner.ext.new_root();
         reasoner.ext.add_concept(root, lit(false, 1), &dep_empty());
-        let first = reasoner.ext.new_node(Some(root));
+        let first = reasoner.ext.new_witness_node(root, 0, lit(false, 1));
         reasoner.ext.add_edge(0, root, first, &dep_empty());
-        reasoner
-            .ext
-            .add_concept(first, lit(false, 1), &dep_empty());
-        let blocked = reasoner.ext.new_node(Some(first));
+        reasoner.ext.add_concept(first, lit(false, 1), &dep_empty());
+        let blocked = reasoner.ext.new_witness_node(first, 0, lit(false, 1));
         reasoner.ext.add_edge(0, first, blocked, &dep_empty());
         reasoner
             .ext
             .add_concept(blocked, lit(false, 1), &dep_empty());
         if with_blocked_child {
-            let child = reasoner.ext.new_node(Some(blocked));
+            let child = reasoner.ext.new_witness_node(blocked, 0, lit(false, 1));
             reasoner.ext.add_edge(0, blocked, child, &dep_empty());
-            reasoner
-                .ext
-                .add_concept(child, lit(false, 1), &dep_empty());
+            reasoner.ext.add_concept(child, lit(false, 1), &dep_empty());
         }
         reasoner
     }
@@ -16744,6 +16895,62 @@ mod tests {
             .certified_mode6_address_invariant()
             .expect_err("a blocked node must not retain a generated child");
         assert!(error.contains("retained direct successor"), "{error}");
+    }
+
+    #[test]
+    fn certified_mode6_addresses_distinguish_roots_and_validate_witness_slots() {
+        let mut reasoner = Ht::new_certified(Vec::new());
+        let left = reasoner.ext.new_root();
+        let right = reasoner.ext.new_root();
+        let filler = lit(false, 7);
+        let child = reasoner.ext.new_witness_node(left, 3, filler);
+        reasoner.ext.add_edge(3, left, child, &dep_empty());
+        reasoner.ext.add_concept(child, filler, &dep_empty());
+        reasoner.ext.obligations.push(Oblig {
+            n: left,
+            r: 3,
+            fil: filler,
+            dep: dep_empty(),
+            at: reasoner.ext.trail.len(),
+        });
+        reasoner
+            .certified_mode6_obligation_address_invariant()
+            .expect("separate roots and one exact witness slot have unique addresses");
+        assert_ne!(left, right);
+    }
+
+    #[test]
+    fn default_ht_does_not_allocate_certificate_address_metadata() {
+        let reasoner = Ht::new(Vec::new());
+        assert!(reasoner.ext.address_step.is_none());
+    }
+
+    #[test]
+    fn certified_mode6_rejects_unaddressed_or_malformed_witness_nodes() {
+        let mut unaddressed = Ht::new_certified(Vec::new());
+        let root = unaddressed.ext.new_root();
+        unaddressed.ext.new_node(Some(root));
+        let error = unaddressed
+            .certified_mode6_obligation_address_invariant()
+            .expect_err("an ordinary child without a canonical witness slot must fail closed");
+        assert!(error.contains("non-witness address step"), "{error}");
+
+        let mut malformed = Ht::new_certified(Vec::new());
+        let root = malformed.ext.new_root();
+        let filler = lit(false, 9);
+        let child = malformed.ext.new_witness_node(root, 4, filler);
+        malformed.ext.obligations.push(Oblig {
+            n: root,
+            r: 4,
+            fil: filler,
+            dep: dep_empty(),
+            at: malformed.ext.trail.len(),
+        });
+        let error = malformed
+            .certified_mode6_obligation_address_invariant()
+            .expect_err("an occupied canonical slot without edge and label must fail closed");
+        assert!(error.contains("lacks its exact edge or filler"), "{error}");
+        assert_eq!(child, 1);
     }
 
     fn con(neg: bool, c: C, t: Var) -> Atom {
@@ -18499,9 +18706,10 @@ mod tests {
             ht.compute_blocked().into_iter().any(|blocked| blocked),
             "the cyclic certified model must have an explicit direct blocker"
         );
+        let certificate = ht.lean_sat_certificate_json();
         assert!(
-            ht.lean_sat_certificate_json().is_ok(),
-            "the direct full-pairwise fold must materialize a checked finite model"
+            certificate.is_ok(),
+            "the direct full-pairwise fold must materialize a checked finite model: {certificate:?}"
         );
     }
 
@@ -19004,10 +19212,7 @@ mod tests {
         const MAX_MARKER: C = 32;
         let mut reasoner = ht(vec![Clause::new(
             Vec::new(),
-            vec![
-                con(false, MAX_MARKER, X),
-                con(true, MIN_MARKER, X),
-            ],
+            vec![con(false, MAX_MARKER, X), con(true, MIN_MARKER, X)],
         )]);
         reasoner.set_card_defs_raw(&[
             (MIN_MARKER, true, 2, R0, FILLER),

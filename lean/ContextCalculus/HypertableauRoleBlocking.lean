@@ -245,6 +245,83 @@ def State.ObligationAddressInvariant
       ¬state.NodeUsed target ∨
         (state.edge role source target ∧ state.label target filler)
 
+/-- Lift a concrete finite runtime state into the full rooted-address universe.
+Addresses not occupied by a runtime node carry no facts and remain available
+for exhaustive witness expansion. -/
+def State.atWitnessAddresses
+    {Root Node Concept Role : Type}
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role)
+    (address : Node → WitnessAddress Root Concept Role) :
+    State (WitnessAddress Root Concept Role) Concept Role where
+  label target literal :=
+    ∃ node, address node = target ∧ state.label node literal
+  edge role source target :=
+    ∃ sourceNode targetNode,
+      address sourceNode = source ∧ address targetNode = target ∧
+        state.edge role sourceNode targetNode
+  obligation role filler source :=
+    ∃ node, address node = source ∧ state.obligation role filler node
+
+/-- Target proposition obtained by combining certified Rust address
+reconstruction with the blocking-depth refinement. The address map is
+injective, and an occupied canonical obligation extension carries the exact
+edge and filler that discharge that obligation. -/
+def State.RootedAddressRefines
+    {Root Node Concept Role : Type}
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role)
+    (address : Node → WitnessAddress Root Concept Role) : Prop :=
+  Function.Injective address ∧
+  ∀ source role filler, state.obligation role filler source →
+    ∃ hdepth : (address source).2.1.length <
+        Fintype.card (RoleBlockingSignature Concept Role),
+      let target := (address source).extend (role, filler) hdepth
+      ∀ targetNode, address targetNode = target →
+        state.edge role source targetNode ∧ state.label targetNode filler
+
+/-- The checked concrete address refinement establishes the exact fresh-supply
+invariant on the lifted finite-fact state. -/
+theorem State.atWitnessAddresses_obligationAddressInvariant
+    {Root Node Concept Role : Type}
+    [Fintype Root] [DecidableEq Root]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role)
+    (address : Node → WitnessAddress Root Concept Role)
+    (hrefines : state.RootedAddressRefines address) :
+    (state.atWitnessAddresses address).ObligationAddressInvariant := by
+  intro sourceAddress role filler hobligation
+  rcases hobligation with ⟨source, hsource, hobligation⟩
+  subst sourceAddress
+  obtain ⟨hdepth, hoccupied⟩ := hrefines.2 source role filler hobligation
+  refine ⟨hdepth, ?_⟩
+  let target := (address source).extend (role, filler) hdepth
+  by_cases hused : (state.atWitnessAddresses address).NodeUsed target
+  · right
+    have htarget : ∃ targetNode, address targetNode = target := by
+      rcases hused with hlabel | hedge | hobligation
+      · rcases hlabel with ⟨literal, node, hnode, _⟩
+        exact ⟨node, hnode⟩
+      · rcases hedge with ⟨candidateRole, other, hedge | hedge⟩
+        · rcases hedge with ⟨sourceNode, targetNode, hnode, _, _⟩
+          exact ⟨sourceNode, hnode⟩
+        · rcases hedge with ⟨sourceNode, targetNode, _, hnode, _⟩
+          exact ⟨targetNode, hnode⟩
+      · rcases hobligation with ⟨candidateRole, candidateFiller, node, hnode, _⟩
+        exact ⟨node, hnode⟩
+    rcases htarget with ⟨targetNode, htargetNode⟩
+    have hwitness := hoccupied targetNode (by simpa [target] using htargetNode)
+    constructor
+    · exact ⟨source, targetNode, rfl,
+        by simpa [target] using htargetNode, hwitness.1⟩
+    · exact ⟨targetNode, by simpa [target] using htargetNode, hwitness.2⟩
+  · left
+    simpa [target] using hused
+
 /-- Under canonical obligation addressing, every unwitnessed existential has
 an unused, and therefore fresh, finite role-blocked child address. -/
 theorem State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
@@ -315,6 +392,7 @@ theorem State.no_overlong_mode6_expansion
 #print axioms role_blocked_node_universe_finite
 #print axioms State.fresh_extended_roleBlockedAddress
 #print axioms State.fresh_extended_rootedRoleBlockedAddress
+#print axioms State.atWitnessAddresses_obligationAddressInvariant
 #print axioms State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
 #print axioms State.obstruction_has_addressed_exhaustive_step
 #print axioms State.no_overlong_mode6_expansion

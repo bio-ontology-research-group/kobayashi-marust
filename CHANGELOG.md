@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.72] – 2026-08-20
+
+### Check rooted HT witness-address refinement
+
+- Record each certified equality-free HT node as either a distinct root or the
+  exact `(role, filler)` slot used for existential creation.
+- Reconstruct rooted paths before certificate publication and fail closed on
+  missing metadata, duplicate addresses, malformed roots, noncanonical child
+  creation, or an occupied obligation slot lacking its exact edge and filler.
+- Allocate this metadata only in `Ht::new_certified`; default and benchmark node
+  layouts remain unchanged.
+- Define the corresponding concrete-state lifting and address-refinement
+  proposition in Lean, and prove that it establishes the finite
+  `ObligationAddressInvariant` used by exhaustive equality-free HT search.
+
+This does not yet complete blocked-search refinement. The next proof must relate
+blocked obligations to finite model folding and show that every expandable
+unwitnessed source lies strictly below the signature-depth bound.
+
 ## [0.3.71] – 2026-08-20
 
 ### Distinguish roots in finite HT node addresses
