@@ -81,9 +81,22 @@ def checkedFin (kind : String) (bound value : Nat) : Except String (Fin bound) :
   if h : value < bound then .ok ⟨value, h⟩
   else .error s!"{kind} id {value} is outside [0,{bound})"
 
+@[simp] theorem checkedFin_value (kind : String) (value : Fin bound) :
+    checkedFin kind bound value.val = .ok value := by
+  simp [checkedFin, value.isLt]
+
 def WireLit.decode (conceptCount : Nat) (literal : WireLit) :
     Except String (Lit (Fin conceptCount)) := do
   return ⟨← checkedFin "concept" conceptCount literal.concept, literal.neg⟩
+
+def WireLit.encode (literal : Lit (Fin conceptCount)) : WireLit where
+  concept := literal.concept.val
+  neg := literal.neg
+
+@[simp] theorem WireLit.decode_encode (literal : Lit (Fin conceptCount)) :
+    (WireLit.encode literal).decode conceptCount = Except.ok literal := by
+  rcases literal with ⟨concept, neg⟩
+  simp [WireLit.encode, WireLit.decode]
 
 def WireAtom.decode (variableCount conceptCount roleCount : Nat) : WireAtom →
     Except String (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
@@ -101,11 +114,65 @@ def WireAtom.decode (variableCount conceptCount roleCount : Nat) : WireAtom →
       return .eq (← checkedFin "variable" variableCount left)
         (← checkedFin "variable" variableCount right)
 
+def WireAtom.encode :
+    Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount) → WireAtom
+  | .concept literal node => .concept (WireLit.encode literal) node.val
+  | .role relation source target => .role relation.val source.val target.val
+  | .exists_ relation filler node =>
+      .exists_ relation.val (WireLit.encode filler) node.val
+  | .eq left right => .eq left.val right.val
+
+@[simp] theorem WireAtom.decode_encode
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    (WireAtom.encode atom).decode variableCount conceptCount roleCount =
+      Except.ok atom := by
+  cases atom <;>
+    simp only [WireAtom.encode, WireAtom.decode, checkedFin_value,
+      WireLit.decode_encode] <;> rfl
+
+@[simp] theorem WireAtom.decode_encode_list
+    (atoms : List (Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
+    (atoms.map WireAtom.encode).mapM
+        (WireAtom.decode variableCount conceptCount roleCount) =
+      Except.ok atoms := by
+  induction atoms with
+  | nil => rfl
+  | cons atom atoms ih =>
+      simp only [List.map_cons, List.mapM_cons, WireAtom.decode_encode, ih]
+      rfl
+
 def WireClause.decode (variableCount conceptCount roleCount : Nat)
     (clause : WireClause) : Except String
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) := do
   return ⟨← clause.body.mapM (WireAtom.decode variableCount conceptCount roleCount),
     ← clause.head.mapM (WireAtom.decode variableCount conceptCount roleCount)⟩
+
+def WireClause.encode
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    WireClause where
+  body := clause.body.map WireAtom.encode
+  head := clause.head.map WireAtom.encode
+
+@[simp] theorem WireClause.decode_encode
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    (WireClause.encode clause).decode variableCount conceptCount roleCount =
+      Except.ok clause := by
+  rcases clause with ⟨body, head⟩
+  simp only [WireClause.encode, WireClause.decode,
+    WireAtom.decode_encode_list]
+  rfl
+
+@[simp] theorem WireClause.decode_encode_list
+    (ontology :
+      List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
+    (ontology.map WireClause.encode).mapM
+        (WireClause.decode variableCount conceptCount roleCount) =
+      Except.ok ontology := by
+  induction ontology with
+  | nil => rfl
+  | cons clause ontology ih =>
+      simp only [List.map_cons, List.mapM_cons, WireClause.decode_encode, ih]
+      rfl
 
 def decodeAssignment (nodeCount variableCount : Nat) (values : List Nat) :
     Except String (Fin variableCount → Fin nodeCount) := do
@@ -587,6 +654,12 @@ example : failed badVersionDocument.check = true := by native_decide
 end WireTests
 
 #print axioms DecodedEvidence.sat_sound
+#print axioms checkedFin_value
+#print axioms WireLit.decode_encode
+#print axioms WireAtom.decode_encode
+#print axioms WireAtom.decode_encode_list
+#print axioms WireClause.decode_encode
+#print axioms WireClause.decode_encode_list
 #print axioms DecodedEvidence.unsat_sound
 #print axioms DecodedEvidence.subsumption_sound
 #print axioms DecodedEvidence.unsatisfiableConcept_sound

@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.141] – 2026-08-20
+
+### Prove lossless HT source-language wire encoding
+
+- Add canonical encoders for bounded HT literals, atoms, clauses, and complete
+  ontology clause lists.
+- Prove each encoder is a right inverse of the existing untrusted JSON decoder.
+- Cover concept assertions, role assertions, existential obligations, and
+  equality atoms without an admitted bound or coercion premise.
+- Re-run the Rust producer against the real Lean executables for ordinary,
+  equality-aware, cardinality, query, taxonomy, SAT, and UNSAT evidence. The
+  deep pigeonhole regression also exercises minimum, maximum, and
+  equality-apart recursion.
+
+This proves that the complete finite HT source language represented by Lean is
+losslessly expressible at the JSON boundary. Assignment and recursive-tree
+encoding completeness, exact Rust recursive outcome correspondence, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.140] – 2026-08-20
 
 ### Close the ELC public taxonomy exactness contract
