@@ -675,6 +675,135 @@ theorem selectExpandableMinimum_closedRefutes
   exact .minimum state candidate.1 (mem_allMinimumCandidates.mp hfound.1)
     hproperties.1 candidate.2 hproperties.2.1 targets hfresh child
 
+abbrev MaximumCandidate (Node Concept Role : Type) :=
+  Σ definition : CardinalityDef Concept Role,
+    Node × (Fin (definition.bound + 1) → Node)
+
+noncomputable def allMaximumCandidates
+    [Fintype Node] [DecidableEq Node]
+    (definitions : List (CardinalityDef Concept Role)) :
+    List (MaximumCandidate Node Concept Role) := by
+  classical
+  exact definitions.flatMap fun definition =>
+    (Finset.univ.toList : List Node).flatMap fun source =>
+      (Finset.univ.toList : List (Fin (definition.bound + 1) → Node)).map
+        fun witnesses => ⟨definition, source, witnesses⟩
+
+theorem mem_allMaximumCandidates_definition
+    [Fintype Node] [DecidableEq Node]
+    {definitions : List (CardinalityDef Concept Role)}
+    {candidate : MaximumCandidate Node Concept Role}
+    (hmem : candidate ∈ allMaximumCandidates definitions) :
+    candidate.1 ∈ definitions := by
+  classical
+  simp only [allMaximumCandidates, List.mem_flatMap, List.mem_map] at hmem
+  rcases hmem with ⟨definition, hdefinition, source, _, witnesses, _, heq⟩
+  have hfirst := congrArg Sigma.fst heq
+  simpa using hfirst.symm ▸ hdefinition
+
+theorem maximumCandidate_mem_all
+    [Fintype Node] [DecidableEq Node]
+    (definitions : List (CardinalityDef Concept Role))
+    (definition : CardinalityDef Concept Role) (hdefinition : definition ∈ definitions)
+    (source : Node) (witnesses : Fin (definition.bound + 1) → Node) :
+    (⟨definition, source, witnesses⟩ : MaximumCandidate Node Concept Role) ∈
+      allMaximumCandidates definitions := by
+  classical
+  simp [allMaximumCandidates, hdefinition]
+
+noncomputable def maximumCandidateBool
+    (state : DistinctEqState Node Concept Role)
+    (candidate : MaximumCandidate Node Concept Role) : Bool := by
+  classical
+  exact decide (candidate.1.kind = .maximum) &&
+    decide (state.base.closedLabel candidate.2.1 (.pos candidate.1.marker)) &&
+    decide (∀ index,
+      state.base.closedEdge candidate.1.role candidate.2.1 (candidate.2.2 index) ∧
+      state.base.closedLabel (candidate.2.2 index) (.pos candidate.1.filler)) &&
+    decide (∀ left right, left ≠ right →
+      ¬state.base.equiv (candidate.2.2 left) (candidate.2.2 right))
+
+theorem maximumCandidateBool_eq_true_iff
+    (state : DistinctEqState Node Concept Role)
+    (candidate : MaximumCandidate Node Concept Role) :
+    maximumCandidateBool state candidate = true ↔
+      candidate.1.kind = .maximum ∧
+      state.base.closedLabel candidate.2.1 (.pos candidate.1.marker) ∧
+      (∀ index,
+        state.base.closedEdge candidate.1.role candidate.2.1 (candidate.2.2 index) ∧
+        state.base.closedLabel (candidate.2.2 index) (.pos candidate.1.filler)) ∧
+      ∀ left right, left ≠ right →
+        ¬state.base.equiv (candidate.2.2 left) (candidate.2.2 right) := by
+  classical
+  simp [maximumCandidateBool, and_assoc]
+
+noncomputable def selectViolatingMaximum
+    [Fintype Node] [DecidableEq Node]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role) :
+    Option (MaximumCandidate Node Concept Role) :=
+  firstMatch (maximumCandidateBool state) (allMaximumCandidates definitions)
+
+def DistinctEqState.HasViolatingMaximum
+    (state : DistinctEqState Node Concept Role)
+    (definitions : List (CardinalityDef Concept Role)) : Prop :=
+  ∃ definition ∈ definitions, ∃ source,
+    ∃ witnesses : Fin (definition.bound + 1) → Node,
+      definition.kind = .maximum ∧
+      state.base.closedLabel source (.pos definition.marker) ∧
+      (∀ index,
+        state.base.closedEdge definition.role source (witnesses index) ∧
+        state.base.closedLabel (witnesses index) (.pos definition.filler)) ∧
+      ∀ left right, left ≠ right →
+        ¬state.base.equiv (witnesses left) (witnesses right)
+
+theorem selectViolatingMaximum_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role) :
+    selectViolatingMaximum definitions state = none ↔
+      ¬state.HasViolatingMaximum definitions := by
+  classical
+  rw [selectViolatingMaximum, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with
+      ⟨definition, hdefinition, source, witnesses, hkind, hmarker,
+        hsuccessors, hdistinct⟩
+    have hfalse := hscan
+      (⟨definition, source, witnesses⟩ : MaximumCandidate Node Concept Role)
+      (maximumCandidate_mem_all definitions definition hdefinition source witnesses)
+    rw [(maximumCandidateBool_eq_true_iff state _).mpr
+      ⟨hkind, hmarker, hsuccessors, hdistinct⟩] at hfalse
+    contradiction
+  · intro hnone candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties := (maximumCandidateBool_eq_true_iff state candidate).mp htrue
+    exact hnone ⟨candidate.1, mem_allMaximumCandidates_definition hmem,
+      candidate.2.1, candidate.2.2, hproperties.1, hproperties.2.1,
+      hproperties.2.2.1, hproperties.2.2.2⟩
+
+theorem selectViolatingMaximum_closedRefutes
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    {candidate : MaximumCandidate Node Concept Role}
+    (hselect : selectViolatingMaximum definitions state = some candidate)
+    (children : ∀ left right, left ≠ right →
+      ClosedDistinctCardinalityRefutes Node ontology definitions
+        (state.merge (candidate.2.2 left) (candidate.2.2 right))) :
+    ClosedDistinctCardinalityRefutes Node ontology definitions state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectViolatingMaximum] using hselect)
+  have hproperties := (maximumCandidateBool_eq_true_iff state candidate).mp hfound.2
+  exact .maximum state candidate.1 (mem_allMaximumCandidates_definition hfound.1)
+    hproperties.1 candidate.2.1 hproperties.2.1 candidate.2.2
+    (fun index => (hproperties.2.2.1 index).1)
+    (fun index => (hproperties.2.2.1 index).2) children
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -692,6 +821,8 @@ theorem selectExpandableMinimum_closedRefutes
 #print axioms selectCardinalityWitness_not_realizable
 #print axioms selectExpandableMinimum_eq_none_iff
 #print axioms selectExpandableMinimum_closedRefutes
+#print axioms selectViolatingMaximum_eq_none_iff
+#print axioms selectViolatingMaximum_closedRefutes
 #print axioms EqState.realized_closedLabel
 #print axioms EqState.realized_closedEdge
 #print axioms DistinctEqState.materializeMinimum_closed_realized

@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.165] – 2026-08-21
+
+### Certify quotient-closed maximum selection
+
+- Add a finite dependent candidate space containing each maximum definition,
+  source node, and full `bound + 1` witness vector.
+- Check the exact Rust premises: maximum kind, quotient-closed marker,
+  quotient-closed role and filler facts, and pairwise quotient-distinct
+  witnesses.
+- Prove exhaustive scan correspondence with semantic existence of a violating
+  maximum restriction.
+- Prove that a selected candidate plus every unequal merge child constructs a
+  sound quotient-closed distinct-cardinality refutation.
+- Audit the selector and dependent enumeration without `sorryAx`.
+
+Terminal selection, concrete minimum-target and maximum-candidate ordering,
+checker correspondence for quotient-closed bodies, concrete Rust field
+construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.164] – 2026-08-21
 
 ### Certify quotient-closed minimum selection
