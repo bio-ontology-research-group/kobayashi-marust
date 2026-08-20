@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.145] – 2026-08-20
+
+### Prove the cardinality-refutation wire data boundary
+
+- Prove exact-length list decoding reconstructs every dependent finite vector.
+- Prove bounds-checked node-id vectors reconstruct the original finite-node
+  function used by minimum targets and maximum witnesses.
+- Prove nested row and column decoding reconstructs every dependent square
+  matrix used by maximum-rule child states and refutations.
+- Add matching finite and wire canonical trees at every declared depth and
+  prove exact decoding. These canonical cells replace semantically ignored
+  maximum-rule diagonal payloads in the recursive completeness proof.
+
+The complete recursive cardinality-tree theorem, distinct-cardinality wire
+completeness, exact Rust recursive outcome correspondence, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.144] – 2026-08-20
 
 ### Prove equality-aware HT recursive wire completeness

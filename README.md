@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.144`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.145`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -51,8 +51,10 @@ JSON encodings. Every accepted ordinary or equality-aware finite HT refutation
 tree also has an exact recursive JSON representation, including equality
 representatives and paths. The checked ELC certificate has an exact public
 taxonomy and inconsistency contract, including residual-source inputs and
-unsatisfiable-class bottom rows. Cardinality recursive wire completeness, exact
-HT Rust recursive outcome correspondence, CB, and automatic routing remain
+unsatisfiable-class bottom rows. Cardinality refutation vectors, checked node
+vectors, square matrices, and canonical depth-indexed cells also have proved
+lossless encodings. The complete cardinality recursive wire theorem, exact HT
+Rust recursive outcome correspondence, CB, and automatic routing remain
 unfinished.
 
 ## Classify an ontology
