@@ -869,6 +869,226 @@ theorem cardinalityRuntimeTerminal_of_selectors_exhausted
     parent ancestors expanded).2
     ⟨hapart, hclash, hclause, hwitness, hminimum, hmaximum⟩
 
+def FiniteEqCertificate.closedLabelB
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (node : Fin nodeCount) (lit : Lit (Fin conceptCount)) : Bool :=
+  certificate.base.labels.any fun entry =>
+    decide (entry.2 = lit) && certificate.closedRelatedB entry.1 node
+
+def FiniteEqCertificate.closedEdgeB
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (role : Fin roleCount) (source target : Fin nodeCount) : Bool :=
+  certificate.base.edges.any fun entry =>
+    decide (entry.1 = role) && certificate.closedRelatedB entry.2.1 source &&
+      certificate.closedRelatedB entry.2.2 target
+
+theorem FiniteEqCertificate.closedLabelB_eq_true_iff
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (node : Fin nodeCount) (lit : Lit (Fin conceptCount)) :
+    certificate.closedLabelB node lit = true ↔ certificate.state.closedLabel node lit := by
+  simp only [FiniteEqCertificate.closedLabelB, List.any_eq_true, Bool.and_eq_true,
+    decide_eq_true_eq]
+  constructor
+  · rintro ⟨⟨source, candidate⟩, hmem, rfl, hrelated⟩
+    exact ⟨source, (certificate.closedRelatedB_eq_true hvalid source node).mp hrelated,
+      hmem⟩
+  · rintro ⟨source, hrelated, hmem⟩
+    exact ⟨(source, lit), hmem, rfl,
+      (certificate.closedRelatedB_eq_true hvalid source node).mpr hrelated⟩
+
+theorem FiniteEqCertificate.closedEdgeB_eq_true_iff
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (role : Fin roleCount) (source target : Fin nodeCount) :
+    certificate.closedEdgeB role source target = true ↔
+      certificate.state.closedEdge role source target := by
+  simp only [FiniteEqCertificate.closedEdgeB, List.any_eq_true, Bool.and_eq_true,
+    decide_eq_true_eq]
+  constructor
+  · rintro ⟨⟨candidate, edgeSource, edgeTarget⟩, hmem,
+      ⟨⟨rfl, hsource⟩, htarget⟩⟩
+    exact ⟨edgeSource, edgeTarget,
+      (certificate.closedRelatedB_eq_true hvalid edgeSource source).mp hsource,
+      (certificate.closedRelatedB_eq_true hvalid edgeTarget target).mp htarget, hmem⟩
+  · rintro ⟨edgeSource, edgeTarget, hsource, htarget, hmem⟩
+    exact ⟨(role, edgeSource, edgeTarget), hmem,
+      ⟨⟨rfl, (certificate.closedRelatedB_eq_true hvalid edgeSource source).mpr hsource⟩,
+        (certificate.closedRelatedB_eq_true hvalid edgeTarget target).mpr htarget⟩⟩
+
+/-- Checker matching Rust's quotient-closed distinct-cardinality recursion.
+Unlike the legacy checker, clause bodies, maximum premises, and minimum markers
+all use complete equality closure. -/
+def FiniteDistinctCardinalityRefutationTree.checkClosed
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth → Bool
+  | .equalityApart left right =>
+      certificate.base.equalityClosureValidB &&
+      certificate.base.closedRelatedB left right &&
+      decide ((left, right) ∈ certificate.apart)
+  | .equality tree => tree.checkClosed certificate.base
+  | .clash => certificate.base.equalityClosureValidB && certificate.base.closedClashB
+  | .delay child => child.checkClosed definitions certificate
+  | .maximum definition source witnesses next children =>
+      certificate.base.equalityClosureValidB &&
+      decide (definition ∈ definitions) &&
+      decide (definition.kind = .maximum) &&
+      certificate.base.closedLabelB source (.pos definition.marker) &&
+      (List.finRange (definition.bound + 1)).all fun index =>
+        certificate.base.closedEdgeB definition.role source (witnesses index) &&
+        certificate.base.closedLabelB (witnesses index) (.pos definition.filler) &&
+        (List.finRange (definition.bound + 1)).all fun other =>
+          decide (index = other) ||
+          (certificate.mergeTransitionB (next index other)
+              (witnesses index) (witnesses other) &&
+            (children index other).checkClosed definitions (next index other))
+  | .branch clause assignment next children =>
+      certificate.base.equalityClosureValidB &&
+      decide (clause ∈ certificate.base.base.ontology) &&
+      clause.body.all (certificate.base.quotientClosedHoldsAtomB assignment) &&
+      decide (∀ index,
+        certificate.transitionB (next index) assignment (clause.head.get index) = true ∧
+        (children index).checkClosed definitions (next index) = true)
+  | .witness source target role filler child =>
+      certificate.base.equalityClosureValidB &&
+      decide ((role, filler, source) ∈ certificate.base.base.obligations) &&
+      certificate.freshNodeB target &&
+      child.checkClosed definitions
+        (certificate.materializeWitness source target role filler)
+  | .minimum definition source targets next child =>
+      certificate.base.equalityClosureValidB &&
+      decide (definition ∈ definitions) && decide (definition.kind = .minimum) &&
+      certificate.base.closedLabelB source (.pos definition.marker) &&
+      certificate.freshFamilyB targets &&
+      certificate.minimumTransitionB next source targets definition.role definition.filler &&
+      child.checkClosed definitions next
+
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_sound
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount)
+      certificate.base.base.ontology definitions certificate.state := by
+  induction tree generalizing certificate with
+  | equality tree =>
+      exact .equality certificate.state
+        (tree.checkClosed_sound certificate.base
+          (by simpa [FiniteDistinctCardinalityRefutationTree.checkClosed] using hcheck))
+  | clash =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true] at hcheck
+      exact .clash certificate.state
+        (certificate.base.closedClashB_sound hcheck.1 hcheck.2)
+  | equalityApart left right =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true, decide_eq_true_eq] at hcheck
+      exact .equalityApart certificate.state left right
+        ((certificate.base.closedRelatedB_eq_true hcheck.1.1 left right).mp hcheck.1.2)
+        hcheck.2
+  | delay child ih =>
+      exact ih certificate
+        (by simpa [FiniteDistinctCardinalityRefutationTree.checkClosed] using hcheck)
+  | maximum definition source witnesses next children ih =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true, List.all_eq_true, List.mem_finRange,
+        decide_eq_true_eq] at hcheck
+      rcases hcheck with
+        ⟨⟨⟨⟨hvalid, hdefinition⟩, hkind⟩, hmarker⟩, hsuccessors⟩
+      apply ClosedDistinctCardinalityRefutes.maximum certificate.state definition
+        hdefinition hkind source
+        ((certificate.base.closedLabelB_eq_true_iff hvalid source
+          (.pos definition.marker)).mp hmarker)
+        witnesses
+      · intro index
+        exact (certificate.base.closedEdgeB_eq_true_iff hvalid definition.role source
+          (witnesses index)).mp (hsuccessors index trivial).1.1
+      · intro index
+        exact (certificate.base.closedLabelB_eq_true_iff hvalid (witnesses index)
+          (.pos definition.filler)).mp (hsuccessors index trivial).1.2
+      · intro left right hne
+        have hentry := (hsuccessors left trivial).2 right trivial
+        have hchild :
+            certificate.mergeTransitionB (next left right)
+                (witnesses left) (witnesses right) = true ∧
+              (children left right).checkClosed definitions (next left right) = true := by
+          simpa [hne] using hentry
+        rw [← certificate.mergeTransitionB_state (next left right)
+          (witnesses left) (witnesses right) hchild.1]
+        have htransition := hchild.1
+        simp only [FiniteDistinctEqCertificate.mergeTransitionB, Bool.and_eq_true,
+          FiniteEqCertificate.mergeTransitionB, decide_eq_true_eq] at htransition
+        have hontology : (next left right).base.base.ontology =
+            certificate.base.base.ontology := htransition.1.1.1.1.1
+        simpa only [hontology] using ih left right (next left right) hchild.2
+  | branch clause assignment next children ih =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨⟨hvalid, hclause⟩, hbody⟩, hchildren⟩
+      apply ClosedDistinctCardinalityRefutes.branch certificate.state clause hclause assignment
+      · intro atom hatom
+        exact (certificate.base.quotientClosedHoldsAtomB_eq_true hvalid assignment atom).mp
+          (hbody atom hatom)
+      · intro atom hatom
+        rcases List.mem_iff_get.mp hatom with ⟨index, hindex⟩
+        rw [← hindex]
+        rcases hchildren index with ⟨htransition, hchild⟩
+        rw [← certificate.transitionB_state (next index) assignment
+          (clause.head.get index) htransition]
+        have hparts := htransition
+        simp only [FiniteDistinctEqCertificate.transitionB, Bool.and_eq_true,
+          decide_eq_true_eq] at hparts
+        have hbase := certificate.base.transitionB_base (next index).base assignment
+          (clause.head.get index) hparts.1
+        have hontology : (next index).base.base.ontology =
+            certificate.base.base.ontology := by
+          rw [hbase]
+          cases clause.head.get index <;> rfl
+        simpa only [hontology] using ih index (next index) hchild
+  | witness source target role filler child ih =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨⟨hvalid, hobligation⟩, hfresh⟩, hchild⟩
+      apply ClosedDistinctCardinalityRefutes.witness certificate.state source target role filler
+        hobligation (certificate.freshNodeB_sound target hvalid hfresh)
+      rw [← certificate.state_materializeWitness source target role filler]
+      exact ih (certificate.materializeWitness source target role filler) hchild
+  | minimum definition source targets next child ih =>
+      simp only [FiniteDistinctCardinalityRefutationTree.checkClosed,
+        Bool.and_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with
+        ⟨⟨⟨⟨⟨⟨hvalid, hdefinition⟩, hkind⟩, hmarker⟩, hfresh⟩,
+          htransition⟩, hchild⟩
+      apply ClosedDistinctCardinalityRefutes.minimum certificate.state definition
+        hdefinition hkind source
+        ((certificate.base.closedLabelB_eq_true_iff hvalid source
+          (.pos definition.marker)).mp hmarker)
+        targets (certificate.freshFamilyB_sound targets hvalid hfresh)
+      rw [← certificate.minimumTransitionB_state next source targets definition.role
+        definition.filler htransition]
+      have htransitionParts := htransition
+      simp only [FiniteDistinctEqCertificate.minimumTransitionB, Bool.and_eq_true,
+        FiniteEqCertificate.minimumTransitionB, decide_eq_true_eq] at htransitionParts
+      have hontology : next.base.base.ontology = certificate.base.base.ontology :=
+        htransitionParts.1.1.1.1.1
+      simpa only [hontology] using ih next hchild
+
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    ¬certificate.state.RealizableWithCardinality
+      certificate.base.base.ontology definitions :=
+  (tree.checkClosed_sound definitions certificate hcheck).sound
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -895,5 +1115,9 @@ theorem cardinalityRuntimeTerminal_of_selectors_exhausted
 #print axioms DistinctEqState.materializeMinimum_closed_realized
 #print axioms ClosedDistinctCardinalityRefutes.sound
 #print axioms DistinctCardinalityRefutes.toClosed
+#print axioms FiniteEqCertificate.closedLabelB_eq_true_iff
+#print axioms FiniteEqCertificate.closedEdgeB_eq_true_iff
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_sound
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable
 
 end ContextCalculus.Hypertableau

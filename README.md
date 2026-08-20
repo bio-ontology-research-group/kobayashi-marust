@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.167`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.168`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -94,7 +94,7 @@ field-construction correspondence, cardinality transition-enumerator
 correspondence, CB, and automatic routing remain unfinished. Equality
 countermodel paths are unchanged.
 
-The cardinality runtime refinement now covers its first four ordered controls.
+The cardinality runtime refinement now covers all six ordered controls.
 Lean mirrors Rust's exact finite `apart`-list scan and proves both selected-clash
 soundness and exhaustive no-clash correspondence. It then lifts the certified
 quotient concept-clash selector into the distinct-cardinality calculus. A new
@@ -111,7 +111,11 @@ proves exact exhaustion of all six ordered controls. A terminal becomes SAT
 only through an independently checked quotient/fold model; that checker/runtime
 composition now proves accepted finite equality/cardinality models sound and
 keeps closure, model, and frontier outcomes disjoint. Exact recursive runtime
-production of those outcomes remains to be connected.
+production of those outcomes remains to be connected. The complete recursive
+distinct-cardinality refutation checker now evaluates clause, minimum, and
+maximum premises through checked equality closure and proves every accepted
+tree semantically inconsistent. The production wire still invokes the legacy
+checker; changing that executable boundary is the next integration step.
 
 ## Classify an ontology
 

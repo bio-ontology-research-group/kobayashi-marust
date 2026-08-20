@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.168] – 2026-08-21
+
+### Certify the quotient-closed cardinality refutation checker
+
+- Add executable equality-closed label and edge checks and prove each exactly
+  equivalent to its semantic quotient-closed relation.
+- Add the full recursive distinct-cardinality checker used by the Rust search
+  semantics: equality/apart and concept clashes, quotient-closed clause bodies,
+  witness materialization, all maximum merge branches, and minimum expansion.
+- Prove every accepted tree constructs a quotient-closed cardinality
+  refutation and therefore rules out every realization satisfying the ontology
+  and cardinality definitions.
+- Audit the checker endpoint without `sorryAx`.
+
+The production cardinality wire still invokes the legacy checker. Switching
+that boundary to this quotient-closed checker, exact recursive outcome
+production, concrete Rust field construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.167] – 2026-08-21
 
 ### Compose cardinality terminals with checked models
