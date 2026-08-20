@@ -271,6 +271,11 @@ Full pairwise signature equality now implies the explicit fold-label contract.
 Using it, `closedForwardConcept_implication` and
 `closedTargetConcept_implication` preserve the two normalized single-edge
 concept propagation orientations across copied blocker edges.
+Certified folds now materialize incoming and outgoing blocker edges. The
+outgoing-only construction was incomplete for reversed role heads.
+`closedInverseRole_implication` proves the corrected fold preserves
+`R(x,y) → S(y,x)`, while the earlier propagation theorems now cover either
+orientation of copied premise edge.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

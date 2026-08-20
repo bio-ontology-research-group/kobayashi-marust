@@ -9524,6 +9524,12 @@ impl Ht {
                     .filter(|(_, source, _)| *source == blocker)
                     .map(|&(role, _, target)| (role, blocked, target)),
             );
+            materialized_edges.extend(
+                leaf.edges
+                    .iter()
+                    .filter(|(_, _, target)| *target == blocker)
+                    .map(|&(role, source, _)| (role, source, blocked)),
+            );
         }
         materialized_edges.sort_unstable();
         materialized_edges.dedup();
@@ -11242,6 +11248,14 @@ impl Ht {
                     role: role as usize,
                     source: node,
                     target,
+                });
+            }
+            for &(role, source, _) in &self.ext.in_edges[blocker] {
+                role_count = role_count.max(role as usize + 1);
+                edges.push(LeanHtEdge {
+                    role: role as usize,
+                    source,
+                    target: node,
                 });
             }
         }
@@ -21414,6 +21428,12 @@ mod tests {
             .unwrap()
             .iter()
             .any(|edge| { edge["role"] == R0 && edge["source"] == 2 && edge["target"] == 2 }));
+        assert!(certificate["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|edge| { edge["role"] == R0 && edge["source"] == 0 && edge["target"] == 2 }),
+            "bidirectional fold materialization must copy incoming blocker edges");
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(
                 "km-ht-blocked-open-cert-{}-{}.json",

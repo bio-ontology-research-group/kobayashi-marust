@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.99] – 2026-08-20
+
+### Make certified HT folds bidirectional
+
+- Fix a concrete completeness defect in blocked-model materialization: copy
+  incoming as well as outgoing blocker edges to the blocked node. Outgoing-only
+  folds cannot preserve reversed role clauses such as `R(x,y) → S(y,x)`.
+- Apply the correction to equality-free and equality-aware Lean folds and to
+  both Rust certificate producers.
+- Generalize exact edge provenance and all existing role/concept fold-transfer
+  theorems across incoming and outgoing copied premises.
+- Prove reversed role implications remain valid after the bidirectional fold.
+- Add a Rust regression requiring an incoming blocker edge to be materialized.
+
+The full Rust release suite passes with 2,066 unit tests, all integration suites,
+and the native Lean HT checker enabled. This closes the single-edge inverse-role
+fold shape; multi-edge role chains and equality/cardinality heads remain.
+
 ## [0.3.98] – 2026-08-20
 
 ### Preserve guarded concept propagation across pairwise folds

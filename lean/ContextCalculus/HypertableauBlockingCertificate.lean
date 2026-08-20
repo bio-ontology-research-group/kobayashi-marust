@@ -98,13 +98,18 @@ structure FiniteFoldCertificate
   base : FiniteSatCertificate nodeCount conceptCount roleCount variableCount
   folds : List (Fin nodeCount × Fin nodeCount)
 
-/-- Copy every outgoing blocker edge to its blocked unfolding position. -/
+/-- Copy every outgoing and incoming blocker edge to its blocked unfolding
+position. The incoming half is required for inverse-role implications. -/
 def FiniteFoldCertificate.foldedEdges
     (certificate : FiniteFoldCertificate nodeCount conceptCount roleCount variableCount) :
     List (Fin roleCount × Fin nodeCount × Fin nodeCount) :=
-  certificate.base.edges ++ certificate.folds.flatMap fun fold =>
-    certificate.base.edges.filterMap fun edge =>
-      if edge.2.1 = fold.2 then some (edge.1, fold.1, edge.2.2) else none
+  certificate.base.edges ++
+    (certificate.folds.flatMap fun fold =>
+      certificate.base.edges.filterMap fun edge =>
+        if edge.2.1 = fold.2 then some (edge.1, fold.1, edge.2.2) else none) ++
+    (certificate.folds.flatMap fun fold =>
+      certificate.base.edges.filterMap fun edge =>
+        if edge.2.2 = fold.2 then some (edge.1, edge.2.1, fold.1) else none)
 
 /-- The ordinary finite SAT certificate obtained after materializing a fold. -/
 def FiniteFoldCertificate.materialize
@@ -130,7 +135,7 @@ theorem FiniteFoldCertificate.base_edge_mem_foldedEdges
     (edge : Fin roleCount × Fin nodeCount × Fin nodeCount)
     (hedge : edge ∈ certificate.base.edges) :
     edge ∈ certificate.foldedEdges := by
-  exact List.mem_append_left _ hedge
+  exact List.mem_append_left _ (List.mem_append_left _ hedge)
 
 /-- Executable acceptance condition for an untrusted finite fold. -/
 def FiniteFoldCertificate.check
@@ -201,7 +206,7 @@ private def cyclicFold : FiniteFoldCertificate 3 2 1 1 where
   folds := [(2, 1)]
 
 example : cyclicFold.materialize.edges =
-    [(0, 0, 1), (0, 1, 2), (0, 2, 2)] := by native_decide
+    [(0, 0, 1), (0, 1, 2), (0, 2, 2), (0, 0, 2)] := by native_decide
 
 example : cyclicFold.check = true := by native_decide
 
