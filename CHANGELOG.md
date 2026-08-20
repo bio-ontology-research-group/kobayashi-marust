@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.180] – 2026-08-21
+
+### Compose cardinality first-obstruction closure
+
+- Add a typed production-shaped first-obstruction layer covering equality/apart
+  clash, quotient concept clash, clause branching, witness materialization,
+  minimum materialization, and maximum merging in runtime priority order.
+- Carry explicit exhaustion evidence for every earlier selector in each later
+  constructor.
+- Use Rust's exact `active_nodes` witness ID, consecutive minimum IDs, and
+  deterministic greedy maximum prefix vector in recursive child states.
+- Prove that immediate clashes or closure of every selected recursive child
+  constructs a sound quotient-closed cardinality refutation of the parent.
+- Add the module to the default Lean build and audit its endpoint without
+  `sorryAx`.
+
+Concrete Rust field construction, well-founded recursive outcome production,
+CB, and automatic routing remain unfinished.
+
 ## [0.3.179] – 2026-08-21
 
 ### Certify active-source fidelity for cardinality scans

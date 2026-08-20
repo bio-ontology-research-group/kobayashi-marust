@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.179`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.180`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -145,6 +145,12 @@ this concrete selector. The checked active-prefix invariant now also proves
 that every selected minimum or maximum source lies below Rust's
 `active_nodes` boundary, reconciling the finite Lean scans with production's
 active-only loops.
+The six controls are now composed into one typed production-shaped
+first-obstruction layer. Each later constructor carries exhaustion of every
+earlier selector, recursive children use the exact witness, minimum, and
+maximum target constructions, and closure of all selected children proves
+closure of the parent. Concrete Rust field construction and well-founded total
+recursive outcome production are not yet connected.
 
 ## Classify an ontology
 
