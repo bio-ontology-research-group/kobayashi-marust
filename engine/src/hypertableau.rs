@@ -2579,7 +2579,7 @@ enum LeanHtDistinctCardinalityRefutationTree {
 
 enum LeanHtDistinctCardinalityRefutationOutcome {
     Closed(LeanHtDistinctCardinalityRefutationTree, usize),
-    Open,
+    Open(LeanHtEqState),
     Frontier,
 }
 
@@ -2614,7 +2614,7 @@ enum LeanHtEqRefutationTree {
 
 enum LeanHtEqRefutationOutcome {
     Closed(LeanHtEqRefutationTree, usize),
-    Open,
+    Open(LeanHtEqState),
     Frontier,
 }
 
@@ -9250,8 +9250,8 @@ impl Ht {
                     state.remove(atom, &assignment);
                     let (child, child_used) = match result {
                         LeanHtEqRefutationOutcome::Closed(child, child_used) => (child, child_used),
-                        LeanHtEqRefutationOutcome::Open => {
-                            return LeanHtEqRefutationOutcome::Open;
+                        LeanHtEqRefutationOutcome::Open(open) => {
+                            return LeanHtEqRefutationOutcome::Open(open);
                         }
                         LeanHtEqRefutationOutcome::Frontier => {
                             return LeanHtEqRefutationOutcome::Frontier;
@@ -9317,11 +9317,11 @@ impl Ht {
                         max_used,
                     )
                 }
-                LeanHtEqRefutationOutcome::Open => LeanHtEqRefutationOutcome::Open,
+                LeanHtEqRefutationOutcome::Open(open) => LeanHtEqRefutationOutcome::Open(open),
                 LeanHtEqRefutationOutcome::Frontier => LeanHtEqRefutationOutcome::Frontier,
             };
         }
-        LeanHtEqRefutationOutcome::Open
+        LeanHtEqRefutationOutcome::Open(state.equality_wire_state(state.active_nodes))
     }
 
     fn pad_distinct_cardinality_tree(
@@ -9394,8 +9394,8 @@ impl Ht {
                         LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                             (tree, depth)
                         }
-                        LeanHtDistinctCardinalityRefutationOutcome::Open => {
-                            return LeanHtDistinctCardinalityRefutationOutcome::Open;
+                        LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                            return LeanHtDistinctCardinalityRefutationOutcome::Open(open);
                         }
                         LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
                             return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
@@ -9475,8 +9475,8 @@ impl Ht {
                         depth + 1,
                     )
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Open => {
-                    LeanHtDistinctCardinalityRefutationOutcome::Open
+                LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Open(open)
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier
@@ -9567,8 +9567,8 @@ impl Ht {
                             depth + 1,
                         )
                     }
-                    LeanHtDistinctCardinalityRefutationOutcome::Open => {
-                        LeanHtDistinctCardinalityRefutationOutcome::Open
+                    LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Open(open)
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
                         LeanHtDistinctCardinalityRefutationOutcome::Frontier
@@ -9642,8 +9642,8 @@ impl Ht {
                             LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                                 (tree, depth)
                             }
-                            LeanHtDistinctCardinalityRefutationOutcome::Open => {
-                                return LeanHtDistinctCardinalityRefutationOutcome::Open;
+                            LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                                return LeanHtDistinctCardinalityRefutationOutcome::Open(open);
                             }
                             LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
                                 return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
@@ -9686,7 +9686,9 @@ impl Ht {
                 );
             }
         }
-        LeanHtDistinctCardinalityRefutationOutcome::Open
+        LeanHtDistinctCardinalityRefutationOutcome::Open(
+            state.equality_wire_state(state.active_nodes),
+        )
     }
 
     fn lean_eq_refutation_certificate_json(
@@ -9743,7 +9745,7 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Closed(tree, _node_count) => {
                     break (tree, state.equality_wire_state(node_budget));
                 }
-                LeanHtEqRefutationOutcome::Open => {
+                LeanHtEqRefutationOutcome::Open(_) => {
                     return Err("ontology has an open equality refutation branch".to_string());
                 }
                 LeanHtEqRefutationOutcome::Frontier if !deepen => {
@@ -9852,7 +9854,7 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                     break (tree, depth, state.equality_wire_state(node_budget));
                 }
-                LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                LeanHtDistinctCardinalityRefutationOutcome::Open(_) => {
                     return Err("ontology has an open cardinality refutation branch".to_string());
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
@@ -10075,6 +10077,164 @@ impl Ht {
                     })?;
                 }
                 LeanHtRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
+    }
+
+    fn lean_decision_signature(&self) -> (usize, usize, usize, Vec<LeanHtClause>) {
+        let mut variable_count = self.lean_source_variable_count();
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1).max(*t as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1).max(*t as usize + 1);
+                    }
+                }
+            }
+        }
+        for (&marker, definition) in &self.card_defs {
+            concept_count = concept_count
+                .max(marker as usize + 1)
+                .max(definition.filler.c as usize + 1);
+            role_count = role_count.max(definition.role as usize + 1);
+        }
+        let ontology = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        (variable_count, concept_count, role_count, ontology)
+    }
+
+    /// Certification-only equality-aware global decision search. A closed
+    /// exhaustive tree is checked as UNSAT. An open saturated quotient state
+    /// is serialized as SAT and accepted only through the executable Lean
+    /// equality checker. Frontier exhaustion remains inconclusive.
+    pub fn lean_equality_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        if !self.card_defs.is_empty() {
+            return Err("equality decision certificates do not include cardinality".to_string());
+        }
+        if !self.clauses.iter().any(|record| {
+            record
+                .0
+                .body
+                .iter()
+                .chain(record.0.head.iter())
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
+            return Err("equality decision certificates require an equality atom".to_string());
+        }
+        let (variable_count, concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let mut state = LeanHtRefutationState::root(&[]);
+            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                LeanHtEqRefutationOutcome::Closed(_, _) => {
+                    return Ok((false, self.lean_unsat_certificate_json()?));
+                }
+                LeanHtEqRefutationOutcome::Open(state) => {
+                    let node_count = state.representatives.len();
+                    let raw = serde_json::to_string(&LeanHtEqCertificate {
+                        version: 2,
+                        node_count,
+                        concept_count,
+                        role_count,
+                        variable_count,
+                        ontology,
+                        state,
+                        evidence: LeanHtEqEvidence::Sat,
+                    })
+                    .map_err(|error| error.to_string())?;
+                    return Ok((true, self.finalize_lean_certificate(raw)?));
+                }
+                LeanHtEqRefutationOutcome::Frontier if !deepen => {
+                    return Err(
+                        "ontology reached the configured equality decision node cap".to_string(),
+                    );
+                }
+                LeanHtEqRefutationOutcome::Frontier => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "equality decision node budget overflowed usize".to_string()
+                    })?;
+                }
+            }
+        }
+    }
+
+    /// Certification-only cardinality-aware global decision search. Open
+    /// leaves carry the exact quotient state and are published only through
+    /// the executable cardinality model checker. Node-budget frontiers remain
+    /// non-verdicts.
+    pub fn lean_cardinality_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        if self.card_defs.is_empty() {
+            return Err("cardinality decision certificates require definitions".to_string());
+        }
+        let (variable_count, concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let mut state = LeanHtRefutationState::root(&[]);
+            match self.lean_distinct_cardinality_refutation(
+                &mut state,
+                &definitions,
+                variable_count,
+                node_budget,
+            ) {
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
+                    return Ok((false, self.lean_unsat_certificate_json()?));
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
+                    let node_count = state.representatives.len();
+                    let equality = serde_json::to_string(&LeanHtEqCertificate {
+                        version: 2,
+                        node_count,
+                        concept_count,
+                        role_count,
+                        variable_count,
+                        ontology,
+                        state,
+                        evidence: LeanHtEqEvidence::Sat,
+                    })
+                    .map_err(|error| error.to_string())?;
+                    let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
+                    return Ok((true, self.finalize_lean_certificate(cardinality)?));
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
+                    return Err(
+                        "ontology reached the configured cardinality decision node cap"
+                            .to_string(),
+                    );
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "cardinality decision node budget overflowed usize".to_string()
+                    })?;
+                }
             }
         }
     }
@@ -20413,7 +20573,7 @@ mod tests {
         let mut open_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
             open.lean_eq_refutation(&mut open_state, 0, 1),
-            LeanHtEqRefutationOutcome::Open
+            LeanHtEqRefutationOutcome::Open(_)
         ));
 
         let witness =
@@ -20438,7 +20598,7 @@ mod tests {
         let mut open_state = LeanHtRefutationState::root(&[]);
         assert!(matches!(
             open.lean_distinct_cardinality_refutation(&mut open_state, &[], 0, 1),
-            LeanHtDistinctCardinalityRefutationOutcome::Open
+            LeanHtDistinctCardinalityRefutationOutcome::Open(_)
         ));
 
         let witness =
@@ -20626,6 +20786,103 @@ mod tests {
                     .success();
                 let _ = std::fs::remove_file(path);
                 assert!(accepted, "Lean must accept the {kind} decision evidence");
+            }
+        }
+    }
+
+    #[test]
+    fn equality_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let satisfiable = Ht::new_certified(vec![Clause::new(
+            Vec::new(),
+            vec![Atom::Eq { s: X, t: X }],
+        )]);
+        let (sat, sat_certificate) = satisfiable
+            .lean_equality_decision_certificate_json()
+            .expect("the reflexive equality branch has a checked quotient model");
+        assert!(sat);
+        let sat_wire: serde_json::Value = serde_json::from_str(&sat_certificate).unwrap();
+        assert_eq!(sat_wire["evidence"], serde_json::json!("sat"));
+        assert_eq!(sat_wire["node_count"], serde_json::json!(1));
+
+        let inconsistent = Ht::new_certified(vec![
+            Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
+            Clause::new(Vec::new(), Vec::new()),
+        ]);
+        let (sat, unsat_certificate) = inconsistent
+            .lean_equality_decision_certificate_json()
+            .expect("the irrefutable equality body has a checked refutation");
+        assert!(!sat);
+        let unsat_wire: serde_json::Value = serde_json::from_str(&unsat_certificate).unwrap();
+        assert!(unsat_wire["evidence"].get("unsat").is_some());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            for (kind, certificate) in [("sat", sat_certificate), ("unsat", unsat_certificate)] {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-equality-decision-{kind}-{}-{}.json",
+                    std::process::id(),
+                    std::thread::current().name().unwrap_or("test")
+                ));
+                std::fs::write(&path, certificate).unwrap();
+                let accepted = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("run native Lean checker on equality decision evidence")
+                    .success();
+                let _ = std::fs::remove_file(path);
+                assert!(accepted, "Lean must accept the {kind} equality evidence");
+            }
+        }
+    }
+
+    #[test]
+    fn cardinality_decision_emits_sat_or_unsat_checker_ready_evidence() {
+        let definition = CardDef {
+            kind: CardKind::Min,
+            n: 1,
+            role: R0,
+            filler: CLit::pos(B),
+        };
+        let mut satisfiable = Ht::new_certified(Vec::new());
+        satisfiable.set_card_defs(HashMap::from([(A, definition)]));
+        let (sat, sat_certificate) = satisfiable
+            .lean_cardinality_decision_certificate_json()
+            .expect("an unasserted cardinality marker has a checked quotient model");
+        assert!(sat);
+        let sat_wire: serde_json::Value = serde_json::from_str(&sat_certificate).unwrap();
+        assert_eq!(sat_wire["certificate"]["evidence"], serde_json::json!("sat"));
+        assert_eq!(sat_wire["certificate"]["node_count"], serde_json::json!(1));
+
+        let mut inconsistent =
+            Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        inconsistent.set_card_defs(HashMap::from([(A, definition)]));
+        let (sat, unsat_certificate) = inconsistent
+            .lean_cardinality_decision_certificate_json()
+            .expect("the empty-head clause has a checked cardinality refutation");
+        assert!(!sat);
+        let unsat_wire: serde_json::Value = serde_json::from_str(&unsat_certificate).unwrap();
+        assert!(unsat_wire["certificate"]["evidence"]
+            .get("unsat")
+            .is_some());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            for (kind, certificate) in [("sat", sat_certificate), ("unsat", unsat_certificate)] {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-cardinality-decision-{kind}-{}-{}.json",
+                    std::process::id(),
+                    std::thread::current().name().unwrap_or("test")
+                ));
+                std::fs::write(&path, certificate).unwrap();
+                let accepted = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("run native Lean checker on cardinality decision evidence")
+                    .success();
+                let _ = std::fs::remove_file(path);
+                assert!(accepted, "Lean must accept the {kind} cardinality evidence");
             }
         }
     }

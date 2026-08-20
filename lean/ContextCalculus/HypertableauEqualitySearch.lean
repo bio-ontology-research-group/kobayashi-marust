@@ -3,11 +3,10 @@ import ContextCalculus.HypertableauEqualityCertificate
 /-!
 # Checked bounded equality-aware HT outcomes
 
-KM's bounded equality-aware refutation search has three operational outcomes.
-Only a checked closed tree is presently conclusive.  An open finite branch is
-not yet a model certificate, and exhausting the node budget is a frontier.
-Keeping those cases distinct prevents either inconclusive result from being
-mistaken for a proof of satisfiability or unsatisfiability.
+KM's bounded equality-aware decision search has three operational outcomes.
+A saturated open leaf becomes conclusive only after the finite quotient-model
+checker accepts it. A closed tree becomes conclusive only after its refutation
+checker accepts it. Exhausting the node budget remains a frontier.
 -/
 
 namespace ContextCalculus.Hypertableau
@@ -17,10 +16,16 @@ abbrev EqualityHasNonemptyModel
   ∃ (Domain : Type) (I : Interp Domain Concept Role),
     Nonempty Domain ∧ I.models ontology
 
-inductive CheckedEqualityRefutationOutcome
+inductive CheckedEqualityDecisionOutcome
     (conceptCount roleCount variableCount : Nat)
     (ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) : Type where
+  | sat
+      {nodeCount : Nat}
+      (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkEqSat = true)
   | closed
       {nodeCount : Nat}
       (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -29,20 +34,33 @@ inductive CheckedEqualityRefutationOutcome
       (hnonempty : 0 < nodeCount)
       (hempty : certificate.EmptyRoot)
       (hcheck : tree.check certificate = true)
-  | openBranch
   | frontier
 
-def CheckedEqualityRefutationOutcome.Semantics
+def CheckedEqualityDecisionOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
-    (outcome : CheckedEqualityRefutationOutcome
+    (outcome : CheckedEqualityDecisionOutcome
       conceptCount roleCount variableCount ontology) : Prop :=
   match outcome with
+  | .sat .. => EqualityHasNonemptyModel ontology
   | .closed .. => ¬EqualityHasNonemptyModel ontology
-  | .openBranch => False
   | .frontier => False
 
-theorem CheckedEqualityRefutationOutcome.closed_semantics
+theorem CheckedEqualityDecisionOutcome.sat_semantics
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hontology : certificate.base.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hcheck : certificate.checkEqSat = true) :
+    EqualityHasNonemptyModel ontology := by
+  letI : Nonempty (Fin nodeCount) := ⟨⟨0, hnonempty⟩⟩
+  refine ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical, ?_, ?_⟩
+  · exact ⟨Quotient.mk certificate.state.nodeSetoid (Classical.choice inferInstance)⟩
+  · simpa [hontology] using certificate.checkEqSat_models hcheck
+
+theorem CheckedEqualityDecisionOutcome.closed_semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
     {nodeCount : Nat}
@@ -57,22 +75,26 @@ theorem CheckedEqualityRefutationOutcome.closed_semantics
   have hnot := tree.check_ontology_unsatisfiable certificate hempty hcheck
   simpa [EqualityHasNonemptyModel, hontology] using hnot
 
-theorem CheckedEqualityRefutationOutcome.conclusive_semantics
+theorem CheckedEqualityDecisionOutcome.conclusive_semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
-    (outcome : CheckedEqualityRefutationOutcome
+    (outcome : CheckedEqualityDecisionOutcome
       conceptCount roleCount variableCount ontology) :
-    (match outcome with | .closed .. => True | _ => False) →
+    (match outcome with | .frontier => False | _ => True) →
       outcome.Semantics := by
   cases outcome with
+  | sat certificate hontology hnonempty hcheck =>
+      intro _
+      exact CheckedEqualityDecisionOutcome.sat_semantics
+        certificate hontology hnonempty hcheck
   | closed certificate tree hontology hnonempty hempty hcheck =>
       intro _
-      exact CheckedEqualityRefutationOutcome.closed_semantics
+      exact CheckedEqualityDecisionOutcome.closed_semantics
         certificate tree hontology hnonempty hempty hcheck
-  | openBranch => simp
   | frontier => simp
 
-#print axioms CheckedEqualityRefutationOutcome.closed_semantics
-#print axioms CheckedEqualityRefutationOutcome.conclusive_semantics
+#print axioms CheckedEqualityDecisionOutcome.sat_semantics
+#print axioms CheckedEqualityDecisionOutcome.closed_semantics
+#print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
 
 end ContextCalculus.Hypertableau

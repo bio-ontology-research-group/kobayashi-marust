@@ -1,13 +1,12 @@
 import ContextCalculus.HypertableauCardinalityDistinctCertificate
+import ContextCalculus.HypertableauCardinalityCertificate
 
 /-!
 # Checked bounded cardinality-aware HT outcomes
 
-The concrete distinct-cardinality refutation search reports checked closure,
-an open finite branch, or exhaustion of its node budget.  Only checked closure
-is currently conclusive.  This contract prevents the two inconclusive cases
-from being collapsed into one control-flow result while equality-aware
-blocking and model extraction remain to be certified.
+The concrete distinct-cardinality decision search reports a checked quotient
+model, checked closure, or exhaustion of its node budget. The first two are
+semantically conclusive; frontier exhaustion is not.
 -/
 
 namespace ContextCalculus.Hypertableau
@@ -18,11 +17,18 @@ abbrev CardinalityHasNonemptyModel
   ∃ (Domain : Type) (I : Interp Domain Concept Role),
     Nonempty Domain ∧ I.models ontology ∧ I.modelsCardinalityDefs definitions
 
-inductive CheckedCardinalityRefutationOutcome
+inductive CheckedCardinalityDecisionOutcome
     (conceptCount roleCount variableCount : Nat)
     (ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Type where
+  | sat
+      {nodeCount : Nat}
+      (certificate : FiniteEqCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkEqSatWithCardinality definitions = true)
   | closed
       {nodeCount depth : Nat}
       (certificate : FiniteDistinctEqCertificate
@@ -34,21 +40,37 @@ inductive CheckedCardinalityRefutationOutcome
       (hempty : certificate.base.EmptyRoot)
       (hapart : certificate.apart = [])
       (hcheck : tree.check definitions certificate = true)
-  | openBranch
   | frontier
 
-def CheckedCardinalityRefutationOutcome.Semantics
+def CheckedCardinalityDecisionOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
     {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
-    (outcome : CheckedCardinalityRefutationOutcome
+    (outcome : CheckedCardinalityDecisionOutcome
       conceptCount roleCount variableCount ontology definitions) : Prop :=
   match outcome with
+  | .sat .. => CardinalityHasNonemptyModel ontology definitions
   | .closed .. => ¬CardinalityHasNonemptyModel ontology definitions
-  | .openBranch => False
   | .frontier => False
 
-theorem CheckedCardinalityRefutationOutcome.closed_semantics
+theorem CheckedCardinalityDecisionOutcome.sat_semantics
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hontology : certificate.base.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hcheck : certificate.checkEqSatWithCardinality definitions = true) :
+    CardinalityHasNonemptyModel ontology definitions := by
+  letI : Nonempty (Fin nodeCount) := ⟨⟨0, hnonempty⟩⟩
+  have hmodels := certificate.checkEqSatWithCardinality_models definitions hcheck
+  refine ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical, ?_, ?_, hmodels.2⟩
+  · exact ⟨Quotient.mk certificate.state.nodeSetoid (Classical.choice inferInstance)⟩
+  · simpa [hontology] using hmodels.1
+
+theorem CheckedCardinalityDecisionOutcome.closed_semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
     {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
@@ -68,23 +90,27 @@ theorem CheckedCardinalityRefutationOutcome.closed_semantics
     definitions certificate hempty hapart hcheck
   simpa [CardinalityHasNonemptyModel, hontology] using hnot
 
-theorem CheckedCardinalityRefutationOutcome.conclusive_semantics
+theorem CheckedCardinalityDecisionOutcome.conclusive_semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
     {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
-    (outcome : CheckedCardinalityRefutationOutcome
+    (outcome : CheckedCardinalityDecisionOutcome
       conceptCount roleCount variableCount ontology definitions) :
-    (match outcome with | .closed .. => True | _ => False) →
+    (match outcome with | .frontier => False | _ => True) →
       outcome.Semantics := by
   cases outcome with
+  | sat certificate hontology hnonempty hcheck =>
+      intro _
+      exact CheckedCardinalityDecisionOutcome.sat_semantics
+        certificate hontology hnonempty hcheck
   | closed certificate tree hontology hnonempty hempty hapart hcheck =>
       intro _
-      exact CheckedCardinalityRefutationOutcome.closed_semantics
+      exact CheckedCardinalityDecisionOutcome.closed_semantics
         certificate tree hontology hnonempty hempty hapart hcheck
-  | openBranch => simp
   | frontier => simp
 
-#print axioms CheckedCardinalityRefutationOutcome.closed_semantics
-#print axioms CheckedCardinalityRefutationOutcome.conclusive_semantics
+#print axioms CheckedCardinalityDecisionOutcome.sat_semantics
+#print axioms CheckedCardinalityDecisionOutcome.closed_semantics
+#print axioms CheckedCardinalityDecisionOutcome.conclusive_semantics
 
 end ContextCalculus.Hypertableau

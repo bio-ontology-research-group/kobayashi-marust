@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.85] – 2026-08-20
+
+### Check equality and cardinality open-leaf models
+
+- Preserve the exact active-node equality quotient when bounded equality or
+  distinct-cardinality search reaches a saturated open leaf.
+- Add certification-only equality and cardinality global decision APIs. They
+  publish SAT only through the existing executable Lean quotient-model checks,
+  publish UNSAT only through exhaustive checked refutations, and leave node
+  frontiers inconclusive.
+- Serialize open leaves with their active node count rather than the larger
+  allocation budget, excluding unused blank nodes from the finite model.
+- Prove in Lean that accepted equality SAT leaves have a nonempty model and
+  accepted cardinality SAT leaves have a nonempty model satisfying the exact
+  decoded cardinality definitions.
+- Compose those SAT theorems with the existing checked-closure theorems into
+  typed decision outcomes whose only inconclusive constructor is `frontier`.
+- Test equality-free, equality, and cardinality SAT/UNSAT decision evidence
+  through the native Lean checker.
+
+This completes checked terminal semantics for bounded equality and cardinality
+search. Total certification still requires proving that equality/cardinality
+frontiers cannot persist under iterative deepening.
+
 ## [0.3.84] – 2026-08-20
 
 ### Separate bounded cardinality-aware HT outcomes

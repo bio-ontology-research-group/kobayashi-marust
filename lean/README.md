@@ -331,15 +331,18 @@ checker refines the implementation's merge forest using explicit
 representatives and paths. Version-2 JSON and the Rust producer connect global
 and individual-query SAT/UNSAT evidence to this checker. The bounded Rust
 refutation search and its Lean contract distinguish checked closure, an open
-branch, and an exhausted frontier; only checked closure is currently proved
-conclusive. Equality-aware model extraction, complete taxonomy batching, and
+branch, and an exhausted frontier. Saturated open leaves now retain their exact
+active-node quotient and become conclusive only when the executable equality
+model checker accepts them. Checked closure and checked quotient models cover
+both terminal meanings; complete taxonomy batching and equality-aware frontier
 termination remain separate obligations.
 
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
 excludes models satisfying both the exact ontology and its decoded cardinality
-definitions. Open cardinality branches and exhausted frontiers remain
-inconclusive pending model extraction and equality-aware blocking termination.
+definitions. Saturated cardinality leaves are now published through that
+checker, while exhausted frontiers remain inconclusive pending equality-aware
+blocking termination.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
