@@ -14,8 +14,11 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
         let document : WireNormalizedCertificate ← fromJson? json
         document.check
       else if version = 2 then
-        let document : WireEqCertificate ← fromJson? json
-        document.check
+        match (fromJson? json : Except String WireCardinalityEqCertificate) with
+        | .ok document => document.check
+        | .error _ =>
+            let document : WireEqCertificate ← fromJson? json
+            document.check
       else
         let document : WireCertificate ← fromJson? json
         document.check

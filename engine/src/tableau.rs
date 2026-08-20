@@ -5294,9 +5294,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if !inp.card_defs.is_empty() {
+            if !inp.card_defs.is_empty() && lean_taxonomy_requested {
                 return Err(
-                    "HT Lean certification does not yet cover first-class number-restriction side data"
+                    "HT Lean taxonomy certification does not yet cover first-class number-restriction side data"
                         .to_string(),
                 );
             }

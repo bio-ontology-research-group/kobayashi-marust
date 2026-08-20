@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauEqualityNormalizationWire
 import ContextCalculus.HypertableauEqualityWire
+import ContextCalculus.HypertableauCardinalityWire
 import ContextCalculus.HypertableauPreprocessingWire
 
 /-!
@@ -18,6 +19,7 @@ open Lean
 inductive WireNormalizedPayload where
   | plain (certificate : WireCertificate)
   | equality (certificate : WireEqCertificate)
+  | cardinality (certificate : WireCardinalityEqCertificate)
 deriving FromJson, ToJson, Repr
 
 structure WireNormalizedCertificate where
@@ -54,9 +56,18 @@ structure DecodedNormalizedEquality where
   evidence : DecodedEqCertificate
   normalization : DecodedModelNormalization evidence.ontology
 
+def DecodedCardinalityEqCertificate.ontology
+    (decoded : DecodedCardinalityEqCertificate) :=
+  decoded.base.rootCertificate.base.ontology
+
+structure DecodedNormalizedCardinality where
+  evidence : DecodedCardinalityEqCertificate
+  normalization : DecodedModelNormalization evidence.ontology
+
 inductive DecodedNormalizedCertificate where
   | plain (decoded : DecodedNormalizedPlain)
   | equality (decoded : DecodedNormalizedEquality)
+  | cardinality (decoded : DecodedNormalizedCardinality)
 
 def WireNormalizedCertificate.decode (wire : WireNormalizedCertificate) :
     Except String DecodedNormalizedCertificate := do
@@ -94,10 +105,27 @@ def WireNormalizedCertificate.decode (wire : WireNormalizedCertificate) :
                 evidence.conceptCount evidence.roleCount wire.normalization evidence.ontology
               pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
       return .equality ⟨evidence, normalization⟩
+  | .cardinality certificate =>
+      let evidence ← certificate.decode
+      let normalization : DecodedModelNormalization evidence.ontology ←
+        if wire.version = 3 then
+          let decoded ← decodeOntologyNormalization evidence.base.variableCount
+            evidence.base.conceptCount evidence.base.roleCount wire.normalization evidence.ontology
+          pure ⟨decoded.source, fun _ I => decoded.proof.models_iff I⟩
+        else
+          match wire.preprocessing with
+          | none => throw "version-4 HT certificate has no preprocessing evidence"
+          | some preprocessing =>
+              let decoded ← preprocessing.decode evidence.base.variableCount
+                evidence.base.conceptCount evidence.base.roleCount wire.normalization
+                evidence.ontology
+              pure ⟨decoded.source, decoded.proof.modelEquivalent⟩
+      return .cardinality ⟨evidence, normalization⟩
 
 def DecodedNormalizedCertificate.check : DecodedNormalizedCertificate → Bool
   | .plain decoded => decoded.evidence.check
   | .equality decoded => decoded.evidence.check
+  | .cardinality decoded => decoded.evidence.check
 
 def WireNormalizedCertificate.check (wire : WireNormalizedCertificate) : Except String Bool := do
   return (← wire.decode).check
@@ -251,10 +279,122 @@ theorem DecodedNormalizedEquality.check_sound (decoded : DecodedNormalizedEquali
       intro hsource
       exact htarget ((equivalent.unsatisfiableConcept_iff concept).mp hsource)
 
+def DecodedNormalizedCardinality.SemanticallyValid
+    (decoded : DecodedNormalizedCardinality) : Prop :=
+  match decoded.evidence.base.evidence with
+  | .sat _ =>
+      ∃ (Domain : Type) (I : Interp Domain (Fin decoded.evidence.base.conceptCount)
+          (Fin decoded.evidence.base.roleCount)), Nonempty Domain ∧
+        I.models decoded.normalization.source ∧
+        I.modelsCardinalityDefs decoded.evidence.definitions
+  | .unsat _ _ =>
+      ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.evidence.base.conceptCount)
+          (Fin decoded.evidence.base.roleCount)), Nonempty Domain ∧
+        I.models decoded.normalization.source ∧
+        I.modelsCardinalityDefs decoded.evidence.definitions
+  | .subsumption _ _ sub sup _ =>
+      EntailsSubWithCardinality decoded.normalization.source
+        decoded.evidence.definitions sub sup
+  | .unsatisfiableConcept _ _ concept _ =>
+      UnsatisfiableConceptWithCardinality decoded.normalization.source
+        decoded.evidence.definitions concept
+  | .nonSubsumption _ _ sub sup =>
+      ¬EntailsSubWithCardinality decoded.normalization.source
+        decoded.evidence.definitions sub sup
+  | .satisfiableConcept _ _ concept =>
+      ¬UnsatisfiableConceptWithCardinality decoded.normalization.source
+        decoded.evidence.definitions concept
+
+theorem DecodedNormalizedCardinality.check_sound
+    (decoded : DecodedNormalizedCardinality)
+    (hcheck : decoded.evidence.check = true) : decoded.SemanticallyValid := by
+  have htarget := decoded.evidence.check_sound hcheck
+  cases hevidence : decoded.evidence.base.evidence with
+  | sat certificate =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      rcases htarget with ⟨Domain, I, hdomain, hmodels, hdefinitions⟩
+      have hmodels' : I.models decoded.evidence.ontology := by
+        simpa only [hontology] using hmodels
+      exact ⟨Domain, I, hdomain,
+        (equivalent Domain I).mpr hmodels', hdefinitions⟩
+  | unsat certificate tree =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      rintro ⟨Domain, I, hdomain, hmodels, hdefinitions⟩
+      have hmodels' : I.models certificate.base.ontology := by
+        simpa only [hontology] using (equivalent Domain I).mp hmodels
+      exact htarget ⟨Domain, I, hdomain, hmodels', hdefinitions⟩
+  | subsumption certificate root sub sup tree =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      intro Domain I hmodels hdefinitions value hsub
+      have hmodels' : I.models certificate.base.ontology := by
+        simpa only [hontology] using (equivalent Domain I).mp hmodels
+      exact htarget Domain I
+        hmodels'
+        hdefinitions value hsub
+  | unsatisfiableConcept certificate root concept tree =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      intro Domain I hmodels hdefinitions value hconcept
+      have hmodels' : I.models certificate.base.ontology := by
+        simpa only [hontology] using (equivalent Domain I).mp hmodels
+      exact htarget Domain I
+        hmodels'
+        hdefinitions value hconcept
+  | nonSubsumption certificate root sub sup =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      intro hsource
+      apply htarget
+      intro Domain I hmodels hdefinitions value hsub
+      have hmodels' : I.models decoded.evidence.ontology := by
+        simpa only [hontology] using hmodels
+      exact hsource Domain I
+        ((equivalent Domain I).mpr hmodels')
+        hdefinitions value hsub
+  | satisfiableConcept certificate root concept =>
+      simp only [DecodedNormalizedCardinality.SemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at htarget
+      have equivalent := decoded.normalization.equivalent
+      have hontology : decoded.evidence.ontology = certificate.base.ontology := by
+        simp [DecodedCardinalityEqCertificate.ontology,
+          DecodedEqCertificate.rootCertificate, hevidence]
+      intro hsource
+      apply htarget
+      intro Domain I hmodels hdefinitions value hconcept
+      have hmodels' : I.models decoded.evidence.ontology := by
+        simpa only [hontology] using hmodels
+      exact hsource Domain I
+        ((equivalent Domain I).mpr hmodels')
+        hdefinitions value hconcept
+
 def DecodedNormalizedCertificate.SemanticallyValid :
     DecodedNormalizedCertificate → Prop
   | .plain decoded => decoded.SemanticallyValid
   | .equality decoded => decoded.SemanticallyValid
+  | .cardinality decoded => decoded.SemanticallyValid
 
 theorem DecodedNormalizedCertificate.check_sound
     (decoded : DecodedNormalizedCertificate) (hcheck : decoded.check = true) :
@@ -262,9 +402,11 @@ theorem DecodedNormalizedCertificate.check_sound
   cases decoded with
   | plain decoded => exact decoded.check_sound hcheck
   | equality decoded => exact decoded.check_sound hcheck
+  | cardinality decoded => exact decoded.check_sound hcheck
 
 #print axioms DecodedNormalizedPlain.check_sound
 #print axioms DecodedNormalizedEquality.check_sound
+#print axioms DecodedNormalizedCardinality.check_sound
 #print axioms DecodedNormalizedCertificate.check_sound
 
 namespace Tests

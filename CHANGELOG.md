@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+## [0.3.58] – 2026-08-20
+
+### Produce and check global HT cardinality certificates
+
+- Add a Rust producer for finite distinct-aware cardinality refutations that
+  composes ordinary clause branching and existential witnesses with minimum,
+  maximum, equality, and equality/apart closure steps.
+- Add positive equality-quotient cardinality evidence for satisfiable global
+  searches. The same cardinality wrapper covers non-subsumption and
+  satisfiable-concept evidence produced by the query APIs.
+- Add a standalone cardinality checker and teach the general HT checker to
+  recognize direct cardinality documents.
+- Prove that checked cardinality evidence transfers through body-equality
+  normalization and the certified preprocessing pipeline to the source
+  ontology. Normalized cardinality documents use the existing version-3 and
+  version-4 source-aware wrappers.
+- Permit checker-gated publication of global HT consistency results with
+  first-class cardinality side data. Complete taxonomy publication remains
+  fail-closed until every cardinality query cell is composed into the checked
+  taxonomy matrix.
+- Test direct SAT evidence, a mixed branch/minimum/maximum/apart pigeonhole
+  refutation, and an end-to-end normalized `tableau_cli` result against the
+  native Lean checkers.
+
+This release proves the soundness of accepted global cardinality certificates
+and connects their production to the runtime. It does not yet prove HT search
+termination or complete cardinality-taxonomy evidence production.
+
 ## [0.3.57] – 2026-08-20
 
 ### Compose cardinality refutations with ordinary HT rules

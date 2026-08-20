@@ -1744,7 +1744,8 @@ fn eliminate_body_equalities(clause: &mut Clause) -> BodyEqualityNormalizationEv
             let mut reversed = vec![finish];
             let mut node = finish;
             while node != start {
-                node = predecessor[node].expect("union-find representative must have an equality path");
+                node = predecessor[node]
+                    .expect("union-find representative must have an equality path");
                 reversed.push(node);
             }
             reversed.reverse();
@@ -2327,10 +2328,24 @@ struct LeanHtLit {
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtAtom {
-    Concept { literal: LeanHtLit, node: usize },
-    Role { role: usize, source: usize, target: usize },
-    Exists_ { role: usize, filler: LeanHtLit, node: usize },
-    Eq { left: usize, right: usize },
+    Concept {
+        literal: LeanHtLit,
+        node: usize,
+    },
+    Role {
+        role: usize,
+        source: usize,
+        target: usize,
+    },
+    Exists_ {
+        role: usize,
+        filler: LeanHtLit,
+        node: usize,
+    },
+    Eq {
+        left: usize,
+        right: usize,
+    },
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -2429,6 +2444,84 @@ struct LeanHtEqState {
 }
 
 #[derive(serde::Serialize)]
+struct LeanHtApart {
+    left: usize,
+    right: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtDistinctEqState {
+    base: LeanHtEqState,
+    apart: Vec<LeanHtApart>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtCardinalityDef {
+    marker: usize,
+    minimum: bool,
+    bound: usize,
+    role: usize,
+    filler: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtDistinctCardinalityRefutationTree {
+    Clash,
+    EqualityApart {
+        left: usize,
+        right: usize,
+    },
+    Delay {
+        child: Box<LeanHtDistinctCardinalityRefutationTree>,
+    },
+    Branch {
+        clause: usize,
+        assignment: Vec<usize>,
+        children: Vec<(
+            LeanHtDistinctEqState,
+            LeanHtDistinctCardinalityRefutationTree,
+        )>,
+    },
+    Witness {
+        source: usize,
+        target: usize,
+        role: usize,
+        filler: LeanHtLit,
+        child: Box<LeanHtDistinctCardinalityRefutationTree>,
+    },
+    Minimum {
+        definition: usize,
+        source: usize,
+        targets: Vec<usize>,
+        next: LeanHtDistinctEqState,
+        child: Box<LeanHtDistinctCardinalityRefutationTree>,
+    },
+    Maximum {
+        definition: usize,
+        source: usize,
+        witnesses: Vec<usize>,
+        children: Vec<
+            Vec<(
+                LeanHtDistinctEqState,
+                LeanHtDistinctCardinalityRefutationTree,
+            )>,
+        >,
+    },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtCardinalityCertificate {
+    version: usize,
+    certificate: LeanHtEqCertificate,
+    definitions: Vec<LeanHtCardinalityDef>,
+    refutation_depth: usize,
+    refutation: Option<LeanHtEqRefutationTree>,
+    distinct_refutation_depth: usize,
+    distinct_refutation: Option<LeanHtDistinctCardinalityRefutationTree>,
+}
+
+#[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum LeanHtEqRefutationTree {
     Clash,
@@ -2450,7 +2543,9 @@ enum LeanHtEqRefutationTree {
 #[serde(rename_all = "snake_case")]
 enum LeanHtEqEvidence {
     Sat,
-    Unsat { tree: LeanHtEqRefutationTree },
+    Unsat {
+        tree: LeanHtEqRefutationTree,
+    },
     Subsumption {
         root: usize,
         sub: usize,
@@ -2489,7 +2584,9 @@ struct LeanHtEqCertificate {
 #[serde(rename_all = "snake_case")]
 enum LeanHtEvidence {
     Sat,
-    Unsat { tree: LeanHtRefutationTree },
+    Unsat {
+        tree: LeanHtRefutationTree,
+    },
     Subsumption {
         root: usize,
         sub: usize,
@@ -2534,6 +2631,8 @@ struct LeanHtRefutationState {
     obligations: HashSet<(R, CLit, Node)>,
     obligation_order: Vec<(R, CLit, Node)>,
     equalities: Vec<(Node, Node)>,
+    apart: Vec<(Node, Node)>,
+    minimums: HashSet<(usize, Node)>,
     active_nodes: usize,
 }
 
@@ -2547,6 +2646,8 @@ impl LeanHtRefutationState {
             obligations: HashSet::new(),
             obligation_order: Vec::new(),
             equalities: Vec::new(),
+            apart: Vec::new(),
+            minimums: HashSet::new(),
             active_nodes: 1,
         }
     }
@@ -2620,8 +2721,7 @@ impl LeanHtRefutationState {
     }
 
     fn equality_wire_state(&self, node_count: usize) -> LeanHtEqState {
-        let (representatives, representative_paths) =
-            self.representatives_and_paths(node_count);
+        let (representatives, representative_paths) = self.representatives_and_paths(node_count);
         LeanHtEqState {
             labels: self
                 .label_order
@@ -2660,22 +2760,36 @@ impl LeanHtRefutationState {
         }
     }
 
+    fn distinct_wire_state(&self, node_count: usize) -> LeanHtDistinctEqState {
+        LeanHtDistinctEqState {
+            base: self.equality_wire_state(node_count),
+            apart: self
+                .apart
+                .iter()
+                .map(|&(left, right)| LeanHtApart { left, right })
+                .collect(),
+        }
+    }
+
+    fn equality_apart_clash(&self) -> Option<(Node, Node)> {
+        self.apart
+            .iter()
+            .copied()
+            .find(|&(left, right)| self.equivalent(left, right))
+    }
+
     fn holds(&self, atom: &Atom, assignment: &[Node]) -> bool {
         match atom {
             Atom::Concept { lit, t } => self.labels.contains(&(assignment[*t as usize], *lit)),
-            Atom::Role { r, s, t } => self.edges.contains(&(
-                *r,
-                assignment[*s as usize],
-                assignment[*t as usize],
-            )),
+            Atom::Role { r, s, t } => {
+                self.edges
+                    .contains(&(*r, assignment[*s as usize], assignment[*t as usize]))
+            }
             Atom::Exists { r, fil, t } => {
                 self.obligations
                     .contains(&(*r, *fil, assignment[*t as usize]))
             }
-            Atom::Eq { s, t } => self.equivalent(
-                assignment[*s as usize],
-                assignment[*t as usize],
-            ),
+            Atom::Eq { s, t } => self.equivalent(assignment[*s as usize], assignment[*t as usize]),
         }
     }
 
@@ -2760,11 +2874,13 @@ impl LeanHtRefutationState {
     }
 
     fn witness_for(&self, role: R, filler: CLit, source: Node) -> bool {
-        self.edges.iter().any(|&(candidate_role, candidate_source, target)| {
-            candidate_role == role
-                && candidate_source == source
-                && self.labels.contains(&(target, filler))
-        })
+        self.edges
+            .iter()
+            .any(|&(candidate_role, candidate_source, target)| {
+                candidate_role == role
+                    && candidate_source == source
+                    && self.labels.contains(&(target, filler))
+            })
     }
 }
 enum Scan {
@@ -8241,16 +8357,27 @@ impl Ht {
             return Ok(None);
         };
         if normalization.len() != self.clauses.len() {
-            return Err("HT source normalization no longer matches the certificate ontology"
-                .to_string());
+            return Err(
+                "HT source normalization no longer matches the certificate ontology".to_string(),
+            );
         }
         Ok(Some(
             normalization
                 .iter()
                 .map(|evidence| LeanHtClauseNormalization {
                     source: LeanHtClause {
-                        body: evidence.source.body.iter().map(Self::lean_wire_atom).collect(),
-                        head: evidence.source.head.iter().map(Self::lean_wire_atom).collect(),
+                        body: evidence
+                            .source
+                            .body
+                            .iter()
+                            .map(Self::lean_wire_atom)
+                            .collect(),
+                        head: evidence
+                            .source
+                            .head
+                            .iter()
+                            .map(Self::lean_wire_atom)
+                            .collect(),
                     },
                     representatives: evidence.representatives.clone(),
                     representative_paths: evidence.representative_paths.clone(),
@@ -8267,8 +8394,9 @@ impl Ht {
     }
 
     fn lean_wire_preprocessing(&self) -> Option<LeanHtPreprocessingEvidence> {
-        self.cert_preprocessing.as_ref().map(|evidence| {
-            LeanHtPreprocessingEvidence {
+        self.cert_preprocessing
+            .as_ref()
+            .map(|evidence| LeanHtPreprocessingEvidence {
                 source: evidence.source.iter().map(Self::lean_wire_clause).collect(),
                 absorbed: evidence
                     .absorbed
@@ -8310,8 +8438,7 @@ impl Ht {
                             .collect(),
                     })
                     .collect(),
-            }
-        })
+            })
     }
 
     fn wrap_normalized_lean_certificate(&self, payload: String) -> Result<String, String> {
@@ -8323,10 +8450,13 @@ impl Ht {
         let payload_version = payload["version"]
             .as_u64()
             .ok_or_else(|| "HT certificate payload has no numeric version".to_string())?;
-        let payload = match payload_version {
-            1 => serde_json::json!({ "plain": { "certificate": payload } }),
-            2 => serde_json::json!({ "equality": { "certificate": payload } }),
-            version => return Err(format!("cannot normalize HT payload version {version}")),
+        let is_cardinality =
+            payload.get("certificate").is_some() && payload.get("definitions").is_some();
+        let payload = match (payload_version, is_cardinality) {
+            (1, false) => serde_json::json!({ "plain": { "certificate": payload } }),
+            (2, false) => serde_json::json!({ "equality": { "certificate": payload } }),
+            (2, true) => serde_json::json!({ "cardinality": { "certificate": payload } }),
+            (version, _) => return Err(format!("cannot normalize HT payload version {version}")),
         };
         let preprocessing = self.lean_wire_preprocessing();
         serde_json::to_string(&serde_json::json!({
@@ -8338,10 +8468,47 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
-    fn wrap_normalized_lean_taxonomy_certificate(
-        &self,
-        payload: String,
-    ) -> Result<String, String> {
+    fn wrap_cardinality_lean_certificate(&self, payload: String) -> Result<String, String> {
+        let certificate: serde_json::Value =
+            serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        if certificate["version"] != 2 {
+            return Err("cardinality evidence requires an equality-state HT payload".to_string());
+        }
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions: Vec<serde_json::Value> = definitions
+            .into_iter()
+            .map(|(marker, definition)| {
+                serde_json::json!({
+                    "marker": marker,
+                    "minimum": definition.kind == CardKind::Min,
+                    "bound": definition.n,
+                    "role": definition.role,
+                    "filler": definition.filler.c,
+                })
+            })
+            .collect();
+        serde_json::to_string(&serde_json::json!({
+            "version": 2,
+            "certificate": certificate,
+            "definitions": definitions,
+            "refutation_depth": 0,
+            "refutation": null,
+            "distinct_refutation_depth": 0,
+            "distinct_refutation": null,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
+    fn finalize_lean_certificate(&self, payload: String) -> Result<String, String> {
+        self.wrap_normalized_lean_certificate(payload)
+    }
+
+    fn wrap_normalized_lean_taxonomy_certificate(&self, payload: String) -> Result<String, String> {
         let Some(normalization) = self.lean_wire_normalization()? else {
             return Ok(payload);
         };
@@ -8353,7 +8520,11 @@ impl Ht {
         let payload = match payload_version {
             1 => serde_json::json!({ "plain": { "certificate": payload } }),
             2 => serde_json::json!({ "mixed": { "certificate": payload } }),
-            version => return Err(format!("cannot normalize HT taxonomy payload version {version}")),
+            version => {
+                return Err(format!(
+                    "cannot normalize HT taxonomy payload version {version}"
+                ))
+            }
         };
         let preprocessing = self.lean_wire_preprocessing();
         serde_json::to_string(&serde_json::json!({
@@ -8369,8 +8540,8 @@ impl Ht {
         variable_count: usize,
         active_nodes: usize,
     ) -> Option<Vec<Vec<Node>>> {
-        let assignment_count = (0..variable_count)
-            .try_fold(1usize, |count, _| count.checked_mul(active_nodes))?;
+        let assignment_count =
+            (0..variable_count).try_fold(1usize, |count, _| count.checked_mul(active_nodes))?;
         if assignment_count > 1_000_000 {
             return None;
         }
@@ -8399,22 +8570,15 @@ impl Ht {
             return Some((LeanHtRefutationTree::Clash, state.active_nodes));
         }
 
-        let assignments =
-            Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
+        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
             let clause = &record.0;
             for assignment in &assignments {
-                let body_holds = clause
-                    .body
-                    .iter()
-                    .all(|atom| state.holds(atom, assignment));
+                let body_holds = clause.body.iter().all(|atom| state.holds(atom, assignment));
                 if !body_holds {
                     continue;
                 }
-                let head_holds = clause
-                    .head
-                    .iter()
-                    .any(|atom| state.holds(atom, assignment));
+                let head_holds = clause.head.iter().any(|atom| state.holds(atom, assignment));
                 if head_holds {
                     continue;
                 }
@@ -8460,7 +8624,10 @@ impl Ht {
             state.active_nodes += 1;
             let inserted_edge = state.edges.insert((role, source, target));
             let inserted_label = state.labels.insert((target, filler));
-            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            debug_assert!(
+                inserted_edge && inserted_label,
+                "the witness target is fresh"
+            );
             let result = self.lean_refutation(state, variable_count, node_budget);
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
@@ -8491,8 +8658,7 @@ impl Ht {
             return Some((LeanHtEqRefutationTree::Clash, state.active_nodes));
         }
 
-        let assignments =
-            Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
+        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
         for (clause_id, record) in self.clauses.iter().enumerate() {
             let clause = &record.0;
             for assignment in &assignments {
@@ -8505,7 +8671,10 @@ impl Ht {
                 let mut max_used = state.active_nodes;
                 for atom in &clause.head {
                     let inserted = state.insert(atom, assignment);
-                    debug_assert!(inserted, "an unsatisfied equality-aware head must be absent");
+                    debug_assert!(
+                        inserted,
+                        "an unsatisfied equality-aware head must be absent"
+                    );
                     let successor = state.equality_wire_state(node_budget);
                     let result = self.lean_eq_refutation(state, variable_count, node_budget);
                     state.remove(atom, assignment);
@@ -8540,7 +8709,10 @@ impl Ht {
             let label = (target, filler);
             let inserted_edge = state.edges.insert(edge);
             let inserted_label = state.labels.insert(label);
-            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            debug_assert!(
+                inserted_edge && inserted_label,
+                "the witness target is fresh"
+            );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
             let result = self.lean_eq_refutation(state, variable_count, node_budget);
@@ -8560,6 +8732,298 @@ impl Ht {
                 },
                 max_used,
             ));
+        }
+        None
+    }
+
+    fn pad_distinct_cardinality_tree(
+        mut tree: LeanHtDistinctCardinalityRefutationTree,
+        from: usize,
+        to: usize,
+    ) -> LeanHtDistinctCardinalityRefutationTree {
+        for _ in from..to {
+            tree = LeanHtDistinctCardinalityRefutationTree::Delay {
+                child: Box::new(tree),
+            };
+        }
+        tree
+    }
+
+    fn lean_distinct_cardinality_refutation(
+        &self,
+        state: &mut LeanHtRefutationState,
+        definitions: &[(C, CardDef)],
+        variable_count: usize,
+        node_budget: usize,
+    ) -> Option<(LeanHtDistinctCardinalityRefutationTree, usize)> {
+        if let Some((left, right)) = state.equality_apart_clash() {
+            return Some((
+                LeanHtDistinctCardinalityRefutationTree::EqualityApart { left, right },
+                0,
+            ));
+        }
+        if state.clashes() {
+            return Some((LeanHtDistinctCardinalityRefutationTree::Clash, 0));
+        }
+
+        let assignments = Self::lean_refutation_assignments(variable_count, state.active_nodes)?;
+        for (clause_id, record) in self.clauses.iter().enumerate() {
+            let clause = &record.0;
+            for assignment in &assignments {
+                if !clause.body.iter().all(|atom| state.holds(atom, assignment))
+                    || clause.head.iter().any(|atom| state.holds(atom, assignment))
+                {
+                    continue;
+                }
+                let mut raw_children = Vec::with_capacity(clause.head.len());
+                let mut child_depth = 0;
+                for atom in &clause.head {
+                    let inserted = state.insert(atom, assignment);
+                    debug_assert!(inserted, "an unsatisfied distinct head must be absent");
+                    let successor = state.distinct_wire_state(node_budget);
+                    let result = self.lean_distinct_cardinality_refutation(
+                        state,
+                        definitions,
+                        variable_count,
+                        node_budget,
+                    );
+                    state.remove(atom, assignment);
+                    let (tree, depth) = result?;
+                    child_depth = child_depth.max(depth);
+                    raw_children.push((successor, tree, depth));
+                }
+                let children = raw_children
+                    .into_iter()
+                    .map(|(successor, tree, depth)| {
+                        (
+                            successor,
+                            Self::pad_distinct_cardinality_tree(tree, depth, child_depth),
+                        )
+                    })
+                    .collect();
+                return Some((
+                    LeanHtDistinctCardinalityRefutationTree::Branch {
+                        clause: clause_id,
+                        assignment: assignment.clone(),
+                        children,
+                    },
+                    child_depth + 1,
+                ));
+            }
+        }
+
+        let obligation = state
+            .obligations
+            .iter()
+            .copied()
+            .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
+            .min();
+        if let Some((role, filler, source)) = obligation {
+            if state.active_nodes >= node_budget {
+                return None;
+            }
+            let target = state.active_nodes;
+            state.active_nodes += 1;
+            let edge = (role, source, target);
+            let label = (target, filler);
+            let inserted_edge = state.edges.insert(edge);
+            let inserted_label = state.labels.insert(label);
+            debug_assert!(inserted_edge && inserted_label, "the witness target is fresh");
+            state.edge_order.insert(0, edge);
+            state.label_order.insert(0, label);
+            let result = self.lean_distinct_cardinality_refutation(
+                state,
+                definitions,
+                variable_count,
+                node_budget,
+            );
+            state.label_order.remove(0);
+            state.edge_order.remove(0);
+            state.labels.remove(&label);
+            state.edges.remove(&edge);
+            state.active_nodes -= 1;
+            let (child, depth) = result?;
+            return Some((
+                LeanHtDistinctCardinalityRefutationTree::Witness {
+                    source,
+                    target,
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    child: Box::new(child),
+                },
+                depth + 1,
+            ));
+        }
+
+        for (definition_id, &(marker, definition)) in definitions.iter().enumerate() {
+            if definition.kind != CardKind::Min {
+                continue;
+            }
+            let marker_lit = CLit {
+                c: marker,
+                neg: false,
+            };
+            for source in 0..state.active_nodes {
+                if !state.labels.contains(&(source, marker_lit))
+                    || state.minimums.contains(&(definition_id, source))
+                {
+                    continue;
+                }
+                let count = definition.n as usize;
+                if state.active_nodes.checked_add(count)? > node_budget {
+                    return None;
+                }
+                state.minimums.insert((definition_id, source));
+                let old_active = state.active_nodes;
+                let old_labels = state.label_order.len();
+                let old_edges = state.edge_order.len();
+                let old_apart = state.apart.len();
+                let targets: Vec<Node> = (old_active..old_active + count).collect();
+                state.active_nodes += count;
+                for &target in &targets {
+                    let label = (target, definition.filler);
+                    let edge = (definition.role, source, target);
+                    let inserted_label = state.labels.insert(label);
+                    let inserted_edge = state.edges.insert(edge);
+                    debug_assert!(
+                        inserted_label && inserted_edge,
+                        "the minimum targets are fresh"
+                    );
+                    state.label_order.push(label);
+                    state.edge_order.push(edge);
+                }
+                for &left in &targets {
+                    for &right in &targets {
+                        if left != right {
+                            state.apart.push((left, right));
+                        }
+                    }
+                }
+                let successor = state.distinct_wire_state(node_budget);
+                let result = self.lean_distinct_cardinality_refutation(
+                    state,
+                    definitions,
+                    variable_count,
+                    node_budget,
+                );
+                for &(node, literal) in &state.label_order[old_labels..] {
+                    state.labels.remove(&(node, literal));
+                }
+                for &(role, edge_source, target) in &state.edge_order[old_edges..] {
+                    state.edges.remove(&(role, edge_source, target));
+                }
+                state.label_order.truncate(old_labels);
+                state.edge_order.truncate(old_edges);
+                state.apart.truncate(old_apart);
+                state.active_nodes = old_active;
+                state.minimums.remove(&(definition_id, source));
+                let (child, depth) = result?;
+                return Some((
+                    LeanHtDistinctCardinalityRefutationTree::Minimum {
+                        definition: definition_id,
+                        source,
+                        targets,
+                        next: successor,
+                        child: Box::new(child),
+                    },
+                    depth + 1,
+                ));
+            }
+        }
+
+        for (definition_id, &(marker, definition)) in definitions.iter().enumerate() {
+            if definition.kind != CardKind::Max {
+                continue;
+            }
+            let marker_lit = CLit {
+                c: marker,
+                neg: false,
+            };
+            for source in 0..state.active_nodes {
+                if !state.labels.contains(&(source, marker_lit)) {
+                    continue;
+                }
+                let mut candidates: Vec<Node> = state
+                    .edges
+                    .iter()
+                    .filter(|&&(role, edge_source, target)| {
+                        role == definition.role
+                            && edge_source == source
+                            && state.labels.contains(&(target, definition.filler))
+                    })
+                    .map(|&(_, _, target)| target)
+                    .collect();
+                candidates.sort_unstable();
+                candidates.dedup();
+                let mut witnesses = Vec::new();
+                for candidate in candidates {
+                    if witnesses
+                        .iter()
+                        .all(|&other| !state.equivalent(candidate, other))
+                    {
+                        witnesses.push(candidate);
+                    }
+                }
+                let width = definition.n as usize + 1;
+                if witnesses.len() < width {
+                    continue;
+                }
+                witnesses.truncate(width);
+                let mut raw = Vec::with_capacity(width);
+                let mut child_depth = 0;
+                for left in 0..width {
+                    let mut row = Vec::with_capacity(width);
+                    for right in 0..width {
+                        if left == right {
+                            row.push(None);
+                            continue;
+                        }
+                        state.equalities.push((witnesses[left], witnesses[right]));
+                        let successor = state.distinct_wire_state(node_budget);
+                        let result = self.lean_distinct_cardinality_refutation(
+                            state,
+                            definitions,
+                            variable_count,
+                            node_budget,
+                        );
+                        state.equalities.pop();
+                        let (tree, depth) = result?;
+                        child_depth = child_depth.max(depth);
+                        row.push(Some((successor, tree, depth)));
+                    }
+                    raw.push(row);
+                }
+                let children = raw
+                    .into_iter()
+                    .map(|row| {
+                        row.into_iter()
+                            .map(|entry| match entry {
+                                Some((successor, tree, depth)) => (
+                                    successor,
+                                    Self::pad_distinct_cardinality_tree(tree, depth, child_depth),
+                                ),
+                                None => (
+                                    state.distinct_wire_state(node_budget),
+                                    Self::pad_distinct_cardinality_tree(
+                                        LeanHtDistinctCardinalityRefutationTree::Clash,
+                                        0,
+                                        child_depth,
+                                    ),
+                                ),
+                            })
+                            .collect()
+                    })
+                    .collect();
+                return Some((
+                    LeanHtDistinctCardinalityRefutationTree::Maximum {
+                        definition: definition_id,
+                        source,
+                        witnesses,
+                        children,
+                    },
+                    child_depth + 1,
+                ));
+            }
         }
         None
     }
@@ -8619,7 +9083,9 @@ impl Ht {
         let mut state = LeanHtRefutationState::root(initial_labels);
         let (tree, _node_count) = self
             .lean_eq_refutation(&mut state, variable_count, node_budget)
-            .ok_or_else(|| "ontology has an open or node-capped equality refutation branch".to_string())?;
+            .ok_or_else(|| {
+                "ontology has an open or node-capped equality refutation branch".to_string()
+            })?;
         let root_state = state.equality_wire_state(node_budget);
         serde_json::to_string(&LeanHtEqCertificate {
             version: 2,
@@ -8634,6 +9100,115 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_cardinality_refutation_certificate_json(
+        &self,
+        initial_labels: &[(Node, CLit)],
+        evidence: impl FnOnce(LeanHtDistinctCardinalityRefutationTree) -> LeanHtEqEvidence,
+    ) -> Result<String, String> {
+        let mut variable_count = self.lean_source_variable_count();
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        for record in &self.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1);
+                        variable_count = variable_count.max(*t as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1);
+                        variable_count = variable_count.max(*t as usize + 1);
+                    }
+                }
+            }
+        }
+        for &(node, literal) in initial_labels {
+            if node != 0 {
+                return Err(
+                    "HT Lean cardinality query certificates require root node 0".to_string()
+                );
+            }
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let wire_definitions: Vec<LeanHtCardinalityDef> = definitions
+            .iter()
+            .map(|&(marker, definition)| {
+                concept_count = concept_count
+                    .max(marker as usize + 1)
+                    .max(definition.filler.c as usize + 1);
+                role_count = role_count.max(definition.role as usize + 1);
+                LeanHtCardinalityDef {
+                    marker: marker as usize,
+                    minimum: definition.kind == CardKind::Min,
+                    bound: definition.n as usize,
+                    role: definition.role as usize,
+                    filler: definition.filler.c as usize,
+                }
+            })
+            .collect();
+        let ontology: Vec<LeanHtClause> = self
+            .clauses
+            .iter()
+            .map(|record| LeanHtClause {
+                body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+            })
+            .collect();
+        let node_budget = std::env::var("KM_HT_LEAN_UNSAT_NODES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|&value| (1..=64).contains(&value))
+            .unwrap_or(8);
+        let mut state = LeanHtRefutationState::root(initial_labels);
+        let (tree, depth) = self
+            .lean_distinct_cardinality_refutation(
+                &mut state,
+                &definitions,
+                variable_count,
+                node_budget,
+            )
+            .ok_or_else(|| {
+                "ontology has an open or node-capped cardinality refutation branch".to_string()
+            })?;
+        let root_state = state.equality_wire_state(node_budget);
+        let placeholder = LeanHtDistinctCardinalityRefutationTree::Clash;
+        Ok(serde_json::to_string(&LeanHtCardinalityCertificate {
+            version: 2,
+            certificate: LeanHtEqCertificate {
+                version: 2,
+                node_count: node_budget,
+                concept_count,
+                role_count,
+                variable_count,
+                ontology,
+                state: root_state,
+                evidence: evidence(placeholder),
+            },
+            definitions: wire_definitions,
+            refutation_depth: 0,
+            refutation: None,
+            distinct_refutation_depth: depth,
+            distinct_refutation: Some(tree),
+        })
+        .map_err(|error| error.to_string())?)
+    }
+
     /// Construct an exhaustive empty-root refutation for the exact normalized
     /// ontology. Concept, role, and existential heads are monotone finite facts.
     /// Unwitnessed existential obligations may allocate a fresh finite node; the
@@ -8645,14 +9220,14 @@ impl Ht {
         initial_labels: &[(Node, CLit)],
         evidence: impl FnOnce(LeanHtRefutationTree) -> LeanHtEvidence,
     ) -> Result<String, String> {
-        if self
-            .clauses
-            .iter()
-            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
-        {
-            return Err(
-                "HT Lean UNSAT certificate v1 does not support equality heads".to_string(),
-            );
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .head
+                .iter()
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
+            return Err("HT Lean UNSAT certificate v1 does not support equality heads".to_string());
         }
 
         let mut variable_count = 0usize;
@@ -8732,20 +9307,28 @@ impl Ht {
     }
 
     fn lean_unsat_certificate_json_raw(&self) -> Result<String, String> {
-        if self
-            .clauses
-            .iter()
-            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
-        {
-            return self.lean_eq_refutation_certificate_json(&[], |tree| {
-                LeanHtEqEvidence::Unsat { tree }
+        if !self.card_defs.is_empty() {
+            return self.lean_cardinality_refutation_certificate_json(&[], |_| {
+                LeanHtEqEvidence::Unsat {
+                    tree: LeanHtEqRefutationTree::Clash,
+                }
             });
+        }
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .head
+                .iter()
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
+            return self
+                .lean_eq_refutation_certificate_json(&[], |tree| LeanHtEqEvidence::Unsat { tree });
         }
         self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
     }
 
     pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
-        self.wrap_normalized_lean_certificate(self.lean_unsat_certificate_json_raw()?)
+        self.finalize_lean_certificate(self.lean_unsat_certificate_json_raw()?)
     }
 
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
@@ -8754,11 +9337,23 @@ impl Ht {
             (0, CLit { c: sub, neg: false }),
             (0, CLit { c: sup, neg: true }),
         ];
-        if self
-            .clauses
-            .iter()
-            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
-        {
+        if !self.card_defs.is_empty() {
+            return self.lean_cardinality_refutation_certificate_json(&labels, |_| {
+                LeanHtEqEvidence::Subsumption {
+                    root: 0,
+                    sub: sub as usize,
+                    sup: sup as usize,
+                    tree: LeanHtEqRefutationTree::Clash,
+                }
+            });
+        }
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .head
+                .iter()
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
             return self.lean_eq_refutation_certificate_json(&labels, |tree| {
                 LeanHtEqEvidence::Subsumption {
                     root: 0,
@@ -8777,7 +9372,7 @@ impl Ht {
     }
 
     pub fn lean_subsumption_certificate_json(&self, sub: C, sup: C) -> Result<String, String> {
-        self.wrap_normalized_lean_certificate(self.lean_subsumption_certificate_json_raw(sub, sup)?)
+        self.finalize_lean_certificate(self.lean_subsumption_certificate_json_raw(sub, sup)?)
     }
 
     /// Certify that `concept` is unsatisfiable by refuting its exact root label.
@@ -8785,12 +9380,29 @@ impl Ht {
         &self,
         concept: C,
     ) -> Result<String, String> {
-        let labels = [(0, CLit { c: concept, neg: false })];
-        if self
-            .clauses
-            .iter()
-            .any(|record| record.0.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
-        {
+        let labels = [(
+            0,
+            CLit {
+                c: concept,
+                neg: false,
+            },
+        )];
+        if !self.card_defs.is_empty() {
+            return self.lean_cardinality_refutation_certificate_json(&labels, |_| {
+                LeanHtEqEvidence::UnsatisfiableConcept {
+                    root: 0,
+                    concept: concept as usize,
+                    tree: LeanHtEqRefutationTree::Clash,
+                }
+            });
+        }
+        if self.clauses.iter().any(|record| {
+            record
+                .0
+                .head
+                .iter()
+                .any(|atom| matches!(atom, Atom::Eq { .. }))
+        }) {
             return self.lean_eq_refutation_certificate_json(&labels, |tree| {
                 LeanHtEqEvidence::UnsatisfiableConcept {
                     root: 0,
@@ -8812,7 +9424,7 @@ impl Ht {
         &self,
         concept: C,
     ) -> Result<String, String> {
-        self.wrap_normalized_lean_certificate(
+        self.finalize_lean_certificate(
             self.lean_unsatisfiable_concept_certificate_json_raw(concept)?,
         )
     }
@@ -8837,14 +9449,15 @@ impl Ht {
                     .to_string(),
             );
         }
-        let has_equality = self.clauses.iter().any(|record| {
-            record
-                .0
-                .body
-                .iter()
-                .chain(record.0.head.iter())
-                .any(|atom| matches!(atom, Atom::Eq { .. }))
-        });
+        let has_equality = !self.card_defs.is_empty()
+            || self.clauses.iter().any(|record| {
+                record
+                    .0
+                    .body
+                    .iter()
+                    .chain(record.0.head.iter())
+                    .any(|atom| matches!(atom, Atom::Eq { .. }))
+            });
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -8873,6 +9486,12 @@ impl Ht {
         }
         drop(note_atom);
         variable_count = variable_count.max(self.lean_source_variable_count());
+        for (&marker, definition) in &self.card_defs {
+            concept_count = concept_count
+                .max(marker as usize + 1)
+                .max(definition.filler.c as usize + 1);
+            role_count = role_count.max(definition.role as usize + 1);
+        }
 
         let ontology = self
             .clauses
@@ -8892,9 +9511,7 @@ impl Ht {
                 });
             }
         }
-        labels.sort_unstable_by_key(|label| {
-            (label.node, label.literal.concept, label.literal.neg)
-        });
+        labels.sort_unstable_by_key(|label| (label.node, label.literal.concept, label.literal.neg));
         let mut edges = Vec::new();
         for (source, outgoing) in self.ext.out_edges.iter().enumerate() {
             for &(role, target, _) in outgoing {
@@ -8998,9 +9615,7 @@ impl Ht {
             }
             equalities.sort_unstable_by_key(|equality| (equality.left, equality.right));
             equalities.dedup_by_key(|equality| (equality.left, equality.right));
-            let representatives = (0..node_count)
-                .map(|node| self.ext.resolve(node))
-                .collect();
+            let representatives = (0..node_count).map(|node| self.ext.resolve(node)).collect();
             return serde_json::to_string(&LeanHtEqCertificate {
                 version: 2,
                 node_count,
@@ -9037,18 +9652,18 @@ impl Ht {
     }
 
     pub fn lean_sat_certificate_json(&self) -> Result<String, String> {
-        self.wrap_normalized_lean_certificate(
-            self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::Sat)?,
-        )
+        let payload = self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::Sat)?;
+        let payload = if self.card_defs.is_empty() {
+            payload
+        } else {
+            self.wrap_cardinality_lean_certificate(payload)?
+        };
+        self.finalize_lean_certificate(payload)
     }
 
     /// Serialize a checked countermodel for `sub ⋢ sup` from the terminal
     /// graph of a successful `{sub, ¬sup}` consistency probe.
-    pub fn lean_non_subsumption_certificate_json(
-        &self,
-        sub: C,
-        sup: C,
-    ) -> Result<String, String> {
+    pub fn lean_non_subsumption_certificate_json(&self, sub: C, sup: C) -> Result<String, String> {
         let root = self
             .ext
             .concepts
@@ -9059,16 +9674,10 @@ impl Ht {
         {
             return Err("HT Lean countermodel does not contain the declared query".to_string());
         }
-        self.wrap_normalized_lean_certificate(self.lean_non_subsumption_certificate_json_raw(
-            sub, sup,
-        )?)
+        self.finalize_lean_certificate(self.lean_non_subsumption_certificate_json_raw(sub, sup)?)
     }
 
-    fn lean_non_subsumption_certificate_json_raw(
-        &self,
-        sub: C,
-        sup: C,
-    ) -> Result<String, String> {
+    fn lean_non_subsumption_certificate_json_raw(&self, sub: C, sup: C) -> Result<String, String> {
         let root = self
             .ext
             .concepts
@@ -9079,19 +9688,22 @@ impl Ht {
         {
             return Err("HT Lean countermodel does not contain the declared query".to_string());
         }
-        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::NonSubsumption {
-            root: 0,
-            sub: sub as usize,
-            sup: sup as usize,
-        })
+        let payload =
+            self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::NonSubsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+            })?;
+        if self.card_defs.is_empty() {
+            Ok(payload)
+        } else {
+            self.wrap_cardinality_lean_certificate(payload)
+        }
     }
 
     /// Serialize a checked model of `concept` from the terminal graph of a
     /// successful `{concept}` consistency probe.
-    pub fn lean_satisfiable_concept_certificate_json(
-        &self,
-        concept: C,
-    ) -> Result<String, String> {
+    pub fn lean_satisfiable_concept_certificate_json(&self, concept: C) -> Result<String, String> {
         let root = self
             .ext
             .concepts
@@ -9103,15 +9715,10 @@ impl Ht {
         }) {
             return Err("HT Lean concept model does not contain the declared concept".to_string());
         }
-        self.wrap_normalized_lean_certificate(
-            self.lean_satisfiable_concept_certificate_json_raw(concept)?,
-        )
+        self.finalize_lean_certificate(self.lean_satisfiable_concept_certificate_json_raw(concept)?)
     }
 
-    fn lean_satisfiable_concept_certificate_json_raw(
-        &self,
-        concept: C,
-    ) -> Result<String, String> {
+    fn lean_satisfiable_concept_certificate_json_raw(&self, concept: C) -> Result<String, String> {
         let root = self
             .ext
             .concepts
@@ -9123,10 +9730,16 @@ impl Ht {
         }) {
             return Err("HT Lean concept model does not contain the declared concept".to_string());
         }
-        self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::SatisfiableConcept {
-            root: 0,
-            concept: concept as usize,
-        })
+        let payload =
+            self.lean_sat_certificate_json_with_evidence(LeanHtEvidence::SatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+            })?;
+        if self.card_defs.is_empty() {
+            Ok(payload)
+        } else {
+            self.wrap_cardinality_lean_certificate(payload)
+        }
     }
 
     /// Produce a complete checker-ready named taxonomy. Every concept and every
@@ -9193,10 +9806,8 @@ impl Ht {
         let mut concept_count = 0u64;
         let mut has_equality = false;
 
-        let mut note_document = |document: String| -> Result<
-            (Option<serde_json::Value>, serde_json::Value),
-            String,
-        > {
+        let mut note_document =
+            |document: String| -> Result<(Option<serde_json::Value>, serde_json::Value), String> {
                 let (full, legacy, mixed, equality) = payload(document)?;
                 has_equality |= equality;
                 concept_count = concept_count.max(
@@ -9207,9 +9818,7 @@ impl Ht {
                 if let Some(previous) = &base {
                     for field in ["role_count", "variable_count", "ontology"] {
                         if previous[field] != full[field] {
-                            return Err(format!(
-                                "HT Lean taxonomy query changed shared {field}"
-                            ));
+                            return Err(format!("HT Lean taxonomy query changed shared {field}"));
                         }
                     }
                 } else {
@@ -9238,7 +9847,9 @@ impl Ht {
             for &sup in named {
                 let satisfiable = self
                     .consistent(&[CLit::pos(sub), CLit { c: sup, neg: true }])
-                    .ok_or_else(|| "HT subsumption probe left the certified fragment".to_string())?;
+                    .ok_or_else(|| {
+                        "HT subsumption probe left the certified fragment".to_string()
+                    })?;
                 let document = if satisfiable {
                     self.lean_non_subsumption_certificate_json_raw(sub, sup)?
                 } else {
@@ -9265,13 +9876,18 @@ impl Ht {
         } else {
             let concepts = legacy_concepts
                 .into_iter()
-                .map(|payload| payload.ok_or_else(|| "missing version-1 concept payload".to_string()))
+                .map(|payload| {
+                    payload.ok_or_else(|| "missing version-1 concept payload".to_string())
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let subsumptions = legacy_subsumptions
                 .into_iter()
                 .map(|row| {
                     row.into_iter()
-                        .map(|payload| payload.ok_or_else(|| "missing version-1 subsumption payload".to_string()))
+                        .map(|payload| {
+                            payload
+                                .ok_or_else(|| "missing version-1 subsumption payload".to_string())
+                        })
                         .collect::<Result<Vec<_>, _>>()
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -9381,18 +9997,14 @@ impl Ht {
         } else {
             Vec::new()
         };
-        let preprocessing_evidence = (trigger_enabled || contra_enabled).then(|| {
-            PreprocessingEvidence {
+        let preprocessing_evidence =
+            (trigger_enabled || contra_enabled).then(|| PreprocessingEvidence {
                 source: preprocessing_source,
                 absorbed: absorbed_clauses,
                 trigger_steps,
                 contrapositives: contrapositive_evidence,
-            }
-        });
-        let normalization: Vec<_> = clauses
-            .iter_mut()
-            .map(eliminate_body_equalities)
-            .collect();
+            });
+        let normalization: Vec<_> = clauses.iter_mut().map(eliminate_body_equalities).collect();
         let has_body_equality = normalization.iter().any(|evidence| evidence.had_equality);
         // KM_KEEP_CHAIN_AXIOMS chain-unfolding is applied via `set_chains` (after
         // construction, when the TInput side data is available).  See `set_chains`.
@@ -9446,7 +10058,12 @@ impl Ht {
         let forall_idx = index_forall(&clauses);
         let cert_number_roles: HashSet<R> = clauses
             .iter()
-            .filter(|clause| clause.head.iter().any(|atom| matches!(atom, Atom::Eq { .. })))
+            .filter(|clause| {
+                clause
+                    .head
+                    .iter()
+                    .any(|atom| matches!(atom, Atom::Eq { .. }))
+            })
             .flat_map(|clause| {
                 clause.body.iter().filter_map(|atom| match atom {
                     Atom::Role { r, .. } => Some(*r),
@@ -12013,10 +12630,7 @@ impl Ht {
                     if self.cert_no_blocking {
                         let ni_risk = self.nominal_number_non_successor();
                         if ni_risk && std::env::var_os("KM_HT_TRACE").is_some() {
-                            eprintln!(
-                                "TR cert-defer ni-risk={}",
-                                ni_risk
-                            );
+                            eprintln!("TR cert-defer ni-risk={}", ni_risk);
                         }
                         if ni_risk {
                             return None;
@@ -17910,10 +18524,7 @@ mod tests {
     fn lean_sat_wire_serializes_the_exact_terminal_model() {
         let mut t = ht(vec![
             Clause::new(Vec::new(), vec![con(false, A, X)]),
-            Clause::new(
-                vec![con(false, A, X)],
-                vec![exists(R0, false, B, X)],
-            ),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
         ]);
         assert_eq!(t.consistent(&[]), Some(true));
         let wire: serde_json::Value = serde_json::from_str(
@@ -17928,17 +18539,19 @@ mod tests {
         assert!(wire["labels"].as_array().unwrap().len() >= 2);
         assert!(!wire["edges"].as_array().unwrap().is_empty());
         let terminal = wire["node_count"].as_u64().unwrap() - 1;
-        assert!(wire["edges"].as_array().unwrap().iter().any(|edge| {
-            edge["source"].as_u64() == Some(terminal)
-        }), "the blocked terminal node receives its materialized continuation");
+        assert!(
+            wire["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| { edge["source"].as_u64() == Some(terminal) }),
+            "the blocked terminal node receives its materialized continuation"
+        );
     }
 
     #[test]
     fn lean_sat_wire_serializes_the_exact_equality_quotient() {
-        let mut t = ht(vec![Clause::new(
-            Vec::new(),
-            vec![Atom::Eq { s: X, t: 1 }],
-        )]);
+        let mut t = ht(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         let first = t.ext.new_root();
         let second = t.ext.new_node(Some(first));
         t.ext.merge_into(first, second, &dep_empty());
@@ -17962,10 +18575,7 @@ mod tests {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
-        let mut t = ht(vec![Clause::new(
-            Vec::new(),
-            vec![Atom::Eq { s: X, t: 1 }],
-        )]);
+        let mut t = ht(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         let first = t.ext.new_root();
         let second = t.ext.new_node(Some(first));
         t.ext.merge_into(first, second, &dep_empty());
@@ -17986,11 +18596,97 @@ mod tests {
         assert!(accepted, "Lean must accept the Rust equality SAT quotient");
     }
 
-    fn equality_query_model() -> Ht {
-        let mut t = ht(vec![Clause::new(
+    fn cardinality_pigeonhole_certificate() -> Ht {
+        const MIN_MARKER: C = 30;
+        const FILLER: C = 31;
+        const MAX_MARKER: C = 32;
+        let mut reasoner = ht(vec![Clause::new(
             Vec::new(),
-            vec![Atom::Eq { s: X, t: 1 }],
+            vec![
+                con(false, MAX_MARKER, X),
+                con(true, MIN_MARKER, X),
+            ],
         )]);
+        reasoner.set_card_defs_raw(&[
+            (MIN_MARKER, true, 2, R0, FILLER),
+            (MAX_MARKER, false, 1, R0, FILLER),
+        ]);
+        reasoner
+    }
+
+    #[test]
+    fn lean_distinct_cardinality_pigeonhole_wire_is_complete() {
+        const MARKER: C = 30;
+        let reasoner = cardinality_pigeonhole_certificate();
+        let wire: serde_json::Value = serde_json::from_str(
+            &reasoner
+                .lean_unsatisfiable_concept_certificate_json(MARKER)
+                .expect("the >=2 and <=1 pigeonhole has a finite certificate"),
+        )
+        .expect("cardinality certificate is JSON");
+        assert_eq!(wire["version"], 2);
+        assert_eq!(wire["definitions"].as_array().unwrap().len(), 2);
+        assert!(wire["distinct_refutation_depth"].as_u64().unwrap() >= 3);
+        assert!(wire["distinct_refutation"].get("branch").is_some());
+    }
+
+    #[test]
+    fn lean_distinct_cardinality_wire_passes_native_checker_when_configured() {
+        const MARKER: C = 30;
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_CHECKER") else {
+            return;
+        };
+        let reasoner = cardinality_pigeonhole_certificate();
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-cardinality-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(
+            &path,
+            reasoner
+                .lean_unsatisfiable_concept_certificate_json(MARKER)
+                .unwrap(),
+        )
+        .unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean cardinality HT checker")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the Rust pigeonhole certificate");
+    }
+
+    #[test]
+    fn lean_cardinality_sat_wire_passes_native_checker_when_configured() {
+        const MARKER: C = 30;
+        const FILLER: C = 31;
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_CHECKER") else {
+            return;
+        };
+        let mut reasoner = ht(Vec::new());
+        reasoner.set_card_defs_raw(&[(MARKER, true, 2, R0, FILLER)]);
+        assert_eq!(reasoner.consistent(&[]), Some(true));
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-cardinality-sat-cert-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, reasoner.lean_sat_certificate_json().unwrap()).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .expect("run native Lean cardinality HT checker")
+            .success();
+        let _ = std::fs::remove_file(path);
+        assert!(accepted, "Lean must accept the Rust cardinality model");
+    }
+
+    fn equality_query_model() -> Ht {
+        let mut t = ht(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         let root = t.ext.new_root();
         t.ext.add_concept(root, CLit::pos(A), &dep_empty());
         t.ext
@@ -18003,19 +18699,15 @@ mod tests {
     #[test]
     fn lean_equality_query_wires_serialize_quotient_countermodels() {
         let t = equality_query_model();
-        let non_subsumption: serde_json::Value = serde_json::from_str(
-            &t.lean_non_subsumption_certificate_json(A, B).unwrap(),
-        )
-        .unwrap();
+        let non_subsumption: serde_json::Value =
+            serde_json::from_str(&t.lean_non_subsumption_certificate_json(A, B).unwrap()).unwrap();
         assert_eq!(non_subsumption["version"], 2);
         assert_eq!(
             non_subsumption["evidence"]["non_subsumption"],
             serde_json::json!({ "root": 0, "sub": A, "sup": B })
         );
-        let satisfiable: serde_json::Value = serde_json::from_str(
-            &t.lean_satisfiable_concept_certificate_json(A).unwrap(),
-        )
-        .unwrap();
+        let satisfiable: serde_json::Value =
+            serde_json::from_str(&t.lean_satisfiable_concept_certificate_json(A).unwrap()).unwrap();
         assert_eq!(satisfiable["version"], 2);
         assert_eq!(
             satisfiable["evidence"]["satisfiable_concept"],
@@ -18056,10 +18748,7 @@ mod tests {
         let equality = Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }]);
         let subsumption = ht(vec![
             equality.clone(),
-            Clause::new(
-                vec![con(false, A, X), con(true, B, X)],
-                Vec::new(),
-            ),
+            Clause::new(vec![con(false, A, X), con(true, B, X)], Vec::new()),
         ]);
         let subsumption_json = subsumption.lean_subsumption_certificate_json(A, B).unwrap();
         let document: serde_json::Value = serde_json::from_str(&subsumption_json).unwrap();
@@ -18080,10 +18769,7 @@ mod tests {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") else {
             return;
         };
-        for (index, document) in [subsumption_json, unsatisfiable_json]
-            .iter()
-            .enumerate()
-        {
+        for (index, document) in [subsumption_json, unsatisfiable_json].iter().enumerate() {
             let path = std::env::temp_dir().join(format!(
                 "km-ht-eq-refutation-query-cert-{}-{index}.json",
                 std::process::id()
@@ -18164,9 +18850,7 @@ mod tests {
         assert_eq!(evidence["root"], 0);
         assert_eq!(evidence["concept"], A);
         assert_eq!(wire["labels"].as_array().unwrap().len(), 1);
-        assert!(t
-            .lean_unsatisfiable_concept_certificate_json(B)
-            .is_err());
+        assert!(t.lean_unsatisfiable_concept_certificate_json(B).is_err());
     }
 
     #[test]
@@ -18270,14 +18954,8 @@ mod tests {
     fn lean_unsat_wire_serializes_equality_merges() {
         let t = ht(vec![
             Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
-            Clause::new(
-                vec![role(R0, X, 1)],
-                vec![con(true, A, X)],
-            ),
-            Clause::new(
-                vec![role(R0, X, 1)],
-                vec![Atom::Eq { s: X, t: 1 }],
-            ),
+            Clause::new(vec![role(R0, X, 1)], vec![con(true, A, X)]),
+            Clause::new(vec![role(R0, X, 1)], vec![Atom::Eq { s: X, t: 1 }]),
         ]);
         let wire: serde_json::Value = serde_json::from_str(
             &t.lean_unsat_certificate_json()
@@ -18285,7 +18963,10 @@ mod tests {
         )
         .expect("equality certificate is JSON");
         assert_eq!(wire["version"], 2);
-        assert_eq!(wire["state"]["representatives"].as_array().unwrap().len(), 8);
+        assert_eq!(
+            wire["state"]["representatives"].as_array().unwrap().len(),
+            8
+        );
         let encoded = serde_json::to_string(&wire).unwrap();
         assert!(encoded.contains("equalities"));
         assert!(encoded.contains("representative_paths"));
@@ -18293,19 +18974,25 @@ mod tests {
 
     #[test]
     fn lean_body_equality_normalization_wire_certifies_the_source_clause() {
-        let t = ht(vec![Clause::new(
-            vec![Atom::Eq { s: X, t: 1 }],
-            Vec::new(),
-        )]);
+        let t = ht(vec![Clause::new(vec![Atom::Eq { s: X, t: 1 }], Vec::new())]);
         let document = t
             .lean_unsat_certificate_json()
             .expect("body equality normalization exposes the global contradiction");
         let wire: serde_json::Value =
             serde_json::from_str(&document).expect("normalized certificate is JSON");
         assert_eq!(wire["version"], 3);
-        assert_eq!(wire["normalization"][0]["source"]["body"][0]["eq"]["left"], X);
-        assert_eq!(wire["normalization"][0]["source"]["body"][0]["eq"]["right"], 1);
-        assert_eq!(wire["normalization"][0]["representatives"], serde_json::json!([0, 0]));
+        assert_eq!(
+            wire["normalization"][0]["source"]["body"][0]["eq"]["left"],
+            X
+        );
+        assert_eq!(
+            wire["normalization"][0]["source"]["body"][0]["eq"]["right"],
+            1
+        );
+        assert_eq!(
+            wire["normalization"][0]["representatives"],
+            serde_json::json!([0, 0])
+        );
         assert_eq!(
             wire["normalization"][0]["representative_paths"],
             serde_json::json!([[0], [1, 0]])
@@ -18327,7 +19014,10 @@ mod tests {
                 .expect("run native Lean normalized HT checker")
                 .success();
             let _ = std::fs::remove_file(path);
-            assert!(accepted, "Lean must accept the source-normalized HT certificate");
+            assert!(
+                accepted,
+                "Lean must accept the source-normalized HT certificate"
+            );
         }
     }
 
@@ -18364,7 +19054,10 @@ mod tests {
             serde_json::from_str(&document).expect("preprocessed certificate is JSON");
         assert_eq!(wire["version"], 4);
         assert_eq!(wire["preprocessing"]["source"].as_array().unwrap().len(), 1);
-        assert_eq!(wire["preprocessing"]["absorbed"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            wire["preprocessing"]["absorbed"].as_array().unwrap().len(),
+            1
+        );
         assert_eq!(
             wire["preprocessing"]["contrapositives"]
                 .as_array()
@@ -18400,8 +19093,7 @@ mod tests {
             );
 
             let mut tampered = wire.clone();
-            tampered["preprocessing"]["contrapositives"][0]["source_clause"] =
-                serde_json::json!(1);
+            tampered["preprocessing"]["contrapositives"][0]["source_clause"] = serde_json::json!(1);
             std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
             let rejected = std::process::Command::new(&checker)
                 .arg(&path)
@@ -18466,10 +19158,7 @@ mod tests {
     fn lean_unsat_wire_materializes_a_fresh_existential_witness() {
         let t = ht(vec![
             Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
-            Clause::new(
-                vec![role(R0, X, 1), con(false, A, 1)],
-                Vec::new(),
-            ),
+            Clause::new(vec![role(R0, X, 1), con(false, A, 1)], Vec::new()),
         ]);
         let wire: serde_json::Value = serde_json::from_str(
             &t.lean_unsat_certificate_json()
@@ -18477,8 +19166,7 @@ mod tests {
         )
         .expect("witness certificate is JSON");
         assert_eq!(wire["node_count"], 2);
-        let witness =
-            &wire["evidence"]["unsat"]["tree"]["branch"]["children"][0]["witness"];
+        let witness = &wire["evidence"]["unsat"]["tree"]["branch"]["children"][0]["witness"];
         assert_eq!(witness["source"], 0);
         assert_eq!(witness["target"], 1);
         assert_eq!(witness["role"], 0);
@@ -18497,10 +19185,7 @@ mod tests {
         };
         let t = ht(vec![
             Clause::new(Vec::new(), vec![exists(R0, false, A, X)]),
-            Clause::new(
-                vec![role(R0, X, 1), con(false, A, 1)],
-                Vec::new(),
-            ),
+            Clause::new(vec![role(R0, X, 1), con(false, A, 1)], Vec::new()),
         ]);
         let path = std::env::temp_dir().join(format!(
             "km-ht-unsat-cert-{}-{}.json",
@@ -18578,10 +19263,8 @@ mod tests {
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_TAXONOMY_CHECKER") else {
             return;
         };
-        let path = std::env::temp_dir().join(format!(
-            "km-ht-taxonomy-cert-{}.json",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("km-ht-taxonomy-cert-{}.json", std::process::id()));
         let mut plain = ht(Vec::new());
         let mut mixed = ht(vec![Clause::new(
             vec![con(false, D, X), Atom::Eq { s: X, t: X }],
@@ -18604,7 +19287,10 @@ mod tests {
                 .status()
                 .expect("run native Lean HT taxonomy checker")
                 .success();
-            assert!(accepted, "Lean must accept the complete Rust taxonomy matrix");
+            assert!(
+                accepted,
+                "Lean must accept the complete Rust taxonomy matrix"
+            );
         }
         let document = &documents[1];
         let mut tampered: serde_json::Value =
@@ -18618,10 +19304,7 @@ mod tests {
                 .as_array_mut()
                 .expect("taxonomy matrix")
         };
-        matrix[0]
-            .as_array_mut()
-            .expect("first taxonomy row")
-            .pop();
+        matrix[0].as_array_mut().expect("first taxonomy row").pop();
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap())
             .expect("write tampered HT taxonomy certificate");
         let rejected = !std::process::Command::new(&checker)
@@ -18632,7 +19315,10 @@ mod tests {
             .expect("run native Lean HT taxonomy checker on tampered matrix")
             .success();
         let _ = std::fs::remove_file(path);
-        assert!(rejected, "Lean must reject a taxonomy with one missing cell");
+        assert!(
+            rejected,
+            "Lean must reject a taxonomy with one missing cell"
+        );
     }
 
     #[test]
@@ -18666,7 +19352,10 @@ mod tests {
             .expect("run native Lean checker on normalized equality-body model")
             .success();
         let _ = std::fs::remove_file(path);
-        assert!(accepted, "the checker must accept the materialized equality body");
+        assert!(
+            accepted,
+            "the checker must accept the materialized equality body"
+        );
     }
 
     #[test]
@@ -18705,10 +19394,7 @@ mod tests {
     #[test]
     fn equality_premise_contradiction_becomes_a_global_clash() {
         let y = 1;
-        let mut t = ht(vec![Clause::new(
-            vec![Atom::Eq { s: X, t: y }],
-            Vec::new(),
-        )]);
+        let mut t = ht(vec![Clause::new(vec![Atom::Eq { s: X, t: y }], Vec::new())]);
         assert_eq!(t.consistent(&[]), Some(false));
     }
 }
