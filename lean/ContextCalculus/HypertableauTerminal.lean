@@ -83,10 +83,44 @@ theorem terminal_search_dichotomy
   · exact Or.inr (Or.inr (Or.inr
       (exhaustive_terminal_models state ontology hguarded hclash hwitness hsaturated)))
 
+/-- Capstone for a finite executable HT search. Once its concrete transition
+enumerator is shown to add a fresh finite fact, expose every obstruction, and
+combine exhaustive closed children with the corresponding `Refutes` rule, the
+root is refuted or search reaches a canonical model of the exact ontology. -/
+theorem finite_exhaustive_ht_complete
+    {Fact : Type} [Fintype Fact] [DecidableEq Fact]
+    (ontology : List (Clause Variable Concept Role))
+    (decode : Finset Fact → State Node Concept Role)
+    (next : Finset Fact → List (Finset Fact))
+    (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
+    (hgrowth : ∀ parent child, child ∈ next parent → StrictGrowth child parent)
+    (hterminal : ∀ facts, next facts = [] →
+      ¬(decode facts).HasUnwitnessed ∧
+      ¬(decode facts).HasUndischarged ontology)
+    (hcloseChildren : ∀ facts, next facts ≠ [] →
+      (∀ child, child ∈ next facts →
+        Refutes Node ontology (decode child)) →
+      Refutes Node ontology (decode facts)) :
+    ∀ root, Refutes Node ontology (decode root) ∨
+      ∃ leaf, SearchDescends next root leaf ∧
+        (decode leaf).canonical.models ontology := by
+  apply finite_exhaustive_search_total next
+    (fun facts => Refutes Node ontology (decode facts))
+    (fun facts => (decode facts).canonical.models ontology)
+    hgrowth
+  · intro facts hempty
+    rcases hterminal facts hempty with ⟨hnowitness, hnoundischarged⟩
+    by_cases hclash : (decode facts).HasClash
+    · exact Or.inl (Refutes.clash (decode facts) hclash)
+    · exact Or.inr (exhaustive_terminal_models (decode facts) ontology
+        hguarded hclash hnowitness hnoundischarged)
+  · exact hcloseChildren
+
 #print axioms State.clashFree_of_noClash
 #print axioms State.witnessComplete_of_noUnwitnessed
 #print axioms State.saturatedFor_of_noUndischarged
 #print axioms exhaustive_terminal_models
 #print axioms terminal_search_dichotomy
+#print axioms finite_exhaustive_ht_complete
 
 end ContextCalculus.Hypertableau

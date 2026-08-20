@@ -290,7 +290,13 @@ universe is fixed, `HypertableauTermination.lean` proves that ordinary,
 equality-aware, and cardinality-aware evidence search has only finitely many
 strict branch updates and finitely many duplicate-free progress traces. The
 Rust producer enforces that strict-progress premise at every recursive
-certificate call. `HypertableauTerminal.lean` proves that every branch exposes a
+certificate call. A well-founded exhaustive-search theorem now proves that a
+finite strict-growth transition system closes its root or reaches an open leaf.
+`HypertableauTerminal.lean` specializes this to HT: once concrete transitions
+expose every obstruction and combine exhaustive closed children using
+`Refutes`, the root is refuted or a reachable canonical branch models the exact
+ontology. Instantiating those premises for each Rust transition remains open.
+`HypertableauTerminal.lean` also proves that every branch exposes a
 clash, an unwitnessed existential, an undischarged grounding, or an exact
 canonical model. `HypertableauRoleBlocking.lean` proves the certified full
 pairwise signature is finite and repeats on long paths, and the Rust certified

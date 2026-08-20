@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.67] – 2026-08-20
+
+### Prove finite exhaustive HT search completeness
+
+- Define strict finite-state growth by addition of branch facts and prove it is
+  well-founded using the number of facts remaining in the finite vocabulary.
+- Prove a generic exhaustive-search theorem: every such search closes its root
+  or reaches an open terminal leaf.
+- Specialize the theorem to guarded HT semantics. If the transition enumerator
+  exposes every terminal obstruction and combines exhaustive closed children
+  with `Refutes`, the root has a refutation or a reachable canonical model of
+  the exact ontology.
+
+The remaining runtime refinement must instantiate the transition assumptions
+for Rust's concrete clash, head-branch, and fresh-witness updates.
+
 ## [0.3.66] – 2026-08-20
 
 ### Connect certified mode-6 expansion to the finite signature bound

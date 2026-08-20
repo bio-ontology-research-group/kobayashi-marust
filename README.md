@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.66`.
+`v0.3.67`.
 
 ## Classify an ontology
 
@@ -199,6 +199,13 @@ retains a generated child. Lean proves these invariants bound every expanded
 ALC(H) path by the finite role-sensitive signature vocabulary. Cross-query SAT
 caches are disabled in certified construction because they have no local
 blocker witness.
+
+Over the resulting finite fact vocabulary, Lean proves strict branch growth is
+well-founded and proves the exhaustive-search completeness capstone: a concrete
+transition enumerator that exposes every terminal obstruction and combines all
+closed children must either refute the root or reach a canonical model of the
+exact guarded ontology. Instantiating those transition premises for every Rust
+HT update remains in progress.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered
