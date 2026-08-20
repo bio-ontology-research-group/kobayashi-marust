@@ -2577,6 +2577,12 @@ enum LeanHtDistinctCardinalityRefutationTree {
     },
 }
 
+enum LeanHtDistinctCardinalityRefutationOutcome {
+    Closed(LeanHtDistinctCardinalityRefutationTree, usize),
+    Open,
+    Frontier,
+}
+
 #[derive(serde::Serialize)]
 struct LeanHtCardinalityCertificate {
     version: usize,
@@ -9337,16 +9343,18 @@ impl Ht {
         definitions: &[(C, CardDef)],
         variable_count: usize,
         node_budget: usize,
-        hit_node_cap: &mut bool,
-    ) -> Option<(LeanHtDistinctCardinalityRefutationTree, usize)> {
+    ) -> LeanHtDistinctCardinalityRefutationOutcome {
         if let Some((left, right)) = state.equality_apart_clash() {
-            return Some((
+            return LeanHtDistinctCardinalityRefutationOutcome::Closed(
                 LeanHtDistinctCardinalityRefutationTree::EqualityApart { left, right },
                 0,
-            ));
+            );
         }
         if state.clashes() {
-            return Some((LeanHtDistinctCardinalityRefutationTree::Clash, 0));
+            return LeanHtDistinctCardinalityRefutationOutcome::Closed(
+                LeanHtDistinctCardinalityRefutationTree::Clash,
+                0,
+            );
         }
 
         for (clause_id, record) in self.clauses.iter().enumerate() {
@@ -9380,10 +9388,19 @@ impl Ht {
                         definitions,
                         variable_count,
                         node_budget,
-                        hit_node_cap,
                     );
                     state.remove(atom, &assignment);
-                    let (tree, depth) = result?;
+                    let (tree, depth) = match result {
+                        LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                            (tree, depth)
+                        }
+                        LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                            return LeanHtDistinctCardinalityRefutationOutcome::Open;
+                        }
+                        LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                            return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                        }
+                    };
                     child_depth = child_depth.max(depth);
                     raw_children.push((successor, tree, depth));
                 }
@@ -9396,14 +9413,14 @@ impl Ht {
                         )
                     })
                     .collect();
-                return Some((
+                return LeanHtDistinctCardinalityRefutationOutcome::Closed(
                     LeanHtDistinctCardinalityRefutationTree::Branch {
                         clause: clause_id,
                         assignment: assignment.clone(),
                         children,
                     },
                     child_depth + 1,
-                ));
+                );
             }
         }
 
@@ -9415,8 +9432,7 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                *hit_node_cap = true;
-                return None;
+                return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
@@ -9440,24 +9456,32 @@ impl Ht {
                 definitions,
                 variable_count,
                 node_budget,
-                hit_node_cap,
             );
             state.label_order.remove(0);
             state.edge_order.remove(0);
             state.labels.remove(&label);
             state.edges.remove(&edge);
             state.active_nodes -= 1;
-            let (child, depth) = result?;
-            return Some((
-                LeanHtDistinctCardinalityRefutationTree::Witness {
-                    source,
-                    target,
-                    role: role as usize,
-                    filler: Self::lean_wire_lit(filler),
-                    child: Box::new(child),
-                },
-                depth + 1,
-            ));
+            return match result {
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(child, depth) => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Closed(
+                        LeanHtDistinctCardinalityRefutationTree::Witness {
+                            source,
+                            target,
+                            role: role as usize,
+                            filler: Self::lean_wire_lit(filler),
+                            child: Box::new(child),
+                        },
+                        depth + 1,
+                    )
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Open
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier
+                }
+            };
         }
 
         for (definition_id, &(marker, definition)) in definitions.iter().enumerate() {
@@ -9476,12 +9500,10 @@ impl Ht {
                 }
                 let count = definition.n as usize;
                 let Some(required_nodes) = state.active_nodes.checked_add(count) else {
-                    *hit_node_cap = true;
-                    return None;
+                    return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
                 };
                 if required_nodes > node_budget {
-                    *hit_node_cap = true;
-                    return None;
+                    return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
                 }
                 let progress_before = state.progress_measure();
                 state.minimums.insert((definition_id, source));
@@ -9520,7 +9542,6 @@ impl Ht {
                     definitions,
                     variable_count,
                     node_budget,
-                    hit_node_cap,
                 );
                 for &(node, literal) in &state.label_order[old_labels..] {
                     state.labels.remove(&(node, literal));
@@ -9533,17 +9554,26 @@ impl Ht {
                 state.apart.truncate(old_apart);
                 state.active_nodes = old_active;
                 state.minimums.remove(&(definition_id, source));
-                let (child, depth) = result?;
-                return Some((
-                    LeanHtDistinctCardinalityRefutationTree::Minimum {
-                        definition: definition_id,
-                        source,
-                        targets,
-                        next: successor,
-                        child: Box::new(child),
-                    },
-                    depth + 1,
-                ));
+                return match result {
+                    LeanHtDistinctCardinalityRefutationOutcome::Closed(child, depth) => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Closed(
+                            LeanHtDistinctCardinalityRefutationTree::Minimum {
+                                definition: definition_id,
+                                source,
+                                targets,
+                                next: successor,
+                                child: Box::new(child),
+                            },
+                            depth + 1,
+                        )
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Open
+                    }
+                    LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                        LeanHtDistinctCardinalityRefutationOutcome::Frontier
+                    }
+                };
             }
         }
 
@@ -9606,10 +9636,19 @@ impl Ht {
                             definitions,
                             variable_count,
                             node_budget,
-                            hit_node_cap,
                         );
                         state.equalities.pop();
-                        let (tree, depth) = result?;
+                        let (tree, depth) = match result {
+                            LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                                (tree, depth)
+                            }
+                            LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                                return LeanHtDistinctCardinalityRefutationOutcome::Open;
+                            }
+                            LeanHtDistinctCardinalityRefutationOutcome::Frontier => {
+                                return LeanHtDistinctCardinalityRefutationOutcome::Frontier;
+                            }
+                        };
                         child_depth = child_depth.max(depth);
                         row.push(Some((successor, tree, depth)));
                     }
@@ -9636,7 +9675,7 @@ impl Ht {
                             .collect()
                     })
                     .collect();
-                return Some((
+                return LeanHtDistinctCardinalityRefutationOutcome::Closed(
                     LeanHtDistinctCardinalityRefutationTree::Maximum {
                         definition: definition_id,
                         source,
@@ -9644,10 +9683,10 @@ impl Ht {
                         children,
                     },
                     child_depth + 1,
-                ));
+                );
             }
         }
-        None
+        LeanHtDistinctCardinalityRefutationOutcome::Open
     }
 
     fn lean_eq_refutation_certificate_json(
@@ -9804,23 +9843,25 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, depth, root_state) = loop {
             let mut state = LeanHtRefutationState::root(initial_labels);
-            let mut hit_node_cap = false;
-            if let Some((tree, depth)) = self.lean_distinct_cardinality_refutation(
+            match self.lean_distinct_cardinality_refutation(
                 &mut state,
                 &definitions,
                 variable_count,
                 node_budget,
-                &mut hit_node_cap,
             ) {
-                break (tree, depth, state.equality_wire_state(node_budget));
-            }
-            if !hit_node_cap {
-                return Err("ontology has an open cardinality refutation branch".to_string());
-            }
-            if !deepen {
-                return Err(
-                    "ontology reached the configured cardinality refutation node cap".to_string(),
-                );
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                    break (tree, depth, state.equality_wire_state(node_budget));
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Open => {
+                    return Err("ontology has an open cardinality refutation branch".to_string());
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier if !deepen => {
+                    return Err(
+                        "ontology reached the configured cardinality refutation node cap"
+                            .to_string(),
+                    );
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier => {}
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -20381,6 +20422,31 @@ mod tests {
         assert!(matches!(
             witness.lean_eq_refutation(&mut frontier_state, 1, 1),
             LeanHtEqRefutationOutcome::Frontier
+        ));
+    }
+
+    #[test]
+    fn cardinality_refutation_reports_closed_open_and_frontier_separately() {
+        let closed = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        let mut closed_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            closed.lean_distinct_cardinality_refutation(&mut closed_state, &[], 0, 1),
+            LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _)
+        ));
+
+        let open = Ht::new_certified(Vec::new());
+        let mut open_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            open.lean_distinct_cardinality_refutation(&mut open_state, &[], 0, 1),
+            LeanHtDistinctCardinalityRefutationOutcome::Open
+        ));
+
+        let witness =
+            Ht::new_certified(vec![Clause::new(Vec::new(), vec![exists(R0, false, A, X)])]);
+        let mut frontier_state = LeanHtRefutationState::root(&[]);
+        assert!(matches!(
+            witness.lean_distinct_cardinality_refutation(&mut frontier_state, &[], 1, 1),
+            LeanHtDistinctCardinalityRefutationOutcome::Frontier
         ));
     }
 

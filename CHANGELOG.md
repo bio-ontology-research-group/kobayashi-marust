@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.84] – 2026-08-20
+
+### Separate bounded cardinality-aware HT outcomes
+
+- Replace the distinct-cardinality refutation search's `Option` plus mutable
+  node-cap flag with explicit closed, open-branch, and frontier outcomes.
+- Preserve those outcomes through disjunctive heads, existential witnesses,
+  minimum-cardinality expansion, and maximum-cardinality merge branches.
+- Retry iterative deepening only after a genuine frontier and decline directly
+  on an open branch.
+- Add a Rust regression covering all three outcomes.
+- Define the matching Lean outcome boundary and prove that a checked
+  distinct-cardinality closure excludes every nonempty model of the exact
+  ontology and cardinality definitions.
+
+Open cardinality branches and frontiers remain deliberately inconclusive.
+Their model extraction and equality-aware blocking termination are still open
+certification obligations.
+
 ## [0.3.83] – 2026-08-20
 
 ### Separate bounded equality-aware HT outcomes

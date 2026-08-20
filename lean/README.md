@@ -335,6 +335,12 @@ branch, and an exhausted frontier; only checked closure is currently proved
 conclusive. Equality-aware model extraction, complete taxonomy batching, and
 termination remain separate obligations.
 
+The distinct-cardinality search uses the same three-way boundary through
+minimum expansion and maximum-merge branching. Its checked closure theorem
+excludes models satisfying both the exact ontology and its decoded cardinality
+definitions. Open cardinality branches and exhausted frontiers remain
+inconclusive pending model extraction and equality-aware blocking termination.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
