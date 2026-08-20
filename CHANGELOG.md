@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.131] – 2026-08-20
+
+### Certify finite HT clause-first runtime selection
+
+- Define the proof-friendly executable first-match scan used to model runtime
+  selection and prove its success and exhaustion properties.
+- Enumerate every ontology clause and every assignment over the finite node
+  universe, preserving clause order as the outer scan.
+- Prove that scan exhaustion is equivalent to the absence of an undischarged
+  clause grounding.
+- Prove that every selected equality-free grounding constructs exactly the
+  branch constructor of `FirstObstructionStep`, including body satisfaction,
+  absent heads, ontology membership, and branchability.
+
+This removes the abstract branch-selection obligation from HT runtime
+correspondence. Existential witness selection, blocker-aware terminal handling,
+and the complete runtime recursion remain certification tasks. It does not
+certify the complete HT runtime or automatic router.
+
 ## [0.3.130] – 2026-08-20
 
 ### Certify anchored cardinality taxonomy countermodels

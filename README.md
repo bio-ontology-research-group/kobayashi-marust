@@ -41,12 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.130`. This milestone lets the Rust HT producer publish bounded anchored
-equality/cardinality countermodels inside complete taxonomy matrices. Lean
-checks the shared ontology, cardinality definitions, dimensions, source query
-labels, nominal roots, and explicit successor slots before accepting a negative
-cell. Complete runtime-transition correspondence remains unfinished. This does
-not certify the entire Rust executable or automatic routing.
+`v0.3.131`. Lean now executes the finite clause-first HT selector, proves that
+it enumerates every clause grounding, and proves that its selected branches are
+exactly certified `FirstObstructionStep` transitions. Existential selection and
+blocker-aware runtime terminals remain unfinished. This does not certify the
+entire Rust executable or automatic routing.
 
 ## Classify an ontology
 
