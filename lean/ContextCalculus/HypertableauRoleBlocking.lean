@@ -386,6 +386,22 @@ theorem State.no_overlong_mode6_expansion
     state.exists_role_blocker_on_long_path parent path
   exact hsafe (hcreation hposition) (hexpanded later) hsignature
 
+/-- A rooted predecessor path with pairwise-distinct full blocking signatures
+has edge depth strictly below the finite signature vocabulary. This is the
+cardinality step used by certified Rust's direct path-uniqueness check. -/
+theorem State.roleBlockingDepth_lt_of_signature_injective
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) (parent : Node → Option Node)
+    (depth : Nat) (path : Fin (depth + 1) → Node)
+    (hinjective : Function.Injective
+      (fun position => state.roleBlockingSignature parent (path position))) :
+    depth < Fintype.card (RoleBlockingSignature Concept Role) := by
+  have hcard : Fintype.card (Fin (depth + 1)) ≤
+      Fintype.card (RoleBlockingSignature Concept Role) :=
+    Fintype.card_le_of_injective _ hinjective
+  simpa using hcard
+
 #print axioms State.roleBlockingSignature_blocks
 #print axioms State.roleBlockingSignature_parent_context
 #print axioms State.exists_role_blocker_on_long_path
@@ -396,5 +412,6 @@ theorem State.no_overlong_mode6_expansion
 #print axioms State.exists_fresh_of_unwitnessed_of_obligationAddressInvariant
 #print axioms State.obstruction_has_addressed_exhaustive_step
 #print axioms State.no_overlong_mode6_expansion
+#print axioms State.roleBlockingDepth_lt_of_signature_injective
 
 end ContextCalculus.Hypertableau

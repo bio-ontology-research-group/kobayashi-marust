@@ -9671,6 +9671,27 @@ impl Ht {
                 ));
             }
         }
+
+        // An unblocked node is an expandable address frontier. Check the exact
+        // finite-signature premise used by Lean: every non-root position on its
+        // rooted predecessor path has a distinct full bidirectional pairwise
+        // signature. We check this directly rather than trusting `compute_blocked`.
+        for (node, &is_blocked) in blocked.iter().enumerate() {
+            if is_blocked {
+                continue;
+            }
+            let mut signatures = HashSet::new();
+            let mut cursor = node;
+            while let Some(parent) = self.ext.pred[cursor] {
+                let signature = self.ext.i3_signature_full(cursor, parent);
+                if !signatures.insert(signature) {
+                    return Err(format!(
+                        "certified HT unblocked node {node} has a repeated pairwise signature on its predecessor path"
+                    ));
+                }
+                cursor = parent;
+            }
+        }
         Ok(())
     }
 
@@ -16895,6 +16916,17 @@ mod tests {
             .certified_mode6_address_invariant()
             .expect_err("a blocked node must not retain a generated child");
         assert!(error.contains("retained direct successor"), "{error}");
+    }
+
+    #[test]
+    fn certified_mode6_rejects_repeated_signature_on_unblocked_path() {
+        let mut reasoner = certified_repeating_pairwise_chain(false);
+        let frontier = reasoner.ext.num_nodes() - 1;
+        reasoner.ext.blockable[frontier] = false;
+        let error = reasoner
+            .certified_mode6_address_invariant()
+            .expect_err("an unblocked rooted path must have distinct pairwise signatures");
+        assert!(error.contains("repeated pairwise signature"), "{error}");
     }
 
     #[test]

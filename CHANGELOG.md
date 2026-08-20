@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.3.74] – 2026-08-20
+
+### Connect HT predecessor paths to the blocking-depth bound
+
+- Check directly, before certified SAT publication, that every unblocked rooted
+  predecessor path has pairwise-distinct full bidirectional blocking
+  signatures.
+- Keep this check certification-only and fail closed on a repeated signature.
+- Prove in Lean that an injective signature map over a path of edge depth `d`
+  implies `d` is strictly below the finite role-blocking signature cardinality.
+
+This supplies the cardinality argument behind finite witness addresses without
+computing the signature cardinality at runtime. Exact refinement of the UNSAT
+transition enumerator remains the next equality-free HT task.
+
 ## [0.3.73] – 2026-08-20
 
 ### Compose exhaustive HT search with checked blocked models
