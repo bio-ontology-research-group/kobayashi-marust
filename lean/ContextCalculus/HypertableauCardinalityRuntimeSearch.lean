@@ -762,6 +762,63 @@ theorem selectRustExpandableMinimum_closedRefutes
   exact .minimum state candidate.1 (mem_allRustMinimumCandidates.mp hfound.1)
     hproperties.1 candidate.2 hproperties.2.1 targets hfresh child
 
+/-- The exact target IDs allocated by Rust for a minimum expansion. -/
+def rustConsecutiveTargets (active count nodeCount : Nat)
+    (hfit : active + count ≤ nodeCount) : Fin count → Fin nodeCount :=
+  fun index => ⟨active + index.1, lt_of_lt_of_le
+    (Nat.add_lt_add_left index.2 active) hfit⟩
+
+@[simp] theorem rustConsecutiveTargets_val
+    (hfit : active + count ≤ nodeCount) (index : Fin count) :
+    (rustConsecutiveTargets active count nodeCount hfit index).1 = active + index.1 := rfl
+
+theorem rustConsecutiveTargets_injective
+    (hfit : active + count ≤ nodeCount) :
+    Function.Injective (rustConsecutiveTargets active count nodeCount hfit) := by
+  intro left right heq
+  apply Fin.ext
+  exact Nat.add_left_cancel (congrArg Fin.val heq)
+
+/-- Every ID outside the active prefix is unconstrained.  This is the semantic
+invariant maintained by Rust's `active_nodes` discipline; a later field-level
+correspondence theorem discharges it from the concrete wire state. -/
+def DistinctEqState.InactivePrefixFresh
+    (state : DistinctEqState (Fin nodeCount) Concept Role) (active : Nat) : Prop :=
+  ∀ target, active ≤ target.1 → state.Fresh target
+
+theorem rustConsecutiveTargets_freshFamily
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (hprefix : state.InactivePrefixFresh active)
+    (hfit : active + count ≤ nodeCount) :
+    state.FreshFamily (rustConsecutiveTargets active count nodeCount hfit) := by
+  refine ⟨rustConsecutiveTargets_injective hfit, ?_⟩
+  intro index
+  apply hprefix
+  simp [rustConsecutiveTargets]
+
+theorem selectRustExpandableMinimum_consecutive_closedRefutes
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop)
+    {candidate : MinimumCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectRustExpandableMinimum definitions state parent ancestors expanded =
+      some candidate)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (hfit : active + candidate.1.bound ≤ nodeCount)
+    (child : ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions
+      (state.materializeMinimum candidate.2
+        (rustConsecutiveTargets active candidate.1.bound nodeCount hfit)
+        candidate.1.role candidate.1.filler)) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions state :=
+  selectRustExpandableMinimum_closedRefutes ontology definitions state parent ancestors
+    expanded hselect (rustConsecutiveTargets active candidate.1.bound nodeCount hfit)
+    (rustConsecutiveTargets_freshFamily state hprefix hfit) child
+
 abbrev MaximumCandidate (Node Concept Role : Type) :=
   Σ definition : CardinalityDef Concept Role,
     Node × (Fin (definition.bound + 1) → Node)
@@ -1285,6 +1342,9 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms mem_allRustMinimumCandidates
 #print axioms selectRustExpandableMinimum_eq_none_iff
 #print axioms selectRustExpandableMinimum_closedRefutes
+#print axioms rustConsecutiveTargets_injective
+#print axioms rustConsecutiveTargets_freshFamily
+#print axioms selectRustExpandableMinimum_consecutive_closedRefutes
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted

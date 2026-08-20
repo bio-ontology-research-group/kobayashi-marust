@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.171] – 2026-08-21
+
+### Certify consecutive minimum targets
+
+- Define the exact target vector allocated by Rust for a minimum expansion:
+  `active_nodes + index` for every index below the restriction width.
+- Prove the vector is in bounds and injective whenever
+  `active_nodes + width ≤ node_budget`.
+- State the active-prefix freshness invariant maintained by Rust's allocation
+  discipline and prove it makes the complete consecutive vector fresh,
+  including equality and directed `apart` constraints.
+- Compose the concrete target vector with production-order minimum selection
+  to construct a sound quotient-closed recursive branch.
+- Audit the new construction without `sorryAx`.
+
+Concrete wire-state preservation of the active-prefix invariant, deterministic
+maximum witness selection, exact recursive outcome production, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.170] – 2026-08-21
 
 ### Certify production-order minimum selection
