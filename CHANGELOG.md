@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.3.73] – 2026-08-20
+
+### Compose exhaustive HT search with checked blocked models
+
+- Define a checked-fold terminal proposition over the exact finite ontology.
+- Prove that any accepted fold supplies a model of that unchanged ontology,
+  independently of the producer's blocker choices.
+- Prove a finite exhaustive-search capstone whose terminal leaves may carry
+  checked blocked models: the root is refuted, or search reaches a leaf with an
+  independently checked model.
+
+This connects search totality to finite model folding without requiring blocked
+raw states to be witness-complete. The concrete transition enumerator and the
+strict blocking-depth premise still require runtime refinement.
+
 ## [0.3.72] – 2026-08-20
 
 ### Check rooted HT witness-address refinement
