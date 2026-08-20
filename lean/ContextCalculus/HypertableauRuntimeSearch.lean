@@ -281,6 +281,72 @@ theorem selectUnwitnessed_eq_none_iff
     exact hnone ⟨candidate.2.2, candidate.1, candidate.2.1,
       hproperties.1, hproperties.2⟩
 
+noncomputable def unblockedWitnessCandidateBool
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node] [DecidableState state]
+    (blocked : Node → Bool)
+    (candidate : WitnessCandidate Node Concept Role) : Bool :=
+  witnessCandidateBool state candidate && !blocked candidate.2.2
+
+theorem unblockedWitnessCandidateBool_eq_true_iff
+    (state : State Node Concept Role)
+    [Fintype Node] [DecidableEq Node] [DecidableState state]
+    (blocked : Node → Bool)
+    (candidate : WitnessCandidate Node Concept Role) :
+    unblockedWitnessCandidateBool state blocked candidate = true ↔
+      state.obligation candidate.1 candidate.2.1 candidate.2.2 ∧
+      (∀ witness, ¬(state.edge candidate.1 candidate.2.2 witness ∧
+        state.label witness candidate.2.1)) ∧ blocked candidate.2.2 = false := by
+  simp [unblockedWitnessCandidateBool,
+    witnessCandidateBool_eq_true_iff, and_assoc]
+
+noncomputable def selectUnblockedUnwitnessed
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool) : Option (WitnessCandidate Node Concept Role) :=
+  firstMatch (unblockedWitnessCandidateBool state blocked) allWitnessCandidates
+
+/-- Exhausting the blocker-aware scan means every still-unwitnessed source is
+reported blocked. This is the exact logical contract of Rust's
+`pairwise_blocked_by_ancestor` filter; the blocker/fold checker separately
+validates whether those reports justify a model. -/
+theorem selectUnblockedUnwitnessed_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool) :
+    selectUnblockedUnwitnessed state blocked = none ↔
+      ∀ source role filler, state.obligation role filler source →
+        (∀ witness, ¬(state.edge role source witness ∧
+          state.label witness filler)) → blocked source = true := by
+  classical
+  rw [selectUnblockedUnwitnessed, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan source role filler hobligation hnowitness
+    have hfalse := hscan (role, filler, source)
+      (mem_allWitnessCandidates (role, filler, source))
+    by_contra hblocked
+    have hblockedFalse : blocked source = false := by
+      cases hvalue : blocked source <;> simp_all
+    have htrue : unblockedWitnessCandidateBool state blocked
+        (role, filler, source) = true :=
+      (unblockedWitnessCandidateBool_eq_true_iff state blocked
+        (role, filler, source)).mpr ⟨hobligation, hnowitness, hblockedFalse⟩
+    rw [htrue] at hfalse
+    contradiction
+  · intro hall candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties := (unblockedWitnessCandidateBool_eq_true_iff
+      state blocked candidate).mp htrue
+    have hblocked := hall candidate.2.2 candidate.1 candidate.2.1
+      hproperties.1 hproperties.2.1
+    rw [hproperties.2.2] at hblocked
+    contradiction
+
 noncomputable def freshNodeBool
     (state : State Node Concept Role)
     [Fintype Node] [DecidableEq Node]
@@ -316,6 +382,91 @@ theorem selectFreshNode_eq_none_iff
     apply Bool.eq_false_iff.mpr
     intro htrue
     exact hnone ⟨target, (freshNodeBool_eq_true_iff state target).mp htrue⟩
+
+theorem selectUnblockedUnwitnessed_firstObstructionStep
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool)
+    (hclauses : selectClauseGrounding ontology state = none)
+    {candidate : WitnessCandidate Node Concept Role}
+    (hwitness : selectUnblockedUnwitnessed state blocked = some candidate)
+    {target : Node} (hfresh : selectFreshNode state = some target) :
+    FirstObstructionStep ontology state
+      [state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1] := by
+  classical
+  have hcandidate := firstMatch_eq_some_mem
+    (by simpa [selectUnblockedUnwitnessed] using hwitness)
+  have htarget := firstMatch_eq_some_mem
+    (by simpa [selectFreshNode] using hfresh)
+  have hproperties := (unblockedWitnessCandidateBool_eq_true_iff
+    state blocked candidate).mp hcandidate.2
+  exact .witness ((selectClauseGrounding_eq_none_iff ontology state).mp hclauses)
+    candidate.2.2 target candidate.1 candidate.2.1
+    hproperties.1 hproperties.2.1
+    ((freshNodeBool_eq_true_iff state target).mp htarget.2)
+
+/-- Concrete transition enumerator with the runtime's blocker filter. The
+Boolean blocker itself remains untrusted; a terminal model is accepted only
+through the independent finite-fold checker. -/
+noncomputable def runtimeNextBlocked
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool) : List (State Node Concept Role) :=
+  match selectClauseGrounding ontology state with
+  | some grounding => grounding.1.head.map (state.assertAtom grounding.2)
+  | none =>
+      match selectUnblockedUnwitnessed state blocked with
+      | none => []
+      | some candidate =>
+          match selectFreshNode state with
+          | none => []
+          | some target =>
+              [state.materializeWitness candidate.2.2 target
+                candidate.1 candidate.2.1]
+
+theorem runtimeNextBlocked_firstObstructionStep
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hnonempty : runtimeNextBlocked ontology state blocked ≠ []) :
+    FirstObstructionStep ontology state
+      (runtimeNextBlocked ontology state blocked) := by
+  classical
+  unfold runtimeNextBlocked at hnonempty ⊢
+  generalize hclause : selectClauseGrounding ontology state = selectedClause
+  cases selectedClause with
+  | some grounding =>
+      exact selectClauseGrounding_firstObstructionStep ontology state hheads hclause
+  | none =>
+      generalize hwitness : selectUnblockedUnwitnessed state blocked = selectedWitness
+      cases selectedWitness with
+      | none =>
+          exfalso
+          apply hnonempty
+          simp [hclause, hwitness]
+      | some candidate =>
+          generalize hfresh : selectFreshNode state = selectedFresh
+          cases selectedFresh with
+          | none =>
+              exfalso
+              apply hnonempty
+              simp [hclause, hwitness, hfresh]
+          | some target =>
+              exact selectUnblockedUnwitnessed_firstObstructionStep
+                ontology state blocked hclause hwitness hfresh
 
 /-- Once clause scanning is exhausted, selected obligation and fresh-node
 scans construct exactly the runtime witness transition shape. -/
@@ -420,6 +571,53 @@ theorem runtimeNext_empty_terminal
   · exact ⟨(selectClauseGrounding_eq_none_iff ontology state).mp hclause,
       (selectUnwitnessed_eq_none_iff state).mp hwitness⟩
 
+/-- Empty concrete successor lists have exactly three meanings: a zero-head
+refutation, a raw saturated terminal, or finite-node exhaustion while a witness
+is still required. In particular, node-budget exhaustion is never classified
+as a model. -/
+theorem runtimeNext_empty_semantics
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hempty : runtimeNext ontology state = []) :
+    Refutes Node ontology state ∨
+      (¬state.HasUndischarged ontology ∧ ¬state.HasUnwitnessed) ∨
+      (¬state.HasUndischarged ontology ∧ state.HasUnwitnessed ∧
+        ¬∃ target, state.Fresh target) := by
+  classical
+  unfold runtimeNext at hempty
+  generalize hclause : selectClauseGrounding ontology state = selectedClause at hempty
+  cases selectedClause with
+  | some grounding =>
+      have hhead : grounding.1.head = [] := by simpa using hempty
+      exact Or.inl (selectClauseGrounding_emptyHead_refutes ontology state
+        hheads hclause hhead)
+  | none =>
+      have hnoClause := (selectClauseGrounding_eq_none_iff ontology state).mp hclause
+      generalize hwitness : selectUnwitnessed state = selectedWitness at hempty
+      cases selectedWitness with
+      | none =>
+          exact Or.inr (Or.inl ⟨hnoClause,
+            (selectUnwitnessed_eq_none_iff state).mp hwitness⟩)
+      | some candidate =>
+          have hunwitnessed : state.HasUnwitnessed := by
+            have hfound := firstMatch_eq_some_mem
+              (by simpa [selectUnwitnessed] using hwitness)
+            have hproperties :=
+              (witnessCandidateBool_eq_true_iff state candidate).mp hfound.2
+            exact ⟨candidate.2.2, candidate.1, candidate.2.1,
+              hproperties.1, hproperties.2⟩
+          generalize hfresh : selectFreshNode state = selectedFresh at hempty
+          cases selectedFresh with
+          | none =>
+              exact Or.inr (Or.inr ⟨hnoClause, hunwitnessed,
+                (selectFreshNode_eq_none_iff state).mp hfresh⟩)
+          | some target => simp at hempty
+
 noncomputable instance decidableState_stateOfGuardedFacts
     [DecidableEq Node] [DecidableEq Concept] [DecidableEq Role]
     (facts : Finset (GuardedFact Node Concept Role)) :
@@ -477,10 +675,14 @@ theorem finite_runtimeNext_decides
 #print axioms selectClauseGrounding_firstObstructionStep
 #print axioms selectClauseGrounding_emptyHead_refutes
 #print axioms selectUnwitnessed_eq_none_iff
+#print axioms selectUnblockedUnwitnessed_eq_none_iff
 #print axioms selectFreshNode_eq_none_iff
 #print axioms selectUnwitnessed_firstObstructionStep
+#print axioms selectUnblockedUnwitnessed_firstObstructionStep
 #print axioms runtimeNext_firstObstructionStep
+#print axioms runtimeNextBlocked_firstObstructionStep
 #print axioms runtimeNext_empty_terminal
+#print axioms runtimeNext_empty_semantics
 #print axioms finite_runtimeNext_decides
 
 end ContextCalculus.Hypertableau

@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.133] – 2026-08-20
+
+### Certify HT empty outcomes and blocker-filtered selection
+
+- Prove that an empty concrete successor list is exactly a zero-head
+  refutation, a raw saturated terminal, or finite-node exhaustion with an
+  outstanding existential. Node exhaustion is never accepted as a model.
+- Add the blocker-aware obligation selector matching the runtime's
+  `pairwise_blocked_by_ancestor` filtering shape.
+- Prove blocker-aware scan exhaustion means every remaining unwitnessed source
+  is reported blocked, while every selected unblocked obligation constructs
+  the exact certified witness transition.
+- Compose the blocker-aware clause/witness scans into a concrete transition
+  function and prove all its nonempty results are `FirstObstructionStep`s.
+
+The blocker Boolean remains untrusted. Accepting its terminal as satisfiable
+still requires the independent checked fold, and exact Rust blocker production,
+frontier production, and clash ordering remain runtime-correspondence tasks.
+This does not certify the complete HT runtime or automatic routing.
+
 ## [0.3.132] – 2026-08-20
 
 ### Certify HT witness selection and concrete transitions
