@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.174] – 2026-08-21
+
+### Preserve active-prefix freshness through assertion and merge
+
+- Define the exact premise that every finite grounding maps variables into
+  Rust's active-node prefix.
+- Prove concept, role, existential, and equality head assertion preserves
+  freshness of every inactive node.
+- Prove maximum-induced equality merging between active witnesses cannot join
+  an inactive node into the equality class, using induction over generated
+  equivalence closure.
+- Connect accepted finite `transitionB` and `mergeTransitionB` successor
+  certificates to the preserved active-prefix invariant.
+- Audit all preservation endpoints without `sorryAx`.
+
+The active-prefix induction invariant now covers every recursive state-changing
+constructor. Deterministic maximum witness selection, exact recursive outcome
+production, concrete Rust field-construction correspondence, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.173] – 2026-08-21
 
 ### Preserve active-prefix freshness through allocation

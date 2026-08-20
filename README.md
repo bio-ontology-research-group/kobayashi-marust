@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.173`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.174`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -127,7 +127,10 @@ inactive ID for equality freshness and absence from directed `apart` facts,
 and accepted evidence yields freshness of the complete target vector. Ordinary
 witness and minimum materialization now preserve the active-prefix invariant
 at their exact enlarged prefix; accepted minimum successor transitions inherit
-that invariant through their checked finite state equality.
+that invariant through their checked finite state equality. Clause-head
+assertion and maximum equality merge also preserve it when their referenced
+nodes are active, and accepted finite successor transitions transport these
+results to their decoded states.
 
 ## Classify an ontology
 

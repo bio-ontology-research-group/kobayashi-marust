@@ -955,6 +955,140 @@ theorem FiniteDistinctEqCertificate.minimumTransitionB_inactivePrefixFresh
   exact current.state.inactivePrefixFresh_materializeMinimum active count
     (current.inactivePrefixFreshB_sound active hprefix) source hsource role filler hfit
 
+theorem DistinctEqState.inactivePrefixFresh_merge
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (left right : Fin nodeCount) (hleft : left.1 < active) (hright : right.1 < active) :
+    (state.merge left right).InactivePrefixFresh active := by
+  intro candidate hcand
+  rcases hprefix candidate hcand with ⟨⟨hbase, hisolated⟩, hapart⟩
+  refine ⟨⟨hbase, ?_⟩, hapart⟩
+  intro node hmerged
+  have hcandidateLeft : candidate ≠ left := by
+    intro heq
+    have hvalue := congrArg Fin.val heq
+    omega
+  have hcandidateRight : candidate ≠ right := by
+    intro heq
+    have hvalue := congrArg Fin.val heq
+    omega
+  have hstep : ∀ x y : Fin nodeCount,
+      (state.base.equiv x y ∨ (x = left ∧ y = right)) →
+        (x = candidate ↔ y = candidate) := by
+    intro x y hxy
+    rcases hxy with hold | ⟨rfl, rfl⟩
+    · constructor
+      · intro hx
+        subst x
+        exact hisolated y hold
+      · intro hy
+        subst y
+        exact hisolated x (state.base.equiv_equivalence.2 hold)
+    · exact ⟨fun hx => (hcandidateLeft hx.symm).elim,
+        fun hy => (hcandidateRight hy.symm).elim⟩
+  have hpreserved : ∀ x y : Fin nodeCount,
+      Relation.EqvGen
+          (fun x y => state.base.equiv x y ∨ (x = left ∧ y = right)) x y →
+        (x = candidate ↔ y = candidate) := by
+    intro x y hxy
+    induction hxy with
+    | rel x y hxy => exact hstep x y hxy
+    | refl x => exact Iff.rfl
+    | symm x y _ ih => exact ih.symm
+    | trans x y z _ _ hxy hyz => exact hxy.trans hyz
+  exact (hpreserved candidate node hmerged).mp rfl
+
+def AssignmentWithinActive
+    (assignment : Variable → Fin nodeCount) (active : Nat) : Prop :=
+  ∀ nodeId, (assignment nodeId).1 < active
+
+theorem DistinctEqState.inactivePrefixFresh_assertAtom
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (assignment : Variable → Fin nodeCount)
+    (hassignment : AssignmentWithinActive assignment active)
+    (atom : Atom Variable Concept Role) :
+    (state.assertAtom assignment atom).InactivePrefixFresh active := by
+  unfold AssignmentWithinActive at hassignment
+  cases atom with
+  | concept lit nodeId =>
+      intro candidate hcand
+      rcases hprefix candidate hcand with ⟨⟨⟨hlabels, hedges, hobligations⟩, hequiv⟩, hapart⟩
+      have hcandidate : candidate ≠ assignment nodeId := by
+        intro heq
+        have hvalue := congrArg Fin.val heq
+        have := hassignment nodeId
+        omega
+      refine ⟨⟨⟨?_, hedges, hobligations⟩, hequiv⟩, hapart⟩
+      intro candidateLit hlabel
+      rcases hlabel with hold | ⟨heq, _⟩
+      · exact hlabels candidateLit hold
+      · exact hcandidate heq
+  | role role source target =>
+      intro candidate hcand
+      rcases hprefix candidate hcand with ⟨⟨⟨hlabels, hedges, hobligations⟩, hequiv⟩, hapart⟩
+      have hsource : candidate ≠ assignment source := by
+        intro heq
+        have hvalue := congrArg Fin.val heq
+        have := hassignment source
+        omega
+      have htarget : candidate ≠ assignment target := by
+        intro heq
+        have hvalue := congrArg Fin.val heq
+        have := hassignment target
+        omega
+      refine ⟨⟨⟨hlabels, ?_, hobligations⟩, hequiv⟩, hapart⟩
+      intro candidateRole node
+      constructor
+      · intro hedge
+        rcases hedge with hold | ⟨_, heq, _⟩
+        · exact (hedges candidateRole node).1 hold
+        · exact hsource heq
+      · intro hedge
+        rcases hedge with hold | ⟨_, _, heq⟩
+        · exact (hedges candidateRole node).2 hold
+        · exact htarget heq
+  | exists_ role filler nodeId =>
+      intro candidate hcand
+      rcases hprefix candidate hcand with ⟨⟨⟨hlabels, hedges, hobligations⟩, hequiv⟩, hapart⟩
+      have hcandidate : candidate ≠ assignment nodeId := by
+        intro heq
+        have hvalue := congrArg Fin.val heq
+        have := hassignment nodeId
+        omega
+      refine ⟨⟨⟨hlabels, hedges, ?_⟩, hequiv⟩, hapart⟩
+      intro candidateRole candidateFiller hobligation
+      rcases hobligation with hold | ⟨_, _, heq⟩
+      · exact hobligations candidateRole candidateFiller hold
+      · exact hcandidate heq
+  | eq left right =>
+      exact state.inactivePrefixFresh_merge active hprefix
+        (assignment left) (assignment right) (hassignment left) (hassignment right)
+
+theorem FiniteDistinctEqCertificate.transitionB_inactivePrefixFresh
+    (current next : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat) (hprefix : current.inactivePrefixFreshB active = true)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (hassignment : AssignmentWithinActive assignment active)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (htransition : current.transitionB next assignment atom = true) :
+    next.state.InactivePrefixFresh active := by
+  rw [current.transitionB_state next assignment atom htransition]
+  exact current.state.inactivePrefixFresh_assertAtom active
+    (current.inactivePrefixFreshB_sound active hprefix) assignment hassignment atom
+
+theorem FiniteDistinctEqCertificate.mergeTransitionB_inactivePrefixFresh
+    (current next : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active : Nat) (hprefix : current.inactivePrefixFreshB active = true)
+    (left right : Fin nodeCount) (hleft : left.1 < active) (hright : right.1 < active)
+    (htransition : current.mergeTransitionB next left right = true) :
+    next.state.InactivePrefixFresh active := by
+  rw [current.mergeTransitionB_state next left right htransition]
+  exact current.state.inactivePrefixFresh_merge active
+    (current.inactivePrefixFreshB_sound active hprefix) left right hleft hright
+
 theorem selectRustExpandableMinimum_consecutive_closedRefutes
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -1510,6 +1644,10 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms DistinctEqState.inactivePrefixFresh_materializeWitness
 #print axioms DistinctEqState.inactivePrefixFresh_materializeMinimum
 #print axioms FiniteDistinctEqCertificate.minimumTransitionB_inactivePrefixFresh
+#print axioms DistinctEqState.inactivePrefixFresh_merge
+#print axioms DistinctEqState.inactivePrefixFresh_assertAtom
+#print axioms FiniteDistinctEqCertificate.transitionB_inactivePrefixFresh
+#print axioms FiniteDistinctEqCertificate.mergeTransitionB_inactivePrefixFresh
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted
