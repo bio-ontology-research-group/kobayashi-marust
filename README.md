@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.118`.
+`v0.3.119`.
 
 ## Classify an ontology
 
@@ -208,10 +208,13 @@ certification tasks.
 The formalization also defines the canonical rooted-forest domain for the
 next equality/nominal regular-model stage. Anonymous witnesses retain path
 identity, while every selected nominal root denotes one domain value; Lean
-proves the corresponding nominal concept has a singleton extension. Connecting
-Rust's equality representatives and nominal carriers to those anchors, and
-proving the full anchored role model, remain required before that stage can
-publish.
+proves the corresponding nominal concept has a singleton extension. Lean also
+defines the anchored role model, closes direct edges under the
+normalized RBox, proves witness and nominal-label satisfaction, and proves its
+canonical-model theorem for guarded ontologies. Executable equality/nominal
+regular publication still requires a wire checker that derives the theorem's
+coherence, redirected-witness, and saturation premises from Rust's equality
+representatives, nominal carriers, and blocker evidence.
 
 The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded

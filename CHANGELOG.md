@@ -2,6 +2,31 @@
 
 ## [unreleased]
 
+## [0.3.119] – 2026-08-20
+
+### Prove the anchored nominal-aware HT interpretation
+
+- Define direct edges on the canonical rooted forest so witnesses entering an
+  anchor land on its unique root.
+- Close those edges under checked subroles, inverse roles, role chains, and
+  reflexive roles, and prove projection to the finite endpoint relation.
+- State the exact nominal-label coherence and redirected-witness premises a
+  certificate must check.
+- Prove every finite label and saturated head atom is satisfied by the anchored
+  interpretation, including negative nominals, equality heads, and existential
+  witnesses.
+- Prove the converse for guarded body atoms and compose both directions into a
+  canonical-model theorem: clash freedom, nominal coherence, redirected
+  witnesses, and anchored saturation imply that the interpretation models the
+  ontology.
+
+This completes the abstract semantic model theorem for the anchored domain.
+The remaining executable milestone must decode and check the premises from
+Rust's equality representatives, nominal carriers, blocker redirects, and
+saturation evidence before equality/nominal regular SAT can publish.
+The full Lean build passes 3,385 jobs. The locked serial release suite passes
+2,120 tests with 8 ignored.
+
 ## [0.3.118] – 2026-08-20
 
 ### Prove canonical nominal roots for regular HT models
