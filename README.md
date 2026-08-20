@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.120`.
+`v0.3.121`.
 
 ## Classify an ontology
 
@@ -212,15 +212,16 @@ proves the corresponding nominal concept has a singleton extension. Lean also
 defines the anchored role model, closes direct edges under the
 normalized RBox, proves witness and nominal-label satisfaction, and proves its
 canonical-model theorem for guarded ontologies. Executable equality/nominal
-regular publication still requires a wire checker that derives the theorem's
-coherence, redirected-witness, and saturation premises from Rust's equality
-representatives, nominal carriers, and blocker evidence.
+regular publication still requires equality-closure evidence connecting Rust's
+representatives and nominal carriers to the checked anchored model.
 
-The native `ht-anchored-premises-check` now bounds-checks nominal-root vectors
-and proves clash freedom, exact nominal-label coherence, and redirected witness
-completion from the decoded finite state. Regular saturation, RBox cover, and
-equality-closure evidence still need composition into the final anchored SAT
-wire before equality/nominal publication can use this checker.
+The native `ht-anchored-premises-check` bounds-checks a complete regular
+certificate plus its nominal-root vector. Acceptance proves clash freedom,
+exact nominal-label coherence, redirected witness completion, finite residual
+saturation, and normalized RBox closure, then constructs an anchored
+nominal-aware model of the exact decoded ontology. Equality/nominal publication
+still requires checked evidence connecting Rust's union-find representatives
+to these canonical nominal roots.
 
 The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded

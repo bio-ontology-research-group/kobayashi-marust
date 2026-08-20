@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "node_count": 2,
-  "concept_count": 1,
-  "role_count": 1,
-  "labels": [
-    { "node": 0, "literal": { "concept": 0, "neg": false } }
-  ],
-  "edges": [],
-  "obligations": [],
-  "redirect": [0, 1],
+  "base": {
+    "version": 1,
+    "node_count": 2,
+    "concept_count": 1,
+    "role_count": 1,
+    "variable_count": 1,
+    "labels": [{ "node": 0, "literal": { "concept": 0, "neg": false } }],
+    "edges": [], "obligations": [], "redirect": [0, 1], "cover": [],
+    "sub_roles": [], "inverse_roles": [], "chains": [],
+    "reflexive_roles": [], "role_clauses": [], "residual": []
+  },
   "nominal_roots": [1]
 }

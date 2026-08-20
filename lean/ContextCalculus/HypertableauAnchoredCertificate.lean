@@ -1,5 +1,7 @@
 import ContextCalculus.HypertableauAnchoredUnravelling
 import ContextCalculus.HypertableauCertificate
+import ContextCalculus.HypertableauRegularCertificate
+import Mathlib.Data.Fintype.Basic
 
 /-!
 # Executable finite premises for anchored HT models
@@ -17,6 +19,12 @@ def NominalAnchor
     (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
     (node : Fin nodeCount) : Prop :=
   ∃ name, nominalRoot name = some node
+
+instance nominalAnchorDecidable
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount)) :
+    DecidablePred (NominalAnchor nominalRoot) := by
+  intro node
+  exact Fintype.decidableExistsFintype
 
 def nominalLabelCoherentB
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
@@ -101,10 +109,68 @@ theorem finitePremisesB_sound
     nominalLabelCoherentB_sound certificate nominalRoot hcheck.1.2,
     redirectWitnessCompleteB_sound certificate redirect hcheck.2⟩
 
+/-- The ordinary finite certificate view of a regular certificate. This lets
+the nominal checker consume exactly the same labels, edges, and obligations as
+the regular saturation checker. -/
+def regularSatCertificate
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    FiniteSatCertificate nodeCount conceptCount roleCount variableCount where
+  ontology := certificate.ontology
+  labels := certificate.labels
+  edges := certificate.edges
+  obligations := certificate.obligations
+
+@[simp] theorem regularSatCertificate_state
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    (regularSatCertificate certificate).state = certificate.state := by
+  rfl
+
+/-- Combined executable SAT check for the regular nominal-aware fragment. The
+regular checker establishes saturation and RBox closure; the anchored checker
+establishes singleton nominal labels and redirected witnesses. -/
+def anchoredCheck
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount)) : Bool :=
+  certificate.check &&
+    finitePremisesB (regularSatCertificate certificate) certificate.redirect nominalRoot
+
+theorem anchoredCheck_models
+    [NeZero nodeCount]
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (hcheck : anchoredCheck certificate nominalRoot = true) :
+    (interpretation certificate.state certificate.redirect
+      (fun _ _ _ _ => True) (NominalAnchor nominalRoot) certificate.rules
+      nominalRoot).models certificate.ontology := by
+  simp only [anchoredCheck, Bool.and_eq_true] at hcheck
+  have hregular := certificate.check_sound hcheck.1
+  have hanchored := finitePremisesB_sound (regularSatCertificate certificate)
+    certificate.redirect nominalRoot hcheck.2
+  rw [regularSatCertificate_state] at hanchored
+  apply interpretation_models_partition_of_cover certificate.state
+    certificate.redirect (fun _ _ _ _ => True) (NominalAnchor nominalRoot)
+    certificate.rules nominalRoot certificate.coverRelation
+    certificate.roleClauses certificate.residual
+  · exact hregular.1
+  · exact hregular.2.1
+  · exact hregular.2.2.1
+  · exact hanchored.1
+  · exact hanchored.2.1
+  · exact hanchored.2.2
+  · intro _ _ _ _
+    trivial
+  · exact certificate.coverClosed_covers hregular.2.2.2.2.2.2.1
+  · exact hregular.2.2.2.2.2.2.2
+
 #print axioms nominalLabelCoherentB_sound
 #print axioms clashFreeB_sound
 #print axioms redirectWitnessCompleteB_sound
 #print axioms finitePremisesB_sound
+#print axioms anchoredCheck_models
 
 end AnchoredForestDomain
 

@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.121] – 2026-08-20
+
+### Compose anchored HT with regular saturation and RBox certification
+
+- Prove that anchored semantic atom matches project to the finite endpoint
+  cover and that concept and existential heads lift back to anchored values.
+- Prove normalized subrole, inverse-role, role-chain, and reflexive clauses in
+  the anchored role closure, then combine them with residual cover discharge.
+- Compose the existing regular certificate checker with nominal-label and
+  redirected-witness checks. Acceptance now constructs an anchored
+  nominal-aware model of the exact decoded ontology.
+- Extend the bounded JSON wire and native checker to validate the complete
+  regular certificate plus nominal roots. The accepted fixture exits 0 and a
+  forged nominal root exits 1.
+
+This closes the regular saturation and RBox composition gap from v0.3.120.
+Publication for equality and nominals still requires a proof and checked wire
+connecting Rust union-find representatives to canonical nominal roots. The
+full Lean build passes 3,387 jobs. The locked serial release suite passes 2,120
+tests with 8 ignored.
+
 ## [0.3.120] – 2026-08-20
 
 ### Check anchored HT premises through a bounded wire

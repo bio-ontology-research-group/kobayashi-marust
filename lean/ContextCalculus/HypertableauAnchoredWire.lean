@@ -92,6 +92,48 @@ theorem DecodedAnchoredPremises.check_sound
   finitePremisesB_sound decoded.certificate decoded.redirect
     decoded.nominalRoot hcheck
 
+/-- Complete anchored SAT wire: the regular certificate supplies the ontology,
+saturation, and RBox evidence; `nominal_roots` supplies singleton identities. -/
+structure WireAnchoredCertificate where
+  version : Nat
+  base : WireRegularCertificate
+  nominal_roots : List (Option Nat)
+deriving FromJson, ToJson, Repr
+
+structure DecodedAnchoredCertificate where
+  regular : DecodedRegularCertificate
+  nominalRoot : Fin regular.conceptCount → Option (Fin regular.nodeCount)
+
+def WireAnchoredCertificate.decode (wire : WireAnchoredCertificate) :
+    Except String DecodedAnchoredCertificate := do
+  if wire.version != 1 then
+    throw s!"unsupported anchored hypertableau certificate version {wire.version}"
+  let regular ← wire.base.decode
+  let nominalRoot ← decodeNominalRoots regular.nodeCount regular.conceptCount
+    wire.nominal_roots
+  return { regular, nominalRoot }
+
+def DecodedAnchoredCertificate.check
+    (decoded : DecodedAnchoredCertificate) : Bool :=
+  anchoredCheck decoded.regular.certificate decoded.nominalRoot
+
+def WireAnchoredCertificate.check (wire : WireAnchoredCertificate) :
+    Except String Bool := do
+  return (← wire.decode).check
+
+theorem DecodedAnchoredCertificate.check_models
+    (decoded : DecodedAnchoredCertificate)
+    (hcheck : decoded.check = true) :
+    letI : NeZero decoded.regular.nodeCount :=
+      ⟨Nat.ne_of_gt decoded.regular.positive⟩
+    (interpretation decoded.regular.certificate.state
+      decoded.regular.certificate.redirect (fun _ _ _ _ => True)
+      (NominalAnchor decoded.nominalRoot) decoded.regular.certificate.rules
+      decoded.nominalRoot).models decoded.regular.certificate.ontology := by
+  letI : NeZero decoded.regular.nodeCount :=
+    ⟨Nat.ne_of_gt decoded.regular.positive⟩
+  exact anchoredCheck_models decoded.regular.certificate decoded.nominalRoot hcheck
+
 private def validWire : WireAnchoredPremises where
   version := 1
   node_count := 1
@@ -116,6 +158,35 @@ private def wrongRootLength : WireAnchoredPremises :=
 example : (match wrongRootLength.check with | .error _ => true | .ok _ => false) = true := by
   native_decide
 
+private def validRegularBase : WireRegularCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 1
+  role_count := 1
+  variable_count := 1
+  labels := [{ node := 0, literal := { concept := 0, neg := false } }]
+  edges := []
+  obligations := []
+  redirect := [0]
+  cover := []
+  sub_roles := []
+  inverse_roles := []
+  chains := []
+  reflexive_roles := []
+  role_clauses := []
+  residual := []
+
+private def validAnchoredCertificate : WireAnchoredCertificate where
+  version := 1
+  base := validRegularBase
+  nominal_roots := [some 0]
+
+example : validAnchoredCertificate.check = .ok true := by native_decide
+example : ({ validAnchoredCertificate with
+    base := { validRegularBase with labels := [] } }).check = .ok false := by
+  native_decide
+
 #print axioms DecodedAnchoredPremises.check_sound
+#print axioms DecodedAnchoredCertificate.check_models
 
 end ContextCalculus.Hypertableau

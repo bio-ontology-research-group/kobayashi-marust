@@ -419,6 +419,143 @@ theorem interpretation_models_of_saturated
   exact ⟨atom, hatom, interpretation_sat_holdsAtom state redirect slotAllowed
     anchor rules nominalRoot hclash hcoherent hwitness hslot assignment atom hholds⟩
 
+/-- Every anchored atom match projects to the finite endpoint cover used by the
+regular certificate checker. -/
+theorem holdsAtom_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (assignment : Variable → AnchoredForestDomain state redirect slotAllowed anchor)
+    (atom : Atom Variable Concept Role)
+    (hholds : HoldsAtom state redirect slotAllowed anchor rules assignment atom) :
+    state.CoverHoldsAtom cover (fun node => (assignment node).endpoint) atom := by
+  cases atom with
+  | concept => exact hholds
+  | role role source target =>
+      exact hcover role _ _ hholds.endpoint
+  | exists_ => exact hholds
+  | eq left right => exact congrArg endpoint hholds
+
+/-- Concept and existential heads depend only on endpoints, so a finite cover
+head lifts back to every anchored assignment with those endpoints. -/
+theorem coverHoldsAtom_lift
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (assignment : Variable → AnchoredForestDomain state redirect slotAllowed anchor)
+    (atom : Atom Variable Concept Role) (hliftable : PathLiftableHead atom)
+    (hholds : state.CoverHoldsAtom cover
+      (fun node => (assignment node).endpoint) atom) :
+    HoldsAtom state redirect slotAllowed anchor rules assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq => contradiction
+
+theorem discharges_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (clause : Clause Variable Concept Role)
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : state.CoverDischarges cover clause) :
+    Discharges state redirect slotAllowed anchor rules clause := by
+  intro assignment hbody
+  have hcoverBody : ∀ atom ∈ clause.body,
+      state.CoverHoldsAtom cover (fun node => (assignment node).endpoint) atom := by
+    intro atom hatom
+    exact holdsAtom_cover state redirect slotAllowed anchor rules cover hcover
+      assignment atom (hbody atom hatom)
+  rcases hdischarges (fun node => (assignment node).endpoint) hcoverBody with
+    ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom, coverHoldsAtom_lift state redirect slotAllowed anchor rules
+    cover assignment atom (hheads atom hatom) hholds⟩
+
+theorem saturatedFor_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (ontology : List (Clause Variable Concept Role))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hdischarges : ∀ clause ∈ ontology,
+      state.CoverDischarges cover clause) :
+    SaturatedFor state redirect slotAllowed anchor rules ontology := by
+  intro clause hclause
+  exact discharges_of_cover state redirect slotAllowed anchor rules cover hcover
+    clause (hheads clause hclause) (hdischarges clause hclause)
+
+theorem anchoredRoleClause_models
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (rule : NormalizedRoleClause Variable Role)
+    (hauthorized : rule.Authorized rules) :
+    (interpretation state redirect slotAllowed anchor rules nominalRoot).modelsClause
+      (rule.toClause (Concept := Concept)) := by
+  intro assignment hbody
+  cases rule with
+  | subRole premise conclusion source target =>
+      refine ⟨.role conclusion source target, by simp [NormalizedRoleClause.toClause], ?_⟩
+      exact RoleClosure.sub hauthorized
+        (hbody (.role premise source target) (by simp [NormalizedRoleClause.toClause]))
+  | inverseRole premise conclusion source target =>
+      refine ⟨.role conclusion target source, by simp [NormalizedRoleClause.toClause], ?_⟩
+      exact RoleClosure.inverse hauthorized
+        (hbody (.role premise source target) (by simp [NormalizedRoleClause.toClause]))
+  | chain first second conclusion source middle target =>
+      refine ⟨.role conclusion source target, by simp [NormalizedRoleClause.toClause], ?_⟩
+      exact RoleClosure.chain hauthorized
+        (hbody (.role first source middle) (by simp [NormalizedRoleClause.toClause]))
+        (hbody (.role second middle target) (by simp [NormalizedRoleClause.toClause]))
+  | reflexive role source =>
+      refine ⟨.role role source source, by simp [NormalizedRoleClause.toClause], ?_⟩
+      exact RoleClosure.refl hauthorized
+
+/-- The existing finite regular certificate proves both partitions of the
+nominal-aware model: normalized RBox clauses by role closure and residual
+clauses by endpoint-cover discharge. -/
+theorem interpretation_models_partition_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (cover : Role → Node → Node → Prop)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (residual : List (Clause Variable Concept Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules)
+    (hguarded : ∀ clause ∈ residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ residual, ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hclash : state.ClashFree)
+    (hcoherent : NominalLabelCoherent state anchor nominalRoot)
+    (hwitness : RedirectWitnessComplete state redirect)
+    (hslot : ∀ node role target, state.edge role (redirect node) target →
+      slotAllowed node role target 0)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (hdischarges : ∀ clause ∈ residual, state.CoverDischarges cover clause) :
+    (interpretation state redirect slotAllowed anchor rules nominalRoot).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept)) ++
+        residual) := by
+  intro clause hclause
+  rcases List.mem_append.mp hclause with hrole | hresidual
+  · simp only [List.mem_map] at hrole
+    obtain ⟨rule, hrule, rfl⟩ := hrole
+    exact anchoredRoleClause_models state redirect slotAllowed anchor rules
+      nominalRoot rule (hauthorized rule hrule)
+  · exact interpretation_models_of_saturated state redirect slotAllowed anchor
+      rules nominalRoot residual hguarded hclash hcoherent hwitness hslot
+      (saturatedFor_of_cover state redirect slotAllowed anchor rules cover hcover
+        residual hheads hdischarges) clause hresidual
+
 theorem interpretation_direct
     (state : State Node Concept Role) (redirect : Node → Node)
     (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
