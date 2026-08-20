@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauTaxonomyWire
 import ContextCalculus.HypertableauEqualityWire
+import ContextCalculus.HypertableauAnchoredEqualityWire
 
 /-!
 # Mixed equality-free/equality-aware HT taxonomy certificates
@@ -18,6 +19,7 @@ open Lean
 inductive WireMixedQueryPayload where
   | plain (payload : WireQueryPayload)
   | equality (node_count : Nat) (state : WireEqState) (evidence : WireEqEvidence)
+  | anchored (certificate : WireAnchoredEqCertificate) (evidence : WireEqEvidence)
 deriving FromJson, ToJson, Repr
 
 structure WireMixedTaxonomyCertificate where
@@ -96,6 +98,42 @@ def WireMixedQueryPayload.decodeConcept
             else throw "equality-aware concept model omits its declared root label"
           else throw "equality-aware concept evidence is in the wrong matrix position"
       | _ => throw "expected equality-aware concept-status evidence"
+  | .anchored wire evidence =>
+      let decoded ← wire.decodeAt conceptCount roleCount variableCount
+      let certificate := decoded.certificate
+      if hontology : certificate.equality.base.ontology = ontology then
+        match evidence with
+        | .satisfiable_concept root concept =>
+            let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
+            let concept ← checkedFin "concept" conceptCount concept
+            if hconcept : concept = expected then
+              if hlabel : (root, .pos expected) ∈ certificate.equality.base.labels then
+                if hmodel : certificate.check = true then
+                  letI : NeZero decoded.regularNodeCount :=
+                    ⟨Nat.ne_of_gt decoded.positive⟩
+                  let I := AnchoredForestDomain.interpretation
+                    certificate.regular.state certificate.regular.redirect
+                    (fun _ _ _ _ => True)
+                    (AnchoredForestDomain.NominalAnchor certificate.nominalRoot)
+                    certificate.regular.rules certificate.nominalRoot
+                  let value := AnchoredForestDomain.root certificate.regular.state
+                    certificate.regular.redirect (fun _ _ _ _ => True)
+                    (AnchoredForestDomain.NominalAnchor certificate.nominalRoot)
+                    (certificate.classMap root)
+                  have hmodels : I.models ontology := by
+                    rw [← hontology]
+                    exact certificate.check_models hmodel
+                  have hsatisfies : I.concept expected value := by
+                    simpa [Interp.satLit] using
+                      certificate.check_sat_source_label hmodel root (.pos expected) hlabel
+                  return .satisfiable (by
+                    intro hunsat
+                    exact hunsat _ I hmodels value hsatisfies)
+                else throw "anchored concept model was rejected"
+              else throw "anchored concept model omits its declared root label"
+            else throw "anchored concept evidence is in the wrong matrix position"
+        | _ => throw "expected anchored concept countermodel evidence"
+      else throw "anchored concept model has a different ontology"
 
 def WireMixedQueryPayload.decodeSubsumption
     (payload : WireMixedQueryPayload)
@@ -144,6 +182,54 @@ def WireMixedQueryPayload.decodeSubsumption
             else throw "equality-aware non-subsumption evidence has the wrong superclass"
           else throw "equality-aware non-subsumption evidence has the wrong subclass"
       | _ => throw "expected equality-aware subsumption evidence"
+  | .anchored wire evidence =>
+      let decoded ← wire.decodeAt conceptCount roleCount variableCount
+      let certificate := decoded.certificate
+      if hontology : certificate.equality.base.ontology = ontology then
+        match evidence with
+        | .non_subsumption root sub sup =>
+            let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
+            let sub ← checkedFin "concept" conceptCount sub
+            let sup ← checkedFin "concept" conceptCount sup
+            if hsub : sub = expectedSub then
+              if hsup : sup = expectedSup then
+                if hsubLabel : (root, .pos expectedSub) ∈
+                    certificate.equality.base.labels then
+                  if hnotSupLabel : (root, .negated expectedSup) ∈
+                      certificate.equality.base.labels then
+                    if hmodel : certificate.check = true then
+                      letI : NeZero decoded.regularNodeCount :=
+                        ⟨Nat.ne_of_gt decoded.positive⟩
+                      let I := AnchoredForestDomain.interpretation
+                        certificate.regular.state certificate.regular.redirect
+                        (fun _ _ _ _ => True)
+                        (AnchoredForestDomain.NominalAnchor certificate.nominalRoot)
+                        certificate.regular.rules certificate.nominalRoot
+                      let value := AnchoredForestDomain.root certificate.regular.state
+                        certificate.regular.redirect (fun _ _ _ _ => True)
+                        (AnchoredForestDomain.NominalAnchor certificate.nominalRoot)
+                        (certificate.classMap root)
+                      have hmodels : I.models ontology := by
+                        rw [← hontology]
+                        exact certificate.check_models hmodel
+                      have hsubSat : I.concept expectedSub value := by
+                        simpa [Interp.satLit] using
+                          certificate.check_sat_source_label hmodel root
+                            (.pos expectedSub) hsubLabel
+                      have hnotSup : ¬I.concept expectedSup value := by
+                        simpa [Interp.satLit] using
+                          certificate.check_sat_source_label hmodel root
+                            (.negated expectedSup) hnotSupLabel
+                      return .notEntailed (by
+                        intro hentails
+                        exact hnotSup (hentails _ I hmodels value hsubSat))
+                    else throw "anchored subsumption countermodel was rejected"
+                  else throw "anchored countermodel omits the negative superclass"
+                else throw "anchored countermodel omits the subclass"
+              else throw "anchored non-subsumption evidence has the wrong superclass"
+            else throw "anchored non-subsumption evidence has the wrong subclass"
+        | _ => throw "expected anchored subsumption countermodel evidence"
+      else throw "anchored subsumption model has a different ontology"
 
 def decodeMixedConceptEntries
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
@@ -329,6 +415,49 @@ private def plainNonSubsumption (sub sup : Nat) : WireMixedQueryPayload := .plai
   evidence := .non_subsumption 0 sub sup
 }
 
+private def anchoredCertificate (labels : List WireLabel) : WireAnchoredEqCertificate where
+  version := 1
+  equality_node_count := 2
+  regular := {
+    version := 1
+    node_count := 1
+    concept_count := 2
+    role_count := 1
+    variable_count := 0
+    labels := labels.map fun label => { label with node := 0 }
+    edges := []
+    obligations := []
+    redirect := [0]
+    cover := []
+    sub_roles := []
+    inverse_roles := []
+    chains := []
+    reflexive_roles := []
+    role_clauses := []
+    residual := []
+  }
+  equality_ontology := []
+  equality_state := {
+    labels := labels.map fun label => { label with node := 1 }
+    edges := []
+    obligations := []
+    equalities := [{ left := 0, right := 1 }]
+    representatives := [0, 0]
+    representative_paths := [[], [0]]
+  }
+  class_map := [0, 0]
+  nominal_roots := [none, none]
+
+private def anchoredConcept (concept : Nat) : WireMixedQueryPayload := .anchored
+  (anchoredCertificate [{ node := 1, literal := ⟨concept, false⟩ }])
+  (.satisfiable_concept 1 concept)
+
+private def anchoredNonSubsumption (sub sup : Nat) : WireMixedQueryPayload := .anchored
+  (anchoredCertificate [
+    { node := 1, literal := ⟨sub, false⟩ },
+    { node := 1, literal := ⟨sup, true⟩ }])
+  (.non_subsumption 1 sub sup)
+
 private def accepted : WireMixedTaxonomyCertificate where
   version := 2
   concept_count := 2
@@ -342,6 +471,23 @@ private def accepted : WireMixedTaxonomyCertificate where
     [plainNonSubsumption 1 0, plainReflexive 1]]
 
 example : accepted.check = true := by native_decide
+
+private def anchoredAccepted : WireMixedTaxonomyCertificate :=
+  { accepted with
+    concepts := [anchoredConcept 0, plainConcept 1]
+    subsumptions := [
+      [eqReflexive 0, anchoredNonSubsumption 0 1],
+      [plainNonSubsumption 1 0, plainReflexive 1]] }
+
+example : anchoredAccepted.check = true := by native_decide
+
+private def forgedAnchored : WireMixedTaxonomyCertificate :=
+  { anchoredAccepted with concepts := [.anchored
+      { anchoredCertificate [{ node := 1, literal := ⟨0, false⟩ }] with
+        class_map := [0] }
+      (.satisfiable_concept 1 0), plainConcept 1] }
+
+example : forgedAnchored.check = false := by native_decide
 
 private def missingCell : WireMixedTaxonomyCertificate :=
   { accepted with subsumptions := [[eqReflexive 0], accepted.subsumptions[1]!] }

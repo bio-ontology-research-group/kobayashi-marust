@@ -11560,6 +11560,25 @@ impl Ht {
                         return Ok((false, closed_document()?));
                     }
                     LeanHtEqRefutationOutcome::Open(state) => {
+                        if let Ok(anchored) =
+                            self.lean_anchored_equality_open_certificate_json(&state)
+                        {
+                            let anchored: serde_json::Value = serde_json::from_str(&anchored)
+                                .map_err(|error| error.to_string())?;
+                            return Ok((
+                                true,
+                                serde_json::to_string(&serde_json::json!({
+                                    "version": 8,
+                                    "concept_count": concept_count,
+                                    "role_count": role_count,
+                                    "variable_count": variable_count,
+                                    "ontology": ontology.clone(),
+                                    "certificate": anchored,
+                                    "evidence": query.equality_open_evidence(),
+                                }))
+                                .map_err(|error| error.to_string())?,
+                            ));
+                        }
                         let node_count = state.representatives.len();
                         return Ok((
                             true,
@@ -12373,6 +12392,17 @@ impl Ht {
                             "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
                             "state": object.get("state").cloned().ok_or("missing equality state")?,
                             "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+                        }
+                    });
+                    Ok((value, None, mixed, true))
+                }
+                8 => {
+                    let mixed = serde_json::json!({
+                        "anchored": {
+                            "certificate": object.get("certificate").cloned()
+                                .ok_or("missing anchored certificate")?,
+                            "evidence": object.get("evidence").cloned()
+                                .ok_or("missing anchored evidence")?,
                         }
                     });
                     Ok((value, None, mixed, true))
@@ -21623,7 +21653,7 @@ mod tests {
     }
 
     #[test]
-    fn lean_taxonomy_wire_uses_equality_cells_for_a_genuine_equality_head() {
+    fn lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head() {
         let mut t = ht(vec![Clause::new(
             vec![con(false, D, X)],
             vec![con(false, A, X), Atom::Eq { s: X, t: X }],
@@ -21634,9 +21664,9 @@ mod tests {
         )
         .expect("mixed taxonomy certificate is JSON");
         assert_eq!(wire["version"], 2);
-        assert!(wire["concepts"][0]["equality"].is_object());
+        assert!(wire["concepts"][0]["anchored"].is_object());
         assert!(wire["subsumptions"][0][0]["equality"].is_object());
-        assert!(wire["subsumptions"][0][1]["equality"].is_object());
+        assert!(wire["subsumptions"][0][1]["anchored"].is_object());
     }
 
     #[test]
@@ -22882,8 +22912,8 @@ mod tests {
             std::env::temp_dir().join(format!("km-ht-taxonomy-cert-{}.json", std::process::id()));
         let mut plain = ht(Vec::new());
         let mut mixed = ht(vec![Clause::new(
-            vec![con(false, D, X), Atom::Eq { s: X, t: X }],
-            vec![con(false, A, X)],
+            vec![con(false, D, X)],
+            vec![con(false, A, X), Atom::Eq { s: X, t: X }],
         )]);
         let documents = [
             plain
@@ -22893,6 +22923,19 @@ mod tests {
                 .lean_taxonomy_certificate_json(&[A, B])
                 .expect("produce complete mixed equality taxonomy"),
         ];
+        let mixed_wire: serde_json::Value =
+            serde_json::from_str(&documents[1]).expect("mixed taxonomy is JSON");
+        let mixed_payload = if mixed_wire["version"] == 3 || mixed_wire["version"] == 4 {
+            &mixed_wire["payload"]["mixed"]["certificate"]
+        } else {
+            &mixed_wire
+        };
+        assert!(
+            mixed_payload["concepts"]
+                .as_array()
+                .is_some_and(|cells| cells.iter().any(|cell| cell.get("anchored").is_some())),
+            "blocked equality taxonomy cells must publish anchored countermodels"
+        );
         for document in &documents {
             std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");
             let accepted = std::process::Command::new(&checker)

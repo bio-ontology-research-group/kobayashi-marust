@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.125] – 2026-08-20
+
+### Certify anchored equality countermodels in HT taxonomies
+
+- Extend the mixed taxonomy wire with anchored equality evidence for
+  satisfiable-concept and non-subsumption cells.
+- Prove that an accepted dense equality image transports each asserted source
+  label to the anchored model root, which supplies the positive and negative
+  query facts needed by those countermodels.
+- Decode anchored certificates directly against the shared taxonomy
+  dimensions and ontology. The checker rejects mismatched dimensions, query
+  positions, labels, class maps, and incomplete certificate premises.
+- Let the Rust taxonomy producer emit anchored equality countermodels before
+  falling back to finite quotient evidence, and exercise the complete mixed
+  matrix through the native Lean checker.
+
+This closes negative-cell publication for checker-accepted blocked equality
+and nominal taxonomy branches. Cardinality-aware anchored taxonomy models and
+the remaining runtime-to-transition correspondence are still certification
+tasks. It does not certify the entire KM executable or automatic router.
+
 ## [0.3.124] – 2026-08-20
 
 ### Publish source-aware anchored equality SAT witnesses

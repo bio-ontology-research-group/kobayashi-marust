@@ -41,9 +41,10 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.124`. This milestone checks source-aware global SAT publication from a
-finite HT equality state through its dense nominal-aware anchored model; it
-does not certify the entire Rust executable.
+`v0.3.125`. This milestone checks source-aware global SAT publication and
+negative HT taxonomy cells through dense nominal-aware anchored equality
+models. It does not certify cardinality-aware anchored taxonomies, the entire
+Rust executable, or automatic routing.
 
 ## Classify an ontology
 
@@ -283,8 +284,11 @@ duplicated, or reassigned cells. Set both
 with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
 The worker derives its published taxonomy directly from the accepted matrix and
 publishes nothing if either the global or taxonomy checker rejects. This covers
-only the equality-free ALC(H) certificate fragment described above; it is not a
-certificate for all HT inputs or for automatic routing.
+the equality-free ALC(H) fragment and checker-accepted finite or anchored
+equality and nominal countermodels. Cardinality-aware anchored taxonomy models
+and complete correspondence between every Rust transition and the formal
+search remain unfinished. This is not a certificate for all HT inputs or for
+automatic routing.
 
 The Lean development also proves semantic exactness of the direct
 frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC

@@ -168,9 +168,44 @@ theorem FiniteAnchoredEqCertificate.check_models
   rw [← hsound.1]
   exact anchoredCheck_models certificate.regular certificate.nominalRoot hsound.2.2.2
 
+theorem FiniteAnchoredEqCertificate.check_sat_source_label
+    [NeZero regularNodeCount]
+    (certificate : FiniteAnchoredEqCertificate
+      eqNodeCount regularNodeCount conceptCount roleCount variableCount)
+    (hcheck : certificate.check = true) (source : Fin eqNodeCount)
+    (lit : Lit (Fin conceptCount))
+    (hlabel : certificate.equality.base.state.label source lit) :
+    let value := AnchoredForestDomain.root certificate.regular.state
+      certificate.regular.redirect (fun _ _ _ _ => True)
+      (NominalAnchor certificate.nominalRoot) (certificate.classMap source)
+    (interpretation certificate.regular.state certificate.regular.redirect
+      (fun _ _ _ _ => True) (NominalAnchor certificate.nominalRoot)
+      certificate.regular.rules certificate.nominalRoot).satLit lit value := by
+  have hsound := certificate.check_sound hcheck
+  have himage := hsound.2.2.1
+  have hregularLabel : certificate.regular.state.label
+      (certificate.classMap source) lit :=
+    (himage.1 (certificate.classMap source) lit).2
+      ⟨source, List.mem_finRange source, rfl, hlabel⟩
+  have hanchored := hsound.2.2.2
+  simp only [anchoredCheck, Bool.and_eq_true] at hanchored
+  have hpremises := finitePremisesB_sound
+    (regularSatCertificate certificate.regular) certificate.regular.redirect
+    certificate.nominalRoot hanchored.2
+  rw [regularSatCertificate_state] at hpremises
+  exact interpretation_sat_label certificate.regular.state
+    certificate.regular.redirect (fun _ _ _ _ => True)
+    (NominalAnchor certificate.nominalRoot) certificate.regular.rules
+    certificate.nominalRoot hpremises.1 hpremises.2.1
+    (AnchoredForestDomain.root certificate.regular.state
+      certificate.regular.redirect (fun _ _ _ _ => True)
+      (NominalAnchor certificate.nominalRoot) (certificate.classMap source))
+    lit hregularLabel
+
 #print axioms FiniteAnchoredEqCertificate.classQuotientB_sound
 #print axioms FiniteAnchoredEqCertificate.exactImageB_sound
 #print axioms FiniteAnchoredEqCertificate.check_models
+#print axioms FiniteAnchoredEqCertificate.check_sat_source_label
 
 end AnchoredForestDomain
 end ContextCalculus.Hypertableau
