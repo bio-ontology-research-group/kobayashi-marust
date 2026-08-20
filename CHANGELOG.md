@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+## [0.3.175] – 2026-08-21
+
+### Certify deterministic maximum representatives
+
+- Formalize Rust's exact maximum candidate scan over ascending finite target
+  IDs, with quotient-closed role and filler qualification.
+- Formalize its left-to-right greedy selection that retains the first target
+  from each equality class.
+- Prove every selected representative came from the qualifying target list and
+  therefore satisfies the required closed edge and filler facts.
+- Prove selected representatives are pairwise quotient-distinct.
+- Audit the deterministic selection theorems without `sorryAx`.
+
+Certified width checking and truncation to the dependent `n+1` vector,
+completeness of greedy class coverage, exact recursive outcome production,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.174] – 2026-08-21
 
 ### Preserve active-prefix freshness through assertion and merge
