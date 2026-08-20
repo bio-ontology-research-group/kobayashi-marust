@@ -19860,6 +19860,19 @@ mod tests {
     }
 
     #[test]
+    fn equality_free_refutation_frontiers_on_an_unblocked_satisfiable_cycle() {
+        let cyclic = Ht::new_certified(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![exists(R0, false, A, X)],
+        )]);
+        let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+        assert!(matches!(
+            cyclic.lean_refutation(&mut state, 1, 4),
+            LeanHtRefutationOutcome::Frontier
+        ));
+    }
+
+    #[test]
     fn certified_unsat_refutation_deepens_past_the_historical_node_cap() {
         const FIRST: C = 100;
         const DEPTH: usize = 10;

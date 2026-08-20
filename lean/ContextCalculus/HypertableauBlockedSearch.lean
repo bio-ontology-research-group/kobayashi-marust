@@ -90,8 +90,55 @@ theorem finite_exhaustive_ht_complete_with_checked_folds
     · exact Or.inr (hasModel_of_hasCheckedFoldModel hfold)
   · exact hcloseChildren
 
+/-- Equality-free finite search using the producer's exact clause-first
+transition policy decides the root semantically. This removes abstract growth
+and child-closure premises: strict growth follows from absent branch heads or
+a fresh witness, and HT refutation constructors combine every closed child.
+The remaining runtime obligation is to enumerate this finite search and supply
+a checked fold at every non-refuting terminal. -/
+theorem finite_first_obstruction_ht_decides
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (next : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount) (Fin roleCount)) →
+      List (Finset (GuardedFact (Fin nodeCount) (Fin conceptCount) (Fin roleCount))))
+    (hstep : ∀ facts, next facts ≠ [] →
+      FirstObstructionStep ontology (stateOfGuardedFacts facts)
+        ((next facts).map stateOfGuardedFacts))
+    (hterminal : ∀ facts, next facts = [] →
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts facts) ∨
+      HasCheckedFoldModel (nodeCount := nodeCount) ontology) :
+    ∀ root, Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      HasModel ontology := by
+  intro root
+  have hgrowth : ∀ parent child, child ∈ next parent →
+      StrictGrowth child parent := by
+    intro parent child hchild
+    have hnonempty : next parent ≠ [] := by
+      intro hempty
+      simp [hempty] at hchild
+    have step := hstep parent hnonempty
+    have hstateChild : stateOfGuardedFacts child ∈
+        (next parent).map stateOfGuardedFacts :=
+      List.mem_map_of_mem hchild
+    have hstrict := step.children_strictGrowth hstateChild
+    simpa using hstrict
+  have hclose : ∀ facts, next facts ≠ [] →
+      (∀ child, child ∈ next facts →
+        Refutes (Fin nodeCount) ontology (stateOfGuardedFacts child)) →
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts facts) := by
+    intro facts hnonempty hchildren
+    apply (hstep facts hnonempty).exhaustiveStep.refutes_of_children
+    intro child hchild
+    rcases List.mem_map.mp hchild with ⟨childFacts, hchildFacts, rfl⟩
+    exact hchildren childFacts hchildFacts
+  rcases finite_exhaustive_ht_complete_with_checked_folds ontology
+      stateOfGuardedFacts next hgrowth hterminal hclose root with
+    hrefutes | ⟨_, _, hmodel⟩
+  · exact Or.inl hrefutes
+  · exact Or.inr hmodel
+
 #print axioms hasModel_of_hasCheckedFoldModel
 #print axioms BoundedSearchOutcome.semantic_or_frontier
 #print axioms finite_exhaustive_ht_complete_with_checked_folds
+#print axioms finite_first_obstruction_ht_decides
 
 end ContextCalculus.Hypertableau

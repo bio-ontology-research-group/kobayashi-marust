@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.77] – 2026-08-20
+
+### Derive the finite equality-free HT decision capstone
+
+- Specialize exhaustive finite search to the exact clause-first
+  `FirstObstructionStep` policy used by the Rust producer.
+- Derive strict growth from absent head assertions and fresh witness creation,
+  rather than accepting it as an external premise.
+- Derive parent refutation from the semantic HT branch and witness
+  constructors, rather than accepting child closure as an external premise.
+- Conclude that the finite root is refuted or the exact ontology has a checked
+  model.
+- Add a regression demonstrating that the current standalone Rust refutation
+  producer is still unblocked and therefore reaches a bounded frontier on a
+  satisfiable existential cycle. This records the remaining runtime-totality
+  gap instead of assuming iterative deepening alone closes it.
+
+The next runtime milestone must enumerate the finite blocked search or extract
+certified evidence from the blocked decision run.
+
 ## [0.3.76] – 2026-08-20
 
 ### Formalize the equality-free HT first-obstruction policy
