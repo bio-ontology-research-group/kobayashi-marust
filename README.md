@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.163`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.164`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -102,8 +102,10 @@ quotient-closed distinct-cardinality refutation relation proves the exact
 `closed_holds` clause scan sound, including selected and exhausted outcomes.
 The quotient-blocked existential scan now composes with an executable
 distinct-fresh-node selector, proving selected witness recursion sound and
-fresh-node exhaustion exact. Minimum, maximum, and terminal selection remain
-to be connected.
+fresh-node exhaustion exact. Minimum selection now uses the exact
+quotient-closed marker and blocking premises, with a proved marker-relocation
+lemma for materializing pairwise-distinct witnesses. Maximum and terminal
+selection remain to be connected.
 
 ## Classify an ontology
 

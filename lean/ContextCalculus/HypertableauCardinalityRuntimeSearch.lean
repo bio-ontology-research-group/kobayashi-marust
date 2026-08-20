@@ -13,6 +13,64 @@ refutation; exhausting the scan proves that no such clash exists.
 
 namespace ContextCalculus.Hypertableau
 
+theorem EqState.realized_closedLabel
+    (state : EqState Node Concept Role)
+    (I : Interp Domain Concept Role) (value : Node → Domain)
+    (hrealized : state.RealizedBy I value) (node : Node) (lit : Lit Concept)
+    (hlabel : state.closedLabel node lit) : I.satLit lit (value node) := by
+  rcases hlabel with ⟨source, hequiv, hsource⟩
+  have hsatisfies := hrealized.1.1 source lit hsource
+  rw [hrealized.2 source node hequiv] at hsatisfies
+  exact hsatisfies
+
+theorem EqState.realized_closedEdge
+    (state : EqState Node Concept Role)
+    (I : Interp Domain Concept Role) (value : Node → Domain)
+    (hrealized : state.RealizedBy I value) (role : Role) (source target : Node)
+    (hedge : state.closedEdge role source target) :
+    I.role role (value source) (value target) := by
+  rcases hedge with ⟨edgeSource, edgeTarget, hsource, htarget, hedge⟩
+  have hsatisfies := hrealized.1.2.1 role edgeSource edgeTarget hedge
+  rw [hrealized.2 edgeSource source hsource,
+    hrealized.2 edgeTarget target htarget] at hsatisfies
+  exact hsatisfies
+
+theorem DistinctEqState.materializeMinimum_closed_realized
+    (state : DistinctEqState Node Concept Role)
+    (I : Interp Domain Concept Role) (value : Node → Domain)
+    (hrealized : state.RealizedBy I value)
+    (source : Node) (targets : Fin count → Node) (role : Role) (filler marker : Concept)
+    (hmarker : state.base.closedLabel source (.pos marker))
+    (hfresh : state.FreshFamily targets)
+    (witnesses : Fin count → Domain) (hinjective : Function.Injective witnesses)
+    (hsuccessors : ∀ index, I.role role (value source) (witnesses index) ∧
+      I.concept filler (witnesses index)) :
+    ∃ value', (state.materializeMinimum source targets role filler).RealizedBy I value' := by
+  rcases hmarker with ⟨markerSource, hequiv, hmarkerSource⟩
+  have hsuccessors' : ∀ index,
+      I.role role (value markerSource) (witnesses index) ∧
+        I.concept filler (witnesses index) := by
+    intro index
+    rw [hrealized.1.2 markerSource source hequiv]
+    exact hsuccessors index
+  rcases state.materializeMinimum_realized I value hrealized markerSource targets role
+      filler marker hmarkerSource hfresh witnesses hinjective hsuccessors' with
+    ⟨value', hmaterialized⟩
+  refine ⟨value', ⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_⟩
+  · exact hmaterialized.1.1.1
+  · intro candidateRole candidateSource candidateTarget hedge
+    rcases hedge with hedge | ⟨index, hrole, hsource, htarget⟩
+    · exact hmaterialized.1.1.2.1 candidateRole candidateSource candidateTarget
+        (Or.inl hedge)
+    · have hedge' := hmaterialized.1.1.2.1 role markerSource (targets index)
+          (Or.inr ⟨index, rfl, rfl, rfl⟩)
+      have hvalue := hmaterialized.1.2 markerSource source hequiv
+      rw [hvalue] at hedge'
+      simpa [hrole, hsource, htarget] using hedge'
+  · exact hmaterialized.1.1.2.2
+  · exact hmaterialized.1.2
+  · exact hmaterialized.2
+
 /-- Cardinality refutations whose clause bodies use the same complete quotient
 closure as Rust's `closed_holds`.  The remaining constructors are the ordinary
 distinct-cardinality rules. -/
@@ -49,12 +107,12 @@ inductive ClosedDistinctCardinalityRefutes (Node : Type u)
   | maximum (state) (definition : CardinalityDef Concept Role)
       (hdefinition : definition ∈ definitions)
       (hkind : definition.kind = .maximum)
-      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (source : Node) (hmarker : state.base.closedLabel source (.pos definition.marker))
       (witnesses : Fin (definition.bound + 1) → Node)
       (hedge : ∀ index,
-        state.base.base.edge definition.role source (witnesses index))
+        state.base.closedEdge definition.role source (witnesses index))
       (hfiller : ∀ index,
-        state.base.base.label (witnesses index) (.pos definition.filler))
+        state.base.closedLabel (witnesses index) (.pos definition.filler))
       (children : ∀ left right, left ≠ right →
         ClosedDistinctCardinalityRefutes Node ontology definitions
           (state.merge (witnesses left) (witnesses right))) :
@@ -62,7 +120,7 @@ inductive ClosedDistinctCardinalityRefutes (Node : Type u)
   | minimum (state) (definition : CardinalityDef Concept Role)
       (hdefinition : definition ∈ definitions)
       (hkind : definition.kind = .minimum)
-      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (source : Node) (hmarker : state.base.closedLabel source (.pos definition.marker))
       (targets : Fin definition.bound → Node)
       (hfresh : state.FreshFamily targets)
       (child : ClosedDistinctCardinalityRefutes Node ontology definitions
@@ -107,14 +165,17 @@ theorem ClosedDistinctCardinalityRefutes.sound
       hedge hfiller children ih =>
       rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
       have hmarkerSat : I.concept definition.marker (value source) :=
-        hrealized.1.1.1 source (.pos definition.marker) hmarker
+        state.base.realized_closedLabel I value hrealized.1 source
+          (.pos definition.marker) hmarker
       have hdefinitionModels : I.modelsCardinalityDef definition :=
         hcardinality definition hdefinition
       have hsuccessors : ∀ index,
           I.cardinalitySuccessor definition (value source) (value (witnesses index)) := by
         intro index
-        exact ⟨hrealized.1.1.2.1 definition.role source (witnesses index) (hedge index),
-          hrealized.1.1.1 (witnesses index) (.pos definition.filler) (hfiller index)⟩
+        exact ⟨state.base.realized_closedEdge I value hrealized.1 definition.role
+            source (witnesses index) (hedge index),
+          state.base.realized_closedLabel I value hrealized.1 (witnesses index)
+            (.pos definition.filler) (hfiller index)⟩
       have hnotInjective :
           ¬Function.Injective (fun index => value (witnesses index)) :=
         Interp.maximum_forces_merge (I := I) definition hkind
@@ -134,12 +195,13 @@ theorem ClosedDistinctCardinalityRefutes.sound
   | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
       rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
       have hmarkerSat : I.concept definition.marker (value source) :=
-        hrealized.1.1.1 source (.pos definition.marker) hmarker
+        state.base.realized_closedLabel I value hrealized.1 source
+          (.pos definition.marker) hmarker
       have hdefinitionModels : I.modelsCardinalityDef definition :=
         hcardinality definition hdefinition
       rcases I.minimum_witnesses definition hkind hdefinitionModels (value source)
           hmarkerSat with ⟨witnesses, hinjective, hsuccessors⟩
-      rcases state.materializeMinimum_realized I value hrealized source targets
+      rcases state.materializeMinimum_closed_realized I value hrealized source targets
           definition.role definition.filler definition.marker hmarker hfresh witnesses
           hinjective hsuccessors with ⟨value', hchild⟩
       exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
@@ -160,10 +222,16 @@ theorem DistinctCardinalityRefutes.toClosed
       exact .equalityApart state left right hequal hapart
   | maximum state definition hdefinition hkind source hmarker witnesses hedge hfiller
       children ih =>
-      exact .maximum state definition hdefinition hkind source hmarker witnesses hedge
-        hfiller ih
+      exact .maximum state definition hdefinition hkind source
+        ⟨source, state.base.equiv_equivalence.refl source, hmarker⟩ witnesses
+        (fun index => ⟨source, witnesses index,
+          state.base.equiv_equivalence.refl source,
+          state.base.equiv_equivalence.refl (witnesses index), hedge index⟩)
+        (fun index => ⟨witnesses index,
+          state.base.equiv_equivalence.refl (witnesses index), hfiller index⟩) ih
   | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
-      exact .minimum state definition hdefinition hkind source hmarker targets hfresh ih
+      exact .minimum state definition hdefinition hkind source
+        ⟨source, state.base.equiv_equivalence.refl source, hmarker⟩ targets hfresh ih
 
 abbrev EqualityApartCandidate (Node : Type) := Node × Node
 
@@ -480,6 +548,133 @@ theorem selectCardinalityWitness_not_realizable
   (selectCardinalityWitness_closedRefutes ontology definitions state parent ancestors
     hwitness hfresh child).sound
 
+abbrev MinimumCandidate (Node Concept Role : Type) :=
+  CardinalityDef Concept Role × Node
+
+noncomputable def allMinimumCandidates
+    [Fintype Node] [DecidableEq Node]
+    (definitions : List (CardinalityDef Concept Role)) :
+    List (MinimumCandidate Node Concept Role) :=
+  definitions.flatMap fun definition =>
+    (Finset.univ.toList : List Node).map fun source => (definition, source)
+
+theorem mem_allMinimumCandidates
+    [Fintype Node] [DecidableEq Node]
+    {definitions : List (CardinalityDef Concept Role)}
+    {candidate : MinimumCandidate Node Concept Role} :
+    candidate ∈ allMinimumCandidates definitions ↔ candidate.1 ∈ definitions := by
+  classical
+  rcases candidate with ⟨definition, source⟩
+  simp [allMinimumCandidates]
+
+noncomputable def minimumCandidateBool
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop)
+    (candidate : MinimumCandidate Node Concept Role) : Bool := by
+  classical
+  exact decide (candidate.1.kind = .minimum) &&
+    decide (state.base.closedLabel candidate.2 (.pos candidate.1.marker)) &&
+    decide (¬expanded candidate.1 candidate.2) &&
+    !(quotientBlockedBool state.base parent ancestors candidate.2)
+
+theorem minimumCandidateBool_eq_true_iff
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop)
+    (candidate : MinimumCandidate Node Concept Role) :
+    minimumCandidateBool state parent ancestors expanded candidate = true ↔
+      candidate.1.kind = .minimum ∧
+      state.base.closedLabel candidate.2 (.pos candidate.1.marker) ∧
+      ¬expanded candidate.1 candidate.2 ∧
+      quotientBlockedBool state.base parent ancestors candidate.2 = false := by
+  classical
+  simp [minimumCandidateBool, and_assoc]
+
+noncomputable def selectExpandableMinimum
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop) :
+    Option (MinimumCandidate Node Concept Role) :=
+  firstMatch (minimumCandidateBool state parent ancestors expanded)
+    (allMinimumCandidates definitions)
+
+def DistinctEqState.HasExpandableMinimum
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : DistinctEqState Node Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop) : Prop :=
+  ∃ definition ∈ definitions, ∃ source,
+    definition.kind = .minimum ∧
+    state.base.closedLabel source (.pos definition.marker) ∧
+    ¬expanded definition source ∧
+    quotientBlockedBool state.base parent ancestors source = false
+
+theorem selectExpandableMinimum_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop) :
+    selectExpandableMinimum definitions state parent ancestors expanded = none ↔
+      ¬state.HasExpandableMinimum definitions parent ancestors expanded := by
+  classical
+  rw [selectExpandableMinimum, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with
+      ⟨definition, hdefinition, source, hkind, hmarker, hexpanded, hunblocked⟩
+    have hfalse := hscan (definition, source)
+      ((mem_allMinimumCandidates).mpr hdefinition)
+    rw [(minimumCandidateBool_eq_true_iff state parent ancestors expanded _).mpr
+      ⟨hkind, hmarker, hexpanded, hunblocked⟩] at hfalse
+    contradiction
+  · intro hnone candidate hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties :=
+      (minimumCandidateBool_eq_true_iff state parent ancestors expanded candidate).mp htrue
+    exact hnone ⟨candidate.1, (mem_allMinimumCandidates.mp hmem), candidate.2,
+      hproperties.1, hproperties.2.1, hproperties.2.2.1, hproperties.2.2.2⟩
+
+theorem selectExpandableMinimum_closedRefutes
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (expanded : CardinalityDef Concept Role → Node → Prop)
+    {candidate : MinimumCandidate Node Concept Role}
+    (hselect : selectExpandableMinimum definitions state parent ancestors expanded =
+      some candidate)
+    (targets : Fin candidate.1.bound → Node)
+    (hfresh : state.FreshFamily targets)
+    (child : ClosedDistinctCardinalityRefutes Node ontology definitions
+      (state.materializeMinimum candidate.2 targets candidate.1.role candidate.1.filler)) :
+    ClosedDistinctCardinalityRefutes Node ontology definitions state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectExpandableMinimum] using hselect)
+  have hproperties :=
+    (minimumCandidateBool_eq_true_iff state parent ancestors expanded candidate).mp
+      hfound.2
+  exact .minimum state candidate.1 (mem_allMinimumCandidates.mp hfound.1)
+    hproperties.1 candidate.2 hproperties.2.1 targets hfresh child
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -495,6 +690,11 @@ theorem selectCardinalityWitness_not_realizable
 #print axioms selectDistinctFreshNode_eq_none_iff
 #print axioms selectCardinalityWitness_closedRefutes
 #print axioms selectCardinalityWitness_not_realizable
+#print axioms selectExpandableMinimum_eq_none_iff
+#print axioms selectExpandableMinimum_closedRefutes
+#print axioms EqState.realized_closedLabel
+#print axioms EqState.realized_closedEdge
+#print axioms DistinctEqState.materializeMinimum_closed_realized
 #print axioms ClosedDistinctCardinalityRefutes.sound
 #print axioms DistinctCardinalityRefutes.toClosed
 

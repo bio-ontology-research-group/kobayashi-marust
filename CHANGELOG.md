@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.164] – 2026-08-21
+
+### Certify quotient-closed minimum selection
+
+- Strengthen runtime minimum and maximum premises to use the quotient-closed
+  labels and edges tested by Rust.
+- Prove that realized equality states preserve quotient-closed labels and
+  edges semantically.
+- Prove minimum materialization sound when the active marker occurs on an
+  equivalent node, including relocation of the generated source edges.
+- Add the executable minimum candidate scan over definitions and finite nodes,
+  with exact kind, closed marker, expansion-history, and blocking premises.
+- Prove scan exhaustion equivalent to absence of every expandable minimum and
+  prove selected minimum recursion constructs a sound closed-cardinality
+  refutation.
+- Audit the new selection and relocation theorems without `sorryAx`.
+
+Concrete consecutive-target correspondence, maximum and terminal selection,
+checker correspondence for quotient-closed bodies, concrete Rust field
+construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.163] – 2026-08-21
 
 ### Certify cardinality witness selection
