@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.88] – 2026-08-20
+
+### Prove equality-aware iterative-deepening totality
+
+- Make certification-only equality frontiers retain the exact rooted witness
+  addresses reconstructed from Rust's creation-parent metadata. Invalid or
+  duplicate addresses now fail closed instead of entering another round.
+- Extend Lean's checked equality outcome with the independently checked
+  frontier document.
+- Prove that equality-aware expanded paths cannot exceed the finite quotient
+  pairwise-signature vocabulary.
+- Prove that checked equality frontiers cannot persist through KM's doubling
+  schedule. Some round therefore returns a checked SAT quotient model or a
+  checked UNSAT refutation for the exact normalized ontology.
+- Add a runtime regression checking the one-node equality frontier's exact
+  rooted address.
+- Validate all 3,377 Lean jobs and the full Rust suite: 2,064 library tests
+  passed, 8 ignored benchmarks, and every integration suite passed.
+
+Together with v0.3.87's checked equality fold, this closes total sound and
+complete decision search for the certified equality-aware HT fragment.
+Distinct-cardinality blocking and totality remain separate obligations.
+
 ## [0.3.87] – 2026-08-20
 
 ### Check equality-aware finite blocking folds

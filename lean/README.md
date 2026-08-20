@@ -349,6 +349,12 @@ equality quotient, and proves that acceptance by the ordinary equality model
 checker yields a model of the exact ontology. The Rust producer uses the same
 closed pairwise signature and fail-closed materialization boundary.
 
+`HypertableauEqualitySearch.lean` carries the same checked rooted-address
+frontier used by equality-free search. Its doubling theorem proves that a
+frontier cannot recur forever, so equality-aware search eventually returns a
+checked quotient model or checked refutation. The Rust frontier producer
+reconstructs and validates those exact addresses before deepening.
+
 The distinct-cardinality search uses the same three-way boundary through
 minimum expansion and maximum-merge branching. Its checked closure theorem
 excludes models satisfying both the exact ontology and its decoded cardinality

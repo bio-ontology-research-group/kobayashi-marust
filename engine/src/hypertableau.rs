@@ -2615,7 +2615,8 @@ enum LeanHtEqRefutationTree {
 enum LeanHtEqRefutationOutcome {
     Closed(LeanHtEqRefutationTree, usize),
     Open(LeanHtEqState),
-    Frontier,
+    Frontier(LeanHtAddressFrontier),
+    Invalid(String),
 }
 
 #[derive(serde::Serialize)]
@@ -9378,8 +9379,11 @@ impl Ht {
                         LeanHtEqRefutationOutcome::Open(open) => {
                             return LeanHtEqRefutationOutcome::Open(open);
                         }
-                        LeanHtEqRefutationOutcome::Frontier => {
-                            return LeanHtEqRefutationOutcome::Frontier;
+                        LeanHtEqRefutationOutcome::Frontier(frontier) => {
+                            return LeanHtEqRefutationOutcome::Frontier(frontier);
+                        }
+                        LeanHtEqRefutationOutcome::Invalid(error) => {
+                            return LeanHtEqRefutationOutcome::Invalid(error);
                         }
                     };
                     max_used = max_used.max(child_used);
@@ -9407,7 +9411,13 @@ impl Ht {
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
-                return LeanHtEqRefutationOutcome::Frontier;
+                return match state.address_frontier() {
+                    Ok(frontier) => match self.validate_lean_address_frontier(&frontier) {
+                        Ok(()) => LeanHtEqRefutationOutcome::Frontier(frontier),
+                        Err(error) => LeanHtEqRefutationOutcome::Invalid(error),
+                    },
+                    Err(error) => LeanHtEqRefutationOutcome::Invalid(error),
+                };
             }
             let progress_before = state.progress_measure();
             let target = state.active_nodes;
@@ -9450,7 +9460,12 @@ impl Ht {
                     )
                 }
                 LeanHtEqRefutationOutcome::Open(open) => LeanHtEqRefutationOutcome::Open(open),
-                LeanHtEqRefutationOutcome::Frontier => LeanHtEqRefutationOutcome::Frontier,
+                LeanHtEqRefutationOutcome::Frontier(frontier) => {
+                    LeanHtEqRefutationOutcome::Frontier(frontier)
+                }
+                LeanHtEqRefutationOutcome::Invalid(error) => {
+                    LeanHtEqRefutationOutcome::Invalid(error)
+                }
             };
         }
         LeanHtEqRefutationOutcome::Open(state.equality_blocked_open_state())
@@ -9880,12 +9895,13 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Open(_) => {
                     return Err("ontology has an open equality refutation branch".to_string());
                 }
-                LeanHtEqRefutationOutcome::Frontier if !deepen => {
+                LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
                         "ontology reached the configured equality refutation node cap".to_string(),
                     );
                 }
-                LeanHtEqRefutationOutcome::Frontier => {}
+                LeanHtEqRefutationOutcome::Frontier(_) => {}
+                LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
             node_budget = node_budget
                 .checked_mul(2)
@@ -10297,16 +10313,17 @@ impl Ht {
                     .map_err(|error| error.to_string())?;
                     return Ok((true, self.finalize_lean_certificate(raw)?));
                 }
-                LeanHtEqRefutationOutcome::Frontier if !deepen => {
+                LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
                         "ontology reached the configured equality decision node cap".to_string()
                     );
                 }
-                LeanHtEqRefutationOutcome::Frontier => {
+                LeanHtEqRefutationOutcome::Frontier(_) => {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality decision node budget overflowed usize".to_string()
                     })?;
                 }
+                LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
     }
@@ -20708,10 +20725,13 @@ mod tests {
         let witness =
             Ht::new_certified(vec![Clause::new(Vec::new(), vec![exists(R0, false, A, X)])]);
         let mut frontier_state = LeanHtRefutationState::root(&[]);
-        assert!(matches!(
-            witness.lean_eq_refutation(&mut frontier_state, 1, 1),
-            LeanHtEqRefutationOutcome::Frontier
-        ));
+        let LeanHtEqRefutationOutcome::Frontier(frontier) =
+            witness.lean_eq_refutation(&mut frontier_state, 1, 1)
+        else {
+            panic!("the equality-aware node cap must return a checked address frontier");
+        };
+        assert_eq!(frontier.node_count, 1);
+        assert_eq!(frontier.addresses, vec![Vec::<(R, CLit)>::new()]);
     }
 
     #[test]

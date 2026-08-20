@@ -122,9 +122,28 @@ theorem EqState.quotientRoleBlockingDepth_lt_of_signature_injective
     Fintype.card_le_of_injective _ hinjective
   simpa using hcard
 
+/-- A runtime that allocates children with increasing identifiers and refuses
+to expand a node after an earlier equal quotient signature cannot contain an
+overlong path of expanded equality-aware nodes. -/
+theorem EqState.no_overlong_quotient_blocking_expansion
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Nat Concept Role) (parent : Nat → Option Nat)
+    (expanded : Nat → Prop)
+    (hsafe : ∀ {blocker blocked}, blocker < blocked → expanded blocked →
+      state.quotientRoleBlockingSignature parent blocker ≠
+        state.quotientRoleBlockingSignature parent blocked)
+    (path : Fin (Fintype.card (RoleBlockingSignature Concept Role) + 1) → Nat)
+    (hcreation : StrictMono path)
+    (hexpanded : ∀ position, expanded (path position)) : False := by
+  obtain ⟨earlier, later, hposition, hsignature⟩ :=
+    state.exists_quotient_role_blocker_on_long_path parent path
+  exact hsafe (hcreation hposition) (hexpanded later) hsignature
+
 #print axioms EqState.quotientRoleBlockingSignature_label
 #print axioms EqState.quotientRoleBlockingSignature_parent_context
 #print axioms EqState.exists_quotient_role_blocker_on_long_path
 #print axioms EqState.quotientRoleBlockingDepth_lt_of_signature_injective
+#print axioms EqState.no_overlong_quotient_blocking_expansion
 
 end ContextCalculus.Hypertableau

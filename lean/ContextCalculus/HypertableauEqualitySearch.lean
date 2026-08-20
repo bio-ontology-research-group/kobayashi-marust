@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauFrontierWire
 
 /-!
 # Checked bounded equality-aware HT outcomes
@@ -35,6 +36,10 @@ inductive CheckedEqualityDecisionOutcome
       (hempty : certificate.EmptyRoot)
       (hcheck : tree.check certificate = true)
   | frontier
+      (document : WireAddressFrontier)
+      (hconcepts : document.concept_count = conceptCount)
+      (hroles : document.role_count = roleCount)
+      (hcheck : document.check = true)
 
 def CheckedEqualityDecisionOutcome.Semantics
     {ontology : List
@@ -44,7 +49,7 @@ def CheckedEqualityDecisionOutcome.Semantics
   match outcome with
   | .sat .. => EqualityHasNonemptyModel ontology
   | .closed .. => ¬EqualityHasNonemptyModel ontology
-  | .frontier => False
+  | .frontier .. => False
 
 theorem CheckedEqualityDecisionOutcome.sat_semantics
     {ontology : List
@@ -80,7 +85,7 @@ theorem CheckedEqualityDecisionOutcome.conclusive_semantics
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
     (outcome : CheckedEqualityDecisionOutcome
       conceptCount roleCount variableCount ontology) :
-    (match outcome with | .frontier => False | _ => True) →
+    (match outcome with | .frontier .. => False | _ => True) →
       outcome.Semantics := by
   cases outcome with
   | sat certificate hontology hnonempty hcheck =>
@@ -91,10 +96,56 @@ theorem CheckedEqualityDecisionOutcome.conclusive_semantics
       intro _
       exact CheckedEqualityDecisionOutcome.closed_semantics
         certificate tree hontology hnonempty hempty hcheck
-  | frontier => simp
+  | frontier document hconcepts hroles hcheck => simp
+
+/-- Equality-aware iterative deepening uses the same checked rooted witness
+addresses as equality-free search. Equality changes branch labels and the
+blocking signature, but it neither changes canonical child slots nor permits
+duplicate rooted addresses. Therefore checked full frontiers cannot persist
+through KM's doubling schedule. -/
+theorem checked_equality_doubling_decides
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (run : Nat →
+      CheckedEqualityDecisionOutcome conceptCount roleCount variableCount ontology)
+    (hnodes : ∀ round document hconcepts hroles hcheck,
+      run round = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ round) :
+    ∃ round, (run round).Semantics := by
+  classical
+  by_contra hconclusive
+  have hnone : ∀ round, ¬(run round).Semantics := not_exists.mp hconclusive
+  have hfrontier : ∀ round, ∃ document hconcepts hroles hcheck,
+      run round = .frontier document hconcepts hroles hcheck := by
+    intro round
+    generalize houtcome : run round = outcome
+    cases outcome with
+    | sat certificate hontology hnonempty hcheck =>
+        exfalso
+        exact hnone round (by
+          rw [houtcome]
+          exact CheckedEqualityDecisionOutcome.sat_semantics
+            certificate hontology hnonempty hcheck)
+    | closed certificate tree hontology hnonempty hempty hcheck =>
+        exfalso
+        exact hnone round (by
+          rw [houtcome]
+          exact CheckedEqualityDecisionOutcome.closed_semantics
+            certificate tree hontology hnonempty hempty hcheck)
+    | frontier document hconcepts hroles hcheck =>
+        exact ⟨document, hconcepts, hroles, hcheck, rfl⟩
+  choose document hconcepts hroles hchecks heq using hfrontier
+  obtain ⟨round, hrejected⟩ :=
+    mode6_doubling_eventually_rejects_checked_frontier
+      document conceptCount roleCount
+      (fun round => hnodes round (document round) (hconcepts round)
+        (hroles round) (hchecks round) (heq round))
+      hconcepts hroles
+  exact hrejected (hchecks round)
 
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
+#print axioms checked_equality_doubling_decides
 
 end ContextCalculus.Hypertableau
