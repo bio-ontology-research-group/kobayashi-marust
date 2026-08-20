@@ -266,9 +266,13 @@ The refutation checker has an explicit fresh-witness rule: it verifies that the
 target node occurs in no prior fact, binds that node to the semantic existential
 witness, and then checks the recursively materialized edge and filler label.
 The Lean checker treats all Rust choices as untrusted and accepts only an exact
-finite model or a closed refutation tree. Complete blocking/termination
-correspondence, equality/cardinality, inverse roles, nominals, and native ABoxes
-remain to be connected or proved.
+finite model or a closed refutation tree. Lean also proves the finite signed-label
+bound behind equality/subset blocking: every path longer than the number of
+possible signed labels contains an earlier exact-label blocker, and transfer to
+that blocker preserves all signed concept facts. The finite-fold checker then
+validates role and witness obligations on the materialized graph. Correspondence
+with Rust's blocking/search transitions, inverse roles, nominals, and native
+ABoxes remain to be connected or proved.
 
 ### Equality-aware HT refutations – `ContextCalculus/HypertableauEquality.lean`
 

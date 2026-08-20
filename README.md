@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.59`.
+`v0.3.60`.
 
 ## Classify an ontology
 
@@ -187,7 +187,7 @@ the exact equality history, representative vector, and paths witnessing the
 quotient. Publication occurs only after Lean accepts the evidence. Open,
 node-capped, or assignment-capped search declines. Equality-aware query
 countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
-QO, and complete termination/blocking correspondence remain separate HT
+QO, and runtime termination/blocking correspondence remain separate HT
 certification tasks.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept

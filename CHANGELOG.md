@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.60] – 2026-08-20
+
+### Prove the finite HT blocking-signature bound
+
+- Represent each finite HT node label as the complete set of signed concept
+  literals used by equality and subset blocking.
+- Prove by finite pigeonhole that every branch path longer than the number of
+  possible signed labels contains an earlier exact-label blocker. Exact label
+  repetition is a valid subset-blocking candidate, so this gives the finite
+  depth bound for the certified finite signature.
+- Prove that moving a blocked node's signed concept facts to that blocker
+  preserves their truth in the canonical interpretation.
+- Compose this bound with the existing fail-closed finite-fold boundary: role
+  edges, existential witnesses, and guarded-clause saturation are still
+  accepted only after the ordinary finite-model checker validates the fully
+  materialized graph.
+
+This release proves the abstract finite signature bound and concept-label
+folding lemma. It does not yet claim that every Rust HT execution follows the
+formal blocking transition or always emits finite evidence; that refinement is
+the next termination milestone.
+
 ## [0.3.59] – 2026-08-20
 
 ### Certify complete HT taxonomies with cardinality definitions
