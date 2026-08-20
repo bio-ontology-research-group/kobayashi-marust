@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.134] – 2026-08-20
+
+### Close the ordinary HT wire soundness boundary
+
+- Prove an end-to-end fail-closed theorem for `WireCertificate.check`: every
+  `.ok true` result exposes one bounded decoded payload whose advertised SAT,
+  UNSAT, subsumption, or countermodel semantics holds.
+- Keep decode errors and rejected Boolean checks outside the semantic evidence
+  type, including malformed dimensions and out-of-range identifiers.
+- Strengthen the native Rust-to-Lean cyclic blocked-leaf regression. Lean must
+  accept the genuine materialized blocked model and reject the same candidate
+  after removing the copied edge that witnesses the blocked existential.
+- Correct the test invocation audit so the named regression actually executes;
+  the verified run reports one test passed rather than relying on a zero-test
+  filtered run.
+
+This closes soundness of the ordinary HT JSON publication boundary, including
+materialized blocked leaves. Exact runtime recursion completeness, regular and
+equality/cardinality outcome composition, and automatic routing remain
+certification tasks.
+
 ## [0.3.133] – 2026-08-20
 
 ### Certify HT empty outcomes and blocker-filtered selection

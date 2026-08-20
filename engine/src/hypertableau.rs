@@ -22517,19 +22517,42 @@ mod tests {
             std::fs::write(
                 &path,
                 cyclic
-                    .finalize_lean_certificate(raw_certificate)
+                    .finalize_lean_certificate(raw_certificate.clone())
                     .expect("wrap the blocked SAT candidate with normalization evidence"),
             )
             .unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .status()
                 .expect("run the native Lean checker on the blocked SAT candidate")
                 .success();
-            let _ = std::fs::remove_file(path);
             assert!(accepted, "Lean must accept the materialized blocked leaf");
+
+            let mut forged: serde_json::Value = serde_json::from_str(&raw_certificate)
+                .expect("blocked SAT candidate remains valid JSON");
+            forged["edges"]
+                .as_array_mut()
+                .expect("blocked SAT candidate has an edge array")
+                .retain(|edge| !(edge["role"] == R0
+                    && edge["source"] == 2
+                    && edge["target"] == 2));
+            let forged = cyclic
+                .finalize_lean_certificate(serde_json::to_string(&forged).unwrap())
+                .expect("wrap the forged blocked candidate");
+            std::fs::write(&path, forged).unwrap();
+            let rejected = std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run the native Lean checker on the forged blocked candidate");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                !rejected.success(),
+                "Lean must reject a blocked leaf missing its copied witness edge"
+            );
         }
     }
 

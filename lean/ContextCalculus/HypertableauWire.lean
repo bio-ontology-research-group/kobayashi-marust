@@ -374,6 +374,23 @@ theorem DecodedEvidence.check_sound (decoded : DecodedEvidence)
   | satisfiableConcept decoded root concept =>
       exact DecodedEvidence.satisfiableConcept_sound decoded root concept hcheck
 
+/-- End-to-end fail-closed theorem for the untrusted JSON-shaped wire value.
+Successful wire checking necessarily exposes one bounded decoded payload whose
+advertised semantics holds. Decode errors and rejected Boolean checks cannot
+produce semantic evidence. -/
+theorem WireCertificate.check_sound
+    (wire : WireCertificate) (hcheck : wire.check = .ok true) :
+    ∃ decoded, wire.decode = .ok decoded ∧ decoded.SemanticallyValid := by
+  unfold WireCertificate.check at hcheck
+  generalize hdecode : wire.decode = result at hcheck
+  cases result with
+  | error message => simp at hcheck
+  | ok decoded =>
+      simp at hcheck
+      exact ⟨decoded, rfl, decoded.check_sound hcheck⟩
+
+#print axioms WireCertificate.check_sound
+
 namespace WireTests
 
 private def failed : Except String Bool → Bool

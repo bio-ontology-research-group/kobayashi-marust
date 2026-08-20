@@ -41,12 +41,12 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.133`. Lean now executes clause-first, existential-witness, and
-blocker-filtered HT selectors, proves their scans exhaustive, and distinguishes
-zero-head closure, saturation, and finite-node exhaustion. Exact Rust blocker
-and frontier production, checked terminal correspondence, and
-equality/cardinality runtime recursion remain unfinished. This does not certify
-the entire Rust executable or automatic routing.
+`v0.3.134`. Lean now gives the ordinary HT wire checker an end-to-end
+fail-closed soundness theorem: every accepted bounded payload has its advertised
+semantics. Native Rust-to-Lean testing accepts a genuine cyclic blocked model
+and rejects it when a required copied witness edge is removed. Exact runtime
+recursion completeness, regular and equality/cardinality outcome composition,
+and automatic routing remain unfinished.
 
 ## Classify an ontology
 
