@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.100] – 2026-08-20
+
+### Resume HT search after certificate rejection
+
+- Move the native Lean check for an open HT decision candidate inside iterative
+  deepening. A rejected finite fold is now inconclusive and doubles the node
+  budget instead of escaping the search as a terminal publication error.
+- Apply the retry to equality-free, equality-aware, and cardinality-aware
+  decisions. Taxonomy cells inherit the same behavior through those decision
+  procedures.
+- Keep the outer publication check, so accepted evidence is independently
+  checked again before it becomes a public result.
+- Use collision-resistant per-process candidate files and fail explicitly at a
+  configured node cap or integer overflow.
+
+The full Rust release suite passes with 2,066 unit tests, 8 intentional ignores,
+all integration suites, and the native Lean HT publication checker enabled.
+This change prevents a rejected blocked fold from becoming a final answer. It
+does not prove that repeated deepening eventually produces accepted evidence;
+multi-edge role-chain closure remains part of the HT completeness work.
+
 ## [0.3.99] – 2026-08-20
 
 ### Make certified HT folds bidirectional

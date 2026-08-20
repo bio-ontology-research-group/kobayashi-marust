@@ -9069,6 +9069,56 @@ impl Ht {
         self.wrap_normalized_lean_certificate(payload)
     }
 
+    /// Check an intermediate decision candidate before leaving iterative
+    /// deepening. The outer publication boundary checks it again. Running the
+    /// checker here lets a rejected finite fold resume at a larger node budget
+    /// instead of turning an inconclusive open branch into a terminal error.
+    fn lean_decision_candidate_passes(&self, payload: &str) -> Result<bool, String> {
+        static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let Some(checker) = std::env::var_os("KM_HT_LEAN_CERT_CHECKER") else {
+            return Ok(true);
+        };
+        let nonce = CANDIDATE_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-decision-candidate-{}-{nonce}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, payload).map_err(|error| {
+            format!(
+                "KM_HT_LEAN_CERT cannot write intermediate {}: {error}",
+                path.display()
+            )
+        })?;
+        let status = std::process::Command::new(&checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "KM_HT_LEAN_CERT cannot execute {} on an intermediate candidate: {error}",
+                    std::path::Path::new(&checker).display()
+                )
+            });
+        let _ = std::fs::remove_file(&path);
+        Ok(status?.success())
+    }
+
+    fn deepen_after_rejected_candidate(
+        node_budget: usize,
+        deepen: bool,
+        fragment: &str,
+    ) -> Result<usize, String> {
+        if !deepen {
+            return Err(format!(
+                "Lean rejected the {fragment} decision candidate at the configured node cap"
+            ));
+        }
+        node_budget
+            .checked_mul(2)
+            .ok_or_else(|| format!("{fragment} decision node budget overflowed usize"))
+    }
+
     fn wrap_normalized_lean_taxonomy_certificate(&self, payload: String) -> Result<String, String> {
         let Some(normalization) = self.lean_wire_normalization()? else {
             return Ok(payload);
@@ -10515,7 +10565,15 @@ impl Ht {
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let raw =
                         self.lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)?;
-                    return Ok((true, self.finalize_lean_certificate(raw)?));
+                    let candidate = self.finalize_lean_certificate(raw)?;
+                    if self.lean_decision_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "equality-free",
+                    )?;
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -10610,12 +10668,20 @@ impl Ht {
                         concept_count,
                         role_count,
                         variable_count,
-                        ontology,
+                        ontology: ontology.clone(),
                         state,
                         evidence: LeanHtEqEvidence::Sat,
                     })
                     .map_err(|error| error.to_string())?;
-                    return Ok((true, self.finalize_lean_certificate(raw)?));
+                    let candidate = self.finalize_lean_certificate(raw)?;
+                    if self.lean_decision_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "equality",
+                    )?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -10667,13 +10733,21 @@ impl Ht {
                         concept_count,
                         role_count,
                         variable_count,
-                        ontology,
+                        ontology: ontology.clone(),
                         state,
                         evidence: LeanHtEqEvidence::Sat,
                     })
                     .map_err(|error| error.to_string())?;
                     let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
-                    return Ok((true, self.finalize_lean_certificate(cardinality)?));
+                    let candidate = self.finalize_lean_certificate(cardinality)?;
+                    if self.lean_decision_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "cardinality",
+                    )?;
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -21527,6 +21601,19 @@ mod tests {
                 assert!(accepted, "Lean must accept the {kind} decision evidence");
             }
         }
+    }
+
+    #[test]
+    fn rejected_decision_candidate_deepens_or_fails_at_explicit_cap() {
+        assert_eq!(
+            Ht::deepen_after_rejected_candidate(8, true, "test").unwrap(),
+            16
+        );
+        let error = Ht::deepen_after_rejected_candidate(8, false, "test").unwrap_err();
+        assert!(error.contains("configured node cap"));
+        assert!(Ht::deepen_after_rejected_candidate(usize::MAX, true, "test")
+            .unwrap_err()
+            .contains("overflowed"));
     }
 
     #[test]
