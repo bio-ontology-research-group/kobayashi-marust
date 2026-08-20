@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.127] – 2026-08-20
+
+### Prove complete cardinality semantics for anchored HT models
+
+- Prove positive concept satisfaction reflects the corresponding finite
+  endpoint label, including nominal concepts represented by canonical roots.
+- Relate every anchored direct role successor to an authorized finite
+  `(target, slot)` key and prove a finite upper bound on those keys bounds the
+  semantic successors. Nominal collapse can remove successors but cannot add
+  keys.
+- Prove the syntactic SROIQ simple-role criterion makes anchored role closure
+  exact on maximum-cardinality roles.
+- Combine anchor-safe minimum witnesses and authorized-key maxima into one
+  theorem showing a single nominal-aware anchored interpretation satisfies all
+  supplied cardinality definitions.
+
+This closes the semantic minimum/maximum composition identified in v0.3.126.
+An executable cardinality-tail checker, dense equality composition, and
+taxonomy wire publication remain certification tasks. It does not certify the
+complete HT runtime or automatic router.
+
 ## [0.3.126] – 2026-08-20
 
 ### Preserve cardinality witnesses under nominal anchoring
