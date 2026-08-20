@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.126] – 2026-08-20
+
+### Preserve cardinality witnesses under nominal anchoring
+
+- Generalize the anchored ontology-model theorem from an unrestricted path
+  relation to a supplied finite slot relation with checked slot-zero edge
+  coverage.
+- Define the exact safety condition for minimum-cardinality witnesses when
+  nominal endpoints collapse to canonical roots. Repeated anonymous graph
+  targets remain valid because distinct slots produce distinct paths, while
+  repeated anchored targets are rejected.
+- Prove that clash-free, nominal-coherent completion labels and anchor-safe
+  selected witnesses construct the required number of distinct semantic role
+  successors satisfying the filler.
+
+This establishes the minimum-cardinality semantic foundation for anchored HT
+countermodels. Maximum-cardinality transfer, executable checking, dense
+equality composition, and taxonomy publication remain certification tasks. It
+does not certify the complete HT runtime or automatic router.
+
 ## [0.3.125] – 2026-08-20
 
 ### Certify anchored equality countermodels in HT taxonomies

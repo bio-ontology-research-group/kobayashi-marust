@@ -327,6 +327,42 @@ theorem anchoredCheck_models
   · exact certificate.coverClosed_covers hregular.2.2.2.2.2.2.1
   · exact hregular.2.2.2.2.2.2.2
 
+/-- The anchored checker is parametric in the path-slot relation.  The legacy
+`anchoredCheck_models` theorem instantiates every slot with `True`; cardinality
+certificates instead supply a finite authorized-slot relation and prove that
+slot zero covers every completion edge. -/
+theorem anchoredCheck_models_with_slots
+    [NeZero nodeCount]
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (slotAllowed : Fin nodeCount → Fin roleCount → Fin nodeCount → Nat → Prop)
+    (hcheck : anchoredCheck certificate nominalRoot = true)
+    (hslot : ∀ source role target,
+      certificate.state.edge role (certificate.redirect source) target →
+        slotAllowed source role target 0) :
+    (interpretation certificate.state certificate.redirect slotAllowed
+      (NominalAnchor nominalRoot) certificate.rules nominalRoot).models
+      certificate.ontology := by
+  simp only [anchoredCheck, Bool.and_eq_true] at hcheck
+  have hregular := anchoredRegularCheck_sound certificate nominalRoot hcheck.1
+  have hanchored := finitePremisesB_sound (regularSatCertificate certificate)
+    certificate.redirect nominalRoot hcheck.2
+  rw [regularSatCertificate_state] at hanchored
+  apply interpretation_models_partition_of_cover_anchored certificate.state
+    certificate.redirect slotAllowed (NominalAnchor nominalRoot)
+    certificate.rules nominalRoot certificate.coverRelation
+    certificate.roleClauses certificate.residual
+  · exact hregular.1
+  · exact hregular.2.1
+  · exact hregular.2.2.1
+  · exact hanchored.1
+  · exact hanchored.2.1
+  · exact hanchored.2.2
+  · exact hslot
+  · exact certificate.coverClosed_covers hregular.2.2.2.2.2.2.1
+  · exact hregular.2.2.2.2.2.2.2
+
 private def nominalEqualityCertificate : FiniteRegularCertificate 1 1 1 2 where
   labels := [(0, .pos 0)]
   edges := []
@@ -359,6 +395,7 @@ example : anchoredCheck unguardedEqualityCertificate singletonNominalRoot = fals
 #print axioms redirectWitnessCompleteB_sound
 #print axioms finitePremisesB_sound
 #print axioms anchoredCheck_models
+#print axioms anchoredCheck_models_with_slots
 
 end AnchoredForestDomain
 

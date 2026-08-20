@@ -41,10 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.125`. This milestone checks source-aware global SAT publication and
-negative HT taxonomy cells through dense nominal-aware anchored equality
-models. It does not certify cardinality-aware anchored taxonomies, the entire
-Rust executable, or automatic routing.
+`v0.3.126`. This milestone proves finite-slot ontology satisfaction and
+distinct minimum-cardinality witnesses for nominal-aware anchored HT models.
+Maximum-cardinality transfer and the executable cardinality taxonomy wire are
+still incomplete. It does not certify the entire Rust executable or automatic
+routing.
 
 ## Classify an ontology
 
