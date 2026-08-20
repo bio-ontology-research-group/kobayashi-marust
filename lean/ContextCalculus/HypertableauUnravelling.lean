@@ -420,6 +420,244 @@ def State.RegularSaturatedFor
   ∀ clause ∈ ontology,
     state.RegularDischarges redirect slotAllowed root rules clause
 
+/-- Finite endpoint projection of the regular path-role relation. Direct edges
+consult the redirect at their finite source; the remaining constructors mirror
+the regular role closure exactly. On finite certificate types this relation can
+be materialized and checked without enumerating the infinite path domain. -/
+inductive EndpointRole
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (rules : UnravellingRoleRules Role) : Role → Node → Node → Prop where
+  | direct {role source target}
+      (edge : state.edge role (redirect source) target) :
+      EndpointRole state redirect rules role source target
+  | sub {premise conclusion source target}
+      (rule : rules.subRole premise conclusion)
+      (edge : EndpointRole state redirect rules premise source target) :
+      EndpointRole state redirect rules conclusion source target
+  | inverse {premise conclusion source target}
+      (rule : rules.inverseRole premise conclusion)
+      (edge : EndpointRole state redirect rules premise source target) :
+      EndpointRole state redirect rules conclusion target source
+  | chain {first second conclusion source middle target}
+      (rule : rules.chain first second conclusion)
+      (left : EndpointRole state redirect rules first source middle)
+      (right : EndpointRole state redirect rules second middle target) :
+      EndpointRole state redirect rules conclusion source target
+  | refl {role source} (rule : rules.reflexive role) :
+      EndpointRole state redirect rules role source source
+
+theorem UnravellingRole.endpoint
+    {state : State Node Concept Role} {redirect : Node → Node}
+    {slotAllowed : Node → Role → Node → Nat → Prop} {root : Node}
+    {rules : UnravellingRoleRules Role} {role : Role}
+    {source target : UnravellingDomain state redirect slotAllowed root}
+    (edge : UnravellingRole state redirect slotAllowed root rules
+      role source target) :
+    EndpointRole state redirect rules role source.1 target.1 := by
+  induction edge with
+  | direct edge =>
+      cases edge with
+      | step parent slot raw allowed => exact EndpointRole.direct raw
+  | sub rule edge ih => exact EndpointRole.sub rule ih
+  | inverse rule edge ih => exact EndpointRole.inverse rule ih
+  | chain rule left right ihLeft ihRight =>
+      exact EndpointRole.chain rule ihLeft ihRight
+  | refl rule => exact EndpointRole.refl rule
+
+def State.EndpointHoldsAtom
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (rules : UnravellingRoleRules Role) (assignment : Variable → Node) :
+    Atom Variable Concept Role → Prop
+  | .concept lit node => state.label (assignment node) lit
+  | .role role source target =>
+      EndpointRole state redirect rules role
+        (assignment source) (assignment target)
+  | .exists_ role filler node =>
+      state.obligation role filler (assignment node)
+  | .eq left right => assignment left = assignment right
+
+/-- Role and equality heads cannot in general be reconstructed from endpoint
+equality alone. Normalized role heads are handled separately by
+`NormalizedRoleClause`; residual heads must be concepts or existentials. -/
+def PathLiftableHead : Atom Variable Concept Role → Prop
+  | .concept .. => True
+  | .exists_ .. => True
+  | .role .. => False
+  | .eq .. => False
+
+def State.EndpointDischarges
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (rules : UnravellingRoleRules Role)
+    (clause : Clause Variable Concept Role) : Prop :=
+  ∀ assignment,
+    (∀ atom ∈ clause.body,
+      state.EndpointHoldsAtom redirect rules assignment atom) →
+    ∃ atom ∈ clause.head,
+      state.EndpointHoldsAtom redirect rules assignment atom
+
+theorem State.regularHoldsAtom_endpoint
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (assignment : Variable → UnravellingDomain state redirect slotAllowed root)
+    (atom : Atom Variable Concept Role)
+    (hholds : state.RegularHoldsAtom redirect slotAllowed root rules
+      assignment atom) :
+    state.EndpointHoldsAtom redirect rules (fun node => (assignment node).1)
+      atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => exact hholds.endpoint
+  | exists_ => exact hholds
+  | eq left right => exact congrArg Sigma.fst hholds
+
+theorem State.endpointHoldsAtom_lift
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (assignment : Variable → UnravellingDomain state redirect slotAllowed root)
+    (atom : Atom Variable Concept Role) (hliftable : PathLiftableHead atom)
+    (hholds : state.EndpointHoldsAtom redirect rules
+      (fun node => (assignment node).1) atom) :
+    state.RegularHoldsAtom redirect slotAllowed root rules assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq => contradiction
+
+theorem State.regularDischarges_of_endpoint
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (clause : Clause Variable Concept Role)
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : state.EndpointDischarges redirect rules clause) :
+    state.RegularDischarges redirect slotAllowed root rules clause := by
+  intro assignment hbody
+  have hendpointBody : ∀ atom ∈ clause.body,
+      state.EndpointHoldsAtom redirect rules
+        (fun node => (assignment node).1) atom := by
+    intro atom hatom
+    exact state.regularHoldsAtom_endpoint redirect slotAllowed root rules
+      assignment atom (hbody atom hatom)
+  rcases hdischarges (fun node => (assignment node).1) hendpointBody with
+    ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom,
+    state.endpointHoldsAtom_lift redirect slotAllowed root rules assignment atom
+      (hheads atom hatom) hholds⟩
+
+theorem State.regularSaturatedFor_of_endpoint
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (ontology : List (Clause Variable Concept Role))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hdischarges : ∀ clause ∈ ontology,
+      state.EndpointDischarges redirect rules clause) :
+    state.RegularSaturatedFor redirect slotAllowed root rules ontology := by
+  intro clause hclause
+  exact state.regularDischarges_of_endpoint redirect slotAllowed root rules
+    clause (hheads clause hclause) (hdischarges clause hclause)
+
+/-- Certificate-supplied finite over-approximation of endpoint role closure.
+Using an over-approximation is sound for guarded clause bodies: it can require
+additional head discharges, but can never hide a semantic body match. -/
+def EndpointRoleCovered
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop) : Prop :=
+  ∀ role source target,
+    EndpointRole state redirect rules role source target →
+      cover role source target
+
+def State.CoverHoldsAtom
+    (state : State Node Concept Role) (cover : Role → Node → Node → Prop)
+    (assignment : Variable → Node) : Atom Variable Concept Role → Prop
+  | .concept lit node => state.label (assignment node) lit
+  | .role role source target => cover role (assignment source) (assignment target)
+  | .exists_ role filler node => state.obligation role filler (assignment node)
+  | .eq left right => assignment left = assignment right
+
+def State.CoverDischarges
+    (state : State Node Concept Role) (cover : Role → Node → Node → Prop)
+    (clause : Clause Variable Concept Role) : Prop :=
+  ∀ assignment,
+    (∀ atom ∈ clause.body, state.CoverHoldsAtom cover assignment atom) →
+    ∃ atom ∈ clause.head, state.CoverHoldsAtom cover assignment atom
+
+theorem State.regularHoldsAtom_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (assignment : Variable → UnravellingDomain state redirect slotAllowed root)
+    (atom : Atom Variable Concept Role)
+    (hholds : state.RegularHoldsAtom redirect slotAllowed root rules
+      assignment atom) :
+    state.CoverHoldsAtom cover (fun node => (assignment node).1) atom := by
+  cases atom with
+  | concept => exact hholds
+  | role role source target => exact hcover role _ _ hholds.endpoint
+  | exists_ => exact hholds
+  | eq left right => exact congrArg Sigma.fst hholds
+
+theorem State.coverHoldsAtom_lift
+    (state : State Node Concept Role)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (redirect : Node → Node) (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (assignment : Variable → UnravellingDomain state redirect slotAllowed root)
+    (atom : Atom Variable Concept Role) (hliftable : PathLiftableHead atom)
+    (hholds : state.CoverHoldsAtom cover
+      (fun node => (assignment node).1) atom) :
+    state.RegularHoldsAtom redirect slotAllowed root rules assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq => contradiction
+
+theorem State.regularDischarges_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (clause : Clause Variable Concept Role)
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : state.CoverDischarges cover clause) :
+    state.RegularDischarges redirect slotAllowed root rules clause := by
+  intro assignment hbody
+  have hcoverBody : ∀ atom ∈ clause.body,
+      state.CoverHoldsAtom cover (fun node => (assignment node).1) atom := by
+    intro atom hatom
+    exact state.regularHoldsAtom_cover redirect slotAllowed root rules cover
+      hcover assignment atom (hbody atom hatom)
+  rcases hdischarges (fun node => (assignment node).1) hcoverBody with
+    ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom,
+    state.coverHoldsAtom_lift slotAllowed root redirect rules cover assignment
+      atom (hheads atom hatom) hholds⟩
+
+theorem State.regularSaturatedFor_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (ontology : List (Clause Variable Concept Role))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hdischarges : ∀ clause ∈ ontology,
+      state.CoverDischarges cover clause) :
+    state.RegularSaturatedFor redirect slotAllowed root rules ontology := by
+  intro clause hclause
+  exact state.regularDischarges_of_cover redirect slotAllowed root rules cover
+    hcover clause (hheads clause hclause) (hdischarges clause hclause)
+
 /-- The normalized role-only clause families represented by
 `UnravellingRoleRules`. Keeping this syntax separate makes the executable
 checker prove that each decoded ontology role clause has exactly one of these
@@ -617,6 +855,73 @@ theorem regularUnravelling_models_partition
       regularUnravelling_models_of_saturated state redirect slotAllowed root
         rules residual hguarded hclash hwitness hobligationRedirect hslot
         hsaturated
+
+/-- Certificate-facing model theorem. All quantified assignments used for
+residual saturation range over finite completion-graph endpoints. Infinite
+paths occur only inside the constructed semantic model. -/
+theorem regularUnravelling_models_partition_of_endpoint
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (residual : List (Clause Variable Concept Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules)
+    (hguarded : ∀ clause ∈ residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hclash : state.ClashFree)
+    (hwitness : state.WitnessComplete)
+    (hobligationRedirect : ∀ node role filler,
+      state.obligation role filler node →
+        state.obligation role filler (redirect node))
+    (hslot : ∀ source role target,
+      state.edge role (redirect source) target →
+        slotAllowed source role target 0)
+    (hendpoint : ∀ clause ∈ residual,
+      state.EndpointDischarges redirect rules clause) :
+    (state.regularUnravelling redirect slotAllowed root rules).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept)) ++
+        residual) := by
+  apply regularUnravelling_models_partition state redirect slotAllowed root
+    rules roleClauses residual hauthorized hguarded hclash hwitness
+    hobligationRedirect hslot
+  exact state.regularSaturatedFor_of_endpoint redirect slotAllowed root rules
+    residual hheads hendpoint
+
+/-- Fully finite saturation boundary for the regular model. `cover` can be a
+decoded list of `(role,source,target)` tuples; the checker validates that it is
+closed under all role constructors and then enumerates finite assignments for
+the residual clauses. -/
+theorem regularUnravelling_models_partition_of_cover
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (cover : Role → Node → Node → Prop)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (residual : List (Clause Variable Concept Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules)
+    (hguarded : ∀ clause ∈ residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hclash : state.ClashFree)
+    (hwitness : state.WitnessComplete)
+    (hobligationRedirect : ∀ node role filler,
+      state.obligation role filler node →
+        state.obligation role filler (redirect node))
+    (hslot : ∀ source role target,
+      state.edge role (redirect source) target →
+        slotAllowed source role target 0)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (hdischarges : ∀ clause ∈ residual,
+      state.CoverDischarges cover clause) :
+    (state.regularUnravelling redirect slotAllowed root rules).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept)) ++
+        residual) := by
+  apply regularUnravelling_models_partition state redirect slotAllowed root
+    rules roleClauses residual hauthorized hguarded hclash hwitness
+    hobligationRedirect hslot
+  exact state.regularSaturatedFor_of_cover redirect slotAllowed root rules cover
+    hcover residual hheads hdischarges
 
 /-- Distinct witness slots denote distinct path-domain values, even if their
 finite completion-graph targets coincide. -/
@@ -834,5 +1139,16 @@ theorem State.unravelling_modelsCardinalityDefs
 #print axioms NormalizedRoleClause.regularUnravelling_models
 #print axioms NormalizedRoleClause.regularUnravelling_models_list
 #print axioms regularUnravelling_models_partition
+#print axioms UnravellingRole.endpoint
+#print axioms State.regularHoldsAtom_endpoint
+#print axioms State.endpointHoldsAtom_lift
+#print axioms State.regularDischarges_of_endpoint
+#print axioms State.regularSaturatedFor_of_endpoint
+#print axioms regularUnravelling_models_partition_of_endpoint
+#print axioms State.regularHoldsAtom_cover
+#print axioms State.coverHoldsAtom_lift
+#print axioms State.regularDischarges_of_cover
+#print axioms State.regularSaturatedFor_of_cover
+#print axioms regularUnravelling_models_partition_of_cover
 
 end ContextCalculus.Hypertableau

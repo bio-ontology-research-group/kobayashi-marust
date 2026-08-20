@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.108] – 2026-08-20
+
+### Reduce regular HT saturation to a finite endpoint certificate
+
+- Define `EndpointRole`, the finite-node projection of regular path-role
+  closure, and prove every semantic regular role edge projects into it.
+- Define endpoint truth and discharge for residual HT clauses. Prove endpoint
+  discharge lifts to infinite paths when residual heads are concepts or
+  existential obligations; normalized role heads remain covered by v0.3.107.
+- Define a certificate-supplied finite role-edge cover. Prove any
+  over-approximation of endpoint role closure is sound for residual body
+  matching: extra body matches can only make certification more restrictive.
+- Prove `regularUnravelling_models_partition_of_cover`. Its saturation inputs
+  quantify only over finite completion-graph nodes and a finite role cover;
+  infinite paths occur solely in the constructed semantic model.
+
+The next executable step is a decoded list representation and Boolean checker
+for cover closure, residual assignment discharge, redirect compatibility, and
+authorized witness slots, followed by the Rust producer connection.
+
+The full Lean build passes across 3,379 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.107] – 2026-08-20
 
 ### Remove normalized role clauses from HT saturation evidence

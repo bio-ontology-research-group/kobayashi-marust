@@ -456,6 +456,18 @@ role clauses and lists are modeled directly by the regular role relation.
 path saturation only on the residual guarded clauses, not on role hierarchy or
 chain clauses that already hold by construction.
 
+`EndpointRole` projects every regular path-role edge to the finite completion
+graph while retaining redirect, subrole, inverse, chain, and reflexive closure.
+Endpoint truth and discharge then replace assignments over infinite paths with
+assignments over finite nodes. Residual role and equality heads are rejected;
+concept and existential heads lift back to each original path.
+`regularUnravelling_models_partition_of_cover` accepts a certificate-supplied
+finite role-edge cover that contains every projected edge and checks all
+residual bodies against that cover. The cover may contain extra edges: this is
+sound and fail-closed because it only creates additional discharge obligations.
+This theorem is now the semantic target for the executable regular-certificate
+wire.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
