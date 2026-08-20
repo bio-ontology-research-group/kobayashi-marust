@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.143] – 2026-08-20
+
+### Prove ordinary HT recursive wire completeness
+
+- Replace the ordinary refutation-tree decoder's opaque partial recursion with
+  a total size-decreasing definition. Its JSON behavior is unchanged, while
+  every constructor equation is now available to proofs.
+- Prove that every ordinary finite refutation tree accepted by the semantic
+  checker has an external wire tree that decodes to that exact tree.
+- Prove the branch case selects an ontology index that retrieves the checked
+  clause, serializes the exact finite assignment, preserves child order and
+  head arity, and reconstructs the original dependent child family.
+- Prove the witness case recursively preserves the transitioned checker state
+  while decoding against the same ontology.
+
+This closes recursive JSON representability for ordinary finite HT
+refutations. Equivalent external-format completeness for the equality and
+cardinality tree layers, exact Rust recursive outcome correspondence, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.142] – 2026-08-20
 
 ### Prove lossless HT assignment encoding
@@ -12,8 +32,8 @@
 - Prove the length-checked assignment decoder returns the exact original
   dependent function, including its finite-index transport.
 
-Recursive refutation-tree encoding completeness, exact Rust recursive outcome
-correspondence, CB, and automatic routing remain unfinished.
+Recursive refutation-tree encoding completeness remained unfinished in this
+release.
 
 ## [0.3.141] – 2026-08-20
 

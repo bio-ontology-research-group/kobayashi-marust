@@ -267,7 +267,7 @@ def buildChildren :
       return .cons head tree (← buildChildren heads trees)
   | _, _ => throw "decoded refutation child count mismatch"
 
-partial def WireRefutationTree.decode
+def WireRefutationTree.decode
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount) :
     WireRefutationTree → Except String
       (FiniteRefutationTree nodeCount conceptCount roleCount variableCount)
@@ -290,6 +290,14 @@ partial def WireRefutationTree.decode
         (← checkedFin "role" roleCount role)
         (← filler.decode conceptCount)
         (← child.decode certificate)
+termination_by tree => sizeOf tree
+decreasing_by
+  · simp_wf
+    rename_i child hchild
+    have hsize := List.sizeOf_lt_of_mem hchild
+    omega
+  · simp_wf
+    omega
 
 inductive DecodedEvidence where
   | sat (decoded : DecodedCertificate)
