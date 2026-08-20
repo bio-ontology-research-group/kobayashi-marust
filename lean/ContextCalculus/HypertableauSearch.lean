@@ -227,6 +227,66 @@ inductive ExhaustiveStep
       ExhaustiveStep ontology state
         [state.materializeWitness source target role filler]
 
+/-- The exact transition shape used by the equality-free Rust producer. It
+selects an undischarged clause before considering existential materialization;
+the witness constructor therefore carries the absence of any clause step.
+Unlike `ExhaustiveStep`, it also records that every branch head is absent, the
+runtime condition that makes each recursive child strict progress. -/
+inductive FirstObstructionStep
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) :
+    List (State Node Concept Role) → Prop where
+  | branch
+      (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology)
+      (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body, state.holdsAtom assignment atom)
+      (habsent : ∀ atom ∈ clause.head, ¬state.holdsAtom assignment atom)
+      (hbranchable : ∀ atom ∈ clause.head, Branchable atom) :
+      FirstObstructionStep ontology state
+        (clause.head.map (state.assertAtom assignment))
+  | witness
+      (hnoClause : ¬state.HasUndischarged ontology)
+      (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.obligation role filler source)
+      (hnowitness : ∀ witness,
+        ¬(state.edge role source witness ∧ state.label witness filler))
+      (hfresh : state.Fresh target) :
+      FirstObstructionStep ontology state
+        [state.materializeWitness source target role filler]
+
+theorem FirstObstructionStep.exhaustiveStep
+    {ontology : List (Clause Variable Concept Role)}
+    {state : State Node Concept Role}
+    {children : List (State Node Concept Role)}
+    (step : FirstObstructionStep ontology state children) :
+    ExhaustiveStep ontology state children := by
+  cases step with
+  | branch clause hclause assignment hbody _ hbranchable =>
+      exact .branch clause hclause assignment hbody hbranchable
+  | witness _ source target role filler hobligation _ hfresh =>
+      exact .witness source target role filler hobligation hfresh
+
+theorem FirstObstructionStep.children_strictGrowth
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {state child : State Node Concept Role}
+    {children : List (State Node Concept Role)}
+    (step : FirstObstructionStep ontology state children)
+    (hchild : child ∈ children) :
+    state.guardedFacts ⊂ child.guardedFacts := by
+  cases step with
+  | branch clause _ assignment _ habsent hbranchable =>
+      rcases List.mem_map.mp hchild with ⟨atom, hatom, rfl⟩
+      exact state.guardedFacts_assertAtom_ssubset assignment atom
+        (hbranchable atom hatom) (habsent atom hatom)
+  | witness _ source target role filler _ _ hfresh =>
+      simp only [List.mem_singleton] at hchild
+      subst child
+      exact state.guardedFacts_materializeWitness_ssubset source target role filler hfresh
+
 theorem ExhaustiveStep.refutes_of_children
     {ontology : List (Clause Variable Concept Role)}
     {state : State Node Concept Role}
@@ -316,6 +376,8 @@ theorem finite_guarded_fact_ht_complete
     hguarded hgrowth hstep hterminal
 
 #print axioms ExhaustiveStep.refutes_of_children
+#print axioms FirstObstructionStep.exhaustiveStep
+#print axioms FirstObstructionStep.children_strictGrowth
 #print axioms State.guardedFacts_assertAtom_ssubset
 #print axioms State.guardedFacts_materializeWitness_ssubset
 #print axioms stateOfGuardedFacts_guardedFacts
