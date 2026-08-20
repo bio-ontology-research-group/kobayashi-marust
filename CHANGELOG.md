@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.102] – 2026-08-20
+
+### Construct the regular HT path domain
+
+- Define the regular unravelling domain of a blocked completion graph as typed
+  successor paths. A redirect map selects the blocker node whose finite outgoing
+  edges are replayed at each blocked path endpoint.
+- Include an explicit natural-number witness slot in every path step. Reusing a
+  finite graph node therefore creates a new semantic value, and different
+  cardinality slots remain distinct.
+- Prove every redirected existential obligation obtains a satisfying direct
+  successor at strictly greater path depth.
+- Prove a `Fin n` family of completion-graph witnesses induces an injective
+  family of `n` semantic successors satisfying the requested filler literal.
+
+These results are the first constructive part of the regular/unravelled HT model
+required after v0.3.101 ruled out finite-fold completeness. Role-hierarchy
+closure, maximum-cardinality preservation, equality/nominal roots, and the full
+ontology-model theorem remain.
+
+The full Lean build passes across 3,379 jobs, and the locked Rust release check
+passes. Rust reasoning code is unchanged from v0.3.101, whose complete release
+suite passed with 2,068 tests and 8 intentional ignores.
+
 ## [0.3.101] – 2026-08-20
 
 ### Align equality-aware folds and expose the regular-model boundary

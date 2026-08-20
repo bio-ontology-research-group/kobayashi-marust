@@ -413,6 +413,16 @@ completion graph together with its infinite unravelling, prove that the
 unravelling satisfies role chains and cardinality, and connect the Rust blocker
 and search to that certificate.
 
+`HypertableauUnravelling.lean` begins that construction with a typed path domain.
+Each successor step records its finite target, role, and a natural-number witness
+slot. `unravelling_obligation_witness` proves redirected completion obligations
+have satisfying path successors at strictly greater depth.
+`unravelling_minimum_witnesses` proves `n` finite witness slots become an
+injective family of `n` semantic successors even when slots reuse the same
+finite graph node. This establishes the existential and minimum-cardinality
+directions of the regular domain construction; it is not yet the full model
+theorem.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
