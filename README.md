@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.177`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.178`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -138,7 +138,10 @@ prefix is converted to the dependent witness vector and proved to satisfy the
 executable maximum-candidate predicate. Greedy selection is complete for
 equality classes: every qualifying target is represented, and sufficient
 greedy width is equivalent to existence of a semantic `bound + 1`
-pairwise-distinct qualifying witness family.
+pairwise-distinct qualifying witness family. Maximum sites are now scanned in
+the production definition-major, ascending-source-ID order; selected sites are
+sound, exhaustive absence is exact, and finite terminal classification uses
+this concrete selector.
 
 ## Classify an ontology
 

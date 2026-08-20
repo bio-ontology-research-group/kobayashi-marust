@@ -1551,6 +1551,107 @@ theorem rustMaximumWidth_iff_exists_witnesses
     exact rustMaximumRepresentatives_length_of_witnesses state definition source
       witnesses hqualifies hdistinct
 
+abbrev RustMaximumSite (nodeCount : Nat) (Concept Role : Type) :=
+  CardinalityDef Concept Role × Fin nodeCount
+
+def allRustMaximumSites
+    (nodeCount : Nat) (definitions : List (CardinalityDef Concept Role)) :
+    List (RustMaximumSite nodeCount Concept Role) :=
+  definitions.flatMap fun definition =>
+    (List.finRange nodeCount).map fun source => (definition, source)
+
+theorem mem_allRustMaximumSites
+    {definitions : List (CardinalityDef Concept Role)}
+    {site : RustMaximumSite nodeCount Concept Role} :
+    site ∈ allRustMaximumSites nodeCount definitions ↔ site.1 ∈ definitions := by
+  rcases site with ⟨definition, source⟩
+  simp [allRustMaximumSites]
+
+noncomputable def rustMaximumSiteBool
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (site : RustMaximumSite nodeCount Concept Role) : Bool := by
+  classical
+  exact decide (site.1.kind = .maximum) &&
+    decide (state.base.closedLabel site.2 (.pos site.1.marker)) &&
+    decide (site.1.bound + 1 ≤
+      (rustMaximumRepresentatives state site.1 site.2).length)
+
+theorem rustMaximumSiteBool_eq_true_iff
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (site : RustMaximumSite nodeCount Concept Role) :
+    rustMaximumSiteBool state site = true ↔
+      site.1.kind = .maximum ∧
+      state.base.closedLabel site.2 (.pos site.1.marker) ∧
+      site.1.bound + 1 ≤
+        (rustMaximumRepresentatives state site.1 site.2).length := by
+  classical
+  simp [rustMaximumSiteBool, and_assoc]
+
+noncomputable def selectRustViolatingMaximumSite
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role) :
+    Option (RustMaximumSite nodeCount Concept Role) :=
+  firstMatch (rustMaximumSiteBool state)
+    (allRustMaximumSites nodeCount definitions)
+
+theorem selectRustViolatingMaximumSite_eq_none_iff
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role) :
+    selectRustViolatingMaximumSite definitions state = none ↔
+      ¬state.HasViolatingMaximum definitions := by
+  classical
+  rw [selectRustViolatingMaximumSite, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with
+      ⟨definition, hdefinition, source, witnesses, hkind, hmarker,
+        hqualifies, hdistinct⟩
+    have hwidth := rustMaximumRepresentatives_length_of_witnesses state definition
+      source witnesses hqualifies hdistinct
+    have hfalse := hscan (definition, source)
+      ((mem_allRustMaximumSites).mpr hdefinition)
+    rw [(rustMaximumSiteBool_eq_true_iff state _).mpr
+      ⟨hkind, hmarker, hwidth⟩] at hfalse
+    contradiction
+  · intro hnone site hmem
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties := (rustMaximumSiteBool_eq_true_iff state site).mp htrue
+    rcases (rustMaximumWidth_iff_exists_witnesses state site.1 site.2).mp
+      hproperties.2.2 with ⟨witnesses, hqualifies, hdistinct⟩
+    exact hnone ⟨site.1, (mem_allRustMaximumSites.mp hmem), site.2, witnesses,
+      hproperties.1, hproperties.2.1, hqualifies, hdistinct⟩
+
+theorem selectRustViolatingMaximumSite_closedRefutes
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    {site : RustMaximumSite nodeCount Concept Role}
+    (hselect : selectRustViolatingMaximumSite definitions state = some site)
+    (hwidth : site.1.bound + 1 ≤
+      (rustMaximumRepresentatives state site.1 site.2).length)
+    (children : ∀ left right : Fin (site.1.bound + 1), left ≠ right →
+      ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions
+        (state.merge
+          (rustPrefixVector (rustMaximumRepresentatives state site.1 site.2)
+            (site.1.bound + 1) hwidth left)
+          (rustPrefixVector (rustMaximumRepresentatives state site.1 site.2)
+            (site.1.bound + 1) hwidth right))) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectRustViolatingMaximumSite] using hselect)
+  have hproperties := (rustMaximumSiteBool_eq_true_iff state site).mp hfound.2
+  let witnesses := rustPrefixVector (rustMaximumRepresentatives state site.1 site.2)
+    (site.1.bound + 1) hwidth
+  exact .maximum state site.1 (mem_allRustMaximumSites.mp hfound.1)
+    hproperties.1 site.2 hproperties.2.1 witnesses
+    (fun index => (rustMaximumPrefixVector_qualifies state site.1 site.2
+      hwidth index).1)
+    (fun index => (rustMaximumPrefixVector_qualifies state site.1 site.2
+      hwidth index).2)
+    (by simpa [witnesses] using children)
+
 def DistinctEqState.CardinalityRuntimeTerminal
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -1594,6 +1695,33 @@ theorem cardinalityRuntimeTerminal_iff_selectors_exhausted
     selectEqUnblockedUnwitnessed_eq_none_iff,
     selectExpandableMinimum_eq_none_iff,
     selectViolatingMaximum_eq_none_iff]
+
+/-- Finite-ID terminal characterization using Rust's concrete
+definition-major, ascending-source maximum scan. -/
+theorem cardinalityRuntimeTerminal_iff_rustMaximum_exhausted
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (expanded : CardinalityDef Concept Role → Fin nodeCount → Prop) :
+    state.CardinalityRuntimeTerminal ontology definitions parent ancestors expanded ↔
+      selectEqualityApartClash state = none ∧
+      selectCardinalityConceptClash state = none ∧
+      selectCardinalityClauseGrounding ontology state = none ∧
+      selectEqUnblockedUnwitnessed state.base parent ancestors = none ∧
+      selectExpandableMinimum definitions state parent ancestors expanded = none ∧
+      selectRustViolatingMaximumSite definitions state = none := by
+  rw [DistinctEqState.CardinalityRuntimeTerminal,
+    selectEqualityApartClash_eq_none_iff,
+    selectCardinalityConceptClash_eq_none_iff,
+    selectCardinalityClauseGrounding_eq_none_iff,
+    selectEqUnblockedUnwitnessed_eq_none_iff,
+    selectExpandableMinimum_eq_none_iff,
+    selectRustViolatingMaximumSite_eq_none_iff]
 
 theorem cardinalityRuntimeTerminal_of_selectors_exhausted
     [Fintype Variable] [DecidableEq Variable]
@@ -1972,6 +2100,11 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms rustMaximumRepresentatives_cover
 #print axioms rustMaximumRepresentatives_length_of_witnesses
 #print axioms rustMaximumWidth_iff_exists_witnesses
+#print axioms mem_allRustMaximumSites
+#print axioms rustMaximumSiteBool_eq_true_iff
+#print axioms selectRustViolatingMaximumSite_eq_none_iff
+#print axioms selectRustViolatingMaximumSite_closedRefutes
+#print axioms cardinalityRuntimeTerminal_iff_rustMaximum_exhausted
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted

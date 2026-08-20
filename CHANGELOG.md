@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.178] – 2026-08-21
+
+### Certify production-order maximum scanning
+
+- Define the exact Rust maximum-site list: cardinality definitions in stored
+  order, then finite source IDs in ascending order.
+- Define and characterize the executable site predicate combining maximum
+  kind, quotient-closed marker, and sufficient greedy representative width.
+- Prove selector exhaustion equivalent to absence of every semantic violating
+  maximum restriction.
+- Prove a selected site and all unequal merge children construct a sound
+  quotient-closed maximum refutation using the deterministic prefix vector.
+- Replace the abstract maximum selector in the finite terminal
+  characterization with the concrete production-order scan.
+- Audit all production-order endpoints without `sorryAx`.
+
+Exact recursive outcome production, concrete Rust field construction, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.177] – 2026-08-21
 
 ### Prove greedy maximum completeness
