@@ -96,6 +96,161 @@ def finitePremisesB
     nominalLabelCoherentB certificate nominalRoot &&
     redirectWitnessCompleteB certificate redirect
 
+def nominalGuardB
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (variableNode : Fin variableCount) : Bool :=
+  clause.body.any fun atom =>
+    match atom with
+    | .concept lit node =>
+        !lit.neg && decide (node = variableNode) && (nominalRoot lit.concept).isSome
+    | _ => false
+
+theorem nominalGuardB_sound
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (variableNode : Fin variableCount)
+    (hcheck : nominalGuardB nominalRoot clause variableNode = true) :
+    ∃ name root, nominalRoot name = some root ∧
+      Atom.concept (.pos name) variableNode ∈ clause.body := by
+  simp only [nominalGuardB, List.any_eq_true] at hcheck
+  rcases hcheck with ⟨atom, hatom, hcheck⟩
+  cases atom with
+  | concept lit node =>
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hcheck
+      rcases hcheck with ⟨⟨hneg, rfl⟩, hsome⟩
+      rcases lit with ⟨name, neg⟩
+      cases neg with
+      | false =>
+          cases hroot : nominalRoot name with
+          | none => simp [hroot] at hsome
+          | some root => exact ⟨name, root, hroot, hatom⟩
+      | true => simp at hneg
+  | role => contradiction
+  | exists_ => contradiction
+  | eq => contradiction
+
+def anchoredHeadLiftableB
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount) → Bool
+  | .concept .. => true
+  | .exists_ .. => true
+  | .role .. => false
+  | .eq left right =>
+      nominalGuardB nominalRoot clause left || nominalGuardB nominalRoot clause right
+
+theorem anchoredHeadLiftableB_sound
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hcheck : anchoredHeadLiftableB nominalRoot clause atom = true) :
+    AnchoredHeadLiftable nominalRoot clause atom := by
+  cases atom with
+  | concept => trivial
+  | exists_ => trivial
+  | role => contradiction
+  | eq left right =>
+      simp only [anchoredHeadLiftableB, Bool.or_eq_true] at hcheck
+      exact hcheck.imp (nominalGuardB_sound nominalRoot clause left)
+        (nominalGuardB_sound nominalRoot clause right)
+
+def AnchoredRegularValid
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount)) : Prop :=
+  (∀ rule ∈ certificate.roleClauses,
+    rule.Authorized certificate.rules) ∧
+  (∀ clause ∈ certificate.residual, clause.GuardedBody) ∧
+  (∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+    AnchoredHeadLiftable nominalRoot clause atom) ∧
+  certificate.state.ClashFree ∧
+  certificate.state.WitnessComplete ∧
+  (∀ node role filler, certificate.state.obligation role filler node →
+    certificate.state.obligation role filler (certificate.redirect node)) ∧
+  certificate.CoverClosed ∧
+  (∀ clause ∈ certificate.residual,
+    certificate.state.CoverDischarges certificate.coverRelation clause)
+
+def anchoredRegularCheck
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount)) : Bool :=
+  certificate.roleClauses.all certificate.authorizedB &&
+  certificate.residual.all (fun clause => clause.body.all atomGuardedB) &&
+  certificate.residual.all (fun clause =>
+    clause.head.all (anchoredHeadLiftableB nominalRoot clause)) &&
+  certificate.labels.all (fun entry =>
+    decide ((entry.1, entry.2.complement) ∉ certificate.labels)) &&
+  certificate.obligations.all (fun obligation =>
+    (List.finRange nodeCount).any fun witness =>
+      decide ((obligation.1, obligation.2.2, witness) ∈ certificate.edges) &&
+      decide ((witness, obligation.2.1) ∈ certificate.labels)) &&
+  certificate.obligations.all (fun obligation =>
+    decide ((obligation.1, obligation.2.1,
+      certificate.redirect obligation.2.2) ∈ certificate.obligations)) &&
+  certificate.coverClosedB &&
+  certificate.residual.all (fun clause =>
+    (allAssignments nodeCount variableCount).all fun assignment =>
+      !(clause.body.all (certificate.coverHoldsAtomB assignment)) ||
+        clause.head.any (certificate.coverHoldsAtomB assignment))
+
+theorem anchoredRegularCheck_sound
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (nominalRoot : Fin conceptCount → Option (Fin nodeCount))
+    (hcheck : anchoredRegularCheck certificate nominalRoot = true) :
+    AnchoredRegularValid certificate nominalRoot := by
+  simp only [anchoredRegularCheck, Bool.and_eq_true, List.all_eq_true] at hcheck
+  rcases hcheck with
+    ⟨⟨⟨⟨⟨⟨⟨hauthorized, hguarded⟩, hheads⟩, hclash⟩,
+      hwitness⟩, hredirect⟩, hcover⟩, hdischarges⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro rule hrule
+    exact (certificate.authorizedB_eq_true rule).mp (hauthorized rule hrule)
+  · intro clause hclause atom hatom
+    have h := hguarded clause hclause atom hatom
+    cases atom with
+    | concept lit node =>
+        rcases lit with ⟨concept, neg⟩
+        cases neg <;> simp [atomGuardedB, BodyAtom] at h ⊢
+    | role => trivial
+    | exists_ => simp [atomGuardedB] at h
+    | eq => trivial
+  · intro clause hclause atom hatom
+    exact anchoredHeadLiftableB_sound nominalRoot clause atom
+      (hheads clause hclause atom hatom)
+  · intro node concept hboth
+    have hnot := hclash (node, Lit.pos concept) hboth.1
+    simp only [Lit.complement, Lit.pos, Bool.not_false,
+      decide_eq_true_eq] at hnot
+    exact hnot hboth.2
+  · intro node role filler hobligation
+    have h := hwitness (role, filler, node) hobligation
+    simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+    rcases h with ⟨witness, _, hedge, hlabel⟩
+    exact ⟨witness, hedge, hlabel⟩
+  · intro node role filler hobligation
+    have h := hredirect (role, filler, node) hobligation
+    simpa [FiniteRegularCertificate.state] using h
+  · exact certificate.coverClosedB_sound hcover
+  · intro clause hclause assignment hbody
+    have h := hdischarges clause hclause assignment
+      (mem_allAssignments nodeCount variableCount assignment)
+    have hbodyB :
+        clause.body.all (certificate.coverHoldsAtomB assignment) = true := by
+      simp only [List.all_eq_true]
+      intro atom hatom
+      exact (certificate.coverHoldsAtomB_eq_true assignment atom).mpr
+        (hbody atom hatom)
+    have hheadB :
+        clause.head.any (certificate.coverHoldsAtomB assignment) = true := by
+      simpa [hbodyB] using h
+    rw [List.any_eq_true] at hheadB
+    rcases hheadB with ⟨atom, hatom, hholds⟩
+    exact ⟨atom, hatom,
+      (certificate.coverHoldsAtomB_eq_true assignment atom).mp hholds⟩
+
 theorem finitePremisesB_sound
     (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount)
     (redirect : Fin nodeCount → Fin nodeCount)
@@ -134,7 +289,7 @@ def anchoredCheck
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount)
     (nominalRoot : Fin conceptCount → Option (Fin nodeCount)) : Bool :=
-  certificate.check &&
+  anchoredRegularCheck certificate nominalRoot &&
     finitePremisesB (regularSatCertificate certificate) certificate.redirect nominalRoot
 
 theorem anchoredCheck_models
@@ -147,11 +302,11 @@ theorem anchoredCheck_models
       (fun _ _ _ _ => True) (NominalAnchor nominalRoot) certificate.rules
       nominalRoot).models certificate.ontology := by
   simp only [anchoredCheck, Bool.and_eq_true] at hcheck
-  have hregular := certificate.check_sound hcheck.1
+  have hregular := anchoredRegularCheck_sound certificate nominalRoot hcheck.1
   have hanchored := finitePremisesB_sound (regularSatCertificate certificate)
     certificate.redirect nominalRoot hcheck.2
   rw [regularSatCertificate_state] at hanchored
-  apply interpretation_models_partition_of_cover certificate.state
+  apply interpretation_models_partition_of_cover_anchored certificate.state
     certificate.redirect (fun _ _ _ _ => True) (NominalAnchor nominalRoot)
     certificate.rules nominalRoot certificate.coverRelation
     certificate.roleClauses certificate.residual
@@ -165,6 +320,33 @@ theorem anchoredCheck_models
     trivial
   · exact certificate.coverClosed_covers hregular.2.2.2.2.2.2.1
   · exact hregular.2.2.2.2.2.2.2
+
+private def nominalEqualityCertificate : FiniteRegularCertificate 1 1 1 2 where
+  labels := [(0, .pos 0)]
+  edges := []
+  obligations := []
+  redirect := id
+  cover := []
+  subRoles := []
+  inverseRoles := []
+  chains := []
+  reflexiveRoles := []
+  roleClauses := []
+  residual := [{
+    body := [.concept (.pos 0) 0]
+    head := [.eq 0 1]
+  }]
+
+private def singletonNominalRoot : Fin 1 → Option (Fin 1) := fun _ => some 0
+
+example : anchoredCheck nominalEqualityCertificate singletonNominalRoot = true := by
+  native_decide
+
+private def unguardedEqualityCertificate : FiniteRegularCertificate 1 1 1 2 :=
+  { nominalEqualityCertificate with residual := [{ body := [], head := [.eq 0 1] }] }
+
+example : anchoredCheck unguardedEqualityCertificate singletonNominalRoot = false := by
+  native_decide
 
 #print axioms nominalLabelCoherentB_sound
 #print axioms clashFreeB_sound

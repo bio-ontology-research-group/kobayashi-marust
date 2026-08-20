@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.121`.
+`v0.3.122`.
 
 ## Classify an ontology
 
@@ -222,6 +222,11 @@ saturation, and normalized RBox closure, then constructs an anchored
 nominal-aware model of the exact decoded ontology. Equality/nominal publication
 still requires checked evidence connecting Rust's union-find representatives
 to these canonical nominal roots.
+
+The anchored checker also accepts equality heads when either equality variable
+has a checked positive nominal guard in the same clause body. Lean proves that
+the guard makes the endpoint canonical, so finite endpoint equality entails
+semantic equality. Unguarded equality heads remain rejected.
 
 The build additionally provides `ht-regular-cert-check` and
 `ht-regular-cardinality-cert-check`. These executables decode the bounded

@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.122] – 2026-08-20
+
+### Certify nominal-guarded equality heads in anchored HT models
+
+- Define the clause-level condition under which finite endpoint equality lifts
+  to equality in the anchored forest domain: either equality variable must be
+  constrained by a checked positive nominal body atom.
+- Prove nominal coherence makes that endpoint an anchor and canonical-root
+  uniqueness then forces the two semantic values to coincide.
+- Add executable guard detection and a dedicated anchored regular checker. It
+  retains every saturation, cover, witness, clash, and RBox check while safely
+  admitting guarded equality heads that the equality-free checker rejects.
+- Add native-decision regressions showing a nominal-guarded equality clause is
+  accepted and its unguarded counterpart is rejected. Existing complete-wire
+  accepted and forged fixtures retain exit statuses 0 and 1.
+
+This certifies the equality-head pattern needed for nominal clauses inside the
+anchored model. Equality/nominal publication still requires checked evidence
+that the regular certificate is the representative image of Rust's equality
+state. The full Lean build passes 3,387 jobs. The locked serial release suite
+passes 2,120 tests with 8 ignored.
+
 ## [0.3.121] – 2026-08-20
 
 ### Compose anchored HT with regular saturation and RBox certification

@@ -456,6 +456,102 @@ theorem coverHoldsAtom_lift
   | exists_ => exact hholds
   | eq => contradiction
 
+/-- Equality heads lift from endpoint equality when one side is constrained by
+a positive nominal body atom. Nominal coherence then proves that endpoint is
+an anchor, where endpoint equality implies equality of anchored values. -/
+def AnchoredHeadLiftable
+    (nominalRoot : Concept → Option Node)
+    (clause : Clause Variable Concept Role) :
+    Atom Variable Concept Role → Prop
+  | .concept .. => True
+  | .exists_ .. => True
+  | .role .. => False
+  | .eq left right =>
+      (∃ name root, nominalRoot name = some root ∧
+        Atom.concept (.pos name) left ∈ clause.body) ∨
+      (∃ name root, nominalRoot name = some root ∧
+        Atom.concept (.pos name) right ∈ clause.body)
+
+theorem coverHoldsAtom_lift_anchored
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (hcoherent : NominalLabelCoherent state anchor nominalRoot)
+    (cover : Role → Node → Node → Prop)
+    (clause : Clause Variable Concept Role)
+    (assignment : Variable → AnchoredForestDomain state redirect slotAllowed anchor)
+    (hbody : ∀ atom ∈ clause.body,
+      HoldsAtom state redirect slotAllowed anchor rules assignment atom)
+    (atom : Atom Variable Concept Role)
+    (hliftable : AnchoredHeadLiftable nominalRoot clause atom)
+    (hholds : state.CoverHoldsAtom cover
+      (fun node => (assignment node).endpoint) atom) :
+    HoldsAtom state redirect slotAllowed anchor rules assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq left right =>
+      rcases hliftable with hleft | hright
+      · rcases hleft with ⟨name, rootNode, hroot, hguard⟩
+        have hlabel := hbody (.concept (.pos name) left) hguard
+        have hanchor : anchor (assignment left).endpoint := by
+          have hc := hcoherent name rootNode hroot
+          exact ((hc.2.1 _).mp hlabel) ▸ hc.1
+        exact eq_of_same_anchored_endpoint (assignment left) (assignment right)
+          hanchor hholds
+      · rcases hright with ⟨name, rootNode, hroot, hguard⟩
+        have hlabel := hbody (.concept (.pos name) right) hguard
+        have hanchor : anchor (assignment right).endpoint := by
+          have hc := hcoherent name rootNode hroot
+          exact ((hc.2.1 _).mp hlabel) ▸ hc.1
+        exact (eq_of_same_anchored_endpoint (assignment right) (assignment left)
+          hanchor hholds.symm).symm
+
+theorem discharges_of_cover_anchored
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (hcoherent : NominalLabelCoherent state anchor nominalRoot)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (clause : Clause Variable Concept Role)
+    (hheads : ∀ atom ∈ clause.head, AnchoredHeadLiftable nominalRoot clause atom)
+    (hdischarges : state.CoverDischarges cover clause) :
+    Discharges state redirect slotAllowed anchor rules clause := by
+  intro assignment hbody
+  have hcoverBody : ∀ atom ∈ clause.body,
+      state.CoverHoldsAtom cover (fun node => (assignment node).endpoint) atom := by
+    intro atom hatom
+    exact holdsAtom_cover state redirect slotAllowed anchor rules cover hcover
+      assignment atom (hbody atom hatom)
+  rcases hdischarges (fun node => (assignment node).endpoint) hcoverBody with
+    ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom, coverHoldsAtom_lift_anchored state redirect slotAllowed
+    anchor rules nominalRoot hcoherent cover clause assignment hbody atom
+    (hheads atom hatom) hholds⟩
+
+theorem saturatedFor_of_cover_anchored
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (hcoherent : NominalLabelCoherent state anchor nominalRoot)
+    (cover : Role → Node → Node → Prop)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (ontology : List (Clause Variable Concept Role))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head,
+      AnchoredHeadLiftable nominalRoot clause atom)
+    (hdischarges : ∀ clause ∈ ontology,
+      state.CoverDischarges cover clause) :
+    SaturatedFor state redirect slotAllowed anchor rules ontology := by
+  intro clause hclause
+  exact discharges_of_cover_anchored state redirect slotAllowed anchor rules
+    nominalRoot hcoherent cover hcover clause (hheads clause hclause)
+    (hdischarges clause hclause)
+
 theorem discharges_of_cover
     (state : State Node Concept Role) (redirect : Node → Node)
     (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
@@ -555,6 +651,42 @@ theorem interpretation_models_partition_of_cover
       rules nominalRoot residual hguarded hclash hcoherent hwitness hslot
       (saturatedFor_of_cover state redirect slotAllowed anchor rules cover hcover
         residual hheads hdischarges) clause hresidual
+
+/-- Nominal-aware partition theorem that additionally admits equality heads
+guarded by a positive nominal body atom. -/
+theorem interpretation_models_partition_of_cover_anchored
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (anchor : Node → Prop)
+    [DecidablePred anchor] (rules : UnravellingRoleRules Role)
+    (nominalRoot : Concept → Option Node)
+    (cover : Role → Node → Node → Prop)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (residual : List (Clause Variable Concept Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules)
+    (hguarded : ∀ clause ∈ residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ residual, ∀ atom ∈ clause.head,
+      AnchoredHeadLiftable nominalRoot clause atom)
+    (hclash : state.ClashFree)
+    (hcoherent : NominalLabelCoherent state anchor nominalRoot)
+    (hwitness : RedirectWitnessComplete state redirect)
+    (hslot : ∀ node role target, state.edge role (redirect node) target →
+      slotAllowed node role target 0)
+    (hcover : EndpointRoleCovered state redirect rules cover)
+    (hdischarges : ∀ clause ∈ residual, state.CoverDischarges cover clause) :
+    (interpretation state redirect slotAllowed anchor rules nominalRoot).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept)) ++
+        residual) := by
+  intro clause hclause
+  rcases List.mem_append.mp hclause with hrole | hresidual
+  · simp only [List.mem_map] at hrole
+    obtain ⟨rule, hrule, rfl⟩ := hrole
+    exact anchoredRoleClause_models state redirect slotAllowed anchor rules
+      nominalRoot rule (hauthorized rule hrule)
+  · exact interpretation_models_of_saturated state redirect slotAllowed anchor
+      rules nominalRoot residual hguarded hclash hcoherent hwitness hslot
+      (saturatedFor_of_cover_anchored state redirect slotAllowed anchor rules
+        nominalRoot hcoherent cover hcover residual hheads hdischarges)
+      clause hresidual
 
 theorem interpretation_direct
     (state : State Node Concept Role) (redirect : Node → Node)
