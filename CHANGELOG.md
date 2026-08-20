@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.162] – 2026-08-21
+
+### Certify quotient-closed cardinality clause selection
+
+- Define the quotient-closed distinct-cardinality refutation relation matching
+  Rust's `closed_holds` evaluation for every clause-body atom.
+- Prove this stronger relation sound for equality, clash, branching, witness,
+  equality/apart, minimum, and maximum rules.
+- Prove every existing distinct-cardinality refutation embeds into the new
+  quotient-closed relation.
+- Mirror the third ordered Rust runtime control: exhaustive finite clause and
+  assignment selection after both clash scans.
+- Prove selected clause recursion sound and prove that scan exhaustion is
+  equivalent to absence of a quotient-closed undischarged grounding.
+- Audit the new semantic relation and selector theorems without `sorryAx`.
+
+Witness, minimum, maximum, terminal selection, checker correspondence for the
+stronger clause body, concrete Rust field construction, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.161] – 2026-08-21
 
 ### Begin exact cardinality runtime refinement

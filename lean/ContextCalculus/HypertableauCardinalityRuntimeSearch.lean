@@ -13,6 +13,158 @@ refutation; exhausting the scan proves that no such clash exists.
 
 namespace ContextCalculus.Hypertableau
 
+/-- Cardinality refutations whose clause bodies use the same complete quotient
+closure as Rust's `closed_holds`.  The remaining constructors are the ordinary
+distinct-cardinality rules. -/
+inductive ClosedDistinctCardinalityRefutes (Node : Type u)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) :
+    DistinctEqState Node Concept Role → Prop where
+  | equality (state) (tree : ClosedEqRefutes Node ontology state.base) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | clash (state)
+      (hclash : ∃ positiveNode negativeNode concept,
+        state.base.equiv positiveNode negativeNode ∧
+          state.base.base.label positiveNode (.pos concept) ∧
+          state.base.base.label negativeNode (.negated concept)) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | branch (state) (clause : Clause Variable Concept Role)
+      (hclause : clause ∈ ontology) (assignment : Variable → Node)
+      (hbody : ∀ atom ∈ clause.body,
+        state.base.closedHoldsAtom assignment atom)
+      (children : ∀ atom, atom ∈ clause.head →
+        ClosedDistinctCardinalityRefutes Node ontology definitions
+          (state.assertAtom assignment atom)) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | witness (state) (source target : Node) (role : Role) (filler : Lit Concept)
+      (hobligation : state.base.base.obligation role filler source)
+      (hfresh : state.Fresh target)
+      (child : ClosedDistinctCardinalityRefutes Node ontology definitions
+        (state.materializeWitness source target role filler)) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | equalityApart (state) (left right : Node)
+      (hequal : state.base.equiv left right)
+      (hapart : state.apart left right) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | maximum (state) (definition : CardinalityDef Concept Role)
+      (hdefinition : definition ∈ definitions)
+      (hkind : definition.kind = .maximum)
+      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (witnesses : Fin (definition.bound + 1) → Node)
+      (hedge : ∀ index,
+        state.base.base.edge definition.role source (witnesses index))
+      (hfiller : ∀ index,
+        state.base.base.label (witnesses index) (.pos definition.filler))
+      (children : ∀ left right, left ≠ right →
+        ClosedDistinctCardinalityRefutes Node ontology definitions
+          (state.merge (witnesses left) (witnesses right))) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+  | minimum (state) (definition : CardinalityDef Concept Role)
+      (hdefinition : definition ∈ definitions)
+      (hkind : definition.kind = .minimum)
+      (source : Node) (hmarker : state.base.base.label source (.pos definition.marker))
+      (targets : Fin definition.bound → Node)
+      (hfresh : state.FreshFamily targets)
+      (child : ClosedDistinctCardinalityRefutes Node ontology definitions
+        (state.materializeMinimum source targets definition.role definition.filler)) :
+      ClosedDistinctCardinalityRefutes Node ontology definitions state
+
+theorem ClosedDistinctCardinalityRefutes.sound
+    (hrefutes : ClosedDistinctCardinalityRefutes Node ontology definitions state) :
+    ¬state.RealizableWithCardinality ontology definitions := by
+  induction hrefutes with
+  | equality state tree =>
+      rintro ⟨Domain, I, value, hmodels, _, hrealized⟩
+      exact tree.sound ⟨Domain, I, value, hmodels, hrealized.1⟩
+  | clash state hclash =>
+      rintro ⟨Domain, I, value, _, _, hrealized⟩
+      rcases hclash with
+        ⟨positiveNode, negativeNode, concept, hequiv, hpositive, hnegative⟩
+      have hpositiveSat := hrealized.1.1.1 positiveNode (.pos concept) hpositive
+      have hnegativeSat := hrealized.1.1.1 negativeNode (.negated concept) hnegative
+      rw [← hrealized.1.2 positiveNode negativeNode hequiv] at hnegativeSat
+      exact hnegativeSat hpositiveSat
+  | branch state clause hclause assignment hbody children ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      have hsemanticBody : ∀ atom ∈ clause.body,
+          I.satAtom (value ∘ assignment) atom := by
+        intro atom hatom
+        exact state.base.realized_closedHoldsAtom I value hrealized.1 assignment atom
+          (hbody atom hatom)
+      rcases hmodels clause hclause (value ∘ assignment) hsemanticBody with
+        ⟨atom, hatom, hsat⟩
+      exact ih atom hatom ⟨Domain, I, value, hmodels, hcardinality,
+        state.base.assertAtom_realized I value hrealized.1 assignment atom hsat,
+        hrealized.2⟩
+  | witness state source target role filler hobligation hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      rcases state.materializeWitness_realized I value hrealized source target role filler
+          hobligation hfresh with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
+  | equalityApart state left right hequal hapart =>
+      exact state.equality_apart_clash left right hequal hapart
+  | maximum state definition hdefinition hkind source hmarker witnesses
+      hedge hfiller children ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      have hmarkerSat : I.concept definition.marker (value source) :=
+        hrealized.1.1.1 source (.pos definition.marker) hmarker
+      have hdefinitionModels : I.modelsCardinalityDef definition :=
+        hcardinality definition hdefinition
+      have hsuccessors : ∀ index,
+          I.cardinalitySuccessor definition (value source) (value (witnesses index)) := by
+        intro index
+        exact ⟨hrealized.1.1.2.1 definition.role source (witnesses index) (hedge index),
+          hrealized.1.1.1 (witnesses index) (.pos definition.filler) (hfiller index)⟩
+      have hnotInjective :
+          ¬Function.Injective (fun index => value (witnesses index)) :=
+        Interp.maximum_forces_merge (I := I) definition hkind
+          hdefinitionModels (value source) hmarkerSat
+          (fun index => value (witnesses index)) hsuccessors
+      have hpair : ∃ left right, left ≠ right ∧
+          value (witnesses left) = value (witnesses right) := by
+        by_contra hnone
+        push Not at hnone
+        apply hnotInjective
+        intro left right hequal
+        by_contra hne
+        exact hnone left right hne hequal
+      rcases hpair with ⟨left, right, hne, hequal⟩
+      exact ih left right hne ⟨Domain, I, value, hmodels, hcardinality,
+        state.merge_realized I value hrealized (witnesses left) (witnesses right) hequal⟩
+  | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
+      rintro ⟨Domain, I, value, hmodels, hcardinality, hrealized⟩
+      have hmarkerSat : I.concept definition.marker (value source) :=
+        hrealized.1.1.1 source (.pos definition.marker) hmarker
+      have hdefinitionModels : I.modelsCardinalityDef definition :=
+        hcardinality definition hdefinition
+      rcases I.minimum_witnesses definition hkind hdefinitionModels (value source)
+          hmarkerSat with ⟨witnesses, hinjective, hsuccessors⟩
+      rcases state.materializeMinimum_realized I value hrealized source targets
+          definition.role definition.filler definition.marker hmarker hfresh witnesses
+          hinjective hsuccessors with ⟨value', hchild⟩
+      exact ih ⟨Domain, I, value', hmodels, hcardinality, hchild⟩
+
+theorem DistinctCardinalityRefutes.toClosed
+    (hrefutes : DistinctCardinalityRefutes Node ontology definitions state) :
+    ClosedDistinctCardinalityRefutes Node ontology definitions state := by
+  induction hrefutes with
+  | equality state tree => exact .equality state tree.toClosed
+  | clash state hclash => exact .clash state hclash
+  | branch state clause hclause assignment hbody children ih =>
+      exact .branch state clause hclause assignment
+        (fun atom hatom => state.base.holdsAtom_implies_closedHoldsAtom assignment atom
+          (hbody atom hatom)) ih
+  | witness state source target role filler hobligation hfresh child ih =>
+      exact .witness state source target role filler hobligation hfresh ih
+  | equalityApart state left right hequal hapart =>
+      exact .equalityApart state left right hequal hapart
+  | maximum state definition hdefinition hkind source hmarker witnesses hedge hfiller
+      children ih =>
+      exact .maximum state definition hdefinition hkind source hmarker witnesses hedge
+        hfiller ih
+  | minimum state definition hdefinition hkind source hmarker targets hfresh child ih =>
+      exact .minimum state definition hdefinition hkind source hmarker targets hfresh ih
+
 abbrev EqualityApartCandidate (Node : Type) := Node × Node
 
 noncomputable def allEqualityApartCandidates
@@ -199,6 +351,59 @@ theorem selectCardinalityConceptClash_not_realizable
     ¬state.RealizableWithCardinality ontology definitions :=
   (selectCardinalityConceptClash_refutes ontology definitions state hselect).sound
 
+/-- The third Rust control scans clauses and finite assignments using complete
+quotient closure. -/
+noncomputable def selectCardinalityClauseGrounding
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (state : DistinctEqState Node Concept Role) :
+    Option (Grounding Variable Node Concept Role) :=
+  selectEqClauseGrounding ontology state.base
+
+theorem selectCardinalityClauseGrounding_eq_none_iff
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (state : DistinctEqState Node Concept Role) :
+    selectCardinalityClauseGrounding ontology state = none ↔
+      ¬state.base.HasClosedUndischarged ontology :=
+  selectEqClauseGrounding_eq_none_iff ontology state.base
+
+theorem selectCardinalityClauseGrounding_closedRefutes
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    {grounding : Grounding Variable Node Concept Role}
+    (hselect : selectCardinalityClauseGrounding ontology state = some grounding)
+    (children : ∀ atom, atom ∈ grounding.1.head →
+      ClosedDistinctCardinalityRefutes Node ontology definitions
+        (state.assertAtom grounding.2 atom)) :
+    ClosedDistinctCardinalityRefutes Node ontology definitions state := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectCardinalityClauseGrounding, selectEqClauseGrounding] using hselect)
+  have hproperties := eqGroundingUndischarged_eq_true_iff.mp hfound.2
+  exact .branch state grounding.1 (mem_allGroundings.mp hfound.1)
+    grounding.2 hproperties.1 children
+
+theorem selectCardinalityClauseGrounding_not_realizable
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState Node Concept Role)
+    {grounding : Grounding Variable Node Concept Role}
+    (hselect : selectCardinalityClauseGrounding ontology state = some grounding)
+    (children : ∀ atom, atom ∈ grounding.1.head →
+      ClosedDistinctCardinalityRefutes Node ontology definitions
+        (state.assertAtom grounding.2 atom)) :
+    ¬state.RealizableWithCardinality ontology definitions :=
+  (selectCardinalityClauseGrounding_closedRefutes ontology definitions state
+    hselect children).sound
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -208,5 +413,10 @@ theorem selectCardinalityConceptClash_not_realizable
 #print axioms selectCardinalityConceptClash_eq_none_iff
 #print axioms selectCardinalityConceptClash_refutes
 #print axioms selectCardinalityConceptClash_not_realizable
+#print axioms selectCardinalityClauseGrounding_eq_none_iff
+#print axioms selectCardinalityClauseGrounding_closedRefutes
+#print axioms selectCardinalityClauseGrounding_not_realizable
+#print axioms ClosedDistinctCardinalityRefutes.sound
+#print axioms DistinctCardinalityRefutes.toClosed
 
 end ContextCalculus.Hypertableau
