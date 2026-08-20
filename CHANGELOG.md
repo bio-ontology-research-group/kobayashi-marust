@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.115] – 2026-08-20
+
+### Connect the Rust HT producer to regular-model evidence
+
+- Partition exact subrole, inverse-role, binary-chain, and reflexive clauses
+  into the normalized role-rule wire; reject unsupported residual heads.
+- Serialize blocker redirects instead of claiming that finite node identity is
+  the blocked model's domain identity.
+- Supply outgoing finite witness edges for blocked obligations while retaining
+  redirect-based path semantics.
+- Compute the least finite endpoint-role cover to closure under every decoded
+  role rule.
+- Add cross-language regressions in which Lean accepts Rust-emitted cyclic and
+  combined role-closure regular certificates.
+
+The ordinary decision API is not switched in this release. It needs a checked
+sum envelope so regular SAT and finite refutation evidence can share one
+publication boundary without trusting Rust to select the semantic outcome.
+The locked release suite passes 2,118 tests, including both native Lean
+cross-language checks.
+
 ## [0.3.114] – 2026-08-20
 
 ### Expose native regular HT certificate checkers

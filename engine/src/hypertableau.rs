@@ -2386,6 +2386,70 @@ struct LeanHtClause {
     head: Vec<LeanHtAtom>,
 }
 
+#[derive(Clone, Copy, serde::Serialize)]
+struct LeanHtRolePair {
+    premise: usize,
+    conclusion: usize,
+}
+
+#[derive(Clone, Copy, serde::Serialize)]
+struct LeanHtRoleChain {
+    first: usize,
+    second: usize,
+    conclusion: usize,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtNormalizedRoleClause {
+    #[serde(rename = "subRole")]
+    SubRole {
+        premise: usize,
+        conclusion: usize,
+        source: usize,
+        target: usize,
+    },
+    #[serde(rename = "inverseRole")]
+    InverseRole {
+        premise: usize,
+        conclusion: usize,
+        source: usize,
+        target: usize,
+    },
+    Chain {
+        first: usize,
+        second: usize,
+        conclusion: usize,
+        source: usize,
+        middle: usize,
+        target: usize,
+    },
+    Reflexive {
+        role: usize,
+        source: usize,
+    },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtRegularCertificate {
+    version: usize,
+    node_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    variable_count: usize,
+    labels: Vec<LeanHtLabel>,
+    edges: Vec<LeanHtEdge>,
+    obligations: Vec<LeanHtObligation>,
+    redirect: Vec<usize>,
+    cover: Vec<LeanHtEdge>,
+    sub_roles: Vec<LeanHtRolePair>,
+    inverse_roles: Vec<LeanHtRolePair>,
+    chains: Vec<LeanHtRoleChain>,
+    reflexive_roles: Vec<usize>,
+    role_clauses: Vec<LeanHtNormalizedRoleClause>,
+    residual: Vec<LeanHtClause>,
+}
+
 #[derive(serde::Serialize)]
 struct LeanHtClauseNormalization {
     source: LeanHtClause,
@@ -9632,6 +9696,319 @@ impl Ht {
             edges,
             obligations,
             evidence,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    /// Serialize a blocked equality-free branch through the regular-unravelling
+    /// trust boundary. Unlike `lean_blocked_open_certificate_json`, this keeps
+    /// the raw completion edges, records the blocker redirect explicitly, and
+    /// computes the least finite endpoint-role cover used by Lean.
+    fn lean_regular_blocked_open_certificate_json(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+    ) -> Result<String, String> {
+        let mut variable_count = self.lean_source_variable_count();
+        let mut concept_count = 0usize;
+        let mut role_count = 0usize;
+        let mut role_clauses = Vec::new();
+        let mut residual = Vec::new();
+        let mut sub_roles = Vec::new();
+        let mut inverse_roles = Vec::new();
+        let mut chains = Vec::new();
+        let mut reflexive_roles = Vec::new();
+
+        for record in &self.clauses {
+            let clause = &record.0;
+            for atom in clause.body.iter().chain(clause.head.iter()) {
+                match atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1).max(*t as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(*t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(*r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(*s as usize + 1).max(*t as usize + 1);
+                    }
+                }
+            }
+
+            let normalized = match (clause.body.as_slice(), clause.head.as_slice()) {
+                (
+                    [Atom::Role {
+                        r: premise,
+                        s: source,
+                        t: target,
+                    }],
+                    [Atom::Role {
+                        r: conclusion,
+                        s: head_source,
+                        t: head_target,
+                    }],
+                ) if source == head_source && target == head_target => {
+                    let pair = LeanHtRolePair {
+                        premise: *premise as usize,
+                        conclusion: *conclusion as usize,
+                    };
+                    sub_roles.push(pair);
+                    Some(LeanHtNormalizedRoleClause::SubRole {
+                        premise: pair.premise,
+                        conclusion: pair.conclusion,
+                        source: *source as usize,
+                        target: *target as usize,
+                    })
+                }
+                (
+                    [Atom::Role {
+                        r: premise,
+                        s: source,
+                        t: target,
+                    }],
+                    [Atom::Role {
+                        r: conclusion,
+                        s: head_source,
+                        t: head_target,
+                    }],
+                ) if source == head_target && target == head_source => {
+                    let pair = LeanHtRolePair {
+                        premise: *premise as usize,
+                        conclusion: *conclusion as usize,
+                    };
+                    inverse_roles.push(pair);
+                    Some(LeanHtNormalizedRoleClause::InverseRole {
+                        premise: pair.premise,
+                        conclusion: pair.conclusion,
+                        source: *source as usize,
+                        target: *target as usize,
+                    })
+                }
+                (
+                    [Atom::Role {
+                        r: first,
+                        s: source,
+                        t: middle,
+                    }, Atom::Role {
+                        r: second,
+                        s: second_source,
+                        t: target,
+                    }],
+                    [Atom::Role {
+                        r: conclusion,
+                        s: head_source,
+                        t: head_target,
+                    }],
+                ) if middle == second_source && source == head_source && target == head_target => {
+                    let chain = LeanHtRoleChain {
+                        first: *first as usize,
+                        second: *second as usize,
+                        conclusion: *conclusion as usize,
+                    };
+                    chains.push(chain);
+                    Some(LeanHtNormalizedRoleClause::Chain {
+                        first: chain.first,
+                        second: chain.second,
+                        conclusion: chain.conclusion,
+                        source: *source as usize,
+                        middle: *middle as usize,
+                        target: *target as usize,
+                    })
+                }
+                (
+                    [],
+                    [Atom::Role {
+                        r: role,
+                        s: source,
+                        t: target,
+                    }],
+                ) if source == target => {
+                    reflexive_roles.push(*role as usize);
+                    Some(LeanHtNormalizedRoleClause::Reflexive {
+                        role: *role as usize,
+                        source: *source as usize,
+                    })
+                }
+                _ => None,
+            };
+            if let Some(normalized) = normalized {
+                role_clauses.push(normalized);
+                continue;
+            }
+            if clause.body.iter().any(|atom| match atom {
+                Atom::Concept { lit, .. } => lit.neg,
+                Atom::Exists { .. } => true,
+                Atom::Role { .. } | Atom::Eq { .. } => false,
+            }) {
+                return Err("regular HT residual clause has an unguarded body atom".to_string());
+            }
+            if clause
+                .head
+                .iter()
+                .any(|atom| matches!(atom, Atom::Role { .. } | Atom::Eq { .. }))
+            {
+                return Err("regular HT residual clause has a non-path-liftable head".to_string());
+            }
+            residual.push(LeanHtClause {
+                body: clause.body.iter().map(Self::lean_wire_atom).collect(),
+                head: clause.head.iter().map(Self::lean_wire_atom).collect(),
+            });
+        }
+
+        sub_roles.sort_unstable_by_key(|rule| (rule.premise, rule.conclusion));
+        sub_roles.dedup_by_key(|rule| (rule.premise, rule.conclusion));
+        inverse_roles.sort_unstable_by_key(|rule| (rule.premise, rule.conclusion));
+        inverse_roles.dedup_by_key(|rule| (rule.premise, rule.conclusion));
+        chains.sort_unstable_by_key(|rule| (rule.first, rule.second, rule.conclusion));
+        chains.dedup_by_key(|rule| (rule.first, rule.second, rule.conclusion));
+        reflexive_roles.sort_unstable();
+        reflexive_roles.dedup();
+
+        let mut redirect: Vec<Node> = (0..leaf.node_count).collect();
+        for &(blocked, blocker) in &leaf.folds {
+            if blocked >= leaf.node_count || blocker >= leaf.node_count {
+                return Err("regular HT blocker redirect is out of range".to_string());
+            }
+            redirect[blocked] = blocker;
+        }
+
+        // `WitnessComplete` is stated for every finite obligation, including a
+        // blocked endpoint. Copy only the blocker's outgoing witness edges to
+        // that endpoint. The semantic path construction still consults
+        // `redirect[source]`; these copies witness finite closure and do not
+        // collapse distinct paths or install the old bidirectional finite fold.
+        let mut regular_edges = leaf.edges.clone();
+        for &(blocked, blocker) in &leaf.folds {
+            regular_edges.extend(
+                leaf.edges
+                    .iter()
+                    .filter(|(_, source, _)| *source == blocker)
+                    .map(|&(role, _, target)| (role, blocked, target)),
+            );
+        }
+        regular_edges.sort_unstable();
+        regular_edges.dedup();
+
+        let mut cover: HashSet<(usize, Node, Node)> = HashSet::new();
+        for source in 0..leaf.node_count {
+            for &(role, edge_source, target) in &regular_edges {
+                if edge_source == redirect[source] {
+                    cover.insert((role as usize, source, target));
+                }
+            }
+        }
+        for &role in &reflexive_roles {
+            for source in 0..leaf.node_count {
+                cover.insert((role, source, source));
+            }
+        }
+        loop {
+            let snapshot: Vec<_> = cover.iter().copied().collect();
+            let mut additions = Vec::new();
+            for &(role, source, target) in &snapshot {
+                for rule in &sub_roles {
+                    if role == rule.premise {
+                        additions.push((rule.conclusion, source, target));
+                    }
+                }
+                for rule in &inverse_roles {
+                    if role == rule.premise {
+                        additions.push((rule.conclusion, target, source));
+                    }
+                }
+            }
+            for left in &snapshot {
+                for right in &snapshot {
+                    if left.2 != right.1 {
+                        continue;
+                    }
+                    for rule in &chains {
+                        if left.0 == rule.first && right.0 == rule.second {
+                            additions.push((rule.conclusion, left.1, right.2));
+                        }
+                    }
+                }
+            }
+            let mut changed = false;
+            for edge in additions {
+                changed |= cover.insert(edge);
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let mut labels = leaf
+            .labels
+            .iter()
+            .map(|&(node, literal)| {
+                concept_count = concept_count.max(literal.c as usize + 1);
+                LeanHtLabel {
+                    node,
+                    literal: Self::lean_wire_lit(literal),
+                }
+            })
+            .collect::<Vec<_>>();
+        labels.sort_unstable_by_key(|label| (label.node, label.literal.concept, label.literal.neg));
+        let mut edges = regular_edges
+            .iter()
+            .map(|&(role, source, target)| LeanHtEdge {
+                role: role as usize,
+                source,
+                target,
+            })
+            .collect::<Vec<_>>();
+        edges.sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        let mut obligations = leaf
+            .obligations
+            .iter()
+            .map(|&(role, filler, node)| LeanHtObligation {
+                role: role as usize,
+                filler: Self::lean_wire_lit(filler),
+                node,
+            })
+            .collect::<Vec<_>>();
+        obligations.sort_unstable_by_key(|obligation| {
+            (
+                obligation.role,
+                obligation.node,
+                obligation.filler.concept,
+                obligation.filler.neg,
+            )
+        });
+        let mut cover = cover
+            .into_iter()
+            .map(|(role, source, target)| LeanHtEdge {
+                role,
+                source,
+                target,
+            })
+            .collect::<Vec<_>>();
+        cover.sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+
+        serde_json::to_string(&LeanHtRegularCertificate {
+            version: 1,
+            node_count: leaf.node_count,
+            concept_count,
+            role_count,
+            variable_count,
+            labels,
+            edges,
+            obligations,
+            redirect,
+            cover,
+            sub_roles,
+            inverse_roles,
+            chains,
+            reflexive_roles,
+            role_clauses,
+            residual,
         })
         .map_err(|error| error.to_string())
     }
@@ -21516,12 +21893,47 @@ mod tests {
             .unwrap()
             .iter()
             .any(|edge| { edge["role"] == R0 && edge["source"] == 2 && edge["target"] == 2 }));
-        assert!(certificate["edges"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|edge| { edge["role"] == R0 && edge["source"] == 0 && edge["target"] == 2 }),
-            "bidirectional fold materialization must copy incoming blocker edges");
+        assert!(
+            certificate["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| { edge["role"] == R0 && edge["source"] == 0 && edge["target"] == 2 }),
+            "bidirectional fold materialization must copy incoming blocker edges"
+        );
+        let regular_raw = cyclic
+            .lean_regular_blocked_open_certificate_json(&leaf)
+            .expect("materialize the blocked leaf as a regular-model candidate");
+        let regular: serde_json::Value =
+            serde_json::from_str(&regular_raw).expect("regular SAT candidate is JSON");
+        assert_eq!(regular["redirect"], serde_json::json!([0, 1, 1]));
+        assert!(
+            regular["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| edge["source"] == 2 && edge["target"] == 2),
+            "regular evidence must give every finite obligation a witness edge"
+        );
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-regular-blocked-open-cert-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, regular_raw).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the native Lean regular checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the Rust regular blocked model at {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(path);
+        }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(
                 "km-ht-blocked-open-cert-{}-{}.json",
@@ -21544,6 +21956,69 @@ mod tests {
                 .success();
             let _ = std::fs::remove_file(path);
             assert!(accepted, "Lean must accept the materialized blocked leaf");
+        }
+    }
+
+    #[test]
+    fn regular_certificate_partitions_role_rules_and_lean_checks_cover() {
+        let reasoner = Ht::new_certified(vec![
+            Clause::new(
+                vec![Atom::Role { r: R0, s: 0, t: 1 }],
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+            ),
+            Clause::new(
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+                vec![Atom::Role { r: 2, s: 1, t: 0 }],
+            ),
+            Clause::new(
+                vec![
+                    Atom::Role { r: R0, s: 0, t: 1 },
+                    Atom::Role { r: R0, s: 1, t: 2 },
+                ],
+                vec![Atom::Role { r: 3, s: 0, t: 2 }],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Role { r: 4, s: 0, t: 0 }]),
+        ]);
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: 3,
+            labels: Vec::new(),
+            edges: vec![(R0, 0, 1), (R0, 1, 2)],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+        };
+        let document = reasoner
+            .lean_regular_blocked_open_certificate_json(&leaf)
+            .expect("serialize normalized role rules and endpoint closure");
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(wire["role_clauses"].as_array().unwrap().len(), 4);
+        assert!(wire["residual"].as_array().unwrap().is_empty());
+        let cover = wire["cover"].as_array().unwrap();
+        for expected in [
+            serde_json::json!({"role": 1, "source": 0, "target": 1}),
+            serde_json::json!({"role": 2, "source": 1, "target": 0}),
+            serde_json::json!({"role": 3, "source": 0, "target": 2}),
+            serde_json::json!({"role": 4, "source": 2, "target": 2}),
+        ] {
+            assert!(cover.contains(&expected), "endpoint cover omits {expected}");
+        }
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-regular-role-cover-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the native Lean regular checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept Rust's normalized role cover at {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(path);
         }
     }
 

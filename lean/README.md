@@ -525,6 +525,16 @@ remaining regular HT semantic extensions are equality and nominal roots.
 `HTRegularCardinalityCertCheck.lean` exposes the combined wire as
 `ht-regular-cardinality-cert-check` with the same fail-closed behavior.
 
+The Rust HT certificate producer now constructs the base regular wire for
+blocked equality-free branches. It recognizes the four exact normalized role
+clause shapes, rejects non-liftable residual heads, records blocker redirects,
+supplies finite witnesses for blocked obligations, and computes the least
+finite closure under subrole, inverse, chain, and reflexive rules. Cross-language
+tests pass the emitted cyclic model and a combined four-rule role cover through
+`ht-regular-cert-check`. The production decision API still emits the older
+finite SAT/refutation envelope; a checked sum envelope is needed before it can
+publish regular SAT and finite UNSAT evidence through one fail-closed route.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.
