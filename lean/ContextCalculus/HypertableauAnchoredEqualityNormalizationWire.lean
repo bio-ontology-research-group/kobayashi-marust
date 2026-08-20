@@ -85,6 +85,18 @@ theorem DecodedNormalizedAnchoredEqCertificate.check_sound
   exact ⟨_, I, hdomain,
     (decoded.normalization.equivalent _ I).mpr hmodels⟩
 
+/-- Soundness at the exact production JSON boundary. Decode failure and checker
+rejection remain fail-closed; an `Except.ok true` result constructs a nonempty
+model of the decoded source ontology. -/
+theorem WireNormalizedAnchoredEqCertificate.check_sound
+    (wire : WireNormalizedAnchoredEqCertificate)
+    (decoded : DecodedNormalizedAnchoredEqCertificate)
+    (hdecode : wire.decode = Except.ok decoded)
+    (hcheck : wire.check = Except.ok true) : decoded.SemanticallyValid := by
+  simp only [WireNormalizedAnchoredEqCertificate.check, hdecode] at hcheck
+  exact decoded.check_sound (by simpa using hcheck)
+
 #print axioms DecodedNormalizedAnchoredEqCertificate.check_sound
+#print axioms WireNormalizedAnchoredEqCertificate.check_sound
 
 end ContextCalculus.Hypertableau

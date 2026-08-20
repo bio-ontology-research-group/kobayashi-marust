@@ -481,11 +481,22 @@ theorem DecodedNormalizedCertificate.check_sound
   | cardinality decoded => exact decoded.check_sound hcheck
   | regular decoded => exact decoded.check_sound hcheck
 
+/-- Soundness at the version-3/4 production JSON boundary. Successful decode
+and `Except.ok true` imply the semantics of the exact decoded source evidence. -/
+theorem WireNormalizedCertificate.check_sound
+    (wire : WireNormalizedCertificate)
+    (decoded : DecodedNormalizedCertificate)
+    (hdecode : wire.decode = Except.ok decoded)
+    (hcheck : wire.check = Except.ok true) : decoded.SemanticallyValid := by
+  simp only [WireNormalizedCertificate.check, hdecode] at hcheck
+  exact decoded.check_sound (by simpa using hcheck)
+
 #print axioms DecodedNormalizedPlain.check_sound
 #print axioms DecodedNormalizedEquality.check_sound
 #print axioms DecodedNormalizedCardinality.check_sound
 #print axioms DecodedNormalizedRegular.check_sound
 #print axioms DecodedNormalizedCertificate.check_sound
+#print axioms WireNormalizedCertificate.check_sound
 
 namespace Tests
 

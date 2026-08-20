@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.160] – 2026-08-21
+
+### Certify production equality SAT JSON acceptance
+
+- Add wire-level soundness for the normalized finite equality certificate used
+  as the first production SAT candidate.
+- Add wire-level soundness for the normalized anchored equality certificate
+  used as the production fallback after a finite quotient candidate is
+  rejected.
+- Prove that successful decode plus `Except.ok true` constructs the exact
+  decoded source semantics in both cases.
+- Preserve fail-closed behavior for malformed documents, normalization or
+  preprocessing failures, and checker rejection.
+- Audit both production-boundary theorems without `sorryAx`.
+
+Concrete correspondence for Rust's construction of every emitted field,
+cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.159] – 2026-08-21
 
 ### Compose equality termination with checked blocked models
