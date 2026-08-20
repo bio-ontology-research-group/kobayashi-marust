@@ -295,7 +295,14 @@ finite strict-growth transition system closes its root or reaches an open leaf.
 `HypertableauTerminal.lean` specializes this to HT: once concrete transitions
 expose every obstruction and combine exhaustive closed children using
 `Refutes`, the root is refuted or a reachable canonical branch models the exact
-ontology. Instantiating those premises for each Rust transition remains open.
+ontology. `HypertableauSearch.lean` gives the exact finite representation of
+labels, edges, and obligations, proves both representation round trips, and
+proves strict growth for each absent branchable head and fresh witness. Its
+exhaustive step type has exactly one child per disjunct or one fresh-witness
+child; refuting those children constructs the matching `Refutes` parent. The
+finite completeness theorem is specialized directly to these guarded facts.
+The blocked fresh-address supply and exact Rust-enumerator correspondence remain
+open.
 `HypertableauTerminal.lean` also proves that every branch exposes a
 clash, an unwitnessed existential, an undischarged grounding, or an exact
 canonical model. `HypertableauRoleBlocking.lean` proves the certified full

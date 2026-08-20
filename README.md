@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.67`.
+`v0.3.68`.
 
 ## Classify an ontology
 
@@ -206,6 +206,13 @@ transition enumerator that exposes every terminal obstruction and combines all
 closed children must either refute the root or reach a canonical model of the
 exact guarded ontology. Instantiating those transition premises for every Rust
 HT update remains in progress.
+
+Lean now represents an equality-free HT state exactly as a finite set of label,
+edge, and obligation facts. It proves round-trip decoding, strict growth for
+each absent branch head and fresh witness, and exact child closure for the
+disjunctive and existential `Refutes` constructors. The completeness theorem is
+specialized directly to this representation. Establishing the blocked fresh
+address supply and matching Rust's enumerator to these transitions remains.
 
 `ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
 decision for every named class and one subsumption decision for every ordered

@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.68] – 2026-08-20
+
+### Refine finite HT search to exact branch and witness transitions
+
+- Define the exact finite guarded-fact representation of HT labels, role edges,
+  and existential obligations, with both round-trip theorems.
+- Prove that asserting an absent branchable head strictly grows this finite
+  state and that materializing a fresh existential witness does the same.
+- Define the two exact exhaustive transition shapes: one child per branchable
+  head atom and one child for a fresh witness.
+- Prove that refuting every enumerated child constructs the corresponding
+  `Refutes` parent, then specialize finite-search completeness directly to the
+  guarded-fact representation without an abstract decoder.
+- Prove every equality-free undischarged or unwitnessed obstruction has one of
+  these transition shapes when a fresh blocked address is available.
+
+The remaining equality-free runtime premise is the concrete blocked-address
+fresh supply and correspondence between Rust's enumeration and these exact
+finite transitions.
+
 ## [0.3.67] – 2026-08-20
 
 ### Prove finite exhaustive HT search completeness

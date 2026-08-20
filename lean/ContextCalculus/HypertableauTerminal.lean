@@ -95,8 +95,9 @@ theorem finite_exhaustive_ht_complete
     (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
     (hgrowth : ∀ parent child, child ∈ next parent → StrictGrowth child parent)
     (hterminal : ∀ facts, next facts = [] →
-      ¬(decode facts).HasUnwitnessed ∧
-      ¬(decode facts).HasUndischarged ontology)
+      Refutes Node ontology (decode facts) ∨
+      (¬(decode facts).HasUnwitnessed ∧
+        ¬(decode facts).HasUndischarged ontology))
     (hcloseChildren : ∀ facts, next facts ≠ [] →
       (∀ child, child ∈ next facts →
         Refutes Node ontology (decode child)) →
@@ -109,7 +110,8 @@ theorem finite_exhaustive_ht_complete
     (fun facts => (decode facts).canonical.models ontology)
     hgrowth
   · intro facts hempty
-    rcases hterminal facts hempty with ⟨hnowitness, hnoundischarged⟩
+    rcases hterminal facts hempty with hrefutes | ⟨hnowitness, hnoundischarged⟩
+    · exact Or.inl hrefutes
     by_cases hclash : (decode facts).HasClash
     · exact Or.inl (Refutes.clash (decode facts) hclash)
     · exact Or.inr (exhaustive_terminal_models (decode facts) ontology
