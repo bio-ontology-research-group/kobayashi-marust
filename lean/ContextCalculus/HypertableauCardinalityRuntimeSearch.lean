@@ -846,6 +846,115 @@ theorem FiniteDistinctEqCertificate.rustConsecutiveTargets_freshFamily_of_check
   rustConsecutiveTargets_freshFamily certificate.state
     (certificate.inactivePrefixFreshB_sound active hprefix) hfit
 
+/-- The single fresh ID allocated by Rust's ordinary witness branch. -/
+def rustNextTarget (active nodeCount : Nat) (hfit : active < nodeCount) : Fin nodeCount :=
+  ⟨active, hfit⟩
+
+theorem DistinctEqState.inactivePrefixFresh_materializeWitness
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (source : Fin nodeCount) (hsource : source.1 < active)
+    (role : Role) (filler : Lit Concept)
+    (hfit : active < nodeCount) :
+    (state.materializeWitness source (rustNextTarget active nodeCount hfit) role filler).InactivePrefixFresh
+      (active + 1) := by
+  intro candidate hcand
+  have hold := hprefix candidate (Nat.le_trans (Nat.le_add_right active 1) hcand)
+  have hcandidateTarget : candidate ≠ rustNextTarget active nodeCount hfit := by
+    intro heq
+    have hvalue := congrArg Fin.val heq
+    simp [rustNextTarget] at hvalue
+    omega
+  have hcandidateSource : candidate ≠ source := by
+    intro heq
+    have hvalue := congrArg Fin.val heq
+    omega
+  rcases hold with ⟨⟨⟨hlabels, hedges, hobligations⟩, hequiv⟩, hapart⟩
+  refine ⟨⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_⟩
+  · intro lit hlabel
+    rcases hlabel with hlabel | ⟨heq, _⟩
+    · exact hlabels lit hlabel
+    · exact hcandidateTarget heq
+  · intro candidateRole node
+    constructor
+    · intro hedge
+      rcases hedge with hedge | ⟨_, heq, _⟩
+      · exact (hedges candidateRole node).1 hedge
+      · exact hcandidateSource heq
+    · intro hedge
+      rcases hedge with hedge | ⟨_, _, heq⟩
+      · exact (hedges candidateRole node).2 hedge
+      · exact hcandidateTarget heq
+  · exact hobligations
+  · exact hequiv
+  · exact hapart
+
+theorem DistinctEqState.inactivePrefixFresh_materializeMinimum
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active count : Nat) (hprefix : state.InactivePrefixFresh active)
+    (source : Fin nodeCount) (hsource : source.1 < active)
+    (role : Role) (filler : Concept)
+    (hfit : active + count ≤ nodeCount) :
+    (state.materializeMinimum source
+      (rustConsecutiveTargets active count nodeCount hfit) role filler).InactivePrefixFresh
+        (active + count) := by
+  intro candidate hcand
+  have hold := hprefix candidate (Nat.le_trans (Nat.le_add_right active count) hcand)
+  have hcandidateTarget : ∀ index,
+      candidate ≠ rustConsecutiveTargets active count nodeCount hfit index := by
+    intro index heq
+    have hvalue := congrArg Fin.val heq
+    simp [rustConsecutiveTargets] at hvalue
+    omega
+  have hcandidateSource : candidate ≠ source := by
+    intro heq
+    have hvalue := congrArg Fin.val heq
+    omega
+  rcases hold with ⟨⟨⟨hlabels, hedges, hobligations⟩, hequiv⟩, hapart⟩
+  refine ⟨⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_⟩
+  · intro lit hlabel
+    rcases hlabel with hlabel | ⟨index, heq, _⟩
+    · exact hlabels lit hlabel
+    · exact hcandidateTarget index heq
+  · intro candidateRole node
+    constructor
+    · intro hedge
+      rcases hedge with hedge | ⟨index, _, heq, _⟩
+      · exact (hedges candidateRole node).1 hedge
+      · exact hcandidateSource heq
+    · intro hedge
+      rcases hedge with hedge | ⟨index, _, _, heq⟩
+      · exact (hedges candidateRole node).2 hedge
+      · exact hcandidateTarget index heq
+  · exact hobligations
+  · exact hequiv
+  · intro node
+    constructor
+    · intro hnew
+      rcases hnew with hold | ⟨first, second, _, heq, _⟩
+      · exact (hapart node).1 hold
+      · exact hcandidateTarget first heq
+    · intro hnew
+      rcases hnew with hold | ⟨first, second, _, _, heq⟩
+      · exact (hapart node).2 hold
+      · exact hcandidateTarget second heq
+
+theorem FiniteDistinctEqCertificate.minimumTransitionB_inactivePrefixFresh
+    (current next : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (active count : Nat)
+    (hprefix : current.inactivePrefixFreshB active = true)
+    (source : Fin nodeCount) (hsource : source.1 < active)
+    (role : Fin roleCount) (filler : Fin conceptCount)
+    (hfit : active + count ≤ nodeCount)
+    (htransition : current.minimumTransitionB next source
+      (rustConsecutiveTargets active count nodeCount hfit) role filler = true) :
+    next.state.InactivePrefixFresh (active + count) := by
+  rw [current.minimumTransitionB_state next source
+    (rustConsecutiveTargets active count nodeCount hfit) role filler htransition]
+  exact current.state.inactivePrefixFresh_materializeMinimum active count
+    (current.inactivePrefixFreshB_sound active hprefix) source hsource role filler hfit
+
 theorem selectRustExpandableMinimum_consecutive_closedRefutes
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -1398,6 +1507,9 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concep
 #print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_sound
 #print axioms FiniteDistinctEqCertificate.inactivePrefixFreshB_fit
 #print axioms FiniteDistinctEqCertificate.rustConsecutiveTargets_freshFamily_of_check
+#print axioms DistinctEqState.inactivePrefixFresh_materializeWitness
+#print axioms DistinctEqState.inactivePrefixFresh_materializeMinimum
+#print axioms FiniteDistinctEqCertificate.minimumTransitionB_inactivePrefixFresh
 #print axioms selectViolatingMaximum_eq_none_iff
 #print axioms selectViolatingMaximum_closedRefutes
 #print axioms cardinalityRuntimeTerminal_iff_selectors_exhausted

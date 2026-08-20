@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.173] – 2026-08-21
+
+### Preserve active-prefix freshness through allocation
+
+- Define Rust's exact ordinary witness target at `active_nodes`.
+- Prove ordinary witness materialization preserves inactive-prefix freshness
+  while increasing the active prefix by one.
+- Prove minimum materialization with the exact consecutive target vector
+  preserves freshness while increasing the prefix by the restriction width,
+  including labels, edges, equality isolation, obligations, and both
+  directions of explicit `apart` facts.
+- Connect accepted finite `minimumTransitionB` successor certificates to the
+  enlarged semantic active-prefix invariant.
+- Audit all preservation endpoints without `sorryAx`.
+
+Field-level correspondence for ordinary witness state construction,
+preservation through clause assertion and maximum merge, deterministic maximum
+witness selection, exact recursive outcome production, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.172] – 2026-08-21
 
 ### Check the active-node prefix invariant
