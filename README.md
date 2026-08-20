@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.113`.
+`v0.3.114`.
 
 ## Classify an ontology
 
@@ -200,6 +200,14 @@ or an explicitly configured diagnostic node cap still declines. Equality-aware
 query countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
 QO, and runtime termination/blocking correspondence remain separate HT
 certification tasks.
+
+The build additionally provides `ht-regular-cert-check` and
+`ht-regular-cardinality-cert-check`. These executables decode the bounded
+regular wires and run the proved finite cover, residual-clause, witness, and
+cardinality checks. Acceptance constructs the infinite regular unravelling
+model rather than relying on a finite folded graph. The Rust producer does not
+yet publish this wire, so these executables are explicit trust-boundary targets,
+not a claim that the production HT route is completely certified.
 
 Certified mode 6 also checks before SAT serialization that every generated
 node has a strictly earlier predecessor and that no full-signature-blocked node

@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+## [0.3.114] – 2026-08-20
+
+### Expose native regular HT certificate checkers
+
+- Add `ht-regular-cert-check` for the bounded regular graph wire.
+- Add `ht-regular-cardinality-cert-check` for the regular graph, authorized
+  witness slots, and cardinality-definition wire.
+- Keep decoding and semantic checking inside Lean; malformed bounds and failed
+  semantic checks return nonzero status.
+- Add checked-in acceptance and malformed-redirect command-line fixtures.
+
+These executables are the fail-closed acceptance targets for the Rust regular
+certificate producer. The producer connection and equality/nominal-root
+extension remain pending.
+
 ## [0.3.113] – 2026-08-20
 
 ### Add the bounded regular HT cardinality wire

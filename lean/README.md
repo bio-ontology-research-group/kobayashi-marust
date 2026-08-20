@@ -489,6 +489,11 @@ residual clauses. `DecodedRegularCertificate.check_models` carries successful
 decode and Boolean acceptance through to the exact model theorem. Cardinality
 slots, equality/nominal roots, and the Rust producer remain pending.
 
+`HTRegularCertCheck.lean` exposes this decoder and checker as the native
+`ht-regular-cert-check` executable. It distinguishes malformed input, rejected
+semantic evidence, and file errors by exit status. Checked-in positive and
+malformed-redirect documents exercise the command-line boundary.
+
 `HypertableauRegularCardinalityCertificate.lean` extends the regular model with
 explicit authorized witness slots and complete minimum/maximum definitions.
 `SyntacticallySimple` excludes every role-closure constructor that could add an
@@ -517,6 +522,8 @@ Boolean acceptance flows through
 `DecodedRegularCardinalityCertificate.check_models`, yielding one regular
 interpretation for the exact ontology and all cardinality definitions. The
 remaining regular HT semantic extensions are equality and nominal roots.
+`HTRegularCardinalityCertCheck.lean` exposes the combined wire as
+`ht-regular-cardinality-cert-check` with the same fail-closed behavior.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
