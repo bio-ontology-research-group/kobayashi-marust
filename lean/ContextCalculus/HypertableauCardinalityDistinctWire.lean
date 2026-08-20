@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauCardinalityDistinctCertificate
+import ContextCalculus.HypertableauCardinalityRuntimeSearch
 import ContextCalculus.HypertableauCardinalityRefutationWire
 import Lean
 
@@ -141,7 +141,7 @@ def WireDistinctCardinalityRefutationTree.check
   let certificate ← root.decode nodeCount conceptCount roleCount variableCount ontology
   let tree ← wire.decodeAtDepth nodeCount conceptCount roleCount variableCount
     ontology definitions depth
-  return tree.check definitions certificate
+  return tree.checkClosed definitions certificate
 
 structure DecodedDistinctCardinalityRefutation
     (nodeCount conceptCount roleCount variableCount : Nat) where

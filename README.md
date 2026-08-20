@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.168`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.169`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -114,8 +114,10 @@ keeps closure, model, and frontier outcomes disjoint. Exact recursive runtime
 production of those outcomes remains to be connected. The complete recursive
 distinct-cardinality refutation checker now evaluates clause, minimum, and
 maximum premises through checked equality closure and proves every accepted
-tree semantically inconsistent. The production wire still invokes the legacy
-checker; changing that executable boundary is the next integration step.
+tree semantically inconsistent. Both the standalone distinct-cardinality wire
+and production global cardinality documents invoke this checker. Successful
+production decoding and checking proves ontology inconsistency, subsumption,
+or concept unsatisfiability for the stated result mode.
 
 ## Classify an ontology
 

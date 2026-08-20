@@ -1089,6 +1089,95 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable
       certificate.base.base.ontology definitions :=
   (tree.checkClosed_sound definitions certificate hcheck).sound
 
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_ontology_unsatisfiable
+    [Nonempty (Fin nodeCount)]
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hempty : certificate.base.EmptyRoot) (hapart : certificate.apart = [])
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    ¬∃ (Domain : Type) (I : Interp Domain (Fin conceptCount) (Fin roleCount)),
+      Nonempty Domain ∧ I.models certificate.base.base.ontology ∧
+        I.modelsCardinalityDefs definitions := by
+  rintro ⟨Domain, I, hdomain, hmodels, hcardinality⟩
+  apply tree.checkClosed_unsatisfiable definitions certificate hcheck
+  let value : Fin nodeCount → Domain := fun _ => Classical.choice hdomain
+  refine ⟨Domain, I, value, hmodels, hcardinality, ?_, ?_⟩
+  · rcases hempty with ⟨hlabels, hedges, hobligations⟩
+    refine ⟨?_, ?_⟩
+    · simp [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+        FiniteSatCertificate.state, State.RealizedBy, hlabels, hedges, hobligations]
+    · intro left right _
+      rfl
+  · simp [FiniteDistinctEqCertificate.state, hapart]
+
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_subsumption
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (sub sup : Fin conceptCount)
+    (hroot : certificate.base.SubsumptionRoot root sub sup)
+    (hapart : certificate.apart = [])
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    EntailsSubWithCardinality certificate.base.base.ontology definitions sub sup := by
+  intro Domain I hmodels hcardinality value hsub
+  by_contra hsup
+  apply tree.checkClosed_unsatisfiable definitions certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, hcardinality, ?_, ?_⟩
+  · rcases hroot with ⟨hlabels, hedges, hobligations⟩
+    refine ⟨?_, ?_⟩
+    · refine ⟨?_, ?_, ?_⟩
+      · intro node lit hlabel
+        simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hlabels, List.mem_cons, List.not_mem_nil,
+          or_false, Prod.mk.injEq] at hlabel
+        rcases hlabel with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+        · simpa [Interp.satLit, Lit.pos] using hsub
+        · simpa [Interp.satLit, Lit.negated] using hsup
+      · simp [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hedges]
+      · simp [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hobligations]
+    · intro left right _
+      rfl
+  · simp [FiniteDistinctEqCertificate.state, hapart]
+
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concept
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (root : Fin nodeCount) (concept : Fin conceptCount)
+    (hroot : certificate.base.UnsatisfiableRoot root concept)
+    (hapart : certificate.apart = [])
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    UnsatisfiableConceptWithCardinality certificate.base.base.ontology
+      definitions concept := by
+  intro Domain I hmodels hcardinality value hconcept
+  apply tree.checkClosed_unsatisfiable definitions certificate hcheck
+  refine ⟨Domain, I, fun _ => value, hmodels, hcardinality, ?_, ?_⟩
+  · rcases hroot with ⟨hlabels, hedges, hobligations⟩
+    refine ⟨?_, ?_⟩
+    · refine ⟨?_, ?_, ?_⟩
+      · intro node lit hlabel
+        simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hlabels, List.mem_cons, List.not_mem_nil,
+          or_false, Prod.mk.injEq] at hlabel
+        rcases hlabel with ⟨rfl, rfl⟩
+        simpa [Interp.satLit, Lit.pos] using hconcept
+      · simp [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hedges]
+      · simp [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state, hobligations]
+    · intro left right _
+      rfl
+  · simp [FiniteDistinctEqCertificate.state, hapart]
+
 #print axioms selectEqualityApartClash_eq_none_iff
 #print axioms selectEqualityApartClash_refutes
 #print axioms selectEqualityApartClash_not_realizable
@@ -1119,5 +1208,8 @@ theorem FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable
 #print axioms FiniteEqCertificate.closedEdgeB_eq_true_iff
 #print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_sound
 #print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_ontology_unsatisfiable
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_subsumption
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_unsatisfiable_concept
 
 end ContextCalculus.Hypertableau

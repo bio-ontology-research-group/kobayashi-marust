@@ -2,6 +2,22 @@
 
 ## [unreleased]
 
+## [0.3.169] – 2026-08-21
+
+### Connect quotient-closed cardinality checking to production
+
+- Switch both the standalone distinct-cardinality wire and the production
+  global cardinality document checker from the legacy raw-fact checker to the
+  quotient-closed recursive checker.
+- Strengthen checked closed outcomes to carry acceptance by that exact checker.
+- Prove accepted ontology-UNSAT, subsumption, and unsatisfiable-concept
+  documents have their stated semantics through the production wire boundary.
+- Preserve the executable global SAT/closed outcome theorem and audit all new
+  endpoints without `sorryAx`.
+
+Exact recursive outcome production, concrete Rust field construction, CB, and
+automatic routing remain unfinished.
+
 ## [0.3.168] – 2026-08-21
 
 ### Certify the quotient-closed cardinality refutation checker
@@ -16,10 +32,8 @@
   and cardinality definitions.
 - Audit the checker endpoint without `sorryAx`.
 
-The production cardinality wire still invokes the legacy checker. Switching
-that boundary to this quotient-closed checker, exact recursive outcome
-production, concrete Rust field construction, CB, and automatic routing remain
-unfinished.
+At this release, the production cardinality wire still invoked the legacy
+checker. Release 0.3.169 switches that boundary to the quotient-closed checker.
 
 ## [0.3.167] – 2026-08-21
 

@@ -104,7 +104,7 @@ def DecodedCardinalityEqCertificate.check
           decide (0 < decoded.base.nodeCount) &&
           certificate.base.labels.isEmpty && certificate.base.edges.isEmpty &&
           certificate.base.obligations.isEmpty &&
-          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+          refutation.tree.checkClosed decoded.definitions { base := certificate, apart := [] }
       | none => match decoded.refutation with
         | none => false
         | some refutation =>
@@ -116,7 +116,7 @@ def DecodedCardinalityEqCertificate.check
       match decoded.distinctRefutation with
       | some refutation =>
           certificate.checkSubsumptionRoot root sub sup &&
-          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+          refutation.tree.checkClosed decoded.definitions { base := certificate, apart := [] }
       | none => match decoded.refutation with
         | none => false
         | some refutation =>
@@ -126,7 +126,7 @@ def DecodedCardinalityEqCertificate.check
       match decoded.distinctRefutation with
       | some refutation =>
           certificate.checkUnsatisfiableRoot root concept &&
-          refutation.tree.check decoded.definitions { base := certificate, apart := [] }
+          refutation.tree.checkClosed decoded.definitions { base := certificate, apart := [] }
       | none => match decoded.refutation with
         | none => false
         | some refutation =>
@@ -195,7 +195,7 @@ theorem DecodedCardinalityEqCertificate.check_sound
             ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
           haveI : Nonempty (Fin decoded.base.nodeCount) := ⟨⟨0, hpositive⟩⟩
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_ontology_unsatisfiable decoded.definitions
+          exact refutation.tree.checkClosed_ontology_unsatisfiable decoded.definitions
             { base := certificate, apart := [] } ⟨hlabels, hedges, hobligations⟩ rfl htree
       | none =>
           cases hrefutation : decoded.refutation with
@@ -218,7 +218,7 @@ theorem DecodedCardinalityEqCertificate.check_sound
           simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
             Bool.and_eq_true] at hcheck
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_subsumption decoded.definitions
+          exact refutation.tree.checkClosed_subsumption decoded.definitions
             { base := certificate, apart := [] } root sub sup
             (certificate.checkSubsumptionRoot_sound root sub sup hcheck.1) rfl hcheck.2
       | none =>
@@ -238,7 +238,7 @@ theorem DecodedCardinalityEqCertificate.check_sound
           simp only [DecodedCardinalityEqCertificate.check, hevidence, hdistinct,
             Bool.and_eq_true] at hcheck
           simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence]
-          exact refutation.tree.check_unsatisfiable_concept decoded.definitions
+          exact refutation.tree.checkClosed_unsatisfiable_concept decoded.definitions
             { base := certificate, apart := [] } root concept
             (certificate.checkUnsatisfiableRoot_sound root concept hcheck.1) rfl hcheck.2
       | none =>

@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauCardinalityDistinctCertificate
+import ContextCalculus.HypertableauCardinalityRuntimeSearch
 import ContextCalculus.HypertableauCardinalityCertificate
 import ContextCalculus.HypertableauCardinalityFrontierWire
 
@@ -40,7 +40,7 @@ inductive CheckedCardinalityDecisionOutcome
       (hnonempty : 0 < nodeCount)
       (hempty : certificate.base.EmptyRoot)
       (hapart : certificate.apart = [])
-      (hcheck : tree.check definitions certificate = true)
+      (hcheck : tree.checkClosed definitions certificate = true)
   | frontier
       (document : WireCardinalityAddressFrontier)
       (hconcepts : document.concept_count = conceptCount)
@@ -89,10 +89,10 @@ theorem CheckedCardinalityDecisionOutcome.closed_semantics
     (hnonempty : 0 < nodeCount)
     (hempty : certificate.base.EmptyRoot)
     (hapart : certificate.apart = [])
-    (hcheck : tree.check definitions certificate = true) :
+    (hcheck : tree.checkClosed definitions certificate = true) :
     ¬CardinalityHasNonemptyModel ontology definitions := by
   letI : Nonempty (Fin nodeCount) := ⟨⟨0, hnonempty⟩⟩
-  have hnot := tree.check_ontology_unsatisfiable
+  have hnot := tree.checkClosed_ontology_unsatisfiable
     definitions certificate hempty hapart hcheck
   simpa [CardinalityHasNonemptyModel, hontology] using hnot
 
