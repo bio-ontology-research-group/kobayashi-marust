@@ -422,9 +422,13 @@ satisfying authorized path successors at strictly greater depth.
 injective family of `n` semantic successors even when slots reuse the same
 finite graph node. `UnravellingDirectSuccessor.key_injective` proves all direct
 semantic successors inject into their authorized `(target-node, slot)` keys,
-which is the finite bound needed for the maximum-cardinality direction. These
-results establish the path-domain cardinality infrastructure; they are not yet
-the full model theorem.
+which is the finite bound needed for the maximum-cardinality direction.
+`unravelling_modelsCardinalityDef` proves these finite minimum/maximum
+obligations imply satisfaction of one semantic cardinality definition, and
+`unravelling_modelsCardinalityDefs` lifts the result to the complete decoded
+side channel. The SROIQ simple-role condition must still prove that later
+complex role closure adds no successors to number-restricted roles; this is not
+yet the full model theorem.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

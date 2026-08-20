@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.104] – 2026-08-20
+
+### Prove regular HT cardinality satisfaction
+
+- Define the finite authorized-key predicate for one path endpoint and role.
+- Prove a finite `HasAtMost n` bound on authorized keys transfers to all direct
+  semantic successors of the corresponding unravelled path.
+- Combine authorized minimum witnesses and maximum key bounds into
+  `unravelling_modelsCardinalityDef`, which proves the regular interpretation
+  satisfies one complete cardinality definition.
+- Lift the result to `unravelling_modelsCardinalityDefs`, certifying the entire
+  decoded cardinality side channel from finite per-definition closure
+  obligations.
+
+The remaining cardinality interaction is the SROIQ simplicity boundary: roles
+used by number restrictions must not gain extra successors through complex role
+closure. Equality/nominal roots and the full ontology model theorem also remain.
+
+The full Lean build passes across 3,379 jobs, and the locked Rust release check
+passes. Rust reasoning code remains unchanged from v0.3.101's complete release
+suite.
+
 ## [0.3.103] – 2026-08-20
 
 ### Bound regular HT successor slots

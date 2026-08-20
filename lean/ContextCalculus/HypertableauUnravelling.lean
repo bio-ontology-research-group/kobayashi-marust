@@ -1,4 +1,4 @@
-import ContextCalculus.Hypertableau
+import ContextCalculus.HypertableauCardinality
 
 /-!
 # Regular path unravelling for blocked hypertableau endpoints
@@ -216,6 +216,25 @@ def UnravellingDirectSuccessor.key
       state redirect slotAllowed root source role) : Node × Nat := by
   exact (successor.1.1, successor.1.lastSlot.getD 0)
 
+def UnravellingAuthorizedKey
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop)
+    (source : Node) (role : Role) (key : Node × Nat) : Prop :=
+  state.edge role (redirect source) key.1 ∧
+    slotAllowed source role key.1 key.2
+
+theorem UnravellingDirectSuccessor.key_authorized
+    {state : State Node Concept Role} {redirect : Node → Node}
+    {slotAllowed : Node → Role → Node → Nat → Prop} {root : Node}
+    {source : UnravellingDomain state redirect slotAllowed root} {role : Role}
+    (successor : UnravellingDirectSuccessor
+      state redirect slotAllowed root source role) :
+    UnravellingAuthorizedKey state redirect slotAllowed source.1 role
+      successor.key := by
+  rcases successor with ⟨target, hedge⟩
+  cases hedge
+  exact ⟨‹state.edge _ _ _›, ‹slotAllowed _ _ _ _›⟩
+
 /-- Direct semantic successors inject into their authorized finite
 `(target-node, slot)` keys. Consequently an at-most checker only needs to bound
 that finite key set; unravelling itself introduces no additional direct
@@ -237,11 +256,119 @@ theorem UnravellingDirectSuccessor.key_injective
   rcases hkey with ⟨rfl, rfl⟩
   rfl
 
+/-- A finite bound on authorized successor keys is inherited by the direct
+role successors of every path ending at that finite source node. -/
+theorem State.unravelling_direct_hasAtMost
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (source : UnravellingDomain state redirect slotAllowed root)
+    (role : Role) (bound : Nat)
+    (hbound : HasAtMost bound
+      (UnravellingAuthorizedKey state redirect slotAllowed source.1 role)) :
+    HasAtMost bound
+      (fun target => (state.unravelling redirect slotAllowed root).role
+        role source target) := by
+  intro hatLeast
+  rcases hatLeast with ⟨witness, hinjective, hrole⟩
+  let successor (index : Fin (bound + 1)) : UnravellingDirectSuccessor
+      state redirect slotAllowed root source role :=
+    ⟨witness index, hrole index⟩
+  let keyed (index : Fin (bound + 1)) : Node × Nat :=
+    UnravellingDirectSuccessor.key (successor index)
+  apply hbound
+  refine ⟨keyed, ?_, ?_⟩
+  · intro left right hequal
+    have hsuccessor :
+        successor left = successor right :=
+      UnravellingDirectSuccessor.key_injective (by
+        simpa [keyed] using hequal)
+    exact hinjective (congrArg Subtype.val hsuccessor)
+  · intro index
+    simpa [keyed] using
+      UnravellingDirectSuccessor.key_authorized (successor index)
+
+/-- Finite slot closure for one cardinality marker is exactly enough to make
+the regular path interpretation satisfy that definition. Minimum definitions
+provide authorized witnesses; maximum definitions bound all authorized keys.
+-/
+theorem State.unravelling_modelsCardinalityDef
+    {Node : Type u} {Concept Role : Type}
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (hclash : state.ClashFree)
+    (definition : CardinalityDef Concept Role)
+    (hminimum : definition.kind = .minimum → ∀ node,
+      state.label node (.pos definition.marker) →
+      ∃ witness : Fin definition.bound → Node,
+        (∀ index,
+          state.edge definition.role (redirect node) (witness index)) ∧
+        (∀ index,
+          slotAllowed node definition.role (witness index) index.1) ∧
+        (∀ index, state.label (witness index) (.pos definition.filler)))
+    (hmaximum : definition.kind = .maximum → ∀ node,
+      state.label node (.pos definition.marker) →
+      HasAtMost definition.bound
+        (UnravellingAuthorizedKey state redirect slotAllowed node
+          definition.role)) :
+    (state.unravelling redirect slotAllowed root).modelsCardinalityDef
+      definition := by
+  intro source hmarker
+  cases hkind : definition.kind with
+  | minimum =>
+      obtain ⟨witness, hedge, hslot, hlabel⟩ :=
+        hminimum hkind source.1 hmarker
+      obtain ⟨target, hinjective, htarget⟩ :=
+        state.unravelling_minimum_witnesses redirect slotAllowed root hclash
+          source definition.role (.pos definition.filler) definition.bound
+          witness hedge hslot hlabel
+      refine ⟨target, hinjective, ?_⟩
+      intro index
+      rcases htarget index with ⟨hrole, hfiller⟩
+      exact ⟨hrole, hfiller⟩
+  | maximum =>
+      have hdirect := state.unravelling_direct_hasAtMost
+        redirect slotAllowed root source definition.role definition.bound
+        (hmaximum hkind source.1 hmarker)
+      intro hatLeast
+      apply hdirect
+      rcases hatLeast with ⟨witness, hinjective, hsuccessor⟩
+      exact ⟨witness, hinjective, fun index => (hsuccessor index).1⟩
+
+theorem State.unravelling_modelsCardinalityDefs
+    {Node : Type u} {Concept Role : Type}
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (hclash : state.ClashFree)
+    (definitions : List (CardinalityDef Concept Role))
+    (hminimum : ∀ definition ∈ definitions,
+      definition.kind = .minimum → ∀ node,
+      state.label node (.pos definition.marker) →
+      ∃ witness : Fin definition.bound → Node,
+        (∀ index,
+          state.edge definition.role (redirect node) (witness index)) ∧
+        (∀ index,
+          slotAllowed node definition.role (witness index) index.1) ∧
+        (∀ index, state.label (witness index) (.pos definition.filler)))
+    (hmaximum : ∀ definition ∈ definitions,
+      definition.kind = .maximum → ∀ node,
+      state.label node (.pos definition.marker) →
+      HasAtMost definition.bound
+        (UnravellingAuthorizedKey state redirect slotAllowed node
+          definition.role)) :
+    (state.unravelling redirect slotAllowed root).modelsCardinalityDefs
+      definitions := by
+  intro definition hdefinition
+  exact state.unravelling_modelsCardinalityDef redirect slotAllowed root hclash
+    definition (hminimum definition hdefinition) (hmaximum definition hdefinition)
+
 #print axioms UnravellingDirectRole.target_depth
 #print axioms UnravellingDirectRole.ne
 #print axioms State.unravelling_sat_label
 #print axioms State.unravelling_obligation_witness
 #print axioms State.unravelling_minimum_witnesses
 #print axioms UnravellingDirectSuccessor.key_injective
+#print axioms State.unravelling_direct_hasAtMost
+#print axioms State.unravelling_modelsCardinalityDef
+#print axioms State.unravelling_modelsCardinalityDefs
 
 end ContextCalculus.Hypertableau
