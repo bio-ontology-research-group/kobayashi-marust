@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauRuntimeSearch
 import ContextCalculus.HypertableauEqualitySearch
+import ContextCalculus.HypertableauEqualityBlocking
 
 /-!
 # Executable equality-aware hypertableau runtime selection
@@ -125,6 +126,60 @@ theorem eqGroundingUndischarged_eq_true_iff
       ∀ atom ∈ grounding.1.head, ¬state.closedHoldsAtom grounding.2 atom := by
   simp [eqGroundingUndischarged, List.all_eq_true]
 
+theorem quotientClosedHoldsAtomB_eq_closedHoldsAtomBool
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.quotientClosedHoldsAtomB assignment atom =
+      closedHoldsAtomBool certificate.state assignment atom := by
+  apply Bool.eq_iff_iff.mpr
+  rw [certificate.quotientClosedHoldsAtomB_eq_true hvalid]
+  exact (closedHoldsAtomBool_eq_true_iff certificate.state assignment atom).symm
+
+def eqCertificateGroundingUndischarged
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (grounding : Grounding (Fin variableCount) (Fin nodeCount)
+      (Fin conceptCount) (Fin roleCount)) : Bool :=
+  grounding.1.body.all
+      (certificate.quotientClosedHoldsAtomB grounding.2) &&
+    grounding.1.head.all fun atom =>
+      !(certificate.quotientClosedHoldsAtomB grounding.2 atom)
+
+theorem eqCertificateGroundingUndischarged_eq_runtime
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (grounding : Grounding (Fin variableCount) (Fin nodeCount)
+      (Fin conceptCount) (Fin roleCount)) :
+    eqCertificateGroundingUndischarged certificate grounding =
+      eqGroundingUndischarged certificate.state grounding := by
+  unfold eqCertificateGroundingUndischarged eqGroundingUndischarged
+  have hfunction : certificate.quotientClosedHoldsAtomB grounding.2 =
+      closedHoldsAtomBool certificate.state grounding.2 := by
+    funext atom
+    exact quotientClosedHoldsAtomB_eq_closedHoldsAtomBool
+      certificate hvalid grounding.2 atom
+  rw [hfunction]
+
+noncomputable def selectEqCertificateClauseGrounding
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    Option (Grounding (Fin variableCount) (Fin nodeCount)
+      (Fin conceptCount) (Fin roleCount)) :=
+  firstMatch (eqCertificateGroundingUndischarged certificate)
+    (allGroundings certificate.base.ontology)
+
+theorem selectEqCertificateClauseGrounding_eq_runtime
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true) :
+    selectEqCertificateClauseGrounding certificate =
+      firstMatch (eqGroundingUndischarged certificate.state)
+        (allGroundings certificate.base.ontology) := by
+  unfold selectEqCertificateClauseGrounding
+  apply congrArg (fun predicate => firstMatch predicate
+    (allGroundings certificate.base.ontology))
+  funext grounding
+  exact eqCertificateGroundingUndischarged_eq_runtime certificate hvalid grounding
+
 noncomputable def selectEqClauseGrounding
     [Fintype Variable] [DecidableEq Variable]
     [Fintype Node] [DecidableEq Node]
@@ -163,8 +218,171 @@ theorem selectEqClauseGrounding_eq_none_iff
     exact hnone ⟨grounding.1, (mem_allGroundings.mp hmem), grounding.2,
       hgrounding.1, hgrounding.2⟩
 
+/-- The runtime presents ancestors nearest-first. Blocking succeeds exactly
+when that finite list contains an ancestor with the same complete quotient
+pairwise signature. -/
+noncomputable def quotientBlockedBool
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (source : Node) : Bool := by
+  classical
+  exact (ancestors source).any fun candidate =>
+    decide (state.quotientRoleBlockingSignature parent candidate =
+      state.quotientRoleBlockingSignature parent source)
+
+theorem quotientBlockedBool_eq_true_iff
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (source : Node) :
+    quotientBlockedBool state parent ancestors source = true ↔
+      ∃ blocker ∈ ancestors source,
+        state.quotientRoleBlockingSignature parent blocker =
+          state.quotientRoleBlockingSignature parent source := by
+  classical
+  simp [quotientBlockedBool, List.any_eq_true]
+
+noncomputable def eqUnblockedWitnessCandidateBool
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (candidate : WitnessCandidate Node Concept Role) : Bool := by
+  classical
+  exact decide (state.base.obligation candidate.1 candidate.2.1 candidate.2.2) &&
+    decide (∀ witness, ¬(state.base.edge candidate.1 candidate.2.2 witness ∧
+      state.base.label witness candidate.2.1)) &&
+    !(quotientBlockedBool state parent ancestors candidate.2.2)
+
+theorem eqUnblockedWitnessCandidateBool_eq_true_iff
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    (candidate : WitnessCandidate Node Concept Role) :
+    eqUnblockedWitnessCandidateBool state parent ancestors candidate = true ↔
+      state.base.obligation candidate.1 candidate.2.1 candidate.2.2 ∧
+      (∀ witness, ¬(state.base.edge candidate.1 candidate.2.2 witness ∧
+        state.base.label witness candidate.2.1)) ∧
+      quotientBlockedBool state parent ancestors candidate.2.2 = false := by
+  classical
+  simp [eqUnblockedWitnessCandidateBool, and_assoc]
+
+noncomputable def selectEqUnblockedUnwitnessed
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) :
+    Option (WitnessCandidate Node Concept Role) :=
+  firstMatch (eqUnblockedWitnessCandidateBool state parent ancestors)
+    allWitnessCandidates
+
+def EqState.HasUnblockedUnwitnessed
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) : Prop :=
+  ∃ source role filler,
+    state.base.obligation role filler source ∧
+    (∀ witness, ¬(state.base.edge role source witness ∧
+      state.base.label witness filler)) ∧
+    quotientBlockedBool state parent ancestors source = false
+
+theorem selectEqUnblockedUnwitnessed_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node) :
+    selectEqUnblockedUnwitnessed state parent ancestors = none ↔
+      ¬state.HasUnblockedUnwitnessed parent ancestors := by
+  classical
+  rw [selectEqUnblockedUnwitnessed, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with ⟨source, role, filler, hobligation, hnowitness, hunblocked⟩
+    have hfalse := hscan (role, filler, source)
+      (mem_allWitnessCandidates (role, filler, source))
+    rw [(eqUnblockedWitnessCandidateBool_eq_true_iff state parent ancestors _).mpr
+      ⟨hobligation, hnowitness, hunblocked⟩] at hfalse
+    contradiction
+  · intro hnone candidate _
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    have hproperties :=
+      (eqUnblockedWitnessCandidateBool_eq_true_iff state parent ancestors candidate).mp htrue
+    exact hnone ⟨candidate.2.2, candidate.1, candidate.2.1,
+      hproperties.1, hproperties.2.1, hproperties.2.2⟩
+
+noncomputable def eqFreshNodeBool
+    (state : EqState Node Concept Role) (target : Node) : Bool := by
+  classical
+  exact decide (state.Fresh target)
+
+@[simp] theorem eqFreshNodeBool_eq_true_iff
+    (state : EqState Node Concept Role) (target : Node) :
+    eqFreshNodeBool state target = true ↔ state.Fresh target := by
+  simp [eqFreshNodeBool]
+
+noncomputable def selectEqFreshNode
+    [Fintype Node] [DecidableEq Node]
+    (state : EqState Node Concept Role) : Option Node :=
+  firstMatch (eqFreshNodeBool state) Finset.univ.toList
+
+theorem selectEqFreshNode_eq_none_iff
+    [Fintype Node] [DecidableEq Node]
+    (state : EqState Node Concept Role) :
+    selectEqFreshNode state = none ↔ ¬∃ target, state.Fresh target := by
+  classical
+  rw [selectEqFreshNode, firstMatch_eq_none_iff]
+  constructor
+  · intro hscan hexists
+    rcases hexists with ⟨target, hfresh⟩
+    have hfalse := hscan target (by simp)
+    rw [(eqFreshNodeBool_eq_true_iff state target).mpr hfresh] at hfalse
+    contradiction
+  · intro hnone target _
+    apply Bool.eq_false_iff.mpr
+    intro htrue
+    exact hnone ⟨target, (eqFreshNodeBool_eq_true_iff state target).mp htrue⟩
+
+/-- A closed recursive child selected by the exact unblocked-obligation and
+fresh-node scans reconstructs the equality-aware witness refutation rule. -/
+theorem selectEqWitness_refutes
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : EqState Node Concept Role)
+    (parent : Node → Option Node) (ancestors : Node → List Node)
+    {candidate : WitnessCandidate Node Concept Role}
+    (hwitness : selectEqUnblockedUnwitnessed state parent ancestors = some candidate)
+    {target : Node} (hfresh : selectEqFreshNode state = some target)
+    (child : EqRefutes Node ontology
+      (state.materializeWitness candidate.2.2 target candidate.1 candidate.2.1)) :
+    EqRefutes Node ontology state := by
+  classical
+  have hcandidate := firstMatch_eq_some_mem
+    (by simpa [selectEqUnblockedUnwitnessed] using hwitness)
+  have hproperties :=
+    (eqUnblockedWitnessCandidateBool_eq_true_iff state parent ancestors candidate).mp
+      hcandidate.2
+  have htarget := firstMatch_eq_some_mem
+    (by simpa [selectEqFreshNode] using hfresh)
+  exact .witness state candidate.2.2 target candidate.1 candidate.2.1
+    hproperties.1 ((eqFreshNodeBool_eq_true_iff state target).mp htarget.2) child
+
 #print axioms selectEqClash_eq_none_iff
 #print axioms selectEqClash_refutes
 #print axioms selectEqClauseGrounding_eq_none_iff
+#print axioms selectEqCertificateClauseGrounding_eq_runtime
+#print axioms quotientBlockedBool_eq_true_iff
+#print axioms selectEqUnblockedUnwitnessed_eq_none_iff
+#print axioms selectEqFreshNode_eq_none_iff
+#print axioms selectEqWitness_refutes
 
 end ContextCalculus.Hypertableau

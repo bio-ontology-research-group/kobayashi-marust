@@ -401,6 +401,79 @@ theorem FiniteEqCertificate.quotientHoldsAtomB_eq_true
       simpa [EqState.closedHoldsAtom] using
         certificate.closedRelatedB_eq_true hvalid (assignment left) (assignment right)
 
+/-- Full quotient-closed atom evaluation used by Rust's equality-aware
+grounding scan. Unlike `closedHoldsAtomB`, retained for the direct semantic
+refutation checker, this closes labels, role endpoints, and obligations as
+well as equality atoms. -/
+def FiniteEqCertificate.quotientClosedHoldsAtomB
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount) :
+    Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount) → Bool
+  | .concept lit node => certificate.base.labels.any fun entry =>
+      decide (entry.2 = lit) && certificate.closedRelatedB entry.1 (assignment node)
+  | .role role source target => certificate.base.edges.any fun entry =>
+      decide (entry.1 = role) &&
+        certificate.closedRelatedB entry.2.1 (assignment source) &&
+        certificate.closedRelatedB entry.2.2 (assignment target)
+  | .exists_ role filler node => certificate.base.obligations.any fun entry =>
+      decide (entry.1 = role) && decide (entry.2.1 = filler) &&
+        certificate.closedRelatedB entry.2.2 (assignment node)
+  | .eq left right =>
+      certificate.closedRelatedB (assignment left) (assignment right)
+
+theorem FiniteEqCertificate.quotientClosedHoldsAtomB_eq_true
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.quotientClosedHoldsAtomB assignment atom = true ↔
+      certificate.state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept lit node =>
+      simp only [FiniteEqCertificate.quotientClosedHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq]
+      constructor
+      · rintro ⟨⟨source, candidate⟩, hmem, rfl, hrelated⟩
+        exact ⟨source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mp hrelated,
+          hmem⟩
+      · rintro ⟨source, hrelated, hmem⟩
+        exact ⟨(source, lit), hmem, rfl,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mpr hrelated⟩
+  | role role source target =>
+      simp only [FiniteEqCertificate.quotientClosedHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq]
+      constructor
+      · rintro ⟨⟨candidate, edgeSource, edgeTarget⟩, hmem,
+          ⟨⟨rfl, hsource⟩, htarget⟩⟩
+        exact ⟨edgeSource, edgeTarget,
+          (certificate.closedRelatedB_eq_true hvalid edgeSource (assignment source)).mp hsource,
+          (certificate.closedRelatedB_eq_true hvalid edgeTarget (assignment target)).mp htarget,
+          hmem⟩
+      · rintro ⟨edgeSource, edgeTarget, hsource, htarget, hmem⟩
+        exact ⟨(role, edgeSource, edgeTarget), hmem,
+          ⟨⟨rfl, (certificate.closedRelatedB_eq_true hvalid
+            edgeSource (assignment source)).mpr hsource⟩,
+            (certificate.closedRelatedB_eq_true hvalid
+              edgeTarget (assignment target)).mpr htarget⟩⟩
+  | exists_ role filler node =>
+      simp only [FiniteEqCertificate.quotientClosedHoldsAtomB, List.any_eq_true,
+        Bool.and_eq_true, decide_eq_true_eq]
+      constructor
+      · rintro ⟨⟨candidateRole, candidateFiller, source⟩, hmem,
+          ⟨⟨rfl, rfl⟩, hrelated⟩⟩
+        exact ⟨source,
+          (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mp hrelated,
+          hmem⟩
+      · rintro ⟨source, hrelated, hmem⟩
+        exact ⟨(role, filler, source), hmem,
+          ⟨⟨rfl, rfl⟩,
+            (certificate.closedRelatedB_eq_true hvalid source (assignment node)).mpr hrelated⟩⟩
+  | eq left right =>
+      simpa [FiniteEqCertificate.quotientClosedHoldsAtomB,
+        EqState.closedHoldsAtom] using
+        certificate.closedRelatedB_eq_true hvalid (assignment left) (assignment right)
+
 def FiniteEqCertificate.closedClashB
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) : Bool :=
   certificate.base.labels.any fun positive =>
@@ -1343,6 +1416,7 @@ example : quotientClash.checkEqSat = false := by native_decide
 end EqualitySatCheckerTests
 
 #print axioms FiniteEqCertificate.equalityClosureValidB_sound
+#print axioms FiniteEqCertificate.quotientClosedHoldsAtomB_eq_true
 #print axioms FiniteEqCertificate.closedClashB_eq_false_of_closedClashFree
 #print axioms FiniteEqCertificate.checkEqSat_complete
 #print axioms FiniteEqCertificate.checkEqSat_eq_true_iff_valid

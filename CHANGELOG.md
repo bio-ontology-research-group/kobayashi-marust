@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.152] – 2026-08-21
+
+### Certify equality witness and quotient matching controls
+
+- Add executable quotient-closed evaluation for concept, role, existential,
+  and equality atoms over a validated finite equality certificate.
+- Prove that this evaluator is equivalent to full semantic matching modulo the
+  complete node equivalence and that its grounded clause scan equals the Rust
+  equality runtime scan.
+- Formalize the nearest-ancestor quotient pairwise blocker test and prove its
+  exact finite-list semantics.
+- Prove exhaustive unblocked-obligation and equality-fresh-node scans, then
+  reconstruct the equality witness refutation rule whenever the selected
+  recursive child closes.
+- Audit the new correspondence theorems without `sorryAx`.
+
+The quotient-closed branch relation and its recursive checker integration,
+cardinality runtime selection, CB, and automatic routing remain unfinished.
+
 ## [0.3.151] – 2026-08-21
 
 ### Certify the first equality-aware runtime controls
