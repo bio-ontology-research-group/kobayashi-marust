@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.140] – 2026-08-20
+
+### Close the ELC public taxonomy exactness contract
+
+- Prove that every eligible public ELC subsumption row is equivalent to its
+  semantic subsumption result when the row is either the distinguished bottom
+  edge or the source class is satisfiable.
+- Treat the bottom row as the complete public representation of an
+  unsatisfiable class, while satisfiable classes retain all-and-only their
+  semantic superclass rows.
+- Lift the exact characterization through the V5 residual-source theory, so it
+  applies to checked direct, canonical-witness, and compiled-residual inputs.
+- Compose the result with the existing exact inconsistency theorem, trace and
+  closure checks, normalization equivalences, and named-output agreement.
+
+The checked ELC certificate now has a classifier-facing soundness and
+completeness statement for its complete public result representation. HT Rust
+recursive correspondence, CB, and automatic routing remain unfinished.
+
 ## [0.3.139] – 2026-08-20
 
 ### Prove distinct-cardinality HT checker completeness

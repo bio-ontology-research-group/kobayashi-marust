@@ -1776,6 +1776,36 @@ theorem DecodedCertificate.public_subsumption_complete_of_satisfiable {n : Nat}
     refine ⟨Fact.sub a b, hsub, ?_⟩
     simp [haTop, haBottom, hba, hbTop]
 
+/-- Exact public taxonomy row contract. A public pair is equivalent to semantic
+subsumption whenever it is either the distinguished bottom edge (the complete
+representation of an unsatisfiable class) or the source class is satisfiable.
+This is the classifier-facing partition used by Rust's output format. -/
+theorem DecodedCertificate.public_subsumption_exact {n : Nat}
+    (doc : DecodedCertificate n) (hcheck : doc.check = true) {a b : Fin n}
+    (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hcase : b = doc.bottom ∨
+      ¬ EntailsSub (top := doc.top) (bottom := doc.bottom)
+        doc.ontology a doc.bottom) :
+    (a, b) ∈ doc.public_subsumptions ↔
+      EntailsSub (top := doc.top) (bottom := doc.bottom) doc.ontology a b := by
+  constructor
+  · exact fun hpublic => doc.public_subsumption_sound hcheck hpublic
+  · intro hentails
+    rcases hcase with rfl | hsatisfiable
+    · have hrust : Fact.sub a doc.bottom ∈ doc.rust_facts := by
+        rcases (doc.active_subsumption_exact hcheck hactive).1 hentails with
+          hbottom | hbottom
+        · exact hbottom
+        · exact hbottom
+      apply (doc.publicSub_iff_expected hcheck).2
+      simp only [DecodedCertificate.expectedPublicOutput, List.mem_filterMap]
+      refine ⟨Fact.sub a doc.bottom, hrust, ?_⟩
+      simp [haTop, haBottom, hba, doc.top_ne_bottom.symm]
+    · exact doc.public_subsumption_complete_of_satisfiable hcheck hactive
+        haTop haBottom hba hbTop hsatisfiable hentails
+
 theorem DecodedCertificate.public_subsumption_complete_source_of_satisfiable
     {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
     (hpartitionedMode :
@@ -1803,6 +1833,38 @@ theorem DecodedCertificate.public_subsumption_complete_source_of_satisfiable
     exact hbottom I hmodels.1 x hsub
   exact doc.public_subsumption_complete_of_satisfiable hcore hactive
     haTop haBottom hba hbTop hcoreSatisfiable hcoreEntails
+
+/-- Source/residual counterpart of `public_subsumption_exact`. Successful V5
+checking therefore gives an exact public taxonomy representation for every
+eligible active source: one bottom row for an unsatisfiable source, otherwise
+all and only its semantic superclasses. -/
+theorem DecodedCertificate.public_subsumption_source_exact
+    {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
+    (hpartitionedMode :
+      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
+    {a b : Fin n} (hactive : a ∈ doc.active_concepts)
+    (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
+    (hba : b ≠ a) (hbTop : b ≠ doc.top)
+    (hcase : b = doc.bottom ∨
+      ¬ EntailsSubWithResidual doc.ontology doc.sourceResidualTheory
+        a doc.bottom) :
+    (a, b) ∈ doc.public_subsumptions ↔
+      EntailsSubWithResidual doc.ontology doc.sourceResidualTheory a b := by
+  have hcheckV5 := hcheck
+  simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
+  have hcore := hcheck.2
+  constructor
+  · exact fun hpublic => doc.public_subsumption_sound_source hcheckV5 hpublic
+  · intro hentails
+    rcases hcase with rfl | hsatisfiable
+    · have hmat := (doc.checkV5_entailsSubWithResidual_exact hcheckV5
+          hpartitionedMode a doc.bottom hactive).mp hentails
+      have hcoreEntails : EntailsSub (top := doc.top) (bottom := doc.bottom)
+          doc.ontology a doc.bottom := (doc.check_exact hcore).1 a doc.bottom |>.mpr hmat
+      exact (doc.public_subsumption_exact hcore hactive haTop haBottom hba hbTop
+        (Or.inl rfl)).2 hcoreEntails
+    · exact doc.public_subsumption_complete_source_of_satisfiable hcheckV5
+        hpartitionedMode hactive haTop haBottom hba hbTop hsatisfiable hentails
 
 theorem DecodedCertificate.namedSub_iff_expected {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) {sub sup : String} :
@@ -1927,6 +1989,8 @@ theorem DecodedCertificate.public_inconsistent_source_exact {n : Nat}
 #print axioms DecodedCertificate.checkV5_unsatisfiableWithResidual_exact
 #print axioms DecodedCertificate.public_subsumption_sound_source
 #print axioms DecodedCertificate.public_subsumption_complete_source_of_satisfiable
+#print axioms DecodedCertificate.public_subsumption_exact
+#print axioms DecodedCertificate.public_subsumption_source_exact
 #print axioms DecodedCertificate.public_inconsistent_source_exact
 
 def WireCertificate.check (doc : WireCertificate) : Except String Bool := do
