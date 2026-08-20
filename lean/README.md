@@ -448,6 +448,14 @@ checked Rust completion graph must establish regular saturation, redirect
 compatibility, decoded role rules, simple-role exactness, authorized slots, and
 the equality/nominal-root conditions.
 
+The same module gives the role partition an executable target through
+`NormalizedRoleClause`. Its four constructors translate exactly to subrole,
+inverse-role, binary-chain/transitivity, and reflexive HT clauses. Authorized
+role clauses and lists are modeled directly by the regular role relation.
+`regularUnravelling_models_partition` therefore asks the checker for regular
+path saturation only on the residual guarded clauses, not on role hierarchy or
+chain clauses that already hold by construction.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.

@@ -420,6 +420,81 @@ def State.RegularSaturatedFor
   ∀ clause ∈ ontology,
     state.RegularDischarges redirect slotAllowed root rules clause
 
+/-- The normalized role-only clause families represented by
+`UnravellingRoleRules`. Keeping this syntax separate makes the executable
+checker prove that each decoded ontology role clause has exactly one of these
+shapes, while the semantic proof below is independent of finite saturation. -/
+inductive NormalizedRoleClause (Variable : Type x) (Role : Type w) where
+  | subRole (premise conclusion : Role) (source target : Variable)
+  | inverseRole (premise conclusion : Role) (source target : Variable)
+  | chain (first second conclusion : Role)
+      (source middle target : Variable)
+  | reflexive (role : Role) (source : Variable)
+deriving DecidableEq, Repr
+
+def NormalizedRoleClause.toClause
+    (rule : NormalizedRoleClause Variable Role) :
+    Clause Variable Concept Role :=
+  match rule with
+  | .subRole premise conclusion source target =>
+      ⟨[.role premise source target], [.role conclusion source target]⟩
+  | .inverseRole premise conclusion source target =>
+      ⟨[.role premise source target], [.role conclusion target source]⟩
+  | .chain first second conclusion source middle target =>
+      ⟨[.role first source middle, .role second middle target],
+        [.role conclusion source target]⟩
+  | .reflexive role source =>
+      ⟨[], [.role role source source]⟩
+
+def NormalizedRoleClause.Authorized
+    (rules : UnravellingRoleRules Role) :
+    NormalizedRoleClause Variable Role → Prop
+  | .subRole premise conclusion .. => rules.subRole premise conclusion
+  | .inverseRole premise conclusion .. => rules.inverseRole premise conclusion
+  | .chain first second conclusion .. => rules.chain first second conclusion
+  | .reflexive role .. => rules.reflexive role
+
+theorem NormalizedRoleClause.regularUnravelling_models
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (rule : NormalizedRoleClause Variable Role)
+    (hauthorized : rule.Authorized rules) :
+    (state.regularUnravelling redirect slotAllowed root rules).modelsClause
+      (rule.toClause (Concept := Concept)) := by
+  intro assignment hbody
+  cases rule with
+  | subRole premise conclusion source target =>
+      refine ⟨.role conclusion source target, by simp [toClause], ?_⟩
+      exact UnravellingRole.sub hauthorized
+        (hbody (.role premise source target) (by simp [toClause]))
+  | inverseRole premise conclusion source target =>
+      refine ⟨.role conclusion target source, by simp [toClause], ?_⟩
+      exact UnravellingRole.inverse hauthorized
+        (hbody (.role premise source target) (by simp [toClause]))
+  | chain first second conclusion source middle target =>
+      refine ⟨.role conclusion source target, by simp [toClause], ?_⟩
+      exact UnravellingRole.chain hauthorized
+        (hbody (.role first source middle) (by simp [toClause]))
+        (hbody (.role second middle target) (by simp [toClause]))
+  | reflexive role source =>
+      refine ⟨.role role source source, by simp [toClause], ?_⟩
+      exact UnravellingRole.refl hauthorized
+
+theorem NormalizedRoleClause.regularUnravelling_models_list
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules) :
+    (state.regularUnravelling redirect slotAllowed root rules).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept))) := by
+  intro clause hclause
+  simp only [List.mem_map] at hclause
+  obtain ⟨rule, hrule, rfl⟩ := hclause
+  exact rule.regularUnravelling_models state redirect slotAllowed root rules
+    (hauthorized rule hrule)
+
 theorem State.regularUnravelling_regularHoldsAtom
     (state : State Node Concept Role) (redirect : Node → Node)
     (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
@@ -504,6 +579,44 @@ theorem regularUnravelling_models_of_saturated
   exact ⟨atom, hatom,
     state.regularUnravelling_regularHoldsAtom redirect slotAllowed root rules
       hclash hwitness hobligationRedirect hslot assignment atom hholds⟩
+
+/-- Role-only normalized clauses need no saturation evidence: they hold by the
+regular role constructors. Only the residual guarded clauses remain in the
+path-level saturation contract. This is the partition consumed by the future
+wire checker. -/
+theorem regularUnravelling_models_partition
+    (state : State Node Concept Role) (redirect : Node → Node)
+    (slotAllowed : Node → Role → Node → Nat → Prop) (root : Node)
+    (rules : UnravellingRoleRules Role)
+    (roleClauses : List (NormalizedRoleClause Variable Role))
+    (residual : List (Clause Variable Concept Role))
+    (hauthorized : ∀ rule ∈ roleClauses, rule.Authorized rules)
+    (hguarded : ∀ clause ∈ residual, clause.GuardedBody)
+    (hclash : state.ClashFree)
+    (hwitness : state.WitnessComplete)
+    (hobligationRedirect : ∀ node role filler,
+      state.obligation role filler node →
+        state.obligation role filler (redirect node))
+    (hslot : ∀ source role target,
+      state.edge role (redirect source) target →
+        slotAllowed source role target 0)
+    (hsaturated : state.RegularSaturatedFor redirect slotAllowed root rules
+      residual) :
+    (state.regularUnravelling redirect slotAllowed root rules).models
+      (roleClauses.map (NormalizedRoleClause.toClause (Concept := Concept)) ++
+        residual) := by
+  intro clause hclause
+  rcases List.mem_append.mp hclause with hrole | hresidual
+  · exact ruleClausesModels clause hrole
+  · exact residualModels clause hresidual
+  where
+    ruleClausesModels :=
+      NormalizedRoleClause.regularUnravelling_models_list state redirect
+        slotAllowed root rules roleClauses hauthorized
+    residualModels :=
+      regularUnravelling_models_of_saturated state redirect slotAllowed root
+        rules residual hguarded hclash hwitness hobligationRedirect hslot
+        hsaturated
 
 /-- Distinct witness slots denote distinct path-domain values, even if their
 finite completion-graph targets coincide. -/
@@ -718,5 +831,8 @@ theorem State.unravelling_modelsCardinalityDefs
 #print axioms State.regularUnravelling_regularHoldsAtom
 #print axioms State.regularUnravelling_body_holds
 #print axioms regularUnravelling_models_of_saturated
+#print axioms NormalizedRoleClause.regularUnravelling_models
+#print axioms NormalizedRoleClause.regularUnravelling_models_list
+#print axioms regularUnravelling_models_partition
 
 end ContextCalculus.Hypertableau

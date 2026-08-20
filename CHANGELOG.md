@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.107] – 2026-08-20
+
+### Remove normalized role clauses from HT saturation evidence
+
+- Define a typed normalized role-clause syntax for subroles, inverse roles,
+  binary chains/transitivity, and reflexivity, together with its exact
+  translation into HT clauses.
+- Prove every authorized normalized role clause is modeled directly by the
+  regular unravelling relation, without finite-fold or path-saturation evidence.
+- Lift the result over lists of role clauses.
+- Prove `regularUnravelling_models_partition`: an ontology partitioned into
+  authorized role clauses and guarded residual clauses is modeled when only the
+  residual partition satisfies the regular path-saturation contract.
+
+This narrows the executable certificate payload to concept propagation,
+existential/cardinality closure, blocking compatibility, and equality/nominal
+conditions. Role hierarchy and chain clauses are semantic by construction.
+
+The full Lean build passes across 3,379 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.106] – 2026-08-20
 
 ### Construct the regular HT ontology model
