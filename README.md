@@ -41,11 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.127`. This milestone proves that one finite-slot, nominal-aware anchored
-HT interpretation satisfies both minimum and maximum cardinality definitions,
-including simple-role closure and nominal path collapse. The executable
-cardinality-tail checker and taxonomy wire are still incomplete. It does not
-certify the entire Rust executable or automatic routing.
+`v0.3.128`. This milestone adds an executable combined checker proving that one
+finite-slot, nominal-aware anchored equality model satisfies its ontology and
+all minimum and maximum cardinality definitions. Bounded decoding and taxonomy
+publication are still incomplete. It does not certify the entire Rust
+executable or automatic routing.
 
 ## Classify an ontology
 

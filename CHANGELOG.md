@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.128] – 2026-08-20
+
+### Check anchored equality and cardinality models together
+
+- Add a combined finite certificate containing the anchored dense equality
+  image, authorized path slots, and cardinality definitions.
+- Check slot-zero coverage, maximum-role simplicity, authorized-key upper
+  bounds, and one minimum witness assignment that simultaneously satisfies its
+  edge, slot, filler-label, and nominal-anchor distinctness obligations.
+- Prove Boolean acceptance constructs one anchored interpretation satisfying
+  both the equality-source ontology and every cardinality definition. The
+  checker does not combine unrelated ordinary and anchored models.
+- Transport equality-source query labels through the dense class map into that
+  same explicit-slot interpretation.
+- Add executable regressions accepting repeated anonymous targets and rejecting
+  repeated targets that collapse to one nominal root.
+
+This closes the executable semantic checker beneath anchored cardinality
+countermodels. Bounded JSON decoding, taxonomy-cell composition, and Rust
+certificate production remain certification tasks. It does not certify the
+complete HT runtime or automatic router.
+
 ## [0.3.127] – 2026-08-20
 
 ### Prove complete cardinality semantics for anchored HT models
