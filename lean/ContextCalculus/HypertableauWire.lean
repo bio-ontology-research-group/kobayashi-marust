@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauRefutationCertificate
 import Lean
+import Mathlib.Data.List.OfFn
 
 /-!
 # JSON wire format for hypertableau certificates
@@ -84,6 +85,11 @@ def checkedFin (kind : String) (bound value : Nat) : Except String (Fin bound) :
 @[simp] theorem checkedFin_value (kind : String) (value : Fin bound) :
     checkedFin kind bound value.val = .ok value := by
   simp [checkedFin, value.isLt]
+
+theorem finCast_transport_back {left right : Nat} (h : left = right)
+    (index : Fin right) : Fin.cast h (h.symm ▸ index) = index := by
+  subst right
+  rfl
 
 def WireLit.decode (conceptCount : Nat) (literal : WireLit) :
     Except String (Lit (Fin conceptCount)) := do
@@ -181,6 +187,44 @@ def decodeAssignment (nodeCount variableCount : Nat) (values : List Nat) :
     return fun index => decoded.get (h.symm ▸ index)
   else
     throw s!"assignment has {decoded.length} entries, expected {variableCount}"
+
+def encodeAssignment
+    (assignment : Fin variableCount → Fin nodeCount) : List Nat :=
+  List.ofFn fun index => (assignment index).val
+
+@[simp] theorem checkedFin_value_list (kind : String)
+    (values : List (Fin bound)) :
+    (values.map Fin.val).mapM (checkedFin kind bound) = Except.ok values := by
+  induction values with
+  | nil => rfl
+  | cons value values ih =>
+      simp only [List.map_cons, List.mapM_cons, checkedFin_value, ih]
+      rfl
+
+@[simp] theorem decodeAssignment_encode
+    (assignment : Fin variableCount → Fin nodeCount) :
+    decodeAssignment nodeCount variableCount (encodeAssignment assignment) =
+      Except.ok assignment := by
+  unfold decodeAssignment encodeAssignment
+  have hencoded :
+      List.ofFn (fun index => (assignment index).val) =
+        (List.ofFn assignment).map Fin.val := by
+    simpa [Function.comp_def] using
+      (List.map_ofFn (f := assignment) (g := Fin.val)).symm
+  rw [hencoded]
+  rw [checkedFin_value_list]
+  change (if h : (List.ofFn assignment).length = variableCount then
+      Except.ok (fun index => (List.ofFn assignment).get (h.symm ▸ index))
+    else Except.error _) = Except.ok assignment
+  split <;> rename_i h
+  · congr
+    funext index
+    rw [List.get_ofFn]
+    apply congrArg assignment
+    have heq : h = List.length_ofFn (f := assignment) := Subsingleton.elim _ _
+    rw [heq]
+    exact finCast_transport_back _ _
+  · exact (h (by simp)).elim
 
 structure DecodedCertificate where
   nodeCount : Nat
@@ -655,6 +699,9 @@ end WireTests
 
 #print axioms DecodedEvidence.sat_sound
 #print axioms checkedFin_value
+#print axioms finCast_transport_back
+#print axioms checkedFin_value_list
+#print axioms decodeAssignment_encode
 #print axioms WireLit.decode_encode
 #print axioms WireAtom.decode_encode
 #print axioms WireAtom.decode_encode_list

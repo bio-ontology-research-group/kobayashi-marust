@@ -2,6 +2,19 @@
 
 ## [unreleased]
 
+## [0.3.142] – 2026-08-20
+
+### Prove lossless HT assignment encoding
+
+- Encode every finite HT variable assignment as the ordered list of bounded
+  node identifiers expected by the Rust JSON producer.
+- Prove list-wide bound decoding reconstructs every finite node value.
+- Prove the length-checked assignment decoder returns the exact original
+  dependent function, including its finite-index transport.
+
+Recursive refutation-tree encoding completeness, exact Rust recursive outcome
+correspondence, CB, and automatic routing remain unfinished.
+
 ## [0.3.141] – 2026-08-20
 
 ### Prove lossless HT source-language wire encoding
@@ -18,8 +31,7 @@
 
 This proves that the complete finite HT source language represented by Lean is
 losslessly expressible at the JSON boundary. Assignment and recursive-tree
-encoding completeness, exact Rust recursive outcome correspondence, CB, and
-automatic routing remain unfinished.
+encoding completeness remained unfinished in this release.
 
 ## [0.3.140] – 2026-08-20
 
