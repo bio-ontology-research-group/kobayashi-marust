@@ -480,6 +480,15 @@ tests exercise both acceptance and fail-closed rejection. Cardinality slots,
 equality/nominal roots, JSON decoding, and the Rust producer remain separate
 work.
 
+`HypertableauRegularWire.lean` supplies the bounded JSON decoder for this
+certificate. It checks every natural-number node, concept, role, and variable
+ID before constructing a `Fin`; requires a positive node count; and requires
+the redirect vector to contain exactly one in-range target per node. Wire forms
+cover all current regular graph facts, role rules, normalized role clauses, and
+residual clauses. `DecodedRegularCertificate.check_models` carries successful
+decode and Boolean acceptance through to the exact model theorem. Cardinality
+slots, equality/nominal roots, and the Rust producer remain pending.
+
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 
 This module proves the semantic principle used by plain `CertMode::Check`.

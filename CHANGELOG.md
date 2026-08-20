@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.110] – 2026-08-20
+
+### Add the bounded regular HT JSON wire
+
+- Add JSON wire types for regular graph facts, redirects, role-cover edges,
+  subroles, inverse roles, chains, reflexivity, normalized role clauses, and
+  residual clauses.
+- Decode every node, concept, role, and variable ID through a checked `Fin`
+  bound before constructing certificate data.
+- Require a positive node count and exactly one in-range redirect target per
+  finite node.
+- Prove `DecodedRegularCertificate.check_models`, connecting decoded checker
+  acceptance to the exact regular-unravelling model theorem.
+- Add native decoder regressions for a valid certificate, malformed redirect
+  length, and out-of-range IDs.
+
+Cardinality slots and equality/nominal roots are not yet fields of this wire.
+The Rust HT producer also does not emit this format yet.
+
+The full Lean build passes across 3,381 jobs. Rust reasoning code remains
+unchanged from v0.3.101's complete release suite.
+
 ## [0.3.109] – 2026-08-20
 
 ### Add the executable regular HT certificate checker
