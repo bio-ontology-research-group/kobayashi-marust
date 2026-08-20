@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.98] – 2026-08-20
+
+### Preserve guarded concept propagation across pairwise folds
+
+- Prove closed labels and closed role edges are invariant under equality-class
+  replacement.
+- Define the finite fold-label compatibility contract and prove equal complete
+  equality-aware pairwise blocking signatures imply it.
+- Prove pairwise folds preserve both central normalized propagation shapes:
+  `R(x,y) ∧ A(y) → B(x)` and `R(x,y) ∧ A(x) → B(y)`.
+- Derive each copied-edge case from exact edge provenance, evaluate the premise
+  at the blocker, and transport the resulting signed concept label through the
+  blocker/blocked signature equality.
+
+The remaining role-sensitive fold cases are multi-edge role chains, reversed
+role heads/inverse context, and equality/cardinality heads. The common
+single-edge concept and role propagation forms are now covered.
+
 ## [0.3.97] – 2026-08-20
 
 ### Preserve role implications across equality-aware folds

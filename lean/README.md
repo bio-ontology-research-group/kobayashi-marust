@@ -267,6 +267,10 @@ pairwise-blocking proof boundary.
 edges, and `closedRole_implication` uses it to preserve every base role
 implication through the fold. This covers the sub-role/same-orientation bridge
 part of the remaining role-bearing boundary.
+Full pairwise signature equality now implies the explicit fold-label contract.
+Using it, `closedForwardConcept_implication` and
+`closedTargetConcept_implication` preserve the two normalized single-edge
+concept propagation orientations across copied blocker edges.
 
 The production Rust worker obtains its global consistency verdict and evidence
 from the total certification search, then publishes only after the native Lean

@@ -112,6 +112,30 @@ theorem FiniteEqFoldCertificate.mem_foldedEdges_iff
       refine ⟨(source, blocker), hfold, (role, edgeSource, target), hedge, ?_⟩
       simp [hrepresentative]
 
+/-- The label component of pairwise blocking, stated directly on the finite
+fold certificate. -/
+def FiniteEqFoldCertificate.FoldLabelCompatible
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) : Prop :=
+  ∀ blocked blocker, (blocked, blocker) ∈ certificate.folds → ∀ lit,
+    certificate.base.state.closedLabel blocker lit ↔
+      certificate.base.state.closedLabel blocked lit
+
+theorem FiniteEqFoldCertificate.foldLabelCompatible_of_signatures
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (hsignatures : ∀ blocked blocker,
+      (blocked, blocker) ∈ certificate.folds →
+      certificate.base.state.quotientRoleBlockingSignature parent blocker =
+        certificate.base.state.quotientRoleBlockingSignature parent blocked) :
+    certificate.FoldLabelCompatible := by
+  intro blocked blocker hfold lit
+  have hequal := certificate.base.state.quotientRoleBlockingSignature_label parent
+    (hsignatures blocked blocker hfold)
+  rw [← certificate.base.state.mem_closedLabelSet,
+    ← certificate.base.state.mem_closedLabelSet, hequal]
+
 /-- Folding changes only the edge list, so equality-quotient clashes cannot be
 introduced. -/
 theorem FiniteEqFoldCertificate.closedClashFree_of_base
@@ -216,6 +240,95 @@ theorem FiniteEqFoldCertificate.closedRole_implication
     exact ⟨rawSource, headTarget, hsource,
       certificate.base.state.equiv_equivalence.trans hheadTarget htarget,
       hfoldedHead⟩
+
+/-- A forward role-and-target-label implication remains valid after pairwise
+folding. This is the normalized `R(x,y) ∧ A(y) → B(x)` transfer: copied premise
+edges are evaluated at the blocker, then the pairwise label equality transports
+the conclusion back to the blocked source. -/
+theorem FiniteEqFoldCertificate.closedForwardConcept_implication
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.equalityClosureValidB = true)
+    (hlabels : certificate.FoldLabelCompatible)
+    (premise : Fin roleCount) (guard conclusion : Lit (Fin conceptCount))
+    (source target : Fin nodeCount)
+    (himplication : ∀ left right,
+      certificate.base.state.closedEdge premise left right →
+      certificate.base.state.closedLabel right guard →
+      certificate.base.state.closedLabel left conclusion)
+    (hpremise : certificate.materialize.state.closedEdge premise source target)
+    (hguard : certificate.materialize.state.closedLabel target guard) :
+    certificate.materialize.state.closedLabel source conclusion := by
+  change certificate.base.state.closedLabel target guard at hguard
+  rcases hpremise with
+    ⟨rawSource, rawTarget, hsource, htarget, hedge⟩
+  have hrawGuard : certificate.base.state.closedLabel rawTarget guard :=
+    (certificate.base.state.closedLabel_congr htarget guard).mpr hguard
+  rcases (certificate.mem_foldedEdges_iff premise rawSource rawTarget).mp hedge with
+    hbase | ⟨blocker, edgeSource, hfold, hbase, hrepresentative⟩
+  · have hconclusion := himplication source target
+      ⟨rawSource, rawTarget, hsource, htarget, hbase⟩ hguard
+    exact hconclusion
+  · have hbasePremise : certificate.base.state.closedEdge premise
+        edgeSource rawTarget :=
+      ⟨edgeSource, rawTarget,
+        certificate.base.state.equiv_equivalence.refl edgeSource,
+        certificate.base.state.equiv_equivalence.refl rawTarget, hbase⟩
+    have hedgeSourceBlocker : certificate.base.state.equiv edgeSource blocker :=
+      (certificate.base.equalityClosureValidB_sound hvalid _ _).mpr hrepresentative
+    have hatEdgeSource := himplication edgeSource rawTarget hbasePremise hrawGuard
+    have hatBlocker :=
+      (certificate.base.state.closedLabel_congr hedgeSourceBlocker conclusion).mp
+        hatEdgeSource
+    have hatRawSource := (hlabels rawSource blocker hfold conclusion).mp hatBlocker
+    have hatSource :=
+      (certificate.base.state.closedLabel_congr hsource conclusion).mp hatRawSource
+    exact hatSource
+
+/-- The dual normalized propagation `R(x,y) ∧ A(x) → B(y)` is also preserved.
+For a copied edge, pairwise label equality transports the source guard to the
+blocker; the base implication derives the target label, whose node is unchanged
+by materialization. -/
+theorem FiniteEqFoldCertificate.closedTargetConcept_implication
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.equalityClosureValidB = true)
+    (hlabels : certificate.FoldLabelCompatible)
+    (premise : Fin roleCount) (guard conclusion : Lit (Fin conceptCount))
+    (source target : Fin nodeCount)
+    (himplication : ∀ left right,
+      certificate.base.state.closedEdge premise left right →
+      certificate.base.state.closedLabel left guard →
+      certificate.base.state.closedLabel right conclusion)
+    (hpremise : certificate.materialize.state.closedEdge premise source target)
+    (hguard : certificate.materialize.state.closedLabel source guard) :
+    certificate.materialize.state.closedLabel target conclusion := by
+  change certificate.base.state.closedLabel source guard at hguard
+  rcases hpremise with
+    ⟨rawSource, rawTarget, hsource, htarget, hedge⟩
+  rcases (certificate.mem_foldedEdges_iff premise rawSource rawTarget).mp hedge with
+    hbase | ⟨blocker, edgeSource, hfold, hbase, hrepresentative⟩
+  · exact himplication source target
+      ⟨rawSource, rawTarget, hsource, htarget, hbase⟩ hguard
+  · have hbasePremise : certificate.base.state.closedEdge premise
+        edgeSource rawTarget :=
+      ⟨edgeSource, rawTarget,
+        certificate.base.state.equiv_equivalence.refl edgeSource,
+        certificate.base.state.equiv_equivalence.refl rawTarget, hbase⟩
+    have hatRawSource : certificate.base.state.closedLabel rawSource guard :=
+      (certificate.base.state.closedLabel_congr hsource guard).mpr hguard
+    have hatBlocker : certificate.base.state.closedLabel blocker guard :=
+      (hlabels rawSource blocker hfold guard).mpr hatRawSource
+    have hedgeSourceBlocker : certificate.base.state.equiv edgeSource blocker :=
+      (certificate.base.equalityClosureValidB_sound hvalid _ _).mpr hrepresentative
+    have hatEdgeSource : certificate.base.state.closedLabel edgeSource guard :=
+      (certificate.base.state.closedLabel_congr hedgeSourceBlocker guard).mpr
+        hatBlocker
+    have hatRawTarget :=
+      himplication edgeSource rawTarget hbasePremise hatEdgeSource
+    have hatTarget :=
+      (certificate.base.state.closedLabel_congr htarget conclusion).mp hatRawTarget
+    exact hatTarget
 
 /-- Adding fold edges preserves saturation for the role-free-body portion of
 the ontology. -/
@@ -359,6 +472,9 @@ end EqFoldTests
 #print axioms FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
 #print axioms FiniteEqFoldCertificate.mem_foldedEdges_iff
 #print axioms FiniteEqFoldCertificate.closedRole_implication
+#print axioms FiniteEqFoldCertificate.foldLabelCompatible_of_signatures
+#print axioms FiniteEqFoldCertificate.closedForwardConcept_implication
+#print axioms FiniteEqFoldCertificate.closedTargetConcept_implication
 #print axioms FiniteEqFoldCertificate.closedSaturatedFor_of_roleFree
 #print axioms FiniteEqFoldCertificate.check_eq_true_iff_materialize_valid
 #print axioms FiniteEqFoldCertificate.check_complete

@@ -19,6 +19,13 @@ noncomputable def EqState.closedLabelSet
   classical
   exact Finset.univ.filter fun literal => state.closedLabel node literal
 
+@[simp] theorem EqState.mem_closedLabelSet
+    [Fintype Concept] [DecidableEq Concept]
+    (state : EqState Node Concept Role) (node : Node) (lit : Lit Concept) :
+    lit ∈ state.closedLabelSet node ↔ state.closedLabel node lit := by
+  classical
+  simp [EqState.closedLabelSet]
+
 noncomputable def EqState.closedForwardParentRoles
     [Fintype Role] [DecidableEq Role]
     (state : EqState Node Concept Role) (parent node : Node) : Finset Role := by

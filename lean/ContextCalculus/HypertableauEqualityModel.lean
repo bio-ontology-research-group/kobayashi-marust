@@ -31,6 +31,33 @@ def EqState.closedObligation (state : EqState Node Concept Role)
     (role : Role) (filler : Lit Concept) (node : Node) : Prop :=
   ∃ source, state.equiv source node ∧ state.base.obligation role filler source
 
+theorem EqState.closedLabel_congr (state : EqState Node Concept Role)
+    {left right : Node} (hrelated : state.equiv left right) (lit : Lit Concept) :
+    state.closedLabel left lit ↔ state.closedLabel right lit := by
+  constructor
+  · rintro ⟨source, hsource, hlabel⟩
+    exact ⟨source, state.equiv_equivalence.trans hsource hrelated, hlabel⟩
+  · rintro ⟨source, hsource, hlabel⟩
+    exact ⟨source, state.equiv_equivalence.trans hsource
+      (state.equiv_equivalence.symm hrelated), hlabel⟩
+
+theorem EqState.closedEdge_congr (state : EqState Node Concept Role)
+    (role : Role) {source source' target target' : Node}
+    (hsource : state.equiv source source')
+    (htarget : state.equiv target target') :
+    state.closedEdge role source target ↔ state.closedEdge role source' target' := by
+  constructor
+  · rintro ⟨edgeSource, edgeTarget, hedgeSource, hedgeTarget, hedge⟩
+    exact ⟨edgeSource, edgeTarget,
+      state.equiv_equivalence.trans hedgeSource hsource,
+      state.equiv_equivalence.trans hedgeTarget htarget, hedge⟩
+  · rintro ⟨edgeSource, edgeTarget, hedgeSource, hedgeTarget, hedge⟩
+    exact ⟨edgeSource, edgeTarget,
+      state.equiv_equivalence.trans hedgeSource
+        (state.equiv_equivalence.symm hsource),
+      state.equiv_equivalence.trans hedgeTarget
+        (state.equiv_equivalence.symm htarget), hedge⟩
+
 def EqState.closedHoldsAtom (state : EqState Node Concept Role)
     (assignment : Variable → Node) : Atom Variable Concept Role → Prop
   | .concept lit node => state.closedLabel (assignment node) lit
@@ -159,6 +186,8 @@ theorem EqState.quotientCanonical_models_of_closed_saturated
     assignment atom hholds
   simpa only [hassignment] using hsat
 
+#print axioms EqState.closedLabel_congr
+#print axioms EqState.closedEdge_congr
 #print axioms EqState.quotientCanonical_models_of_closed_saturated
 
 end ContextCalculus.Hypertableau
