@@ -39,6 +39,11 @@
   completion, and saturation now follow from the concrete blocked runtime
   terminal and checked fold metadata; they are no longer independent
   serializer assumptions.
+- Prove total checked equality-free iterative deepening with the correct SAT
+  semantics. A conclusive open round now carries a regular-unravelling
+  certificate, a closed round carries a finite refutation, and a checked
+  full-address frontier is the only inconclusive result. The finite blocking
+  bound proves that doubling cannot return frontiers forever.
 
 ### Certify native named-individual ABox projection
 
