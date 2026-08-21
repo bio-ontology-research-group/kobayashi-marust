@@ -56,6 +56,11 @@
   equality-free loop run its intermediate Lean checker too; if a finite fold is
   rejected, iterative deepening now resumes instead of publishing a doomed
   candidate.
+- Lift equality-aware and cardinality-aware doubling through exact model
+  equivalence to their original source ontologies. Add a unified certified HT
+  route theorem: regular equality-free, finite equality-quotient, and
+  cardinality-aware searches all yield the same source-level SAT-or-UNSAT proof
+  object, with cardinality definitions preserved explicitly.
 
 ### Certify native named-individual ABox projection
 

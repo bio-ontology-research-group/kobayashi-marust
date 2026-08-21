@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauEqualityRuntimeSearch
 import ContextCalculus.HypertableauFrontierWire
+import ContextCalculus.HypertableauEqualityNormalization
 
 /-!
 # Checked bounded equality-aware HT outcomes
@@ -50,6 +51,42 @@ def CheckedEqualityDecisionOutcome.Semantics
   | .sat .. => EqualityHasNonemptyModel ontology
   | .closed .. => ¬EqualityHasNonemptyModel ontology
   | .frontier .. => False
+
+def CheckedEqualityDecisionOutcome.SourceSemantics
+    {target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (source : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (outcome : CheckedEqualityDecisionOutcome
+      conceptCount roleCount variableCount target) : Prop :=
+  match outcome with
+  | .sat .. => EqualityHasNonemptyModel source
+  | .closed .. => ¬EqualityHasNonemptyModel source
+  | .frontier .. => False
+
+theorem CheckedEqualityDecisionOutcome.source_semantics_of_equivalent
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedEqualityDecisionOutcome
+      conceptCount roleCount variableCount target)
+    (equivalent : ModelEquivalent source target)
+    (hsemantics : outcome.Semantics) :
+    outcome.SourceSemantics source := by
+  cases outcome with
+  | sat certificate hontology hnonempty hcheck =>
+      simp only [CheckedEqualityDecisionOutcome.Semantics,
+        CheckedEqualityDecisionOutcome.SourceSemantics,
+        EqualityHasNonemptyModel] at hsemantics ⊢
+      rcases hsemantics with ⟨Domain, I, hdomain, htarget⟩
+      exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr htarget⟩
+  | closed certificate tree hontology hnonempty hempty hcheck =>
+      simp only [CheckedEqualityDecisionOutcome.Semantics,
+        CheckedEqualityDecisionOutcome.SourceSemantics,
+        EqualityHasNonemptyModel] at hsemantics ⊢
+      rintro ⟨Domain, I, hdomain, hsource⟩
+      exact hsemantics ⟨Domain, I, hdomain, (equivalent Domain I).mp hsource⟩
+  | frontier document hconcepts hroles hcheck =>
+      exact hsemantics
 
 theorem CheckedEqualityDecisionOutcome.sat_semantics
     {ontology : List
@@ -143,9 +180,24 @@ theorem checked_equality_doubling_decides
       hconcepts hroles
   exact hrejected (hchecks round)
 
+theorem checked_equality_doubling_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (run : Nat →
+      CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target)
+    (hnodes : ∀ round document hconcepts hroles hcheck,
+      run round = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ round) :
+    ∃ round, (run round).SourceSemantics source := by
+  obtain ⟨round, hsemantics⟩ := checked_equality_doubling_decides run hnodes
+  exact ⟨round, (run round).source_semantics_of_equivalent equivalent hsemantics⟩
+
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
 #print axioms checked_equality_doubling_decides
+#print axioms CheckedEqualityDecisionOutcome.source_semantics_of_equivalent
+#print axioms checked_equality_doubling_decides_source
 
 end ContextCalculus.Hypertableau
