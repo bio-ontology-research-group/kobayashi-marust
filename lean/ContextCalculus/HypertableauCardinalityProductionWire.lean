@@ -150,10 +150,234 @@ theorem CheckedCardinalityRuntimeFields.has_config
       config = checked.fields.toConfig checked.valid :=
   ⟨_, rfl⟩
 
+/-! ## Checked logical transitions
+
+Rust stores expanded minimum sites in a `HashSet`, so wire-list order is not
+logical state. Clause, witness, and maximum recursion preserve that set;
+minimum recursion inserts exactly its selected site. -/
+
+def FiniteDistinctEqCertificate.matchesLogicalStateB
+    (actual expected : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  decide (actual.base.base.ontology = expected.base.base.ontology) &&
+    decide (actual.base.base.labels = expected.base.base.labels) &&
+    decide (actual.base.base.edges = expected.base.base.edges) &&
+    decide (actual.base.base.obligations = expected.base.base.obligations) &&
+    decide (actual.base.equalities = expected.base.equalities) &&
+    decide (actual.apart = expected.apart)
+
+theorem FiniteDistinctEqCertificate.matchesLogicalStateB_state
+    (actual expected : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcheck : actual.matchesLogicalStateB expected = true) :
+    actual.state = expected.state := by
+  simp only [FiniteDistinctEqCertificate.matchesLogicalStateB, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  rcases hcheck with
+    ⟨⟨⟨⟨⟨hontology, hlabels⟩, hedges⟩, hobligations⟩, hequalities⟩, hapart⟩
+  apply DistinctEqState.ext
+  · apply EqState.ext
+    · apply State.ext
+      · funext node lit
+        simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state]
+        rw [hlabels]
+      · funext role source target
+        simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state]
+        rw [hedges]
+      · funext role filler node
+        simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+          FiniteSatCertificate.state]
+        rw [hobligations]
+    · simp only [FiniteDistinctEqCertificate.state, FiniteEqCertificate.state]
+      rw [hequalities]
+  · funext left right
+    simp only [FiniteDistinctEqCertificate.state]
+    rw [hapart]
+
+theorem CardinalityRuntimeConfig.extensional
+    {left right : CardinalityRuntimeConfig Concept Role definitions nodeCount}
+    (hstate : left.state = right.state) (hactive : left.active = right.active)
+    (hexpanded : left.expanded = right.expanded) : left = right := by
+  cases left
+  cases right
+  simp_all
+
+def FiniteCardinalityRuntimeFields.sameExpandedB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions) : Bool :=
+  decide (∀ site : IndexedCardinalitySite definitions nodeCount,
+    site ∈ next.expandedMinimums ↔ site ∈ current.expandedMinimums)
+
+def FiniteCardinalityRuntimeFields.insertedExpandedB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (inserted : IndexedCardinalitySite definitions nodeCount) : Bool :=
+  decide (∀ site : IndexedCardinalitySite definitions nodeCount,
+    site ∈ next.expandedMinimums ↔ site = inserted ∨ site ∈ current.expandedMinimums)
+
+def FiniteCardinalityRuntimeFields.clauseTransitionB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount)) : Bool :=
+  current.certificate.transitionB next.certificate assignment atom &&
+    decide (next.activeNodes = current.activeNodes) && current.sameExpandedB next
+
+def FiniteCardinalityRuntimeFields.witnessTransitionB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (source target : Fin nodeCount) (role : Fin roleCount)
+    (filler : Lit (Fin conceptCount)) : Bool :=
+  next.certificate.matchesLogicalStateB
+      (current.certificate.materializeWitness source target role filler) &&
+    decide (next.activeNodes = current.activeNodes + 1) && current.sameExpandedB next
+
+def FiniteCardinalityRuntimeFields.minimumTransitionB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (site : IndexedCardinalitySite definitions nodeCount)
+    (targets : Fin (definitions.get site.1).bound → Fin nodeCount) : Bool :=
+  current.certificate.minimumTransitionB next.certificate site.2 targets
+      (definitions.get site.1).role (definitions.get site.1).filler &&
+    decide (next.activeNodes = current.activeNodes + (definitions.get site.1).bound) &&
+    current.insertedExpandedB next site
+
+def FiniteCardinalityRuntimeFields.maximumTransitionB
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (left right : Fin nodeCount) : Bool :=
+  current.certificate.mergeTransitionB next.certificate left right &&
+    decide (next.activeNodes = current.activeNodes) && current.sameExpandedB next
+
+theorem FiniteCardinalityRuntimeFields.clauseTransitionB_config
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true) (hnext : next.check = true)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    {grounding : Grounding (Fin variableCount) (Fin nodeCount)
+      (Fin conceptCount) (Fin roleCount)}
+    (hselect : selectActiveCardinalityClauseGrounding ontology
+      (current.toConfig hcurrent).state (current.toConfig hcurrent).active
+      (current.toConfig hcurrent).active_le = some grounding)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (htransition : current.clauseTransitionB next grounding.2 atom = true) :
+    next.toConfig hnext = (current.toConfig hcurrent).clauseChild ontology hselect atom := by
+  simp only [FiniteCardinalityRuntimeFields.clauseTransitionB, Bool.and_eq_true,
+    decide_eq_true_eq, FiniteCardinalityRuntimeFields.sameExpandedB] at htransition
+  rcases htransition with ⟨⟨hstate, hactive⟩, hexpanded⟩
+  apply CardinalityRuntimeConfig.extensional
+  · simpa [FiniteCardinalityRuntimeFields.toConfig] using
+      current.certificate.transitionB_state next.certificate grounding.2 atom hstate
+  · exact hactive
+  · ext site
+    simp only [CardinalityRuntimeConfig.clauseChild,
+      FiniteCardinalityRuntimeFields.mem_toConfig_expanded]
+    exact hexpanded site
+
+theorem FiniteCardinalityRuntimeFields.witnessTransitionB_config
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true) (hnext : next.check = true)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    {candidate : WitnessCandidate (Fin nodeCount) (Fin conceptCount) (Fin roleCount)}
+    (hselect : selectEqUnblockedUnwitnessed (current.toConfig hcurrent).state.base
+      parent ancestors = some candidate)
+    (hfit : (current.toConfig hcurrent).active < nodeCount)
+    (htransition : current.witnessTransitionB next candidate.2.2
+      (rustNextTarget (current.toConfig hcurrent).active nodeCount hfit)
+      candidate.1 candidate.2.1 = true) :
+    next.toConfig hnext = (current.toConfig hcurrent).witnessChild
+      parent ancestors hselect hfit := by
+  simp only [FiniteCardinalityRuntimeFields.witnessTransitionB, Bool.and_eq_true,
+    decide_eq_true_eq, FiniteCardinalityRuntimeFields.sameExpandedB] at htransition
+  rcases htransition with ⟨⟨hstate, hactive⟩, hexpanded⟩
+  apply CardinalityRuntimeConfig.extensional
+  · rw [FiniteCardinalityRuntimeFields.toConfig_state,
+      FiniteDistinctEqCertificate.matchesLogicalStateB_state _ _ hstate,
+      FiniteDistinctEqCertificate.state_materializeWitness]
+    rfl
+  · exact hactive
+  · ext site
+    simp only [CardinalityRuntimeConfig.witnessChild,
+      FiniteCardinalityRuntimeFields.mem_toConfig_expanded]
+    exact hexpanded site
+
+theorem FiniteCardinalityRuntimeFields.minimumTransitionB_config
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true) (hnext : next.check = true)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    {site : IndexedCardinalitySite definitions nodeCount}
+    (hselect : selectIndexedExpandableMinimum definitions
+      (current.toConfig hcurrent).state parent ancestors
+      (current.toConfig hcurrent).expanded = some site)
+    (hfit : (current.toConfig hcurrent).active + (definitions.get site.1).bound ≤ nodeCount)
+    (htransition : current.minimumTransitionB next site
+      (rustConsecutiveTargets (current.toConfig hcurrent).active
+        (definitions.get site.1).bound nodeCount hfit) = true) :
+    next.toConfig hnext = (current.toConfig hcurrent).minimumChild
+      parent ancestors hselect hfit := by
+  simp only [FiniteCardinalityRuntimeFields.minimumTransitionB, Bool.and_eq_true,
+    decide_eq_true_eq, FiniteCardinalityRuntimeFields.insertedExpandedB] at htransition
+  rcases htransition with ⟨⟨hstate, hactive⟩, hexpanded⟩
+  apply CardinalityRuntimeConfig.extensional
+  · simpa [FiniteCardinalityRuntimeFields.toConfig] using
+      current.certificate.minimumTransitionB_state next.certificate site.2
+        (rustConsecutiveTargets (current.toConfig hcurrent).active
+          (definitions.get site.1).bound nodeCount hfit)
+        (definitions.get site.1).role (definitions.get site.1).filler hstate
+  · exact hactive
+  · ext candidate
+    simp only [CardinalityRuntimeConfig.minimumChild,
+      FiniteCardinalityRuntimeFields.mem_toConfig_expanded, Finset.mem_insert]
+    exact hexpanded candidate
+
+theorem FiniteCardinalityRuntimeFields.maximumTransitionB_config
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true) (hnext : next.check = true)
+    {site : IndexedCardinalitySite definitions nodeCount}
+    (hselect : selectIndexedViolatingMaximum definitions
+      (current.toConfig hcurrent).state = some site)
+    (hwidth : (definitions.get site.1).bound + 1 ≤
+      (rustMaximumRepresentatives (current.toConfig hcurrent).state
+        (definitions.get site.1) site.2).length)
+    (left right : Fin ((definitions.get site.1).bound + 1)) (hne : left ≠ right)
+    (htransition : current.maximumTransitionB next
+      (rustPrefixVector
+        (rustMaximumRepresentatives (current.toConfig hcurrent).state
+          (definitions.get site.1) site.2)
+        ((definitions.get site.1).bound + 1) hwidth left)
+      (rustPrefixVector
+        (rustMaximumRepresentatives (current.toConfig hcurrent).state
+          (definitions.get site.1) site.2)
+        ((definitions.get site.1).bound + 1) hwidth right) = true) :
+    next.toConfig hnext = (current.toConfig hcurrent).maximumChild
+      hselect hwidth left right hne := by
+  simp only [FiniteCardinalityRuntimeFields.maximumTransitionB, Bool.and_eq_true,
+    decide_eq_true_eq, FiniteCardinalityRuntimeFields.sameExpandedB] at htransition
+  rcases htransition with ⟨⟨hstate, hactive⟩, hexpanded⟩
+  apply CardinalityRuntimeConfig.extensional
+  · simpa [FiniteCardinalityRuntimeFields.toConfig] using
+      current.certificate.mergeTransitionB_state next.certificate _ _ hstate
+  · exact hactive
+  · ext candidate
+    simp only [CardinalityRuntimeConfig.maximumChild,
+      FiniteCardinalityRuntimeFields.mem_toConfig_expanded]
+    exact hexpanded candidate
+
 #print axioms FiniteCardinalityRuntimeFields.mem_toConfig_expanded
 #print axioms FiniteCardinalityRuntimeFields.expandedMinimums_nodup
 #print axioms FiniteCardinalityRuntimeFields.expanded_kind
 #print axioms FiniteCardinalityRuntimeFields.expanded_source_lt_active
 #print axioms CheckedCardinalityRuntimeFields.has_config
+#print axioms FiniteCardinalityRuntimeFields.clauseTransitionB_config
+#print axioms FiniteCardinalityRuntimeFields.witnessTransitionB_config
+#print axioms FiniteCardinalityRuntimeFields.minimumTransitionB_config
+#print axioms FiniteCardinalityRuntimeFields.maximumTransitionB_config
 
 end ContextCalculus.Hypertableau

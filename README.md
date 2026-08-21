@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.189`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.190`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -92,9 +92,11 @@ quotient and normalized anchored fallback, now have source-level soundness
 theorems directly from successful decode and `Except.ok true`. Concrete
 cardinality runtime fields now decode from bounded JSON and are checked before
 constructing the exact typed production state, active prefix, and
-expanded-minimum set. Rust transition/outcome correspondence, the remaining
-cardinality transition-enumerator correspondence, CB, and automatic routing
-remain unfinished. Equality
+expanded-minimum set. Checked concrete clause, witness, minimum, and maximum
+successors now equal the corresponding typed Lean production children,
+including exact active-node changes and extensional expanded-minimum `HashSet`
+semantics. Rust outcome correspondence, CB, and automatic routing remain
+unfinished. Equality
 countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.
@@ -156,8 +158,9 @@ closure of the parent. A common strict-growth relation proves the recursive
 production search well founded. Its total result is a checked closed branch, an
 independently checked nonempty cardinality model, or an explicit budget
 frontier. Concrete runtime fields now construct this typed search state after
-executable validation; exact Rust transition and outcome construction remain
-to be connected.
+executable validation, and all four recursive Rust successor families now map
+to the exact typed child configurations. Exact Rust outcome construction
+remains to be connected.
 Cardinality minimum and maximum scans now retain stored definition IDs instead
 of identifying definitions structurally. Minimum suppression uses the same
 definition ID at any equality-equivalent previously expanded source, matching

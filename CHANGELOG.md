@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.190] – 2026-08-21
+
+### Prove concrete cardinality production transitions exact
+
+- Check the logical portion of concrete successor states independently of
+  cached representative functions, whose validity is checked separately.
+- Model Rust's expanded-minimum `HashSet` extensionally: clause, witness, and
+  maximum transitions preserve it, while a minimum transition inserts exactly
+  the selected `(definition_id, source)` site.
+- Check Rust's exact active-node updates for all four recursive transition
+  families.
+- Prove every checked clause assertion, ordinary witness, minimum expansion,
+  and maximum merge successor equals its exact typed Lean production child.
+- Audit all transition-correspondence endpoints without `sorryAx`.
+
+Concrete Rust outcome construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.189] – 2026-08-21
 
 ### Check concrete cardinality production runtime fields
