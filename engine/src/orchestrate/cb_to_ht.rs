@@ -379,6 +379,140 @@ pub struct CardDefJson {
     pub exact: bool,
 }
 
+/// Definition indices whose exact semantics come from one removed,
+/// structurally complementary frontend recognition split. Lean independently
+/// checks the referenced definitions, pair disjointness, and `exact` flags.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CardinalityExactPairJson {
+    pub maximum: usize,
+    pub minimum: usize,
+}
+
+fn expected_minimum_role_clause(
+    definition: &crate::json_io::CardMeta,
+    index: u32,
+) -> JClause {
+    let x = JTerm::Var { name: "x".into() };
+    let target = JTerm::Fun {
+        function: format!("f_{}_{}", definition.marker, index),
+        arg: Box::new(x.clone()),
+    };
+    JClause {
+        body: vec![JAtom::Concept {
+            concept: definition.marker.clone(),
+            term: x.clone(),
+        }],
+        head: vec![JAtom::Role {
+            role: definition.role.clone(),
+            source: x,
+            target,
+        }],
+    }
+}
+
+fn expected_minimum_filler_clause(
+    definition: &crate::json_io::CardMeta,
+    index: u32,
+) -> JClause {
+    let x = JTerm::Var { name: "x".into() };
+    JClause {
+        body: vec![JAtom::Concept {
+            concept: definition.marker.clone(),
+            term: x.clone(),
+        }],
+        head: vec![JAtom::Concept {
+            concept: definition.filler.clone(),
+            term: JTerm::Fun {
+                function: format!("f_{}_{}", definition.marker, index),
+                arg: Box::new(x),
+            },
+        }],
+    }
+}
+
+fn expected_minimum_distinct_clause(
+    definition: &crate::json_io::CardMeta,
+    left: u32,
+    right: u32,
+) -> JClause {
+    let x = JTerm::Var { name: "x".into() };
+    let function = |index| JTerm::Fun {
+        function: format!("f_{}_{}", definition.marker, index),
+        arg: Box::new(x.clone()),
+    };
+    JClause {
+        body: vec![
+            JAtom::Concept {
+                concept: definition.marker.clone(),
+                term: x.clone(),
+            },
+            JAtom::Eq {
+                left: function(left),
+                right: function(right),
+            },
+        ],
+        head: Vec::new(),
+    }
+}
+
+fn expected_maximum_clause(definition: &crate::json_io::CardMeta) -> Option<JClause> {
+    let bound = usize::try_from(definition.n).ok()?;
+    let witness_count = bound.checked_add(1)?;
+    let x = JTerm::Var { name: "x".into() };
+    let mut body = vec![JAtom::Concept {
+        concept: definition.marker.clone(),
+        term: x.clone(),
+    }];
+    for index in 0..witness_count {
+        let witness = JTerm::Var {
+            name: format!("y{index}"),
+        };
+        body.push(JAtom::Role {
+            role: definition.role.clone(),
+            source: x.clone(),
+            target: witness.clone(),
+        });
+        body.push(JAtom::Concept {
+            concept: definition.filler.clone(),
+            term: witness,
+        });
+    }
+    let mut head = Vec::new();
+    for left in 0..witness_count {
+        for right in (left + 1)..witness_count {
+            head.push(JAtom::Eq {
+                left: JTerm::Var {
+                    name: format!("y{left}"),
+                },
+                right: JTerm::Var {
+                    name: format!("y{right}"),
+                },
+            });
+        }
+    }
+    Some(JClause { body, head })
+}
+
+fn cardinality_expansion_complete(
+    clauses: &[JClause],
+    definitions: &[crate::json_io::CardMeta],
+) -> bool {
+    definitions.iter().all(|definition| {
+        if definition.min {
+            (0..definition.n).all(|index| {
+                clauses.contains(&expected_minimum_role_clause(definition, index))
+                    && clauses.contains(&expected_minimum_filler_clause(definition, index))
+            }) && (0..definition.n).all(|left| {
+                ((left + 1)..definition.n).all(|right| {
+                    clauses.contains(&expected_minimum_distinct_clause(definition, left, right))
+                })
+            })
+        } else {
+            expected_maximum_clause(definition).is_some_and(|clause| clauses.contains(&clause))
+        }
+    })
+}
+
 /// Numeric, independently validated named-individual state consumed by the
 /// fast hypertableau.  Indices in `different`/role assertions refer to
 /// `individuals`; concept and role values use this TInput's id tables.
@@ -460,6 +594,10 @@ pub struct TInput {
     pub native_abox: NativeAboxJson,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub card_defs: Vec<CardDefJson>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cardinality_exact_pairs: Vec<CardinalityExactPairJson>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub cardinality_projection_complete: bool,
     /// Detected role chains `(R1, R2, R)` for `R1∘R2⊑R` (KM_KEEP_CHAIN_AXIOMS).
     /// Populated from the raw chain axioms, which are EXCLUDED from `clauses`
     /// (they bloat cb_to_ht's cardinality/disjunction expansion).  Consumed by
@@ -1657,40 +1795,142 @@ fn eq_fun_pair(a: &JAtom) -> Option<(String, String)> {
 ///       `min_markers`) and an `Eq(f_i,f_j)` between Skolem terms;
 ///   (3) `≤n` definitional: non-empty all-`Eq` head, body carries an `m` concept
 ///       (m ∈ `max_markers`) — the `⋁ Eq` pigeonhole.
-/// Each marker is fresh and used only by its own restriction, so these shapes
-/// never alias a non-cardinality clause (the `≥n` recognition Horn/`∨ Eq` clause
-/// and the `q ∨ NQ` excluded middle keep an `m` concept in the HEAD, not matched).
+/// Every symbol, variable, function index, role, filler, atom order, and pair
+/// order is checked against the corresponding `CardMeta`. Similar clauses are
+/// retained, including the `≥n` recognition clause and excluded middle.
 fn card_drop(
     c: &JClause,
-    min_markers: &std::collections::HashSet<String>,
-    max_markers: &std::collections::HashSet<String>,
+    cardinalities: &[crate::json_io::CardMeta],
 ) -> bool {
-    let body_has = |set: &std::collections::HashSet<String>| -> bool {
-        c.body.iter().any(|a| matches!(a,
-            JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && set.contains(concept)))
-    };
-    // (1) ≥n Skolem intro.
-    if c.head.iter().any(atom_has_fun) {
-        let single_min = c.body.len() == 1
-            && matches!(&c.body[0],
-                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && min_markers.contains(concept));
-        if single_min {
-            return true;
+    cardinalities.iter().any(|definition| {
+        if definition.min {
+            exact_minimum_expansion_clause(c, definition)
+        } else {
+            exact_maximum_pigeonhole_clause(c, definition)
         }
+    })
+}
+
+fn marker_x(atom: &JAtom, marker: &str) -> bool {
+    matches!(atom,
+        JAtom::Concept { concept, term: JTerm::Var { name } }
+            if concept == marker && name == "x")
+}
+
+fn minimum_function_index(term: &JTerm, marker: &str, bound: u32) -> Option<u32> {
+    let JTerm::Fun { function, arg } = term else {
+        return None;
+    };
+    if !matches!(arg.as_ref(), JTerm::Var { name } if name == "x") {
+        return None;
     }
-    // (2) ≥n distinctness.
-    if c.head.is_empty() && body_has(min_markers) && c.body.iter().any(|a| eq_fun_pair(a).is_some())
-    {
-        return true;
+    let prefix = format!("f_{marker}_");
+    let index = function.strip_prefix(&prefix)?.parse::<u32>().ok()?;
+    (index < bound).then_some(index)
+}
+
+fn exact_minimum_expansion_clause(
+    clause: &JClause,
+    definition: &crate::json_io::CardMeta,
+) -> bool {
+    if clause.body.first().is_none_or(|atom| !marker_x(atom, &definition.marker)) {
+        return false;
     }
-    // (3) ≤n definitional pigeonhole.
-    if !c.head.is_empty()
-        && c.head.iter().all(|a| matches!(a, JAtom::Eq { .. }))
-        && body_has(max_markers)
-    {
-        return true;
+    // Q(x) -> R(x, f_i(x)) and Q(x) -> C(f_i(x)).
+    if clause.body.len() == 1 && clause.head.len() == 1 {
+        return match &clause.head[0] {
+            JAtom::Role {
+                role,
+                source: JTerm::Var { name },
+                target,
+            } => {
+                role == &definition.role
+                    && name == "x"
+                    && minimum_function_index(target, &definition.marker, definition.n).is_some()
+            }
+            JAtom::Concept { concept, term } => {
+                concept == &definition.filler
+                    && minimum_function_index(term, &definition.marker, definition.n).is_some()
+            }
+            _ => false,
+        };
+    }
+    // Q(x) and f_i(x)=f_j(x) -> bottom, for one generated i<j pair.
+    if clause.body.len() == 2 && clause.head.is_empty() {
+        let JAtom::Eq { left, right } = &clause.body[1] else {
+            return false;
+        };
+        let Some(left) = minimum_function_index(left, &definition.marker, definition.n) else {
+            return false;
+        };
+        let Some(right) = minimum_function_index(right, &definition.marker, definition.n) else {
+            return false;
+        };
+        return left < right;
     }
     false
+}
+
+fn exact_maximum_pigeonhole_clause(
+    clause: &JClause,
+    definition: &crate::json_io::CardMeta,
+) -> bool {
+    let Some(witness_count) = usize::try_from(definition.n)
+        .ok()
+        .and_then(|bound| bound.checked_add(1))
+    else {
+        return false;
+    };
+    let Some(expected_body_len) = witness_count.checked_mul(2).and_then(|n| n.checked_add(1))
+    else {
+        return false;
+    };
+    if clause.body.len() != expected_body_len
+        || !marker_x(&clause.body[0], &definition.marker)
+    {
+        return false;
+    }
+    for index in 0..witness_count {
+        let variable = format!("y{index}");
+        if !matches!(&clause.body[1 + 2 * index],
+            JAtom::Role {
+                role,
+                source: JTerm::Var { name: source },
+                target: JTerm::Var { name: target },
+            } if role == &definition.role && source == "x" && target == &variable)
+            || !matches!(&clause.body[2 + 2 * index],
+                JAtom::Concept { concept, term: JTerm::Var { name } }
+                    if concept == &definition.filler && name == &variable)
+        {
+            return false;
+        }
+    }
+    let Some(expected_head_len) = witness_count
+        .checked_mul(witness_count.saturating_sub(1))
+        .map(|n| n / 2)
+    else {
+        return false;
+    };
+    if clause.head.len() != expected_head_len {
+        return false;
+    }
+    let mut position = 0;
+    for left in 0..witness_count {
+        for right in (left + 1)..witness_count {
+            let left_name = format!("y{left}");
+            let right_name = format!("y{right}");
+            if !matches!(&clause.head[position],
+                JAtom::Eq {
+                    left: JTerm::Var { name: actual_left },
+                    right: JTerm::Var { name: actual_right },
+                } if actual_left == &left_name && actual_right == &right_name)
+            {
+                return false;
+            }
+            position += 1;
+        }
+    }
+    true
 }
 
 /// KM_HT_CARD_DROP_EM (experimental): does `c` match the `⊤ → Q ∨ NQ`
@@ -2471,7 +2711,7 @@ pub fn convert(
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
-    let direct_projection_source = clauses
+    let mut direct_projection_source = clauses
         .iter()
         .map(direct_projection_clause)
         .collect::<Option<Vec<_>>>();
@@ -2574,6 +2814,7 @@ pub fn convert(
         && (std::env::var_os("KM_HT_CARD_DROP_EM").is_some()
             || std::env::var_os("KM_NO_HT_CARD_RECOG").is_none());
     let mut exact_cardinality_marker_names = std::collections::HashSet::new();
+    let mut exact_cardinality_marker_pairs: Vec<(String, String)> = Vec::new();
     if drop_em {
         for clause in clauses {
             if em_recognition_drop(clause, &min_markers, &max_markers) {
@@ -2609,9 +2850,32 @@ pub fn convert(
                 if complementary {
                     exact_cardinality_marker_names.insert(markers[0].to_string());
                     exact_cardinality_marker_names.insert(markers[1].to_string());
+                    let oriented = if left.min {
+                        (markers[1].to_string(), markers[0].to_string())
+                    } else {
+                        (markers[0].to_string(), markers[1].to_string())
+                    };
+                    if !exact_cardinality_marker_pairs.contains(&oriented) {
+                        exact_cardinality_marker_pairs.push(oriented);
+                    }
                 }
             }
         }
+    }
+    if card_active {
+        // The cardinality projection checker accounts for exactly the source
+        // expansion clauses replaced by first-class definitions. Preserve the
+        // complete residual source for the ordinary direct checker. If even one
+        // residual clause needs another transformation, certification remains
+        // unavailable rather than silently omitting it.
+        direct_projection_source = clauses
+            .iter()
+            .filter(|clause| {
+                !card_drop(clause, cardinalities)
+                    && !(drop_em && em_recognition_drop(clause, &min_markers, &max_markers))
+            })
+            .map(direct_projection_clause)
+            .collect::<Option<Vec<_>>>();
     }
 
     // KM_HT_CARD_GUARD_EM: rewrite the `⊤ → Q ∨ NQ` recognition splits into
@@ -2725,7 +2989,7 @@ pub fn convert(
         // KM_HT_CARD: drop the clausal cardinality expansion the frontend emitted
         // for a card marker (the `≥n` Skolem successors + distinctness, and the
         // `≤n` Eq-head). The first-class rule in `card_defs` replaces it.
-        if card_active && card_drop(c, &min_markers, &max_markers) {
+        if card_active && card_drop(c, cardinalities) {
             continue;
         }
         // KM_HT_CARD_DROP_EM (experimental, gated): also drop the clausal
@@ -3712,6 +3976,27 @@ pub fn convert(
             });
         }
     }
+    let cardinality_exact_pairs = exact_cardinality_marker_pairs
+        .iter()
+        .map(|(maximum, minimum)| {
+            let maximum = cardinalities
+                .iter()
+                .position(|definition| definition.marker == *maximum)
+                .expect("exact maximum provenance references a cardinality definition");
+            let minimum = cardinalities
+                .iter()
+                .position(|definition| definition.marker == *minimum)
+                .expect("exact minimum provenance references a cardinality definition");
+            CardinalityExactPairJson { maximum, minimum }
+        })
+        .collect();
+    // Full family coverage is quadratic in the emitted witness family in the
+    // worst case. It is evidence-only, so ordinary classification and ORE
+    // benchmarks must not pay for it. The certified worker inherits this
+    // checker variable from the orchestrator; unit tests exercise the same path.
+    let cardinality_projection_complete = card_active
+        && (cfg!(test) || std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").is_some())
+        && cardinality_expansion_complete(clauses, cardinalities);
 
     // ---- complementary-definer elimination (default ON) ----
     // Sound+complete since the completeness guard in elim_complements (never folds
@@ -3770,6 +4055,8 @@ pub fn convert(
         nominal_abox: crate::json_io::NominalAboxMeta::default(),
         native_abox: NativeAboxJson::default(),
         card_defs,
+        cardinality_exact_pairs,
+        cardinality_projection_complete,
         chains: detected_chains,
         transitive: detected_transitive,
         role_domains,
@@ -4970,6 +5257,121 @@ mod trigger_absorb_tests {
         assert!(!exact("Q_positive_only_min"));
         assert!(!exact("Q_wrong_max"));
         assert!(!exact("Q_wrong_min"));
+        assert_eq!(
+            tin.cardinality_exact_pairs,
+            [CardinalityExactPairJson {
+                maximum: 0,
+                minimum: 1,
+            }]
+        );
+        assert!(
+            !tin.cardinality_projection_complete,
+            "synthetic metadata without the frontend expansion must not certify"
+        );
+    }
+
+    #[test]
+    fn cardinality_projection_requires_the_complete_exact_frontend_family() {
+        let maximum = CardMeta {
+            marker: "Q_max".into(),
+            min: false,
+            n: 1,
+            role: "R".into(),
+            filler: "C".into(),
+        };
+        let minimum = CardMeta {
+            marker: "Q_min".into(),
+            min: true,
+            n: 2,
+            role: "R".into(),
+            filler: "C".into(),
+        };
+        let mut clauses = vec![expected_maximum_clause(&maximum).unwrap()];
+        for index in 0..minimum.n {
+            clauses.push(expected_minimum_role_clause(&minimum, index));
+            clauses.push(expected_minimum_filler_clause(&minimum, index));
+        }
+        clauses.push(expected_minimum_distinct_clause(&minimum, 0, 1));
+        clauses.push(JClause {
+            body: Vec::new(),
+            head: vec![
+                JAtom::Concept {
+                    concept: maximum.marker.clone(),
+                    term: vx(),
+                },
+                JAtom::Concept {
+                    concept: minimum.marker.clone(),
+                    term: vx(),
+                },
+            ],
+        });
+        clauses.push(JClause {
+            body: vec![
+                JAtom::Concept {
+                    concept: maximum.marker.clone(),
+                    term: vx(),
+                },
+                JAtom::Concept {
+                    concept: minimum.marker.clone(),
+                    term: vx(),
+                },
+            ],
+            head: Vec::new(),
+        });
+        let definitions = vec![maximum.clone(), minimum.clone()];
+        let converted = convert(
+            &clauses,
+            None,
+            &std::collections::HashSet::new(),
+            &definitions,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
+        assert!(converted.cardinality_projection_complete);
+        assert_eq!(converted.cardinality_exact_pairs.len(), 1);
+        assert_eq!(
+            converted
+                .direct_projection_source
+                .as_ref()
+                .expect("the residual clash is directly projected")
+                .len(),
+            1
+        );
+
+        let mut incomplete = clauses;
+        incomplete.retain(|clause| clause != &expected_minimum_filler_clause(&minimum, 1));
+        let converted = convert(
+            &incomplete,
+            None,
+            &std::collections::HashSet::new(),
+            &definitions,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
+        assert!(!converted.cardinality_projection_complete);
+    }
+
+    #[test]
+    fn cardinality_drop_rejects_a_similar_but_wrong_clause() {
+        let definition = CardMeta {
+            marker: "Q_min".into(),
+            min: true,
+            n: 1,
+            role: "R".into(),
+            filler: "C".into(),
+        };
+        let mut malformed = expected_minimum_role_clause(&definition, 0);
+        let JAtom::Role { role, .. } = &mut malformed.head[0] else {
+            unreachable!();
+        };
+        *role = "different-role".into();
+        assert!(!card_drop(&malformed, &[definition]));
     }
 
     #[test]
