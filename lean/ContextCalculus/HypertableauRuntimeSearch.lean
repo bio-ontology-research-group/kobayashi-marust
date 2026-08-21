@@ -683,7 +683,6 @@ def State.BlockedWitnessRefines
   ∀ source role filler, state.obligation role filler source →
     blocked source = true →
     ∃ blocker target, fold source blocker ∧
-      state.obligation role filler blocker ∧
       state.edge role blocker target ∧ state.label target filler
 
 def State.BlockedRedirectRefines
@@ -714,8 +713,7 @@ theorem State.blockedRedirectWitnessComplete
         exact ⟨target, hedge, hlabel⟩
     | true =>
         rcases hrefines source role filler hobligation hblocked with
-          ⟨blocker, blockerTarget, hfold, hobligationBlocker,
-            hedgeBlocker, hlabelBlocker⟩
+          ⟨blocker, blockerTarget, hfold, hedgeBlocker, hlabelBlocker⟩
         rw [hredirect.2 source blocker hfold]
         exact ⟨blockerTarget, hedgeBlocker, hlabelBlocker⟩
   · have hnowitness : ∀ target,
@@ -725,7 +723,7 @@ theorem State.blockedRedirectWitnessComplete
     have hblocked := State.BlockedRuntimeTerminal.unwitnessed_is_blocked
       state ontology blocked hterminal source role filler hobligation hnowitness
     rcases hrefines source role filler hobligation hblocked with
-      ⟨blocker, target, hfold, hobligationBlocker, hedge, hlabel⟩
+      ⟨blocker, target, hfold, hedge, hlabel⟩
     rw [hredirect.2 source blocker hfold]
     exact ⟨target, hedge, hlabel⟩
 

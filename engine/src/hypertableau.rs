@@ -10472,7 +10472,15 @@ impl Ht {
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let regular = self.lean_regular_blocked_open_certificate_json(&leaf)?;
                     let envelope = Self::lean_regular_decision_envelope(regular, true)?;
-                    return Ok((true, self.finalize_lean_certificate(envelope)?));
+                    let candidate = self.finalize_lean_certificate(envelope)?;
+                    if self.lean_decision_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "regular equality-free HT",
+                    )?;
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(

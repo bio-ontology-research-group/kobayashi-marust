@@ -50,6 +50,12 @@
   UNSAT outcomes through the checked model-equivalent normalization, so the
   total doubling theorem now states the correct result for the original source
   ontology rather than only its normalized target.
+- Match redirected-witness refinement to the exact model invariant: a blocker
+  must provide the selected witness edge and filler label, but need not retain
+  a redundant copy of the blocked node's obligation. Make the Rust regular
+  equality-free loop run its intermediate Lean checker too; if a finite fold is
+  rejected, iterative deepening now resumes instead of publishing a doomed
+  candidate.
 
 ### Certify native named-individual ABox projection
 
