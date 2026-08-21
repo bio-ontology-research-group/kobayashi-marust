@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.196] – 2026-08-21
+
+### Compose all HT Skolem pairs in one interpretation
+
+- Strengthen unary witness refinement with an explicit preservation theorem:
+  installing one function leaves every differently named function unchanged.
+- Define finite Skolem-pair specifications and prove soundness for their whole
+  projected target list.
+- Prove completeness by installing finitely many uniquely named witnesses in
+  one shared Skolem interpretation while preserving the pairs already handled.
+- Combine untouched direct clauses and all Skolem pairs in
+  `mixedSkolemProjection_sat_iff`, establishing whole-ontology
+  equisatisfiability for this mixed projection fragment.
+- Reject a disjunctive Skolem head in Rust instead of unsafely treating its
+  alternative head atoms as conjunctive existential fillers.
+
+The executable projection wire still needs to decode this mixed evidence and
+compare its projected target with the exact production ontology. General
+multi-filler/definer projection, cardinality replacement, nominal/ABox
+projection, the remaining HT audit, CB, and routing certification remain
+unfinished.
+
 ## [0.3.195] – 2026-08-21
 
 ### Prove the HT Skolem-pair projection exact

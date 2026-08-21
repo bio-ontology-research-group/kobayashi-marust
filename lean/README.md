@@ -227,8 +227,10 @@ accepts only exact whole-ontology equality. Build its native executable with
 requires this projection checker and publishes nothing when source evidence is
 missing. `HypertableauSkolemProjection.lean` proves the exact common-body unary
 Skolem role/filler pair equisatisfiable with the HT existential that replaces
-it, in both directions. Rust now enforces that theorem's identical-body and
-`R(x, f(x))` / `C(f(x))` preconditions. The projection wire does not yet encode
+it, in both directions. `mixedSkolemProjection_sat_iff` composes any finite
+uniquely named pair list in one shared Skolem interpretation together with
+untouched direct clauses. Rust now enforces the theorem's identical-body,
+singleton-head, and `R(x, f(x))` / `C(f(x))` preconditions. The projection wire does not yet encode
 this two-source-to-one-target constructor, so certified runs still defer on
 function-bearing source clauses. Bottom-head erasure, cardinality replacement,
 and nominal/ABox compilation still require additional projection constructors.

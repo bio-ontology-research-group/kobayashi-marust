@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.195`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.196`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -110,8 +110,10 @@ and variable names and accepts only when the complete direct source conversion
 is exactly the ontology certified by HT. Missing evidence and transformations
 without a proved projection constructor defer instead of publishing. The
 exact common-body unary Skolem-pair replacement is now proved sound, complete,
-and equisatisfiable. The Rust converter enforces its proved body and variable
-wiring and drops malformed pairs. Its two-to-one evidence is not yet connected
+and equisatisfiable. A finite composition theorem installs every uniquely named
+pair in one shared Skolem interpretation and combines the result with untouched
+direct clauses. The Rust converter enforces the proved body, singleton-head,
+and variable wiring and drops malformed pairs. This evidence is not yet connected
 to the executable projection wire, so certified runs still defer on these
 source clauses. Cardinality-replacement, nominal/ABox, and other non-direct
 projection constructors remain unfinished. The remaining HT

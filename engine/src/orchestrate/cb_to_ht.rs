@@ -1939,6 +1939,15 @@ mod direct_projection_tests {
         ]
     }
 
+    fn disjunctive_skolem_filler() -> Vec<JClause> {
+        let mut clauses = skolem_pair("A", "A", "x");
+        clauses[1].head.push(JAtom::Concept {
+            concept: "D".into(),
+            term: app("f", "x"),
+        });
+        clauses
+    }
+
     fn convert_test_clauses(clauses: &[JClause]) -> TInput {
         convert(
             clauses,
@@ -2056,6 +2065,18 @@ mod direct_projection_tests {
     fn skolem_projection_requires_the_source_variable_as_function_argument() {
         let converted = convert_test_clauses(&skolem_pair("A", "A", "y"));
         assert_eq!(converted.dropped, 2);
+        assert!(!converted.clauses.iter().any(|clause| {
+            clause
+                .head
+                .iter()
+                .any(|atom| matches!(atom, HAtom::Exist { .. }))
+        }));
+    }
+
+    #[test]
+    fn skolem_projection_never_turns_a_disjunctive_head_into_conjunctive_fillers() {
+        let converted = convert_test_clauses(&disjunctive_skolem_filler());
+        assert_eq!(converted.dropped, 1);
         assert!(!converted.clauses.iter().any(|clause| {
             clause
                 .head
@@ -2393,6 +2414,13 @@ pub fn convert(
                 exj.get_mut(&f).unwrap().ok = false;
             }
             let rec = exj.get_mut(&f).unwrap();
+            // Separate singleton filler clauses are conjunctive obligations,
+            // but atoms within one DL-clause head are alternatives. Folding a
+            // disjunctive Skolem head into `fillers` would strengthen `C ∨ D`
+            // to `C ∧ D`, so such input must defer.
+            if c.head.len() != 1 {
+                rec.ok = false;
+            }
             for a in &c.head {
                 match a {
                     JAtom::Role {
