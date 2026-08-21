@@ -2959,6 +2959,66 @@ impl LeanHtRefutationState {
         }
     }
 
+    /// Build the exact finite seed used by certification search. Node zero is
+    /// reserved for the global/query root; native individuals occupy the
+    /// following non-blockable roots in source order, matching `Ht::consistent`.
+    ///
+    /// This constructor deliberately lives at the certificate-search boundary:
+    /// an independently searched SAT/UNSAT certificate must start with the same
+    /// ABox facts as the optimized completion graph. The Lean publication gate
+    /// remains closed until those roots are composed with native-ABox semantics.
+    fn rooted_native_abox(
+        labels: &[(Node, CLit)],
+        native_abox: &NativeAboxState,
+    ) -> Result<(Self, Vec<Node>), String> {
+        if labels.iter().any(|(node, _)| *node != 0) {
+            return Err("HT Lean query labels must use root node 0".to_string());
+        }
+        let mut state = Self::root(labels);
+        let roots: Vec<Node> = (1..=native_abox.individuals.len()).collect();
+        state.active_nodes = 1 + roots.len();
+        state.witness_parent.resize(state.active_nodes, None);
+        state.witness_step.resize(state.active_nodes, None);
+        state.cardinality_parent.resize(state.active_nodes, None);
+        state.cardinality_step.resize(state.active_nodes, None);
+
+        for (&root, (proxies, assertions)) in
+            roots.iter().zip(&native_abox.individuals)
+        {
+            for &concept in proxies.iter().chain(assertions) {
+                let fact = (root, CLit::pos(concept));
+                if state.labels.insert(fact) {
+                    state.label_order.push(fact);
+                }
+            }
+        }
+        for &(left, right) in &native_abox.different {
+            let (&left, &right) = roots
+                .get(left)
+                .zip(roots.get(right))
+                .ok_or_else(|| "native ABox different-individual index is out of range".to_string())?;
+            if left == right {
+                return Err("native ABox marks one individual different from itself".to_string());
+            }
+            if !state.apart.contains(&(left, right))
+                && !state.apart.contains(&(right, left))
+            {
+                state.apart.push((left, right));
+            }
+        }
+        for &(role, source, target) in &native_abox.role_assertions {
+            let (&source, &target) = roots
+                .get(source)
+                .zip(roots.get(target))
+                .ok_or_else(|| "native ABox role-assertion index is out of range".to_string())?;
+            let fact = (role, source, target);
+            if state.edges.insert(fact) {
+                state.edge_order.push(fact);
+            }
+        }
+        Ok((state, roots))
+    }
+
     fn address_frontier(&self) -> Result<LeanHtAddressFrontier, String> {
         if self.active_nodes != self.witness_parent.len()
             || self.active_nodes != self.witness_step.len()
@@ -10352,6 +10412,13 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_initial_refutation_state(
+        &self,
+        query_labels: &[(Node, CLit)],
+    ) -> Result<(LeanHtRefutationState, Vec<Node>), String> {
+        LeanHtRefutationState::rooted_native_abox(query_labels, &self.native_abox)
+    }
+
     /// Certification decision search whose open outcome is an infinite regular
     /// model and whose closed outcome is an exhaustive finite refutation. This
     /// The raw envelope targets `ht-regular-decision-cert-check`; callers at
@@ -10389,7 +10456,7 @@ impl Ht {
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         loop {
-            let mut state = LeanHtRefutationState::root(&[]);
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
                 LeanHtRefutationOutcome::Closed(_, _) => {
                     let finite = self.lean_unsat_certificate_json_raw()?;
@@ -11034,7 +11101,7 @@ impl Ht {
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, root_state) = loop {
-            let mut state = LeanHtRefutationState::root(initial_labels);
+            let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
                 LeanHtEqRefutationOutcome::Closed(tree, _node_count) => {
                     break (tree, state.equality_wire_state(node_budget));
@@ -11157,7 +11224,7 @@ impl Ht {
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, depth, root_state) = loop {
-            let mut state = LeanHtRefutationState::root(initial_labels);
+            let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_distinct_cardinality_refutation(
                 &mut state,
                 &definitions,
@@ -11272,7 +11339,7 @@ impl Ht {
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let (tree, node_count) = loop {
-            let mut state = LeanHtRefutationState::root(initial_labels);
+            let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
                 LeanHtRefutationOutcome::Closed(tree, node_count) => break (tree, node_count),
                 LeanHtRefutationOutcome::Open(_) => {
@@ -11371,7 +11438,7 @@ impl Ht {
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         loop {
-            let mut state = LeanHtRefutationState::root(&[]);
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
                 LeanHtRefutationOutcome::Closed(_, _) => {
                     return Ok((false, self.lean_unsat_certificate_json()?));
@@ -11469,7 +11536,7 @@ impl Ht {
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         loop {
-            let mut state = LeanHtRefutationState::root(&[]);
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
                 LeanHtEqRefutationOutcome::Closed(_, _) => {
                     return Ok((false, self.lean_unsat_certificate_json()?));
@@ -11536,7 +11603,7 @@ impl Ht {
         definitions.sort_unstable_by_key(|&(marker, _)| marker);
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         loop {
-            let mut state = LeanHtRefutationState::root(&[]);
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_distinct_cardinality_refutation(
                 &mut state,
                 &definitions,
@@ -21291,6 +21358,44 @@ mod tests {
         with.set_nominals(vec![NOM]);
         with.set_native_abox(vec![(vec![NOM], vec![ASSERTED])], Vec::new(), Vec::new());
         assert_eq!(with.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn lean_certificate_search_starts_from_exact_native_abox_seed() {
+        const LEFT: C = 20;
+        const RIGHT: C = 21;
+        const ASSERTED: C = 22;
+        let native = NativeAboxState {
+            individuals: vec![
+                (vec![LEFT], vec![ASSERTED]),
+                (vec![RIGHT], Vec::new()),
+            ],
+            different: vec![(0, 1)],
+            role_assertions: vec![(R0, 0, 1)],
+        };
+        let query = CLit::pos(A);
+        let (state, roots) = LeanHtRefutationState::rooted_native_abox(&[(0, query)], &native)
+            .expect("valid native ABox seed");
+
+        assert_eq!(roots, vec![1, 2]);
+        assert_eq!(state.active_nodes, 3);
+        assert!(state.labels.contains(&(0, query)));
+        assert!(state.labels.contains(&(1, CLit::pos(LEFT))));
+        assert!(state.labels.contains(&(1, CLit::pos(ASSERTED))));
+        assert!(state.labels.contains(&(2, CLit::pos(RIGHT))));
+        assert!(state.edges.contains(&(R0, 1, 2)));
+        assert_eq!(state.apart, vec![(1, 2)]);
+        assert_eq!(state.distinct_wire_state(3).apart.len(), 1);
+    }
+
+    #[test]
+    fn lean_certificate_search_rejects_invalid_native_abox_indices() {
+        let invalid = NativeAboxState {
+            individuals: vec![(vec![A], Vec::new())],
+            different: vec![(0, 1)],
+            role_assertions: Vec::new(),
+        };
+        assert!(LeanHtRefutationState::rooted_native_abox(&[], &invalid).is_err());
     }
 
     #[test]

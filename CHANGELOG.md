@@ -25,6 +25,13 @@
   label, edge, obligation, and apart state. The checker proves the concrete
   certificate state contains every native seed fact and rejects short root maps
   or omitted labels.
+- Make every independent HT certificate search initialize query root zero and
+  one ordered root per native individual, with the exact proxy/assertion labels,
+  positive role edges, and different-individual facts used by production HT.
+  Invalid ABox indices now fail before evidence search. This removes the prior
+  possibility of searching the TBox alone while the optimized graph used an
+  ABox; publication remains gated until Lean composes this multi-root seed with
+  the decision theorem.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
