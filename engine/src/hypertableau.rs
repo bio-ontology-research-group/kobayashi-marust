@@ -2573,6 +2573,20 @@ impl LeanHtTaxonomyQuery {
             },
         }
     }
+
+    fn finite_open_evidence(self) -> LeanHtEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEvidence::SatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEvidence::NonSubsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+            },
+        }
+    }
 }
 
 struct LeanHtAddressFrontier {
@@ -12679,22 +12693,47 @@ impl Ht {
             }
         }
 
+        let mut forbidden_folds = HashSet::new();
         loop {
             let mut state = LeanHtRefutationState::root(&initial_labels);
-            match self.lean_refutation(&mut state, variable_count, node_budget) {
+            match self.lean_refutation_avoiding_folds(
+                &mut state,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
                 LeanHtRefutationOutcome::Closed(_, _) => {
                     return Ok((false, closed_document()?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    // A blocked branch denotes the regular unravelling, not in
-                    // general the finite graph obtained by identifying a node
-                    // with its blocker. Keep that semantics in the taxonomy
-                    // cell; the complete matrix checker validates the regular
-                    // certificate before KM publishes any answer.
-                    let regular: serde_json::Value = serde_json::from_str(
-                        &self.lean_regular_blocked_open_certificate_json(&leaf)?,
-                    )
-                    .map_err(|error| error.to_string())?;
+                    // A materialized blocked leaf is not assumed to be a model:
+                    // submit it to the finite checker first. If it rejects,
+                    // retain the regular-unravelling interpretation and learn
+                    // every rejected blocker pair before retrying this budget.
+                    let finite = self.lean_blocked_open_certificate_json(
+                        &leaf,
+                        query.finite_open_evidence(),
+                    )?;
+                    if self.lean_taxonomy_candidate_passes(&finite)? {
+                        return Ok((true, finite));
+                    }
+                    let regular = match self.lean_regular_blocked_open_certificate_json(&leaf) {
+                        Ok(regular) => regular,
+                        Err(error) => {
+                            let mut learned = false;
+                            for &fold in &leaf.folds {
+                                learned |= forbidden_folds.insert(fold);
+                            }
+                            if !learned {
+                                return Err(format!(
+                                    "regular taxonomy candidate has no fresh fold: {error}"
+                                ));
+                            }
+                            continue;
+                        }
+                    };
+                    let regular: serde_json::Value =
+                        serde_json::from_str(&regular).map_err(|error| error.to_string())?;
                     let candidate = serde_json::to_string(&serde_json::json!({
                         "version": 9,
                         "concept_count": concept_count,
@@ -12705,7 +12744,18 @@ impl Ht {
                         "evidence": query.equality_open_evidence(),
                     }))
                     .map_err(|error| error.to_string())?;
-                    return Ok((true, candidate));
+                    if self.lean_taxonomy_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    let mut learned = false;
+                    for &fold in &leaf.folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free taxonomy decision candidate".to_string(),
+                        );
+                    }
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -25136,7 +25186,7 @@ mod tests {
                 .expect("produce complete anchored cardinality taxonomy"),
         ];
         let plain_wire: serde_json::Value =
-            serde_json::from_str(&documents[0]).expect("regular taxonomy is JSON");
+            serde_json::from_str(&documents[0]).expect("equality-free taxonomy is JSON");
         let plain_payload = if plain_wire["version"] == 3 || plain_wire["version"] == 4 {
             &plain_wire["payload"]["mixed"]["certificate"]
         } else {
@@ -25145,8 +25195,10 @@ mod tests {
         assert!(
             plain_payload["concepts"]
                 .as_array()
-                .is_some_and(|cells| cells.iter().any(|cell| cell.get("regular").is_some())),
-            "blocked equality-free taxonomy cells must publish regular countermodels"
+                .is_some_and(|cells| cells.iter().any(|cell| {
+                    cell.get("plain").is_some() || cell.get("regular").is_some()
+                })),
+            "equality-free taxonomy cells must publish checked finite or regular countermodels"
         );
         let mixed_wire: serde_json::Value =
             serde_json::from_str(&documents[1]).expect("mixed taxonomy is JSON");

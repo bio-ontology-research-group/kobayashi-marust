@@ -43,6 +43,11 @@
   carry it through normalized source transport and the unified production
   route. The runtime global-verdict extractor recognizes the new checked SAT
   form, while remaining fail-closed for ambiguous or query-only evidence.
+- Apply the same finite-first search to equality-free taxonomy cells. Each
+  concept or subsumption counterexample is checked as a finite model before KM
+  attempts regular unravelling; rejection of either blocked candidate records
+  its exact fold pairs and retries at the same node budget. Complete matrices
+  continue to require the source-aware Lean taxonomy publication checker.
 
 ### Unify total production HT global decisions
 
