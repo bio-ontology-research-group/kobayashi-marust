@@ -5867,12 +5867,9 @@ fn native_abox_source_decision_document(
 
 fn native_abox_source_taxonomy_document(
     inp: &TInput,
+    clauses: &[Clause],
     normalized_taxonomy: &str,
 ) -> Result<Vec<u8>, String> {
-    if !inp.card_defs.is_empty() {
-        return Err("direct native ABox taxonomy source wrapper does not include cardinality"
-            .to_string());
-    }
     let mut matrix: serde_json::Value = serde_json::from_str(normalized_taxonomy)
         .map_err(|error| format!("invalid normalized native ABox taxonomy: {error}"))?;
     let abox = serde_json::to_value(NativeAboxProjectionDocument {
@@ -5923,7 +5920,35 @@ fn native_abox_source_taxonomy_document(
             replace_cell_abox(cell)?;
         }
     }
-    let payload = if let Some(source) = inp.bundle_projection_source.as_ref() {
+    let payload = if !inp.card_defs.is_empty() {
+        if inp.bundle_projection_source.is_some() {
+            return Err(
+                "bundle native ABox cardinality taxonomy source wrapper is not connected"
+                    .to_string(),
+            );
+        }
+        if inp.mixed_projection_source.is_some() {
+            return Err(
+                "mixed native ABox cardinality taxonomy source wrapper is not connected"
+                    .to_string(),
+            );
+        }
+        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+            "native ABox cardinality taxonomy has no complete direct source projection"
+                .to_string()
+        })?;
+        serde_json::json!({
+            "version": 1,
+            "projection": {
+                "source": source,
+                "target": clauses.iter().map(direct_projection_target_clause)
+                    .collect::<Vec<_>>(),
+                "definitions": &inp.card_defs,
+                "exact_pairs": &inp.cardinality_exact_pairs,
+            },
+            "matrix": matrix,
+        })
+    } else if let Some(source) = inp.bundle_projection_source.as_ref() {
         serde_json::json!({
             "version": 1,
             "source_concepts": &source.source_concepts,
@@ -6203,6 +6228,24 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_native_abox_source_decision_checker =
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
                 .map(std::path::PathBuf::from);
+        let lean_native_abox_taxonomy_matrix_checker = if inp.card_defs.is_empty() {
+            std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
+                .map(std::path::PathBuf::from)
+        } else {
+            std::env::var_os(
+                "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+            )
+            .map(std::path::PathBuf::from)
+        };
+        let lean_native_abox_taxonomy_source_checker = if inp.card_defs.is_empty() {
+            std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
+                .map(std::path::PathBuf::from)
+        } else {
+            std::env::var_os(
+                "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+            )
+            .map(std::path::PathBuf::from)
+        };
         let lean_projection_checker =
             std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_path =
@@ -6242,14 +6285,33 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 );
             }
             if native_abox_active && lean_taxonomy_requested {
-                return Err(
-                    "native ABox HT taxonomy certification is not connected yet".to_string(),
-                );
+                if lean_native_abox_taxonomy_matrix_checker.is_none() {
+                    return Err(
+                        "native ABox HT taxonomy certification requires its complete-matrix Lean checker"
+                            .to_string(),
+                    );
+                }
+                if lean_native_abox_taxonomy_source_checker.is_none() {
+                    return Err(
+                        "native ABox HT taxonomy certification requires its source-composition Lean checker"
+                            .to_string(),
+                    );
+                }
+                if !inp.card_defs.is_empty()
+                    && (inp.mixed_projection_source.is_some()
+                        || inp.bundle_projection_source.is_some())
+                {
+                    return Err(
+                        "native ABox cardinality taxonomy source certification currently requires a direct projection"
+                            .to_string(),
+                    );
+                }
             }
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
             }
-            if lean_taxonomy_requested
+            if !native_abox_active
+                && lean_taxonomy_requested
                 && (lean_cert_checker.is_none() || lean_taxonomy_checker.is_none())
             {
                 return Err(
@@ -6448,9 +6510,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             taxonomy_path.display()
                         )
                     })?;
-                    let checker = lean_taxonomy_checker
-                        .as_deref()
-                        .ok_or_else(|| "missing HT taxonomy Lean checker".to_string())?;
+                    let checker = if native_abox_active {
+                        lean_native_abox_taxonomy_matrix_checker.as_deref()
+                    } else {
+                        lean_taxonomy_checker.as_deref()
+                    }
+                    .ok_or_else(|| "missing HT taxonomy Lean checker".to_string())?;
                     let status = std::process::Command::new(checker)
                         .arg(taxonomy_path)
                         .stdout(std::process::Stdio::null())
@@ -6469,6 +6534,23 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate ({status})",
                             checker.display()
                         ));
+                    }
+                    if native_abox_active {
+                        let source_checker = lean_native_abox_taxonomy_source_checker
+                            .as_deref()
+                            .ok_or_else(|| {
+                                "missing native ABox taxonomy source Lean checker".to_string()
+                            })?;
+                        let source_taxonomy = native_abox_source_taxonomy_document(
+                            &inp,
+                            &source_decision_clauses,
+                            &taxonomy_certificate,
+                        )?;
+                        run_ht_projection_checker(
+                            &source_taxonomy,
+                            source_checker,
+                            "native-abox-taxonomy-source",
+                        )?;
                     }
                     let taxonomy_version = taxonomy_value["version"].as_u64();
                     let checked_payload = if matches!(taxonomy_version, Some(6 | 7)) {
@@ -7333,7 +7415,11 @@ mod tests {
         let normalized = reasoner
             .lean_taxonomy_certificate_json(&[2])
             .expect("normalized native ABox taxonomy matrix");
-        let source_taxonomy = native_abox_source_taxonomy_document(&inp, &normalized)
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses_of_tinput(&inp),
+            &normalized,
+        )
             .expect("compose direct source with native ABox taxonomy matrix");
         run_ht_projection_checker(
             &source_taxonomy,
@@ -7353,6 +7439,77 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-direct-native-abox-taxonomy-source",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os(
+            "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+        ) else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            CardDefJson, NativeAboxJson, NativeIndividualJson,
+        };
+        let producer = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["marker".into(), "filler".into(), "nominal".into()],
+            roles: vec!["r".into()],
+            nominals: vec![2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![NativeIndividualJson {
+                    proxies: vec![2],
+                    assertions: vec![0],
+                }],
+                different: Vec::new(),
+                role_assertions: Vec::new(),
+                negative_role_assertions: Vec::new(),
+            },
+            direct_projection_source: Some(Vec::new()),
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+                exact: false,
+            }],
+            cardinality_projection_complete: true,
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        };
+        let inp = consumer_input(&producer);
+        let clauses = Vec::<Clause>::new();
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(vec![(vec![2], vec![0])], Vec::new(), Vec::new());
+        reasoner.set_number(true);
+        reasoner.set_card_defs_raw(&[(0, false, 1, 0, 1, false)]);
+        let normalized = reasoner
+            .lean_taxonomy_certificate_json(&[0, 1])
+            .expect("normalized native ABox cardinality taxonomy matrix");
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses,
+            &normalized,
+        )
+        .expect("compose direct source with native ABox cardinality taxonomy");
+        run_ht_projection_checker(
+            &source_taxonomy,
+            std::path::Path::new(&checker),
+            "direct-native-abox-cardinality-taxonomy-source",
+        )
+        .expect("direct source native ABox cardinality taxonomy passes Lean");
+
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&source_taxonomy).unwrap();
+        forged["projection"]["definitions"][0]["n"] = serde_json::json!(2);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-cardinality-taxonomy-source",
         )
         .unwrap_err()
         .contains("rejected"));
@@ -7407,7 +7564,11 @@ mod tests {
         let normalized = reasoner
             .lean_taxonomy_certificate_json(&[2, 3])
             .expect("normalized mixed native ABox taxonomy matrix");
-        let source_taxonomy = native_abox_source_taxonomy_document(&inp, &normalized)
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses_of_tinput(&inp),
+            &normalized,
+        )
             .expect("compose mixed source with native ABox taxonomy matrix");
         run_ht_projection_checker(
             &source_taxonomy,
@@ -7483,7 +7644,11 @@ mod tests {
         let normalized = reasoner
             .lean_taxonomy_certificate_json(&[2, 4])
             .expect("normalized bundle native ABox taxonomy matrix");
-        let source_taxonomy = native_abox_source_taxonomy_document(&inp, &normalized)
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses_of_tinput(&inp),
+            &normalized,
+        )
             .expect("compose bundle source with native ABox taxonomy matrix");
         run_ht_projection_checker(
             &source_taxonomy,

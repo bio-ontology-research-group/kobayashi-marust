@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+### Certify native-ABox cardinality taxonomies
+
+- Define the joint semantics of one taxonomy query, the normalized ontology,
+  first-class cardinality definitions, and the complete native ABox. Prove that
+  checked finite quotient models witness positive cells and that closed
+  distinct-cardinality trees refute negative cells from the exact combined
+  ABox/query seed.
+- Lift the cell theorem to complete named-concept and ordered-subsumption
+  matrices, requiring exact query positions, unique named concepts, and one
+  shared ABox, ontology, variable signature, and cardinality definition list.
+- Add Rust production search and serialization for this joint route. Query root
+  zero and named-individual roots one through N now participate in the same
+  exhaustive cardinality-aware search; TBox-only evidence is never substituted.
+- Compose the direct frontend cardinality projection with every matrix cell and
+  prove source-level SAT/UNSAT query semantics. Add dedicated normalized and
+  source checker executables, publication gates, real SAT/UNSAT matrix tests,
+  and rejection tests for forged bounds and inconsistent per-cell definitions.
+- Keep mixed and bundle cardinality taxonomy source publication fail closed
+  until their query-preserving source composition is added.
+
 ### Compose bundle source native-ABox taxonomy
 
 - Prove both directions of query-preserving semantic transport across the
