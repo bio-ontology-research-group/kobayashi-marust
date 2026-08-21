@@ -11057,6 +11057,12 @@ impl Ht {
         initial_labels: &[(Node, CLit)],
         evidence: impl FnOnce(LeanHtEqRefutationTree) -> LeanHtEqEvidence,
     ) -> Result<String, String> {
+        if !self.native_abox.different.is_empty() {
+            return Err(
+                "equality HT refutation certificates do not encode native apart facts"
+                    .to_string(),
+            );
+        }
         let mut variable_count = 0usize;
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -11522,6 +11528,12 @@ impl Ht {
     pub fn lean_equality_decision_certificate_json(&self) -> Result<(bool, String), String> {
         if !self.card_defs.is_empty() {
             return Err("equality decision certificates do not include cardinality".to_string());
+        }
+        if !self.native_abox.different.is_empty() {
+            return Err(
+                "equality HT decision certificates do not yet encode native apart facts"
+                    .to_string(),
+            );
         }
         if !self.clauses.iter().any(|record| {
             record
@@ -21396,6 +21408,23 @@ mod tests {
             role_assertions: Vec::new(),
         };
         assert!(LeanHtRefutationState::rooted_native_abox(&[], &invalid).is_err());
+    }
+
+    #[test]
+    fn equality_certificate_fails_closed_until_native_apart_is_in_its_wire() {
+        let mut reasoner = Ht::new_certified(vec![Clause::new(
+            Vec::new(),
+            vec![Atom::Eq { s: X, t: 1 }],
+        )]);
+        reasoner.set_native_abox(
+            vec![(vec![A], Vec::new()), (vec![B], Vec::new())],
+            vec![(0, 1)],
+            Vec::new(),
+        );
+        let error = reasoner
+            .lean_equality_decision_certificate_json()
+            .expect_err("native apart facts require a distinct-aware certificate");
+        assert!(error.contains("native apart"));
     }
 
     #[test]

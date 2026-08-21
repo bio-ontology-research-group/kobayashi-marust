@@ -44,6 +44,11 @@
   every explicitly different pair. The joint wire now validates equality paths,
   rejects a terminal state that merges different individuals, and carries the
   resulting semantic proof into the native-ABox SAT composition theorem.
+- State the exact semantic initialization contract needed by an ABox-aware
+  equality refutation and prove that any checked refutation from such a state
+  excludes a joint TBox/ABox model. Equality decision evidence now fails closed
+  when native apart facts are present until its wire carries those facts; this
+  prevents a SAT certificate from discarding `DifferentIndividuals`.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.

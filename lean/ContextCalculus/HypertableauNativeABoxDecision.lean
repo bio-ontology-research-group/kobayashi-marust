@@ -21,6 +21,30 @@ def NativeABox.SatisfiableWith
       (value : Individual → Domain),
     I.models ontology ∧ abox.models I value
 
+/-- Semantic contract for an initial equality-refutation state. Every model of
+the source ABox can be extended to values for all finite search nodes that
+realize the exact initial state. A wire checker will establish this contract
+from the ordered native roots and the absence of non-ABox seed facts. -/
+def NativeABox.InitializesEqState
+    (abox : NativeABox Individual Concept Role)
+    (state : EqState Node Concept Role) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role)
+      (value : Individual → Domain),
+    abox.models I value → ∃ nodeValue : Node → Domain,
+      state.RealizedBy I nodeValue
+
+theorem FiniteEqRefutationTree.check_native_abox_unsatisfiable
+    (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (hinitial : abox.InitializesEqState certificate.state)
+    (hcheck : tree.check certificate = true) :
+    ¬abox.SatisfiableWith certificate.base.ontology := by
+  rintro ⟨Domain, I, value, hmodels, habox⟩
+  rcases hinitial Domain I value habox with ⟨nodeValue, hrealized⟩
+  exact tree.check_unsatisfiable certificate hcheck
+    ⟨Domain, I, nodeValue, hmodels, hrealized⟩
+
 def FiniteDistinctEqCertificate.apartSeparatedB
     (certificate : FiniteDistinctEqCertificate
       nodeCount conceptCount roleCount variableCount) : Bool :=
@@ -83,5 +107,6 @@ theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
 
 #print axioms FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
 #print axioms FiniteDistinctEqCertificate.apartSeparatedB_sound
+#print axioms FiniteEqRefutationTree.check_native_abox_unsatisfiable
 
 end ContextCalculus.Hypertableau
