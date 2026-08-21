@@ -10033,20 +10033,11 @@ impl Ht {
             redirect[blocked] = blocker;
         }
 
-        // `WitnessComplete` is stated for every finite obligation, including a
-        // blocked endpoint. Copy only the blocker's outgoing witness edges to
-        // that endpoint. The semantic path construction still consults
-        // `redirect[source]`; these copies witness finite closure and do not
-        // collapse distinct paths or install the old bidirectional finite fold.
+        // Keep the exact saturated completion graph. The regular Lean model
+        // realizes an obligation at `source` from an outgoing witness edge of
+        // `redirect[source]`. Copying blocker edges into `source` is unnecessary
+        // and could create fresh residual-clause body matches after saturation.
         let mut regular_edges = leaf.edges.clone();
-        for &(blocked, blocker) in &leaf.folds {
-            regular_edges.extend(
-                leaf.edges
-                    .iter()
-                    .filter(|(_, source, _)| *source == blocker)
-                    .map(|&(role, _, target)| (role, blocked, target)),
-            );
-        }
         regular_edges.sort_unstable();
         regular_edges.dedup();
 

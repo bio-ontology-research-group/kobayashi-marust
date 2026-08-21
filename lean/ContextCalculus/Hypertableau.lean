@@ -116,6 +116,14 @@ def State.WitnessComplete (state : State Node Concept Role) : Prop :=
   ∀ node role filler, state.obligation role filler node →
     ∃ witness, state.edge role node witness ∧ state.label witness filler
 
+/-- Witness completeness relative to an endpoint redirection. This is the
+exact finite invariant needed by regular blocked unravellings. -/
+def State.RedirectWitnessComplete (state : State Node Concept Role)
+    (redirect : Node → Node) : Prop :=
+  ∀ source role filler, state.obligation role filler source →
+    ∃ target, state.edge role (redirect source) target ∧
+      state.label target filler
+
 /-- A node is fresh when no existing branch fact constrains its interpretation. -/
 def State.Fresh (state : State Node Concept Role) (target : Node) : Prop :=
   (∀ lit, ¬state.label target lit) ∧

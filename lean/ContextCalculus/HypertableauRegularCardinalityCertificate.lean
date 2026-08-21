@@ -260,7 +260,8 @@ theorem FiniteRegularCardinalityCertificate.models
   let interpretation := certificate.base.state.regularUnravelling
     certificate.base.redirect certificate.slotAllowed 0 certificate.base.rules
   have hontology : interpretation.models certificate.base.ontology := by
-    apply regularUnravelling_models_partition_of_cover certificate.base.state
+    apply regularUnravelling_models_partition_of_cover_redirect
+      certificate.base.state
       certificate.base.redirect certificate.slotAllowed 0 certificate.base.rules
       certificate.base.coverRelation certificate.base.roleClauses
       certificate.base.residual
@@ -269,10 +270,9 @@ theorem FiniteRegularCardinalityCertificate.models
     · exact hvalid.1.2.2.1
     · exact hvalid.1.2.2.2.1
     · exact hvalid.1.2.2.2.2.1
-    · exact hvalid.1.2.2.2.2.2.1
     · exact hvalid.2.1
-    · exact certificate.base.coverClosed_covers hvalid.1.2.2.2.2.2.2.1
-    · exact hvalid.1.2.2.2.2.2.2.2
+    · exact certificate.base.coverClosed_covers hvalid.1.2.2.2.2.2.1
+    · exact hvalid.1.2.2.2.2.2.2
   have hdirect := certificate.base.state.unravelling_modelsCardinalityDefs
     certificate.base.redirect certificate.slotAllowed 0 hvalid.1.2.2.2.1
     certificate.definitions hvalid.2.2.1 hvalid.2.2.2.1

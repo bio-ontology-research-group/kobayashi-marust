@@ -24,6 +24,21 @@
 - Make the Rust regular serializer check the cover-containment premise and fail
   closed on an unsaturated completion graph. The role-cover integration fixture
   now represents a genuinely role-saturated blocked-open search leaf.
+- Classify the concrete blocker-aware selector's empty result exactly. It is
+  either a refutation, a clash-free and clause-saturated blocked-open terminal
+  in which every unwitnessed source is marked blocked, or a finite-node
+  frontier containing an unblocked unwitnessed obligation. There is no hidden
+  fourth outcome that the producer could publish as SAT.
+- Replace blocked outgoing-edge materialization with the exact redirected-
+  witness invariant used by the regular unravelling. Given checked fold
+  metadata, every obligation has a witness edge at its redirected endpoint.
+  The serializer now retains the raw saturated graph instead of adding edges
+  that could activate new residual-clause bodies.
+- Compose those results with regular checker exactness in
+  `HypertableauRegularProduction.lean`. Clash freedom, redirected witness
+  completion, and saturation now follow from the concrete blocked runtime
+  terminal and checked fold metadata; they are no longer independent
+  serializer assumptions.
 
 ### Certify native named-individual ABox projection
 

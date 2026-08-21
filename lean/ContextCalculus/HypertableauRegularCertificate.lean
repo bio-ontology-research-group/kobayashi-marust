@@ -158,9 +158,7 @@ def FiniteRegularCertificate.Valid
   (∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
     PathLiftableHead atom) ∧
   certificate.state.ClashFree ∧
-  certificate.state.WitnessComplete ∧
-  (∀ node role filler, certificate.state.obligation role filler node →
-    certificate.state.obligation role filler (certificate.redirect node)) ∧
+  certificate.state.RedirectWitnessComplete certificate.redirect ∧
   certificate.CoverClosed ∧
   (∀ clause ∈ certificate.residual,
     certificate.state.CoverDischarges certificate.coverRelation clause)
@@ -179,18 +177,14 @@ theorem FiniteRegularCertificate.valid_of_producer_invariants
     (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
       PathLiftableHead atom)
     (hclash : certificate.state.ClashFree)
-    (hwitness : certificate.state.WitnessComplete)
-    (hredirect : ∀ node role filler,
-      certificate.state.obligation role filler node →
-      certificate.state.obligation role filler (certificate.redirect node))
+    (hwitness : certificate.state.RedirectWitnessComplete certificate.redirect)
     (hcoverClosed : certificate.CoverClosed)
     (hcoverEdge : ∀ role source target,
       certificate.coverRelation role source target →
         certificate.state.edge role source target)
     (hsaturated : certificate.state.SaturatedFor certificate.residual) :
     certificate.Valid := by
-  refine ⟨hauthorized, hguarded, hheads, hclash, hwitness, hredirect,
-    hcoverClosed, ?_⟩
+  refine ⟨hauthorized, hguarded, hheads, hclash, hwitness, hcoverClosed, ?_⟩
   intro clause hclause
   exact certificate.coverDischarges_of_discharges hcoverEdge clause
     (hheads clause hclause) (hsaturated clause hclause)
@@ -289,11 +283,9 @@ def FiniteRegularCertificate.check
     decide ((entry.1, entry.2.complement) ∉ certificate.labels)) &&
   certificate.obligations.all (fun obligation =>
     (List.finRange nodeCount).any fun witness =>
-      decide ((obligation.1, obligation.2.2, witness) ∈ certificate.edges) &&
+      decide ((obligation.1, certificate.redirect obligation.2.2, witness) ∈
+        certificate.edges) &&
       decide ((witness, obligation.2.1) ∈ certificate.labels)) &&
-  certificate.obligations.all (fun obligation =>
-    decide ((obligation.1, obligation.2.1,
-      certificate.redirect obligation.2.2) ∈ certificate.obligations)) &&
   certificate.coverClosedB &&
   certificate.residual.all (fun clause =>
     (allAssignments nodeCount variableCount).all fun assignment =>
@@ -423,9 +415,9 @@ theorem FiniteRegularCertificate.check_sound
   simp only [FiniteRegularCertificate.check, Bool.and_eq_true,
     List.all_eq_true] at hcheck
   rcases hcheck with
-    ⟨⟨⟨⟨⟨⟨⟨hauthorized, hguarded⟩, hheads⟩, hclash⟩,
-      hwitness⟩, hredirect⟩, hcover⟩, hdischarges⟩
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    ⟨⟨⟨⟨⟨⟨hauthorized, hguarded⟩, hheads⟩, hclash⟩,
+      hwitness⟩, hcover⟩, hdischarges⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro rule hrule
     exact (certificate.authorizedB_eq_true rule).mp
       (hauthorized rule hrule)
@@ -451,9 +443,6 @@ theorem FiniteRegularCertificate.check_sound
     simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
     rcases h with ⟨witness, _, hedge, hlabel⟩
     exact ⟨witness, hedge, hlabel⟩
-  · intro node role filler hobligation
-    have h := hredirect (role, filler, node) hobligation
-    simpa [FiniteRegularCertificate.state] using h
   · exact certificate.coverClosedB_sound hcover
   · intro clause hclause assignment hbody
     have h := hdischarges clause hclause assignment
@@ -482,7 +471,7 @@ theorem FiniteRegularCertificate.check_complete
     (hvalid : certificate.Valid) : certificate.check = true := by
   simp only [FiniteRegularCertificate.check, Bool.and_eq_true,
     List.all_eq_true]
-  refine ⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩
+  refine ⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩
   · intro rule hrule
     exact (certificate.authorizedB_eq_true rule).mpr (hvalid.1 rule hrule)
   · intro clause hclause atom hatom
@@ -514,15 +503,11 @@ theorem FiniteRegularCertificate.check_complete
     refine ⟨witness, List.mem_finRange witness, ?_⟩
     simp only [Bool.and_eq_true, decide_eq_true_eq]
     simpa [FiniteRegularCertificate.state] using And.intro hedge hlabel
-  · intro obligation hobligation
-    simp only [decide_eq_true_eq]
-    exact hvalid.2.2.2.2.2.1 obligation.2.2 obligation.1
-      obligation.2.1 hobligation
-  · exact certificate.coverClosedB_complete hvalid.2.2.2.2.2.2.1
+  · exact certificate.coverClosedB_complete hvalid.2.2.2.2.2.1
   · intro clause hclause assignment _
     by_cases hbody : ∀ atom ∈ clause.body,
         certificate.state.CoverHoldsAtom certificate.coverRelation assignment atom
-    · rcases hvalid.2.2.2.2.2.2.2 clause hclause assignment hbody with
+    · rcases hvalid.2.2.2.2.2.2 clause hclause assignment hbody with
         ⟨atom, hatom, hholds⟩
       have hbodyB : clause.body.all
           (certificate.coverHoldsAtomB assignment) = true := by
@@ -562,10 +547,7 @@ theorem FiniteRegularCertificate.check_of_producer_invariants
     (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
       PathLiftableHead atom)
     (hclash : certificate.state.ClashFree)
-    (hwitness : certificate.state.WitnessComplete)
-    (hredirect : ∀ node role filler,
-      certificate.state.obligation role filler node →
-      certificate.state.obligation role filler (certificate.redirect node))
+    (hwitness : certificate.state.RedirectWitnessComplete certificate.redirect)
     (hcoverClosed : certificate.CoverClosed)
     (hcoverEdge : ∀ role source target,
       certificate.coverRelation role source target →
@@ -573,7 +555,7 @@ theorem FiniteRegularCertificate.check_of_producer_invariants
     (hsaturated : certificate.state.SaturatedFor certificate.residual) :
     certificate.check = true :=
   certificate.check_complete (certificate.valid_of_producer_invariants
-    hauthorized hguarded hheads hclash hwitness hredirect hcoverClosed
+    hauthorized hguarded hheads hclash hwitness hcoverClosed
     hcoverEdge hsaturated)
 
 theorem FiniteRegularCertificate.check_eq_true_iff_valid
@@ -598,7 +580,7 @@ theorem FiniteRegularCertificate.models
     (certificate.state.regularUnravelling certificate.redirect
       (fun _ _ _ _ => True) 0 certificate.rules).models
       certificate.ontology := by
-  apply regularUnravelling_models_partition_of_cover certificate.state
+  apply regularUnravelling_models_partition_of_cover_redirect certificate.state
     certificate.redirect (fun _ _ _ _ => True) 0 certificate.rules
     certificate.coverRelation certificate.roleClauses certificate.residual
   · exact hvalid.1
@@ -606,11 +588,10 @@ theorem FiniteRegularCertificate.models
   · exact hvalid.2.2.1
   · exact hvalid.2.2.2.1
   · exact hvalid.2.2.2.2.1
-  · exact hvalid.2.2.2.2.2.1
   · intro source role target edge
     trivial
-  · exact certificate.coverClosed_covers hvalid.2.2.2.2.2.2.1
-  · exact hvalid.2.2.2.2.2.2.2
+  · exact certificate.coverClosed_covers hvalid.2.2.2.2.2.1
+  · exact hvalid.2.2.2.2.2.2
 
 theorem FiniteRegularCertificate.check_models
     [NeZero nodeCount]

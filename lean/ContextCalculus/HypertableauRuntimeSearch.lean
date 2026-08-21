@@ -575,6 +575,160 @@ theorem clashFirst_runtime_control
           runtimeNextBlocked_firstObstructionStep ontology state blocked
             hheads hnext⟩
 
+/-- Exact semantic shape of a blocker-aware open terminal. Every ordinary
+clause grounding is discharged, and every remaining unwitnessed obligation is
+explicitly classified as blocked by the concrete Boolean selector. -/
+def State.BlockedRuntimeTerminal
+    (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool) : Prop :=
+  ¬state.HasClash ∧ ¬state.HasUndischarged ontology ∧
+    ∀ source role filler, state.obligation role filler source →
+      (∀ witness, ¬(state.edge role source witness ∧ state.label witness filler)) →
+      blocked source = true
+
+/-- A blocker-aware bounded search may also stop because one unblocked
+obligation remains but the finite node universe has no fresh target. -/
+def State.BlockedRuntimeFrontier
+    (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool) : Prop :=
+  ¬state.HasClash ∧ ¬state.HasUndischarged ontology ∧
+    ∃ source role filler,
+      state.obligation role filler source ∧
+      (∀ witness, ¬(state.edge role source witness ∧ state.label witness filler)) ∧
+      blocked source = false ∧ ¬∃ target, state.Fresh target
+
+/-- Empty blocker-aware runtime search has no hidden fourth meaning: it is a
+checked refutation shape, a saturated blocked-open terminal, or explicit node
+exhaustion at an unblocked existential. This is the terminal classification
+used by Rust's `lean_refutation` producer. -/
+theorem runtimeNextBlocked_empty_semantics
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : State Node Concept Role) [DecidableState state]
+    (blocked : Node → Bool)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hempty : runtimeNextBlocked ontology state blocked = []) :
+    Refutes Node ontology state ∨ state.BlockedRuntimeTerminal ontology blocked ∨
+      state.BlockedRuntimeFrontier ontology blocked := by
+  classical
+  rcases clashFirst_runtime_control ontology state blocked hheads with
+    hrefutes | ⟨hnoClash, hnext | _⟩
+  · exact Or.inl hrefutes
+  · exact (hnext.1 hempty).elim
+  · unfold runtimeNextBlocked at hempty
+    generalize hclause : selectClauseGrounding ontology state = selectedClause at hempty
+    cases selectedClause with
+    | some grounding =>
+        have hhead : grounding.1.head = [] := by simpa using hempty
+        exact Or.inl (selectClauseGrounding_emptyHead_refutes ontology state
+          hheads hclause hhead)
+    | none =>
+        have hnoClause := (selectClauseGrounding_eq_none_iff ontology state).mp hclause
+        generalize hwitness : selectUnblockedUnwitnessed state blocked = selectedWitness at hempty
+        cases selectedWitness with
+        | none =>
+            exact Or.inr (Or.inl ⟨hnoClash, hnoClause,
+              (selectUnblockedUnwitnessed_eq_none_iff state blocked).mp hwitness⟩)
+        | some candidate =>
+            have hfound := firstMatch_eq_some_mem
+              (by simpa [selectUnblockedUnwitnessed] using hwitness)
+            have hproperties := (unblockedWitnessCandidateBool_eq_true_iff
+              state blocked candidate).mp hfound.2
+            generalize hfresh : selectFreshNode state = selectedFresh at hempty
+            cases selectedFresh with
+            | none =>
+                exact Or.inr (Or.inr ⟨hnoClash, hnoClause,
+                  candidate.2.2, candidate.1, candidate.2.1,
+                  hproperties.1, hproperties.2.1, hproperties.2.2,
+                  (selectFreshNode_eq_none_iff state).mp hfresh⟩)
+            | some target => simp at hempty
+
+theorem State.BlockedRuntimeTerminal.clashFree
+    (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool)
+    (hterminal : state.BlockedRuntimeTerminal ontology blocked) :
+    state.ClashFree := state.clashFree_of_noClash hterminal.1
+
+theorem State.BlockedRuntimeTerminal.saturatedFor
+    (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool)
+    (hterminal : state.BlockedRuntimeTerminal ontology blocked) :
+    state.SaturatedFor ontology :=
+  state.saturatedFor_of_noUndischarged ontology hterminal.2.1
+
+theorem State.BlockedRuntimeTerminal.unwitnessed_is_blocked
+    (state : State Node Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool)
+    (hterminal : state.BlockedRuntimeTerminal ontology blocked)
+    (source : Node) (role : Role) (filler : Lit Concept)
+    (hobligation : state.obligation role filler source)
+    (hnowitness : ∀ witness,
+      ¬(state.edge role source witness ∧ state.label witness filler)) :
+    blocked source = true :=
+  hterminal.2.2 source role filler hobligation hnowitness
+
+/-! ## Blocked-open redirected witnesses -/
+
+def State.BlockedWitnessRefines
+    (state : State Node Concept Role) (blocked : Node → Bool)
+    (fold : Node → Node → Prop) : Prop :=
+  ∀ source role filler, state.obligation role filler source →
+    blocked source = true →
+    ∃ blocker target, fold source blocker ∧
+      state.obligation role filler blocker ∧
+      state.edge role blocker target ∧ state.label target filler
+
+def State.BlockedRedirectRefines
+    (blocked : Node → Bool) (fold : Node → Node → Prop)
+    (redirect : Node → Node) : Prop :=
+  (∀ source, blocked source = false → redirect source = source) ∧
+  (∀ source blocker, fold source blocker → redirect source = blocker)
+
+/-- A blocked terminal already has every witness needed by the regular
+unravelling at the redirected endpoint. Unblocked obligations retain their
+ordinary witness; a blocked unwitnessed obligation uses the checked blocker's
+witness. No edge copying is needed. -/
+theorem State.blockedRedirectWitnessComplete
+    (state : State Node Concept Role) (ontology : List (Clause Variable Concept Role))
+    (blocked : Node → Bool) (fold : Node → Node → Prop)
+    (redirect : Node → Node)
+    (hterminal : state.BlockedRuntimeTerminal ontology blocked)
+    (hrefines : state.BlockedWitnessRefines blocked fold)
+    (hredirect : State.BlockedRedirectRefines blocked fold redirect) :
+    state.RedirectWitnessComplete redirect := by
+  intro source role filler hobligation
+  by_cases hexisting : ∃ target,
+      state.edge role source target ∧ state.label target filler
+  · rcases hexisting with ⟨target, hedge, hlabel⟩
+    cases hblocked : blocked source with
+    | false =>
+        rw [hredirect.1 source hblocked]
+        exact ⟨target, hedge, hlabel⟩
+    | true =>
+        rcases hrefines source role filler hobligation hblocked with
+          ⟨blocker, blockerTarget, hfold, hobligationBlocker,
+            hedgeBlocker, hlabelBlocker⟩
+        rw [hredirect.2 source blocker hfold]
+        exact ⟨blockerTarget, hedgeBlocker, hlabelBlocker⟩
+  · have hnowitness : ∀ target,
+        ¬(state.edge role source target ∧ state.label target filler) := by
+      intro target hwitness
+      exact hexisting ⟨target, hwitness⟩
+    have hblocked := State.BlockedRuntimeTerminal.unwitnessed_is_blocked
+      state ontology blocked hterminal source role filler hobligation hnowitness
+    rcases hrefines source role filler hobligation hblocked with
+      ⟨blocker, target, hfold, hobligationBlocker, hedge, hlabel⟩
+    rw [hredirect.2 source blocker hfold]
+    exact ⟨target, hedge, hlabel⟩
+
 /-- Once clause scanning is exhausted, selected obligation and fresh-node
 scans construct exactly the runtime witness transition shape. -/
 theorem selectUnwitnessed_firstObstructionStep
@@ -854,6 +1008,9 @@ theorem finite_runtimeNext_semantic_or_frontier
 #print axioms runtimeNext_firstObstructionStep
 #print axioms runtimeNextBlocked_firstObstructionStep
 #print axioms clashFirst_runtime_control
+#print axioms runtimeNextBlocked_empty_semantics
+#print axioms State.BlockedRuntimeTerminal.saturatedFor
+#print axioms State.blockedRedirectWitnessComplete
 #print axioms runtimeNext_empty_terminal
 #print axioms runtimeNext_empty_semantics
 #print axioms finite_runtimeNext_decides
