@@ -455,6 +455,117 @@ theorem frontendCardinalityFamily_sat_iff_exact
     models_cardinalitySplitTheory_iff]
   exact complementary_models_and_split_iff_exact I maximum minimum pair
 
+/-- Semantics of one frontend cardinality expansion before its clauses are
+replaced by a first-class hypertableau definition. Maximum definitions use the
+pigeonhole clause; minimum definitions use their fresh Skolem witnesses. -/
+def Interp.modelsProjectedCardinalityDef
+    (I : Interp Domain Concept Role)
+    (definition : CardinalityDef Concept Role) : Prop :=
+  match definition.kind with
+  | .maximum => I.modelsClause (maximumProjectionClause definition)
+  | .minimum => ∃ functions : MinimumSkolemInterp Domain definition.bound,
+      ModelsMinimumExpansion I definition functions
+
+theorem modelsProjectedCardinalityDef_iff
+    (I : Interp Domain Concept Role)
+    (definition : CardinalityDef Concept Role) :
+    I.modelsProjectedCardinalityDef definition ↔
+      I.modelsCardinalityDef definition := by
+  cases hkind : definition.kind with
+  | minimum =>
+      simpa [Interp.modelsProjectedCardinalityDef, hkind] using
+        (exists_minimumExpansion_iff I definition hkind)
+  | maximum =>
+      simpa [Interp.modelsProjectedCardinalityDef, hkind] using
+        (models_maximumProjectionClause_iff I definition hkind)
+
+/-- A complete frontend cardinality projection consists of every directional
+definition expansion plus the recognition split/clash theory for each exact
+complementary pair. This representation composes multiple cardinalities while
+sharing the same object-domain interpretation. -/
+structure PairedCardinality (Concept Role : Type) where
+  maximum : CardinalityDef Concept Role
+  minimum : CardinalityDef Concept Role
+  complementary : ComplementaryCardinalityPair maximum minimum
+
+def Interp.modelsProjectedCardinalityDefs
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role)) : Prop :=
+  (∀ definition ∈ definitions, I.modelsProjectedCardinalityDef definition) ∧
+    ∀ pair ∈ pairs,
+      I.models (cardinalitySplitTheory pair.maximum pair.minimum)
+
+def pairedCardinalityDefinition
+    (pairs : List (PairedCardinality Concept Role))
+    (definition : CardinalityDef Concept Role) : Prop :=
+  ∃ pair ∈ pairs, definition = pair.maximum ∨ definition = pair.minimum
+
+def Interp.modelsProjectedCardinalityTargets
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role)) : Prop :=
+  ∀ definition ∈ definitions,
+    (pairedCardinalityDefinition pairs definition →
+      I.modelsCardinalityDefExact definition) ∧
+    (¬pairedCardinalityDefinition pairs definition →
+      I.modelsCardinalityDef definition)
+
+theorem modelsProjectedCardinalityDefs_iff_targets
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role))
+    (hpairs : ∀ pair ∈ pairs,
+      pair.maximum ∈ definitions ∧ pair.minimum ∈ definitions) :
+    I.modelsProjectedCardinalityDefs definitions pairs ↔
+      I.modelsProjectedCardinalityTargets definitions pairs := by
+  classical
+  constructor
+  · rintro ⟨hdefinitions, hsplits⟩ definition hdefinition
+    constructor
+    · intro hpaired
+      rcases hpaired with ⟨pair, hpair, rfl | rfl⟩
+      · have hmaximum := (modelsProjectedCardinalityDef_iff I pair.maximum).mp
+          (hdefinitions pair.maximum (hpairs pair hpair).1)
+        have hminimum := (modelsProjectedCardinalityDef_iff I pair.minimum).mp
+          (hdefinitions pair.minimum (hpairs pair hpair).2)
+        exact (complementary_sourceTheory_iff_exact I pair.maximum pair.minimum
+          pair.complementary).mp
+          ⟨hmaximum, hminimum, hsplits pair hpair⟩ |>.1
+      · have hmaximum := (modelsProjectedCardinalityDef_iff I pair.maximum).mp
+          (hdefinitions pair.maximum (hpairs pair hpair).1)
+        have hminimum := (modelsProjectedCardinalityDef_iff I pair.minimum).mp
+          (hdefinitions pair.minimum (hpairs pair hpair).2)
+        exact (complementary_sourceTheory_iff_exact I pair.maximum pair.minimum
+          pair.complementary).mp
+          ⟨hmaximum, hminimum, hsplits pair hpair⟩ |>.2
+    · intro _hnotPaired
+      exact (modelsProjectedCardinalityDef_iff I definition).mp
+        (hdefinitions definition hdefinition)
+  · intro htargets
+    constructor
+    · intro definition hdefinition
+      apply (modelsProjectedCardinalityDef_iff I definition).mpr
+      by_cases hpaired : pairedCardinalityDefinition pairs definition
+      · have hexact : I.modelsCardinalityDefExact definition :=
+          (htargets definition hdefinition).1 hpaired
+        intro source hmarker
+        simpa [Interp.modelsCardinalityDef, Interp.cardinalityCondition] using
+          (hexact source).1 hmarker
+      · exact (htargets definition hdefinition).2 hpaired
+    · intro pair hpair
+      have hmaximum : I.modelsCardinalityDefExact pair.maximum := by
+        have hpaired : pairedCardinalityDefinition pairs pair.maximum :=
+          ⟨pair, hpair, Or.inl rfl⟩
+        exact (htargets pair.maximum (hpairs pair hpair).1).1 hpaired
+      have hminimum : I.modelsCardinalityDefExact pair.minimum := by
+        have hpaired : pairedCardinalityDefinition pairs pair.minimum :=
+          ⟨pair, hpair, Or.inr rfl⟩
+        exact (htargets pair.minimum (hpairs pair hpair).2).1 hpaired
+      exact (complementary_sourceTheory_iff_exact I pair.maximum pair.minimum
+        pair.complementary).mpr
+        ⟨hmaximum, hminimum⟩ |>.2.2
+
 theorem modelsCardinalityDef_and_recognition_iff_exact
     (I : Interp Domain Concept Role)
     (definition : CardinalityDef Concept Role) :
@@ -794,6 +905,8 @@ theorem FiniteEqCertificate.checkCardinalityDefsExact_sound
 #print axioms complementary_models_and_split_iff_exact
 #print axioms complementary_sourceTheory_iff_exact
 #print axioms frontendCardinalityFamily_sat_iff_exact
+#print axioms modelsProjectedCardinalityDef_iff
+#print axioms modelsProjectedCardinalityDefs_iff_targets
 #print axioms modelsCardinalityDef_and_recognition_iff_exact
 #print axioms modelsCardinalityDefExact_models
 #print axioms FiniteEqCertificate.checkMaximumRecognition_sound
