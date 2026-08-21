@@ -5319,6 +5319,44 @@ struct DirectCardinalityProjectionDocument<'a> {
     exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
 }
 
+#[derive(Serialize)]
+struct BundleCardinalityProjectionDocument<'a> {
+    bundle: BundleProjectionDocument<'a>,
+    definitions: Vec<JCardDef>,
+    exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
+}
+
+fn bundle_cardinality_definitions(
+    inp: &TInput,
+    source: &crate::orchestrate::cb_to_ht::BundleProjectionSource,
+) -> Result<Vec<JCardDef>, String> {
+    let source_index = |target: C, kind: &str| -> Result<C, String> {
+        let name = inp
+            .concepts
+            .get(target as usize)
+            .ok_or_else(|| format!("HT cardinality {kind} index is out of range"))?;
+        let index = source
+            .source_concepts
+            .iter()
+            .position(|candidate| candidate == name)
+            .ok_or_else(|| format!("HT cardinality {kind} is absent from bundle source concepts"))?;
+        C::try_from(index).map_err(|_| format!("HT cardinality {kind} source index overflow"))
+    };
+    inp.card_defs
+        .iter()
+        .map(|definition| {
+            Ok(JCardDef {
+                marker: source_index(definition.marker, "marker")?,
+                min: definition.min,
+                n: definition.n,
+                role: definition.role,
+                filler: source_index(definition.filler, "filler")?,
+                exact: definition.exact,
+            })
+        })
+        .collect()
+}
+
 fn direct_projection_target_atom(atom: &Atom) -> DirectProjectionTargetAtom {
     match *atom {
         Atom::Concept { lit, t } => DirectProjectionTargetAtom::Concept {
@@ -5407,18 +5445,36 @@ fn check_direct_ht_projection(
                 "HT cardinality projection lacks complete frontend expansion evidence".to_string(),
             );
         }
-        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
-            "HT Lean certification has no combined direct/cardinality projection".to_string()
-        })?;
-        serde_json::to_vec(&DirectCardinalityProjectionDocument {
-            variable_count,
-            concepts: &inp.concepts,
-            roles: &inp.roles,
-            source,
-            target: target(),
-            definitions: &inp.card_defs,
-            exact_pairs: &inp.cardinality_exact_pairs,
-        })
+        if let Some(source) = inp.bundle_projection_source.as_ref() {
+            serde_json::to_vec(&BundleCardinalityProjectionDocument {
+                bundle: BundleProjectionDocument {
+                    variable_count: variable_count.max(2),
+                    source_concepts: &source.source_concepts,
+                    concepts: &inp.concepts,
+                    roles: &inp.roles,
+                    functions: &source.functions,
+                    direct: &source.direct,
+                    bundles: &source.bundles,
+                    domain_extras: &source.domain_extras,
+                    target: target(),
+                },
+                definitions: bundle_cardinality_definitions(inp, source)?,
+                exact_pairs: &inp.cardinality_exact_pairs,
+            })
+        } else {
+            let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+                "HT Lean certification has no combined direct/cardinality projection".to_string()
+            })?;
+            serde_json::to_vec(&DirectCardinalityProjectionDocument {
+                variable_count,
+                concepts: &inp.concepts,
+                roles: &inp.roles,
+                source,
+                target: target(),
+                definitions: &inp.card_defs,
+                exact_pairs: &inp.cardinality_exact_pairs,
+            })
+        }
     } else if let Some(source) = inp.bundle_projection_source.as_ref() {
         serde_json::to_vec(&BundleProjectionDocument {
             variable_count: variable_count.max(2),
@@ -6371,6 +6427,72 @@ mod tests {
         )
         .unwrap_err()
         .contains("rejected"));
+
+        let mut combined_producer = producer;
+        let maximum = combined_producer.concepts.len();
+        combined_producer.concepts.push("Qmax".into());
+        let minimum = combined_producer.concepts.len();
+        combined_producer.concepts.push("Qmin".into());
+        let filler = combined_producer
+            .concepts
+            .iter()
+            .position(|concept| concept == "C")
+            .expect("bundle filler concept");
+        let combined_source = combined_producer
+            .bundle_projection_source
+            .as_mut()
+            .expect("bundle projection evidence");
+        combined_source.source_concepts.push("Qmax".into());
+        combined_source.source_concepts.push("Qmin".into());
+        combined_producer.card_defs = vec![
+            crate::orchestrate::cb_to_ht::CardDefJson {
+                marker: maximum,
+                min: false,
+                n: 1,
+                role: 0,
+                filler,
+                exact: true,
+            },
+            crate::orchestrate::cb_to_ht::CardDefJson {
+                marker: minimum,
+                min: true,
+                n: 2,
+                role: 0,
+                filler,
+                exact: true,
+            },
+        ];
+        combined_producer.cardinality_exact_pairs = vec![
+            crate::orchestrate::cb_to_ht::CardinalityExactPairJson {
+                maximum: 0,
+                minimum: 1,
+            },
+        ];
+        combined_producer.cardinality_projection_complete = true;
+        let combined = consumer_input(&combined_producer);
+        check_direct_ht_projection(&combined, &projected, std::path::Path::new(&checker))
+            .expect("the joint bundle/cardinality checker accepts complete evidence");
+
+        let mut missing_source_name = consumer_input(&combined_producer);
+        missing_source_name
+            .bundle_projection_source
+            .as_mut()
+            .expect("bundle evidence")
+            .source_concepts
+            .retain(|concept| concept != "Qmin");
+        assert!(check_direct_ht_projection(
+            &missing_source_name,
+            &projected,
+            std::path::Path::new(&checker)
+        )
+        .unwrap_err()
+        .contains("absent from bundle source concepts"));
+
+        combined_producer.card_defs[1].exact = false;
+        let forged = consumer_input(&combined_producer);
+        assert!(check_direct_ht_projection(&forged, &projected, std::path::Path::new(&checker))
+            .unwrap_err()
+            .contains("rejected"));
     }
 
     #[test]

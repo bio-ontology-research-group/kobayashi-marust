@@ -17,6 +17,14 @@
 - Add a combined finite wire that reuses the complete bundle/RBox decoder,
   checks cardinality definitions and disjoint complementary-pair indices over
   the source signature, and proves the resulting joint document sound.
+- Make the native projection checker accept the combined document and make
+  Rust emit it whenever complete bundle and cardinality evidence coexist.
+- Resolve target cardinality marker/filler identifiers through the checked
+  source name table; missing names fail closed instead of relying on numeric
+  index coincidence.
+- Exercise the real Rust-to-Lean path with valid evidence and reject an omitted
+  target clause, a false RBox path, a missing source symbol, and forged
+  exact-cardinality provenance.
 
 No release is cut for this intermediate step. The next release requires the
 complete executable source-to-HT projection boundary, including its combined
