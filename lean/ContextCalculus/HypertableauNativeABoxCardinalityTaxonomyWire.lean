@@ -56,6 +56,38 @@ inductive NativeABoxCardinalitySubsumptionDecision
   | notEntailed
       (counterexample : ¬abox.EntailsSubWithCardinality ontology definitions sub sup)
 
+def NativeABoxCardinalityConceptDecision.answer :
+    NativeABoxCardinalityConceptDecision abox ontology definitions concept → Bool
+  | .unsatisfiable _ => true
+  | .satisfiable _ => false
+
+theorem NativeABoxCardinalityConceptDecision.answer_eq_true_iff
+    (decision : NativeABoxCardinalityConceptDecision
+      abox ontology definitions concept) :
+    decision.answer = true ↔
+      abox.UnsatisfiableConceptWithCardinality ontology definitions concept := by
+  cases decision with
+  | unsatisfiable proof =>
+      simp [NativeABoxCardinalityConceptDecision.answer, proof]
+  | satisfiable counterexample =>
+      simp [NativeABoxCardinalityConceptDecision.answer, counterexample]
+
+def NativeABoxCardinalitySubsumptionDecision.answer :
+    NativeABoxCardinalitySubsumptionDecision abox ontology definitions sub sup → Bool
+  | .entailed _ => true
+  | .notEntailed _ => false
+
+theorem NativeABoxCardinalitySubsumptionDecision.answer_eq_true_iff
+    (decision : NativeABoxCardinalitySubsumptionDecision
+      abox ontology definitions sub sup) :
+    decision.answer = true ↔
+      abox.EntailsSubWithCardinality ontology definitions sub sup := by
+  cases decision with
+  | entailed proof =>
+      simp [NativeABoxCardinalitySubsumptionDecision.answer, proof]
+  | notEntailed counterexample =>
+      simp [NativeABoxCardinalitySubsumptionDecision.answer, counterexample]
+
 structure CompleteNativeABoxCardinalityTaxonomyCertificate
     (abox : NativeABox Individual Concept Role)
     (ontology : List (Clause Variable Concept Role))
@@ -64,6 +96,50 @@ structure CompleteNativeABoxCardinalityTaxonomyCertificate
     NativeABoxCardinalityConceptDecision abox ontology definitions candidate
   subsumption : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
     NativeABoxCardinalitySubsumptionDecision abox ontology definitions sub sup
+
+def CompleteNativeABoxCardinalityTaxonomyCertificate.unsatisfiable
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxCardinalityTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) definitions named) : List Concept :=
+  named.filter fun concept =>
+    if h : concept ∈ named then (certificate.concept concept h).answer else false
+
+def CompleteNativeABoxCardinalityTaxonomyCertificate.subsumptions
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxCardinalityTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) definitions named) :
+    List (Concept × Concept) :=
+  named.flatMap fun sub =>
+    if hsub : sub ∈ named then
+      (named.filter fun sup =>
+        if hsup : sup ∈ named
+        then (certificate.subsumption sub hsub sup hsup).answer
+        else false).map fun sup => (sub, sup)
+    else []
+
+theorem CompleteNativeABoxCardinalityTaxonomyCertificate.unsatisfiable_exact
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxCardinalityTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) definitions named)
+    (concept : Concept) (hnamed : concept ∈ named) :
+    concept ∈ certificate.unsatisfiable ↔
+      abox.UnsatisfiableConceptWithCardinality ontology definitions concept := by
+  simp [CompleteNativeABoxCardinalityTaxonomyCertificate.unsatisfiable, hnamed,
+    (certificate.concept concept hnamed).answer_eq_true_iff]
+
+theorem CompleteNativeABoxCardinalityTaxonomyCertificate.subsumptions_exact
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxCardinalityTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) definitions named)
+    (sub sup : Concept) (hsub : sub ∈ named) (hsup : sup ∈ named) :
+    (sub, sup) ∈ certificate.subsumptions ↔
+      abox.EntailsSubWithCardinality ontology definitions sub sup := by
+  simp [CompleteNativeABoxCardinalityTaxonomyCertificate.subsumptions, hsub, hsup,
+    (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff]
 
 def NativeABox.InitializesDistinctQueryState
     (abox : NativeABox Individual Concept Role)
@@ -472,5 +548,7 @@ theorem DecodedNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_native_abox_query_unsatisfiable
 #print axioms DecodedNativeABoxCardinalityTaxonomyDecision.semantic_valid
 #print axioms DecodedNativeABoxCardinalityTaxonomyMatrix.semantic_valid
+#print axioms CompleteNativeABoxCardinalityTaxonomyCertificate.unsatisfiable_exact
+#print axioms CompleteNativeABoxCardinalityTaxonomyCertificate.subsumptions_exact
 
 end ContextCalculus.Hypertableau

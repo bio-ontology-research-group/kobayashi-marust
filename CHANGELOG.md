@@ -35,6 +35,10 @@
   and a complete native ABox, both separately and in combination. All four
   production families now terminate into their own exact complete taxonomy
   certificate, including checked negative cells.
+- Prove exact publication-list theorems for ordinary cardinality, native-ABox,
+  and combined native-ABox/cardinality taxonomies. Membership in each emitted
+  unsatisfiable or subsumption list is equivalent to the corresponding joint
+  semantic proposition; omission is backed by a checked countermodel.
 
 ### Certify native-ABox cardinality taxonomies
 

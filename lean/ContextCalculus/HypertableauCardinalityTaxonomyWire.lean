@@ -32,6 +32,33 @@ inductive CardinalitySubsumptionDecision
   | entailed (proof : EntailsSubWithCardinality ontology definitions sub sup)
   | notEntailed (counterexample : ¬EntailsSubWithCardinality ontology definitions sub sup)
 
+def CardinalityConceptDecision.answer :
+    CardinalityConceptDecision ontology definitions concept → Bool
+  | .unsatisfiable _ => true
+  | .satisfiable _ => false
+
+theorem CardinalityConceptDecision.answer_eq_true_iff
+    (decision : CardinalityConceptDecision ontology definitions concept) :
+    decision.answer = true ↔
+      UnsatisfiableConceptWithCardinality ontology definitions concept := by
+  cases decision with
+  | unsatisfiable proof => simp [CardinalityConceptDecision.answer, proof]
+  | satisfiable counterexample => simp [CardinalityConceptDecision.answer, counterexample]
+
+def CardinalitySubsumptionDecision.answer :
+    CardinalitySubsumptionDecision ontology definitions sub sup → Bool
+  | .entailed _ => true
+  | .notEntailed _ => false
+
+theorem CardinalitySubsumptionDecision.answer_eq_true_iff
+    (decision : CardinalitySubsumptionDecision ontology definitions sub sup) :
+    decision.answer = true ↔
+      EntailsSubWithCardinality ontology definitions sub sup := by
+  cases decision with
+  | entailed proof => simp [CardinalitySubsumptionDecision.answer, proof]
+  | notEntailed counterexample =>
+      simp [CardinalitySubsumptionDecision.answer, counterexample]
+
 structure CompleteCardinalityTaxonomyCertificate
     (ontology : List (Clause Variable Concept Role))
     (definitions : List (CardinalityDef Concept Role)) (named : List Concept) where
@@ -39,6 +66,44 @@ structure CompleteCardinalityTaxonomyCertificate
     CardinalityConceptDecision ontology definitions candidate
   subsumption : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
     CardinalitySubsumptionDecision ontology definitions sub sup
+
+def CompleteCardinalityTaxonomyCertificate.unsatisfiable
+    [DecidableEq Concept]
+    (certificate : CompleteCardinalityTaxonomyCertificate
+      (ontology : List (Clause Variable Concept Role)) definitions named) : List Concept :=
+  named.filter fun concept =>
+    if h : concept ∈ named then (certificate.concept concept h).answer else false
+
+def CompleteCardinalityTaxonomyCertificate.subsumptions
+    [DecidableEq Concept]
+    (certificate : CompleteCardinalityTaxonomyCertificate
+      (ontology : List (Clause Variable Concept Role)) definitions named) :
+    List (Concept × Concept) :=
+  named.flatMap fun sub =>
+    if hsub : sub ∈ named then
+      (named.filter fun sup =>
+        if hsup : sup ∈ named
+        then (certificate.subsumption sub hsub sup hsup).answer
+        else false).map fun sup => (sub, sup)
+    else []
+
+theorem CompleteCardinalityTaxonomyCertificate.unsatisfiable_exact
+    [DecidableEq Concept]
+    (certificate : CompleteCardinalityTaxonomyCertificate ontology definitions named)
+    (concept : Concept) (hnamed : concept ∈ named) :
+    concept ∈ certificate.unsatisfiable ↔
+      UnsatisfiableConceptWithCardinality ontology definitions concept := by
+  simp [CompleteCardinalityTaxonomyCertificate.unsatisfiable, hnamed,
+    (certificate.concept concept hnamed).answer_eq_true_iff]
+
+theorem CompleteCardinalityTaxonomyCertificate.subsumptions_exact
+    [DecidableEq Concept]
+    (certificate : CompleteCardinalityTaxonomyCertificate ontology definitions named)
+    (sub sup : Concept) (hsub : sub ∈ named) (hsup : sup ∈ named) :
+    (sub, sup) ∈ certificate.subsumptions ↔
+      EntailsSubWithCardinality ontology definitions sub sup := by
+  simp [CompleteCardinalityTaxonomyCertificate.subsumptions, hsub, hsup,
+    (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff]
 
 structure SomeCardinalityConceptDecision
     (ontology : List (Clause Variable Concept Role))
@@ -770,5 +835,8 @@ example : normalized.check = true := by native_decide
 example : ({ normalized with normalization := [] }).check = false := by native_decide
 
 end CardinalityTaxonomyWireTests
+
+#print axioms CompleteCardinalityTaxonomyCertificate.unsatisfiable_exact
+#print axioms CompleteCardinalityTaxonomyCertificate.subsumptions_exact
 
 end ContextCalculus.Hypertableau

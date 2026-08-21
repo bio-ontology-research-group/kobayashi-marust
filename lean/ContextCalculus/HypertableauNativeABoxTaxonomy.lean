@@ -51,6 +51,31 @@ inductive NativeABoxSubsumptionDecision
   | entailed (proof : abox.EntailsSubWith ontology sub sup)
   | notEntailed (counterexample : ¬abox.EntailsSubWith ontology sub sup)
 
+def NativeABoxConceptDecision.answer :
+    NativeABoxConceptDecision abox ontology concept → Bool
+  | .unsatisfiable _ => true
+  | .satisfiable _ => false
+
+theorem NativeABoxConceptDecision.answer_eq_true_iff
+    (decision : NativeABoxConceptDecision abox ontology concept) :
+    decision.answer = true ↔ abox.UnsatisfiableConceptWith ontology concept := by
+  cases decision with
+  | unsatisfiable proof => simp [NativeABoxConceptDecision.answer, proof]
+  | satisfiable counterexample => simp [NativeABoxConceptDecision.answer, counterexample]
+
+def NativeABoxSubsumptionDecision.answer :
+    NativeABoxSubsumptionDecision abox ontology sub sup → Bool
+  | .entailed _ => true
+  | .notEntailed _ => false
+
+theorem NativeABoxSubsumptionDecision.answer_eq_true_iff
+    (decision : NativeABoxSubsumptionDecision abox ontology sub sup) :
+    decision.answer = true ↔ abox.EntailsSubWith ontology sub sup := by
+  cases decision with
+  | entailed proof => simp [NativeABoxSubsumptionDecision.answer, proof]
+  | notEntailed counterexample =>
+      simp [NativeABoxSubsumptionDecision.answer, counterexample]
+
 /-- A complete exact named taxonomy for one ontology and its complete native
 ABox.  Negative cells are proof-carrying countermodels, not missing positive
 answers. -/
@@ -61,6 +86,48 @@ structure CompleteNativeABoxTaxonomyCertificate
     NativeABoxConceptDecision abox ontology candidate
   subsumption : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
     NativeABoxSubsumptionDecision abox ontology sub sup
+
+def CompleteNativeABoxTaxonomyCertificate.unsatisfiable
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) named) : List Concept :=
+  named.filter fun concept =>
+    if h : concept ∈ named then (certificate.concept concept h).answer else false
+
+def CompleteNativeABoxTaxonomyCertificate.subsumptions
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) named) : List (Concept × Concept) :=
+  named.flatMap fun sub =>
+    if hsub : sub ∈ named then
+      (named.filter fun sup =>
+        if hsup : sup ∈ named
+        then (certificate.subsumption sub hsub sup hsup).answer
+        else false).map fun sup => (sub, sup)
+    else []
+
+theorem CompleteNativeABoxTaxonomyCertificate.unsatisfiable_exact
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) named)
+    (concept : Concept) (hnamed : concept ∈ named) :
+    concept ∈ certificate.unsatisfiable ↔
+      abox.UnsatisfiableConceptWith ontology concept := by
+  simp [CompleteNativeABoxTaxonomyCertificate.unsatisfiable, hnamed,
+    (certificate.concept concept hnamed).answer_eq_true_iff]
+
+theorem CompleteNativeABoxTaxonomyCertificate.subsumptions_exact
+    [DecidableEq Concept]
+    (certificate : CompleteNativeABoxTaxonomyCertificate
+      (abox : NativeABox Individual Concept Role)
+      (ontology : List (Clause Variable Concept Role)) named)
+    (sub sup : Concept) (hsub : sub ∈ named) (hsup : sup ∈ named) :
+    (sub, sup) ∈ certificate.subsumptions ↔ abox.EntailsSubWith ontology sub sup := by
+  simp [CompleteNativeABoxTaxonomyCertificate.subsumptions, hsub, hsup,
+    (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff]
 
 /-- Semantic initialization contract for a native ABox plus a fresh taxonomy
 query root.  Every joint source model extends to a realization of the exact
@@ -227,5 +294,7 @@ theorem DecodedNativeABoxSatCertificate.non_subsumption
 #print axioms DecodedNativeABoxSatCertificate.satisfiable_with_query
 #print axioms DecodedNativeABoxSatCertificate.concept_satisfiable
 #print axioms DecodedNativeABoxSatCertificate.non_subsumption
+#print axioms CompleteNativeABoxTaxonomyCertificate.unsatisfiable_exact
+#print axioms CompleteNativeABoxTaxonomyCertificate.subsumptions_exact
 
 end ContextCalculus.Hypertableau
