@@ -38,6 +38,8 @@ structure DecodedDirectNativeABoxCardinalityTaxonomySat where
   query : DecodedNativeABoxTaxonomyQuery
     sourceProjection.certificate.seed.nodeCount
     sourceProjection.certificate.seed.abox.concepts.length
+  wireQuery : WireNativeABoxTaxonomyQuery
+  exactCoordinates : DecodedNativeABoxTaxonomyQuery.MatchesWire query wireQuery
   query_present : ∀ literal ∈ query.literals,
     (query.root, literal) ∈
       sourceProjection.certificate.seed.state.base.base.labels
@@ -87,15 +89,50 @@ inductive DecodedDirectNativeABoxCardinalityTaxonomyDecision where
   | sat (decoded : DecodedDirectNativeABoxCardinalityTaxonomySat)
   | unsat (decoded : DecodedDirectNativeABoxCardinalityTaxonomyUnsat)
 
+def DecodedDirectNativeABoxCardinalityTaxonomyDecision.wireQuery :
+    DecodedDirectNativeABoxCardinalityTaxonomyDecision → WireNativeABoxTaxonomyQuery
+  | .sat decoded => decoded.wireQuery
+  | .unsat decoded => decoded.taxonomy.wireQuery
+
+def DecodedDirectNativeABoxCardinalityTaxonomyDecision.CoordinatesExact
+    (expected : WireNativeABoxTaxonomyQuery) :
+    DecodedDirectNativeABoxCardinalityTaxonomyDecision → Prop
+  | .sat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.query expected
+  | .unsat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.taxonomy.query expected
+
+theorem DecodedDirectNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+    (decoded : DecodedDirectNativeABoxCardinalityTaxonomyDecision)
+    {expected : WireNativeABoxTaxonomyQuery}
+    (haligned : decoded.wireQuery = expected) :
+    decoded.CoordinatesExact expected := by
+  cases decoded with
+  | sat result => exact haligned ▸ result.exactCoordinates
+  | unsat result => exact haligned ▸ result.taxonomy.exactCoordinates
+
+private def requireExactNativeABoxCardinalityTaxonomyUnsat
+    (wire : WireNativeABoxCardinalityTaxonomyDecision)
+    (exact : { decoded : DecodedNativeABoxCardinalityTaxonomyDecision //
+      decoded.wireQuery = wire.query }) :
+    Except String { result : DecodedNativeABoxCardinalityTaxonomyUnsat //
+      result.wireQuery = wire.query } :=
+  match htaxonomy : exact.val with
+  | .unsat result => .ok ⟨result, by
+      simpa [DecodedNativeABoxCardinalityTaxonomyDecision.wireQuery, htaxonomy]
+        using exact.property⟩
+  | .sat _ => .error "internal cardinality taxonomy evidence mismatch"
+
 structure WireDirectNativeABoxCardinalityTaxonomyDecision where
   version : Nat
   projection : WireDirectNativeABoxCardinalityTaxonomyProjection
   decision : WireNativeABoxCardinalityTaxonomyDecision
 deriving FromJson, ToJson, Repr
 
-def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
+def WireDirectNativeABoxCardinalityTaxonomyDecision.decodeExact
     (wire : WireDirectNativeABoxCardinalityTaxonomyDecision) :
-    Except String DecodedDirectNativeABoxCardinalityTaxonomyDecision := do
+    Except String { decoded : DecodedDirectNativeABoxCardinalityTaxonomyDecision //
+      decoded.wireQuery = wire.decision.query } := do
   if wire.version != 1 then
     throw s!"unsupported direct native ABox cardinality taxonomy version {wire.version}"
   match wire.decision.evidence with
@@ -107,22 +144,25 @@ def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
         exact_pairs := wire.projection.exact_pairs
         certificate := certificateWire
       } : WireDirectNativeABoxCardinalitySatCertificate).decode
-      let query ← wire.decision.query.decode
+      let exactQuery ← wire.decision.query.decodeExact
         sourceProjection.certificate.seed.nodeCount
         sourceProjection.certificate.seed.abox.concepts.length
+      let query := exactQuery.query
       if hquery : query.labelsPresentB
           sourceProjection.certificate.seed.state.base.base.labels = true then
-        return .sat {
+        return ⟨.sat {
           sourceProjection
           query
+          wireQuery := wire.decision.query
+          exactCoordinates := exactQuery.exactCoordinates
           query_present := query.labelsPresentB_sound _ hquery
-        }
+        }, rfl⟩
       else throw "direct cardinality taxonomy countermodel omits its query literals"
   | .unsat .. =>
-      let taxonomy ← wire.decision.decode
-      let taxonomy ← match taxonomy with
-        | .unsat decoded => pure decoded
-        | .sat _ => throw "internal cardinality taxonomy evidence mismatch"
+      let exactTaxonomy ← wire.decision.decodeExact
+      let taxonomyExact ← requireExactNativeABoxCardinalityTaxonomyUnsat
+        wire.decision exactTaxonomy
+      let taxonomy : DecodedNativeABoxCardinalityTaxonomyUnsat := taxonomyExact.val
       let variableWitness ← requireAtLeastTwoVariables taxonomy.initial.variableCount
       let hvariables := variableWitness.proof
       let source ← wire.projection.source.mapM (WireDirectSourceClause.decode
@@ -148,7 +188,7 @@ def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
                       taxonomy.initial.abox.negativeRoleClausesAt
                         taxonomy.initial.variableCount hvariables =
                       taxonomy.initial.state.base.base.ontology then
-                    return .unsat {
+                    return ⟨.unsat {
                       taxonomy
                       variable_ge_two := hvariables
                       source
@@ -161,7 +201,7 @@ def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
                       unique_pair_indices := hpairs
                       exact_flags := hflags
                       exact_ontology := hontology
-                    }
+                    }, taxonomyExact.property⟩
                   else throw "direct cardinality target differs from the taxonomy refutation ontology"
                 else throw "cardinality exact flags differ from complementary-pair provenance"
               else throw "an exact cardinality definition occurs in more than one pair"
@@ -169,6 +209,11 @@ def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
           else throw "internal cardinality taxonomy definition length mismatch"
         else throw "source cardinality definitions differ from the taxonomy refutation"
       else throw "direct source residual differs from its cardinality target"
+
+def WireDirectNativeABoxCardinalityTaxonomyDecision.decode
+    (wire : WireDirectNativeABoxCardinalityTaxonomyDecision) :
+    Except String DecodedDirectNativeABoxCardinalityTaxonomyDecision := do
+  return (← wire.decodeExact).val
 
 def WireDirectNativeABoxCardinalityTaxonomyDecision.check
     (wire : WireDirectNativeABoxCardinalityTaxonomyDecision) : Except String Bool := do
@@ -313,6 +358,84 @@ structure DecodedDirectNativeABoxCardinalityTaxonomyMatrix where
   matrix : DecodedNativeABoxCardinalityTaxonomyMatrix
   concepts : List DecodedDirectNativeABoxCardinalityTaxonomyDecision
   subsumptions : List (List DecodedDirectNativeABoxCardinalityTaxonomyDecision)
+  concepts_exact : List.Forall₂
+    (fun concept decoded => decoded.wireQuery = .concept 0 concept)
+    matrix.named concepts
+  subsumptions_exact : List.Forall₂
+    (fun sub row => List.Forall₂
+      (fun sup decoded => decoded.wireQuery = .subsumption 0 sub sup)
+      matrix.named row)
+    matrix.named subsumptions
+
+private def decodeDirectNativeCardinalityTaxonomyDecisionAt
+    (projection : WireDirectNativeABoxCardinalityTaxonomyProjection)
+    (expected : WireNativeABoxTaxonomyQuery)
+    (wire : WireNativeABoxCardinalityTaxonomyDecision) :
+    Except String { decoded : DecodedDirectNativeABoxCardinalityTaxonomyDecision //
+      decoded.wireQuery = expected } := do
+  if hquery : wire.query = expected then
+    let decoded ← ({ version := 1, projection, decision := wire } :
+      WireDirectNativeABoxCardinalityTaxonomyDecision).decodeExact
+    return ⟨decoded.val, decoded.property.trans hquery⟩
+  else throw "direct native ABox cardinality taxonomy cell is in the wrong position"
+
+private def decodeDirectNativeCardinalityTaxonomyConceptsExact
+    (projection : WireDirectNativeABoxCardinalityTaxonomyProjection) :
+    (named : List Nat) →
+    (wires : List WireNativeABoxCardinalityTaxonomyDecision) →
+    Except String {
+      decoded : List DecodedDirectNativeABoxCardinalityTaxonomyDecision //
+      List.Forall₂
+        (fun concept decision => decision.wireQuery = .concept 0 concept)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | concept :: named, wire :: wires => do
+      let decision ← decodeDirectNativeCardinalityTaxonomyDecisionAt projection
+        (.concept 0 concept) wire
+      let tail ← decodeDirectNativeCardinalityTaxonomyConceptsExact
+        projection named wires
+      return ⟨decision.val :: tail.val, .cons decision.property tail.property⟩
+  | _, _ => .error "direct native ABox cardinality concept row is incomplete"
+
+private def decodeDirectNativeCardinalityTaxonomySubsumptionRowExact
+    (projection : WireDirectNativeABoxCardinalityTaxonomyProjection) (sub : Nat) :
+    (named : List Nat) →
+    (wires : List WireNativeABoxCardinalityTaxonomyDecision) →
+    Except String {
+      decoded : List DecodedDirectNativeABoxCardinalityTaxonomyDecision //
+      List.Forall₂
+        (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | sup :: named, wire :: wires => do
+      let decision ← decodeDirectNativeCardinalityTaxonomyDecisionAt projection
+        (.subsumption 0 sub sup) wire
+      let tail ← decodeDirectNativeCardinalityTaxonomySubsumptionRowExact
+        projection sub named wires
+      return ⟨decision.val :: tail.val, .cons decision.property tail.property⟩
+  | _, _ => .error "direct native ABox cardinality subsumption row is incomplete"
+
+private def decodeDirectNativeCardinalityTaxonomyRowsExact
+    (projection : WireDirectNativeABoxCardinalityTaxonomyProjection)
+    (allNamed : List Nat) :
+    (named : List Nat) →
+    (rows : List (List WireNativeABoxCardinalityTaxonomyDecision)) →
+    Except String {
+      decoded : List (List DecodedDirectNativeABoxCardinalityTaxonomyDecision) //
+      List.Forall₂
+        (fun sub row => List.Forall₂
+          (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+          allNamed row)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | sub :: named, row :: rows => do
+      let decodedRow ← decodeDirectNativeCardinalityTaxonomySubsumptionRowExact
+        projection sub allNamed row
+      let decodedRows ← decodeDirectNativeCardinalityTaxonomyRowsExact
+        projection allNamed named rows
+      return ⟨decodedRow.val :: decodedRows.val,
+        .cons decodedRow.property decodedRows.property⟩
+  | _, _ => .error "direct native ABox cardinality subsumption matrix is incomplete"
 
 def WireDirectNativeABoxCardinalityTaxonomyMatrix.decode
     (wire : WireDirectNativeABoxCardinalityTaxonomyMatrix) :
@@ -320,15 +443,17 @@ def WireDirectNativeABoxCardinalityTaxonomyMatrix.decode
   if wire.version != 1 then
     throw s!"unsupported direct native ABox cardinality taxonomy matrix version {wire.version}"
   let matrix ← wire.matrix.decode
-  let wrap := fun decision => ({
-    version := 1
-    projection := wire.projection
-    decision
-  } : WireDirectNativeABoxCardinalityTaxonomyDecision)
-  let concepts ← wire.matrix.concepts.mapM fun decision => (wrap decision).decode
-  let subsumptions ← wire.matrix.subsumptions.mapM fun row =>
-    row.mapM fun decision => (wrap decision).decode
-  return { matrix, concepts, subsumptions }
+  let concepts ← decodeDirectNativeCardinalityTaxonomyConceptsExact
+    wire.projection matrix.named wire.matrix.concepts
+  let subsumptions ← decodeDirectNativeCardinalityTaxonomyRowsExact
+    wire.projection matrix.named matrix.named wire.matrix.subsumptions
+  return {
+    matrix
+    concepts := concepts.val
+    subsumptions := subsumptions.val
+    concepts_exact := concepts.property
+    subsumptions_exact := subsumptions.property
+  }
 
 def WireDirectNativeABoxCardinalityTaxonomyMatrix.check
     (wire : WireDirectNativeABoxCardinalityTaxonomyMatrix) : Except String Bool := do
@@ -345,6 +470,74 @@ def DecodedDirectNativeABoxCardinalityTaxonomyMatrix.SemanticallyValid
   decoded.matrix.wire.shapeB = true ∧ decoded.matrix.wire.queriesB = true ∧
   decoded.matrix.wire.sharedProblemB = true ∧
   ∀ decision ∈ decoded.allDecisions, decision.SemanticallyValid
+
+private theorem directCardinalityConceptAlignment_coordinates_exact
+    {named : List Nat}
+    {decisions : List DecodedDirectNativeABoxCardinalityTaxonomyDecision}
+    (haligned : List.Forall₂
+      (fun concept decision => decision.wireQuery = .concept 0 concept)
+      named decisions) :
+    List.Forall₂
+      (fun concept decision => decision.CoordinatesExact (.concept 0 concept))
+      named decisions := by
+  induction haligned with
+  | nil => exact .nil
+  | cons haligned _ ih =>
+      exact .cons
+        (DecodedDirectNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+          _ haligned) ih
+
+private theorem directCardinalitySubsumptionRowAlignment_coordinates_exact
+    (sub : Nat) {named : List Nat}
+    {decisions : List DecodedDirectNativeABoxCardinalityTaxonomyDecision}
+    (haligned : List.Forall₂
+      (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+      named decisions) :
+    List.Forall₂
+      (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+      named decisions := by
+  induction haligned with
+  | nil => exact .nil
+  | cons haligned _ ih =>
+      exact .cons
+        (DecodedDirectNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+          _ haligned) ih
+
+private theorem directCardinalitySubsumptionAlignment_coordinates_exact
+    (allNamed : List Nat) {named : List Nat}
+    {rows : List (List DecodedDirectNativeABoxCardinalityTaxonomyDecision)}
+    (haligned : List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+        allNamed row)
+      named rows) :
+    List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+        allNamed row)
+      named rows := by
+  induction haligned with
+  | nil => exact .nil
+  | cons hrow _ ih =>
+      exact .cons
+        (directCardinalitySubsumptionRowAlignment_coordinates_exact _ hrow) ih
+
+theorem DecodedDirectNativeABoxCardinalityTaxonomyMatrix.concept_coordinates_exact
+    (decoded : DecodedDirectNativeABoxCardinalityTaxonomyMatrix) :
+    List.Forall₂
+      (fun concept decision => decision.CoordinatesExact (.concept 0 concept))
+      decoded.matrix.named decoded.concepts :=
+  directCardinalityConceptAlignment_coordinates_exact decoded.concepts_exact
+
+theorem DecodedDirectNativeABoxCardinalityTaxonomyMatrix.subsumption_coordinates_exact
+    (decoded : DecodedDirectNativeABoxCardinalityTaxonomyMatrix) :
+    List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+        decoded.matrix.named row)
+      decoded.matrix.named decoded.subsumptions :=
+  directCardinalitySubsumptionAlignment_coordinates_exact decoded.matrix.named
+    decoded.subsumptions_exact
 
 theorem DecodedDirectNativeABoxCardinalityTaxonomyMatrix.semantic_valid
     (decoded : DecodedDirectNativeABoxCardinalityTaxonomyMatrix) :
@@ -1516,6 +1709,8 @@ theorem DecodedBundleNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 
 #print axioms DecodedDirectNativeABoxCardinalityTaxonomyDecision.semantic_valid
 #print axioms DecodedDirectNativeABoxCardinalityTaxonomyDecision.positive_eq_true_iff
+#print axioms DecodedDirectNativeABoxCardinalityTaxonomyMatrix.concept_coordinates_exact
+#print axioms DecodedDirectNativeABoxCardinalityTaxonomyMatrix.subsumption_coordinates_exact
 #print axioms DecodedDirectNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms DecodedMixedNativeABoxCardinalityTaxonomyDecision.semantic_valid
 #print axioms DecodedMixedNativeABoxCardinalityTaxonomyDecision.positive_eq_true_iff

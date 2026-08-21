@@ -75,6 +75,10 @@
   definers, role-inclusion paths, domain premises, and both model and
   refutation decoding. Complete bundle matrices certify each concept and
   ordered subsumption position explicitly.
+- Carry exact taxonomy coordinates through the direct native-ABox cardinality
+  source projection. The proof now binds projected number restrictions,
+  complementary exact-cardinality pairs, source clauses, countermodels, and
+  refutations to the declared concept and ordered subsumption cells.
 
 ### Certify native-ABox cardinality taxonomies
 
