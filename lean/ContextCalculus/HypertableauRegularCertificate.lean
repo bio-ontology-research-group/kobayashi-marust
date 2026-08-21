@@ -262,6 +262,72 @@ theorem FiniteRegularCertificate.coverClosedB_sound
     simpa [FiniteRegularCertificate.coverRelation] using
       hrefl role hrule source (by simp)
 
+/-- The executable endpoint-cover check is complete as well as sound.  This
+direction matters for total decision search: a producer that supplies the
+mathematical `CoverClosed` invariant cannot be rejected merely because the
+Boolean checker omitted one of its cases. -/
+theorem FiniteRegularCertificate.coverClosedB_complete
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hclosed : certificate.CoverClosed) : certificate.coverClosedB = true := by
+  simp only [FiniteRegularCertificate.coverClosedB, Bool.and_eq_true,
+    List.all_eq_true]
+  refine ⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩
+  · intro source hsource edge hedge
+    simp only [Bool.or_eq_true, decide_eq_true_eq]
+    by_cases hredirect : edge.2.1 = certificate.redirect source
+    · right
+      rcases edge with ⟨role, edgeSource, target⟩
+      simp only at hredirect ⊢
+      subst edgeSource
+      exact hclosed.1 role source target hedge
+    · left
+      simp [hredirect]
+  · intro rule hrule edge hedge
+    simp only [Bool.or_eq_true, decide_eq_true_eq]
+    by_cases hpremise : edge.1 = rule.1
+    · right
+      rcases rule with ⟨premise, conclusion⟩
+      rcases edge with ⟨role, source, target⟩
+      simp only at hpremise ⊢
+      subst role
+      exact hclosed.2.1 premise conclusion hrule source target hedge
+    · left
+      simp [hpremise]
+  · intro rule hrule edge hedge
+    simp only [Bool.or_eq_true, decide_eq_true_eq]
+    by_cases hpremise : edge.1 = rule.1
+    · right
+      rcases rule with ⟨premise, conclusion⟩
+      rcases edge with ⟨role, source, target⟩
+      simp only at hpremise ⊢
+      subst role
+      exact hclosed.2.2.1 premise conclusion hrule source target hedge
+    · left
+      simp [hpremise]
+  · intro rule hrule left hleft right hright
+    simp only [Bool.or_eq_true, decide_eq_true_eq]
+    by_cases hpremises : left.1 = rule.1 ∧ right.1 = rule.2.1 ∧
+        left.2.2 = right.2.1
+    · right
+      have hleftCover : certificate.coverRelation rule.1
+          left.2.1 left.2.2 := by
+        change (rule.1, left.2.1, left.2.2) ∈ certificate.cover
+        rw [← hpremises.1]
+        simpa only [Prod.eta] using hleft
+      have hrightCover : certificate.coverRelation rule.2.1
+          left.2.2 right.2.2 := by
+        change (rule.2.1, left.2.2, right.2.2) ∈ certificate.cover
+        rw [← hpremises.2.1, hpremises.2.2]
+        simpa only [Prod.eta] using hright
+      exact hclosed.2.2.2.1 rule.1 rule.2.1 rule.2.2 hrule
+        left.2.1 left.2.2 right.2.2 hleftCover hrightCover
+    · left
+      simp [hpremises]
+  · intro role hrole source hsource
+    simpa [FiniteRegularCertificate.coverRelation] using
+      hclosed.2.2.2.2 role hrole source
+
 theorem FiniteRegularCertificate.check_sound
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount)
@@ -317,6 +383,90 @@ theorem FiniteRegularCertificate.check_sound
     rcases hheadB with ⟨atom, hatom, hholds⟩
     exact ⟨atom, hatom,
       (certificate.coverHoldsAtomB_eq_true assignment atom).mp hholds⟩
+
+/-- The regular-model checker accepts every certificate satisfying its stated
+finite semantic invariant. Together with `check_sound`, this makes rejection
+equivalent to a genuine violation of that invariant rather than an artifact of
+an incomplete executable scan. -/
+theorem FiniteRegularCertificate.check_complete
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.Valid) : certificate.check = true := by
+  simp only [FiniteRegularCertificate.check, Bool.and_eq_true,
+    List.all_eq_true]
+  refine ⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩
+  · intro rule hrule
+    exact (certificate.authorizedB_eq_true rule).mpr (hvalid.1 rule hrule)
+  · intro clause hclause atom hatom
+    have hbody := hvalid.2.1 clause hclause atom hatom
+    cases atom with
+    | concept lit node =>
+        rcases lit with ⟨concept, neg⟩
+        cases neg <;> simp_all [atomGuardedB, BodyAtom]
+    | role => simp [atomGuardedB]
+    | exists_ => contradiction
+    | eq => simp [atomGuardedB]
+  · intro clause hclause atom hatom
+    exact (pathLiftableHeadB_eq_true atom).mpr
+      (hvalid.2.2.1 clause hclause atom hatom)
+  · rintro ⟨node, literal⟩ hlabel
+    simp only [decide_eq_true_eq]
+    rcases literal with ⟨concept, neg⟩
+    cases neg with
+    | false =>
+        intro hnegative
+        exact hvalid.2.2.2.1 node concept ⟨hlabel, hnegative⟩
+    | true =>
+        intro hpositive
+        exact hvalid.2.2.2.1 node concept ⟨hpositive, hlabel⟩
+  · intro obligation hobligation
+    rcases hvalid.2.2.2.2.1 obligation.2.2 obligation.1 obligation.2.1
+        hobligation with ⟨witness, hedge, hlabel⟩
+    rw [List.any_eq_true]
+    refine ⟨witness, List.mem_finRange witness, ?_⟩
+    simp only [Bool.and_eq_true, decide_eq_true_eq]
+    simpa [FiniteRegularCertificate.state] using And.intro hedge hlabel
+  · intro obligation hobligation
+    simp only [decide_eq_true_eq]
+    exact hvalid.2.2.2.2.2.1 obligation.2.2 obligation.1
+      obligation.2.1 hobligation
+  · exact certificate.coverClosedB_complete hvalid.2.2.2.2.2.2.1
+  · intro clause hclause assignment _
+    by_cases hbody : ∀ atom ∈ clause.body,
+        certificate.state.CoverHoldsAtom certificate.coverRelation assignment atom
+    · rcases hvalid.2.2.2.2.2.2.2 clause hclause assignment hbody with
+        ⟨atom, hatom, hholds⟩
+      have hbodyB : clause.body.all
+          (certificate.coverHoldsAtomB assignment) = true := by
+        rw [List.all_eq_true]
+        intro bodyAtom hbodyAtom
+        exact (certificate.coverHoldsAtomB_eq_true assignment bodyAtom).mpr
+          (hbody bodyAtom hbodyAtom)
+      have hheadB : clause.head.any
+          (certificate.coverHoldsAtomB assignment) = true := by
+        rw [List.any_eq_true]
+        exact ⟨atom, hatom,
+          (certificate.coverHoldsAtomB_eq_true assignment atom).mpr hholds⟩
+      simp [hbodyB, hheadB]
+    · have hbodyB : clause.body.all
+          (certificate.coverHoldsAtomB assignment) = false := by
+        generalize hall : clause.body.all
+          (certificate.coverHoldsAtomB assignment) = value
+        cases value with
+        | false => rfl
+        | true =>
+            exfalso
+            apply hbody
+            intro atom hatom
+            exact (certificate.coverHoldsAtomB_eq_true assignment atom).mp
+              ((List.all_eq_true.mp hall) atom hatom)
+      simp [hbodyB]
+
+theorem FiniteRegularCertificate.check_eq_true_iff_valid
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.check = true ↔ certificate.Valid :=
+  ⟨certificate.check_sound, certificate.check_complete⟩
 
 /-- The regular certificate's exact decoded ontology. -/
 def FiniteRegularCertificate.ontology
@@ -389,8 +539,11 @@ example : missingDirectCover.check = false := by native_decide
 
 #print axioms FiniteRegularCertificate.coverClosed_covers
 #print axioms FiniteRegularCertificate.coverClosedB_sound
+#print axioms FiniteRegularCertificate.coverClosedB_complete
 #print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
+#print axioms FiniteRegularCertificate.check_complete
+#print axioms FiniteRegularCertificate.check_eq_true_iff_valid
 #print axioms FiniteRegularCertificate.models
 #print axioms FiniteRegularCertificate.check_models
 

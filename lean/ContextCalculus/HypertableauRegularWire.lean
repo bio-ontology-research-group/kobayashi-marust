@@ -161,6 +161,14 @@ def DecodedRegularCertificate.check
     (decoded : DecodedRegularCertificate) : Bool :=
   decoded.certificate.check
 
+/-- Decoding introduces only finite bounds and positivity evidence. After a
+successful decode, the executable regular checker accepts exactly the finite
+semantic invariant used by the unravelling proof. -/
+theorem DecodedRegularCertificate.check_eq_true_iff_valid
+    (decoded : DecodedRegularCertificate) :
+    decoded.check = true ↔ decoded.certificate.Valid := by
+  exact decoded.certificate.check_eq_true_iff_valid
+
 theorem DecodedRegularCertificate.check_models
     (decoded : DecodedRegularCertificate)
     (hcheck : decoded.check = true) :
@@ -196,5 +204,6 @@ example : (match checkedFin "node" 1 1 with | .error _ => true | .ok _ => false)
     true := by native_decide
 
 #print axioms DecodedRegularCertificate.check_models
+#print axioms DecodedRegularCertificate.check_eq_true_iff_valid
 
 end ContextCalculus.Hypertableau

@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Make the regular hypertableau model checker exact
+
+- Prove that the executable endpoint-role cover scan accepts every finite
+  `CoverClosed` witness, complementing its existing soundness theorem.
+- Prove that the complete regular-model checker accepts every certificate
+  satisfying its finite `Valid` invariant. Checker acceptance is now
+  equivalent to that invariant, including role-rule authorization, guarded
+  residual clauses, clash freedom, witness completion, blocker redirection,
+  endpoint-role closure, and residual-clause discharge.
+- Lift exactness through the decoded wire certificate. A mathematically valid
+  decoded regular model cannot be rejected because the executable checker
+  missed a case. The remaining totality obligation is to prove that Rust's
+  blocked-open serializer always constructs this `Valid` invariant.
+
 ### Certify native named-individual ABox projection
 
 - Define the exact semantics of KM's native ABox payload: singleton nominal
