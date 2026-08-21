@@ -597,6 +597,16 @@ finite closure under subrole, inverse, chain, and reflexive rules. Cross-languag
 tests pass the emitted cyclic model and a combined four-rule role cover through
 `ht-regular-cert-check`.
 
+Rejected regular candidates are now part of the certified producer control
+structure rather than an unmodelled retry. Rust blacklists every rejected
+`(blocked, blocker)` pair and reruns at the same finite budget. Lean proves that
+this fresh-fold learning cannot continue forever, constructs one settled
+checked outcome for every budget, and composes those outcomes with address
+frontier doubling and source-model equivalence. The remaining regular-producer
+completeness step is the cover-terminal theorem: a satisfiable equality-free
+search must encounter a blocker choice whose redirected role cover discharges
+every residual clause.
+
 `HypertableauRegularDecisionWire.lean` supplies a checked sum envelope at the
 exact normalized-ontology layer. Its decoder accepts only a regular SAT
 certificate or a finite document whose evidence constructor is global UNSAT.

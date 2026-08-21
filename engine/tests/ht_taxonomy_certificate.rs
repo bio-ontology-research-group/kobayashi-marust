@@ -431,6 +431,39 @@ fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Out
     child.wait_with_output().unwrap()
 }
 
+fn run_rejected_cyclic_fold_probe() -> std::process::Output {
+    let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+    input["roles"] = serde_json::json!(["r"]);
+    input["clauses"] = serde_json::json!([
+        {"body":[], "head":[{"k":"c", "neg":false, "c":0, "t":0}]},
+        {
+            "body":[{"k":"c", "neg":false, "c":0, "t":0}],
+            "head":[{"k":"e", "r":0, "neg":false, "c":0, "t":0}]
+        }
+    ]);
+    install_direct_projection_fixture(&mut input);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_UNSAT_NODES", "4")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/false")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn rejected cyclic-fold probe");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input).unwrap())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -463,6 +496,19 @@ fn every_iterative_frontier_is_checker_gated() {
         "{}",
         String::from_utf8_lossy(&accepted.stderr),
     );
+}
+
+#[test]
+fn rejected_blocker_folds_make_finite_progress_at_one_budget() {
+    let output = run_rejected_cyclic_fold_probe();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "rejected cyclic candidate published output");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("configured regular decision node cap"),
+        "{stderr}",
+    );
+    assert!(!stderr.contains("overflowed usize"), "{stderr}");
 }
 
 #[test]

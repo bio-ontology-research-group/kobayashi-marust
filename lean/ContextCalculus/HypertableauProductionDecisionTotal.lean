@@ -27,11 +27,18 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (run : Nat → CheckedRegularRoundOutcome
-        conceptCount roleCount variableCount target)
-      (hnodes : ∀ round document hconcepts hroles hcheck,
-        run round = .frontier document hconcepts hroles hcheck →
-          document.node_count = 8 * 2 ^ round) :
+      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+        (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+      (forbidden : ∀ budget,
+        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (hlearn : ∀ budget retry folds,
+        attempt budget retry = .rejected folds →
+          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+      (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+        attempt budget retry = .done
+          (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget) :
       CertifiedHTProductionGlobalRoute (HasNonemptyModel source)
   | equality
       {source target : List
@@ -89,10 +96,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
     (route : CertifiedHTProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent run hnodes =>
-      obtain ⟨round, hsemantics⟩ :=
-        checked_regular_doubling_decides_source equivalent run hnodes
-      generalize houtcome : run round = outcome at hsemantics
+  | regular equivalent attempt forbidden hlearn hnodes =>
+      obtain ⟨_, _, outcome, _, hsemantics⟩ :=
+        checked_regular_fold_learning_doubling_decides_source equivalent
+          attempt forbidden hlearn hnodes
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩

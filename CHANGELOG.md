@@ -129,6 +129,14 @@
   theorems; proving that every concrete blocked-open Rust candidate eventually
   serializes to an accepted terminal certificate remains the HT completion
   obligation.
+- Make rejected equality-free blocker candidates drive finite search progress.
+  Production now blacklists every rejected `(blocked, blocker)` fold and reruns
+  at the same node budget, so it cannot resubmit the same invalid regular model
+  after merely doubling the cap. Lean proves that fresh-fold learning terminates
+  at each finite budget and composes those settled attempts with checked
+  frontier doubling and source-model equivalence. The production-global regular
+  route now requires this two-level learned-fold structure instead of an
+  unexplained abstract sequence of round outcomes.
 
 ### Certify native-ABox cardinality taxonomies
 

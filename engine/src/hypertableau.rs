@@ -3146,9 +3146,19 @@ impl LeanHtRefutationState {
     }
 
     fn pairwise_blocker_ancestor(&self, node: Node) -> Option<Node> {
+        self.pairwise_blocker_ancestor_avoiding(node, &HashSet::new())
+    }
+
+    fn pairwise_blocker_ancestor_avoiding(
+        &self,
+        node: Node,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> Option<Node> {
         let mut ancestor = self.witness_parent.get(node).copied().flatten();
         while let Some(candidate) = ancestor {
-            if self.same_pairwise_signature(candidate, node) {
+            if !forbidden_folds.contains(&(node, candidate))
+                && self.same_pairwise_signature(candidate, node)
+            {
                 return Some(candidate);
             }
             ancestor = self.witness_parent.get(candidate).copied().flatten();
@@ -3301,12 +3311,19 @@ impl LeanHtRefutationState {
     }
 
     fn blocked_open_leaf(&self) -> LeanHtBlockedOpenLeaf {
+        self.blocked_open_leaf_avoiding(&HashSet::new())
+    }
+
+    fn blocked_open_leaf_avoiding(
+        &self,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> LeanHtBlockedOpenLeaf {
         let mut folds: Vec<(Node, Node)> = self
             .obligations
             .iter()
             .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
             .filter_map(|&(_, _, source)| {
-                self.pairwise_blocker_ancestor(source)
+                self.pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
                     .map(|blocker| (source, blocker))
             })
             .collect();
@@ -9698,6 +9715,21 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtRefutationOutcome {
+        self.lean_refutation_avoiding_folds(
+            state,
+            variable_count,
+            node_budget,
+            &HashSet::new(),
+        )
+    }
+
+    fn lean_refutation_avoiding_folds(
+        &self,
+        state: &mut LeanHtRefutationState,
+        variable_count: usize,
+        node_budget: usize,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> LeanHtRefutationOutcome {
         if state.clashes() {
             return LeanHtRefutationOutcome::Closed(
                 LeanHtRefutationTree::Clash,
@@ -9737,7 +9769,12 @@ impl Ht {
                         state.progress_measure() > progress_before,
                         "HT certificate branch recursion must add a finite fact"
                     );
-                    let result = self.lean_refutation(state, variable_count, node_budget);
+                    let result = self.lean_refutation_avoiding_folds(
+                        state,
+                        variable_count,
+                        node_budget,
+                        forbidden_folds,
+                    );
                     state.remove(atom, &assignment);
                     let (child, child_used) = match result {
                         LeanHtRefutationOutcome::Closed(child, child_used) => (child, child_used),
@@ -9773,7 +9810,11 @@ impl Ht {
             // Clause saturation has already reached a global fixpoint in this
             // state. A repeated full pairwise predecessor signature may fold
             // this source; continue searching for any unblocked obligation.
-            .filter(|&(_, _, source)| !state.pairwise_blocked_by_ancestor(source))
+            .filter(|&(_, _, source)| {
+                state
+                    .pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
+                    .is_none()
+            })
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -9800,7 +9841,12 @@ impl Ht {
                 state.progress_measure() > progress_before,
                 "HT certificate witness recursion must add finite facts"
             );
-            let result = self.lean_refutation(state, variable_count, node_budget);
+            let result = self.lean_refutation_avoiding_folds(
+                state,
+                variable_count,
+                node_budget,
+                forbidden_folds,
+            );
             state.labels.remove(&(target, filler));
             state.edges.remove(&(role, source, target));
             state.witness_step.pop();
@@ -9827,7 +9873,7 @@ impl Ht {
             };
         }
 
-        LeanHtRefutationOutcome::Open(state.blocked_open_leaf())
+        LeanHtRefutationOutcome::Open(state.blocked_open_leaf_avoiding(forbidden_folds))
     }
 
     /// Materialize an untrusted blocked leaf as an ordinary finite SAT graph.
@@ -10545,9 +10591,15 @@ impl Ht {
                 .unwrap_or(0),
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
-            match self.lean_refutation(&mut state, variable_count, node_budget) {
+            match self.lean_refutation_avoiding_folds(
+                &mut state,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
                 LeanHtRefutationOutcome::Closed(_, _) => {
                     let finite = self.lean_unsat_certificate_json_raw()?;
                     let envelope = Self::lean_regular_decision_envelope(finite, false)?;
@@ -10560,11 +10612,15 @@ impl Ht {
                     if self.lean_decision_candidate_passes(&candidate)? {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "regular equality-free HT",
-                    )?;
+                    let mut learned = false;
+                    for fold in leaf.folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free regular decision candidate".to_string(),
+                        );
+                    }
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -24201,6 +24257,29 @@ mod tests {
         assert_eq!(leaf.labels.len(), 3);
         assert_eq!(leaf.edges.len(), 2);
         assert_eq!(leaf.obligations.len(), 3);
+        let rejected_folds: HashSet<(Node, Node)> = leaf.folds.iter().copied().collect();
+        let mut retry_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+        match cyclic.lean_refutation_avoiding_folds(
+            &mut retry_state,
+            1,
+            4,
+            &rejected_folds,
+        ) {
+            LeanHtRefutationOutcome::Open(retry) => {
+                assert!(
+                    retry.folds.iter().all(|fold| !rejected_folds.contains(fold)),
+                    "a rejected blocker fold must not be submitted again",
+                );
+                assert!(
+                    retry.node_count > leaf.node_count,
+                    "forbidding the rejected fold must force genuine expansion",
+                );
+            }
+            LeanHtRefutationOutcome::Frontier(frontier) => {
+                assert_eq!(frontier.node_count, 4);
+            }
+            _ => panic!("rejected-fold retry returned neither open nor frontier"),
+        }
         let raw_certificate = cyclic
             .lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)
             .expect("materialize the blocked leaf as a finite SAT candidate");

@@ -225,6 +225,43 @@ theorem checked_regular_doubling_decides
       hconcepts hroles
   exact hrejected (hchecks round)
 
+/-- Totality of the actual two-level equality-free producer shape. At each
+doubling budget, rejected blocker candidates are learned away until one
+checked round outcome remains. Those settled outcomes then satisfy the outer
+address-frontier doubling theorem. -/
+theorem checked_regular_fold_learning_doubling_decides
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology))
+    (forbidden : ∀ budget,
+      Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (hlearn : ∀ budget retry folds,
+      attempt budget retry = .rejected folds →
+        forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+          ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      attempt budget retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      attempt budget retry = .done outcome ∧ outcome.Semantics := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      attempt budget retry = .done outcome := by
+    intro budget
+    exact fold_learning_eventually_done (attempt budget) (forbidden budget)
+      (hlearn budget)
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hcheck,
+      settled budget = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_regular_doubling_decides settled hsettledNodes
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 /-- Source-level totality for the checked equality-free regular route. Under
 KM's doubling schedule, a target normalization that is model-equivalent to the
 source eventually yields the correct SAT or UNSAT statement for the source. -/
@@ -241,11 +278,40 @@ theorem checked_regular_doubling_decides_source
   obtain ⟨round, hsemantics⟩ := checked_regular_doubling_decides run hnodes
   exact ⟨round, (run round).source_semantics_of_equivalent equivalent hsemantics⟩
 
+/-- Source-level form of the concrete learned-fold producer theorem. This is
+the equality-free global-route capstone used by production: internal rejected
+folds terminate, checked frontiers drive doubling, and a conclusive normalized
+result transports across the exact source projection. -/
+theorem checked_regular_fold_learning_doubling_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (forbidden : ∀ budget,
+      Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (hlearn : ∀ budget retry folds,
+      attempt budget retry = .rejected folds →
+        forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+          ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      attempt budget retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      attempt budget retry = .done outcome ∧ outcome.SourceSemantics source := by
+  obtain ⟨budget, retry, outcome, hattempt, hsemantics⟩ :=
+    checked_regular_fold_learning_doubling_decides attempt forbidden hlearn hnodes
+  exact ⟨budget, retry, outcome, hattempt,
+    outcome.source_semantics_of_equivalent equivalent hsemantics⟩
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides
+#print axioms checked_regular_fold_learning_doubling_decides
 #print axioms CheckedRegularRoundOutcome.source_semantics_of_equivalent
 #print axioms checked_regular_doubling_decides_source
+#print axioms checked_regular_fold_learning_doubling_decides_source
 
 end ContextCalculus.Hypertableau

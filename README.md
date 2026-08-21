@@ -452,8 +452,13 @@ Over the resulting finite fact vocabulary, Lean proves strict branch growth is
 well-founded and proves the exhaustive-search completeness capstone: a concrete
 transition enumerator that exposes every terminal obstruction and combines all
 closed children must either refute the root or reach a canonical model of the
-exact guarded ontology. Instantiating those transition premises for every Rust
-HT update remains in progress.
+exact guarded ontology. The equality-free production-global route additionally
+models rejected blocker certificates explicitly: KM learns every rejected fold,
+Lean proves that these retries terminate at each finite node budget, and the
+settled attempts compose with checked frontier doubling and source projection.
+The remaining equality-free producer obligation is to prove that one of the
+finitely explored blocker choices constructs the exact regular-cover terminal
+invariant whenever the source ontology is satisfiable.
 
 Lean now represents an equality-free HT state exactly as a finite set of label,
 edge, and obligation facts. It proves round-trip decoding, strict growth for
