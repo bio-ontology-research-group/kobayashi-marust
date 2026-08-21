@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.204] – 2026-08-21
+
+### Compose bundle projection with role-domain consequences
+
+- Define indexed domain-consequence evidence for every member of a finite
+  Skolem-bundle family.
+- Prove each generated `body → Domain(x)` clause follows from the matching
+  projected existential, role inclusion, and role-domain premise in the same
+  interpretation.
+- Lift the proof to the complete finite list of domain extras emitted beside
+  all bundles.
+- Prove appending those justified extras preserves and reflects the model set
+  of the complete bundle target ontology.
+
+The executable wire still needs to reconstruct role-hierarchy paths and domain
+premises from source clauses before production may use this theorem.
+Cardinality replacement, nominal/ABox projection, the remaining HT audit, CB,
+and routing certification remain unfinished.
+
 ## [0.3.203] – 2026-08-21
 
 ### Emit checked multi-filler bundle evidence from Rust

@@ -41,7 +41,11 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.203`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.204`. Lean now also composes finite multi-filler Skolem-bundle
+projection with every role-domain consequence justified by matching semantic
+role-inclusion and domain premises. The executable checker does not yet accept
+these extras until its wire reconstructs those premises from source clauses.
+Lean proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
