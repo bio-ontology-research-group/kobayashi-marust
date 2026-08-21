@@ -237,6 +237,224 @@ def Interp.modelsCardinalityDefExact
   ∀ source, I.concept definition.marker source ↔
     I.cardinalityCondition definition source
 
+structure ComplementaryCardinalityPair
+    (maximum minimum : CardinalityDef Concept Role) : Prop where
+  maximum_kind : maximum.kind = .maximum
+  minimum_kind : minimum.kind = .minimum
+  minimum_bound : minimum.bound = maximum.bound + 1
+  same_role : minimum.role = maximum.role
+  same_filler : minimum.filler = maximum.filler
+
+def Interp.modelsCardinalitySplit
+    (I : Interp Domain Concept Role)
+    (maximum minimum : CardinalityDef Concept Role) : Prop :=
+  ∀ source,
+    (I.concept maximum.marker source ∨ I.concept minimum.marker source) ∧
+    ¬(I.concept maximum.marker source ∧ I.concept minimum.marker source)
+
+def cardinalitySplitClause
+    (maximum minimum : CardinalityDef Concept Role) : Clause Unit Concept Role := {
+  body := []
+  head := [.concept (.pos maximum.marker) (), .concept (.pos minimum.marker) ()]
+}
+
+def cardinalityClashClause
+    (maximum minimum : CardinalityDef Concept Role) : Clause Unit Concept Role := {
+  body := [.concept (.pos maximum.marker) (), .concept (.pos minimum.marker) ()]
+  head := []
+}
+
+def cardinalitySplitTheory
+    (maximum minimum : CardinalityDef Concept Role) : List (Clause Unit Concept Role) :=
+  [cardinalitySplitClause maximum minimum,
+    cardinalityClashClause maximum minimum]
+
+theorem models_cardinalitySplitClause_iff
+    (I : Interp Domain Concept Role) :
+    I.modelsClause (cardinalitySplitClause maximum minimum) ↔
+      ∀ source, I.concept maximum.marker source ∨
+        I.concept minimum.marker source := by
+  constructor
+  · intro hmodels source
+    rcases hmodels (fun _ => source) (by
+      intro atom hmem
+      simp [cardinalitySplitClause] at hmem) with ⟨atom, hmem, hsat⟩
+    simp [cardinalitySplitClause] at hmem
+    rcases hmem with rfl | rfl
+    · exact Or.inl hsat
+    · exact Or.inr hsat
+  · intro hmodels assignment _
+    rcases hmodels (assignment ()) with hmaximum | hminimum
+    · exact ⟨.concept (.pos maximum.marker) (), by simp [cardinalitySplitClause], hmaximum⟩
+    · exact ⟨.concept (.pos minimum.marker) (), by simp [cardinalitySplitClause], hminimum⟩
+
+theorem models_cardinalityClashClause_iff
+    (I : Interp Domain Concept Role) :
+    I.modelsClause (cardinalityClashClause maximum minimum) ↔
+      ∀ source, ¬(I.concept maximum.marker source ∧
+        I.concept minimum.marker source) := by
+  constructor
+  · intro hmodels source hboth
+    rcases hmodels (fun _ => source) (by
+      intro atom hmem
+      simp [cardinalityClashClause] at hmem
+      rcases hmem with rfl | rfl
+      · exact hboth.1
+      · exact hboth.2) with ⟨atom, hmem, _⟩
+    simp [cardinalityClashClause] at hmem
+  · intro hmodels assignment hbody
+    exfalso
+    apply hmodels (assignment ())
+    constructor
+    · exact hbody (.concept (.pos maximum.marker) ()) (by
+        simp [cardinalityClashClause])
+    · exact hbody (.concept (.pos minimum.marker) ()) (by
+        simp [cardinalityClashClause])
+
+theorem models_cardinalitySplitTheory_iff
+    (I : Interp Domain Concept Role) :
+    I.models (cardinalitySplitTheory maximum minimum) ↔
+      I.modelsCardinalitySplit maximum minimum := by
+  rw [Interp.models, Interp.modelsCardinalitySplit]
+  simp only [cardinalitySplitTheory]
+  constructor
+  · intro hmodels source
+    constructor
+    · exact (models_cardinalitySplitClause_iff I).mp
+        (hmodels _ (by simp)) source
+    · exact (models_cardinalityClashClause_iff I).mp
+        (hmodels _ (by simp)) source
+  · intro hmodels clause hmem
+    simp at hmem
+    rcases hmem with rfl | rfl
+    · exact (models_cardinalitySplitClause_iff I).mpr fun source => (hmodels source).1
+    · exact (models_cardinalityClashClause_iff I).mpr fun source => (hmodels source).2
+
+theorem ComplementaryCardinalityPair.minimumSuccessor_eq
+    (maximum minimum : CardinalityDef Concept Role)
+    (pair : ComplementaryCardinalityPair maximum minimum)
+    (I : Interp Domain Concept Role) (source : Domain) :
+    I.cardinalitySuccessor minimum source =
+      I.cardinalitySuccessor maximum source := by
+  funext target
+  simp [Interp.cardinalitySuccessor, pair.same_role, pair.same_filler]
+
+theorem complementary_models_and_split_iff_exact
+    (I : Interp Domain Concept Role)
+    (maximum minimum : CardinalityDef Concept Role)
+    (pair : ComplementaryCardinalityPair maximum minimum) :
+    (I.modelsCardinalityDef maximum ∧
+        I.modelsCardinalityDef minimum ∧
+        I.modelsCardinalitySplit maximum minimum) ↔
+      (I.modelsCardinalityDefExact maximum ∧
+        I.modelsCardinalityDefExact minimum) := by
+  have hsuccessor : ∀ source,
+      I.cardinalitySuccessor minimum source =
+        I.cardinalitySuccessor maximum source :=
+    ComplementaryCardinalityPair.minimumSuccessor_eq maximum minimum pair I
+  constructor
+  · rintro ⟨hmaximum, hminimum, hsplit⟩
+    constructor
+    · intro source
+      constructor
+      · intro hmarker
+        simpa [Interp.cardinalityCondition, pair.maximum_kind] using
+          hmaximum source hmarker
+      · intro hatMost
+        have hatMostMaximum : HasAtMost maximum.bound
+            (I.cardinalitySuccessor maximum source) := by
+          simpa [Interp.cardinalityCondition, pair.maximum_kind] using hatMost
+        rcases (hsplit source).1 with hmarker | hminimumMarker
+        · exact hmarker
+        · have hatLeast := hminimum source hminimumMarker
+          have hatLeastMaximum : HasAtLeast (maximum.bound + 1)
+              (I.cardinalitySuccessor maximum source) := by
+            simpa [Interp.modelsCardinalityDef, pair.minimum_kind,
+              pair.minimum_bound, hsuccessor source] using hatLeast
+          exact False.elim (hatMostMaximum hatLeastMaximum)
+    · intro source
+      constructor
+      · intro hmarker
+        have hatLeast := hminimum source hmarker
+        simpa [Interp.cardinalityCondition, pair.minimum_kind,
+          pair.minimum_bound, hsuccessor source] using hatLeast
+      · intro hatLeast
+        rcases (hsplit source).1 with hmaximumMarker | hmarker
+        · have hatMost := hmaximum source hmaximumMarker
+          have hatMostMaximum : HasAtMost maximum.bound
+              (I.cardinalitySuccessor maximum source) := by
+            simpa [Interp.modelsCardinalityDef, pair.maximum_kind] using hatMost
+          have hatLeastMaximum : HasAtLeast (maximum.bound + 1)
+              (I.cardinalitySuccessor maximum source) := by
+            simpa [Interp.cardinalityCondition, pair.minimum_kind,
+              pair.minimum_bound, hsuccessor source] using hatLeast
+          exact False.elim (hatMostMaximum hatLeastMaximum)
+        · exact hmarker
+  · rintro ⟨hmaximum, hminimum⟩
+    have hmaximumDef : I.modelsCardinalityDef maximum := by
+      intro source hmarker
+      simpa [Interp.cardinalityCondition, Interp.modelsCardinalityDef] using
+        (hmaximum source).mp hmarker
+    have hminimumDef : I.modelsCardinalityDef minimum := by
+      intro source hmarker
+      simpa [Interp.cardinalityCondition, Interp.modelsCardinalityDef] using
+        (hminimum source).mp hmarker
+    refine ⟨hmaximumDef, hminimumDef, ?_⟩
+    intro source
+    have hmaximumCondition := hmaximum source
+    have hminimumCondition := hminimum source
+    constructor
+    · by_cases hatMost : HasAtMost maximum.bound
+          (I.cardinalitySuccessor maximum source)
+      · exact Or.inl (hmaximumCondition.mpr (by
+          simpa [Interp.cardinalityCondition, pair.maximum_kind] using hatMost))
+      · right
+        apply hminimumCondition.mpr
+        simpa [Interp.cardinalityCondition, pair.minimum_kind,
+          pair.minimum_bound, hsuccessor source, HasAtMost] using hatMost
+    · rintro ⟨hmaximumMarker, hminimumMarker⟩
+      have hatMost := hmaximumCondition.mp hmaximumMarker
+      have hatLeast := hminimumCondition.mp hminimumMarker
+      have hatMostMaximum : HasAtMost maximum.bound
+          (I.cardinalitySuccessor maximum source) := by
+        simpa [Interp.cardinalityCondition, pair.maximum_kind] using hatMost
+      have hatLeastMaximum : HasAtLeast (maximum.bound + 1)
+          (I.cardinalitySuccessor maximum source) := by
+        simpa [Interp.cardinalityCondition, pair.minimum_kind,
+          pair.minimum_bound, hsuccessor source] using hatLeast
+      exact hatMostMaximum hatLeastMaximum
+
+theorem complementary_sourceTheory_iff_exact
+    (I : Interp Domain Concept Role)
+    (maximum minimum : CardinalityDef Concept Role)
+    (pair : ComplementaryCardinalityPair maximum minimum) :
+    (I.modelsCardinalityDef maximum ∧
+        I.modelsCardinalityDef minimum ∧
+        I.models (cardinalitySplitTheory maximum minimum)) ↔
+      (I.modelsCardinalityDefExact maximum ∧
+        I.modelsCardinalityDefExact minimum) := by
+  rw [models_cardinalitySplitTheory_iff]
+  exact complementary_models_and_split_iff_exact I maximum minimum pair
+
+/-- Complete semantic contract for the exact frontend cardinality family:
+the maximum pigeonhole clause, the minimum Skolem expansion, and the
+excluded-middle/clash pair can be replaced by two exact first-class
+definitions, and conversely. -/
+theorem frontendCardinalityFamily_sat_iff_exact
+    (I : Interp Domain Concept Role)
+    (maximum minimum : CardinalityDef Concept Role)
+    (pair : ComplementaryCardinalityPair maximum minimum) :
+    (I.modelsClause (maximumProjectionClause maximum) ∧
+        (∃ functions : MinimumSkolemInterp Domain minimum.bound,
+          ModelsMinimumExpansion I minimum functions) ∧
+        I.models (cardinalitySplitTheory maximum minimum)) ↔
+      (I.modelsCardinalityDefExact maximum ∧
+        I.modelsCardinalityDefExact minimum) := by
+  rw [models_maximumProjectionClause_iff I maximum pair.maximum_kind,
+    exists_minimumExpansion_iff I minimum pair.minimum_kind,
+    models_cardinalitySplitTheory_iff]
+  exact complementary_models_and_split_iff_exact I maximum minimum pair
+
 theorem modelsCardinalityDef_and_recognition_iff_exact
     (I : Interp Domain Concept Role)
     (definition : CardinalityDef Concept Role) :
@@ -569,6 +787,13 @@ theorem FiniteEqCertificate.checkCardinalityDefsExact_sound
 #print axioms minimumExpansion_implies_definition
 #print axioms minimumExpansionFunctions_models
 #print axioms exists_minimumExpansion_iff
+#print axioms ComplementaryCardinalityPair.minimumSuccessor_eq
+#print axioms models_cardinalitySplitClause_iff
+#print axioms models_cardinalityClashClause_iff
+#print axioms models_cardinalitySplitTheory_iff
+#print axioms complementary_models_and_split_iff_exact
+#print axioms complementary_sourceTheory_iff_exact
+#print axioms frontendCardinalityFamily_sat_iff_exact
 #print axioms modelsCardinalityDef_and_recognition_iff_exact
 #print axioms modelsCardinalityDefExact_models
 #print axioms FiniteEqCertificate.checkMaximumRecognition_sound

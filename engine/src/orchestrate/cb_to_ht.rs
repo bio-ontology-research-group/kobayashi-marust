@@ -375,6 +375,8 @@ pub struct CardDefJson {
     pub n: u32,
     pub role: usize,
     pub filler: usize,
+    #[serde(default)]
+    pub exact: bool,
 }
 
 /// Numeric, independently validated named-individual state consumed by the
@@ -2571,6 +2573,46 @@ pub fn convert(
     let drop_em = card_active
         && (std::env::var_os("KM_HT_CARD_DROP_EM").is_some()
             || std::env::var_os("KM_NO_HT_CARD_RECOG").is_none());
+    let mut exact_cardinality_marker_names = std::collections::HashSet::new();
+    if drop_em {
+        for clause in clauses {
+            if em_recognition_drop(clause, &min_markers, &max_markers) {
+                let markers: Vec<&str> = clause
+                    .head
+                    .iter()
+                    .filter_map(|atom| match atom {
+                        JAtom::Concept { concept, .. }
+                            if min_markers.contains(concept) || max_markers.contains(concept) =>
+                        {
+                            Some(concept.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if markers.len() != 2 || clause.head.len() != 2 {
+                    continue;
+                }
+                let Some(left) = cardinalities.iter().find(|card| card.marker == markers[0]) else {
+                    continue;
+                };
+                let Some(right) = cardinalities.iter().find(|card| card.marker == markers[1]) else {
+                    continue;
+                };
+                let complementary = left.min != right.min
+                    && left.role == right.role
+                    && left.filler == right.filler
+                    && if left.min {
+                        right.n.checked_add(1) == Some(left.n)
+                    } else {
+                        left.n.checked_add(1) == Some(right.n)
+                    };
+                if complementary {
+                    exact_cardinality_marker_names.insert(markers[0].to_string());
+                    exact_cardinality_marker_names.insert(markers[1].to_string());
+                }
+            }
+        }
+    }
 
     // KM_HT_CARD_GUARD_EM: rewrite the `⊤ → Q ∨ NQ` recognition splits into
     // guarded form before pass 1 (the sound, lazy-unfolding form of DROP_EM).
@@ -3666,6 +3708,7 @@ pub fn convert(
                 n: cm.n,
                 role: ids.rid(&cm.role),
                 filler: ids.cid(&cm.filler),
+                exact: exact_cardinality_marker_names.contains(&cm.marker),
             });
         }
     }
@@ -4836,6 +4879,97 @@ mod trigger_absorb_tests {
             tin.number,
             "CardMeta must set the semantic number feature independently of Eq-clause retention"
         );
+    }
+
+    #[test]
+    fn exact_cardinality_provenance_comes_only_from_removed_splits() {
+        let split = JClause {
+            body: Vec::new(),
+            head: vec![
+                JAtom::Concept {
+                    concept: "Q_max".into(),
+                    term: vx(),
+                },
+                JAtom::Concept {
+                    concept: "Q_min_complement".into(),
+                    term: vx(),
+                },
+            ],
+        };
+        let malformed_split = JClause {
+            body: Vec::new(),
+            head: vec![
+                JAtom::Concept {
+                    concept: "Q_wrong_max".into(),
+                    term: vx(),
+                },
+                JAtom::Concept {
+                    concept: "Q_wrong_min".into(),
+                    term: vx(),
+                },
+            ],
+        };
+        let cards = vec![
+            CardMeta {
+                marker: "Q_max".into(),
+                min: false,
+                n: 1,
+                role: "R".into(),
+                filler: "C".into(),
+            },
+            CardMeta {
+                marker: "Q_min_complement".into(),
+                min: true,
+                n: 2,
+                role: "R".into(),
+                filler: "C".into(),
+            },
+            CardMeta {
+                marker: "Q_positive_only_min".into(),
+                min: true,
+                n: 3,
+                role: "S".into(),
+                filler: "D".into(),
+            },
+            CardMeta {
+                marker: "Q_wrong_max".into(),
+                min: false,
+                n: 4,
+                role: "R".into(),
+                filler: "C".into(),
+            },
+            CardMeta {
+                marker: "Q_wrong_min".into(),
+                min: true,
+                n: 5,
+                role: "different-role".into(),
+                filler: "C".into(),
+            },
+        ];
+        let tin = convert(
+            &[split, malformed_split],
+            None,
+            &std::collections::HashSet::new(),
+            &cards,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
+        let exact = |marker: &str| {
+            let marker_id = tin.concepts.iter().position(|name| name == marker).unwrap();
+            tin.card_defs
+                .iter()
+                .find(|definition| definition.marker == marker_id)
+                .unwrap()
+                .exact
+        };
+        assert!(exact("Q_max"));
+        assert!(exact("Q_min_complement"));
+        assert!(!exact("Q_positive_only_min"));
+        assert!(!exact("Q_wrong_max"));
+        assert!(!exact("Q_wrong_min"));
     }
 
     #[test]

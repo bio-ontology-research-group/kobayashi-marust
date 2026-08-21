@@ -14637,6 +14637,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+                exact: false,
             }],
             nominal_abox: NominalAboxMeta {
                 complete: true,
@@ -15010,6 +15011,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -15564,6 +15566,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -15822,6 +15825,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
             ..Default::default()
@@ -15886,6 +15890,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
@@ -16115,6 +16120,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(vec![("a", "__nom__a", vec![])], vec![]),
             ..Default::default()
@@ -16887,6 +16893,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: meta,
             ..Default::default()
@@ -17006,6 +17013,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![C::Name("A".into())])],
@@ -17252,6 +17260,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
@@ -17424,6 +17433,7 @@ mod tests {
             n: 2,
             role: 0,
             filler: 0,
+        exact: false,
         });
         let (mut direct_algo, mut direct_ctx, direct) =
             fresh_bridge_env_with_trigger_absorption(&direct_tin, true);
@@ -17487,6 +17497,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 0,
+            exact: false,
             }],
             nominal_abox: native_nominal_meta(
                 vec![
@@ -21174,6 +21185,7 @@ mod tests {
                 n: 2,
                 role: 0,
                 filler: 1,
+            exact: false,
             }],
             ..Default::default()
         };
@@ -21222,6 +21234,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
+            exact: false,
             }],
             ..Default::default()
         };
@@ -21277,6 +21290,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
+            exact: false,
             }],
             ..Default::default()
         };
@@ -21337,6 +21351,7 @@ mod tests {
                 n: 1,
                 role: 0,
                 filler: 1,
+            exact: false,
             }],
             ..Default::default()
         };
@@ -21371,6 +21386,7 @@ mod tests {
                     n: 3,
                     role: 0,
                     filler: 1,
+                exact: false,
                 },
                 CardDefJson {
                     marker: 0,
@@ -21378,6 +21394,7 @@ mod tests {
                     n: 2,
                     role: 0,
                     filler: 1,
+                exact: false,
                 },
             ],
             ..Default::default()

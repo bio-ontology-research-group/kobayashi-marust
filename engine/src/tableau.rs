@@ -4919,6 +4919,8 @@ pub struct JCardDef {
     pub n: u32,
     pub role: R,
     pub filler: C,
+    #[serde(default)]
+    pub exact: bool,
 }
 
 #[derive(Serialize)]
@@ -5626,10 +5628,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             )?;
         }
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
-        let card_raw: Vec<(C, bool, u32, R, C)> = inp
+        let card_raw: Vec<(C, bool, u32, R, C, bool)> = inp
             .card_defs
             .iter()
-            .map(|d| (d.marker, d.min, d.n, d.role, d.filler))
+            .map(|d| (d.marker, d.min, d.n, d.role, d.filler, d.exact))
             .collect();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active

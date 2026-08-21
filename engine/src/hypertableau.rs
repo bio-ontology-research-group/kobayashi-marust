@@ -3850,6 +3850,9 @@ pub struct Ht {
     /// `applyATMOSTRule` fire when a marker concept lands on a node, instead of
     /// KM's clausified `⋁ Eq` merge. Empty unless `card` is on.
     card_defs: HashMap<C, CardDef>,
+    /// Source markers whose recognition split was removed by `cb_to_ht`.
+    /// Only these require exact marker semantics in a SAT certificate.
+    cert_exact_cardinality_markers: HashSet<C>,
     /// KM_HT_CARD master switch: route number restrictions through the Konclude
     /// number rules (`card_defs`) rather than the legacy `KM_HT_NUMBER` Eq-merge.
     card: bool,
@@ -9188,15 +9191,19 @@ impl Ht {
         let exact_maximums: Vec<usize> = definitions
             .iter()
             .enumerate()
-            .filter_map(|(index, (_, definition))| {
-                (definition.kind == CardKind::Max).then_some(index)
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Max
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
             })
             .collect();
         let exact_definitions: Vec<usize> = definitions
             .iter()
             .enumerate()
-            .filter_map(|(index, (_, definition))| {
-                (definition.kind == CardKind::Min).then_some(index)
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Min
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
             })
             .collect();
         let definitions: Vec<serde_json::Value> = definitions
@@ -11125,15 +11132,19 @@ impl Ht {
         let exact_maximums = definitions
             .iter()
             .enumerate()
-            .filter_map(|(index, (_, definition))| {
-                (definition.kind == CardKind::Max).then_some(index)
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Max
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
             })
             .collect();
         let exact_definitions = definitions
             .iter()
             .enumerate()
-            .filter_map(|(index, (_, definition))| {
-                (definition.kind == CardKind::Min).then_some(index)
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Min
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
             })
             .collect();
         let ontology: Vec<LeanHtClause> = self
@@ -12838,6 +12849,7 @@ impl Ht {
             },
             forall_idx,
             card_defs: HashMap::new(),
+            cert_exact_cardinality_markers: HashSet::new(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
             pc_tainted: Vec::new(),
@@ -13157,11 +13169,12 @@ impl Ht {
 
     /// KM_HT_CARD: install number restrictions from the cb_to_ht TInput, whose
     /// `card_defs` carry plain ids (the `CardDef`/`CardKind` types are private).
-    /// Each tuple is `(marker, is_min, n, role, filler)`; fillers are positive
-    /// (the frontend reifies `≥n role.C` with a positive marker `C`).
-    pub fn set_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C)]) {
+    /// Each tuple is `(marker, is_min, n, role, filler, exact)`; fillers are
+    /// positive and `exact` records a removed source recognition split.
+    pub fn set_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C, bool)]) {
         let mut map: HashMap<C, CardDef> = HashMap::new();
-        for &(marker, is_min, n, role, filler) in defs {
+        self.cert_exact_cardinality_markers.clear();
+        for &(marker, is_min, n, role, filler, exact) in defs {
             map.insert(
                 marker,
                 CardDef {
@@ -13174,6 +13187,9 @@ impl Ht {
                     },
                 },
             );
+            if exact {
+                self.cert_exact_cardinality_markers.insert(marker);
+            }
         }
         self.set_card_defs(map);
     }
@@ -21294,14 +21310,14 @@ mod tests {
         let mut mergeable = ht(Vec::new());
         mergeable.set_nominals(vec![SUBJECT, LEFT, RIGHT]);
         mergeable.set_native_abox(seeds.clone(), Vec::new(), edges.clone());
-        mergeable.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER)]);
+        mergeable.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER, false)]);
         mergeable.set_number(true);
         assert_eq!(mergeable.consistent(&[]), Some(true));
 
         let mut distinct = ht(Vec::new());
         distinct.set_nominals(vec![SUBJECT, LEFT, RIGHT]);
         distinct.set_native_abox(seeds, vec![(1, 2)], edges);
-        distinct.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER)]);
+        distinct.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER, false)]);
         distinct.set_number(true);
         assert_eq!(distinct.consistent(&[]), Some(false));
     }
@@ -21490,8 +21506,8 @@ mod tests {
             vec![con(false, MAX_MARKER, X), con(true, MIN_MARKER, X)],
         )]);
         reasoner.set_card_defs_raw(&[
-            (MIN_MARKER, true, 2, R0, FILLER),
-            (MAX_MARKER, false, 1, R0, FILLER),
+            (MIN_MARKER, true, 2, R0, FILLER, true),
+            (MAX_MARKER, false, 1, R0, FILLER, true),
         ]);
         reasoner
     }
@@ -21551,7 +21567,7 @@ mod tests {
             return;
         };
         let mut reasoner = ht(Vec::new());
-        reasoner.set_card_defs_raw(&[(MARKER, true, 2, R0, FILLER)]);
+        reasoner.set_card_defs_raw(&[(MARKER, true, 2, R0, FILLER, false)]);
         assert_eq!(reasoner.consistent(&[]), Some(true));
         let path = std::env::temp_dir().join(format!(
             "km-ht-cardinality-sat-cert-{}-{}.json",
@@ -23076,7 +23092,7 @@ mod tests {
             vec![con(false, A, X), Atom::Eq { s: X, t: X }],
         )]);
         let mut cardinality = ht(Vec::new());
-        cardinality.set_card_defs_raw(&[(A, true, 1, R0, B)]);
+        cardinality.set_card_defs_raw(&[(A, true, 1, R0, B, false)]);
         let documents = [
             plain
                 .lean_taxonomy_certificate_json(&[A, B])
