@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.184] – 2026-08-21
+
+### Certify ordinary witness progress
+
+- Prove an existential obligation cannot originate at an inactive node under
+  the checked inactive-prefix freshness invariant.
+- Prove every selected quotient-unblocked witness source is below
+  `active_nodes`.
+- Construct the exact ordinary witness successor at node ID `active_nodes`,
+  increment the active prefix by one, preserve indexed minimum metadata, and
+  prove the enlarged inactive prefix remains fresh.
+- Lift strict equality-aware guarded-fact growth through the combined
+  cardinality progress measure and prove every selected witness child is a
+  strict step in the well-founded production relation.
+- Audit all witness endpoints without `sorryAx`.
+
+Maximum growth, total recursive outcome production, concrete Rust field
+construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.183] – 2026-08-21
 
 ### Certify active-prefix clause recursion

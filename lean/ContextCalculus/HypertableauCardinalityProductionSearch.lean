@@ -521,6 +521,101 @@ theorem CardinalityRuntimeConfig.clauseChild_progress
       simpa only [CardinalityRuntimeConfig.mem_progressFacts,
         EqState.mem_eqGuardedFacts] using hlift
 
+theorem DistinctEqState.lt_active_of_obligation
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (source : Fin nodeCount) (role : Role) (filler : Lit Concept)
+    (hobligation : state.base.base.obligation role filler source) : source.1 < active := by
+  by_contra hnot
+  exact (hprefix source (Nat.le_of_not_gt hnot)).1.1.2.2 role filler hobligation
+
+theorem selectCardinalityWitness_source_lt_active
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    {candidate : WitnessCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectEqUnblockedUnwitnessed state.base parent ancestors = some candidate) :
+    candidate.2.2.1 < active := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectEqUnblockedUnwitnessed] using hselect)
+  have hproperties :=
+    (eqUnblockedWitnessCandidateBool_eq_true_iff state.base parent ancestors candidate).mp
+      hfound.2
+  exact state.lt_active_of_obligation active hprefix candidate.2.2 candidate.1
+    candidate.2.1 hproperties.1
+
+def CardinalityRuntimeConfig.witnessChild
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    {candidate : WitnessCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectEqUnblockedUnwitnessed config.state.base parent ancestors = some candidate)
+    (hfit : config.active < nodeCount) :
+    CardinalityRuntimeConfig Concept Role definitions nodeCount where
+  state := config.state.materializeWitness candidate.2.2
+    (rustNextTarget config.active nodeCount hfit) candidate.1 candidate.2.1
+  active := config.active + 1
+  expanded := config.expanded
+  active_le := hfit
+  inactive_fresh := config.state.inactivePrefixFresh_materializeWitness config.active
+    config.inactive_fresh candidate.2.2
+    (selectCardinalityWitness_source_lt_active config.state parent ancestors config.active
+      config.inactive_fresh hselect) candidate.1 candidate.2.1 hfit
+
+theorem CardinalityRuntimeConfig.witnessChild_progress
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    {candidate : WitnessCandidate (Fin nodeCount) Concept Role}
+    (hselect : selectEqUnblockedUnwitnessed config.state.base parent ancestors = some candidate)
+    (hfit : config.active < nodeCount) :
+    config.progressFacts ⊂
+      (config.witnessChild parent ancestors hselect hfit).progressFacts := by
+  classical
+  have hfresh := config.inactive_fresh (rustNextTarget config.active nodeCount hfit)
+    (by simp [rustNextTarget])
+  have hgrowth := config.state.base.eqGuardedFacts_materializeWitness_ssubset
+    candidate.2.2 (rustNextTarget config.active nodeCount hfit) candidate.1 candidate.2.1
+    hfresh.1
+  rw [Finset.ssubset_iff_subset_ne] at hgrowth ⊢
+  constructor
+  · intro fact hfact
+    simp only [CardinalityRuntimeConfig.mem_progressFacts] at hfact ⊢
+    rcases fact with guarded | fact
+    · have hpreserved := hgrowth.1
+        (by simpa only [EqState.mem_eqGuardedFacts] using hfact)
+      simpa only [EqState.mem_eqGuardedFacts] using hpreserved
+    · rcases fact with pair | site <;> exact hfact
+  · intro hequal
+    apply hgrowth.2
+    ext guarded
+    constructor
+    · intro hparent
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          config.progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts] using hparent
+      rw [hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts] using hlift
+    · intro hchild
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          (config.witnessChild parent ancestors hselect hfit).progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts] using hchild
+      rw [← hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts] using hlift
 def CardinalityStrictGrowth
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -696,5 +791,8 @@ theorem CardinalityProductionStep.closedRefutes_of_children
 #print axioms selectActiveCardinalityClauseGrounding_properties
 #print axioms selectActiveCardinalityClauseGrounding_closedRefutes
 #print axioms CardinalityRuntimeConfig.clauseChild_progress
+#print axioms DistinctEqState.lt_active_of_obligation
+#print axioms selectCardinalityWitness_source_lt_active
+#print axioms CardinalityRuntimeConfig.witnessChild_progress
 
 end ContextCalculus.Hypertableau
