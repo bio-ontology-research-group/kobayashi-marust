@@ -1,5 +1,8 @@
 import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauFrontierWire
+import ContextCalculus.HypertableauCardinalityTaxonomyWire
+import ContextCalculus.HypertableauNativeABoxTaxonomy
+import ContextCalculus.HypertableauNativeABoxCardinalityTaxonomyWire
 
 /-!
 # Total production hypertableau taxonomy search
@@ -168,8 +171,201 @@ theorem CertifiedHTProductionTaxonomyRoute.decides
     | frontier document hconcepts hroles hcheck =>
         simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
 
+/-- Cardinality-aware production taxonomy searches.  The semantic index keeps
+the normalized number restrictions in every cell. -/
+structure CertifiedHTCardinalityProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptRun : ∀ concept, concept ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (UnsatisfiableConceptWithCardinality ontology definitions concept)
+  conceptNodes : ∀ concept hnamed round document hconcepts hroles hcheck,
+    conceptRun concept hnamed round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+  subsumptionRun : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (EntailsSubWithCardinality ontology definitions sub sup)
+  subsumptionNodes : ∀ sub hsub sup hsup round document hconcepts hroles hcheck,
+    subsumptionRun sub hsub sup hsup round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+
+theorem CertifiedHTCardinalityProductionTaxonomyRoute.decides
+    (route : CertifiedHTCardinalityProductionTaxonomyRoute conceptCount roleCount
+      variableCount ontology definitions named) :
+    Nonempty (CompleteCardinalityTaxonomyCertificate ontology definitions named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    have hround : Nonempty { round //
+        (route.conceptRun concept hnamed round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.conceptRun concept hnamed)
+          (route.conceptNodes concept hnamed) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.conceptRun concept hnamed round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .unsatisfiable hsemantics
+    | refutes proof => exact .satisfiable hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+  · intro sub hsub sup hsup
+    have hround : Nonempty { round //
+        (route.subsumptionRun sub hsub sup hsup round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.subsumptionRun sub hsub sup hsup)
+          (route.subsumptionNodes sub hsub sup hsup) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.subsumptionRun sub hsub sup hsup round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .entailed hsemantics
+    | refutes proof => exact .notEntailed hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
+/-- Native-ABox production taxonomy searches.  Every cell is interpreted
+jointly with the same complete ABox rather than against the TBox alone. -/
+structure CertifiedHTNativeABoxProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptRun : ∀ concept, concept ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (abox.UnsatisfiableConceptWith ontology concept)
+  conceptNodes : ∀ concept hnamed round document hconcepts hroles hcheck,
+    conceptRun concept hnamed round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+  subsumptionRun : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (abox.EntailsSubWith ontology sub sup)
+  subsumptionNodes : ∀ sub hsub sup hsup round document hconcepts hroles hcheck,
+    subsumptionRun sub hsub sup hsup round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+
+theorem CertifiedHTNativeABoxProductionTaxonomyRoute.decides
+    (route : CertifiedHTNativeABoxProductionTaxonomyRoute conceptCount roleCount
+      variableCount abox ontology named) :
+    Nonempty (CompleteNativeABoxTaxonomyCertificate abox ontology named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    have hround : Nonempty { round //
+        (route.conceptRun concept hnamed round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.conceptRun concept hnamed)
+          (route.conceptNodes concept hnamed) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.conceptRun concept hnamed round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .unsatisfiable hsemantics
+    | refutes proof => exact .satisfiable hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
+  · intro sub hsub sup hsup
+    have hround : Nonempty { round //
+        (route.subsumptionRun sub hsub sup hsup round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.subsumptionRun sub hsub sup hsup)
+          (route.subsumptionNodes sub hsub sup hsup) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.subsumptionRun sub hsub sup hsup round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .entailed hsemantics
+    | refutes proof => exact .notEntailed hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
+/-- The fourth production family combines first-class cardinalities with the
+complete native ABox in every taxonomy query. -/
+structure CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptRun : ∀ concept, concept ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (abox.UnsatisfiableConceptWithCardinality ontology definitions concept)
+  conceptNodes : ∀ concept hnamed round document hconcepts hroles hcheck,
+    conceptRun concept hnamed round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+  subsumptionRun : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named → Nat →
+    CheckedTaxonomyRoundOutcome conceptCount roleCount
+      (abox.EntailsSubWithCardinality ontology definitions sub sup)
+  subsumptionNodes : ∀ sub hsub sup hsup round document hconcepts hroles hcheck,
+    subsumptionRun sub hsub sup hsup round =
+        .frontier document hconcepts hroles hcheck →
+      document.node_count = 8 * 2 ^ round
+
+theorem CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
+    (route : CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute
+      conceptCount roleCount variableCount abox ontology definitions named) :
+    Nonempty (CompleteNativeABoxCardinalityTaxonomyCertificate
+      abox ontology definitions named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    have hround : Nonempty { round //
+        (route.conceptRun concept hnamed round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.conceptRun concept hnamed)
+          (route.conceptNodes concept hnamed) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.conceptRun concept hnamed round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .unsatisfiable hsemantics
+    | refutes proof => exact .satisfiable hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+  · intro sub hsub sup hsup
+    have hround : Nonempty { round //
+        (route.subsumptionRun sub hsub sup hsup round).Semantics } := by
+      rcases checked_taxonomy_doubling_decides
+          (route.subsumptionRun sub hsub sup hsup)
+          (route.subsumptionNodes sub hsub sup hsup) with ⟨round, hsemantics⟩
+      exact ⟨⟨round, hsemantics⟩⟩
+    let selected := Classical.choice hround
+    let round := selected.1
+    have hsemantics := selected.2
+    generalize houtcome : route.subsumptionRun sub hsub sup hsup round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .entailed hsemantics
+    | refutes proof => exact .notEntailed hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
 #print axioms CheckedTaxonomyRoundOutcome.conclusive_semantics
 #print axioms checked_taxonomy_doubling_decides
 #print axioms CertifiedHTProductionTaxonomyRoute.decides
+#print axioms CertifiedHTCardinalityProductionTaxonomyRoute.decides
+#print axioms CertifiedHTNativeABoxProductionTaxonomyRoute.decides
+#print axioms CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
 
 end ContextCalculus.Hypertableau

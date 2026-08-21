@@ -37,6 +37,31 @@ def NativeABox.EntailsSubWith
     (sub sup : Concept) : Prop :=
   ¬abox.SatisfiableWithQuery ontology [.pos sub, .negated sup]
 
+/-- An exact concept-status answer relative to the complete native ABox. -/
+inductive NativeABoxConceptDecision
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role)) (concept : Concept) : Type where
+  | unsatisfiable (proof : abox.UnsatisfiableConceptWith ontology concept)
+  | satisfiable (counterexample : ¬abox.UnsatisfiableConceptWith ontology concept)
+
+/-- An exact ordered subsumption answer relative to the complete native ABox. -/
+inductive NativeABoxSubsumptionDecision
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role)) (sub sup : Concept) : Type where
+  | entailed (proof : abox.EntailsSubWith ontology sub sup)
+  | notEntailed (counterexample : ¬abox.EntailsSubWith ontology sub sup)
+
+/-- A complete exact named taxonomy for one ontology and its complete native
+ABox.  Negative cells are proof-carrying countermodels, not missing positive
+answers. -/
+structure CompleteNativeABoxTaxonomyCertificate
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role)) (named : List Concept) where
+  concept : ∀ candidate, candidate ∈ named →
+    NativeABoxConceptDecision abox ontology candidate
+  subsumption : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    NativeABoxSubsumptionDecision abox ontology sub sup
+
 /-- Semantic initialization contract for a native ABox plus a fresh taxonomy
 query root.  Every joint source model extends to a realization of the exact
 finite refutation root. -/

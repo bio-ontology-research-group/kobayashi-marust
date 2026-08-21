@@ -24,6 +24,47 @@ def NativeABox.SatisfiableWithCardinalityQuery
     Nonempty Domain ∧ I.models ontology ∧ I.modelsCardinalityDefs definitions ∧
       abox.models I value ∧ I.RealizesLiterals query element
 
+def NativeABox.UnsatisfiableConceptWithCardinality
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) (concept : Concept) : Prop :=
+  ¬abox.SatisfiableWithCardinalityQuery ontology definitions [.pos concept]
+
+def NativeABox.EntailsSubWithCardinality
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) (sub sup : Concept) : Prop :=
+  ¬abox.SatisfiableWithCardinalityQuery ontology definitions
+    [.pos sub, .negated sup]
+
+inductive NativeABoxCardinalityConceptDecision
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) (concept : Concept) : Type where
+  | unsatisfiable
+      (proof : abox.UnsatisfiableConceptWithCardinality ontology definitions concept)
+  | satisfiable
+      (counterexample :
+        ¬abox.UnsatisfiableConceptWithCardinality ontology definitions concept)
+
+inductive NativeABoxCardinalitySubsumptionDecision
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) (sub sup : Concept) : Type where
+  | entailed
+      (proof : abox.EntailsSubWithCardinality ontology definitions sub sup)
+  | notEntailed
+      (counterexample : ¬abox.EntailsSubWithCardinality ontology definitions sub sup)
+
+structure CompleteNativeABoxCardinalityTaxonomyCertificate
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) (named : List Concept) where
+  concept : ∀ candidate, candidate ∈ named →
+    NativeABoxCardinalityConceptDecision abox ontology definitions candidate
+  subsumption : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    NativeABoxCardinalitySubsumptionDecision abox ontology definitions sub sup
+
 def NativeABox.InitializesDistinctQueryState
     (abox : NativeABox Individual Concept Role)
     (query : List (Lit Concept))

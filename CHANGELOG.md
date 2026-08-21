@@ -30,6 +30,11 @@
   iteratively deepened concept and ordered-subsumption searches. Checked
   frontiers remain non-verdicts, every positive and negative cell must
   terminate, and the resulting matrix is an exact `CompleteTaxonomyCertificate`.
+- Extend production taxonomy totality to the two semantic families that cannot
+  be reduced to an ordinary TBox matrix: first-class cardinality definitions
+  and a complete native ABox, both separately and in combination. All four
+  production families now terminate into their own exact complete taxonomy
+  certificate, including checked negative cells.
 
 ### Certify native-ABox cardinality taxonomies
 
