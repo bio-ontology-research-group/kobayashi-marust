@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauNativeABoxProjection
 import ContextCalculus.HypertableauDirectProjectionWire
 import ContextCalculus.HypertableauMixedProjectionWire
+import ContextCalculus.HypertableauBundleProjectionWire
 import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauCardinalityDistinctWire
@@ -686,6 +687,239 @@ theorem DecodedMixedNativeABoxRefutation.source_unsatisfiable
   exact decoded.refutation.unsatisfiable
     ⟨Domain, I, value, hdomain, htarget, habox⟩
 
+structure WireBundleNativeABoxRefutation where
+  source_concepts : List String
+  functions : List String
+  direct : List WireDirectSourceClause
+  bundles : List WireSkolemBundle
+  domain_extras : List WireBundleDomainExtra
+  abox_source_map : List Nat
+  refutation : WireNativeABoxRefutation
+deriving FromJson, ToJson, Repr
+
+def decodeConceptMap (kind : String) (sourceCount targetCount : Nat)
+    (values : List Nat) : Except String (Fin targetCount → Fin sourceCount) := do
+  let decoded ← values.mapM (checkedFin kind sourceCount)
+  if hlength : decoded.length = targetCount then
+    return fun index => decoded.get (hlength.symm ▸ index)
+  else throw s!"{kind} has {decoded.length} entries, expected {targetCount}"
+
+def NativeABox.conceptsEmbeddedB
+    (abox : NativeABox (Fin individualCount) TargetConcept Role)
+    [DecidableEq TargetConcept]
+    (sourceOf : TargetConcept → SourceConcept)
+    (embedding : SourceConcept → TargetConcept) : Bool :=
+  (List.finRange individualCount).all fun individual =>
+    (abox.proxies individual ++ abox.assertions individual).all fun concept =>
+      decide (embedding (sourceOf concept) = concept)
+
+theorem NativeABox.conceptsEmbeddedB_sound
+    (abox : NativeABox (Fin individualCount) TargetConcept Role)
+    [DecidableEq TargetConcept]
+    (sourceOf : TargetConcept → SourceConcept)
+    (embedding : SourceConcept → TargetConcept)
+    (hcheck : abox.conceptsEmbeddedB sourceOf embedding = true) :
+    ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      embedding (sourceOf concept) = concept := by
+  simp only [NativeABox.conceptsEmbeddedB, List.all_eq_true,
+    List.mem_finRange, decide_eq_true_eq] at hcheck
+  intro individual concept hconcept
+  exact hcheck individual trivial concept hconcept
+
+structure DecodedBundleNativeABoxRefutation where
+  refutation : DecodedNativeABoxRefutation
+  variable_ge_two : 2 ≤ refutation.initial.seed.variableCount
+  sourceConcepts : List String
+  functions : List String
+  sourceTargets : Fin sourceConcepts.length →
+    Fin refutation.initial.seed.abox.concepts.length
+  direct : List (Clause (Fin refutation.initial.seed.variableCount)
+    (Fin sourceConcepts.length) (Fin refutation.initial.seed.abox.roles.length))
+  bundles : List (DecodedWireBundle (Fin refutation.initial.seed.variableCount)
+    (Fin sourceConcepts.length) (Fin refutation.initial.seed.abox.roles.length)
+    (Fin functions.length) (Fin refutation.initial.seed.abox.concepts.length))
+  domainExtras : List (IndexedBundleDomainSpec (Fin sourceConcepts.length)
+    (Fin refutation.initial.seed.abox.roles.length) bundles.length)
+  nonemptyBundles : bundles ≠ []
+  uniqueFunctions :
+    (skolemPairFunctions (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup
+  embeddingInjective : Function.Injective
+    (bundleConceptEmbedding sourceTargets bundles)
+  rboxSource : Fin refutation.initial.seed.variableCount
+  rboxTarget : Fin refutation.initial.seed.variableCount
+  rboxDistinct : rboxSource ≠ rboxTarget
+  pathPremises : ∀ spec ∈ domainExtras, ∀ clause ∈
+    roleInclusionPathClauses
+      (decodedBundleSpecs bundles spec.bundle).role spec.path rboxSource rboxTarget,
+    clause ∈ direct
+  domainPremises : ∀ spec ∈ domainExtras,
+    roleDomainClause (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+      rboxSource rboxTarget ∈ direct
+  sourceOf : Fin refutation.initial.seed.abox.concepts.length →
+    Fin sourceConcepts.length
+  abox_embedded : ∀ individual concept,
+    concept ∈ refutation.initial.seed.abox.abox.proxies individual ++
+      refutation.initial.seed.abox.abox.assertions individual →
+    bundleConceptEmbedding sourceTargets bundles
+      (.inr (sourceOf concept)) = concept
+  exact_ontology :
+    (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+      (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs bundles) domainExtras) ++
+      refutation.initial.seed.abox.negativeRoleClausesAt
+        refutation.initial.seed.variableCount variable_ge_two).toFinset =
+      refutation.initial.seed.state.base.base.ontology.toFinset
+
+def WireBundleNativeABoxRefutation.decode
+    (wire : WireBundleNativeABoxRefutation) :
+    Except String DecodedBundleNativeABoxRefutation := do
+  let refutation ← wire.refutation.decode
+  let variableWitness ← requireAtLeastTwoVariables refutation.initial.seed.variableCount
+  let hvariables := variableWitness.proof
+  if _hsourceConcepts : wire.source_concepts.Nodup then
+    if _hfunctions : wire.functions.Nodup then
+      let sourceTargets ← checkedNameEmbedding "source concept in target"
+        wire.source_concepts refutation.initial.seed.abox.concepts
+      let direct ← wire.direct.mapM (WireDirectSourceClause.decode
+        refutation.initial.seed.variableCount wire.source_concepts
+        refutation.initial.seed.abox.roles)
+      let bundles ← wire.bundles.mapM (WireSkolemBundle.decode
+        refutation.initial.seed.variableCount wire.source_concepts
+        refutation.initial.seed.abox.concepts refutation.initial.seed.abox.roles
+        wire.functions)
+      if hnonempty : bundles ≠ [] then
+        let rboxSource : Fin refutation.initial.seed.variableCount :=
+          ⟨0, lt_of_lt_of_le Nat.zero_lt_two hvariables⟩
+        let rboxTarget : Fin refutation.initial.seed.variableCount := ⟨1, hvariables⟩
+        have hrboxDistinct : rboxSource ≠ rboxTarget := by
+          intro hequal
+          have hval := congrArg Fin.val hequal
+          simp [rboxSource, rboxTarget] at hval
+        let domainExtras ← wire.domain_extras.mapM
+          (WireBundleDomainExtra.decode wire.source_concepts
+            refutation.initial.seed.abox.roles bundles.length)
+        if hunique : (skolemPairFunctions
+            (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup then
+          if hinjective : (bundleEmbeddingValues sourceTargets bundles).Nodup then
+            if hpaths : ∀ spec ∈ domainExtras, ∀ clause ∈
+                roleInclusionPathClauses
+                  (decodedBundleSpecs bundles spec.bundle).role spec.path
+                    rboxSource rboxTarget,
+                clause ∈ direct then
+              if hdomains : ∀ spec ∈ domainExtras,
+                  roleDomainClause
+                    (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+                      rboxSource rboxTarget ∈ direct then
+                let sourceOf ← decodeConceptMap "native ABox source concept"
+                  wire.source_concepts.length
+                  refutation.initial.seed.abox.concepts.length wire.abox_source_map
+                if hembedded : refutation.initial.seed.abox.abox.conceptsEmbeddedB
+                    sourceOf (fun source =>
+                      bundleConceptEmbedding sourceTargets bundles (.inr source)) = true then
+                  if hequal :
+                      (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+                        (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+                          indexedBundleDomainOntology
+                            (decodedBundleSpecs bundles) domainExtras) ++
+                        refutation.initial.seed.abox.negativeRoleClausesAt
+                          refutation.initial.seed.variableCount hvariables).toFinset =
+                        refutation.initial.seed.state.base.base.ontology.toFinset then
+                    return {
+                      refutation
+                      variable_ge_two := hvariables
+                      sourceConcepts := wire.source_concepts
+                      functions := wire.functions
+                      sourceTargets
+                      direct
+                      bundles
+                      domainExtras
+                      nonemptyBundles := hnonempty
+                      uniqueFunctions := hunique
+                      embeddingInjective :=
+                        bundleConceptEmbedding_injective_of_nodup
+                          sourceTargets bundles hinjective
+                      rboxSource
+                      rboxTarget
+                      rboxDistinct := hrboxDistinct
+                      pathPremises := hpaths
+                      domainPremises := hdomains
+                      sourceOf
+                      abox_embedded :=
+                        refutation.initial.seed.abox.abox.conceptsEmbeddedB_sound
+                          sourceOf (fun source =>
+                            bundleConceptEmbedding sourceTargets bundles (.inr source))
+                          hembedded
+                      exact_ontology := hequal
+                    }
+                  else throw "bundle source conversion differs from the native ABox refutation ontology"
+                else throw "native ABox concept is not an embedded bundle source concept"
+              else throw "bundle domain premise is absent from the source ontology"
+            else throw "bundle role-inclusion path is absent from the source ontology"
+          else throw "bundle definers collide with each other or source concepts"
+        else throw "bundle native ABox projection reuses a Skolem function"
+      else throw "bundle native ABox projection contains no bundles"
+    else throw "bundle native ABox function-name table contains duplicates"
+  else throw "bundle native ABox source concept-name table contains duplicates"
+
+def WireBundleNativeABoxRefutation.check
+    (wire : WireBundleNativeABoxRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedBundleNativeABoxRefutation.source_unsatisfiable
+    (decoded : DecodedBundleNativeABoxRefutation) :
+    ¬∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.sourceConcepts.length)
+          (Fin decoded.refutation.initial.seed.abox.roles.length))
+        (functions : SkolemInterp Domain (Fin decoded.functions.length))
+        (value : Fin decoded.refutation.initial.seed.abox.individuals.length → Domain),
+      Nonempty Domain ∧ I.models decoded.direct ∧
+      ModelsBundles I functions (decodedBundleSpecs decoded.bundles) ∧
+      (decoded.refutation.initial.seed.abox.abox.mapConcepts decoded.sourceOf).models
+        I value := by
+  rintro ⟨Domain, I, functions, value, hdomain, hdirect, hbundles, habox⟩
+  let targetCore := renameOntology
+    (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+    (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+      indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+        decoded.domainExtras)
+  let projection : DecodedBundleProjection := {
+    variableCount := decoded.refutation.initial.seed.variableCount
+    sourceConcepts := decoded.sourceConcepts
+    concepts := decoded.refutation.initial.seed.abox.concepts
+    roles := decoded.refutation.initial.seed.abox.roles
+    functions := decoded.functions
+    sourceTargets := decoded.sourceTargets
+    direct := decoded.direct
+    bundles := decoded.bundles
+    domainExtras := decoded.domainExtras
+    target := targetCore
+    nonemptyBundles := decoded.nonemptyBundles
+    uniqueFunctions := decoded.uniqueFunctions
+    embeddingInjective := decoded.embeddingInjective
+    rboxSource := decoded.rboxSource
+    rboxTarget := decoded.rboxTarget
+    rboxDistinct := decoded.rboxDistinct
+    pathPremises := decoded.pathPremises
+    domainPremises := decoded.domainPremises
+    exactProjection := rfl
+  }
+  obtain ⟨J, hcore, htargetABox⟩ :=
+    projection.source_model_to_target_model_preserving_nativeABox
+      decoded.refutation.initial.seed.abox.abox decoded.sourceOf
+      decoded.abox_embedded I functions value hdirect hbundles habox
+  have happended : J.models (targetCore ++
+      decoded.refutation.initial.seed.abox.negativeRoleClausesAt
+        decoded.refutation.initial.seed.variableCount decoded.variable_ge_two) :=
+    (decoded.refutation.initial.seed.abox.models_append_negativeRoleClausesAt_iff
+      J value htargetABox.1 decoded.variable_ge_two targetCore).2
+        ⟨hcore, htargetABox.2.2.2.2⟩
+  have htarget : J.models decoded.refutation.initial.seed.state.base.base.ontology :=
+    (models_iff_of_toFinset_eq J _ _ decoded.exact_ontology).1 happended
+  exact decoded.refutation.unsatisfiable
+    ⟨Domain, J, value, hdomain, htarget, htargetABox⟩
+
 theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
     (_hcheck : wire.check = .ok true) :
@@ -863,6 +1097,42 @@ example : validMixedNativeRefutation.check = .ok true := by native_decide
 example : rejected ({ validMixedNativeRefutation with pairs := [] }).check = true := by
   native_decide
 
+private def validBundleNativeRefutation : WireBundleNativeABoxRefutation where
+  source_concepts := ["a", "b", "A", "C"]
+  functions := ["f"]
+  direct := [{
+    variableNames := ["x"]
+    body := [.con "A" "x" false]
+    head := []
+  }]
+  bundles := [{
+    variableNames := ["x"]
+    body := [.con "A" "x" false]
+    source := "x"
+    function := "f"
+    role := "r"
+    fillers := [⟨"C", false⟩]
+    definer := "D"
+  }]
+  domain_extras := []
+  abox_source_map := [0, 1, 2, 0, 3]
+  refutation := { validRefutationExample with initial :=
+    { validRefutationExample.initial with
+      abox := { validRefutationExample.initial.abox with
+        concepts := ["a", "b", "A", "D", "C"]
+        negative_role_assertions := [] }
+      ontology := [
+        { body := [.concept { concept := 2, neg := false } 0], head := [] },
+        { body := [.concept { concept := 2, neg := false } 0]
+          head := [.exists_ 0 { concept := 3, neg := false } 0] },
+        { body := [.concept { concept := 3, neg := false } 0]
+          head := [.concept { concept := 4, neg := false } 0] }
+      ] } }
+
+example : validBundleNativeRefutation.check = .ok true := by native_decide
+example : rejected ({ validBundleNativeRefutation with
+    abox_source_map := [0, 1, 3, 0, 3] }).check = true := by native_decide
+
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
 #print axioms DecodedNativeABox.models_append_negativeRoleClauses_iff
@@ -874,6 +1144,7 @@ example : rejected ({ validMixedNativeRefutation with pairs := [] }).check = tru
 #print axioms DecodedNativeABoxRefutation.unsatisfiable
 #print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedMixedNativeABoxRefutation.source_unsatisfiable
+#print axioms DecodedBundleNativeABoxRefutation.source_unsatisfiable
 
 end Tests
 

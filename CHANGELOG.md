@@ -83,7 +83,13 @@
   concrete bundle construction: the target interpretation preserves native
   class, singleton, distinctness, positive-role, and negative-role semantics
   while satisfying the projected bundles and checked RBox/domain consequences.
-  The executable bundle/ABox source-name map remains the next integration step.
+- Complete the executable bundle/ABox composition. The combined decoder checks
+  source bundles, function uniqueness, definer/source embedding injectivity,
+  RBox paths, domain premises, the complete target ontology, and a target-to-
+  source concept map. Every concept used by the ABox must map to its actual
+  embedded source concept; arbitrary mappings for generated definers cannot
+  justify ABox facts. Production Rust evidence passes Lean, while a forged ABox
+  concept map is rejected.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
