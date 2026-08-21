@@ -60,6 +60,10 @@
   subclass and superclass. Lean then carries the exact finite coordinates
   into each cell's semantic certificate; a full 3,440-job build confirms that
   all production source and cardinality routes respect the stronger boundary.
+- Apply the same exact-coordinate boundary to native-ABox cardinality
+  taxonomy decisions and matrices. Cardinality countermodels and finite
+  refutations now retain their original wire coordinates, while complete
+  matrices prove exact concept and ordered subsumption placement cell by cell.
 
 ### Certify native-ABox cardinality taxonomies
 
