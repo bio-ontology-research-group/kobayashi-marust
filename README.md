@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.188`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.189`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -89,9 +89,12 @@ checked finite equality fold validates the fully materialized quotient graph;
 global search composes that check while preserving node exhaustion as
 inconclusive. Both production equality SAT JSON formats, the normalized finite
 quotient and normalized anchored fallback, now have source-level soundness
-theorems directly from successful decode and `Except.ok true`. Concrete Rust
-field-construction correspondence, cardinality transition-enumerator
-correspondence, CB, and automatic routing remain unfinished. Equality
+theorems directly from successful decode and `Except.ok true`. Concrete
+cardinality runtime fields now decode from bounded JSON and are checked before
+constructing the exact typed production state, active prefix, and
+expanded-minimum set. Rust transition/outcome correspondence, the remaining
+cardinality transition-enumerator correspondence, CB, and automatic routing
+remain unfinished. Equality
 countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.
@@ -149,8 +152,12 @@ The six controls are now composed into one typed production-shaped
 first-obstruction layer. Each later constructor carries exhaustion of every
 earlier selector, recursive children use the exact witness, minimum, and
 maximum target constructions, and closure of all selected children proves
-closure of the parent. Concrete Rust field construction and well-founded total
-recursive outcome production are not yet connected.
+closure of the parent. A common strict-growth relation proves the recursive
+production search well founded. Its total result is a checked closed branch, an
+independently checked nonempty cardinality model, or an explicit budget
+frontier. Concrete runtime fields now construct this typed search state after
+executable validation; exact Rust transition and outcome construction remain
+to be connected.
 Cardinality minimum and maximum scans now retain stored definition IDs instead
 of identifying definitions structurally. Minimum suppression uses the same
 definition ID at any equality-equivalent previously expanded source, matching

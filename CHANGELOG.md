@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.189] – 2026-08-21
+
+### Check concrete cardinality production runtime fields
+
+- Define the finite production fields corresponding to Rust's logical branch
+  state: the checked distinct-equality certificate, `active_nodes`, and the
+  branch-local expanded `(definition_id, source)` minimum sites.
+- Check inactive-prefix freshness, duplicate expanded sites, minimum-definition
+  kinds, and active-source bounds before constructing a typed production
+  configuration.
+- Prove the constructed configuration preserves the exact state, active prefix,
+  and expanded-site membership, and expose the checked fields through a bounded
+  JSON decoder.
+- Audit the field-construction endpoints without `sorryAx`.
+
+Concrete Rust transition/outcome correspondence, CB, and automatic routing
+remain unfinished.
+
 ## [0.3.188] – 2026-08-21
 
 ### Compose checked SAT evidence with cardinality production search
