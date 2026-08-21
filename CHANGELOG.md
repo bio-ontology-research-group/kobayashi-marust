@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+### Certify native named-individual ABox projection
+
+- Define the exact semantics of KM's native ABox payload: singleton nominal
+  proxies, positive class assertions, different individuals, positive role
+  assertions, and negative role assertions.
+- Prove that the named-root seed state is realized exactly when the positive
+  ABox facts and explicit inequalities hold, given the checked singleton and
+  negative-role obligations.
+- Prove each guarded negative-role clash clause is equivalent to absence of the
+  corresponding ground role edge, then lift this result to the complete list
+  appended to a projected TBox.
+- Add a finite decoder matching `NativeAboxJson`. It checks completeness,
+  identifier bounds, nonempty proxy sets, nominal membership, unique proxy
+  ownership, and exact three-field role assertions.
+- Extend `ht-projection-cert-check` to accept native-ABox documents and make KM
+  serialize the production payload for this checker.
+- Test the real Rust-to-Lean path, including rejection of duplicate proxy
+  ownership and missing nominal declarations. The test also caught and fixed
+  the flat-JSON-triple wire representation before integration.
+
+Certified nominal/ABox routing remains closed until this evidence is composed
+with every TBox projection shape and the concrete seeded-search certificate.
+No release is cut for this intermediate proof unit.
+
 ### Compose bundles, RBox evidence, and cardinality projection
 
 - Prove the complete finite frontend cardinality family equivalent to an

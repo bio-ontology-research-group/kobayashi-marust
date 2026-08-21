@@ -2,6 +2,7 @@ import ContextCalculus.HypertableauBundleProjectionWire
 import ContextCalculus.HypertableauBundleCardinalityProjectionWire
 import ContextCalculus.HypertableauMixedCardinalityProjectionWire
 import ContextCalculus.HypertableauDirectCardinalityProjectionWire
+import ContextCalculus.HypertableauNativeABoxProjectionWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -11,7 +12,10 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      match (fromJson? json : Except String WireBundleCardinalityProjection) with
+      match (fromJson? json : Except String WireNativeABox) with
+      | .ok document => document.check
+      | .error nativeABoxError =>
+       match (fromJson? json : Except String WireBundleCardinalityProjection) with
       | .ok document => document.check
       | .error bundleCardinalityError =>
        match (fromJson? json : Except String WireMixedCardinalityProjection) with
@@ -32,7 +36,7 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
                   match (fromJson? json : Except String WireDirectProjection) with
                   | .ok document => document.check
                   | .error directError =>
-                      throw s!"neither bundle-cardinality ({bundleCardinalityError}), mixed-cardinality ({mixedCardinalityError}), direct-cardinality ({combinedError}), cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
+                      throw s!"neither native-ABox ({nativeABoxError}), bundle-cardinality ({bundleCardinalityError}), mixed-cardinality ({mixedCardinalityError}), direct-cardinality ({combinedError}), cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
     match result with
     | .ok true =>
         IO.println "HT source projection accepted"

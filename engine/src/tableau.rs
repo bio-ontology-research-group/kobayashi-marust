@@ -5333,6 +5333,18 @@ struct MixedCardinalityProjectionDocument<'a> {
     exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
 }
 
+#[derive(Serialize)]
+struct NativeAboxProjectionDocument<'a> {
+    complete: bool,
+    concepts: &'a [String],
+    roles: &'a [String],
+    nominals: &'a [C],
+    individuals: &'a [crate::orchestrate::cb_to_ht::NativeIndividualJson],
+    different: &'a [(usize, usize)],
+    role_assertions: &'a [(usize, usize, usize)],
+    negative_role_assertions: &'a [(usize, usize, usize)],
+}
+
 fn bundle_cardinality_definitions(
     inp: &TInput,
     source: &crate::orchestrate::cb_to_ht::BundleProjectionSource,
@@ -5430,6 +5442,57 @@ fn direct_projection_variable_count(clauses: &[Clause]) -> usize {
 
 static HT_PROJECTION_TEMP_SEQUENCE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
+
+fn run_ht_projection_checker(
+    encoded: &[u8],
+    checker: &std::path::Path,
+    document_kind: &str,
+) -> Result<(), String> {
+    let sequence = HT_PROJECTION_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "km-ht-{document_kind}-projection-{}-{sequence}.json",
+        std::process::id()
+    ));
+    std::fs::write(&path, encoded)
+        .map_err(|error| format!("cannot write HT {document_kind} projection: {error}"))?;
+    let status = std::process::Command::new(checker)
+        .arg(&path)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .map_err(|error| {
+            format!(
+                "cannot execute HT projection checker {}: {error}",
+                checker.display()
+            )
+        });
+    let _ = std::fs::remove_file(&path);
+    let status = status?;
+    if !status.success() {
+        return Err(format!(
+            "HT {document_kind} projection checker {} rejected the conversion ({status})",
+            checker.display()
+        ));
+    }
+    Ok(())
+}
+
+fn check_native_abox_projection(
+    inp: &TInput,
+    checker: &std::path::Path,
+) -> Result<(), String> {
+    let encoded = serde_json::to_vec(&NativeAboxProjectionDocument {
+        complete: inp.native_abox.complete,
+        concepts: &inp.concepts,
+        roles: &inp.roles,
+        nominals: &inp.nominals,
+        individuals: &inp.native_abox.individuals,
+        different: &inp.native_abox.different,
+        role_assertions: &inp.native_abox.role_assertions,
+        negative_role_assertions: &inp.native_abox.negative_role_assertions,
+    })
+    .map_err(|error| format!("cannot encode HT native ABox projection: {error}"))?;
+    run_ht_projection_checker(&encoded, checker, "native-abox")
+}
 
 fn check_direct_ht_projection(
     inp: &TInput,
@@ -5531,32 +5594,7 @@ fn check_direct_ht_projection(
         })
     }
     .map_err(|error| format!("cannot encode HT direct projection: {error}"))?;
-    let sequence = HT_PROJECTION_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "km-ht-direct-projection-{}-{sequence}.json",
-        std::process::id()
-    ));
-    std::fs::write(&path, encoded)
-        .map_err(|error| format!("cannot write HT direct projection: {error}"))?;
-    let status = std::process::Command::new(checker)
-        .arg(&path)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|error| {
-            format!(
-                "cannot execute HT projection checker {}: {error}",
-                checker.display()
-            )
-        });
-    let _ = std::fs::remove_file(&path);
-    let status = status?;
-    if !status.success() {
-        return Err(format!(
-            "HT source projection checker {} rejected the conversion ({status})",
-            checker.display()
-        ));
-    }
-    Ok(())
+    run_ht_projection_checker(&encoded, checker, "source")
 }
 
 fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> Result<(), String> {
@@ -6579,6 +6617,34 @@ mod tests {
         assert!(validate_native_abox(&consumer_input(&absent))
             .unwrap_err()
             .contains("absent from nominals"));
+    }
+
+    #[test]
+    fn native_abox_projection_passes_real_lean_checker_and_rejects_forgery() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
+            return;
+        };
+        let valid = consumer_input(&native_wire_input());
+        check_native_abox_projection(&valid, std::path::Path::new(&checker))
+            .expect("complete native ABox projection passes Lean");
+
+        let mut duplicate = native_wire_input();
+        duplicate.native_abox.individuals[1].proxies = vec![0];
+        assert!(check_native_abox_projection(
+            &consumer_input(&duplicate),
+            std::path::Path::new(&checker)
+        )
+        .unwrap_err()
+        .contains("rejected"));
+
+        let mut missing_nominal = native_wire_input();
+        missing_nominal.nominals.pop();
+        assert!(check_native_abox_projection(
+            &consumer_input(&missing_nominal),
+            std::path::Path::new(&checker)
+        )
+        .unwrap_err()
+        .contains("rejected"));
     }
 
     #[test]
