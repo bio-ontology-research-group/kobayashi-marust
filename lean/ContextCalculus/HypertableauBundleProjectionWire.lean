@@ -2,6 +2,7 @@ import ContextCalculus.HypertableauMixedProjectionWire
 import ContextCalculus.HypertableauSkolemBundleListProjection
 import ContextCalculus.HypertableauBundleDomainProjection
 import ContextCalculus.HypertableauNativeABoxProjection
+import ContextCalculus.HypertableauCardinalityRenaming
 import Mathlib.Data.List.FinRange
 import Mathlib.Logic.Equiv.Fin.Basic
 
@@ -351,6 +352,105 @@ theorem DecodedBundleProjection.source_model_to_target_model_preserving_nativeAB
   · rfl
   · exact habox
 
+/-- Forward bundle projection while preserving both a checked native ABox and
+the cardinality target contract in the same constructed interpretation. -/
+theorem DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox_cardinality
+    (decoded : DecodedBundleProjection)
+    (abox : NativeABox Individual (Fin decoded.concepts.length)
+      (Fin decoded.roles.length))
+    (sourceOf : Fin decoded.concepts.length → Fin decoded.sourceConcepts.length)
+    (hembedded : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      bundleConceptEmbedding decoded.sourceTargets decoded.bundles
+        (.inr (sourceOf concept)) = concept)
+    (definitions : List (CardinalityDef (Fin decoded.sourceConcepts.length)
+      (Fin decoded.roles.length)))
+    (pairs : List (PairedCardinality (Fin decoded.sourceConcepts.length)
+      (Fin decoded.roles.length)))
+    (hpairs : ∀ pair ∈ pairs,
+      pair.maximum ∈ definitions ∧ pair.minimum ∈ definitions)
+    (I : Interp Domain (Fin decoded.sourceConcepts.length)
+      (Fin decoded.roles.length))
+    (functions : SkolemInterp Domain (Fin decoded.functions.length))
+    (value : Individual → Domain)
+    (hdirect : I.models decoded.direct)
+    (hbundles : ModelsBundles I functions (decodedBundleSpecs decoded.bundles))
+    (habox : (abox.mapConcepts sourceOf).models I value)
+    (hcardinality : I.modelsProjectedCardinalityDefs definitions pairs) :
+    ∃ J : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length),
+      J.models decoded.target ∧ abox.models J value ∧
+      J.modelsPairedCardinalityTargets
+        ((definitions.map (renameCardinalityDef Sum.inr)).map
+          (renameCardinalityDef
+            (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)))
+        ((pairs.map (renamePairedCardinality Sum.inr)).map
+          (renamePairedCardinality
+            (bundleConceptEmbedding decoded.sourceTargets decoded.bundles))) := by
+  have hpositive : 0 < decoded.bundles.length :=
+    List.length_pos_of_ne_nil decoded.nonemptyBundles
+  letI : Nonempty
+      (Sum (Fin decoded.bundles.length) (Fin decoded.sourceConcepts.length)) :=
+    ⟨.inl ⟨0, hpositive⟩⟩
+  obtain ⟨inverse, hleft⟩ := decoded.embeddingInjective.hasLeftInverse
+  let extended := indexedBundleExtension I (decodedBundleSpecs decoded.bundles)
+  have hcore : extended.models
+      (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles)) :=
+    indexedBundleProjection_sound I functions decoded.direct
+      (decodedBundleSpecs decoded.bundles) hdirect hbundles
+  have hdomains : extended.models
+      (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+          decoded.domainExtras) :=
+    (add_indexedBundleDomainOntology_of_direct_iff extended decoded.direct
+      (decodedBundleSpecs decoded.bundles) decoded.domainExtras
+      decoded.rboxSource decoded.rboxTarget decoded.rboxDistinct
+      decoded.pathPremises decoded.domainPremises).2 hcore
+  have hsourceCardinality : I.modelsPairedCardinalityTargets definitions pairs :=
+    (modelsProjectedCardinalityDefs_iff_pairedTargets I definitions pairs hpairs).1
+      hcardinality
+  have hextendedCardinality : extended.modelsPairedCardinalityTargets
+      (definitions.map (renameCardinalityDef Sum.inr))
+      (pairs.map (renamePairedCardinality Sum.inr)) := by
+    apply (modelsPairedCardinalityTargets_rename_pullback_iff
+      Sum.inr extended definitions pairs).2
+    simpa [extended, pullbackConcepts, indexedBundleExtension] using hsourceCardinality
+  let J := pushforwardConcepts inverse extended
+  have hrenamed : J.models
+      (renameOntology (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+        (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+          indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+            decoded.domainExtras)) :=
+    (models_rename_pushforward_iff
+      (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+      inverse hleft extended _).2 hdomains
+  have htargetCardinality : J.modelsPairedCardinalityTargets
+      ((definitions.map (renameCardinalityDef Sum.inr)).map
+        (renameCardinalityDef
+          (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)))
+      ((pairs.map (renamePairedCardinality Sum.inr)).map
+        (renamePairedCardinality
+          (bundleConceptEmbedding decoded.sourceTargets decoded.bundles))) := by
+    apply (modelsPairedCardinalityTargets_rename_pullback_iff
+      (bundleConceptEmbedding decoded.sourceTargets decoded.bundles) J
+      (definitions.map (renameCardinalityDef Sum.inr))
+      (pairs.map (renamePairedCardinality Sum.inr))).2
+    simpa [J, pullback_pushforward_eq
+      (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+      inverse hleft extended] using hextendedCardinality
+  refine ⟨J, (models_iff_of_toFinset_eq J _ _ decoded.exactProjection).1 hrenamed,
+    ?_, htargetCardinality⟩
+  apply abox.models_of_mapConcepts sourceOf I J value
+  · intro individual concept hused
+    have hembed := hembedded individual concept hused
+    have hinverse : inverse concept = .inr (sourceOf concept) := by
+      calc
+        inverse concept = inverse (bundleConceptEmbedding decoded.sourceTargets
+            decoded.bundles (.inr (sourceOf concept))) := congrArg inverse hembed.symm
+        _ = .inr (sourceOf concept) := hleft _
+    simp [J, pushforwardConcepts, hinverse, extended, indexedBundleExtension]
+  · rfl
+  · exact habox
+
 theorem WireBundleProjection.check_sound (wire : WireBundleProjection)
     (decoded : DecodedBundleProjection) (_hdecode : wire.decode = .ok decoded)
     (_hcheck : wire.check = .ok true)
@@ -431,6 +531,7 @@ example : bundleRejected ({ bundleExample with target := bundleExample.target.dr
 
 #print axioms DecodedBundleProjection.models_source_iff_target
 #print axioms DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox
+#print axioms DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox_cardinality
 #print axioms WireBundleProjection.check_sound
 
 end Tests

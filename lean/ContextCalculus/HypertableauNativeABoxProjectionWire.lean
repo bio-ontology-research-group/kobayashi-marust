@@ -1362,6 +1362,288 @@ theorem DecodedBundleNativeABoxRefutation.source_unsatisfiable
   exact decoded.refutation.unsatisfiable
     ⟨Domain, J, value, hdomain, htarget, htargetABox⟩
 
+/-- Bundle/RBox source, frontend cardinality projection, and native ABox
+composed with one exact cardinality refutation. -/
+structure WireBundleNativeABoxCardinalityRefutation where
+  source_concepts : List String
+  functions : List String
+  direct : List WireDirectSourceClause
+  bundles : List WireSkolemBundle
+  domain_extras : List WireBundleDomainExtra
+  definitions : List WireProjectionCardinalityDef
+  exact_pairs : List WireComplementaryCardinalityPair
+  abox_source_map : List Nat
+  refutation : WireNativeABoxCardinalityRefutation
+deriving FromJson, ToJson, Repr
+
+structure DecodedBundleNativeABoxCardinalityRefutation where
+  refutation : DecodedNativeABoxCardinalityRefutation
+  variable_ge_two : 2 ≤ refutation.initial.initial.seed.variableCount
+  sourceConcepts : List String
+  functions : List String
+  sourceTargets : Fin sourceConcepts.length →
+    Fin refutation.initial.initial.seed.abox.concepts.length
+  direct : List (Clause (Fin refutation.initial.initial.seed.variableCount)
+    (Fin sourceConcepts.length) (Fin refutation.initial.initial.seed.abox.roles.length))
+  bundles : List (DecodedWireBundle (Fin refutation.initial.initial.seed.variableCount)
+    (Fin sourceConcepts.length) (Fin refutation.initial.initial.seed.abox.roles.length)
+    (Fin functions.length) (Fin refutation.initial.initial.seed.abox.concepts.length))
+  domainExtras : List (IndexedBundleDomainSpec (Fin sourceConcepts.length)
+    (Fin refutation.initial.initial.seed.abox.roles.length) bundles.length)
+  nonemptyBundles : bundles ≠ []
+  uniqueFunctions :
+    (skolemPairFunctions (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup
+  embeddingInjective : Function.Injective
+    (bundleConceptEmbedding sourceTargets bundles)
+  rboxSource : Fin refutation.initial.initial.seed.variableCount
+  rboxTarget : Fin refutation.initial.initial.seed.variableCount
+  rboxDistinct : rboxSource ≠ rboxTarget
+  pathPremises : ∀ spec ∈ domainExtras, ∀ clause ∈
+    roleInclusionPathClauses
+      (decodedBundleSpecs bundles spec.bundle).role spec.path rboxSource rboxTarget,
+    clause ∈ direct
+  domainPremises : ∀ spec ∈ domainExtras,
+    roleDomainClause (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+      rboxSource rboxTarget ∈ direct
+  sourceOf : Fin refutation.initial.initial.seed.abox.concepts.length →
+    Fin sourceConcepts.length
+  abox_embedded : ∀ individual concept,
+    concept ∈ refutation.initial.initial.seed.abox.abox.proxies individual ++
+      refutation.initial.initial.seed.abox.abox.assertions individual →
+    bundleConceptEmbedding sourceTargets bundles (.inr (sourceOf concept)) = concept
+  definitions : List (CardinalityDef (Fin sourceConcepts.length)
+    (Fin refutation.initial.initial.seed.abox.roles.length))
+  definitionWires : List WireProjectionCardinalityDef
+  wireLength : definitionWires.length = definitions.length
+  uniqueDefinitions : definitions.Nodup
+  cardinalityPairs : List (IndexedComplementaryCardinalityPair definitions)
+  uniquePairIndices : (exactPairIndices cardinalityPairs).Nodup
+  exactFlags : ∀ index : Fin definitions.length,
+    (definitionWires.get (wireLength.symm ▸ index)).exact =
+      decide (index.val ∈ exactPairIndices cardinalityPairs)
+  definitions_equal :
+    ((definitions.map (renameCardinalityDef Sum.inr)).map
+      (renameCardinalityDef (bundleConceptEmbedding sourceTargets bundles))) =
+      refutation.definitions
+  exact_ontology :
+    (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+      (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs bundles) domainExtras) ++
+      refutation.initial.initial.seed.abox.negativeRoleClausesAt
+        refutation.initial.initial.seed.variableCount variable_ge_two).toFinset =
+      refutation.initial.initial.seed.state.base.base.ontology.toFinset
+
+def DecodedBundleNativeABoxCardinalityRefutation.semanticPairs
+    (decoded : DecodedBundleNativeABoxCardinalityRefutation) :
+    List (PairedCardinality (Fin decoded.sourceConcepts.length)
+      (Fin decoded.refutation.initial.initial.seed.abox.roles.length)) :=
+  decoded.cardinalityPairs.map IndexedComplementaryCardinalityPair.toPair
+
+theorem DecodedBundleNativeABoxCardinalityRefutation.semanticPairs_mem
+    (decoded : DecodedBundleNativeABoxCardinalityRefutation)
+    (pair : PairedCardinality (Fin decoded.sourceConcepts.length)
+      (Fin decoded.refutation.initial.initial.seed.abox.roles.length))
+    (hpair : pair ∈ decoded.semanticPairs) :
+    pair.maximum ∈ decoded.definitions ∧ pair.minimum ∈ decoded.definitions := by
+  simp only [DecodedBundleNativeABoxCardinalityRefutation.semanticPairs,
+    List.mem_map] at hpair
+  rcases hpair with ⟨indexed, _, rfl⟩
+  exact ⟨List.get_mem decoded.definitions indexed.maximum,
+    List.get_mem decoded.definitions indexed.minimum⟩
+
+def WireBundleNativeABoxCardinalityRefutation.decode
+    (wire : WireBundleNativeABoxCardinalityRefutation) :
+    Except String DecodedBundleNativeABoxCardinalityRefutation := do
+  let refutation ← wire.refutation.decode
+  let variableWitness ← requireAtLeastTwoVariables
+    refutation.initial.initial.seed.variableCount
+  let hvariables := variableWitness.proof
+  if _hsourceConcepts : wire.source_concepts.Nodup then
+    if _hfunctions : wire.functions.Nodup then
+      let sourceTargets ← checkedNameEmbedding "source concept in target"
+        wire.source_concepts refutation.initial.initial.seed.abox.concepts
+      let direct ← wire.direct.mapM (WireDirectSourceClause.decode
+        refutation.initial.initial.seed.variableCount wire.source_concepts
+        refutation.initial.initial.seed.abox.roles)
+      let bundles ← wire.bundles.mapM (WireSkolemBundle.decode
+        refutation.initial.initial.seed.variableCount wire.source_concepts
+        refutation.initial.initial.seed.abox.concepts
+        refutation.initial.initial.seed.abox.roles wire.functions)
+      if hnonempty : bundles ≠ [] then
+        let rboxSource : Fin refutation.initial.initial.seed.variableCount :=
+          ⟨0, lt_of_lt_of_le Nat.zero_lt_two hvariables⟩
+        let rboxTarget : Fin refutation.initial.initial.seed.variableCount :=
+          ⟨1, hvariables⟩
+        have hrboxDistinct : rboxSource ≠ rboxTarget := by
+          intro hequal
+          have hval := congrArg Fin.val hequal
+          simp [rboxSource, rboxTarget] at hval
+        let domainExtras ← wire.domain_extras.mapM
+          (WireBundleDomainExtra.decode wire.source_concepts
+            refutation.initial.initial.seed.abox.roles bundles.length)
+        if hunique : (skolemPairFunctions
+            (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup then
+          if hinjective : (bundleEmbeddingValues sourceTargets bundles).Nodup then
+            if hpaths : ∀ spec ∈ domainExtras, ∀ clause ∈
+                roleInclusionPathClauses
+                  (decodedBundleSpecs bundles spec.bundle).role spec.path
+                    rboxSource rboxTarget,
+                clause ∈ direct then
+              if hdomains : ∀ spec ∈ domainExtras,
+                  roleDomainClause
+                    (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+                      rboxSource rboxTarget ∈ direct then
+                let sourceOf ← decodeConceptMap "native ABox source concept"
+                  wire.source_concepts.length
+                  refutation.initial.initial.seed.abox.concepts.length
+                  wire.abox_source_map
+                if hembedded : refutation.initial.initial.seed.abox.abox.conceptsEmbeddedB
+                    sourceOf (fun source =>
+                      bundleConceptEmbedding sourceTargets bundles (.inr source)) = true then
+                  let definitions ← wire.definitions.mapM
+                    (WireProjectionCardinalityDef.decode wire.source_concepts.length
+                      refutation.initial.initial.seed.abox.roles.length)
+                  if hlength : wire.definitions.length = definitions.length then
+                    if hdefinitionUnique : definitions.Nodup then
+                      let cardinalityPairs ← wire.exact_pairs.mapM
+                        (WireComplementaryCardinalityPair.decode definitions)
+                      if hpairs : (exactPairIndices cardinalityPairs).Nodup then
+                        if hflags : ∀ index : Fin definitions.length,
+                            (wire.definitions.get (hlength.symm ▸ index)).exact =
+                              decide (index.val ∈ exactPairIndices cardinalityPairs) then
+                          if hdefinitions :
+                              ((definitions.map (renameCardinalityDef Sum.inr)).map
+                                (renameCardinalityDef
+                                  (bundleConceptEmbedding sourceTargets bundles))) =
+                                refutation.definitions then
+                            if hequal :
+                                (renameOntology
+                                  (bundleConceptEmbedding sourceTargets bundles)
+                                  (indexedBundleOntology direct
+                                      (decodedBundleSpecs bundles) ++
+                                    indexedBundleDomainOntology
+                                      (decodedBundleSpecs bundles) domainExtras) ++
+                                  refutation.initial.initial.seed.abox.negativeRoleClausesAt
+                                    refutation.initial.initial.seed.variableCount
+                                    hvariables).toFinset =
+                                  refutation.initial.initial.seed.state.base.base.ontology.toFinset then
+                              return {
+                                refutation
+                                variable_ge_two := hvariables
+                                sourceConcepts := wire.source_concepts
+                                functions := wire.functions
+                                sourceTargets
+                                direct
+                                bundles
+                                domainExtras
+                                nonemptyBundles := hnonempty
+                                uniqueFunctions := hunique
+                                embeddingInjective :=
+                                  bundleConceptEmbedding_injective_of_nodup
+                                    sourceTargets bundles hinjective
+                                rboxSource
+                                rboxTarget
+                                rboxDistinct := hrboxDistinct
+                                pathPremises := hpaths
+                                domainPremises := hdomains
+                                sourceOf
+                                abox_embedded :=
+                                  NativeABox.conceptsEmbeddedB_sound
+                                    refutation.initial.initial.seed.abox.abox sourceOf
+                                    (fun source => bundleConceptEmbedding
+                                      sourceTargets bundles (.inr source)) hembedded
+                                definitions
+                                definitionWires := wire.definitions
+                                wireLength := hlength
+                                uniqueDefinitions := hdefinitionUnique
+                                cardinalityPairs
+                                uniquePairIndices := hpairs
+                                exactFlags := hflags
+                                definitions_equal := hdefinitions
+                                exact_ontology := hequal
+                              }
+                            else throw "bundle source conversion differs from the native ABox cardinality refutation ontology"
+                          else throw "bundle cardinality definitions differ from the native ABox refutation"
+                        else throw "cardinality exact flags differ from checked complementary-pair provenance"
+                      else throw "an exact cardinality definition occurs in more than one complementary pair"
+                    else throw "cardinality projection contains duplicate definitions"
+                  else throw "internal cardinality-definition decode length mismatch"
+                else throw "native ABox concept is not an embedded bundle source concept"
+              else throw "bundle domain premise is absent from the source ontology"
+            else throw "bundle role-inclusion path is absent from the source ontology"
+          else throw "bundle definers collide with each other or source concepts"
+        else throw "bundle native ABox projection reuses a Skolem function"
+      else throw "bundle native ABox projection contains no bundles"
+    else throw "bundle native ABox function-name table contains duplicates"
+  else throw "bundle native ABox source concept-name table contains duplicates"
+
+def WireBundleNativeABoxCardinalityRefutation.check
+    (wire : WireBundleNativeABoxCardinalityRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedBundleNativeABoxCardinalityRefutation.source_unsatisfiable
+    (decoded : DecodedBundleNativeABoxCardinalityRefutation) :
+    ¬∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.sourceConcepts.length)
+          (Fin decoded.refutation.initial.initial.seed.abox.roles.length))
+        (functions : SkolemInterp Domain (Fin decoded.functions.length))
+        (value : Fin decoded.refutation.initial.initial.seed.abox.individuals.length → Domain),
+      Nonempty Domain ∧ I.models decoded.direct ∧
+      ModelsBundles I functions (decodedBundleSpecs decoded.bundles) ∧
+      (decoded.refutation.initial.initial.seed.abox.abox.mapConcepts decoded.sourceOf).models
+        I value ∧
+      I.modelsProjectedCardinalityDefs decoded.definitions decoded.semanticPairs := by
+  rintro ⟨Domain, I, functions, value, hdomain, hdirect, hbundles, habox,
+    hcardinality⟩
+  let targetCore := renameOntology
+    (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+    (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+      indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+        decoded.domainExtras)
+  let projection : DecodedBundleProjection := {
+    variableCount := decoded.refutation.initial.initial.seed.variableCount
+    sourceConcepts := decoded.sourceConcepts
+    concepts := decoded.refutation.initial.initial.seed.abox.concepts
+    roles := decoded.refutation.initial.initial.seed.abox.roles
+    functions := decoded.functions
+    sourceTargets := decoded.sourceTargets
+    direct := decoded.direct
+    bundles := decoded.bundles
+    domainExtras := decoded.domainExtras
+    target := targetCore
+    nonemptyBundles := decoded.nonemptyBundles
+    uniqueFunctions := decoded.uniqueFunctions
+    embeddingInjective := decoded.embeddingInjective
+    rboxSource := decoded.rboxSource
+    rboxTarget := decoded.rboxTarget
+    rboxDistinct := decoded.rboxDistinct
+    pathPremises := decoded.pathPremises
+    domainPremises := decoded.domainPremises
+    exactProjection := rfl
+  }
+  obtain ⟨J, hcore, htargetABox, htargetCardinality⟩ :=
+    projection.source_model_to_target_model_preserving_nativeABox_cardinality
+      decoded.refutation.initial.initial.seed.abox.abox decoded.sourceOf
+      decoded.abox_embedded decoded.definitions decoded.semanticPairs
+      (fun pair hpair => decoded.semanticPairs_mem pair hpair)
+      I functions value hdirect hbundles habox hcardinality
+  have happended : J.models (targetCore ++
+      decoded.refutation.initial.initial.seed.abox.negativeRoleClausesAt
+        decoded.refutation.initial.initial.seed.variableCount decoded.variable_ge_two) :=
+    (DecodedNativeABox.models_append_negativeRoleClausesAt_iff
+      decoded.refutation.initial.initial.seed.abox J value htargetABox.1
+      decoded.variable_ge_two targetCore).2
+        ⟨hcore, htargetABox.2.2.2.2⟩
+  have htarget : J.models
+      decoded.refutation.initial.initial.seed.state.base.base.ontology :=
+    (models_iff_of_toFinset_eq J _ _ decoded.exact_ontology).1 happended
+  have hdefinitions : J.modelsCardinalityDefs decoded.refutation.definitions := by
+    rw [← decoded.definitions_equal]
+    exact htargetCardinality.1
+  exact decoded.refutation.unsatisfiable
+    ⟨Domain, J, value, hdomain, htarget, hdefinitions, htargetABox⟩
+
 theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
     (_hcheck : wire.check = .ok true) :
@@ -1630,6 +1912,27 @@ example : validBundleNativeRefutation.check = .ok true := by native_decide
 example : rejected ({ validBundleNativeRefutation with
     abox_source_map := [0, 1, 3, 0, 3] }).check = true := by native_decide
 
+private def validBundleNativeCardinalityRefutation :
+    WireBundleNativeABoxCardinalityRefutation where
+  source_concepts := validBundleNativeRefutation.source_concepts
+  functions := validBundleNativeRefutation.functions
+  direct := validBundleNativeRefutation.direct
+  bundles := validBundleNativeRefutation.bundles
+  domain_extras := validBundleNativeRefutation.domain_extras
+  definitions := []
+  exact_pairs := []
+  abox_source_map := validBundleNativeRefutation.abox_source_map
+  refutation := {
+    initial := validBundleNativeRefutation.refutation.initial
+    definitions := []
+    depth := 0
+    tree := .equality validBundleNativeRefutation.refutation.tree
+  }
+
+example : validBundleNativeCardinalityRefutation.check = .ok true := by native_decide
+example : rejected ({ validBundleNativeCardinalityRefutation with
+    abox_source_map := [0, 1, 3, 0, 3] }).check = true := by native_decide
+
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
 #print axioms DecodedNativeABox.models_append_negativeRoleClauses_iff
@@ -1643,6 +1946,7 @@ example : rejected ({ validBundleNativeRefutation with
 #print axioms DecodedNativeABoxCardinalityRefutation.unsatisfiable
 #print axioms DecodedDirectNativeABoxCardinalityRefutation.source_unsatisfiable
 #print axioms DecodedMixedNativeABoxCardinalityRefutation.source_unsatisfiable
+#print axioms DecodedBundleNativeABoxCardinalityRefutation.source_unsatisfiable
 #print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedMixedNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedBundleNativeABoxRefutation.source_unsatisfiable

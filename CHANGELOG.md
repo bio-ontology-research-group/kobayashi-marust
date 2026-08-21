@@ -114,6 +114,13 @@
   existential target, validates cardinality provenance and ABox guards, and
   proves source-level unsatisfiability. The Rust-to-Lean test includes a live
   Skolem existential and rejects deletion of its source pair.
+- Complete the bundle/RBox variant. Prove that one constructed target
+  interpretation simultaneously preserves the checked native ABox and the
+  renamed cardinality contract, rather than relying on unrelated existential
+  models. The combined decoder validates bundle definers, role paths, domain
+  premises, source-to-target ABox concepts, renamed cardinality definitions,
+  exact-pair provenance, and the final ontology. Its Rust-to-Lean test exercises
+  a generated definer and rejects a forged source cardinality filler.
 
 Certified nominal/ABox routing remains closed until KM emits this joint seeded
 state evidence with every TBox projection shape and the concrete search result.
