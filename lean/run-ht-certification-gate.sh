@@ -53,5 +53,6 @@ done
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-source-cert-check"
 
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
+    cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release --test ht_taxonomy_certificate -- --nocapture
 )

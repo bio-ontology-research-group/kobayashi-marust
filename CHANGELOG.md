@@ -109,6 +109,10 @@
   native-ABox admission. Certified nominals are now accepted exactly when the
   checked native ABox represents them; unrepresented nominals still fail
   closed. The previous mirror incorrectly excluded every native-ABox input.
+- Exhaustively compare the Rust certified-input admission function with that
+  Lean predicate over all 128 combinations of projection loss, fences,
+  inverse roles, number restrictions, role separation, nominals, and native
+  ABox activation.
 
 ### Certify native-ABox cardinality taxonomies
 

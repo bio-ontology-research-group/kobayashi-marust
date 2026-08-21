@@ -6854,6 +6854,56 @@ mod tests {
     }
 
     #[test]
+    fn certified_input_coverage_matches_the_lean_truth_table() {
+        for dropped in [0, 1] {
+            for fenced in [false, true] {
+                for inverse in [false, true] {
+                    for number in [false, true] {
+                        for separated in [false, true] {
+                            for nominals in [false, true] {
+                                for native_abox in [false, true] {
+                                    let mut producer =
+                                        crate::orchestrate::cb_to_ht::TInput::default();
+                                    producer.dropped = dropped;
+                                    producer.inverse = inverse;
+                                    producer.number = number;
+                                    producer.inverse_cardinality_role_separable = separated;
+                                    if fenced {
+                                        producer.fenced.push(
+                                            crate::orchestrate::cb_to_ht::Fenced {
+                                                reason: "truth-table".into(),
+                                                detail: "test".into(),
+                                            },
+                                        );
+                                    }
+                                    if nominals {
+                                        producer.nominals.push(0);
+                                    }
+                                    let accepted = check_certified_ht_input_coverage(
+                                        &consumer_input(&producer),
+                                        native_abox,
+                                    )
+                                    .is_ok();
+                                    let lean_valid = dropped == 0
+                                        && !fenced
+                                        && (!nominals || native_abox)
+                                        && (!inverse || !number || separated);
+                                    assert_eq!(
+                                        accepted, lean_valid,
+                                        "dropped={dropped} fenced={fenced} inverse={inverse} \
+                                         number={number} separated={separated} \
+                                         nominals={nominals} native_abox={native_abox}",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_ht_lean_interface_enters_the_fail_closed_certification_boundary() {
         for required in [
             "KM_HT_LEAN_CERT_OUT",
