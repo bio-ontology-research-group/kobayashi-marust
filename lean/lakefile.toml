@@ -81,6 +81,14 @@ name = "ht-direct-native-abox-cardinality-taxonomy-cert-check"
 root = "HTDirectNativeABoxCardinalityTaxonomyCertCheck"
 
 [[lean_exe]]
+name = "ht-mixed-native-abox-cardinality-taxonomy-cert-check"
+root = "HTMixedNativeABoxCardinalityTaxonomyCertCheck"
+
+[[lean_exe]]
+name = "ht-native-abox-cardinality-taxonomy-source-cert-check"
+root = "HTNativeABoxCardinalityTaxonomySourceCertCheck"
+
+[[lean_exe]]
 name = "ht-anchored-premises-check"
 root = "HTAnchoredPremisesCheck"
 

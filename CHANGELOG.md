@@ -15,12 +15,13 @@
 - Add Rust production search and serialization for this joint route. Query root
   zero and named-individual roots one through N now participate in the same
   exhaustive cardinality-aware search; TBox-only evidence is never substituted.
-- Compose the direct frontend cardinality projection with every matrix cell and
-  prove source-level SAT/UNSAT query semantics. Add dedicated normalized and
-  source checker executables, publication gates, real SAT/UNSAT matrix tests,
-  and rejection tests for forged bounds and inconsistent per-cell definitions.
-- Keep mixed and bundle cardinality taxonomy source publication fail closed
-  until their query-preserving source composition is added.
+- Compose the direct and mixed direct/Skolem-pair cardinality projections with
+  every matrix cell and prove source-level SAT/UNSAT query semantics. Add
+  dedicated normalized and format-dispatching source checker executables,
+  publication gates, real SAT/UNSAT matrix tests, and rejection tests for
+  forged bounds, missing Skolem pairs, and inconsistent per-cell definitions.
+- Keep bundle cardinality taxonomy source publication fail closed until its
+  query-preserving source composition is added.
 
 ### Compose bundle source native-ABox taxonomy
 

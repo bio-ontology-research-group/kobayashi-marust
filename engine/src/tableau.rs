@@ -5927,27 +5927,35 @@ fn native_abox_source_taxonomy_document(
                     .to_string(),
             );
         }
-        if inp.mixed_projection_source.is_some() {
-            return Err(
-                "mixed native ABox cardinality taxonomy source wrapper is not connected"
-                    .to_string(),
-            );
+        if let Some(source) = inp.mixed_projection_source.as_ref() {
+            serde_json::json!({
+                "version": 1,
+                "projection": {
+                    "functions": &source.functions,
+                    "direct": &source.direct,
+                    "pairs": &source.pairs,
+                    "definitions": &inp.card_defs,
+                    "exact_pairs": &inp.cardinality_exact_pairs,
+                },
+                "matrix": matrix,
+            })
+        } else {
+            let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+                "native ABox cardinality taxonomy has no complete direct source projection"
+                    .to_string()
+            })?;
+            serde_json::json!({
+                "version": 1,
+                "projection": {
+                    "source": source,
+                    "target": clauses.iter().map(direct_projection_target_clause)
+                        .collect::<Vec<_>>(),
+                    "definitions": &inp.card_defs,
+                    "exact_pairs": &inp.cardinality_exact_pairs,
+                },
+                "matrix": matrix,
+            })
         }
-        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
-            "native ABox cardinality taxonomy has no complete direct source projection"
-                .to_string()
-        })?;
-        serde_json::json!({
-            "version": 1,
-            "projection": {
-                "source": source,
-                "target": clauses.iter().map(direct_projection_target_clause)
-                    .collect::<Vec<_>>(),
-                "definitions": &inp.card_defs,
-                "exact_pairs": &inp.cardinality_exact_pairs,
-            },
-            "matrix": matrix,
-        })
     } else if let Some(source) = inp.bundle_projection_source.as_ref() {
         serde_json::json!({
             "version": 1,
@@ -6297,12 +6305,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             .to_string(),
                     );
                 }
-                if !inp.card_defs.is_empty()
-                    && (inp.mixed_projection_source.is_some()
-                        || inp.bundle_projection_source.is_some())
-                {
+                if !inp.card_defs.is_empty() && inp.bundle_projection_source.is_some() {
                     return Err(
-                        "native ABox cardinality taxonomy source certification currently requires a direct projection"
+                        "native ABox cardinality taxonomy source certification does not yet include bundle projection"
                             .to_string(),
                     );
                 }
@@ -7510,6 +7515,92 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-direct-native-abox-cardinality-taxonomy-source",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn mixed_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os(
+            "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+        ) else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            CardDefJson, DirectProjectionAtom, DirectProjectionClause,
+            MixedProjectionSource, SkolemProjectionPair,
+        };
+        let mut producer = native_wire_input();
+        producer.concepts.extend(["C".into(), "marker".into()]);
+        let body = vec![DirectProjectionAtom::Con {
+            concept: "A".into(),
+            node: "x".into(),
+            neg: false,
+        }];
+        producer.mixed_projection_source = Some(MixedProjectionSource {
+            functions: vec!["f".into()],
+            direct: vec![DirectProjectionClause {
+                variable_names: vec!["x".into()],
+                body: body.clone(),
+                head: Vec::new(),
+            }],
+            pairs: vec![SkolemProjectionPair {
+                variable_names: vec!["x".into()],
+                body,
+                source: "x".into(),
+                function: "f".into(),
+                role: "r".into(),
+                filler: "C".into(),
+                neg: false,
+            }],
+        });
+        producer.card_defs = vec![CardDefJson {
+            marker: 4,
+            min: false,
+            n: 1,
+            role: 0,
+            filler: 3,
+            exact: false,
+        }];
+        producer.cardinality_projection_complete = true;
+        let inp = consumer_input(&producer);
+        let clauses = vec![
+            Clause::new(vec![con(false, 2, 0)], Vec::new()),
+            Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+        ];
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        reasoner.set_number(true);
+        reasoner.set_card_defs_raw(&[(4, false, 1, 0, 3, false)]);
+        let normalized = reasoner
+            .lean_taxonomy_certificate_json(&[2, 3])
+            .expect("normalized mixed native ABox cardinality taxonomy matrix");
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses,
+            &normalized,
+        )
+        .expect("compose mixed source with native ABox cardinality taxonomy");
+        run_ht_projection_checker(
+            &source_taxonomy,
+            std::path::Path::new(&checker),
+            "mixed-native-abox-cardinality-taxonomy-source",
+        )
+        .expect("mixed source native ABox cardinality taxonomy passes Lean");
+
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&source_taxonomy).unwrap();
+        forged["projection"]["pairs"] = serde_json::json!([]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-mixed-native-abox-cardinality-taxonomy-source",
         )
         .unwrap_err()
         .contains("rejected"));
