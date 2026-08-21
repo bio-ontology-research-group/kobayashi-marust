@@ -4864,9 +4864,20 @@ pub struct TInput {
     pub clauses: Vec<JClause>,
     #[serde(default)]
     pub queries: Vec<C>,
+    /// Converter omissions are part of the certification boundary. The
+    /// ordinary measurement routes may defer around them, but a certified run
+    /// must never treat the retained clause projection as the whole ontology.
+    #[serde(default)]
+    pub dropped: usize,
+    #[serde(default)]
+    pub fenced: Vec<serde_json::Value>,
     /// KB declares inverse roles ⇒ use pairwise blocking.
     #[serde(default)]
     pub inverse: bool,
+    /// Source/RBox certificate that every number-role component is disjoint
+    /// from inverse and non-simple roles.
+    #[serde(default)]
+    pub inverse_cardinality_role_separable: bool,
     /// KB has number restrictions / functional roles ⇒ merge-capable path +
     /// equality blocking.
     #[serde(default)]
@@ -5215,6 +5226,23 @@ fn certified_ht_global_consistency(document: &serde_json::Value) -> Result<bool,
     }
 }
 
+fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> Result<(), String> {
+    if inp.dropped != 0 || !inp.fenced.is_empty() {
+        return Err(format!(
+            "HT Lean certification requires a complete clause projection (dropped={}, fenced={})",
+            inp.dropped,
+            inp.fenced.len()
+        ));
+    }
+    if !inp.nominals.is_empty() || native_abox_active {
+        return Err("HT Lean certification does not yet cover nominals or native ABoxes".into());
+    }
+    if inp.inverse && inp.number && !inp.inverse_cardinality_role_separable {
+        return Err("HT Lean certification requires inverse/cardinality role separation".into());
+    }
+    Ok(())
+}
+
 /// `forced_ht` is used only by the wire-contract regression tests. Production
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
@@ -5347,12 +5375,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     "HT Lean certification requires the global consistency route".to_string(),
                 );
             }
-            if inp.inverse || !inp.nominals.is_empty() || native_abox_active {
-                return Err(
-                    "HT Lean certification does not yet cover inverse roles, nominals, or native ABoxes"
-                        .to_string(),
-                );
-            }
+            check_certified_ht_input_coverage(&inp, native_abox_active)?;
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
             }
@@ -5754,6 +5777,43 @@ mod tests {
             },
         }))
         .is_err());
+    }
+
+    #[test]
+    fn certified_input_coverage_rejects_converter_omissions_and_unsafe_combinations() {
+        let mut producer = crate::orchestrate::cb_to_ht::TInput::default();
+        let complete = consumer_input(&producer);
+        assert!(check_certified_ht_input_coverage(&complete, false).is_ok());
+
+        producer.dropped = 1;
+        assert!(
+            check_certified_ht_input_coverage(&consumer_input(&producer), false)
+                .unwrap_err()
+                .contains("complete clause projection")
+        );
+        producer.dropped = 0;
+        producer.fenced.push(crate::orchestrate::cb_to_ht::Fenced {
+            reason: "unsupported".into(),
+            detail: "test".into(),
+        });
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), false).is_err());
+        producer.fenced.clear();
+
+        producer.inverse = true;
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), false).is_ok());
+        producer.number = true;
+        assert!(
+            check_certified_ht_input_coverage(&consumer_input(&producer), false)
+                .unwrap_err()
+                .contains("role separation")
+        );
+        producer.inverse_cardinality_role_separable = true;
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), false).is_ok());
+
+        producer.nominals.push(0);
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), false).is_err());
+        producer.nominals.clear();
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_err());
     }
 
     fn con(neg: bool, c: C, t: Var) -> Atom {

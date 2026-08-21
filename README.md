@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.192`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.193`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -99,8 +99,13 @@ semantics. The unified checked-successor predicate now proves every concrete
 recursive successor is a child in the well-founded production relation. Rust
 global HT publication now derives the semantic Boolean from the checker-ready
 evidence shape and rejects any mismatch with the recursive search result. The
-remaining HT fragment audit, CB, and automatic routing certification remain
-unfinished. Equality
+certified HT input boundary now preserves and checks converter omission fields.
+Lean proves that every accepted input summary has no dropped or fenced axioms,
+excludes nominal and native-ABox inputs, and requires independently checked
+role separation when inverse roles and cardinality restrictions coexist. This
+gate is a fail-closed projection theorem, not yet a full inverse-HT completeness
+theorem. The remaining HT fragment audit, CB, and automatic routing
+certification remain unfinished. Equality
 countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.

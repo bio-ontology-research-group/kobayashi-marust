@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.193] – 2026-08-21
+
+### Make certified HT input coverage fail closed
+
+- Preserve the converter's `dropped`, `fenced`, and inverse/cardinality role-
+  separation fields at the HT consumer boundary instead of silently ignoring
+  them.
+- Reject certified HT publication when the clause projection omitted or fenced
+  any source axiom, or when nominals or a native ABox remain outside the
+  certified projection.
+- Admit inverse-only inputs and inverse-plus-cardinality inputs only when the
+  producer supplies the independently checked role-separation fact.
+- Mirror the production gate in Lean and prove that every accepted summary has
+  a complete projection, excludes unrepresented features, and satisfies the
+  inverse/cardinality separation obligation.
+- Add Rust regression tests for every accepted and rejected gate combination.
+
+Full inverse-HT completeness, the remaining HT fragment audit, CB, and
+automatic routing certification remain unfinished.
+
 ## [0.3.192] – 2026-08-21
 
 ### Derive certified HT global verdicts from accepted evidence
