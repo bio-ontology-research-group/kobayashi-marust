@@ -57,6 +57,11 @@
   cardinality, and native-ABox searches. The unified production-global route
   now requires this two-level termination argument for every HT family, not
   only for equality-free regular search.
+- Replace arbitrary retry histories in the production theorem with an
+  executable `FreshFoldProducer`: each attempt receives its current forbidden
+  set, and a rejection must expose a genuinely fresh fold. Lean defines the
+  blacklist recursion itself and derives strict growth, finite fixed-budget
+  settlement, and the source-level result for all four global HT families.
 
 ### Unify total production HT global decisions
 

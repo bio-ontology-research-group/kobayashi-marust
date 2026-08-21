@@ -202,6 +202,46 @@ inductive FoldLearningOutcome (Node Result : Type) where
   | done (result : Result)
   | rejected (folds : Finset (Node × Node))
 
+/-- Executable shape of one fixed-budget blocker retry loop. The next attempt
+is a function of the current blacklist. A rejection must expose at least one
+fold not already blacklisted; this is the local contract enforced by Rust
+before it retries. -/
+structure FreshFoldProducer (Node Result : Type)
+    [DecidableEq Node] where
+  attempt : Finset (Node × Node) → FoldLearningOutcome Node Result
+  rejectionFresh : ∀ forbidden folds,
+    attempt forbidden = .rejected folds →
+      ∃ fold ∈ folds, fold ∉ forbidden
+
+def FreshFoldProducer.forbidden
+    [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result) : Nat → Finset (Node × Node)
+  | 0 => ∅
+  | round + 1 =>
+      let current := producer.forbidden round
+      match producer.attempt current with
+      | .done _ => current
+      | .rejected folds => current ∪ folds
+
+def FreshFoldProducer.run
+    [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result) (round : Nat) :
+    FoldLearningOutcome Node Result :=
+  producer.attempt (producer.forbidden round)
+
+theorem FreshFoldProducer.rejected_step
+    [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result)
+    {round : Nat} {folds : Finset (Node × Node)}
+    (hrun : producer.run round = .rejected folds) :
+    producer.forbidden (round + 1) = producer.forbidden round ∪ folds ∧
+      ∃ fold ∈ folds, fold ∉ producer.forbidden round := by
+  have hattempt : producer.attempt (producer.forbidden round) = .rejected folds := hrun
+  constructor
+  · simp only [FreshFoldProducer.forbidden]
+    rw [hattempt]
+  · exact producer.rejectionFresh _ _ hattempt
+
 /-- The concrete retry layer terminates at every fixed node budget. This turns
 the Rust producer's learned-fold loop into a total constructor of the checked
 round outcome expected by the existing doubling theorem. -/
@@ -226,6 +266,13 @@ theorem fold_learning_eventually_done
     exact (hlearn round (learned round) (hruns round)).1
   · intro round
     exact (hlearn round (learned round) (hruns round)).2
+
+theorem FreshFoldProducer.eventually_done
+    [Fintype Node] [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result) :
+    ∃ round result, producer.run round = .done result := by
+  exact fold_learning_eventually_done producer.run producer.forbidden
+    (fun _ _ hrun => producer.rejected_step hrun)
 
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
@@ -321,5 +368,7 @@ theorem FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
 #print axioms no_infinite_fresh_fold_rejections
 #print axioms fold_learning_eventually_done
+#print axioms FreshFoldProducer.rejected_step
+#print axioms FreshFoldProducer.eventually_done
 
 end ContextCalculus.Hypertableau

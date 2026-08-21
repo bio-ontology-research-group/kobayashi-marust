@@ -350,6 +350,27 @@ theorem checked_regular_fold_learning_doubling_decides_source
   exact ⟨budget, retry, outcome, hattempt,
     outcome.source_semantics_of_equivalent equivalent hsemantics⟩
 
+/-- Concrete fixed-budget retry form: blacklist evolution and fresh-fold
+progress are derived from `FreshFoldProducer`, leaving only the checked
+frontier dimensions as an outer producer-refinement obligation. -/
+theorem checked_regular_fresh_fold_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  exact checked_regular_fold_learning_doubling_decides_source equivalent
+    (fun budget => (producer budget).run)
+    (fun budget => (producer budget).forbidden)
+    (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
@@ -359,5 +380,6 @@ theorem checked_regular_fold_learning_doubling_decides_source
 #print axioms CheckedRegularRoundOutcome.source_semantics_of_equivalent
 #print axioms checked_regular_doubling_decides_source
 #print axioms checked_regular_fold_learning_doubling_decides_source
+#print axioms checked_regular_fresh_fold_producer_decides_source
 
 end ContextCalculus.Hypertableau

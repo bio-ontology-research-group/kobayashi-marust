@@ -27,16 +27,10 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
         (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
-      (forbidden : ∀ budget,
-        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
-      (hlearn : ∀ budget retry folds,
-        attempt budget retry = .rejected folds →
-          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
-            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
       (hnodes : ∀ budget retry document hconcepts hroles hcheck,
-        attempt budget retry = .done
+        (producer budget).run retry = .done
           (.frontier document hconcepts hroles hcheck) →
         document.node_count = 8 * 2 ^ budget) :
       CertifiedHTProductionGlobalRoute (HasNonemptyModel source)
@@ -44,16 +38,11 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
         (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
-      (forbidden : ∀ budget,
-        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
-      (hlearn : ∀ budget retry folds,
-        attempt budget retry = .rejected folds →
-          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
-            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
       (hnodes : ∀ budget retry document hconcepts hroles hcheck,
-        attempt budget retry = .done (.frontier document hconcepts hroles hcheck) →
+        (producer budget).run retry = .done
+          (.frontier document hconcepts hroles hcheck) →
           document.node_count = 8 * 2 ^ budget) :
       CertifiedHTProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
@@ -63,21 +52,15 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
         (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
           target definitions))
-      (forbidden : ∀ budget,
-        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
-      (hlearn : ∀ budget retry folds,
-        attempt budget retry = .rejected folds →
-          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
-            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
       (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        attempt budget retry = .done
+        (producer budget).run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.node_count = 8 * 2 ^ budget)
       (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        attempt budget retry = .done
+        (producer budget).run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.max_width = maxWidth) :
       CertifiedHTProductionGlobalRoute
@@ -91,21 +74,15 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
         (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
           variableCount abox target definitions))
-      (forbidden : ∀ budget,
-        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
-      (hlearn : ∀ budget retry folds,
-        attempt budget retry = .rejected folds →
-          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
-            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
       (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        attempt budget retry = .done
+        (producer budget).run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.node_count = 8 * 2 ^ budget)
       (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        attempt budget retry = .done
+        (producer budget).run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.max_width = maxWidth) :
       CertifiedHTProductionGlobalRoute
@@ -120,10 +97,9 @@ theorem CertifiedHTProductionGlobalRoute.decides
     (route : CertifiedHTProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent attempt forbidden hlearn hnodes =>
+  | regular equivalent producer hnodes =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_regular_fold_learning_doubling_decides_source equivalent
-          attempt forbidden hlearn hnodes
+        checked_regular_fresh_fold_producer_decides_source equivalent producer hnodes
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -133,10 +109,9 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent attempt forbidden hlearn hnodes =>
+  | equality equivalent producer hnodes =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_equality_fold_learning_doubling_decides_source equivalent
-          attempt forbidden hlearn hnodes
+        checked_equality_fresh_fold_producer_decides_source equivalent producer hnodes
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -144,10 +119,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth attempt forbidden hlearn hnodes hwidth =>
+  | cardinality equivalent maxWidth producer hnodes hwidth =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_cardinality_fold_learning_doubling_decides_source equivalent
-          maxWidth attempt forbidden hlearn hnodes hwidth
+        checked_cardinality_fresh_fold_producer_decides_source equivalent
+          maxWidth producer hnodes hwidth
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -155,10 +130,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth attempt forbidden hlearn hnodes hwidth =>
+  | nativeABox equivalent maxWidth producer hnodes hwidth =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_native_abox_cardinality_fold_learning_doubling_decides_source
-          equivalent maxWidth attempt forbidden hlearn hnodes hwidth
+        checked_native_abox_cardinality_fresh_fold_producer_decides_source
+          equivalent maxWidth producer hnodes hwidth
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>

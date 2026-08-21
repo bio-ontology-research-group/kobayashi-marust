@@ -229,6 +229,24 @@ theorem checked_equality_fold_learning_doubling_decides_source
     checked_equality_doubling_decides_source equivalent settled hsettledNodes
   exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
 
+theorem checked_equality_fresh_fold_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  exact checked_equality_fold_learning_doubling_decides_source equivalent
+    (fun budget => (producer budget).run)
+    (fun budget => (producer budget).forbidden)
+    (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
+
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
@@ -236,5 +254,6 @@ theorem checked_equality_fold_learning_doubling_decides_source
 #print axioms CheckedEqualityDecisionOutcome.source_semantics_of_equivalent
 #print axioms checked_equality_doubling_decides_source
 #print axioms checked_equality_fold_learning_doubling_decides_source
+#print axioms checked_equality_fresh_fold_producer_decides_source
 
 end ContextCalculus.Hypertableau

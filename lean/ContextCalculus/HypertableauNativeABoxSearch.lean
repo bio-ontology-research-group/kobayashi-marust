@@ -271,10 +271,38 @@ theorem checked_native_abox_cardinality_fold_learning_doubling_decides_source
       settled hsettledNodes hsettledWidth
   exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
 
+theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.node_count = 8 * 2 ^ budget)
+    (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.max_width = maxWidth) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  exact checked_native_abox_cardinality_fold_learning_doubling_decides_source
+    equivalent maxWidth (fun budget => (producer budget).run)
+    (fun budget => (producer budget).forbidden)
+    (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hwidth
+
 #print axioms CheckedNativeABoxCardinalityOutcome.sat_semantics
 #print axioms CheckedNativeABoxCardinalityOutcome.closed_semantics
 #print axioms CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent
 #print axioms checked_native_abox_cardinality_doubling_decides_source
 #print axioms checked_native_abox_cardinality_fold_learning_doubling_decides_source
+#print axioms checked_native_abox_cardinality_fresh_fold_producer_decides_source
 
 end ContextCalculus.Hypertableau
