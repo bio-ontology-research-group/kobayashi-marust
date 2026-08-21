@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauNativeABoxProjection
 import ContextCalculus.HypertableauEqualityCertificate
+import ContextCalculus.HypertableauCardinalityCertificate
 import ContextCalculus.HypertableauCardinalityDistinctCertificate
 import ContextCalculus.HypertableauCardinalityRuntimeSearch
 
@@ -21,6 +22,15 @@ def NativeABox.SatisfiableWith
   ∃ (Domain : Type) (I : Interp Domain Concept Role)
       (value : Individual → Domain),
     Nonempty Domain ∧ I.models ontology ∧ abox.models I value
+
+def NativeABox.SatisfiableWithCardinality
+    (abox : NativeABox Individual Concept Role)
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role)) : Prop :=
+  ∃ (Domain : Type) (I : Interp Domain Concept Role)
+      (value : Individual → Domain),
+    Nonempty Domain ∧ I.models ontology ∧
+      I.modelsCardinalityDefs definitions ∧ abox.models I value
 
 /-- Semantic contract for an initial equality-refutation state. Every model of
 the source ABox can be extended to values for all finite search nodes that
@@ -232,7 +242,60 @@ theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
     certificate.base.state.quotientCanonical nodeValue hseeded
     hdistinctRealized hsingletons hnegative
 
+/-- The positive cardinality decision branch uses the same checked quotient
+model as native-ABox SAT. The additional checker conjunct proves all
+cardinality definitions in that exact interpretation. -/
+theorem FiniteDistinctEqCertificate.checkEqSatWithCardinality_native_satisfiable
+    [Nonempty (Fin nodeCount)]
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (root : Individual → Fin nodeCount)
+    (hseeded : abox.SeededIn certificate.state root)
+    (hcheck : certificate.base.checkEqSatWithCardinality definitions = true)
+    (hapart : certificate.apartSeparatedB = true)
+    (hsingletons : abox.ProxySingletons
+      certificate.base.state.quotientCanonical
+      (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+        (root individual)))
+    (hnegative : abox.NegativeRoles
+      certificate.base.state.quotientCanonical
+      (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+        (root individual))) :
+    abox.SatisfiableWithCardinality certificate.base.base.ontology definitions := by
+  have hparts := hcheck
+  simp only [FiniteEqCertificate.checkEqSatWithCardinality,
+    Bool.and_eq_true] at hparts
+  let nodeValue : Fin nodeCount → certificate.base.state.QuotientDomain :=
+    fun node ↦ Quotient.mk certificate.base.state.nodeSetoid node
+  have hbaseRealized : certificate.base.state.RealizedBy
+      certificate.base.state.quotientCanonical nodeValue :=
+    certificate.base.checkEqSat_realizes hparts.1
+  have hsatParts := hparts.1
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hsatParts
+  have hvalid : certificate.base.equalityClosureValidB = true :=
+    hsatParts.1.1.1.1
+  have hapartSound := certificate.apartSeparatedB_sound hvalid hapart
+  have hdistinctRealized : certificate.state.RealizedBy
+      certificate.base.state.quotientCanonical nodeValue := by
+    refine ⟨hbaseRealized, ?_⟩
+    intro left right hlisted hequal
+    exact hapartSound (left, right) hlisted (Quotient.exact hequal)
+  letI : Nonempty certificate.base.state.QuotientDomain :=
+    ⟨Quotient.mk certificate.base.state.nodeSetoid
+      (Classical.choice (inferInstance : Nonempty (Fin nodeCount)))⟩
+  refine ⟨certificate.base.state.QuotientDomain,
+    certificate.base.state.quotientCanonical,
+    nodeValue ∘ root, inferInstance,
+    certificate.base.checkEqSat_models hparts.1,
+    certificate.base.checkCardinalityDefs_sound definitions hparts.2, ?_⟩
+  exact abox.models_of_seeded certificate.state root
+    certificate.base.state.quotientCanonical nodeValue hseeded
+    hdistinctRealized hsingletons hnegative
+
 #print axioms FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
+#print axioms FiniteDistinctEqCertificate.checkEqSatWithCardinality_native_satisfiable
 #print axioms FiniteDistinctEqCertificate.apartSeparatedB_sound
 #print axioms FiniteEqRefutationTree.check_native_abox_unsatisfiable
 #print axioms NativeABox.ExactEqSeed.initializes

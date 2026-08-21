@@ -61,6 +61,13 @@
   route theorem: regular equality-free, finite equality-quotient, and
   cardinality-aware searches all yield the same source-level SAT-or-UNSAT proof
   object, with cardinality definitions preserved explicitly.
+- Close the missing positive native-ABox cardinality branch. An accepted
+  quotient now proves, in the same interpretation, the normalized TBox,
+  cardinality definitions, named-individual assertions, explicit differences,
+  singleton proxies, and negative role assertions. Compose this with exact
+  native-ABox initialization, checked closed refutations, model-equivalent
+  source normalization, and cardinality frontier doubling to obtain total
+  source-level SAT-or-UNSAT semantics for native-ABox cardinality search.
 
 ### Certify native named-individual ABox projection
 
