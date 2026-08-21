@@ -5923,8 +5923,17 @@ fn native_abox_source_taxonomy_document(
             replace_cell_abox(cell)?;
         }
     }
-    let payload = if inp.bundle_projection_source.is_some() {
-        return Err("native ABox taxonomy bundle source wrapper is not certified yet".to_string());
+    let payload = if let Some(source) = inp.bundle_projection_source.as_ref() {
+        serde_json::json!({
+            "version": 1,
+            "source_concepts": &source.source_concepts,
+            "functions": &source.functions,
+            "direct": &source.direct,
+            "bundles": &source.bundles,
+            "domain_extras": &source.domain_extras,
+            "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
+            "matrix": matrix,
+        })
     } else if let Some(source) = inp.mixed_projection_source.as_ref() {
         serde_json::json!({
             "version": 1,
@@ -7414,6 +7423,82 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-mixed-native-abox-taxonomy-source",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn bundle_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
+        else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            BundleProjectionLit, BundleProjectionSource, DirectProjectionAtom,
+            DirectProjectionClause, SkolemProjectionBundle,
+        };
+        let mut producer = native_wire_input();
+        producer.concepts.extend(["D".into(), "C".into()]);
+        let body = vec![DirectProjectionAtom::Con {
+            concept: "A".into(),
+            node: "x".into(),
+            neg: false,
+        }];
+        producer.bundle_projection_source = Some(BundleProjectionSource {
+            source_concepts: vec!["NA".into(), "NB".into(), "A".into(), "C".into()],
+            functions: vec!["f".into()],
+            direct: vec![DirectProjectionClause {
+                variable_names: vec!["x".into()],
+                body: body.clone(),
+                head: Vec::new(),
+            }],
+            bundles: vec![SkolemProjectionBundle {
+                variable_names: vec!["x".into()],
+                body,
+                source: "x".into(),
+                function: "f".into(),
+                role: "r".into(),
+                fillers: vec![BundleProjectionLit {
+                    concept: "C".into(),
+                    neg: false,
+                }],
+                definer: "D".into(),
+            }],
+            domain_extras: Vec::new(),
+        });
+        let inp = consumer_input(&producer);
+        let mut reasoner = hypertableau::Ht::new_certified(vec![
+            Clause::new(vec![con(false, 2, 0)], Vec::new()),
+            Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+            Clause::new(vec![con(false, 3, 0)], vec![con(false, 4, 0)]),
+        ]);
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        let normalized = reasoner
+            .lean_taxonomy_certificate_json(&[2, 4])
+            .expect("normalized bundle native ABox taxonomy matrix");
+        let source_taxonomy = native_abox_source_taxonomy_document(&inp, &normalized)
+            .expect("compose bundle source with native ABox taxonomy matrix");
+        run_ht_projection_checker(
+            &source_taxonomy,
+            std::path::Path::new(&checker),
+            "bundle-native-abox-taxonomy-source",
+        )
+        .expect("bundle source native ABox taxonomy passes Lean");
+
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&source_taxonomy).unwrap();
+        forged["abox_source_map"][4] = serde_json::json!(0);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-bundle-native-abox-taxonomy-source",
         )
         .unwrap_err()
         .contains("rejected"));

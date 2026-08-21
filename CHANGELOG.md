@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Compose bundle source native-ABox taxonomy
+
+- Prove both directions of query-preserving semantic transport across the
+  finite multi-filler Skolem-bundle projection. The transported interpretation
+  preserves the complete native ABox and the same query witness.
+- Add a source-level SAT/UNSAT theorem for every bundle taxonomy cell and lift
+  it to the complete named-concept and ordered-subsumption matrix.
+- Require exact source round-tripping for each queried concept as well as every
+  concept used by the ABox. This prevents generated bundle definers or forged
+  source maps from justifying a source-level taxonomy answer.
+- Extend the production Rust wrapper and native taxonomy checker with the
+  bundle format. A real nonempty-bundle matrix passes the Lean checker, while a
+  tampered query source map is rejected.
+
 ### Make the regular hypertableau model checker exact
 
 - Prove that the executable endpoint-role cover scan accepts every finite

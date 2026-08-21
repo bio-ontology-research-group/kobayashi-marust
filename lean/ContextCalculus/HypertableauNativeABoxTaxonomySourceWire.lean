@@ -420,11 +420,601 @@ theorem DecodedMixedNativeABoxTaxonomyMatrix.semantic_valid
   intro decision _
   exact decision.semantic_valid
 
+/-! ## Bundle query transport -/
+
+def DecodedBundleProjection.sourceQueryEmbedding
+    (decoded : DecodedBundleProjection) :
+    Fin decoded.sourceConcepts.length → Fin decoded.concepts.length :=
+  fun source => bundleConceptEmbedding decoded.sourceTargets decoded.bundles (.inr source)
+
+theorem DecodedBundleProjection.target_model_to_source_model_preserving_nativeABox_query
+    (decoded : DecodedBundleProjection)
+    (abox : NativeABox Individual (Fin decoded.concepts.length)
+      (Fin decoded.roles.length))
+    (sourceOf : Fin decoded.concepts.length → Fin decoded.sourceConcepts.length)
+    (hembedded : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      decoded.sourceQueryEmbedding (sourceOf concept) = concept)
+    (query : List (Lit (Fin decoded.sourceConcepts.length)))
+    (J : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
+    (base : SkolemInterp Domain (Fin decoded.functions.length))
+    (value : Individual → Domain) (element : Domain)
+    (htarget : J.models decoded.target)
+    (habox : abox.models J value)
+    (hquery : J.RealizesLiterals
+      (query.map (renameLit decoded.sourceQueryEmbedding)) element) :
+    ∃ I : Interp Domain (Fin decoded.sourceConcepts.length)
+        (Fin decoded.roles.length),
+      ∃ functions : SkolemInterp Domain (Fin decoded.functions.length),
+        I.models decoded.direct ∧
+        ModelsBundles I functions (decodedBundleSpecs decoded.bundles) ∧
+        (abox.mapConcepts sourceOf).models I value ∧
+        I.RealizesLiterals query element := by
+  let embedding := bundleConceptEmbedding decoded.sourceTargets decoded.bundles
+  let combined := indexedBundleOntology decoded.direct
+      (decodedBundleSpecs decoded.bundles) ++
+    indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+      decoded.domainExtras
+  have hrenamed : J.models (renameOntology embedding combined) :=
+    (models_iff_of_toFinset_eq J _ _ decoded.exactProjection).2 htarget
+  let K := pullbackConcepts embedding J
+  have hcombined : K.models combined :=
+    (models_rename_pullback_iff embedding J combined).1 hrenamed
+  have hcore : K.models
+      (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles)) := by
+    intro clause hclause
+    exact hcombined clause (List.mem_append_left _ hclause)
+  rcases indexedBundleProjection_complete K base decoded.direct
+      (decodedBundleSpecs decoded.bundles) decoded.uniqueFunctions hcore with
+    ⟨functions, hdirect, hbundles⟩
+  let I := indexedRestrict K
+  have haboxSource : (abox.mapConcepts sourceOf).models I value :=
+    abox.mapConcepts_models_of sourceOf I J value
+      (by
+        intro individual concept hused
+        change J.concept concept = J.concept (embedding (.inr (sourceOf concept)))
+        simpa [DecodedBundleProjection.sourceQueryEmbedding, embedding] using
+          congrArg J.concept (hembedded individual concept hused).symm)
+      rfl habox
+  have hquerySource : I.RealizesLiterals query element := by
+    intro literal hliteral
+    have htargetLiteral := hquery (renameLit decoded.sourceQueryEmbedding literal)
+      (List.mem_map.mpr ⟨literal, hliteral, rfl⟩)
+    change K.satLit (indexedLiftLit literal) element
+    rw [← satLit_rename_pullback_iff embedding J]
+    simpa [DecodedBundleProjection.sourceQueryEmbedding, embedding,
+      indexedLiftLit, renameLit] using htargetLiteral
+  exact ⟨I, functions, hdirect, hbundles, haboxSource, hquerySource⟩
+
+theorem DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox_query
+    (decoded : DecodedBundleProjection)
+    (abox : NativeABox Individual (Fin decoded.concepts.length)
+      (Fin decoded.roles.length))
+    (sourceOf : Fin decoded.concepts.length → Fin decoded.sourceConcepts.length)
+    (hembedded : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      decoded.sourceQueryEmbedding (sourceOf concept) = concept)
+    (query : List (Lit (Fin decoded.sourceConcepts.length)))
+    (I : Interp Domain (Fin decoded.sourceConcepts.length)
+      (Fin decoded.roles.length))
+    (functions : SkolemInterp Domain (Fin decoded.functions.length))
+    (value : Individual → Domain) (element : Domain)
+    (hdirect : I.models decoded.direct)
+    (hbundles : ModelsBundles I functions (decodedBundleSpecs decoded.bundles))
+    (habox : (abox.mapConcepts sourceOf).models I value)
+    (hquery : I.RealizesLiterals query element) :
+    ∃ J : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length),
+      J.models decoded.target ∧ abox.models J value ∧
+      J.RealizesLiterals
+        (query.map (renameLit decoded.sourceQueryEmbedding)) element := by
+  have hpositive : 0 < decoded.bundles.length :=
+    List.length_pos_of_ne_nil decoded.nonemptyBundles
+  letI : Nonempty
+      (Sum (Fin decoded.bundles.length) (Fin decoded.sourceConcepts.length)) :=
+    ⟨.inl ⟨0, hpositive⟩⟩
+  obtain ⟨inverse, hleft⟩ := decoded.embeddingInjective.hasLeftInverse
+  let embedding := bundleConceptEmbedding decoded.sourceTargets decoded.bundles
+  let extended := indexedBundleExtension I (decodedBundleSpecs decoded.bundles)
+  have hcore : extended.models
+      (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles)) :=
+    indexedBundleProjection_sound I functions decoded.direct
+      (decodedBundleSpecs decoded.bundles) hdirect hbundles
+  have hdomains : extended.models
+      (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+          decoded.domainExtras) :=
+    (add_indexedBundleDomainOntology_of_direct_iff extended decoded.direct
+      (decodedBundleSpecs decoded.bundles) decoded.domainExtras
+      decoded.rboxSource decoded.rboxTarget decoded.rboxDistinct
+      decoded.pathPremises decoded.domainPremises).2 hcore
+  let J := pushforwardConcepts inverse extended
+  have hrenamed : J.models
+      (renameOntology embedding
+        (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+          indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+            decoded.domainExtras)) :=
+    (models_rename_pushforward_iff embedding inverse hleft extended _).2 hdomains
+  have haboxTarget : abox.models J value := by
+    apply abox.models_of_mapConcepts sourceOf I J value
+    · intro individual concept hused
+      have hembed := hembedded individual concept hused
+      have hinverse : inverse concept = .inr (sourceOf concept) := by
+        calc
+          inverse concept = inverse (embedding (.inr (sourceOf concept))) :=
+            congrArg inverse hembed.symm
+          _ = .inr (sourceOf concept) := hleft _
+      simp [J, pushforwardConcepts, hinverse, extended, indexedBundleExtension]
+    · rfl
+    · exact habox
+  have hqueryTarget : J.RealizesLiterals
+      (query.map (renameLit decoded.sourceQueryEmbedding)) element := by
+    intro targetLiteral htargetLiteral
+    rcases List.mem_map.mp htargetLiteral with ⟨literal, hliteral, rfl⟩
+    have hsourceLiteral := hquery literal hliteral
+    have hinverse : inverse (embedding (.inr literal.concept)) =
+        .inr literal.concept := by
+      exact hleft _
+    rw [satLit_rename_pullback_iff]
+    cases literal <;>
+      simpa [pullbackConcepts, DecodedBundleProjection.sourceQueryEmbedding,
+        embedding, J, pushforwardConcepts, extended, indexedBundleExtension,
+        renameLit, hinverse, Interp.satLit] using hsourceLiteral
+  exact ⟨J, (models_iff_of_toFinset_eq J _ _ decoded.exactProjection).1 hrenamed,
+    haboxTarget, hqueryTarget⟩
+
+/-! ## Bundle source taxonomy wire -/
+
+def NativeABox.SatisfiableWithBundleQuery
+    (abox : NativeABox Individual TargetConcept Role)
+    (sourceOf : TargetConcept → SourceConcept)
+    (direct : List (Clause Variable SourceConcept Role))
+    (bundles : Fin n → BundleSpec Variable SourceConcept Role Function)
+    (query : List (Lit SourceConcept)) : Prop :=
+  ∃ (Domain : Type) (I : Interp Domain SourceConcept Role)
+      (functions : SkolemInterp Domain Function) (value : Individual → Domain)
+      (element : Domain),
+    Nonempty Domain ∧ I.models direct ∧ ModelsBundles I functions bundles ∧
+      (abox.mapConcepts sourceOf).models I value ∧ I.RealizesLiterals query element
+
+def queryConceptsEmbeddedB
+    (query : List (Lit TargetConcept)) [DecidableEq TargetConcept]
+    (sourceOf : TargetConcept → SourceConcept)
+    (embedding : SourceConcept → TargetConcept) : Bool :=
+  query.all fun literal => decide (embedding (sourceOf literal.concept) = literal.concept)
+
+theorem queryConceptsEmbeddedB_sound
+    (query : List (Lit TargetConcept)) [DecidableEq TargetConcept]
+    (sourceOf : TargetConcept → SourceConcept)
+    (embedding : SourceConcept → TargetConcept)
+    (hcheck : queryConceptsEmbeddedB query sourceOf embedding = true) :
+    ∀ literal ∈ query, embedding (sourceOf literal.concept) = literal.concept := by
+  simpa only [queryConceptsEmbeddedB, List.all_eq_true, decide_eq_true_eq] using hcheck
+
+theorem map_source_query_roundtrip
+    (query : List (Lit TargetConcept))
+    (sourceOf : TargetConcept → SourceConcept)
+    (embedding : SourceConcept → TargetConcept)
+    (hembedded : ∀ literal ∈ query,
+      embedding (sourceOf literal.concept) = literal.concept) :
+    (query.map (renameLit sourceOf)).map (renameLit embedding) = query := by
+  induction query with
+  | nil => rfl
+  | cons literal tail ih =>
+      simp only [List.map_cons, List.cons.injEq]
+      constructor
+      · cases literal
+        simp [renameLit, hembedded _ (List.mem_cons_self)]
+      · exact ih (fun candidate hcandidate =>
+          hembedded candidate (List.mem_cons_of_mem _ hcandidate))
+
+structure WireBundleNativeABoxTaxonomyDecision where
+  version : Nat
+  source_concepts : List String
+  functions : List String
+  direct : List WireDirectSourceClause
+  bundles : List WireSkolemBundle
+  domain_extras : List WireBundleDomainExtra
+  abox_source_map : List Nat
+  decision : WireNativeABoxTaxonomyDecision
+deriving FromJson, ToJson, Repr
+
+structure DecodedBundleNativeABoxTaxonomySat where
+  projection : DecodedBundleNativeABoxSatCertificate
+  query : DecodedNativeABoxTaxonomyQuery projection.certificate.seed.nodeCount
+    projection.certificate.seed.abox.concepts.length
+  query_present : ∀ literal ∈ query.literals,
+    (query.root, literal) ∈ projection.certificate.seed.state.base.base.labels
+  query_embedded : ∀ literal ∈ query.literals,
+    bundleConceptEmbedding projection.sourceTargets projection.bundles
+      (.inr (projection.sourceOf literal.concept)) = literal.concept
+
+structure DecodedBundleNativeABoxTaxonomyUnsat where
+  taxonomy : DecodedNativeABoxTaxonomyUnsat
+  variable_ge_two : 2 ≤ taxonomy.initial.variableCount
+  sourceConcepts : List String
+  functions : List String
+  sourceTargets : Fin sourceConcepts.length → Fin taxonomy.initial.abox.concepts.length
+  direct : List (Clause (Fin taxonomy.initial.variableCount)
+    (Fin sourceConcepts.length) (Fin taxonomy.initial.abox.roles.length))
+  bundles : List (DecodedWireBundle (Fin taxonomy.initial.variableCount)
+    (Fin sourceConcepts.length) (Fin taxonomy.initial.abox.roles.length)
+    (Fin functions.length) (Fin taxonomy.initial.abox.concepts.length))
+  domainExtras : List (IndexedBundleDomainSpec (Fin sourceConcepts.length)
+    (Fin taxonomy.initial.abox.roles.length) bundles.length)
+  nonemptyBundles : bundles ≠ []
+  uniqueFunctions :
+    (skolemPairFunctions (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup
+  embeddingInjective : Function.Injective
+    (bundleConceptEmbedding sourceTargets bundles)
+  rboxSource : Fin taxonomy.initial.variableCount
+  rboxTarget : Fin taxonomy.initial.variableCount
+  rboxDistinct : rboxSource ≠ rboxTarget
+  pathPremises : ∀ spec ∈ domainExtras, ∀ clause ∈
+    roleInclusionPathClauses (decodedBundleSpecs bundles spec.bundle).role
+      spec.path rboxSource rboxTarget, clause ∈ direct
+  domainPremises : ∀ spec ∈ domainExtras,
+    roleDomainClause (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+      rboxSource rboxTarget ∈ direct
+  sourceOf : Fin taxonomy.initial.abox.concepts.length → Fin sourceConcepts.length
+  abox_embedded : ∀ individual concept,
+    concept ∈ taxonomy.initial.abox.abox.proxies individual ++
+      taxonomy.initial.abox.abox.assertions individual →
+    bundleConceptEmbedding sourceTargets bundles (.inr (sourceOf concept)) = concept
+  query_embedded : ∀ literal ∈ taxonomy.query.literals,
+    bundleConceptEmbedding sourceTargets bundles (.inr (sourceOf literal.concept)) =
+      literal.concept
+  exact_ontology :
+    (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+      (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs bundles) domainExtras) ++
+      taxonomy.initial.abox.negativeRoleClausesAt taxonomy.initial.variableCount
+        variable_ge_two).toFinset =
+      taxonomy.initial.state.base.base.ontology.toFinset
+
+inductive DecodedBundleNativeABoxTaxonomyDecision where
+  | sat (decoded : DecodedBundleNativeABoxTaxonomySat)
+  | unsat (decoded : DecodedBundleNativeABoxTaxonomyUnsat)
+
+def WireBundleNativeABoxTaxonomyDecision.decode
+    (wire : WireBundleNativeABoxTaxonomyDecision) :
+    Except String DecodedBundleNativeABoxTaxonomyDecision := do
+  if wire.version != 1 then
+    throw s!"unsupported bundle native ABox taxonomy source version {wire.version}"
+  match wire.decision.evidence with
+  | .sat certificateWire =>
+      let projection ← ({
+        source_concepts := wire.source_concepts
+        functions := wire.functions
+        direct := wire.direct
+        bundles := wire.bundles
+        domain_extras := wire.domain_extras
+        abox_source_map := wire.abox_source_map
+        certificate := certificateWire
+      } : WireBundleNativeABoxSatCertificate).decode
+      let query ← wire.decision.query.decode projection.certificate.seed.nodeCount
+        projection.certificate.seed.abox.concepts.length
+      if hquery : query.labelsPresentB
+          projection.certificate.seed.state.base.base.labels = true then
+        if hembedded : queryConceptsEmbeddedB query.literals projection.sourceOf
+            (fun source => bundleConceptEmbedding projection.sourceTargets
+              projection.bundles (.inr source)) = true then
+          return .sat {
+            projection
+            query
+            query_present := query.labelsPresentB_sound _ hquery
+            query_embedded := queryConceptsEmbeddedB_sound _ _ _ hembedded
+          }
+        else throw "bundle taxonomy query is not an embedded source concept"
+      else throw "bundle source taxonomy countermodel omits its query literals"
+  | .unsat initial tree =>
+      let taxonomyDecision ← wire.decision.decode
+      let taxonomy ← match taxonomyDecision with
+        | .unsat result => pure result
+        | .sat _ => throw "internal bundle taxonomy evidence mismatch"
+      let variableWitness ← requireAtLeastTwoVariables taxonomy.initial.variableCount
+      let hvariables := variableWitness.proof
+      if _hsourceConcepts : wire.source_concepts.Nodup then
+        if _hfunctions : wire.functions.Nodup then
+          let sourceTargets ← checkedNameEmbedding "source concept in target"
+            wire.source_concepts taxonomy.initial.abox.concepts
+          let direct ← wire.direct.mapM (WireDirectSourceClause.decode
+            taxonomy.initial.variableCount wire.source_concepts
+            taxonomy.initial.abox.roles)
+          let bundles ← wire.bundles.mapM (WireSkolemBundle.decode
+            taxonomy.initial.variableCount wire.source_concepts
+            taxonomy.initial.abox.concepts taxonomy.initial.abox.roles wire.functions)
+          if hnonempty : bundles ≠ [] then
+            let rboxSource : Fin taxonomy.initial.variableCount :=
+              ⟨0, lt_of_lt_of_le Nat.zero_lt_two hvariables⟩
+            let rboxTarget : Fin taxonomy.initial.variableCount := ⟨1, hvariables⟩
+            have hrboxDistinct : rboxSource ≠ rboxTarget := by
+              intro hequal
+              have hval := congrArg Fin.val hequal
+              simp [rboxSource, rboxTarget] at hval
+            let domainExtras ← wire.domain_extras.mapM
+              (WireBundleDomainExtra.decode wire.source_concepts
+                taxonomy.initial.abox.roles bundles.length)
+            if hunique : (skolemPairFunctions
+                (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup then
+              if hinjective : (bundleEmbeddingValues sourceTargets bundles).Nodup then
+                if hpaths : ∀ spec ∈ domainExtras, ∀ clause ∈
+                    roleInclusionPathClauses
+                      (decodedBundleSpecs bundles spec.bundle).role spec.path
+                        rboxSource rboxTarget, clause ∈ direct then
+                  if hdomains : ∀ spec ∈ domainExtras,
+                      roleDomainClause
+                        (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+                          rboxSource rboxTarget ∈ direct then
+                    let sourceOf ← decodeConceptMap "native ABox source concept"
+                      wire.source_concepts.length taxonomy.initial.abox.concepts.length
+                      wire.abox_source_map
+                    let embedding := fun source =>
+                      bundleConceptEmbedding sourceTargets bundles (.inr source)
+                    if haboxEmbedded : taxonomy.initial.abox.abox.conceptsEmbeddedB
+                        sourceOf embedding = true then
+                      if hqueryEmbedded : queryConceptsEmbeddedB taxonomy.query.literals
+                          sourceOf embedding = true then
+                        if hequal :
+                            (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+                              (indexedBundleOntology direct
+                                  (decodedBundleSpecs bundles) ++
+                                indexedBundleDomainOntology
+                                  (decodedBundleSpecs bundles) domainExtras) ++
+                              taxonomy.initial.abox.negativeRoleClausesAt
+                                taxonomy.initial.variableCount hvariables).toFinset =
+                              taxonomy.initial.state.base.base.ontology.toFinset then
+                          return .unsat {
+                            taxonomy
+                            variable_ge_two := hvariables
+                            sourceConcepts := wire.source_concepts
+                            functions := wire.functions
+                            sourceTargets
+                            direct
+                            bundles
+                            domainExtras
+                            nonemptyBundles := hnonempty
+                            uniqueFunctions := hunique
+                            embeddingInjective :=
+                              bundleConceptEmbedding_injective_of_nodup
+                                sourceTargets bundles hinjective
+                            rboxSource
+                            rboxTarget
+                            rboxDistinct := hrboxDistinct
+                            pathPremises := hpaths
+                            domainPremises := hdomains
+                            sourceOf
+                            abox_embedded :=
+                              taxonomy.initial.abox.abox.conceptsEmbeddedB_sound
+                                sourceOf embedding haboxEmbedded
+                            query_embedded := queryConceptsEmbeddedB_sound _ _ _
+                              hqueryEmbedded
+                            exact_ontology := hequal
+                          }
+                        else throw "bundle source conversion differs from the native ABox taxonomy refutation ontology"
+                      else throw "bundle taxonomy query is not an embedded source concept"
+                    else throw "native ABox concept is not an embedded bundle source concept"
+                  else throw "bundle domain premise is absent from the source ontology"
+                else throw "bundle role-inclusion path is absent from the source ontology"
+              else throw "bundle definers collide with each other or source concepts"
+            else throw "bundle native ABox taxonomy projection reuses a Skolem function"
+          else throw "bundle native ABox taxonomy projection contains no bundles"
+        else throw "bundle native ABox taxonomy function-name table contains duplicates"
+      else throw "bundle native ABox taxonomy source concept-name table contains duplicates"
+
+def WireBundleNativeABoxTaxonomyDecision.check
+    (wire : WireBundleNativeABoxTaxonomyDecision) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedBundleNativeABoxTaxonomySat.source_satisfiable
+    (decoded : DecodedBundleNativeABoxTaxonomySat) :
+    decoded.projection.certificate.seed.abox.abox.SatisfiableWithBundleQuery
+      decoded.projection.sourceOf decoded.projection.direct
+      (decodedBundleSpecs decoded.projection.bundles)
+      (decoded.query.literals.map (renameLit decoded.projection.sourceOf)) := by
+  rcases decoded.projection.certificate.satisfiable_with_query decoded.query.root
+      decoded.query.literals decoded.query_present with
+    ⟨Domain, J, value, element, hdomain, htarget, habox, hquery⟩
+  let targetCore := renameOntology
+    (bundleConceptEmbedding decoded.projection.sourceTargets decoded.projection.bundles)
+    (indexedBundleOntology decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles) ++
+      indexedBundleDomainOntology (decodedBundleSpecs decoded.projection.bundles)
+        decoded.projection.domainExtras)
+  have happended : J.models (targetCore ++
+      decoded.projection.certificate.seed.abox.negativeRoleClausesAt
+        decoded.projection.certificate.seed.variableCount
+        decoded.projection.variable_ge_two) :=
+    (models_iff_of_toFinset_eq J _ _ decoded.projection.exact_ontology).2 htarget
+  have hcore : J.models targetCore := by
+    intro clause hclause
+    exact happended clause (List.mem_append_left _ hclause)
+  let projection : DecodedBundleProjection := {
+    variableCount := decoded.projection.certificate.seed.variableCount
+    sourceConcepts := decoded.projection.sourceConcepts
+    concepts := decoded.projection.certificate.seed.abox.concepts
+    roles := decoded.projection.certificate.seed.abox.roles
+    functions := decoded.projection.functions
+    sourceTargets := decoded.projection.sourceTargets
+    direct := decoded.projection.direct
+    bundles := decoded.projection.bundles
+    domainExtras := decoded.projection.domainExtras
+    target := targetCore
+    nonemptyBundles := decoded.projection.nonemptyBundles
+    uniqueFunctions := decoded.projection.uniqueFunctions
+    embeddingInjective := decoded.projection.embeddingInjective
+    rboxSource := decoded.projection.rboxSource
+    rboxTarget := decoded.projection.rboxTarget
+    rboxDistinct := decoded.projection.rboxDistinct
+    pathPremises := decoded.projection.pathPremises
+    domainPremises := decoded.projection.domainPremises
+    exactProjection := rfl
+  }
+  have hroundtrip :
+      (decoded.query.literals.map (renameLit decoded.projection.sourceOf)).map
+          (renameLit projection.sourceQueryEmbedding) = decoded.query.literals := by
+    exact map_source_query_roundtrip _ _ _ decoded.query_embedded
+  have hqueryMapped : J.RealizesLiterals
+      ((decoded.query.literals.map (renameLit decoded.projection.sourceOf)).map
+        (renameLit projection.sourceQueryEmbedding)) element := by
+    rw [hroundtrip]
+    exact hquery
+  let fallback : Domain := Classical.choice hdomain
+  let base : SkolemInterp Domain (Fin decoded.projection.functions.length) :=
+    { app := fun _ _ => fallback }
+  rcases projection.target_model_to_source_model_preserving_nativeABox_query
+      decoded.projection.certificate.seed.abox.abox decoded.projection.sourceOf
+      decoded.projection.abox_embedded
+      (decoded.query.literals.map (renameLit decoded.projection.sourceOf))
+      J base value element hcore habox hqueryMapped with
+    ⟨I, functions, hdirect, hbundles, haboxSource, hquerySource⟩
+  exact ⟨Domain, I, functions, value, element, hdomain, hdirect, hbundles,
+    haboxSource, hquerySource⟩
+
+theorem DecodedBundleNativeABoxTaxonomyUnsat.source_unsatisfiable
+    (decoded : DecodedBundleNativeABoxTaxonomyUnsat) :
+    ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithBundleQuery
+      decoded.sourceOf decoded.direct (decodedBundleSpecs decoded.bundles)
+      (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf)) := by
+  rintro ⟨Domain, I, functions, value, element, hdomain, hdirect, hbundles,
+    habox, hquery⟩
+  let targetCore := renameOntology
+    (bundleConceptEmbedding decoded.sourceTargets decoded.bundles)
+    (indexedBundleOntology decoded.direct (decodedBundleSpecs decoded.bundles) ++
+      indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+        decoded.domainExtras)
+  let projection : DecodedBundleProjection := {
+    variableCount := decoded.taxonomy.initial.variableCount
+    sourceConcepts := decoded.sourceConcepts
+    concepts := decoded.taxonomy.initial.abox.concepts
+    roles := decoded.taxonomy.initial.abox.roles
+    functions := decoded.functions
+    sourceTargets := decoded.sourceTargets
+    direct := decoded.direct
+    bundles := decoded.bundles
+    domainExtras := decoded.domainExtras
+    target := targetCore
+    nonemptyBundles := decoded.nonemptyBundles
+    uniqueFunctions := decoded.uniqueFunctions
+    embeddingInjective := decoded.embeddingInjective
+    rboxSource := decoded.rboxSource
+    rboxTarget := decoded.rboxTarget
+    rboxDistinct := decoded.rboxDistinct
+    pathPremises := decoded.pathPremises
+    domainPremises := decoded.domainPremises
+    exactProjection := rfl
+  }
+  obtain ⟨J, hcore, haboxTarget, hqueryMapped⟩ :=
+    projection.source_model_to_target_model_preserving_nativeABox_query
+      decoded.taxonomy.initial.abox.abox decoded.sourceOf decoded.abox_embedded
+      (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf))
+      I functions value element hdirect hbundles habox hquery
+  have hroundtrip :
+      (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf)).map
+          (renameLit projection.sourceQueryEmbedding) =
+        decoded.taxonomy.query.literals := by
+    exact map_source_query_roundtrip _ _ _ decoded.query_embedded
+  have hqueryTarget : J.RealizesLiterals decoded.taxonomy.query.literals element := by
+    rw [← hroundtrip]
+    exact hqueryMapped
+  have happended : J.models (targetCore ++
+      decoded.taxonomy.initial.abox.negativeRoleClausesAt
+        decoded.taxonomy.initial.variableCount decoded.variable_ge_two) :=
+    (decoded.taxonomy.initial.abox.models_append_negativeRoleClausesAt_iff
+      J value haboxTarget.1 decoded.variable_ge_two targetCore).2
+        ⟨hcore, haboxTarget.2.2.2.2⟩
+  have htarget : J.models decoded.taxonomy.initial.state.base.base.ontology :=
+    (models_iff_of_toFinset_eq J _ _ decoded.exact_ontology).1 happended
+  exact decoded.taxonomy.unsatisfiable
+    ⟨Domain, J, value, element, hdomain, htarget, haboxTarget, hqueryTarget⟩
+
+def DecodedBundleNativeABoxTaxonomyDecision.SemanticallyValid :
+    DecodedBundleNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      decoded.projection.certificate.seed.abox.abox.SatisfiableWithBundleQuery
+        decoded.projection.sourceOf decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles)
+        (decoded.query.literals.map (renameLit decoded.projection.sourceOf))
+  | .unsat decoded =>
+      ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithBundleQuery
+        decoded.sourceOf decoded.direct (decodedBundleSpecs decoded.bundles)
+        (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf))
+
+theorem DecodedBundleNativeABoxTaxonomyDecision.semantic_valid
+    (decoded : DecodedBundleNativeABoxTaxonomyDecision) :
+    decoded.SemanticallyValid := by
+  cases decoded with
+  | sat result => exact result.source_satisfiable
+  | unsat result => exact result.source_unsatisfiable
+
+structure WireBundleNativeABoxTaxonomyMatrix where
+  version : Nat
+  source_concepts : List String
+  functions : List String
+  direct : List WireDirectSourceClause
+  bundles : List WireSkolemBundle
+  domain_extras : List WireBundleDomainExtra
+  abox_source_map : List Nat
+  matrix : WireNativeABoxTaxonomyMatrix
+deriving FromJson, ToJson, Repr
+
+structure DecodedBundleNativeABoxTaxonomyMatrix where
+  matrix : DecodedNativeABoxTaxonomyMatrix
+  concepts : List DecodedBundleNativeABoxTaxonomyDecision
+  subsumptions : List (List DecodedBundleNativeABoxTaxonomyDecision)
+
+def WireBundleNativeABoxTaxonomyMatrix.decode
+    (wire : WireBundleNativeABoxTaxonomyMatrix) :
+    Except String DecodedBundleNativeABoxTaxonomyMatrix := do
+  if wire.version != 1 then
+    throw s!"unsupported bundle native ABox taxonomy matrix version {wire.version}"
+  let matrix ← wire.matrix.decode
+  let wrap := fun decision => ({
+    version := 1
+    source_concepts := wire.source_concepts
+    functions := wire.functions
+    direct := wire.direct
+    bundles := wire.bundles
+    domain_extras := wire.domain_extras
+    abox_source_map := wire.abox_source_map
+    decision
+  } : WireBundleNativeABoxTaxonomyDecision)
+  let concepts ← wire.matrix.concepts.mapM fun decision => (wrap decision).decode
+  let subsumptions ← wire.matrix.subsumptions.mapM fun row =>
+    row.mapM fun decision => (wrap decision).decode
+  return { matrix, concepts, subsumptions }
+
+def WireBundleNativeABoxTaxonomyMatrix.check
+    (wire : WireBundleNativeABoxTaxonomyMatrix) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+def DecodedBundleNativeABoxTaxonomyMatrix.allDecisions
+    (decoded : DecodedBundleNativeABoxTaxonomyMatrix) :
+    List DecodedBundleNativeABoxTaxonomyDecision :=
+  decoded.concepts ++ decoded.subsumptions.flatten
+
+def DecodedBundleNativeABoxTaxonomyMatrix.SemanticallyValid
+    (decoded : DecodedBundleNativeABoxTaxonomyMatrix) : Prop :=
+  decoded.matrix.wire.shapeB = true ∧ decoded.matrix.wire.queriesB = true ∧
+  decoded.matrix.wire.sharedProblemB = true ∧
+  ∀ decision ∈ decoded.allDecisions, decision.SemanticallyValid
+
+theorem DecodedBundleNativeABoxTaxonomyMatrix.semantic_valid
+    (decoded : DecodedBundleNativeABoxTaxonomyMatrix) :
+    decoded.SemanticallyValid := by
+  refine ⟨decoded.matrix.complete_shape, decoded.matrix.exact_queries,
+    decoded.matrix.shared_problem, ?_⟩
+  intro decision _
+  exact decision.semantic_valid
+
 #print axioms DecodedDirectNativeABoxTaxonomySat.source_satisfiable
 #print axioms DecodedDirectNativeABoxTaxonomyUnsat.source_unsatisfiable
 #print axioms DecodedDirectNativeABoxTaxonomyDecision.semantic_valid
 #print axioms DecodedDirectNativeABoxTaxonomyMatrix.semantic_valid
 #print axioms DecodedMixedNativeABoxTaxonomyDecision.semantic_valid
 #print axioms DecodedMixedNativeABoxTaxonomyMatrix.semantic_valid
+#print axioms DecodedBundleNativeABoxTaxonomyDecision.semantic_valid
+#print axioms DecodedBundleNativeABoxTaxonomyMatrix.semantic_valid
 
 end ContextCalculus.Hypertableau
