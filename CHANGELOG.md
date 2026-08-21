@@ -49,6 +49,16 @@
   excludes a joint TBox/ABox model. Equality decision evidence now fails closed
   when native apart facts are present until its wire carries those facts; this
   prevents a SAT certificate from discarding `DifferentIndividuals`.
+- Prove an executable exact-initial-state checker: labels and role edges are
+  precisely the native ABox seed, obligations and equalities are empty, query
+  root zero is reserved, and native roots are ordered nodes one through N.
+  Compose this checker with the finite equality-refutation tree so an accepted
+  untrusted payload proves the joint normalized TBox/native-ABox problem has no
+  model. Keep the separate terminal-state checker permissive for soundly
+  derived facts and use it to prove the corresponding joint SAT result.
+- Reject zero-node native-ABox states before constructing quotient SAT evidence;
+  the concrete HT search always contains query root zero, and the Lean wire now
+  checks that production invariant explicitly.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.

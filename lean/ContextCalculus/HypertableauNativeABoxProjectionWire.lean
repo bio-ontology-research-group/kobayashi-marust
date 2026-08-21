@@ -128,6 +128,76 @@ def DecodedNativeABox.seededInB (decoded : DecodedNativeABox)
   (decoded.different.all fun pair => decide
     ((root pair.1, root pair.2) ∈ state.apart))
 
+def DecodedNativeABox.initialLabels (decoded : DecodedNativeABox)
+    (root : Fin decoded.individuals.length → Fin nodeCount) :
+    List (Fin nodeCount × Lit (Fin decoded.concepts.length)) :=
+  (List.finRange decoded.individuals.length).flatMap fun individual =>
+    (decoded.abox.proxies individual ++ decoded.abox.assertions individual).map
+      fun concept => (root individual, .pos concept)
+
+def DecodedNativeABox.initialEdges (decoded : DecodedNativeABox)
+    (root : Fin decoded.individuals.length → Fin nodeCount) :
+    List (Fin decoded.roles.length × Fin nodeCount × Fin nodeCount) :=
+  decoded.roleAssertions.map fun assertion =>
+    (assertion.1, root assertion.2.1, root assertion.2.2)
+
+/-- Exact initial-state check used for refutation roots. Unlike `seededInB`,
+this rejects every additional derived fact and every initial equality. -/
+def DecodedNativeABox.exactEqSeedB (decoded : DecodedNativeABox)
+    (state : FiniteEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount) : Bool :=
+  decide (state.base.labels = decoded.initialLabels root) &&
+  decide (state.base.edges = decoded.initialEdges root) &&
+  decide (state.base.obligations = []) && decide (state.equalities = [])
+
+theorem DecodedNativeABox.exactEqSeedB_sound
+    (decoded : DecodedNativeABox)
+    (state : FiniteEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount)
+    (hcheck : decoded.exactEqSeedB state root = true) :
+    decoded.abox.ExactEqSeed state.state root := by
+  simp only [DecodedNativeABox.exactEqSeedB, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  rcases hcheck with ⟨⟨⟨hlabels, hedges⟩, hobligations⟩, hequalities⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro node literal
+    rw [FiniteEqCertificate.state, FiniteSatCertificate.state, hlabels]
+    simp only [DecodedNativeABox.initialLabels, List.mem_flatMap,
+      List.mem_finRange, true_and, List.mem_map]
+    constructor
+    · rintro ⟨individual, concept, hconcept, hequal⟩
+      injection hequal with hnode hliteral
+      exact ⟨individual, concept, hnode.symm, hconcept, hliteral.symm⟩
+    · rintro ⟨individual, concept, rfl, hconcept, rfl⟩
+      exact ⟨individual, concept, hconcept, rfl⟩
+  · intro role source target
+    rw [FiniteEqCertificate.state, FiniteSatCertificate.state, hedges]
+    simp only [DecodedNativeABox.initialEdges, List.mem_map]
+    constructor
+    · rintro ⟨assertion, hassertion, hequal⟩
+      have hrole := congrArg Prod.fst hequal
+      have hrest := congrArg Prod.snd hequal
+      have hsource := congrArg Prod.fst hrest
+      have htarget := congrArg Prod.snd hrest
+      exact ⟨assertion, hassertion, hrole.symm, hsource.symm, htarget.symm⟩
+    · rintro ⟨assertion, hassertion, rfl, rfl, rfl⟩
+      exact ⟨assertion, hassertion, rfl⟩
+  · simpa [FiniteEqCertificate.state, FiniteSatCertificate.state, hobligations]
+  · simp only [FiniteEqCertificate.state, hequalities, List.not_mem_nil]
+    intro left right
+    constructor
+    · intro hequiv
+      induction hequiv with
+      | rel _ _ hfalse => exact False.elim hfalse
+      | refl _ => rfl
+      | symm _ _ _ ih => exact ih.symm
+      | trans _ _ _ _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+    · intro hequal
+      subst right
+      exact Relation.EqvGen.refl left
+
 theorem DecodedNativeABox.seededInB_eq_true_iff
     (decoded : DecodedNativeABox)
     (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
@@ -269,6 +339,7 @@ structure DecodedNativeABoxSeed where
   abox : DecodedNativeABox
   nodeCount : Nat
   variableCount : Nat
+  node_nonzero : nodeCount ≠ 0
   roots : Fin abox.individuals.length → Fin nodeCount
   roots_injective : Function.Injective roots
   ontology : List (Clause (Fin variableCount)
@@ -280,9 +351,14 @@ structure DecodedNativeABoxSeed where
   apart_separated : ∀ pair ∈ state.apart,
     ¬state.base.state.equiv pair.1 pair.2
 
+def requireNodeZero (nodeCount : Nat) : Except String (Fin nodeCount) :=
+  if hnode : 0 < nodeCount then .ok ⟨0, hnode⟩
+  else .error "native ABox finite state must contain query root zero"
+
 def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
     Except String DecodedNativeABoxSeed := do
   let abox ← wire.abox.decode
+  let nodeZero ← requireNodeZero wire.node_count
   let ontology ← wire.ontology.mapM
     (WireClause.decode wire.variable_count abox.concepts.length abox.roles.length)
   let decodedRoots ← wire.roots.mapM
@@ -305,6 +381,7 @@ def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
               abox
               nodeCount := wire.node_count
               variableCount := wire.variable_count
+              node_nonzero := Nat.ne_of_gt (Nat.zero_lt_of_lt nodeZero.isLt)
               roots
               roots_injective := hrootsInjective
               ontology
@@ -322,6 +399,73 @@ def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
 def WireNativeABoxSeed.check (wire : WireNativeABoxSeed) : Except String Bool := do
   let _ ← wire.decode
   return true
+
+/-- Exact initial state used as the root of an ABox-aware equality refutation.
+Terminal SAT states use `DecodedNativeABoxSeed` instead because they may contain
+arbitrarily many soundly derived facts. -/
+structure DecodedNativeABoxInitial where
+  seed : DecodedNativeABoxSeed
+  exact_initial : seed.abox.abox.ExactEqSeed seed.state.base.state seed.roots
+
+def WireNativeABoxSeed.decodeInitial (wire : WireNativeABoxSeed) :
+    Except String DecodedNativeABoxInitial := do
+  let expectedRoots := (List.range wire.abox.individuals.length).map (· + 1)
+  unless wire.roots == expectedRoots do
+    throw "native ABox refutation roots must be ordered nodes 1 through N"
+  let seed ← wire.decode
+  if hexact : seed.abox.exactEqSeedB seed.state.base seed.roots = true then
+    return {
+      seed
+      exact_initial := seed.abox.exactEqSeedB_sound seed.state.base
+        seed.roots hexact
+    }
+  else throw "finite HT refutation root is not the exact native ABox seed"
+
+def WireNativeABoxSeed.checkInitial (wire : WireNativeABoxSeed) :
+    Except String Bool := do
+  let _ ← wire.decodeInitial
+  return true
+
+theorem DecodedNativeABoxInitial.initializes (decoded : DecodedNativeABoxInitial) :
+    decoded.seed.abox.abox.InitializesEqState decoded.seed.state.base.state :=
+  decoded.exact_initial.initializes decoded.seed.abox.abox decoded.seed.state.base.state
+    decoded.seed.roots decoded.seed.roots_injective
+
+/-- Untrusted exact initial state plus a complete finite equality refutation. -/
+structure WireNativeABoxRefutation where
+  initial : WireNativeABoxSeed
+  tree : WireEqRefutationTree
+deriving FromJson, ToJson, Repr
+
+structure DecodedNativeABoxRefutation where
+  initial : DecodedNativeABoxInitial
+  tree : FiniteEqRefutationTree initial.seed.nodeCount
+    initial.seed.abox.concepts.length initial.seed.abox.roles.length
+    initial.seed.variableCount
+  checked : tree.check initial.seed.state.base = true
+
+def WireNativeABoxRefutation.decode (wire : WireNativeABoxRefutation) :
+    Except String DecodedNativeABoxRefutation := do
+  let initial ← wire.initial.decodeInitial
+  let tree ← wire.tree.decode initial.seed.nodeCount
+    initial.seed.abox.concepts.length initial.seed.abox.roles.length
+    initial.seed.variableCount initial.seed.ontology
+  if hcheck : tree.check initial.seed.state.base = true then
+    return { initial, tree, checked := hcheck }
+  else throw "native ABox equality refutation did not close"
+
+def WireNativeABoxRefutation.check (wire : WireNativeABoxRefutation) :
+    Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedNativeABoxRefutation.unsatisfiable
+    (decoded : DecodedNativeABoxRefutation) :
+    ¬decoded.initial.seed.abox.abox.SatisfiableWith
+      decoded.initial.seed.state.base.base.ontology :=
+  decoded.tree.check_native_abox_unsatisfiable
+    decoded.initial.seed.state.base decoded.initial.seed.abox.abox
+    decoded.initial.initializes decoded.checked
 
 theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
@@ -341,6 +485,8 @@ theorem DecodedNativeABoxSeed.checkEqSat_native_satisfiable
       (fun individual => Quotient.mk decoded.state.base.state.nodeSetoid
         (decoded.roots individual))) :
     decoded.abox.abox.SatisfiableWith decoded.state.base.base.ontology := by
+  letI : Nonempty (Fin decoded.nodeCount) :=
+    ⟨⟨0, Nat.pos_of_ne_zero decoded.node_nonzero⟩⟩
   exact decoded.state.checkEqSat_native_satisfiable decoded.abox.abox
     decoded.roots decoded.seeded hcheck decoded.apart_check hsingletons hnegative
 
@@ -400,29 +546,30 @@ example : rejected ({ validExample with role_assertions := [[0, 1]] }).check = t
 
 private def validSeedExample : WireNativeABoxSeed where
   abox := validExample
-  node_count := 2
+  node_count := 3
   variable_count := 2
-  roots := [0, 1]
+  roots := [1, 2]
   ontology := []
   state := {
     base := {
       labels := [
-        { node := 0, literal := { concept := 0, neg := false } },
-        { node := 0, literal := { concept := 2, neg := false } },
-        { node := 1, literal := { concept := 1, neg := false } }
+        { node := 1, literal := { concept := 0, neg := false } },
+        { node := 1, literal := { concept := 2, neg := false } },
+        { node := 2, literal := { concept := 1, neg := false } }
       ]
-      edges := [{ role := 0, source := 0, target := 1 }]
+      edges := [{ role := 0, source := 1, target := 2 }]
       obligations := []
       equalities := []
-      representatives := [0, 1]
-      representative_paths := [[], []]
+      representatives := [0, 1, 2]
+      representative_paths := [[], [], []]
     }
-    apart := [{ left := 0, right := 1 }]
+    apart := [{ left := 1, right := 2 }]
   }
 
 example : validSeedExample.check = .ok true := by native_decide
+example : validSeedExample.checkInitial = .ok true := by native_decide
 example : rejected ({ validSeedExample with roots := [0] }).check = true := by native_decide
-example : rejected ({ validSeedExample with roots := [0, 0] }).check = true := by native_decide
+example : rejected ({ validSeedExample with roots := [1, 1] }).check = true := by native_decide
 example : rejected ({ validSeedExample with state :=
     { validSeedExample.state with base :=
       { validSeedExample.state.base with labels :=
@@ -430,9 +577,25 @@ example : rejected ({ validSeedExample with state :=
 example : rejected ({ validSeedExample with state :=
     { validSeedExample.state with base :=
       { validSeedExample.state.base with
-        equalities := [{ left := 0, right := 1 }]
-        representatives := [0, 0]
-        representative_paths := [[], [0]] } } }).check = true := by native_decide
+        equalities := [{ left := 1, right := 2 }]
+        representatives := [0, 1, 1]
+        representative_paths := [[], [], [1]] } } }).check = true := by native_decide
+example : rejected ({ validSeedExample with state :=
+    { validSeedExample.state with base :=
+      { validSeedExample.state.base with labels :=
+        validSeedExample.state.base.labels ++
+          [({ node := 2, literal := { concept := 2, neg := false } } : WireLabel)] } } }).checkInitial = true := by
+  native_decide
+
+private def validRefutationExample : WireNativeABoxRefutation where
+  initial := { validSeedExample with ontology := [
+    { body := [.concept { concept := 2, neg := false } 0], head := [] }
+  ] }
+  tree := .branch 0 [1, 0] []
+
+example : validRefutationExample.check = .ok true := by native_decide
+example : rejected ({ validRefutationExample with tree := .clash }).check = true := by
+  native_decide
 
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
@@ -441,6 +604,8 @@ example : rejected ({ validSeedExample with state :=
 #print axioms WireNativeABox.check_sound
 #print axioms WireNativeABoxSeed.check_sound
 #print axioms DecodedNativeABoxSeed.checkEqSat_native_satisfiable
+#print axioms DecodedNativeABoxInitial.initializes
+#print axioms DecodedNativeABoxRefutation.unsatisfiable
 
 end Tests
 

@@ -19,7 +19,7 @@ def NativeABox.SatisfiableWith
     (ontology : List (Clause Variable Concept Role)) : Prop :=
   ∃ (Domain : Type) (I : Interp Domain Concept Role)
       (value : Individual → Domain),
-    I.models ontology ∧ abox.models I value
+    Nonempty Domain ∧ I.models ontology ∧ abox.models I value
 
 /-- Semantic contract for an initial equality-refutation state. Every model of
 the source ABox can be extended to values for all finite search nodes that
@@ -29,9 +29,53 @@ def NativeABox.InitializesEqState
     (abox : NativeABox Individual Concept Role)
     (state : EqState Node Concept Role) : Prop :=
   ∀ (Domain : Type) (I : Interp Domain Concept Role)
-      (value : Individual → Domain),
+      [Nonempty Domain] (value : Individual → Domain),
     abox.models I value → ∃ nodeValue : Node → Domain,
       state.RealizedBy I nodeValue
+
+def NativeABox.ExactEqSeed
+    (abox : NativeABox Individual Concept Role)
+    (state : EqState Node Concept Role) (root : Individual → Node) : Prop :=
+  (∀ node literal, state.base.label node literal ↔
+    ∃ individual concept,
+      node = root individual ∧
+      concept ∈ abox.proxies individual ++ abox.assertions individual ∧
+      literal = .pos concept) ∧
+  (∀ role source target, state.base.edge role source target ↔
+    ∃ assertion ∈ abox.roleAssertions,
+      role = assertion.1 ∧ source = root assertion.2.1 ∧
+        target = root assertion.2.2) ∧
+  (∀ role filler node, ¬state.base.obligation role filler node) ∧
+  (∀ left right, state.equiv left right ↔ left = right)
+
+theorem NativeABox.ExactEqSeed.initializes
+    (abox : NativeABox Individual Concept Role)
+    (state : EqState Node Concept Role) (root : Individual → Node)
+    (hroot : Function.Injective root) (hexact : abox.ExactEqSeed state root) :
+    abox.InitializesEqState state := by
+  intro Domain I _ value habox
+  classical
+  let fallback : Domain := Classical.choice (inferInstance : Nonempty Domain)
+  let nodeValue : Node → Domain := Function.extend root value (fun _ => fallback)
+  have hrootValue : ∀ individual, nodeValue (root individual) = value individual :=
+    fun individual => hroot.extend_apply value (fun _ => fallback) individual
+  refine ⟨nodeValue, ⟨⟨?_, ?_, ?_⟩, ?_⟩⟩
+  · intro node literal hlabel
+    rcases (hexact.1 node literal).1 hlabel with
+      ⟨individual, concept, rfl, hconcept, rfl⟩
+    rcases List.mem_append.mp hconcept with hproxy | hassertion
+    · simpa [Interp.satLit, hrootValue] using
+        (habox.1 individual concept hproxy (value individual)).2 rfl
+    · simpa [Interp.satLit, hrootValue] using
+        habox.2.1 individual concept hassertion
+  · intro role source target hedge
+    rcases (hexact.2.1 role source target).1 hedge with
+      ⟨assertion, hassertion, rfl, rfl, rfl⟩
+    simpa [hrootValue] using habox.2.2.2.1 assertion hassertion
+  · intro role filler node hobligation
+    exact (hexact.2.2.1 role filler node hobligation).elim
+  · intro left right hequivalent
+    exact congrArg nodeValue ((hexact.2.2.2 left right).1 hequivalent)
 
 theorem FiniteEqRefutationTree.check_native_abox_unsatisfiable
     (tree : FiniteEqRefutationTree nodeCount conceptCount roleCount variableCount)
@@ -40,7 +84,8 @@ theorem FiniteEqRefutationTree.check_native_abox_unsatisfiable
     (hinitial : abox.InitializesEqState certificate.state)
     (hcheck : tree.check certificate = true) :
     ¬abox.SatisfiableWith certificate.base.ontology := by
-  rintro ⟨Domain, I, value, hmodels, habox⟩
+  rintro ⟨Domain, I, value, hdomain, hmodels, habox⟩
+  letI : Nonempty Domain := hdomain
   rcases hinitial Domain I value habox with ⟨nodeValue, hrealized⟩
   exact tree.check_unsatisfiable certificate hcheck
     ⟨Domain, I, nodeValue, hmodels, hrealized⟩
@@ -67,6 +112,7 @@ theorem FiniteDistinctEqCertificate.apartSeparatedB_sound
       hequivalent)
 
 theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
+    [Nonempty (Fin nodeCount)]
     (certificate : FiniteDistinctEqCertificate
       nodeCount conceptCount roleCount variableCount)
     (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
@@ -98,9 +144,13 @@ theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
     refine ⟨hbaseRealized, ?_⟩
     intro left right hlisted hequal
     exact hapartSound (left, right) hlisted (Quotient.exact hequal)
+  letI : Nonempty certificate.base.state.QuotientDomain :=
+    ⟨Quotient.mk certificate.base.state.nodeSetoid
+      (Classical.choice (inferInstance : Nonempty (Fin nodeCount)))⟩
   refine ⟨certificate.base.state.QuotientDomain,
     certificate.base.state.quotientCanonical,
-    nodeValue ∘ root, certificate.base.checkEqSat_models hcheck, ?_⟩
+    nodeValue ∘ root, inferInstance,
+    certificate.base.checkEqSat_models hcheck, ?_⟩
   exact abox.models_of_seeded certificate.state root
     certificate.base.state.quotientCanonical nodeValue hseeded
     hdistinctRealized hsingletons hnegative
@@ -108,5 +158,6 @@ theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
 #print axioms FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
 #print axioms FiniteDistinctEqCertificate.apartSeparatedB_sound
 #print axioms FiniteEqRefutationTree.check_native_abox_unsatisfiable
+#print axioms NativeABox.ExactEqSeed.initializes
 
 end ContextCalculus.Hypertableau
