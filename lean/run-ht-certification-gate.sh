@@ -25,6 +25,8 @@ fi
 
 checkers=(
     ht-projection-cert-check
+    ht-frontier-check
+    ht-cardinality-frontier-check
     ht-native-abox-taxonomy-matrix-cert-check
     ht-native-abox-cardinality-taxonomy-cert-check
     ht-native-abox-taxonomy-source-cert-check
@@ -48,6 +50,10 @@ done
     cd "$engine_root"
     export CARGO_TARGET_DIR="$target_root"
     export KM_HT_TEST_LEAN_PROJECTION_CHECKER="$bin_root/ht-projection-cert-check"
+    export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
+    export KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
+    export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
+    export KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-matrix-cert-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-cert-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"

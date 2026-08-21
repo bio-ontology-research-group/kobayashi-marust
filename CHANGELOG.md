@@ -121,6 +121,14 @@
   now requires this joint checker in addition to all existing checks. The
   mandatory gate exercises all six routes and rejects independently forged
   source and ABox fields.
+- Check every inconclusive production HT frontier in Lean before increasing
+  its search bound. This covers ordinary, equality, cardinality, native-ABox,
+  refutation, decision, and taxonomy searches. Checker rejection now reaches
+  the caller as an error instead of being collapsed into an ordinary defer.
+  This establishes the checked-frontier premise used by the total-route
+  theorems; proving that every concrete blocked-open Rust candidate eventually
+  serializes to an accepted terminal certificate remains the HT completion
+  obligation.
 
 ### Certify native-ABox cardinality taxonomies
 

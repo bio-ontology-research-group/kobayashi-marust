@@ -192,6 +192,7 @@ fn run_with_input(
         // ordinary performance route requests harvested consequences.
         .env("KM_HT_HARVEST", "1")
         .env("KM_HT_LEAN_PROJECTION_CHECKER", projection_checker)
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -231,6 +232,7 @@ fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::proc
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -252,6 +254,13 @@ fn run_certification_bypass_probe(
     enable_ht: bool,
 ) -> std::process::Output {
     let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+    // Keep this probe focused on publication routing. A closed contradictory
+    // source reaches terminal evidence without relying on the still-pending
+    // blocked-open producer-refinement theorem.
+    input["clauses"] = serde_json::json!([
+        {"body":[], "head":[{"k":"c", "neg":false, "c":0, "t":0}]},
+        {"body":[], "head":[{"k":"c", "neg":true, "c":0, "t":0}]}
+    ]);
     install_direct_projection_fixture(&mut input);
     let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
     if enable_ht {
@@ -260,6 +269,7 @@ fn run_certification_bypass_probe(
     command
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         // A branch that bypasses certification would incorrectly succeed.
         .env("KM_HT_LEAN_CERT_CHECKER", "/bin/false")
         .stdin(Stdio::piped())
@@ -305,6 +315,7 @@ fn run_projection_only_certification() -> std::process::Output {
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -340,6 +351,7 @@ fn run_native_abox_taxonomy_certification(
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER", "/bin/true")
         .env(
             "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
@@ -372,6 +384,53 @@ fn run_native_abox_taxonomy_certification(
     child.wait_with_output().unwrap()
 }
 
+fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Output {
+    let concepts: Vec<_> = (0..11).map(|index| format!("C{index}")).collect();
+    let mut clauses = vec![serde_json::json!({
+        "body": [],
+        "head": [{"k":"c", "neg":false, "c":0, "t":0}]
+    })];
+    for index in 0..10 {
+        clauses.push(serde_json::json!({
+            "body": [{"k":"c", "neg":false, "c":index, "t":0}],
+            "head": [{"k":"e", "r":0, "neg":false, "c":index + 1, "t":0}]
+        }));
+    }
+    let mut input = serde_json::json!({
+        "concepts": concepts,
+        "roles": ["r"],
+        "clauses": clauses,
+        "queries": [0],
+        "inverse": false,
+        "number": false,
+        "nominals": [],
+        "native_abox": {},
+        "card_defs": [],
+        "chains": [],
+        "transitive": []
+    });
+    install_direct_projection_fixture(&mut input);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_FRONTIER_CHECKER", frontier_checker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn frontier-gated tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input).unwrap())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -387,10 +446,35 @@ fn certified_publication_requires_checker_and_source_projection() {
 }
 
 #[test]
+fn every_iterative_frontier_is_checker_gated() {
+    let rejected = run_frontier_gated_certification("/bin/false");
+    assert!(!rejected.status.success());
+    assert!(rejected.stdout.is_empty(), "unchecked frontier published output");
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr)
+            .contains("Lean rejected the regular decision frontier"),
+        "{}",
+        String::from_utf8_lossy(&rejected.stderr),
+    );
+
+    let accepted = run_frontier_gated_certification("/bin/true");
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr),
+    );
+}
+
+#[test]
 fn certified_publication_cannot_bypass_through_bridge_rules_or_legacy_tableau() {
     let bridge = run_certification_bypass_probe(&[("KM_HT_BRIDGE", "1")], true);
     assert!(!bridge.status.success());
-    assert!(String::from_utf8_lossy(&bridge.stderr).contains("no unchecked fallback"));
+    assert!(bridge.stdout.is_empty(), "rejected certificate published output");
+    assert!(
+        String::from_utf8_lossy(&bridge.stderr).contains("rejected the certificate"),
+        "{}",
+        String::from_utf8_lossy(&bridge.stderr),
+    );
 
     let rules = run_certification_bypass_probe(&[("KM_RULES_CONSISTENCY", "1")], true);
     assert!(!rules.status.success());
@@ -408,6 +492,8 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
         "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
         "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+        "KM_HT_LEAN_FRONTIER_CHECKER",
+        "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     ] {
         let output = run_isolated_certification_interface(interface);
         assert!(!output.status.success(), "{interface} bypassed certification");
@@ -592,6 +678,7 @@ fn first_class_cardinality_global_result_is_checker_gated() {
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_CERT_CHECKER", checker)
         .env("KM_HT_LEAN_PROJECTION_CHECKER", projection_checker)
+        .env("KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -6248,6 +6248,8 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
     "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
     "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
+    "KM_HT_LEAN_FRONTIER_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
 ];
 
 fn ht_lean_certification_requested() -> bool {
@@ -6435,6 +6437,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     "HT Lean certification requires the global consistency route".to_string(),
                 );
             }
+            let frontier_checker = if inp.card_defs.is_empty() {
+                "KM_HT_LEAN_FRONTIER_CHECKER"
+            } else {
+                "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER"
+            };
+            if std::env::var_os(frontier_checker).is_none() {
+                return Err(format!(
+                    "HT Lean certification requires {frontier_checker} for every inconclusive search round"
+                ));
+            }
             check_certified_ht_input_coverage(&inp, native_abox_active)?;
             if lean_projection_checker.is_none() {
                 return Err(
@@ -6549,16 +6561,16 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     // evidence from the same total certificate search. The
                     // optimized tableau is not an oracle at this trust boundary.
                     let (consistent, certificate) =
-                        ht.lean_global_decision_certificate_json().ok()?;
+                        ht.lean_global_decision_certificate_json()?;
                     let taxonomy = if lean_taxonomy_requested {
-                        Some(ht.lean_taxonomy_certificate_json(&q).ok()?)
+                        Some(ht.lean_taxonomy_certificate_json(&q)?)
                     } else {
                         None
                     };
-                    return Some((
+                    return Ok::<_, String>(Some((
                         (consistent, Vec::new(), Vec::new()),
                         Some((certificate, taxonomy)),
-                    ));
+                    )));
                 }
                 let classification = if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
@@ -6581,11 +6593,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 } else {
                     ht.classify(&q)
                 };
-                Some((classification?, None))
+                Ok::<_, String>(classification.map(|classification| (classification, None)))
             })
             .map_err(|e| e.to_string())?
             .join()
-            .map_err(|_| "hypertableau thread panicked".to_string())?;
+            .map_err(|_| "hypertableau thread panicked".to_string())??;
         if std::env::var_os("KM_HT_TRACE").is_some() {
             eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
         }
@@ -7058,6 +7070,8 @@ mod tests {
             "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
             "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
             "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
+            "KM_HT_LEAN_FRONTIER_CHECKER",
+            "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
         ] {
             assert!(
                 HT_LEAN_CERTIFICATION_ENV.contains(&required),
