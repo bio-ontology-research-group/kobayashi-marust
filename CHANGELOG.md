@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.187] – 2026-08-21
+
+### Prove total finite-budget cardinality control search
+
+- Define the total first-obstruction outcome in production priority order:
+  selected recursive step, ordinary-witness frontier, minimum-width frontier,
+  or selector-exhausted terminal.
+- Distinguish node-budget failure from logical terminality for both ordinary
+  witnesses and minimum expansions.
+- Prove the control function produces an outcome for every finite runtime
+  configuration.
+- Define reflexive-transitive descent through exact production child
+  configurations.
+- Lift the one-step control through the well-founded recursion kernel and prove
+  every root either constructs a quotient-closed cardinality refutation or
+  reaches an explicit frontier/terminal descendant.
+- Audit the total-search endpoint without `sorryAx`.
+
+Turning exhausted terminals into checked models, concrete Rust field
+construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.186] – 2026-08-21
 
 ### Compose the cardinality production recursion kernel

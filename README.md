@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.186`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.187`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -180,6 +180,12 @@ Every child is proved smaller, closure of every child closes its parent, and a
 well-founded induction principle provides the kernel for the total production
 outcome evaluator. The executable first-obstruction decision that instantiates
 this kernel remains unfinished.
+The finite-budget cardinality control is now total in production priority
+order. Well-founded search either constructs a quotient-closed refutation or
+reaches a descendant explicitly marked as an ordinary-witness frontier,
+minimum-width frontier, or selector-exhausted terminal. Node exhaustion is
+never treated as a logical open branch. Exhausted terminals still require the
+independent checked-model composition before they can produce SAT.
 
 ## Classify an ontology
 

@@ -997,6 +997,200 @@ theorem cardinalityProduction_induction
       intro step child hchild
       exact ih child (step.child_strictGrowth hchild)
 
+/-- Total result of Rust's first-obstruction control at one finite-budget
+configuration. A selected witness or minimum that does not fit is an explicit
+frontier, not a terminal model. -/
+inductive CardinalityControlOutcome
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) : Type where
+  | step
+      (selected : CardinalityProductionStep ontology definitions config.state parent ancestors
+        config.expanded config.active config.active_le)
+  | witnessFrontier
+      (hnoApart : selectEqualityApartClash config.state = none)
+      (hnoClash : selectCardinalityConceptClash config.state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology config.state config.active
+        config.active_le = none)
+      (candidate : WitnessCandidate (Fin nodeCount) Concept Role)
+      (hselect : selectEqUnblockedUnwitnessed config.state.base parent ancestors =
+        some candidate)
+      (hfull : ¬config.active < nodeCount)
+  | minimumFrontier
+      (hnoApart : selectEqualityApartClash config.state = none)
+      (hnoClash : selectCardinalityConceptClash config.state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology config.state config.active
+        config.active_le = none)
+      (hnoWitness : selectEqUnblockedUnwitnessed config.state.base parent ancestors = none)
+      (site : IndexedCardinalitySite definitions nodeCount)
+      (hselect : selectIndexedExpandableMinimum definitions config.state parent ancestors
+        config.expanded = some site)
+      (hoverflow : ¬config.active + (definitions.get site.1).bound ≤ nodeCount)
+  | terminal
+      (hnoApart : selectEqualityApartClash config.state = none)
+      (hnoClash : selectCardinalityConceptClash config.state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology config.state config.active
+        config.active_le = none)
+      (hnoWitness : selectEqUnblockedUnwitnessed config.state.base parent ancestors = none)
+      (hnoMinimum : selectIndexedExpandableMinimum definitions config.state parent ancestors
+        config.expanded = none)
+      (hnoMaximum : selectIndexedViolatingMaximum definitions config.state = none)
+
+/-- The total finite first-obstruction control in production priority order. -/
+noncomputable def cardinalityControl
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) :
+    CardinalityControlOutcome ontology definitions config parent ancestors := by
+  classical
+  generalize hapart : selectEqualityApartClash config.state = apart
+  cases apart with
+  | some candidate =>
+      exact .step (.equalityApart candidate hapart)
+  | none =>
+      generalize hclash : selectCardinalityConceptClash config.state = clash
+      cases clash with
+      | some candidate =>
+          exact .step (.conceptClash hapart candidate hclash)
+      | none =>
+          generalize hclause : selectActiveCardinalityClauseGrounding ontology config.state
+            config.active config.active_le = clause
+          cases clause with
+          | some grounding =>
+              exact .step (.branch hapart hclash grounding hclause)
+          | none =>
+              generalize hwitness : selectEqUnblockedUnwitnessed config.state.base parent
+                ancestors = witness
+              cases witness with
+              | some candidate =>
+                  by_cases hfit : config.active < nodeCount
+                  · exact .step (.witness hapart hclash hclause candidate hwitness hfit
+                      config.inactive_fresh)
+                  · exact .witnessFrontier hapart hclash hclause candidate hwitness hfit
+              | none =>
+                  generalize hminimum : selectIndexedExpandableMinimum definitions config.state
+                    parent ancestors config.expanded = minimum
+                  cases minimum with
+                  | some site =>
+                      by_cases hfit : config.active + (definitions.get site.1).bound ≤ nodeCount
+                      · exact .step (.minimum hapart hclash hclause hwitness site hminimum hfit
+                          config.inactive_fresh)
+                      · exact .minimumFrontier hapart hclash hclause hwitness site hminimum hfit
+                  | none =>
+                      generalize hmaximum : selectIndexedViolatingMaximum definitions config.state =
+                        maximum
+                      cases maximum with
+                      | some site =>
+                          have hfound := firstMatch_eq_some_mem
+                            (by simpa [selectIndexedViolatingMaximum] using hmaximum)
+                          have hwidth :=
+                            (indexedMaximumSiteBool_eq_true_iff definitions config.state site).mp
+                              hfound.2 |>.2.2
+                          exact .step (.maximum hapart hclash hclause hwitness hminimum site
+                            hmaximum hwidth config.inactive_fresh)
+                      | none =>
+                          exact .terminal hapart hclash hclause hwitness hminimum hmaximum
+
+theorem cardinalityControl_total
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) :
+    ∃ outcome : CardinalityControlOutcome ontology definitions config parent ancestors,
+      outcome = cardinalityControl ontology definitions config parent ancestors :=
+  ⟨_, rfl⟩
+
+def CardinalityControlOutcome.IsStop
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {definitions : List (CardinalityDef Concept Role)}
+    {config : CardinalityRuntimeConfig Concept Role definitions nodeCount}
+    {parent : Fin nodeCount → Option (Fin nodeCount)}
+    {ancestors : Fin nodeCount → List (Fin nodeCount)} :
+    CardinalityControlOutcome ontology definitions config parent ancestors → Prop
+  | .step _ => False
+  | .witnessFrontier .. => True
+  | .minimumFrontier .. => True
+  | .terminal .. => True
+
+/-- Reflexive-transitive descent through exact production children. -/
+inductive CardinalityProductionDescends
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) :
+    CardinalityRuntimeConfig Concept Role definitions nodeCount →
+      CardinalityRuntimeConfig Concept Role definitions nodeCount → Prop where
+  | refl (config) : CardinalityProductionDescends ontology definitions parent ancestors
+      config config
+  | tail (config child leaf)
+      (step : CardinalityProductionStep ontology definitions config.state parent ancestors
+        config.expanded config.active config.active_le)
+      (hchild : step.ChildConfig config parent ancestors child)
+      (rest : CardinalityProductionDescends ontology definitions parent ancestors child leaf) :
+      CardinalityProductionDescends ontology definitions parent ancestors config leaf
+
+/-- Finite-budget production search either constructs a sound closed
+refutation or reaches an explicit frontier/terminal control state. -/
+theorem cardinalityControl_search_total
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (nodeCount : Nat)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) :
+    ∀ root : CardinalityRuntimeConfig Concept Role definitions nodeCount,
+      ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions root.state ∨
+        ∃ leaf, CardinalityProductionDescends ontology definitions parent ancestors root leaf ∧
+          (cardinalityControl ontology definitions leaf parent ancestors).IsStop := by
+  apply cardinalityProduction_induction ontology definitions nodeCount parent ancestors
+  intro config ih
+  generalize hcontrol : cardinalityControl ontology definitions config parent ancestors = outcome
+  cases outcome with
+  | step selected =>
+      by_cases hall : ∀ child, selected.ChildConfig config parent ancestors child →
+          ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions child.state
+      · exact Or.inl (selected.closedRefutes_of_childConfigs config parent ancestors hall)
+      · push_neg at hall
+        rcases hall with ⟨child, hchild, hnotClosed⟩
+        rcases ih selected child hchild with hclosed | ⟨leaf, hdescends, hstop⟩
+        · exact (hnotClosed hclosed).elim
+        · exact Or.inr ⟨leaf,
+            .tail config child leaf selected hchild hdescends, hstop⟩
+  | witnessFrontier hnoApart hnoClash hnoClause candidate hselect hfull =>
+      exact Or.inr ⟨config, .refl config, by
+        rw [hcontrol]
+        trivial⟩
+  | minimumFrontier hnoApart hnoClash hnoClause hnoWitness site hselect hoverflow =>
+      exact Or.inr ⟨config, .refl config, by
+        rw [hcontrol]
+        trivial⟩
+  | terminal hnoApart hnoClash hnoClause hnoWitness hnoMinimum hnoMaximum =>
+      exact Or.inr ⟨config, .refl config, by
+        rw [hcontrol]
+        trivial⟩
+
 #print axioms CardinalityProductionStep.closedRefutes_of_children
 #print axioms selectIndexedExpandableMinimum_eq_none_iff
 #print axioms selectIndexedExpandableMinimum_closedRefutes
@@ -1021,5 +1215,7 @@ theorem cardinalityProduction_induction
 #print axioms CardinalityProductionStep.child_strictGrowth
 #print axioms CardinalityProductionStep.closedRefutes_of_childConfigs
 #print axioms cardinalityProduction_induction
+#print axioms cardinalityControl_total
+#print axioms cardinalityControl_search_total
 
 end ContextCalculus.Hypertableau
