@@ -5494,6 +5494,49 @@ fn check_native_abox_projection(
     run_ht_projection_checker(&encoded, checker, "native-abox")
 }
 
+fn direct_native_abox_refutation_document(
+    inp: &TInput,
+    normalized_refutation: &str,
+) -> Result<Vec<u8>, String> {
+    if !inp.card_defs.is_empty()
+        || inp.bundle_projection_source.is_some()
+        || inp.mixed_projection_source.is_some()
+    {
+        return Err(
+            "joint direct native ABox refutation does not cover transformed source clauses"
+                .to_string(),
+        );
+    }
+    let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+        "joint native ABox refutation has no complete direct source projection".to_string()
+    })?;
+    let mut refutation: serde_json::Value = serde_json::from_str(normalized_refutation)
+        .map_err(|error| format!("invalid normalized native ABox refutation: {error}"))?;
+    let initial = refutation
+        .get_mut("initial")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "normalized native ABox refutation omitted its initial state".to_string())?;
+    initial.insert(
+        "abox".to_string(),
+        serde_json::to_value(NativeAboxProjectionDocument {
+            complete: inp.native_abox.complete,
+            concepts: &inp.concepts,
+            roles: &inp.roles,
+            nominals: &inp.nominals,
+            individuals: &inp.native_abox.individuals,
+            different: &inp.native_abox.different,
+            role_assertions: &inp.native_abox.role_assertions,
+            negative_role_assertions: &inp.native_abox.negative_role_assertions,
+        })
+        .map_err(|error| format!("cannot encode joint native ABox payload: {error}"))?,
+    );
+    serde_json::to_vec(&serde_json::json!({
+        "source": source,
+        "refutation": refutation,
+    }))
+    .map_err(|error| format!("cannot encode joint direct native ABox refutation: {error}"))
+}
+
 fn check_direct_ht_projection(
     inp: &TInput,
     clauses: &[Clause],
@@ -6642,6 +6685,56 @@ mod tests {
         assert!(check_native_abox_projection(
             &consumer_input(&missing_nominal),
             std::path::Path::new(&checker)
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_refutation_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{DirectProjectionAtom, DirectProjectionClause};
+        let mut producer = native_wire_input();
+        producer.direct_projection_source = Some(vec![DirectProjectionClause {
+            variable_names: vec!["x".into()],
+            body: vec![DirectProjectionAtom::Con {
+                concept: "A".into(),
+                node: "x".into(),
+                neg: false,
+            }],
+            head: Vec::new(),
+        }]);
+        let inp = consumer_input(&producer);
+        let mut reasoner = hypertableau::Ht::new_certified(vec![Clause::new(
+            vec![con(false, 2, 0)],
+            Vec::new(),
+        )]);
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        let normalized = reasoner
+            .lean_native_abox_unsat_refutation_json()
+            .expect("normalized native ABox refutation");
+        let document = direct_native_abox_refutation_document(&inp, &normalized)
+            .expect("compose direct source and native ABox refutation");
+        run_ht_projection_checker(
+            &document,
+            std::path::Path::new(&checker),
+            "direct-native-abox-refutation",
+        )
+        .expect("combined direct source/native ABox refutation passes Lean");
+
+        let mut forged: serde_json::Value = serde_json::from_slice(&document).unwrap();
+        forged["source"] = serde_json::json!([]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-refutation",
         )
         .unwrap_err()
         .contains("rejected"));

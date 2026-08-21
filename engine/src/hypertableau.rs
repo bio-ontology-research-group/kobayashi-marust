@@ -11114,6 +11114,13 @@ impl Ht {
             role_count = role_count.max(role as usize + 1);
         }
         variable_count = variable_count.max(self.lean_source_variable_count());
+        if !self.native_abox.individuals.is_empty() {
+            // Native negative-role guards use two distinguished clause
+            // variables. Reserve both slots even when this particular ABox has
+            // no negative assertion, so the joint source/decision wire has one
+            // stable signature.
+            variable_count = variable_count.max(2);
+        }
         let ontology = self
             .clauses
             .iter()

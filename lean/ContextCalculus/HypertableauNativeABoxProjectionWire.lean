@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauNativeABoxProjection
+import ContextCalculus.HypertableauDirectProjectionWire
 import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauCardinalityDistinctWire
@@ -113,6 +114,16 @@ def DecodedNativeABox.negativeRoleClauses (decoded : DecodedNativeABox) :
       (decoded.primaryProxy assertion.2.1)
       (decoded.primaryProxy assertion.2.2)
       assertion.1 0 1
+
+def DecodedNativeABox.negativeRoleClausesAt (decoded : DecodedNativeABox)
+    (variableCount : Nat) (hvariables : 2 ≤ variableCount) :
+    List (Clause (Fin variableCount)
+      (Fin decoded.concepts.length) (Fin decoded.roles.length)) :=
+  decoded.negativeRoleAssertions.map fun assertion =>
+    negativeRoleAssertionClause
+      (decoded.primaryProxy assertion.2.1)
+      (decoded.primaryProxy assertion.2.2)
+      assertion.1 (Fin.castLE hvariables 0) (Fin.castLE hvariables 1)
 
 def DecodedNativeABox.seededInB (decoded : DecodedNativeABox)
     (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
@@ -278,6 +289,65 @@ theorem DecodedNativeABox.models_append_negativeRoleClauses_iff
     · exact hontology clause hsource
     · exact (decoded.models_negativeRoleClauses_iff I value hsingletons).2
         hnegative clause hguard
+
+theorem DecodedNativeABox.models_negativeRoleClausesAt_iff
+    (decoded : DecodedNativeABox)
+    (I : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
+    (value : Fin decoded.individuals.length → Domain)
+    (hsingletons : decoded.abox.ProxySingletons I value)
+    (hvariables : 2 ≤ variableCount) :
+    I.models (decoded.negativeRoleClausesAt variableCount hvariables) ↔
+      decoded.abox.NegativeRoles I value := by
+  constructor
+  · intro hmodels assertion hassertion
+    have hclause := hmodels
+      (negativeRoleAssertionClause
+        (decoded.primaryProxy assertion.2.1)
+        (decoded.primaryProxy assertion.2.2)
+        assertion.1 (Fin.castLE hvariables 0) (Fin.castLE hvariables 1))
+      (List.mem_map.mpr ⟨assertion, hassertion, rfl⟩)
+    exact (models_negativeRoleAssertionClause_iff decoded.abox I value hsingletons
+      assertion.2.1 assertion.2.2
+      (decoded.primaryProxy assertion.2.1)
+      (decoded.primaryProxy assertion.2.2)
+      (decoded.primaryProxy_mem assertion.2.1)
+      (decoded.primaryProxy_mem assertion.2.2)
+      assertion.1 (Fin.castLE hvariables 0) (Fin.castLE hvariables 1)
+      (by simp)).1 hclause
+  · intro hnegative clause hclause
+    rcases List.mem_map.mp hclause with ⟨assertion, hassertion, rfl⟩
+    exact (models_negativeRoleAssertionClause_iff decoded.abox I value hsingletons
+      assertion.2.1 assertion.2.2
+      (decoded.primaryProxy assertion.2.1)
+      (decoded.primaryProxy assertion.2.2)
+      (decoded.primaryProxy_mem assertion.2.1)
+      (decoded.primaryProxy_mem assertion.2.2)
+      assertion.1 (Fin.castLE hvariables 0) (Fin.castLE hvariables 1)
+      (by simp)).2 (hnegative assertion hassertion)
+
+theorem DecodedNativeABox.models_append_negativeRoleClausesAt_iff
+    (decoded : DecodedNativeABox)
+    (I : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
+    (value : Fin decoded.individuals.length → Domain)
+    (hsingletons : decoded.abox.ProxySingletons I value)
+    (hvariables : 2 ≤ variableCount)
+    (ontology : List (Clause (Fin variableCount)
+      (Fin decoded.concepts.length) (Fin decoded.roles.length))) :
+    I.models (ontology ++ decoded.negativeRoleClausesAt variableCount hvariables) ↔
+      I.models ontology ∧ decoded.abox.NegativeRoles I value := by
+  constructor
+  · intro hmodels
+    refine ⟨?_, (decoded.models_negativeRoleClausesAt_iff I value hsingletons
+      hvariables).1 ?_⟩
+    · intro clause hclause
+      exact hmodels clause (List.mem_append_left _ hclause)
+    · intro clause hclause
+      exact hmodels clause (List.mem_append_right _ hclause)
+  · rintro ⟨hontology, hnegative⟩ clause hclause
+    rcases List.mem_append.mp hclause with hsource | hguard
+    · exact hontology clause hsource
+    · exact (decoded.models_negativeRoleClausesAt_iff I value hsingletons
+        hvariables).2 hnegative clause hguard
 
 def WireNativeABox.decode (wire : WireNativeABox) : Except String DecodedNativeABox := do
   if hcomplete : wire.complete = true then
@@ -467,6 +537,64 @@ theorem DecodedNativeABoxRefutation.unsatisfiable
     decoded.initial.seed.state.base decoded.initial.seed.abox.abox
     decoded.initial.initializes decoded.checked
 
+/-- One checked document connecting direct source clauses, native ABox
+semantics, the exact normalized initial state, and the closed equality search. -/
+structure WireDirectNativeABoxRefutation where
+  source : List WireDirectSourceClause
+  refutation : WireNativeABoxRefutation
+deriving FromJson, ToJson, Repr
+
+structure DecodedDirectNativeABoxRefutation where
+  refutation : DecodedNativeABoxRefutation
+  variable_ge_two : 2 ≤ refutation.initial.seed.variableCount
+  source : List (Clause (Fin refutation.initial.seed.variableCount)
+    (Fin refutation.initial.seed.abox.concepts.length)
+    (Fin refutation.initial.seed.abox.roles.length))
+  exact_projection : source ++ refutation.initial.seed.abox.negativeRoleClausesAt
+      refutation.initial.seed.variableCount variable_ge_two =
+    refutation.initial.seed.state.base.base.ontology
+
+structure AtLeastTwoVariables (variableCount : Nat) where
+  second : Fin variableCount
+  proof : 2 ≤ variableCount
+
+def requireAtLeastTwoVariables (variableCount : Nat) :
+    Except String (AtLeastTwoVariables variableCount) :=
+  if hvariables : 2 ≤ variableCount then
+    .ok ⟨⟨1, Nat.lt_of_lt_of_le (by decide) hvariables⟩, hvariables⟩
+  else .error "native ABox refutation requires at least two clause variables"
+
+def WireDirectNativeABoxRefutation.decode
+    (wire : WireDirectNativeABoxRefutation) :
+    Except String DecodedDirectNativeABoxRefutation := do
+  let refutation ← wire.refutation.decode
+  let variableWitness ← requireAtLeastTwoVariables refutation.initial.seed.variableCount
+  let hvariables := variableWitness.proof
+  let source ← wire.source.mapM (WireDirectSourceClause.decode
+    refutation.initial.seed.variableCount
+    refutation.initial.seed.abox.concepts refutation.initial.seed.abox.roles)
+  if hequal : source ++ refutation.initial.seed.abox.negativeRoleClausesAt
+      refutation.initial.seed.variableCount hvariables =
+      refutation.initial.seed.state.base.base.ontology then
+    return { refutation, variable_ge_two := hvariables, source, exact_projection := hequal }
+  else throw "direct source conversion differs from the native ABox refutation ontology"
+
+def WireDirectNativeABoxRefutation.check
+    (wire : WireDirectNativeABoxRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedDirectNativeABoxRefutation.source_unsatisfiable
+    (decoded : DecodedDirectNativeABoxRefutation) :
+    ¬decoded.refutation.initial.seed.abox.abox.SatisfiableWith decoded.source := by
+  rintro ⟨Domain, I, value, hdomain, hsource, habox⟩
+  apply decoded.refutation.unsatisfiable
+  refine ⟨Domain, I, value, hdomain, ?_, habox⟩
+  rw [← decoded.exact_projection]
+  exact (decoded.refutation.initial.seed.abox.models_append_negativeRoleClausesAt_iff
+    I value habox.1 decoded.variable_ge_two decoded.source).2
+      ⟨hsource, habox.2.2.2.2⟩
+
 theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
     (_hcheck : wire.check = .ok true) :
@@ -597,6 +725,22 @@ example : validRefutationExample.check = .ok true := by native_decide
 example : rejected ({ validRefutationExample with tree := .clash }).check = true := by
   native_decide
 
+private def validDirectNativeRefutation : WireDirectNativeABoxRefutation where
+  source := [{
+    variableNames := ["x"]
+    body := [.con "A" "x" false]
+    head := []
+  }]
+  refutation := { validRefutationExample with initial :=
+    { validRefutationExample.initial with abox :=
+      { validRefutationExample.initial.abox with
+        concepts := ["a", "b", "A"]
+        negative_role_assertions := [] } } }
+
+example : validDirectNativeRefutation.check = .ok true := by native_decide
+example : rejected ({ validDirectNativeRefutation with source := [] }).check = true := by
+  native_decide
+
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
 #print axioms DecodedNativeABox.models_append_negativeRoleClauses_iff
@@ -606,6 +750,7 @@ example : rejected ({ validRefutationExample with tree := .clash }).check = true
 #print axioms DecodedNativeABoxSeed.checkEqSat_native_satisfiable
 #print axioms DecodedNativeABoxInitial.initializes
 #print axioms DecodedNativeABoxRefutation.unsatisfiable
+#print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
 
 end Tests
 

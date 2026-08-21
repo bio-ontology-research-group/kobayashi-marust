@@ -65,6 +65,12 @@
   ontology-only equality envelope remains fail closed on native apart facts,
   since its empty-root theorem is intentionally not reused for this joint
   semantic problem.
+- Compose direct source projection and native-ABox refutation in one checked
+  document. Lean decodes the source clauses against the same concept, role, and
+  variable tables as the decision state, reconstructs all negative-role guard
+  clauses at the shared variable width, checks the exact target ontology, and
+  proves the original direct TBox plus native ABox has no model. A real
+  Rust-to-Lean test accepts the complete document and rejects source omission.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
