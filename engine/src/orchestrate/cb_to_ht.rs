@@ -305,6 +305,25 @@ pub struct DirectProjectionClause {
     pub head: Vec<DirectProjectionAtom>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SkolemProjectionPair {
+    #[serde(rename = "variableNames")]
+    pub variable_names: Vec<String>,
+    pub body: Vec<DirectProjectionAtom>,
+    pub source: String,
+    pub function: String,
+    pub role: String,
+    pub filler: String,
+    pub neg: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct MixedProjectionSource {
+    pub functions: Vec<String>,
+    pub direct: Vec<DirectProjectionClause>,
+    pub pairs: Vec<SkolemProjectionPair>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Fenced {
     pub reason: String,
@@ -371,6 +390,10 @@ pub struct TInput {
     /// projection constructor, so certified HT publication must defer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_projection_source: Option<Vec<DirectProjectionClause>>,
+    /// Complete mixed direct/Skolem source evidence. This is present only when
+    /// every input clause belongs to a proved projection constructor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mixed_projection_source: Option<MixedProjectionSource>,
     pub queries: Vec<usize>,
     pub dropped: usize,
     pub fenced: Vec<Fenced>,
@@ -1898,6 +1921,119 @@ fn direct_projection_clause(clause: &JClause) -> Option<DirectProjectionClause> 
     })
 }
 
+#[derive(Clone)]
+struct MixedPairRecord {
+    body: Vec<JAtom>,
+    role: Option<String>,
+    filler: Option<String>,
+    role_count: usize,
+    filler_count: usize,
+    ok: bool,
+}
+
+fn mixed_projection_source(clauses: &[JClause]) -> Option<MixedProjectionSource> {
+    let mut direct = Vec::new();
+    let mut functions = Vec::new();
+    let mut records: HashMap<String, MixedPairRecord> = HashMap::new();
+
+    for clause in clauses {
+        if let Some(projected) = direct_projection_clause(clause) {
+            direct.push(projected);
+            continue;
+        }
+        if clause.body.iter().any(atom_has_fun) || clause.head.len() != 1 {
+            return None;
+        }
+        let (function, kind) = match &clause.head[0] {
+            JAtom::Role {
+                role,
+                source: JTerm::Var { name: source },
+                target: JTerm::Fun { function, arg },
+            } if source == "x" && matches!(arg.as_ref(), JTerm::Var { name } if name == "x") => {
+                (function.clone(), (Some(role.clone()), None))
+            }
+            JAtom::Concept {
+                concept,
+                term: JTerm::Fun { function, arg },
+            } if !is_bottom(concept)
+                && matches!(arg.as_ref(), JTerm::Var { name } if name == "x") =>
+            {
+                (function.clone(), (None, Some(concept.clone())))
+            }
+            _ => return None,
+        };
+        if !records.contains_key(&function) {
+            functions.push(function.clone());
+            records.insert(
+                function.clone(),
+                MixedPairRecord {
+                    body: clause.body.clone(),
+                    role: None,
+                    filler: None,
+                    role_count: 0,
+                    filler_count: 0,
+                    ok: true,
+                },
+            );
+        }
+        let record = records.get_mut(&function).unwrap();
+        if record.body != clause.body {
+            record.ok = false;
+        }
+        if let Some(role) = kind.0 {
+            record.role_count += 1;
+            if record
+                .role
+                .as_ref()
+                .is_some_and(|existing| existing != &role)
+            {
+                record.ok = false;
+            }
+            record.role = Some(role);
+        }
+        if let Some(filler) = kind.1 {
+            record.filler_count += 1;
+            if record
+                .filler
+                .as_ref()
+                .is_some_and(|existing| existing != &filler)
+            {
+                record.ok = false;
+            }
+            record.filler = Some(filler);
+        }
+    }
+
+    let mut pairs = Vec::with_capacity(functions.len());
+    for function in &functions {
+        let record = records.get(function)?;
+        if !record.ok || record.role_count != 1 || record.filler_count != 1 {
+            return None;
+        }
+        // `mk_varmap` reserves x=0, and the emitted existential uses node 0.
+        let mut variable_names = vec!["x".to_string()];
+        let body = record
+            .body
+            .iter()
+            .map(|atom| direct_projection_atom(atom, &mut variable_names))
+            .collect::<Option<Vec<_>>>()?;
+        pairs.push(SkolemProjectionPair {
+            variable_names,
+            body,
+            source: "x".to_string(),
+            function: function.clone(),
+            role: record.role.clone()?,
+            filler: record.filler.clone()?,
+            neg: false,
+        });
+    }
+    Some(MixedProjectionSource {
+        functions,
+        direct,
+        pairs,
+    })
+}
+
 #[cfg(test)]
 mod direct_projection_tests {
     use super::*;
@@ -2044,6 +2180,7 @@ mod direct_projection_tests {
     fn skolem_projection_requires_the_exact_proved_common_body() {
         let valid = convert_test_clauses(&skolem_pair("A", "A", "x"));
         assert_eq!(valid.dropped, 0);
+        assert!(valid.mixed_projection_source.is_some());
         assert!(valid.clauses.iter().any(|clause| {
             clause
                 .head
@@ -2053,6 +2190,7 @@ mod direct_projection_tests {
 
         let mismatched = convert_test_clauses(&skolem_pair("A", "B", "x"));
         assert_eq!(mismatched.dropped, 1);
+        assert!(mismatched.mixed_projection_source.is_none());
         assert!(!mismatched.clauses.iter().any(|clause| {
             clause
                 .head
@@ -2065,6 +2203,7 @@ mod direct_projection_tests {
     fn skolem_projection_requires_the_source_variable_as_function_argument() {
         let converted = convert_test_clauses(&skolem_pair("A", "A", "y"));
         assert_eq!(converted.dropped, 2);
+        assert!(converted.mixed_projection_source.is_none());
         assert!(!converted.clauses.iter().any(|clause| {
             clause
                 .head
@@ -2077,6 +2216,7 @@ mod direct_projection_tests {
     fn skolem_projection_never_turns_a_disjunctive_head_into_conjunctive_fillers() {
         let converted = convert_test_clauses(&disjunctive_skolem_filler());
         assert_eq!(converted.dropped, 1);
+        assert!(converted.mixed_projection_source.is_none());
         assert!(!converted.clauses.iter().any(|clause| {
             clause
                 .head
@@ -2143,6 +2283,7 @@ pub fn convert(
         .iter()
         .map(direct_projection_clause)
         .collect::<Option<Vec<_>>>();
+    let mixed_projection_source = mixed_projection_source(clauses);
     // KM_HT_RULES: ground ABox facts intercepted in pass 1 (so they are not
     // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
     let mut abox_facts: Vec<AboxFact> = Vec::new();
@@ -3319,6 +3460,7 @@ pub fn convert(
         roles: ids.rol_names,
         clauses: ht,
         direct_projection_source,
+        mixed_projection_source,
         queries,
         dropped,
         fenced,

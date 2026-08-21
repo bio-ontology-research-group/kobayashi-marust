@@ -238,8 +238,10 @@ projection constructors.
 wire semantics. It independently resolves direct clauses and Skolem-pair names,
 requires globally unique function keys, and accepts only when the projected and
 actual target clause sets coincide. `ht-projection-cert-check` dispatches both
-mixed and direct documents. Rust production evidence generation remains to be
-connected, so the production certified path continues to fail closed here.
+mixed and direct documents. Rust emits mixed evidence for the exact simple
+one-role/one-filler constructor and requires this checker before certified HT
+publication. More general filler-definer and domain-propagation shapes remain
+fail-closed.
 
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.

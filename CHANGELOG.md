@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.198] – 2026-08-21
+
+### Connect production Skolem evidence to Lean
+
+- Preserve a complete mixed source projection whenever every input clause is
+  either direct or one half of an exact simple unary Skolem pair.
+- Require each proved pair to contain exactly one singleton role head and one
+  singleton filler head with a common body and exact `x`/`f(x)` wiring.
+- Seed the pair variable table with `x = 0`, matching the converter's emitted
+  existential node instead of relying on source occurrence order.
+- Serialize mixed source evidence at the HT consumer boundary and invoke the
+  native projection checker before checker-enabled publication.
+- Add a real Rust-to-Lean integration test that accepts complete production
+  evidence and rejects an omitted target clause.
+
+Multiple filler clauses, filler definers, domain propagation, cardinality
+replacement, nominal/ABox projection, the remaining HT audit, CB, and routing
+certification remain unfinished and continue to defer from this certified
+projection path.
+
 ## [0.3.197] – 2026-08-21
 
 ### Check mixed direct and Skolem HT projections
