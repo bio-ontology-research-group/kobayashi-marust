@@ -30,6 +30,20 @@ No release is cut for this intermediate step. The next release requires the
 complete executable source-to-HT projection boundary, including its combined
 wire and production integration.
 
+### Compose mixed Skolem-pair and cardinality projection
+
+- Prove the mixed direct/Skolem-pair source semantics and all frontend
+  cardinality families equivalent to their shared HT target in one finite
+  interpretation.
+- Add a combined wire that reuses the exact mixed projection decoder and checks
+  cardinality definitions, disjoint pair indices, and exactness flags.
+- Make Rust emit this document when mixed Skolem evidence and cardinality
+  evidence coexist, instead of requiring an unavailable direct-only witness.
+- Test the real Rust-to-Lean path with complete evidence and confirm that an
+  omitted projected clause and forged exactness are rejected.
+
+No release is cut for this intermediate step.
+
 ### Verify production bundle RBox evidence end to end
 
 - Extend finite bundle evidence with concrete super-role paths and associated

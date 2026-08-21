@@ -5326,6 +5326,13 @@ struct BundleCardinalityProjectionDocument<'a> {
     exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
 }
 
+#[derive(Serialize)]
+struct MixedCardinalityProjectionDocument<'a> {
+    mixed: MixedProjectionDocument<'a>,
+    definitions: &'a [JCardDef],
+    exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
+}
+
 fn bundle_cardinality_definitions(
     inp: &TInput,
     source: &crate::orchestrate::cb_to_ht::BundleProjectionSource,
@@ -5459,6 +5466,20 @@ fn check_direct_ht_projection(
                     target: target(),
                 },
                 definitions: bundle_cardinality_definitions(inp, source)?,
+                exact_pairs: &inp.cardinality_exact_pairs,
+            })
+        } else if let Some(source) = inp.mixed_projection_source.as_ref() {
+            serde_json::to_vec(&MixedCardinalityProjectionDocument {
+                mixed: MixedProjectionDocument {
+                    variable_count,
+                    concepts: &inp.concepts,
+                    roles: &inp.roles,
+                    functions: &source.functions,
+                    direct: &source.direct,
+                    pairs: &source.pairs,
+                    target: target(),
+                },
+                definitions: &inp.card_defs,
                 exact_pairs: &inp.cardinality_exact_pairs,
             })
         } else {
@@ -6229,7 +6250,7 @@ mod tests {
                 }],
             },
         ];
-        let producer = crate::orchestrate::cb_to_ht::convert(
+        let mut producer = crate::orchestrate::cb_to_ht::convert(
             &source,
             None,
             &std::collections::HashSet::new(),
@@ -6246,13 +6267,57 @@ mod tests {
         check_direct_ht_projection(&consumer, &projected, std::path::Path::new(&checker))
             .expect("the real mixed Lean checker accepts production evidence");
 
-        let mut omitted = projected;
+        let mut omitted = projected.clone();
         omitted.pop();
         assert!(
             check_direct_ht_projection(&consumer, &omitted, std::path::Path::new(&checker))
                 .unwrap_err()
                 .contains("rejected")
         );
+
+        let maximum = producer.concepts.len();
+        producer.concepts.push("Qmax".into());
+        let minimum = producer.concepts.len();
+        producer.concepts.push("Qmin".into());
+        let filler = producer
+            .concepts
+            .iter()
+            .position(|concept| concept == "C")
+            .expect("mixed projection filler");
+        producer.card_defs = vec![
+            crate::orchestrate::cb_to_ht::CardDefJson {
+                marker: maximum,
+                min: false,
+                n: 1,
+                role: 0,
+                filler,
+                exact: true,
+            },
+            crate::orchestrate::cb_to_ht::CardDefJson {
+                marker: minimum,
+                min: true,
+                n: 2,
+                role: 0,
+                filler,
+                exact: true,
+            },
+        ];
+        producer.cardinality_exact_pairs = vec![
+            crate::orchestrate::cb_to_ht::CardinalityExactPairJson {
+                maximum: 0,
+                minimum: 1,
+            },
+        ];
+        producer.cardinality_projection_complete = true;
+        let combined = consumer_input(&producer);
+        check_direct_ht_projection(&combined, &projected, std::path::Path::new(&checker))
+            .expect("the joint mixed/cardinality checker accepts complete evidence");
+
+        producer.card_defs[1].exact = false;
+        let forged = consumer_input(&producer);
+        assert!(check_direct_ht_projection(&forged, &projected, std::path::Path::new(&checker))
+            .unwrap_err()
+            .contains("rejected"));
     }
 
     #[test]
