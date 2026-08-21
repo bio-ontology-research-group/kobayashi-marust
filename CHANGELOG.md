@@ -98,6 +98,21 @@
   this composed checker for non-cardinality native-ABox certification. Real
   Lean checker tests cover all three UNSAT projection forms, a generated SAT
   decision, and modified-source rejection.
+- Extend the same source-composed publication boundary through frontend
+  cardinality projection. Direct, mixed Skolem-pair, and bundle/definer
+  documents now tie the source ontology, complementary-pair provenance,
+  native ABox, normalized target, and finite SAT or UNSAT evidence together.
+- Expose the cardinality certificate's concrete canonical quotient model, so
+  ordinary cardinality satisfaction and exact complementary-pair recognition
+  are proved in one interpretation rather than obtained from unrelated
+  existential witnesses.
+- Prove target-to-source bundle reconstruction preserves the native ABox and
+  projected cardinality families simultaneously, including both concept
+  renamings used for source concepts inside the generated-definer signature.
+- Make certified KM require the source-decision checker for cardinality native
+  ABoxes too. The checker tries cardinality formats first and rejects missing,
+  mismatched, or incorrectly renamed exact-pair evidence before a verdict can
+  be published.
 
 ### Certify native named-individual ABox projection
 

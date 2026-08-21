@@ -5750,14 +5750,10 @@ fn native_abox_source_map(
 /// independent checks with an unproved relationship between their payloads.
 fn native_abox_source_decision_document(
     inp: &TInput,
+    clauses: &[Clause],
     normalized_decision: &str,
     consistent: bool,
 ) -> Result<Vec<u8>, String> {
-    if !inp.card_defs.is_empty() {
-        return Err(
-            "source-composed native ABox decisions do not yet cover cardinality".to_string(),
-        );
-    }
     let decision: serde_json::Value = serde_json::from_str(normalized_decision)
         .map_err(|error| format!("invalid normalized native ABox decision: {error}"))?;
     let evidence = decision
@@ -5817,6 +5813,13 @@ fn native_abox_source_decision_document(
             "domain_extras": &source.domain_extras,
             "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
         });
+        if !inp.card_defs.is_empty() {
+            payload["definitions"] =
+                serde_json::to_value(bundle_cardinality_definitions(inp, source)?)
+                    .map_err(|error| format!("cannot encode bundle cardinality definitions: {error}"))?;
+            payload["exact_pairs"] = serde_json::to_value(&inp.cardinality_exact_pairs)
+                .map_err(|error| format!("cannot encode bundle exact pairs: {error}"))?;
+        }
         payload[target_key] = target_value;
         payload
     } else if let Some(source) = inp.mixed_projection_source.as_ref() {
@@ -5825,6 +5828,12 @@ fn native_abox_source_decision_document(
             "direct": &source.direct,
             "pairs": &source.pairs,
         });
+        if !inp.card_defs.is_empty() {
+            payload["definitions"] = serde_json::to_value(&inp.card_defs)
+                .map_err(|error| format!("cannot encode mixed cardinality definitions: {error}"))?;
+            payload["exact_pairs"] = serde_json::to_value(&inp.cardinality_exact_pairs)
+                .map_err(|error| format!("cannot encode mixed exact pairs: {error}"))?;
+        }
         payload[target_key] = target_value;
         payload
     } else {
@@ -5832,6 +5841,16 @@ fn native_abox_source_decision_document(
             "native ABox decision has no complete source projection".to_string()
         })?;
         let mut payload = serde_json::json!({ "source": source });
+        if !inp.card_defs.is_empty() {
+            payload["target"] = serde_json::to_value(
+                clauses.iter().map(direct_projection_target_clause).collect::<Vec<_>>(),
+            )
+            .map_err(|error| format!("cannot encode direct cardinality target: {error}"))?;
+            payload["definitions"] = serde_json::to_value(&inp.card_defs)
+                .map_err(|error| format!("cannot encode direct cardinality definitions: {error}"))?;
+            payload["exact_pairs"] = serde_json::to_value(&inp.cardinality_exact_pairs)
+                .map_err(|error| format!("cannot encode direct exact pairs: {error}"))?;
+        }
         payload[target_key] = target_value;
         payload
     };
@@ -6125,10 +6144,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
-            if native_abox_active
-                && inp.card_defs.is_empty()
-                && lean_native_abox_source_decision_checker.is_none()
-            {
+            if native_abox_active && lean_native_abox_source_decision_checker.is_none() {
                 return Err(
                     "native ABox HT certification requires KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER"
                         .to_string(),
@@ -6173,6 +6189,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             .collect();
         let ht_chains = inp.chains.clone();
         let ht_transitive = inp.transitive.clone();
+        let source_decision_clauses = ht_clauses.clone();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -6302,14 +6319,19 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         ));
                     }
                 }
-                if native_abox_active && inp.card_defs.is_empty() {
+                if native_abox_active {
                     let checker = lean_native_abox_source_decision_checker
                         .as_deref()
                         .ok_or_else(|| {
                             "missing native ABox source-decision Lean checker".to_string()
                         })?;
                     let source_decision =
-                        native_abox_source_decision_document(&inp, &certificate, consistent)?;
+                        native_abox_source_decision_document(
+                            &inp,
+                            &source_decision_clauses,
+                            &certificate,
+                            consistent,
+                        )?;
                     run_ht_projection_checker(
                         &source_decision,
                         checker,
@@ -7112,7 +7134,12 @@ mod tests {
                 "evidence": { "unsat": { "refutation": refutation } },
             })
             .to_string();
-            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses_of_tinput(&inp),
+                &decision,
+                false,
+            )
                 .expect("compose direct native ABox source decision");
             run_ht_projection_checker(
                 &source_decision,
@@ -7166,7 +7193,12 @@ mod tests {
             .lean_native_abox_decision_certificate_json()
             .expect("native ABox SAT decision");
         assert!(consistent);
-        let source_decision = native_abox_source_decision_document(&inp, &decision, true)
+        let source_decision = native_abox_source_decision_document(
+            &inp,
+            &clauses_of_tinput(&inp),
+            &decision,
+            true,
+        )
             .expect("compose direct native ABox SAT source decision");
         run_ht_projection_checker(
             &source_decision,
@@ -7270,6 +7302,30 @@ mod tests {
         )
         .expect("combined direct cardinality/native ABox refutation passes Lean");
 
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses,
+                &decision,
+                false,
+            )
+            .expect("compose direct cardinality source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "direct-native-abox-cardinality-source-decision",
+            )
+            .expect("direct cardinality source decision passes Lean");
+        }
+
         producer.card_defs[0].n = 2;
         let forged_input = consumer_input(&producer);
         let forged = direct_native_abox_cardinality_refutation_document(
@@ -7282,6 +7338,79 @@ mod tests {
             &forged,
             std::path::Path::new(&checker),
             "forged-direct-native-abox-cardinality-refutation",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_cardinality_sat_source_decision_passes_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            CardDefJson, NativeAboxJson, NativeIndividualJson,
+        };
+        let producer = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["marker".into(), "filler".into(), "nominal".into()],
+            roles: vec!["r".into()],
+            nominals: vec![2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![NativeIndividualJson {
+                    proxies: vec![2],
+                    assertions: Vec::new(),
+                }],
+                different: Vec::new(),
+                role_assertions: Vec::new(),
+                negative_role_assertions: Vec::new(),
+            },
+            direct_projection_source: Some(Vec::new()),
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+                exact: false,
+            }],
+            cardinality_projection_complete: true,
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        };
+        let inp = consumer_input(&producer);
+        let clauses = Vec::<Clause>::new();
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(vec![(vec![2], Vec::new())], Vec::new(), Vec::new());
+        reasoner.set_number(true);
+        reasoner.set_card_defs_raw(&[(0, false, 1, 0, 1, false)]);
+        let (consistent, decision) = reasoner
+            .lean_native_abox_cardinality_decision_certificate_json()
+            .expect("native ABox cardinality SAT decision");
+        assert!(consistent);
+        let source_decision = native_abox_source_decision_document(
+            &inp,
+            &clauses,
+            &decision,
+            true,
+        )
+        .expect("compose direct cardinality SAT source decision");
+        run_ht_projection_checker(
+            &source_decision,
+            std::path::Path::new(&checker),
+            "direct-native-abox-cardinality-sat-source-decision",
+        )
+        .expect("direct cardinality SAT source decision passes Lean");
+
+        let mut forged: serde_json::Value = serde_json::from_slice(&source_decision).unwrap();
+        forged["evidence"]["sat"]["certificate"]["definitions"][0]["n"] =
+            serde_json::json!(2);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-cardinality-sat-source-decision",
         )
         .unwrap_err()
         .contains("rejected"));
@@ -7352,7 +7481,12 @@ mod tests {
                 "evidence": { "unsat": { "refutation": refutation } },
             })
             .to_string();
-            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses_of_tinput(&inp),
+                &decision,
+                false,
+            )
                 .expect("compose mixed native ABox source decision");
             run_ht_projection_checker(
                 &source_decision,
@@ -7471,6 +7605,30 @@ mod tests {
         )
         .expect("combined mixed cardinality/native ABox refutation passes Lean");
 
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses_of_tinput(&inp),
+                &decision,
+                false,
+            )
+            .expect("compose mixed cardinality source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "mixed-native-abox-cardinality-source-decision",
+            )
+            .expect("mixed cardinality source decision passes Lean");
+        }
+
         producer
             .mixed_projection_source
             .as_mut()
@@ -7561,7 +7719,12 @@ mod tests {
                 "evidence": { "unsat": { "refutation": refutation } },
             })
             .to_string();
-            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses_of_tinput(&inp),
+                &decision,
+                false,
+            )
                 .expect("compose bundle native ABox source decision");
             run_ht_projection_checker(
                 &source_decision,
@@ -7694,6 +7857,30 @@ mod tests {
             "bundle-native-abox-cardinality-refutation",
         )
         .expect("combined bundle cardinality/native ABox refutation passes Lean");
+
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(
+                &inp,
+                &clauses_of_tinput(&inp),
+                &decision,
+                false,
+            )
+            .expect("compose bundle cardinality source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "bundle-native-abox-cardinality-source-decision",
+            )
+            .expect("bundle cardinality source decision passes Lean");
+        }
 
         producer.card_defs[0].filler = 3;
         let forged_input = consumer_input(&producer);

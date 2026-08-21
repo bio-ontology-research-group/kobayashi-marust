@@ -229,29 +229,61 @@ def WireNativeABoxCardinalitySatCertificate.check
   let _ ← wire.decode
   return true
 
+theorem DecodedNativeABoxCardinalitySatCertificate.canonical_model
+    (decoded : DecodedNativeABoxCardinalitySatCertificate) :
+    ∃ value : Fin decoded.seed.abox.individuals.length →
+        decoded.seed.state.base.state.QuotientDomain,
+      Nonempty decoded.seed.state.base.state.QuotientDomain ∧
+      decoded.seed.state.base.state.quotientCanonical.models
+        decoded.seed.state.base.base.ontology ∧
+      decoded.seed.state.base.state.quotientCanonical.modelsCardinalityDefs
+        decoded.definitions ∧
+      decoded.seed.abox.abox.models
+        decoded.seed.state.base.state.quotientCanonical value := by
+  letI : Nonempty (Fin decoded.seed.nodeCount) :=
+    ⟨⟨0, Nat.pos_of_ne_zero decoded.seed.node_nonzero⟩⟩
+  have hparts := decoded.cardinality
+  simp only [FiniteEqCertificate.checkEqSatWithCardinality,
+    Bool.and_eq_true] at hparts
+  let nodeValue : Fin decoded.seed.nodeCount →
+      decoded.seed.state.base.state.QuotientDomain :=
+    fun node ↦ Quotient.mk decoded.seed.state.base.state.nodeSetoid node
+  have hsatParts := hparts.1
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hsatParts
+  have hvalid : decoded.seed.state.base.equalityClosureValidB = true :=
+    hsatParts.1.1.1.1
+  have hbaseRealized : decoded.seed.state.base.state.RealizedBy
+      decoded.seed.state.base.state.quotientCanonical nodeValue :=
+    decoded.seed.state.base.checkEqSat_realizes hparts.1
+  have hapartSound := decoded.seed.state.apartSeparatedB_sound
+    hvalid decoded.seed.apart_check
+  have hdistinctRealized : decoded.seed.state.state.RealizedBy
+      decoded.seed.state.base.state.quotientCanonical nodeValue := by
+    refine ⟨hbaseRealized, ?_⟩
+    intro left right hlisted hequal
+    exact hapartSound (left, right) hlisted (Quotient.exact hequal)
+  letI : Nonempty decoded.seed.state.base.state.QuotientDomain :=
+    ⟨Quotient.mk decoded.seed.state.base.state.nodeSetoid
+      (Classical.choice (inferInstance : Nonempty (Fin decoded.seed.nodeCount)))⟩
+  refine ⟨nodeValue ∘ decoded.seed.roots, inferInstance,
+    decoded.seed.state.base.checkEqSat_models hparts.1,
+    decoded.seed.state.base.checkCardinalityDefs_sound decoded.definitions hparts.2,
+    ?_⟩
+  exact decoded.seed.abox.abox.models_of_seeded decoded.seed.state.state
+    decoded.seed.roots decoded.seed.state.base.state.quotientCanonical nodeValue
+    decoded.seed.seeded hdistinctRealized
+    (decoded.seed.proxySingletonsB_sound hvalid decoded.singleton_proxies)
+    (decoded.seed.negativeRolesB_sound hvalid decoded.negative_roles)
+
 theorem DecodedNativeABoxCardinalitySatCertificate.satisfiable
     (decoded : DecodedNativeABoxCardinalitySatCertificate) :
     decoded.seed.abox.abox.SatisfiableWithCardinality
       decoded.seed.state.base.base.ontology decoded.definitions := by
-  letI : Nonempty (Fin decoded.seed.nodeCount) :=
-    ⟨⟨0, Nat.pos_of_ne_zero decoded.seed.node_nonzero⟩⟩
-  exact decoded.seed.state.checkEqSatWithCardinality_native_satisfiable
-    decoded.definitions decoded.seed.abox.abox decoded.seed.roots
-    decoded.seed.seeded decoded.cardinality decoded.seed.apart_check
-    (decoded.seed.proxySingletonsB_sound
-      (by
-        have hparts := decoded.cardinality
-        simp only [FiniteEqCertificate.checkEqSatWithCardinality,
-          Bool.and_eq_true, FiniteEqCertificate.checkEqSat] at hparts
-        exact hparts.1.1.1.1.1)
-      decoded.singleton_proxies)
-    (decoded.seed.negativeRolesB_sound
-      (by
-        have hparts := decoded.cardinality
-        simp only [FiniteEqCertificate.checkEqSatWithCardinality,
-          Bool.and_eq_true, FiniteEqCertificate.checkEqSat] at hparts
-        exact hparts.1.1.1.1.1)
-      decoded.negative_roles)
+  rcases decoded.canonical_model with
+    ⟨value, hdomain, hontology, hdefinitions, habox⟩
+  exact ⟨decoded.seed.state.base.state.QuotientDomain,
+    decoded.seed.state.base.state.quotientCanonical, value,
+    hdomain, hontology, hdefinitions, habox⟩
 
 theorem DecodedNativeABoxCardinalitySatCertificate.models_exact_definitions
     (decoded : DecodedNativeABoxCardinalitySatCertificate) :
@@ -310,6 +342,7 @@ theorem DecodedNativeABoxCardinalityDecision.semantic_valid
 #print axioms DecodedNativeABoxSatCertificate.satisfiable
 #print axioms DecodedNativeABoxDecision.semantic_valid
 #print axioms DecodedNativeABoxCardinalitySatCertificate.satisfiable
+#print axioms DecodedNativeABoxCardinalitySatCertificate.canonical_model
 #print axioms DecodedNativeABoxCardinalitySatCertificate.models_exact_definitions
 #print axioms DecodedNativeABoxCardinalityDecision.semantic_valid
 
