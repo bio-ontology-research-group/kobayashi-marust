@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.191`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.192`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -97,8 +97,10 @@ successors now equal the corresponding typed Lean production children,
 including exact active-node changes and extensional expanded-minimum `HashSet`
 semantics. The unified checked-successor predicate now proves every concrete
 recursive successor is a child in the well-founded production relation. Rust
-recursive result construction, CB, and automatic routing remain unfinished.
-Equality
+global HT publication now derives the semantic Boolean from the checker-ready
+evidence shape and rejects any mismatch with the recursive search result. The
+remaining HT fragment audit, CB, and automatic routing certification remain
+unfinished. Equality
 countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.
@@ -163,7 +165,7 @@ frontier. Concrete runtime fields now construct this typed search state after
 executable validation, and all four recursive Rust successor families now map
 to the exact typed child configurations and therefore into the proved
 strict-growth recursion. Exact Rust recursive result construction remains to
-be connected.
+be audited for the remaining supported HT fragments.
 Cardinality minimum and maximum scans now retain stored definition IDs instead
 of identifying definitions structurally. Minimum suppression uses the same
 definition ID at any equality-equivalent previously expanded source, matching

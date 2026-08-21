@@ -28,6 +28,15 @@ def DecodedCardinalityEqCertificate.productionGlobalShapeB
   | .unsat _ _ => decoded.refutation.isNone && decoded.distinctRefutation.isSome
   | _ => false
 
+/-- The Boolean verdict represented by a production-global document. Query
+evidence has no global consistency Boolean. -/
+def DecodedCardinalityEqCertificate.productionGlobalVerdict
+    (decoded : DecodedCardinalityEqCertificate) : Option Bool :=
+  match decoded.base.evidence with
+  | .sat _ => some true
+  | .unsat _ _ => some false
+  | _ => none
+
 theorem DecodedCardinalityEqCertificate.productionGlobalShapeB_eq_true_iff
     (decoded : DecodedCardinalityEqCertificate) :
     decoded.productionGlobalShapeB = true ↔ decoded.ProductionGlobalShape := by
@@ -106,6 +115,64 @@ theorem DecodedCardinalityEqCertificate.exists_checked_global_outcome
   | satisfiableConcept certificate root concept =>
       simp [DecodedCardinalityEqCertificate.ProductionGlobalShape, hevidence] at hshape
 
+/-- The concrete Boolean carried by an accepted production-global document has
+the matching model-theoretic meaning. This is the theorem mirrored by Rust's
+fail-closed publication check. -/
+theorem DecodedCardinalityEqCertificate.productionGlobalVerdict_semantics
+    (decoded : DecodedCardinalityEqCertificate)
+    (hshape : decoded.ProductionGlobalShape)
+    (hcheck : decoded.check = true)
+    (verdict : Bool)
+    (hverdict : decoded.productionGlobalVerdict = some verdict) :
+    if verdict then
+      CardinalityHasNonemptyModel decoded.base.rootCertificate.base.ontology
+        decoded.definitions
+    else
+      ¬CardinalityHasNonemptyModel decoded.base.rootCertificate.base.ontology
+        decoded.definitions := by
+  cases hevidence : decoded.base.evidence with
+  | sat certificate =>
+      simp only [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence,
+        Option.some.injEq] at hverdict
+      subst verdict
+      simp only [if_true]
+      simp only [DecodedCardinalityEqCertificate.check, hevidence, Bool.and_eq_true,
+        decide_eq_true_eq] at hcheck
+      have hroot : decoded.base.rootCertificate = certificate := by
+        unfold DecodedEqCertificate.rootCertificate
+        rw [hevidence]
+      rw [hroot]
+      exact CheckedCardinalityDecisionOutcome.sat_semantics
+        certificate rfl hcheck.1 hcheck.2
+  | unsat certificate ignoredTree =>
+      simp only [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence,
+        Option.some.injEq] at hverdict
+      subst verdict
+      simp only [DecodedCardinalityEqCertificate.ProductionGlobalShape, hevidence] at hshape
+      rcases hshape.2 with ⟨refutation, hrefutation⟩
+      simp only [DecodedCardinalityEqCertificate.check, hevidence, hrefutation,
+        Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hcheck
+      rcases hcheck with
+        ⟨⟨⟨⟨hpositive, hlabels⟩, hedges⟩, hobligations⟩, htree⟩
+      let root : FiniteDistinctEqCertificate decoded.base.nodeCount
+          decoded.base.conceptCount decoded.base.roleCount decoded.base.variableCount :=
+        { base := certificate, apart := [] }
+      have hempty : certificate.EmptyRoot := ⟨hlabels, hedges, hobligations⟩
+      have hroot : decoded.base.rootCertificate = certificate := by
+        unfold DecodedEqCertificate.rootCertificate
+        rw [hevidence]
+      rw [hroot]
+      exact CheckedCardinalityDecisionOutcome.closed_semantics
+        root refutation.tree rfl hpositive hempty rfl htree
+  | subsumption certificate root sub sup tree =>
+      simp [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence] at hverdict
+  | unsatisfiableConcept certificate root concept tree =>
+      simp [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence] at hverdict
+  | nonSubsumption certificate root sub sup =>
+      simp [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence] at hverdict
+  | satisfiableConcept certificate root concept =>
+      simp [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence] at hverdict
+
 /-- Direct wire-level form: successful decoding and checker acceptance of the
 production global shape yield a semantically conclusive checked outcome. -/
 theorem WireCardinalityEqCertificate.exists_checked_global_outcome
@@ -150,5 +217,6 @@ theorem WireCardinalityEqCertificate.checkProductionGlobal_sound
 #print axioms WireCardinalityEqCertificate.exists_checked_global_outcome
 #print axioms DecodedCardinalityEqCertificate.productionGlobalShapeB_eq_true_iff
 #print axioms WireCardinalityEqCertificate.checkProductionGlobal_sound
+#print axioms DecodedCardinalityEqCertificate.productionGlobalVerdict_semantics
 
 end ContextCalculus.Hypertableau

@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.192] – 2026-08-21
+
+### Derive certified HT global verdicts from accepted evidence
+
+- Define the production-global Boolean represented by cardinality SAT and
+  UNSAT evidence; query evidence has no global Boolean.
+- Prove an accepted `true` document constructs a nonempty ontology/cardinality
+  model and an accepted `false` document proves that no such model exists.
+- Parse the checker-ready Rust envelope across plain, equality, cardinality,
+  regular, normalized, and anchored global formats.
+- Reject query evidence, ambiguous normalized payloads, and any disagreement
+  between the recursive search Boolean and the certificate evidence before
+  publishing the HT result.
+- Add regression coverage for every supported global evidence shape and audit
+  the Lean verdict theorem without `sorryAx`.
+
+The remaining HT fragment audit, CB, and automatic routing certification remain
+unfinished.
+
 ## [0.3.191] – 2026-08-21
 
 ### Connect checked Rust successors to production recursion

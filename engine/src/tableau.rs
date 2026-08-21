@@ -5156,6 +5156,65 @@ pub fn run_json(input: &str) -> Result<String, String> {
     run_json_inner(input, None)
 }
 
+/// Read the global consistency verdict carried by a checker-ready HT
+/// certificate. This does not replace the Lean checker. It prevents the caller
+/// from publishing a separate Rust Boolean that disagrees with the evidence
+/// which the checker accepted.
+fn certified_ht_global_consistency(document: &serde_json::Value) -> Result<bool, String> {
+    let version = document.get("version").and_then(serde_json::Value::as_u64);
+    if matches!(version, Some(3 | 4)) {
+        let payload = document
+            .get("payload")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "normalized HT certificate omitted its payload".to_string())?;
+        let mut certificates = ["plain", "equality", "cardinality", "regular"]
+            .into_iter()
+            .filter_map(|kind| payload.get(kind)?.get("certificate"));
+        let certificate = certificates.next().ok_or_else(|| {
+            "normalized HT certificate has no global evidence payload".to_string()
+        })?;
+        if certificates.next().is_some() {
+            return Err("normalized HT certificate has multiple global evidence payloads".into());
+        }
+        return certified_ht_global_consistency(certificate);
+    }
+    // Version 5 is the SAT-only normalized anchored equality format. Its Lean
+    // checker constructs a nonempty source model and has no UNSAT constructor.
+    if version == Some(5) {
+        if !document
+            .get("certificate")
+            .is_some_and(serde_json::Value::is_object)
+        {
+            return Err("normalized anchored HT certificate omitted its certificate".into());
+        }
+        return Ok(true);
+    }
+    // Cardinality version 2 wraps equality evidence in `certificate`.
+    if document.get("definitions").is_some() {
+        return certified_ht_global_consistency(
+            document
+                .get("certificate")
+                .ok_or_else(|| "cardinality HT certificate omitted its evidence".to_string())?,
+        );
+    }
+    let evidence = document
+        .get("evidence")
+        .ok_or_else(|| "HT certificate omitted global evidence".to_string())?;
+    if evidence == "sat" {
+        return Ok(true);
+    }
+    let evidence = evidence
+        .as_object()
+        .ok_or_else(|| "HT certificate has a non-global evidence tag".to_string())?;
+    let sat = evidence.contains_key("regular_sat");
+    let unsat = evidence.contains_key("unsat") || evidence.contains_key("finite_unsat");
+    match (sat, unsat) {
+        (true, false) => Ok(true),
+        (false, true) => Ok(false),
+        _ => Err("HT certificate has ambiguous or non-global evidence".to_string()),
+    }
+}
+
 /// `forced_ht` is used only by the wire-contract regression tests. Production
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
@@ -5400,6 +5459,14 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         if let Some(((consistent, unsat, subs), lean_certificate)) = res {
             let mut validated_taxonomy = None;
             if let Some((certificate, taxonomy_certificate)) = lean_certificate {
+                let certificate_value: serde_json::Value = serde_json::from_str(&certificate)
+                    .map_err(|error| format!("KM_HT_LEAN_CERT produced invalid JSON: {error}"))?;
+                let evidence_consistent = certified_ht_global_consistency(&certificate_value)?;
+                if evidence_consistent != consistent {
+                    return Err(format!(
+                        "HT certified verdict mismatch: search returned {consistent}, certificate evidence returned {evidence_consistent}"
+                    ));
+                }
                 let temporary_path;
                 let path = if let Some(path) = lean_cert_path.as_deref() {
                     path
@@ -5408,7 +5475,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .join(format!("km-ht-cert-{}.json", std::process::id()));
                     temporary_path.as_path()
                 };
-                if let Err(error) = std::fs::write(path, certificate) {
+                if let Err(error) = std::fs::write(path, &certificate) {
                     return Err(format!(
                         "KM_HT_LEAN_CERT cannot write {}: {error}",
                         path.display()
@@ -5643,6 +5710,51 @@ pub(crate) fn run_json_for_native_ht_test(input: &str) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn certified_global_verdict_is_derived_from_the_checked_evidence_shape() {
+        let plain_sat = serde_json::json!({"version": 1, "evidence": "sat"});
+        let equality_unsat = serde_json::json!({"version": 2, "evidence": {"unsat": {}}});
+        let cardinality_sat = serde_json::json!({
+            "version": 2,
+            "definitions": [],
+            "certificate": plain_sat,
+        });
+        let normalized_unsat = serde_json::json!({
+            "version": 4,
+            "payload": {"equality": {"certificate": equality_unsat}},
+        });
+        let regular_sat = serde_json::json!({"version": 1, "evidence": {"regular_sat": {}}});
+        assert_eq!(certified_ht_global_consistency(&cardinality_sat), Ok(true));
+        assert_eq!(
+            certified_ht_global_consistency(&normalized_unsat),
+            Ok(false)
+        );
+        assert_eq!(certified_ht_global_consistency(&regular_sat), Ok(true));
+        assert_eq!(
+            certified_ht_global_consistency(&serde_json::json!({
+                "version": 5,
+                "certificate": {},
+            })),
+            Ok(true)
+        );
+        assert!(certified_ht_global_consistency(&serde_json::json!({
+            "version": 2,
+            "evidence": {"subsumption": {}},
+        }))
+        .is_err());
+        assert!(certified_ht_global_consistency(&serde_json::json!({
+            "version": 3,
+            "payload": {
+                "plain": {"certificate": {"version": 1, "evidence": "sat"}},
+                "regular": {"certificate": {
+                    "version": 1,
+                    "evidence": {"finite_unsat": {}},
+                }},
+            },
+        }))
+        .is_err());
+    }
 
     fn con(neg: bool, c: C, t: Var) -> Atom {
         Atom::Concept {
