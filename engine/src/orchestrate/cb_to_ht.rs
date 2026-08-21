@@ -1902,6 +1902,57 @@ fn direct_projection_clause(clause: &JClause) -> Option<DirectProjectionClause> 
 mod direct_projection_tests {
     use super::*;
 
+    fn var(name: &str) -> JTerm {
+        JTerm::Var { name: name.into() }
+    }
+
+    fn app(function: &str, argument: &str) -> JTerm {
+        JTerm::Fun {
+            function: function.into(),
+            arg: Box::new(var(argument)),
+        }
+    }
+
+    fn skolem_pair(role_body: &str, filler_body: &str, argument: &str) -> Vec<JClause> {
+        vec![
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: role_body.into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Role {
+                    role: "r".into(),
+                    source: var("x"),
+                    target: app("f", argument),
+                }],
+            },
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: filler_body.into(),
+                    term: var("x"),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "C".into(),
+                    term: app("f", argument),
+                }],
+            },
+        ]
+    }
+
+    fn convert_test_clauses(clauses: &[JClause]) -> TInput {
+        convert(
+            clauses,
+            None,
+            &std::collections::HashSet::new(),
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        )
+    }
+
     #[test]
     fn direct_projection_preserves_complete_function_free_source_order() {
         let clause = JClause {
@@ -1978,6 +2029,39 @@ mod direct_projection_tests {
         assert_eq!(converted.dropped, 0);
         assert_eq!(converted.clauses.len(), 1);
         assert_eq!(converted.direct_projection_source.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn skolem_projection_requires_the_exact_proved_common_body() {
+        let valid = convert_test_clauses(&skolem_pair("A", "A", "x"));
+        assert_eq!(valid.dropped, 0);
+        assert!(valid.clauses.iter().any(|clause| {
+            clause
+                .head
+                .iter()
+                .any(|atom| matches!(atom, HAtom::Exist { .. }))
+        }));
+
+        let mismatched = convert_test_clauses(&skolem_pair("A", "B", "x"));
+        assert_eq!(mismatched.dropped, 1);
+        assert!(!mismatched.clauses.iter().any(|clause| {
+            clause
+                .head
+                .iter()
+                .any(|atom| matches!(atom, HAtom::Exist { .. }))
+        }));
+    }
+
+    #[test]
+    fn skolem_projection_requires_the_source_variable_as_function_argument() {
+        let converted = convert_test_clauses(&skolem_pair("A", "A", "y"));
+        assert_eq!(converted.dropped, 2);
+        assert!(!converted.clauses.iter().any(|clause| {
+            clause
+                .head
+                .iter()
+                .any(|atom| matches!(atom, HAtom::Exist { .. }))
+        }));
     }
 }
 
@@ -2300,6 +2384,13 @@ pub fn convert(
                         ok: true,
                     },
                 );
+            } else if exj.get(&f).is_some_and(|record| record.body != c.body) {
+                // One unary Skolem function denotes one witness selected from
+                // its source value. Combining halves guarded by different
+                // bodies can attach a filler that is not required whenever the
+                // role half fires. The Lean projection theorem therefore
+                // requires an exact common body.
+                exj.get_mut(&f).unwrap().ok = false;
             }
             let rec = exj.get_mut(&f).unwrap();
             for a in &c.head {
@@ -2307,10 +2398,11 @@ pub fn convert(
                     JAtom::Role {
                         role,
                         source,
-                        target,
-                    } if fun_sym(target) == Some(f.as_str()) => {
+                        target: JTerm::Fun { function, arg },
+                    } if function == &f => {
                         let src_is_x = matches!(source, JTerm::Var { name } if name == "x");
-                        if src_is_x {
+                        let arg_is_x = matches!(arg.as_ref(), JTerm::Var { name } if name == "x");
+                        if src_is_x && arg_is_x {
                             if rec.role.is_some() && rec.role.as_deref() != Some(role.as_str()) {
                                 rec.ok = false;
                             }
@@ -2319,8 +2411,15 @@ pub fn convert(
                             rec.ok = false;
                         }
                     }
-                    JAtom::Concept { concept, term } if fun_sym(term) == Some(f.as_str()) => {
-                        rec.fillers.push(concept.clone());
+                    JAtom::Concept {
+                        concept,
+                        term: JTerm::Fun { function, arg },
+                    } if function == &f => {
+                        if matches!(arg.as_ref(), JTerm::Var { name } if name == "x") {
+                            rec.fillers.push(concept.clone());
+                        } else {
+                            rec.ok = false;
+                        }
                     }
                     _ => {
                         rec.ok = false;

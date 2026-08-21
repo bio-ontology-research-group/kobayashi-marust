@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.195] – 2026-08-21
+
+### Prove the HT Skolem-pair projection exact
+
+- Model the unary Skolem interpretation used by the frontend's two-clause
+  existential encoding and the single HT existential clause produced from it.
+- Prove soundness, completeness, and equisatisfiability for the exact
+  common-body role/filler pair, including bodies with additional variables.
+- Tighten the Rust converter to require identical bodies and the exact
+  `R(x, f(x))` / `C(f(x))` wiring established by the theorem.
+- Fix an unsafe converter case that could previously combine role and filler
+  halves guarded by different bodies under the same function name.
+- Add regression tests showing malformed pairs are dropped without emitting a
+  partial existential. Every production HT route already rejects converted
+  input with a nonzero dropped count.
+
+The executable projection wire does not yet carry two-to-one Skolem-pair
+evidence, so checker-enabled HT still defers on function-bearing source
+clauses. Cardinality replacement, nominal/ABox projection, the remaining HT
+fragment audit, CB, and automatic routing certification remain unfinished.
+
 ## [0.3.194] – 2026-08-21
 
 ### Check the direct source-to-HT projection in Lean

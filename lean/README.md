@@ -225,7 +225,12 @@ against duplicate-free finite tables, independently decodes the target, and
 accepts only exact whole-ontology equality. Build its native executable with
 `LEAN_NUM_THREADS=2 lake build ht-projection-cert-check`. Checker-enabled Rust
 requires this projection checker and publishes nothing when source evidence is
-missing. Function elimination, bottom-head erasure, cardinality replacement,
+missing. `HypertableauSkolemProjection.lean` proves the exact common-body unary
+Skolem role/filler pair equisatisfiable with the HT existential that replaces
+it, in both directions. Rust now enforces that theorem's identical-body and
+`R(x, f(x))` / `C(f(x))` preconditions. The projection wire does not yet encode
+this two-source-to-one-target constructor, so certified runs still defer on
+function-bearing source clauses. Bottom-head erasure, cardinality replacement,
 and nominal/ABox compilation still require additional projection constructors.
 
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
