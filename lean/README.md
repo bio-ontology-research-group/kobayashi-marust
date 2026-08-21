@@ -216,8 +216,17 @@ positive equality premises. A certificate supplies equality paths from every
 variable to its selected representative and checks that every removed premise
 collapses. `BodyEqualityNormalization.modelsClause_iff` proves per-clause model
 equivalence, and `models_iff` lifts it to whole ontologies. The Rust producer now
-performs this normalization before trigger indexing. Encoding the source
-ontology and paths in the executable wire checker remains open.
+performs this normalization before trigger indexing. The executable wire
+checker validates the encoded source ontology and representative paths.
+
+`HypertableauDirectProjectionWire.lean` checks the preceding direct
+source-to-HT boundary. It resolves source concept, role, and variable names
+against duplicate-free finite tables, independently decodes the target, and
+accepts only exact whole-ontology equality. Build its native executable with
+`LEAN_NUM_THREADS=2 lake build ht-projection-cert-check`. Checker-enabled Rust
+requires this projection checker and publishes nothing when source evidence is
+missing. Function elimination, bottom-head erasure, cardinality replacement,
+and nominal/ABox compilation still require additional projection constructors.
 
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.

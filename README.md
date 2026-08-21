@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.193`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.194`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -104,7 +104,14 @@ Lean proves that every accepted input summary has no dropped or fenced axioms,
 excludes nominal and native-ABox inputs, and requires independently checked
 role separation when inverse roles and cardinality restrictions coexist. This
 gate is a fail-closed projection theorem, not yet a full inverse-HT completeness
-theorem. The remaining HT fragment audit, CB, and automatic routing
+theorem. Checker-enabled HT publication now also requires the independent
+`ht-projection-cert-check` executable. Its Lean decoder resolves source symbol
+and variable names and accepts only when the complete direct source conversion
+is exactly the ontology certified by HT. Missing evidence and transformations
+without a proved projection constructor defer instead of publishing. The
+Skolem-to-existential, cardinality-replacement, nominal/ABox, and other
+non-direct projection constructors remain unfinished. The remaining HT
+fragment audit, CB, and automatic routing
 certification remain unfinished. Equality
 countermodel paths are unchanged.
 
@@ -449,8 +456,9 @@ decision for every named class and one subsumption decision for every ordered
 pair. Positive answers carry finite refutations and negative answers carry
 finite countermodels. Position checks, exact row widths, exact row count,
 bounded identifiers, and duplicate-free named classes prevent omitted,
-duplicated, or reassigned cells. Set both
-`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and
+duplicated, or reassigned cells. Set
+`KM_HT_LEAN_PROJECTION_CHECKER=/path/to/ht-projection-cert-check`,
+`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check`, and
 `KM_HT_LEAN_TAXONOMY_CERT_CHECKER=/path/to/ht-taxonomy-cert-check`, together
 with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
 The worker derives its published taxonomy directly from the accepted matrix and

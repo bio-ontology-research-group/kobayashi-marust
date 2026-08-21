@@ -68,12 +68,110 @@ const CARDINALITY_SIDE_WIRE: &str = r#"{
   "transitive":[]
 }"#;
 
+fn install_direct_projection_fixture(input: &mut serde_json::Value) {
+    let concepts = input["concepts"].as_array().unwrap();
+    let roles = input["roles"].as_array().unwrap();
+    let mut target = input["clauses"].as_array().unwrap().clone();
+    for chain in input["chains"].as_array().unwrap() {
+        let chain = chain.as_array().unwrap();
+        target.push(serde_json::json!({
+            "body": [
+                {"k":"r", "r":chain[0], "s":0, "t":1},
+                {"k":"r", "r":chain[1], "s":1, "t":2}],
+            "head": [{"k":"r", "r":chain[2], "s":0, "t":2}]
+        }));
+    }
+    for role in input["transitive"].as_array().unwrap() {
+        target.push(serde_json::json!({
+            "body": [
+                {"k":"r", "r":role, "s":0, "t":1},
+                {"k":"r", "r":role, "s":1, "t":2}],
+            "head": [{"k":"r", "r":role, "s":0, "t":2}]
+        }));
+    }
+    let source: Vec<_> = target
+        .iter()
+        .map(|clause| {
+            let atoms: Vec<_> = clause["body"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .chain(clause["head"].as_array().unwrap())
+                .collect();
+            let max_variable = atoms
+                .iter()
+                .flat_map(|atom| match atom["k"].as_str().unwrap() {
+                    "c" | "e" => vec![atom["t"].as_u64().unwrap() as usize],
+                    "r" => vec![
+                        atom["s"].as_u64().unwrap() as usize,
+                        atom["t"].as_u64().unwrap() as usize,
+                    ],
+                    "eq" => vec![
+                        atom["s"].as_u64().unwrap() as usize,
+                        atom["t"].as_u64().unwrap() as usize,
+                    ],
+                    kind => panic!("unexpected HT atom {kind}"),
+                })
+                .max()
+                .unwrap_or(0);
+            let variable_names: Vec<_> = (0..=max_variable)
+                .map(|variable| {
+                    if variable == 0 {
+                        "x".to_string()
+                    } else {
+                        format!("v{variable}")
+                    }
+                })
+                .collect();
+            let convert = |atom: &serde_json::Value| {
+                let variable =
+                    |field: &str| variable_names[atom[field].as_u64().unwrap() as usize].clone();
+                match atom["k"].as_str().unwrap() {
+                    "c" => serde_json::json!({"con": {
+                        "concept": concepts[atom["c"].as_u64().unwrap() as usize],
+                        "node": variable("t"),
+                        "neg": atom["neg"]
+                    }}),
+                    "r" => serde_json::json!({"rol": {
+                        "role": roles[atom["r"].as_u64().unwrap() as usize],
+                        "source": variable("s"),
+                        "target": variable("t")
+                    }}),
+                    "e" => serde_json::json!({"ex": {
+                        "role": roles[atom["r"].as_u64().unwrap() as usize],
+                        "filler": concepts[atom["c"].as_u64().unwrap() as usize],
+                        "node": variable("t"),
+                        "neg": atom["neg"]
+                    }}),
+                    "eq" => serde_json::json!({"equal": {
+                        "left": variable("s"),
+                        "right": variable("t")
+                    }}),
+                    kind => panic!("unexpected HT atom {kind}"),
+                }
+            };
+            serde_json::json!({
+                "variableNames": variable_names,
+                "body": clause["body"].as_array().unwrap().iter().map(convert).collect::<Vec<_>>(),
+                "head": clause["head"].as_array().unwrap().iter().map(convert).collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    input["direct_projection_source"] = serde_json::Value::Array(source);
+}
+
 fn run_with_input(
     input: &str,
     global_checker: &str,
     taxonomy_checker: &str,
     output_stem: &str,
 ) -> std::process::Output {
+    let mut certified_input: serde_json::Value =
+        serde_json::from_str(input).expect("test HT input is JSON");
+    install_direct_projection_fixture(&mut certified_input);
+    let certified_input = serde_json::to_vec(&certified_input).unwrap();
+    let projection_checker = std::env::var("KM_HT_TEST_LEAN_PROJECTION_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
     let root = std::env::temp_dir().join(format!(
         "km-ht-taxonomy-runtime-{}-{output_stem}",
         std::process::id()
@@ -87,6 +185,7 @@ fn run_with_input(
         // Certification must select the exact source calculus even when the
         // ordinary performance route requests harvested consequences.
         .env("KM_HT_HARVEST", "1")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", projection_checker)
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -100,14 +199,16 @@ fn run_with_input(
         .stdin
         .take()
         .expect("tableau stdin")
-        .write_all(input.as_bytes())
+        .write_all(&certified_input)
         .expect("write tableau wire input");
     let output = child.wait_with_output().expect("wait for tableau worker");
-    assert!(global_out.is_file(), "global certificate must be persisted");
-    assert!(
-        taxonomy_out.is_file(),
-        "taxonomy certificate must be persisted"
-    );
+    if output.status.success() {
+        assert!(global_out.is_file(), "global certificate must be persisted");
+        assert!(
+            taxonomy_out.is_file(),
+            "taxonomy certificate must be persisted"
+        );
+    }
     let _ = std::fs::remove_file(global_out);
     let _ = std::fs::remove_file(taxonomy_out);
     output
@@ -115,6 +216,43 @@ fn run_with_input(
 
 fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::process::Output {
     run_with_input(WIRE, global_checker, taxonomy_checker, output_stem)
+}
+
+fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    command
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(checker) = projection_checker {
+        command.env("KM_HT_LEAN_PROJECTION_CHECKER", checker);
+    }
+    let mut child = command.spawn().expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn certified_publication_requires_checker_and_source_projection() {
+    let missing_checker = run_raw_certified(WIRE, None);
+    assert!(!missing_checker.status.success());
+    assert!(
+        String::from_utf8_lossy(&missing_checker.stderr).contains("KM_HT_LEAN_PROJECTION_CHECKER")
+    );
+
+    let missing_source = run_raw_certified(WIRE, Some("/bin/true"));
+    assert!(!missing_source.status.success());
+    assert!(String::from_utf8_lossy(&missing_source.stderr)
+        .contains("no proved source-to-HT projection"));
 }
 
 #[test]
@@ -213,11 +351,17 @@ fn first_class_cardinality_global_result_is_checker_gated() {
     let checker = std::env::var("KM_HT_TEST_LEAN_GLOBAL_CHECKER")
         .or_else(|_| std::env::var("KM_HT_TEST_LEAN_CHECKER"))
         .unwrap_or_else(|_| "/bin/true".to_string());
+    let mut input: serde_json::Value = serde_json::from_str(CARDINALITY_SIDE_WIRE).unwrap();
+    install_direct_projection_fixture(&mut input);
+    let input = serde_json::to_vec(&input).unwrap();
+    let projection_checker = std::env::var("KM_HT_TEST_LEAN_PROJECTION_CHECKER")
+        .unwrap_or_else(|_| "/bin/true".to_string());
     let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
         .env("KM_HT", "1")
         .env("KM_HT_FORCE", "1")
         .env("KM_HT_GLOBAL", "1")
         .env("KM_HT_LEAN_CERT_CHECKER", checker)
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", projection_checker)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -227,7 +371,7 @@ fn first_class_cardinality_global_result_is_checker_gated() {
         .stdin
         .take()
         .expect("tableau stdin")
-        .write_all(CARDINALITY_SIDE_WIRE.as_bytes())
+        .write_all(&input)
         .expect("write cardinality wire input");
     let output = child.wait_with_output().expect("wait for tableau worker");
     assert!(

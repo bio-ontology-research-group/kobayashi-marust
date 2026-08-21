@@ -4863,6 +4863,9 @@ pub struct TInput {
     pub roles: Vec<String>,
     pub clauses: Vec<JClause>,
     #[serde(default)]
+    pub direct_projection_source:
+        Option<Vec<crate::orchestrate::cb_to_ht::DirectProjectionClause>>,
+    #[serde(default)]
     pub queries: Vec<C>,
     /// Converter omissions are part of the certification boundary. The
     /// ordinary measurement routes may defer around them, but a certified run
@@ -5226,6 +5229,161 @@ fn certified_ht_global_consistency(document: &serde_json::Value) -> Result<bool,
     }
 }
 
+#[derive(Serialize)]
+struct DirectProjectionLit {
+    concept: usize,
+    neg: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum DirectProjectionTargetAtom {
+    Concept {
+        literal: DirectProjectionLit,
+        node: usize,
+    },
+    Role {
+        role: usize,
+        source: usize,
+        target: usize,
+    },
+    Exists_ {
+        role: usize,
+        filler: DirectProjectionLit,
+        node: usize,
+    },
+    Eq {
+        left: usize,
+        right: usize,
+    },
+}
+
+#[derive(Serialize)]
+struct DirectProjectionTargetClause {
+    body: Vec<DirectProjectionTargetAtom>,
+    head: Vec<DirectProjectionTargetAtom>,
+}
+
+#[derive(Serialize)]
+struct DirectProjectionDocument<'a> {
+    variable_count: usize,
+    concepts: &'a [String],
+    roles: &'a [String],
+    source: &'a [crate::orchestrate::cb_to_ht::DirectProjectionClause],
+    target: Vec<DirectProjectionTargetClause>,
+}
+
+fn direct_projection_target_atom(atom: &Atom) -> DirectProjectionTargetAtom {
+    match *atom {
+        Atom::Concept { lit, t } => DirectProjectionTargetAtom::Concept {
+            literal: DirectProjectionLit {
+                concept: lit.c as usize,
+                neg: lit.neg,
+            },
+            node: t as usize,
+        },
+        Atom::Role { r, s, t } => DirectProjectionTargetAtom::Role {
+            role: r as usize,
+            source: s as usize,
+            target: t as usize,
+        },
+        Atom::Exists { r, fil, t } => DirectProjectionTargetAtom::Exists_ {
+            role: r as usize,
+            filler: DirectProjectionLit {
+                concept: fil.c as usize,
+                neg: fil.neg,
+            },
+            node: t as usize,
+        },
+        Atom::Eq { s, t } => DirectProjectionTargetAtom::Eq {
+            left: s as usize,
+            right: t as usize,
+        },
+    }
+}
+
+fn direct_projection_target_clause(clause: &Clause) -> DirectProjectionTargetClause {
+    DirectProjectionTargetClause {
+        body: clause
+            .body
+            .iter()
+            .map(direct_projection_target_atom)
+            .collect(),
+        head: clause
+            .head
+            .iter()
+            .map(direct_projection_target_atom)
+            .collect(),
+    }
+}
+
+fn direct_projection_variable_count(clauses: &[Clause]) -> usize {
+    clauses
+        .iter()
+        .map(|clause| {
+            clause
+                .body
+                .iter()
+                .chain(&clause.head)
+                .map(|atom| match atom {
+                    Atom::Concept { t, .. } | Atom::Exists { t, .. } => *t as usize,
+                    Atom::Role { s, t, .. } | Atom::Eq { s, t } => (*s).max(*t) as usize,
+                })
+                .max()
+                .unwrap_or(0)
+                + 1
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn check_direct_ht_projection(
+    inp: &TInput,
+    clauses: &[Clause],
+    checker: &std::path::Path,
+) -> Result<(), String> {
+    let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+        "HT Lean certification has no proved source-to-HT projection".to_string()
+    })?;
+    let document = DirectProjectionDocument {
+        variable_count: direct_projection_variable_count(clauses),
+        concepts: &inp.concepts,
+        roles: &inp.roles,
+        source,
+        target: clauses
+            .iter()
+            .map(direct_projection_target_clause)
+            .collect(),
+    };
+    let encoded = serde_json::to_vec(&document)
+        .map_err(|error| format!("cannot encode HT direct projection: {error}"))?;
+    let path = std::env::temp_dir().join(format!(
+        "km-ht-direct-projection-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&path, encoded)
+        .map_err(|error| format!("cannot write HT direct projection: {error}"))?;
+    let status = std::process::Command::new(checker)
+        .arg(&path)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .map_err(|error| {
+            format!(
+                "cannot execute HT projection checker {}: {error}",
+                checker.display()
+            )
+        });
+    let _ = std::fs::remove_file(&path);
+    let status = status?;
+    if !status.success() {
+        return Err(format!(
+            "HT source projection checker {} rejected the conversion ({status})",
+            checker.display()
+        ));
+    }
+    Ok(())
+}
+
 fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> Result<(), String> {
     if inp.dropped != 0 || !inp.fenced.is_empty() {
         return Err(format!(
@@ -5361,6 +5519,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_cert_path = std::env::var_os("KM_HT_LEAN_CERT_OUT").map(std::path::PathBuf::from);
         let lean_cert_checker =
             std::env::var_os("KM_HT_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
+        let lean_projection_checker =
+            std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_path =
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_OUT").map(std::path::PathBuf::from);
         let lean_taxonomy_checker =
@@ -5376,6 +5536,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 );
             }
             check_certified_ht_input_coverage(&inp, native_abox_active)?;
+            if lean_projection_checker.is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_PROJECTION_CHECKER".to_string(),
+                );
+            }
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
             }
@@ -5394,6 +5559,13 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             // the ordinary HT evidence plus Lean's exhaustive checker account
             // for them directly.
             ht_clauses.extend(certified_role_chain_clauses(&inp.chains, &inp.transitive));
+            check_direct_ht_projection(
+                &inp,
+                &ht_clauses,
+                lean_projection_checker
+                    .as_deref()
+                    .expect("certified projection checker was required above"),
+            )?;
         }
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
         let card_raw: Vec<(C, bool, u32, R, C)> = inp

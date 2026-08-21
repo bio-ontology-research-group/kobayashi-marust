@@ -269,6 +269,42 @@ pub struct HtClause {
     pub head: Vec<HAtom>,
 }
 
+/// Source-side atoms for the Lean-checked direct DL-clause projection.  This
+/// intentionally has no constructors for functions, individuals, auxiliaries,
+/// or bottom-head erasure: those transformations need their own proof objects.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectProjectionAtom {
+    Con {
+        concept: String,
+        node: String,
+        neg: bool,
+    },
+    Rol {
+        role: String,
+        source: String,
+        target: String,
+    },
+    Ex {
+        role: String,
+        filler: String,
+        node: String,
+        neg: bool,
+    },
+    Equal {
+        left: String,
+        right: String,
+    },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct DirectProjectionClause {
+    #[serde(rename = "variableNames")]
+    pub variable_names: Vec<String>,
+    pub body: Vec<DirectProjectionAtom>,
+    pub head: Vec<DirectProjectionAtom>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Fenced {
     pub reason: String,
@@ -330,6 +366,11 @@ pub struct TInput {
     pub concepts: Vec<String>,
     pub roles: Vec<String>,
     pub clauses: Vec<HtClause>,
+    /// Complete source list for the Lean direct-projection checker. `None`
+    /// means that at least one converter transformation still lacks a proved
+    /// projection constructor, so certified HT publication must defer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_projection_source: Option<Vec<DirectProjectionClause>>,
     pub queries: Vec<usize>,
     pub dropped: usize,
     pub fenced: Vec<Fenced>,
@@ -1778,6 +1819,168 @@ fn vnum(vm: &mut HashMap<String, usize>, name: &str) -> usize {
     nv
 }
 
+fn direct_projection_atom(
+    atom: &JAtom,
+    variable_names: &mut Vec<String>,
+) -> Option<DirectProjectionAtom> {
+    let mut note = |name: &str| {
+        if !variable_names.iter().any(|candidate| candidate == name) {
+            variable_names.push(name.to_string());
+        }
+    };
+    match atom {
+        JAtom::Concept {
+            concept,
+            term: JTerm::Var { name },
+        } => {
+            note(name);
+            Some(DirectProjectionAtom::Con {
+                concept: concept.clone(),
+                node: name.clone(),
+                neg: false,
+            })
+        }
+        JAtom::Role {
+            role,
+            source: JTerm::Var { name: source },
+            target: JTerm::Var { name: target },
+        } => {
+            note(source);
+            note(target);
+            Some(DirectProjectionAtom::Rol {
+                role: role.clone(),
+                source: source.clone(),
+                target: target.clone(),
+            })
+        }
+        JAtom::Eq {
+            left: JTerm::Var { name: left },
+            right: JTerm::Var { name: right },
+        } => {
+            note(left);
+            note(right);
+            Some(DirectProjectionAtom::Equal {
+                left: left.clone(),
+                right: right.clone(),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn direct_projection_clause(clause: &JClause) -> Option<DirectProjectionClause> {
+    // `mk_varmap` reserves x=0 even when x first occurs after another variable.
+    let mut variable_names = vec!["x".to_string()];
+    let body = clause
+        .body
+        .iter()
+        .map(|atom| direct_projection_atom(atom, &mut variable_names))
+        .collect::<Option<Vec<_>>>()?;
+    // The production converter erases owl:Nothing from a clause head. That is
+    // semantically sound, but it is not the direct syntactic projection proved
+    // by this certificate.
+    if clause
+        .head
+        .iter()
+        .any(|atom| matches!(atom, JAtom::Concept { concept, .. } if is_bottom(concept)))
+    {
+        return None;
+    }
+    let head = clause
+        .head
+        .iter()
+        .map(|atom| direct_projection_atom(atom, &mut variable_names))
+        .collect::<Option<Vec<_>>>()?;
+    Some(DirectProjectionClause {
+        variable_names,
+        body,
+        head,
+    })
+}
+
+#[cfg(test)]
+mod direct_projection_tests {
+    use super::*;
+
+    #[test]
+    fn direct_projection_preserves_complete_function_free_source_order() {
+        let clause = JClause {
+            body: vec![
+                JAtom::Role {
+                    role: "r".into(),
+                    source: JTerm::Var { name: "y".into() },
+                    target: JTerm::Var { name: "x".into() },
+                },
+                JAtom::Concept {
+                    concept: "A".into(),
+                    term: JTerm::Var { name: "z".into() },
+                },
+            ],
+            head: vec![JAtom::Eq {
+                left: JTerm::Var { name: "z".into() },
+                right: JTerm::Var { name: "y".into() },
+            }],
+        };
+        let projected = direct_projection_clause(&clause).expect("direct clause");
+        assert_eq!(projected.variable_names, ["x", "y", "z"]);
+        assert_eq!(projected.body.len(), 2);
+        assert_eq!(projected.head.len(), 1);
+    }
+
+    #[test]
+    fn direct_projection_defers_on_unproved_transformations() {
+        let function_clause = JClause {
+            body: Vec::new(),
+            head: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: JTerm::Fun {
+                    function: "f".into(),
+                    arg: Box::new(JTerm::Var { name: "x".into() }),
+                },
+            }],
+        };
+        assert!(direct_projection_clause(&function_clause).is_none());
+
+        let bottom_clause = JClause {
+            body: Vec::new(),
+            head: vec![JAtom::Concept {
+                concept: "http://www.w3.org/2002/07/owl#Nothing".into(),
+                term: JTerm::Var { name: "x".into() },
+            }],
+        };
+        assert!(direct_projection_clause(&bottom_clause).is_none());
+    }
+
+    #[test]
+    fn converter_carries_the_complete_direct_source_list() {
+        let clauses = vec![JClause {
+            body: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: JTerm::Var { name: "x".into() },
+            }],
+            head: vec![JAtom::Concept {
+                concept: "B".into(),
+                term: JTerm::Var { name: "x".into() },
+            }],
+        }];
+        let named = std::collections::HashSet::from(["A".to_string(), "B".to_string()]);
+        let converted = convert(
+            &clauses,
+            None,
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert_eq!(converted.dropped, 0);
+        assert_eq!(converted.clauses.len(), 1);
+        assert_eq!(converted.direct_projection_source.unwrap().len(), 1);
+    }
+}
+
 struct ExjRec {
     body: Vec<JAtom>,
     role: Option<String>,
@@ -1831,6 +2034,10 @@ pub fn convert(
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
+    let direct_projection_source = clauses
+        .iter()
+        .map(direct_projection_clause)
+        .collect::<Option<Vec<_>>>();
     // KM_HT_RULES: ground ABox facts intercepted in pass 1 (so they are not
     // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
     let mut abox_facts: Vec<AboxFact> = Vec::new();
@@ -2984,6 +3191,7 @@ pub fn convert(
         concepts: ids.con_names,
         roles: ids.rol_names,
         clauses: ht,
+        direct_projection_source,
         queries,
         dropped,
         fenced,

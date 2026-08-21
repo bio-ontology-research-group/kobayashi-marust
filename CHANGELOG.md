@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.194] – 2026-08-21
+
+### Check the direct source-to-HT projection in Lean
+
+- Add a bounded direct-projection wire format that retains the complete source
+  clause list, symbol-name tables, and first-occurrence local-variable tables.
+- Resolve every concept, role, and variable name inside Lean; reject duplicate
+  tables, unknown names, out-of-bound variables, omitted or added clauses, and
+  altered concept, role, existential, or equality atoms.
+- Prove that every decoded projection has exactly the target HT ontology and
+  therefore has identical model semantics.
+- Add the native `ht-projection-cert-check` executable and require it before any
+  checker-enabled HT publication. A missing checker or missing source evidence
+  now causes fail-closed deferral.
+- Preserve direct function-free DL clauses in the Rust converter. Inputs using
+  function elimination or bottom-head erasure carry no direct evidence and
+  defer until those transformations receive separate proved constructors.
+- Exercise ordinary, equality, cardinality-side, existential, role-chain, and
+  transitive normalized inputs against the real projection checker.
+
+The Skolem-to-existential, cardinality replacement, nominal/ABox, and remaining
+converter transformations still need semantic projection certificates. CB and
+automatic routing certification remain unfinished.
+
 ## [0.3.193] – 2026-08-21
 
 ### Make certified HT input coverage fail closed
