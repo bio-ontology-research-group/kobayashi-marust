@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.200] – 2026-08-21
+
+### Prove projected role-domain consequences redundant
+
+- Define semantic role inclusion and role-domain conditions for HT
+  interpretations.
+- Prove ordinary two-variable inclusion and domain clauses equivalent to those
+  semantic conditions when their variables are distinct.
+- Prove a projected existential entails `body → Domain(x)` for its own role or
+  any super-role carrying that domain.
+- Lift the result to every finite domain-consequence list emitted beside one
+  existential.
+- Prove adding all such clauses preserves and reflects whole-ontology model
+  satisfaction.
+
+The mixed wire still needs to reconstruct role-closure/domain evidence and
+admit these source-derived redundant target clauses. Whole-list fresh-definer
+composition, cardinality replacement, nominal/ABox projection, the remaining
+HT audit, CB, and routing certification remain unfinished.
+
 ## [0.3.199] – 2026-08-21
 
 ### Prove fresh-definer Skolem projection exact

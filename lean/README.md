@@ -250,6 +250,13 @@ and proves source-to-target soundness and target-to-source completeness while
 preserving all original direct clauses. Whole-list composition for several
 fresh definers and the corresponding wire constructor remain open.
 
+`HypertableauDomainProjection.lean` proves the extra domain consequences that
+Rust emits beside an existential are redundant. Two-variable role-inclusion
+and domain clauses reconstruct their semantic relations, and
+`add_domainConsequences_iff` proves every finite set of source-role or
+super-role domain conclusions preserves the complete model set. Mixed-wire
+reconstruction of the role closure and domain premises remains open.
+
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
 `HypertableauCertificate.lean` checks finite saturated SAT branches, while

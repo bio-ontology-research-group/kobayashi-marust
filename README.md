@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.199`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.200`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -121,7 +121,9 @@ emits complete mixed evidence for exact simple pairs, and checker-enabled HT
 publishes only after the native projection checker accepts that evidence.
 Lean now also proves the finite multi-filler transformation through a
 structurally fresh concept sound and complete, but its whole-list wire and Rust
-evidence remain unfinished, so production still defers there. Cardinality
+evidence remain unfinished, so production still defers there. The projected
+role-domain clauses are separately proved redundant through source role
+inclusion and domain semantics; their wire reconstruction remains open. Cardinality
 replacement, nominal/ABox, and other non-direct projection constructors remain
 unfinished. The remaining HT
 fragment audit, CB, and automatic routing
