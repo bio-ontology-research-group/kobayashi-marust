@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.181`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.182`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -157,6 +157,13 @@ definition ID at any equality-equivalent previously expanded source, matching
 Rust's branch-local `minimums` metadata even when the definition list contains
 duplicates. Exact exhaustion, child closure, and active-source bounds are
 proved for both indexed scans.
+The production termination state now explicitly combines logical facts,
+`active_nodes`, and indexed expanded-minimum metadata. Its finite progress set
+matches Rust's labels, edges, obligations, equalities, directed apart pairs,
+and minimum IDs, and strict inclusion of this set is proved well-founded. The
+exact minimum successor strictly grows that set, including a zero-width
+minimum whose progress comes only from the expansion marker. Growth proofs for
+the other recursive transitions are still pending.
 
 ## Classify an ontology
 

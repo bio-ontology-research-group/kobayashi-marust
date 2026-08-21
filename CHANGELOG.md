@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.182] – 2026-08-21
+
+### Establish the cardinality production termination measure
+
+- Define the finite runtime configuration containing the distinct equality
+  state, `active_nodes`, the indexed expanded-minimum set, and the checked
+  inactive-prefix invariant.
+- Define an extensional progress fact set matching Rust's release-mode measure:
+  guarded labels, edges, obligations, equalities, directed apart pairs, and
+  expanded minimum IDs.
+- Prove the fact-set membership characterization and preservation of all old
+  equality-aware guarded facts through minimum materialization.
+- Construct the exact minimum successor configuration, including consecutive
+  target IDs, enlarged active prefix, and insertion of the selected definition
+  ID/source pair.
+- Prove every selected minimum successor strictly grows the production progress
+  fact set, including zero-width minimum restrictions where metadata insertion
+  is the required progress witness.
+- Prove strict growth over these finite fact sets is well-founded and audit all
+  endpoints without `sorryAx`.
+
+Clause, witness, and maximum growth, total recursive outcome production,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.181] – 2026-08-21
 
 ### Certify definition-indexed cardinality selection
