@@ -25,6 +25,10 @@
   label, edge, obligation, and apart state. The checker proves the concrete
   certificate state contains every native seed fact and rejects short root maps
   or omitted labels.
+- Require that the checked native root map is injective. Lean now returns the
+  injectivity proof as part of decoded evidence and rejects duplicate roots,
+  preventing two source individuals from being silently represented by one
+  finite node before equality reasoning accounts for such a merge.
 - Make every independent HT certificate search initialize query root zero and
   one ordered root per native individual, with the exact proxy/assertion labels,
   positive role edges, and different-individual facts used by production HT.

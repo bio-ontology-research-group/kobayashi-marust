@@ -269,6 +269,7 @@ structure DecodedNativeABoxSeed where
   nodeCount : Nat
   variableCount : Nat
   roots : Fin abox.individuals.length → Fin nodeCount
+  roots_injective : Function.Injective roots
   ontology : List (Clause (Fin variableCount)
     (Fin abox.concepts.length) (Fin abox.roles.length))
   state : FiniteDistinctEqCertificate nodeCount abox.concepts.length
@@ -280,20 +281,33 @@ def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
   let abox ← wire.abox.decode
   let ontology ← wire.ontology.mapM
     (WireClause.decode wire.variable_count abox.concepts.length abox.roles.length)
-  let roots ← decodeAssignment wire.node_count abox.individuals.length wire.roots
-  let state ← wire.state.decode wire.node_count abox.concepts.length
-    abox.roles.length wire.variable_count ontology
-  if hseeded : abox.seededInB state roots = true then
-    return {
-      abox
-      nodeCount := wire.node_count
-      variableCount := wire.variable_count
-      roots
-      ontology
-      state
-      seeded := (abox.seededInB_eq_true_iff state roots).1 hseeded
-    }
-  else throw "finite HT state omits a native ABox seed fact"
+  let decodedRoots ← wire.roots.mapM
+    (checkedFin "native ABox root" wire.node_count)
+  if hrootLength : decodedRoots.length = abox.individuals.length then
+    if hrootNodup : decodedRoots.Nodup then
+      let roots : Fin abox.individuals.length → Fin wire.node_count :=
+        fun index => decodedRoots.get (hrootLength.symm ▸ index)
+      have hrootsInjective : Function.Injective roots := by
+        intro left right hequal
+        have hindices := hrootNodup.get_inj_iff.mp hequal
+        have hcast := congrArg (Fin.cast hrootLength) hindices
+        simpa only [finCast_transport_back] using hcast
+      let state ← wire.state.decode wire.node_count abox.concepts.length
+        abox.roles.length wire.variable_count ontology
+      if hseeded : abox.seededInB state roots = true then
+        return {
+          abox
+          nodeCount := wire.node_count
+          variableCount := wire.variable_count
+          roots
+          roots_injective := hrootsInjective
+          ontology
+          state
+          seeded := (abox.seededInB_eq_true_iff state roots).1 hseeded
+        }
+      else throw "finite HT state omits a native ABox seed fact"
+    else throw "native ABox roots must be pairwise distinct"
+  else throw s!"native ABox root map has {decodedRoots.length} entries, expected {abox.individuals.length}"
 
 def WireNativeABoxSeed.check (wire : WireNativeABoxSeed) : Except String Bool := do
   let _ ← wire.decode
@@ -383,6 +397,7 @@ private def validSeedExample : WireNativeABoxSeed where
 
 example : validSeedExample.check = .ok true := by native_decide
 example : rejected ({ validSeedExample with roots := [0] }).check = true := by native_decide
+example : rejected ({ validSeedExample with roots := [0, 0] }).check = true := by native_decide
 example : rejected ({ validSeedExample with state :=
     { validSeedExample.state with base :=
       { validSeedExample.state.base with labels :=
