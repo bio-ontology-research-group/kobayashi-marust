@@ -6125,15 +6125,22 @@ fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> 
 /// test outside the individual worker branches: rules consistency, the
 /// Konclude bridge, and the legacy tableau all precede or follow the fast-Ht
 /// arm and must not bypass its Lean checker boundary.
+const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
+    "KM_HT_LEAN_CERT_OUT",
+    "KM_HT_LEAN_CERT_CHECKER",
+    "KM_HT_LEAN_PROJECTION_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
+    "KM_HT_LEAN_TAXONOMY_CERT_OUT",
+    "KM_HT_LEAN_TAXONOMY_CERT_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+];
+
 fn ht_lean_certification_requested() -> bool {
-    [
-        "KM_HT_LEAN_CERT_OUT",
-        "KM_HT_LEAN_CERT_CHECKER",
-        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
-        "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
-        "KM_HT_LEAN_TAXONOMY_CERT_OUT",
-        "KM_HT_LEAN_TAXONOMY_CERT_CHECKER",
-    ]
+    HT_LEAN_CERTIFICATION_ENV
     .iter()
     .any(|name| std::env::var_os(name).is_some())
 }
@@ -6840,6 +6847,28 @@ mod tests {
         assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_ok());
         producer.nominals.clear();
         assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_ok());
+    }
+
+    #[test]
+    fn every_ht_lean_interface_enters_the_fail_closed_certification_boundary() {
+        for required in [
+            "KM_HT_LEAN_CERT_OUT",
+            "KM_HT_LEAN_CERT_CHECKER",
+            "KM_HT_LEAN_PROJECTION_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
+            "KM_HT_LEAN_TAXONOMY_CERT_OUT",
+            "KM_HT_LEAN_TAXONOMY_CERT_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+        ] {
+            assert!(
+                HT_LEAN_CERTIFICATION_ENV.contains(&required),
+                "{required} must not permit unchecked HT publication",
+            );
+        }
     }
 
     fn con(neg: bool, c: C, t: Var) -> Atom {

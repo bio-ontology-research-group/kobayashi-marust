@@ -93,6 +93,13 @@
   exact matrix coordinates and an equivalence between the Boolean published by
   KM and source-level entailment, for direct, mixed, and bundled routes with
   and without cardinality.
+- Close the total production-taxonomy publication endpoint for ordinary,
+  cardinality, native-ABox, and combined native-ABox/cardinality searches.
+  Every total route now constructs a complete Boolean taxonomy whose positive
+  and negative cells are equivalent to their exact semantic propositions.
+- Make every HT Lean checker interface enter the same fail-closed executable
+  boundary. In particular, requesting a native-ABox matrix or source taxonomy
+  checker alone can no longer fall through to unchecked HT publication.
 
 ### Certify native-ABox cardinality taxonomies
 

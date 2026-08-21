@@ -278,6 +278,25 @@ fn run_certification_bypass_probe(
     child.wait_with_output().unwrap()
 }
 
+fn run_isolated_certification_interface(interface: &str) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    command
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env(interface, "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(WIRE.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -305,6 +324,26 @@ fn certified_publication_cannot_bypass_through_bridge_rules_or_legacy_tableau() 
     let legacy = run_certification_bypass_probe(&[], false);
     assert!(!legacy.status.success());
     assert!(String::from_utf8_lossy(&legacy.stderr).contains("hypertableau mechanism"));
+}
+
+#[test]
+fn isolated_native_taxonomy_interfaces_fail_closed() {
+    for interface in [
+        "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+    ] {
+        let output = run_isolated_certification_interface(interface);
+        assert!(!output.status.success(), "{interface} bypassed certification");
+        assert!(output.stdout.is_empty(), "{interface} published unchecked output");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("requires the global consistency route"),
+            "{interface}: {}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
 }
 
 #[test]
