@@ -104,9 +104,86 @@ theorem CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.publishesExactly
       (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff
   }⟩
 
+/-- Equality-free learned-fold production publishes every taxonomy cell
+exactly after its proved inner retry loop and outer node-budget doubling. -/
+theorem CertifiedHTFreshFoldProductionTaxonomyRoute.publishesExactly
+    (route : CertifiedHTFreshFoldProductionTaxonomyRoute conceptCount roleCount
+      variableCount ontology named) :
+    Nonempty (ExactBooleanTaxonomyPublication named
+      (UnsatisfiableConcept ontology) (EntailsSub ontology)) := by
+  rcases route.decides with ⟨certificate⟩
+  exact ⟨{
+    conceptAnswer := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer
+    conceptExact := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer_eq_true_iff
+    subsumptionAnswer := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer
+    subsumptionExact := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff
+  }⟩
+
+theorem CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute.publishesExactly
+    (route : CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute
+      conceptCount roleCount variableCount ontology definitions named) :
+    Nonempty (ExactBooleanTaxonomyPublication named
+      (UnsatisfiableConceptWithCardinality ontology definitions)
+      (EntailsSubWithCardinality ontology definitions)) := by
+  rcases route.decides with ⟨certificate⟩
+  exact ⟨{
+    conceptAnswer := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer
+    conceptExact := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer_eq_true_iff
+    subsumptionAnswer := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer
+    subsumptionExact := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff
+  }⟩
+
+theorem CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute.publishesExactly
+    (route : CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute
+      conceptCount roleCount variableCount abox ontology named) :
+    Nonempty (ExactBooleanTaxonomyPublication named
+      (abox.UnsatisfiableConceptWith ontology)
+      (abox.EntailsSubWith ontology)) := by
+  rcases route.decides with ⟨certificate⟩
+  exact ⟨{
+    conceptAnswer := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer
+    conceptExact := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer_eq_true_iff
+    subsumptionAnswer := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer
+    subsumptionExact := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff
+  }⟩
+
+theorem CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute.publishesExactly
+    (route : CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute
+      conceptCount roleCount variableCount abox ontology definitions named) :
+    Nonempty (ExactBooleanTaxonomyPublication named
+      (abox.UnsatisfiableConceptWithCardinality ontology definitions)
+      (abox.EntailsSubWithCardinality ontology definitions)) := by
+  rcases route.decides with ⟨certificate⟩
+  exact ⟨{
+    conceptAnswer := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer
+    conceptExact := fun concept hnamed =>
+      (certificate.concept concept hnamed).answer_eq_true_iff
+    subsumptionAnswer := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer
+    subsumptionExact := fun sub hsub sup hsup =>
+      (certificate.subsumption sub hsub sup hsup).answer_eq_true_iff
+  }⟩
+
 #print axioms CertifiedHTProductionTaxonomyRoute.publishesExactly
 #print axioms CertifiedHTCardinalityProductionTaxonomyRoute.publishesExactly
 #print axioms CertifiedHTNativeABoxProductionTaxonomyRoute.publishesExactly
 #print axioms CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.publishesExactly
+#print axioms CertifiedHTFreshFoldProductionTaxonomyRoute.publishesExactly
+#print axioms CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute.publishesExactly
+#print axioms CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute.publishesExactly
+#print axioms CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute.publishesExactly
 
 end ContextCalculus.Hypertableau

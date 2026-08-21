@@ -135,6 +135,35 @@ theorem checked_taxonomy_fresh_fold_producer_decides
     checked_taxonomy_doubling_decides settled hsettledNodes
   exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
 
+/-- Eliminate the proved two-level search into any proof-carrying decision
+type. `Nonempty` keeps the elimination constructive at the public boundary
+while the selected terminating budget and retry remain implementation detail. -/
+theorem checked_taxonomy_fresh_fold_producer_decision
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount statement))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget)
+    (ofHolds : statement → Decision)
+    (ofRefutes : ¬statement → Decision) : Nonempty Decision := by
+  classical
+  have hresult : Nonempty { selected :
+      Nat × Nat × CheckedTaxonomyRoundOutcome conceptCount roleCount statement //
+    (producer selected.1).run selected.2.1 = .done selected.2.2 ∧
+      selected.2.2.Semantics } := by
+    rcases checked_taxonomy_fresh_fold_producer_decides producer hnodes with
+      ⟨budget, retry, outcome, hrun, hsemantics⟩
+    exact ⟨⟨(budget, retry, outcome), hrun, hsemantics⟩⟩
+  let selected := Classical.choice hresult
+  have hsemantics := selected.property.2
+  generalize houtcome : selected.1.2.2 = outcome at hsemantics
+  cases outcome with
+  | holds proof => exact ⟨ofHolds hsemantics⟩
+  | refutes proof => exact ⟨ofRefutes hsemantics⟩
+  | frontier document hconcepts hroles hcheck =>
+      simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
 /-- All checked searches used to construct one production taxonomy.  Each
 field is indexed by the exact source-level query that its result decides. -/
 structure CertifiedHTProductionTaxonomyRoute
@@ -464,13 +493,149 @@ theorem CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
     | refutes proof => exact .notEntailed hsemantics
     | frontier document hconcepts hroles hcheck =>
         simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
+/-! ## Explicit learned-fold production routes for every taxonomy family -/
+
+structure CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
+    FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (UnsatisfiableConceptWithCardinality ontology definitions concept))
+  conceptNodes : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
+    (conceptProducer concept hnamed budget).run retry =
+        .done (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget
+  subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (EntailsSubWithCardinality ontology definitions sub sup))
+  subsumptionNodes :
+    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
+      (subsumptionProducer sub hsub sup hsup budget).run retry =
+          .done (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget
+
+theorem CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute.decides
+    (route : CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute
+      conceptCount roleCount variableCount ontology definitions named) :
+    Nonempty (CompleteCardinalityTaxonomyCertificate ontology definitions named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.conceptProducer concept hnamed) (route.conceptNodes concept hnamed)
+      CardinalityConceptDecision.unsatisfiable
+      CardinalityConceptDecision.satisfiable)
+  · intro sub hsub sup hsup
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.subsumptionProducer sub hsub sup hsup)
+      (route.subsumptionNodes sub hsub sup hsup)
+      CardinalitySubsumptionDecision.entailed
+      CardinalitySubsumptionDecision.notEntailed)
+
+structure CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
+    FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (abox.UnsatisfiableConceptWith ontology concept))
+  conceptNodes : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
+    (conceptProducer concept hnamed budget).run retry =
+        .done (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget
+  subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (abox.EntailsSubWith ontology sub sup))
+  subsumptionNodes :
+    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
+      (subsumptionProducer sub hsub sup hsup budget).run retry =
+          .done (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget
+
+theorem CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute.decides
+    (route : CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute
+      conceptCount roleCount variableCount abox ontology named) :
+    Nonempty (CompleteNativeABoxTaxonomyCertificate abox ontology named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.conceptProducer concept hnamed) (route.conceptNodes concept hnamed)
+      NativeABoxConceptDecision.unsatisfiable
+      NativeABoxConceptDecision.satisfiable)
+  · intro sub hsub sup hsup
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.subsumptionProducer sub hsub sup hsup)
+      (route.subsumptionNodes sub hsub sup hsup)
+      NativeABoxSubsumptionDecision.entailed
+      NativeABoxSubsumptionDecision.notEntailed)
+
+structure CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
+    FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (abox.UnsatisfiableConceptWithCardinality ontology definitions concept))
+  conceptNodes : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
+    (conceptProducer concept hnamed budget).run retry =
+        .done (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget
+  subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (abox.EntailsSubWithCardinality ontology definitions sub sup))
+  subsumptionNodes :
+    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
+      (subsumptionProducer sub hsub sup hsup budget).run retry =
+          .done (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget
+
+theorem CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute.decides
+    (route : CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute
+      conceptCount roleCount variableCount abox ontology definitions named) :
+    Nonempty (CompleteNativeABoxCardinalityTaxonomyCertificate
+      abox ontology definitions named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.conceptProducer concept hnamed) (route.conceptNodes concept hnamed)
+      NativeABoxCardinalityConceptDecision.unsatisfiable
+      NativeABoxCardinalityConceptDecision.satisfiable)
+  · intro sub hsub sup hsup
+    exact Classical.choice (checked_taxonomy_fresh_fold_producer_decision
+      (route.subsumptionProducer sub hsub sup hsup)
+      (route.subsumptionNodes sub hsub sup hsup)
+      NativeABoxCardinalitySubsumptionDecision.entailed
+      NativeABoxCardinalitySubsumptionDecision.notEntailed)
 #print axioms CheckedTaxonomyRoundOutcome.conclusive_semantics
 #print axioms checked_taxonomy_doubling_decides
 #print axioms checked_taxonomy_fresh_fold_producer_decides
+#print axioms checked_taxonomy_fresh_fold_producer_decision
 #print axioms CertifiedHTProductionTaxonomyRoute.decides
 #print axioms CertifiedHTFreshFoldProductionTaxonomyRoute.decides
 #print axioms CertifiedHTCardinalityProductionTaxonomyRoute.decides
 #print axioms CertifiedHTNativeABoxProductionTaxonomyRoute.decides
 #print axioms CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
+#print axioms CertifiedHTFreshFoldCardinalityProductionTaxonomyRoute.decides
+#print axioms CertifiedHTFreshFoldNativeABoxProductionTaxonomyRoute.decides
+#print axioms CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute.decides
 
 end ContextCalculus.Hypertableau
