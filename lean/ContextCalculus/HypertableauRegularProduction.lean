@@ -388,8 +388,60 @@ theorem FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
   exact ⟨hauthorized, hguarded, hheads, hclash, hwitness, hcoverClosed,
     hcoverDischarges⟩
 
+/-- A saturated runtime terminal with no blocker folds is accepted using the
+identity redirect. Fold-table totality forces every node to be unblocked, so
+every existential obligation already has an ordinary runtime witness. This is
+the checker-completeness argument for the final fold-free retry attempted by
+the Rust producer. -/
+theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
+    [DecidableEq (Fin variableCount)]
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hfoldTotal : State.BlockedFoldTotal blocked fold)
+    (hfoldFree : ∀ source blocker, ¬ fold source blocker)
+    (hredirect : certificate.redirect = id)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hshape : ∀ clause ∈ certificate.residual, clause.SingleDirectRoleBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hdirect : ∀ clause ∈ certificate.residual,
+      certificate.state.DirectCoverForBody certificate.redirect
+        certificate.coverRelation clause)
+    (hcoverClosed : certificate.CoverClosed) :
+    certificate.check = true := by
+  have hunblocked : ∀ source, blocked source = false := by
+    intro source
+    cases hblocked : blocked source with
+    | false => rfl
+    | true =>
+        obtain ⟨blocker, hfold⟩ := hfoldTotal source hblocked
+        exact (hfoldFree source blocker hfold).elim
+  have hwitnessRefines : runtime.BlockedWitnessRefines blocked fold := by
+    intro source role filler hobligation hblocked
+    simp [hunblocked source] at hblocked
+  have hredirectRefines : State.BlockedRedirectRefines blocked fold
+      certificate.redirect := by
+    constructor
+    · intro source _
+      simp [hredirect]
+    · intro source blocker hfold
+      exact (hfoldFree source blocker hfold).elim
+  have hlocal : certificate.state.RedirectLocalFacts certificate.redirect := by
+    simp [State.RedirectLocalFacts, hredirect]
+  exact certificate.check_of_local_blocked_runtime_terminal runtime blocked fold
+    hstate hterminal hwitnessRefines hredirectRefines hauthorized hguarded hshape
+    hheads hlocal hdirect hcoverClosed
+
 #print axioms FiniteRegularCertificate.check_of_blocked_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
+#print axioms FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms no_infinite_fresh_fold_rejections
 #print axioms fold_learning_eventually_done
 #print axioms FreshFoldProducer.rejected_step
