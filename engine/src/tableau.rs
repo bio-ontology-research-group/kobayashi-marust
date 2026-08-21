@@ -5865,6 +5865,79 @@ fn native_abox_source_decision_document(
     .map_err(|error| format!("cannot encode source-composed native ABox decision: {error}"))
 }
 
+fn direct_native_abox_source_taxonomy_document(
+    inp: &TInput,
+    normalized_taxonomy: &str,
+) -> Result<Vec<u8>, String> {
+    if !inp.card_defs.is_empty() {
+        return Err("direct native ABox taxonomy source wrapper does not include cardinality"
+            .to_string());
+    }
+    if inp.bundle_projection_source.is_some() || inp.mixed_projection_source.is_some() {
+        return Err("native ABox taxonomy source wrapper requires the direct projection"
+            .to_string());
+    }
+    let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+        "native ABox taxonomy has no complete direct source projection".to_string()
+    })?;
+    let mut matrix: serde_json::Value = serde_json::from_str(normalized_taxonomy)
+        .map_err(|error| format!("invalid normalized native ABox taxonomy: {error}"))?;
+    let abox = serde_json::to_value(NativeAboxProjectionDocument {
+        complete: inp.native_abox.complete,
+        concepts: &inp.concepts,
+        roles: &inp.roles,
+        nominals: &inp.nominals,
+        individuals: &inp.native_abox.individuals,
+        different: &inp.native_abox.different,
+        role_assertions: &inp.native_abox.role_assertions,
+        negative_role_assertions: &inp.native_abox.negative_role_assertions,
+    })
+    .map_err(|error| format!("cannot encode taxonomy native ABox: {error}"))?;
+
+    let mut replace_cell_abox = |cell: &mut serde_json::Value| -> Result<(), String> {
+        let evidence = cell
+            .get_mut("evidence")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| "native ABox taxonomy cell omitted evidence".to_string())?;
+        let seed = if let Some(sat) = evidence.get_mut("sat") {
+            sat.get_mut("certificate").and_then(|certificate| certificate.get_mut("seed"))
+        } else if let Some(unsat) = evidence.get_mut("unsat") {
+            unsat.get_mut("initial")
+        } else {
+            None
+        }
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "native ABox taxonomy cell omitted its finite seed".to_string())?;
+        seed.insert("abox".to_string(), abox.clone());
+        Ok(())
+    };
+    for cell in matrix
+        .get_mut("concepts")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| "native ABox taxonomy omitted concept cells".to_string())?
+    {
+        replace_cell_abox(cell)?;
+    }
+    for row in matrix
+        .get_mut("subsumptions")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| "native ABox taxonomy omitted subsumption rows".to_string())?
+    {
+        for cell in row
+            .as_array_mut()
+            .ok_or_else(|| "native ABox taxonomy subsumption row is not an array".to_string())?
+        {
+            replace_cell_abox(cell)?;
+        }
+    }
+    serde_json::to_vec(&serde_json::json!({
+        "version": 1,
+        "source": source,
+        "matrix": matrix,
+    }))
+    .map_err(|error| format!("cannot encode source-composed native ABox taxonomy: {error}"))
+}
+
 fn check_direct_ht_projection(
     inp: &TInput,
     clauses: &[Clause],
@@ -7217,6 +7290,51 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-direct-native-abox-sat-source-decision",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
+        else {
+            return;
+        };
+        let mut producer = native_wire_input();
+        producer.direct_projection_source = Some(Vec::new());
+        let inp = consumer_input(&producer);
+        let mut reasoner = hypertableau::Ht::new_certified(Vec::new());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        let normalized = reasoner
+            .lean_taxonomy_certificate_json(&[2])
+            .expect("normalized native ABox taxonomy matrix");
+        let source_taxonomy = direct_native_abox_source_taxonomy_document(&inp, &normalized)
+            .expect("compose direct source with native ABox taxonomy matrix");
+        run_ht_projection_checker(
+            &source_taxonomy,
+            std::path::Path::new(&checker),
+            "direct-native-abox-taxonomy-source",
+        )
+        .expect("direct source native ABox taxonomy passes Lean");
+
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&source_taxonomy).unwrap();
+        forged["source"] = serde_json::json!([{
+            "variable_names": ["x"],
+            "body": [{"concept": "A", "node": "x", "neg": false}],
+            "head": [],
+        }]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-taxonomy-source",
         )
         .unwrap_err()
         .contains("rejected"));
