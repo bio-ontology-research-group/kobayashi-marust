@@ -247,8 +247,16 @@ fail-closed.
 case. It represents the generated filler concept as `none` in an
 `Option Concept` signature, constructs it as the exact filler intersection,
 and proves source-to-target soundness and target-to-source completeness while
-preserving all original direct clauses. Whole-list composition for several
-fresh definers and the corresponding wire constructor remain open.
+preserving all original direct clauses.
+
+`HypertableauSkolemBundleListProjection.lean` composes every such bundle in a
+finite ontology. Each fresh definer has the structural name `Sum.inl i`, every
+source concept has the disjoint name `Sum.inr c`, and all uniquely keyed
+Skolem witnesses live in one shared function interpretation. The module proves
+soundness, completeness, and whole-ontology equisatisfiability for the lifted
+direct clauses, every generated existential, and every generated definer
+implication simultaneously. The corresponding executable wire constructor
+remains open.
 
 `HypertableauDomainProjection.lean` proves the extra domain consequences that
 Rust emits beside an existential are redundant. Two-variable role-inclusion

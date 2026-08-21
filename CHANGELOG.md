@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.201] – 2026-08-21
+
+### Compose all fresh-definer Skolem bundles simultaneously
+
+- Give every bundle a structurally fresh `Sum.inl` concept and embed every
+  source concept under `Sum.inr`, making collisions impossible by type.
+- Lift and restrict source literals, atoms, clauses, ontologies, and
+  interpretations across the indexed signature.
+- Construct all fresh definers simultaneously as their respective finite
+  filler intersections.
+- Prove source-to-target soundness for an arbitrary finite family of
+  multi-filler bundles and untouched direct clauses.
+- Prove target-to-source completeness with one shared interpretation for all
+  uniquely keyed Skolem functions.
+- Establish whole-ontology equisatisfiability for all generated existential
+  and definer clauses together.
+
+Executable mixed-wire decoding still needs to reconstruct this indexed bundle
+family and combine it with role-domain evidence. Cardinality replacement,
+nominal/ABox projection, the remaining HT audit, CB, and routing certification
+remain unfinished.
+
 ## [0.3.200] – 2026-08-21
 
 ### Prove projected role-domain consequences redundant
