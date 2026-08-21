@@ -5231,7 +5231,7 @@ fn certified_ht_global_consistency(document: &serde_json::Value) -> Result<bool,
     let evidence = evidence
         .as_object()
         .ok_or_else(|| "HT certificate has a non-global evidence tag".to_string())?;
-    let sat = evidence.contains_key("regular_sat");
+    let sat = evidence.contains_key("regular_sat") || evidence.contains_key("sat");
     let unsat = evidence.contains_key("unsat") || evidence.contains_key("finite_unsat");
     match (sat, unsat) {
         (true, false) => Ok(true),
@@ -5955,6 +5955,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_cert_path = std::env::var_os("KM_HT_LEAN_CERT_OUT").map(std::path::PathBuf::from);
         let lean_cert_checker =
             std::env::var_os("KM_HT_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
+        let lean_native_abox_decision_checker =
+            std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER")
+                .map(std::path::PathBuf::from);
         let lean_projection_checker =
             std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_path =
@@ -5964,7 +5967,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_taxonomy_requested =
             lean_taxonomy_path.is_some() || lean_taxonomy_checker.is_some();
         let lean_cert_requested =
-            lean_cert_path.is_some() || lean_cert_checker.is_some() || lean_taxonomy_requested;
+            lean_cert_path.is_some()
+                || lean_cert_checker.is_some()
+                || lean_native_abox_decision_checker.is_some()
+                || lean_taxonomy_requested;
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
                 return Err(
@@ -5975,6 +5981,17 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if lean_projection_checker.is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_PROJECTION_CHECKER".to_string(),
+                );
+            }
+            if native_abox_active && lean_native_abox_decision_checker.is_none() {
+                return Err(
+                    "native ABox HT certification requires KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER"
+                        .to_string(),
+                );
+            }
+            if native_abox_active && lean_taxonomy_requested {
+                return Err(
+                    "native ABox HT taxonomy certification is not connected yet".to_string(),
                 );
             }
             if std::env::var_os("KM_HT_QO").is_some() {
@@ -6112,7 +6129,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         path.display()
                     ));
                 }
-                if let Some(checker) = lean_cert_checker.as_deref() {
+                let verdict_checker = if native_abox_active {
+                    lean_native_abox_decision_checker.as_deref()
+                } else {
+                    lean_cert_checker.as_deref()
+                };
+                if let Some(checker) = verdict_checker {
                     let status = std::process::Command::new(checker)
                         .arg(path)
                         .stdout(std::process::Stdio::null())
@@ -6356,12 +6378,16 @@ mod tests {
             "payload": {"equality": {"certificate": equality_unsat}},
         });
         let regular_sat = serde_json::json!({"version": 1, "evidence": {"regular_sat": {}}});
+        let native_sat = serde_json::json!({"version": 1, "evidence": {"sat": {}}});
+        let native_unsat = serde_json::json!({"version": 1, "evidence": {"unsat": {}}});
         assert_eq!(certified_ht_global_consistency(&cardinality_sat), Ok(true));
         assert_eq!(
             certified_ht_global_consistency(&normalized_unsat),
             Ok(false)
         );
         assert_eq!(certified_ht_global_consistency(&regular_sat), Ok(true));
+        assert_eq!(certified_ht_global_consistency(&native_sat), Ok(true));
+        assert_eq!(certified_ht_global_consistency(&native_unsat), Ok(false));
         assert_eq!(
             certified_ht_global_consistency(&serde_json::json!({
                 "version": 5,

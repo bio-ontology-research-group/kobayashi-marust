@@ -75,6 +75,17 @@
   cardinality cells now run their source-aware model checker before the search
   accepts an open fold; checker rejection increases the node bound instead of
   allowing the eventual matrix publication step to fail after search stopped.
+- Add the first complete native-ABox global decision wire for the
+  non-cardinality equality route. Lean now checks singleton proxy extensions
+  and negative role assertions in the exact quotient model, combines them with
+  seed preservation and explicit difference separation for SAT, and uses the
+  exact native initial state for UNSAT. Rust selects this joint wire whenever a
+  native ABox is active, requires its dedicated checker at the publication
+  boundary. The same joint wire now covers cardinality-aware SAT and UNSAT:
+  every accepted quotient checks the cardinality definitions, exact frontend
+  recognition obligations, singleton proxies, role assertions, and explicit
+  differences in one interpretation. Native taxonomy remains deferred until
+  its corresponding source-composed wire is connected.
 
 ### Certify native named-individual ABox projection
 

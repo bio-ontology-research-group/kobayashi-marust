@@ -53,6 +53,10 @@ name = "ht-regular-decision-cert-check"
 root = "HTRegularDecisionCertCheck"
 
 [[lean_exe]]
+name = "ht-native-abox-decision-cert-check"
+root = "HTNativeABoxDecisionCertCheck"
+
+[[lean_exe]]
 name = "ht-anchored-premises-check"
 root = "HTAnchoredPremisesCheck"
 

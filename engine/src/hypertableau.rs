@@ -9301,10 +9301,18 @@ impl Ht {
     /// checker here lets a rejected finite fold resume at a larger node budget
     /// instead of turning an inconclusive open branch into a terminal error.
     fn lean_decision_candidate_passes(&self, payload: &str) -> Result<bool, String> {
-        static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let Some(checker) = std::env::var_os("KM_HT_LEAN_CERT_CHECKER") else {
             return Ok(true);
         };
+        self.lean_candidate_passes_with(payload, &checker)
+    }
+
+    fn lean_candidate_passes_with(
+        &self,
+        payload: &str,
+        checker: &std::ffi::OsStr,
+    ) -> Result<bool, String> {
+        static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let nonce = CANDIDATE_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
             "km-ht-decision-candidate-{}-{nonce}.json",
@@ -9316,14 +9324,14 @@ impl Ht {
                 path.display()
             )
         })?;
-        let status = std::process::Command::new(&checker)
+        let status = std::process::Command::new(checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
             .map_err(|error| {
                 format!(
                     "KM_HT_LEAN_CERT cannot execute {} on an intermediate candidate: {error}",
-                    std::path::Path::new(&checker).display()
+                    std::path::Path::new(checker).display()
                 )
             });
         let _ = std::fs::remove_file(&path);
@@ -11384,6 +11392,299 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_native_abox_seed_json(
+        &self,
+        state: LeanHtEqState,
+        variable_count: usize,
+        concept_count: usize,
+        role_count: usize,
+        ontology: &[LeanHtClause],
+    ) -> Result<String, String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox seed requires at least one individual".to_string());
+        }
+        let individuals: Vec<_> = self
+            .native_abox
+            .individuals
+            .iter()
+            .map(|(proxies, assertions)| serde_json::json!({
+                "proxies": proxies,
+                "assertions": assertions,
+            }))
+            .collect();
+        let nominals: Vec<usize> = self
+            .native_abox
+            .individuals
+            .iter()
+            .flat_map(|(proxies, _)| proxies.iter().map(|&concept| concept as usize))
+            .collect();
+        let different: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!([left, right]))
+            .collect();
+        let role_assertions: Vec<_> = self
+            .native_abox
+            .role_assertions
+            .iter()
+            .map(|&(role, source, target)| serde_json::json!([role, source, target]))
+            .collect();
+        let apart: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!({
+                "left": left + 1,
+                "right": right + 1,
+            }))
+            .collect();
+        let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
+        serde_json::to_string(&serde_json::json!({
+            "abox": {
+                "complete": true,
+                "concepts": (0..concept_count).map(|id| format!("c{id}"))
+                    .collect::<Vec<_>>(),
+                "roles": (0..role_count).map(|id| format!("r{id}"))
+                    .collect::<Vec<_>>(),
+                "nominals": nominals,
+                "individuals": individuals,
+                "different": different,
+                "role_assertions": role_assertions,
+                "negative_role_assertions": [],
+            },
+            "node_count": state.representatives.len(),
+            "variable_count": variable_count,
+            "roots": roots,
+            "ontology": ontology,
+            "state": {
+                "base": state,
+                "apart": apart,
+            },
+        }))
+        .map_err(|error| error.to_string())
+    }
+
+    /// Total equality-aware decision search for the normalized TBox together
+    /// with KM's exact native named-individual ABox. Both terminal branches use
+    /// the dedicated joint wire; an ontology-only certificate is never used to
+    /// justify a search seeded by ABox facts.
+    pub fn lean_native_abox_decision_certificate_json(
+        &self,
+    ) -> Result<(bool, String), String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox decision requires at least one individual".to_string());
+        }
+        if !self.card_defs.is_empty() {
+            return Err("native ABox equality decision does not include cardinality".to_string());
+        }
+        let (mut variable_count, mut concept_count, mut role_count, ontology) =
+            self.lean_decision_signature();
+        variable_count = variable_count.max(2);
+        for (proxies, assertions) in &self.native_abox.individuals {
+            for &concept in proxies.iter().chain(assertions) {
+                concept_count = concept_count.max(concept as usize + 1);
+            }
+        }
+        for &(role, _, _) in &self.native_abox.role_assertions {
+            role_count = role_count.max(role as usize + 1);
+        }
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
+            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                LeanHtEqRefutationOutcome::Closed(_, _) => {
+                    let refutation = self.lean_native_abox_unsat_refutation_json()?;
+                    let refutation: serde_json::Value =
+                        serde_json::from_str(&refutation).map_err(|error| error.to_string())?;
+                    return Ok((false, serde_json::to_string(&serde_json::json!({
+                        "version": 1,
+                        "evidence": { "unsat": { "refutation": refutation } },
+                    })).map_err(|error| error.to_string())?));
+                }
+                LeanHtEqRefutationOutcome::Open(open) => {
+                    let seed = self.lean_native_abox_seed_json(
+                        open,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        &ontology,
+                    )?;
+                    let seed: serde_json::Value =
+                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                    let candidate = serde_json::to_string(&serde_json::json!({
+                        "version": 1,
+                        "evidence": { "sat": { "certificate": { "seed": seed } } },
+                    }))
+                    .map_err(|error| error.to_string())?;
+                    let passes = match std::env::var_os(
+                        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+                    ) {
+                        Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
+                        None => true,
+                    };
+                    if passes {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "native ABox equality",
+                    )?;
+                }
+                LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "ontology reached the configured native ABox decision node cap"
+                            .to_string(),
+                    );
+                }
+                LeanHtEqRefutationOutcome::Frontier(_) => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "native ABox decision node budget overflowed usize".to_string()
+                    })?;
+                }
+                LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Total cardinality-aware decision search for one normalized TBox and
+    /// the exact native ABox seed.  Open and closed branches are serialized to
+    /// one joint wire so that Lean checks the ontology, cardinality definitions,
+    /// named individuals, apart facts, and singleton proxies in the same model.
+    pub fn lean_native_abox_cardinality_decision_certificate_json(
+        &self,
+    ) -> Result<(bool, String), String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err(
+                "native ABox cardinality decision requires at least one individual".to_string(),
+            );
+        }
+        if self.card_defs.is_empty() {
+            return Err(
+                "native ABox cardinality decision requires a cardinality definition".to_string(),
+            );
+        }
+        let (mut variable_count, mut concept_count, mut role_count, ontology) =
+            self.lean_decision_signature();
+        variable_count = variable_count.max(2);
+        for (proxies, assertions) in &self.native_abox.individuals {
+            for &concept in proxies.iter().chain(assertions) {
+                concept_count = concept_count.max(concept as usize + 1);
+            }
+        }
+        for &(role, _, _) in &self.native_abox.role_assertions {
+            role_count = role_count.max(role as usize + 1);
+        }
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let wire_definitions: Vec<_> = definitions
+            .iter()
+            .map(|&(marker, definition)| {
+                serde_json::json!({
+                    "marker": marker,
+                    "minimum": definition.kind == CardKind::Min,
+                    "bound": definition.n,
+                    "role": definition.role,
+                    "filler": definition.filler.c,
+                })
+            })
+            .collect();
+        let exact_maximums: Vec<_> = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Max
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
+            })
+            .collect();
+        let exact_definitions: Vec<_> = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Min
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
+            })
+            .collect();
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let (mut state, _) = self.lean_initial_refutation_state(&[])?;
+            match self.lean_distinct_cardinality_refutation(
+                &mut state,
+                &definitions,
+                variable_count,
+                node_budget,
+            ) {
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
+                    let refutation = self.lean_native_abox_cardinality_unsat_refutation_json()?;
+                    let refutation: serde_json::Value =
+                        serde_json::from_str(&refutation).map_err(|error| error.to_string())?;
+                    return Ok((
+                        false,
+                        serde_json::to_string(&serde_json::json!({
+                            "version": 1,
+                            "evidence": { "unsat": { "refutation": refutation } },
+                        }))
+                        .map_err(|error| error.to_string())?,
+                    ));
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                    let seed = self.lean_native_abox_seed_json(
+                        open,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        &ontology,
+                    )?;
+                    let seed: serde_json::Value =
+                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                    let candidate = serde_json::to_string(&serde_json::json!({
+                        "version": 1,
+                        "evidence": { "sat": { "certificate": {
+                            "seed": seed,
+                            "definitions": wire_definitions,
+                            "exact_maximums": exact_maximums,
+                            "exact_definitions": exact_definitions,
+                        } } },
+                    }))
+                    .map_err(|error| error.to_string())?;
+                    let passes = match std::env::var_os(
+                        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+                    ) {
+                        Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
+                        None => true,
+                    };
+                    if passes {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "native ABox cardinality",
+                    )?;
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "ontology reached the configured native ABox cardinality decision node cap"
+                            .to_string(),
+                    );
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "native ABox cardinality decision node budget overflowed usize".to_string()
+                    })?;
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
+    }
+
     fn lean_cardinality_refutation_certificate_json(
         &self,
         initial_labels: &[(Node, CLit)],
@@ -11922,7 +12223,13 @@ impl Ht {
     /// obtain a verdict from the optimized tableau and merely certify it after
     /// the fact.
     pub fn lean_global_decision_certificate_json(&self) -> Result<(bool, String), String> {
-        if !self.card_defs.is_empty() {
+        if !self.native_abox.individuals.is_empty() {
+            if self.card_defs.is_empty() {
+                self.lean_native_abox_decision_certificate_json()
+            } else {
+                self.lean_native_abox_cardinality_decision_certificate_json()
+            }
+        } else if !self.card_defs.is_empty() {
             self.lean_cardinality_decision_certificate_json()
         } else if self.clauses.iter().any(|record| {
             record
@@ -21737,6 +22044,43 @@ mod tests {
     }
 
     #[test]
+    fn native_abox_global_decision_uses_joint_sat_wire() {
+        let mut reasoner = Ht::new_certified(Vec::new());
+        reasoner.set_nominals(vec![A]);
+        reasoner.set_native_abox(vec![(vec![A], vec![B])], Vec::new(), Vec::new());
+        let (satisfiable, document) = reasoner
+            .lean_global_decision_certificate_json()
+            .expect("native ABox has a joint checked finite quotient");
+        assert!(satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(wire["version"], 1);
+        assert_eq!(
+            wire["evidence"]["sat"]["certificate"]["seed"]["roots"],
+            serde_json::json!([1])
+        );
+        if let Some(checker) =
+            std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER")
+        {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-native-abox-decision-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run native ABox decision checker");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the joint native ABox SAT decision: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+        }
+    }
+
+    #[test]
     fn native_abox_different_blocks_required_atmost_merge() {
         const SUBJECT: C = 20;
         const LEFT: C = 21;
@@ -21813,6 +22157,75 @@ mod tests {
                 accepted,
                 "joint native ABox cardinality refutation must be accepted"
             );
+        }
+    }
+
+    #[test]
+    fn native_abox_cardinality_global_decision_uses_joint_wire() {
+        const SUBJECT: C = 20;
+        const MARKER: C = 21;
+        const FILLER: C = 22;
+        let definition = CardDef {
+            kind: CardKind::Min,
+            n: 1,
+            role: R0,
+            filler: CLit::pos(FILLER),
+        };
+        let mut satisfiable = Ht::new_certified(Vec::new());
+        satisfiable.set_nominals(vec![SUBJECT]);
+        satisfiable.set_native_abox(
+            vec![(vec![SUBJECT], vec![MARKER])],
+            Vec::new(),
+            Vec::new(),
+        );
+        satisfiable.set_card_defs(HashMap::from([(MARKER, definition)]));
+        let (sat, sat_document) = satisfiable
+            .lean_global_decision_certificate_json()
+            .expect("native ABox minimum has a joint finite model");
+        assert!(sat);
+        let sat_wire: serde_json::Value = serde_json::from_str(&sat_document).unwrap();
+        assert_eq!(
+            sat_wire["evidence"]["sat"]["certificate"]["definitions"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let mut inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
+        inconsistent.set_nominals(vec![SUBJECT]);
+        inconsistent.set_native_abox(
+            vec![(vec![SUBJECT], vec![MARKER])],
+            Vec::new(),
+            Vec::new(),
+        );
+        inconsistent.set_card_defs(HashMap::from([(MARKER, definition)]));
+        let (sat, unsat_document) = inconsistent
+            .lean_global_decision_certificate_json()
+            .expect("native ABox contradiction has a joint cardinality refutation");
+        assert!(!sat);
+
+        if let Some(checker) =
+            std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER")
+        {
+            for (kind, document) in [("sat", sat_document), ("unsat", unsat_document)] {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-native-abox-cardinality-decision-{kind}-{}-{}.json",
+                    std::process::id(),
+                    std::thread::current().name().unwrap_or("test")
+                ));
+                std::fs::write(&path, document).unwrap();
+                let output = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .output()
+                    .expect("run native ABox cardinality decision checker");
+                let _ = std::fs::remove_file(path);
+                assert!(
+                    output.status.success(),
+                    "Lean must accept the joint native ABox cardinality {kind} decision: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
         }
     }
 
