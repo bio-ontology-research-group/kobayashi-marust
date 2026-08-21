@@ -5237,7 +5237,9 @@ fn certified_ht_global_consistency(document: &serde_json::Value) -> Result<bool,
     let evidence = evidence
         .as_object()
         .ok_or_else(|| "HT certificate has a non-global evidence tag".to_string())?;
-    let sat = evidence.contains_key("regular_sat") || evidence.contains_key("sat");
+    let sat = evidence.contains_key("regular_sat")
+        || evidence.contains_key("finite_sat")
+        || evidence.contains_key("sat");
     let unsat = evidence.contains_key("unsat") || evidence.contains_key("finite_unsat");
     match (sat, unsat) {
         (true, false) => Ok(true),
@@ -6932,6 +6934,7 @@ mod tests {
             "payload": {"equality": {"certificate": equality_unsat}},
         });
         let regular_sat = serde_json::json!({"version": 1, "evidence": {"regular_sat": {}}});
+        let finite_sat = serde_json::json!({"version": 1, "evidence": {"finite_sat": {}}});
         let native_sat = serde_json::json!({"version": 1, "evidence": {"sat": {}}});
         let native_unsat = serde_json::json!({"version": 1, "evidence": {"unsat": {}}});
         assert_eq!(certified_ht_global_consistency(&cardinality_sat), Ok(true));
@@ -6940,6 +6943,7 @@ mod tests {
             Ok(false)
         );
         assert_eq!(certified_ht_global_consistency(&regular_sat), Ok(true));
+        assert_eq!(certified_ht_global_consistency(&finite_sat), Ok(true));
         assert_eq!(certified_ht_global_consistency(&native_sat), Ok(true));
         assert_eq!(certified_ht_global_consistency(&native_unsat), Ok(false));
         assert_eq!(

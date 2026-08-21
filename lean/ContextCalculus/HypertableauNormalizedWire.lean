@@ -68,14 +68,17 @@ structure DecodedNormalizedCardinality where
 
 def DecodedRegularDecision.variableCount : DecodedRegularDecision → Nat
   | .regularSat decoded => decoded.variableCount
+  | .finiteSat decoded => decoded.variableCount
   | .finiteUnsat decoded _ => decoded.variableCount
 
 def DecodedRegularDecision.conceptCount : DecodedRegularDecision → Nat
   | .regularSat decoded => decoded.conceptCount
+  | .finiteSat decoded => decoded.conceptCount
   | .finiteUnsat decoded _ => decoded.conceptCount
 
 def DecodedRegularDecision.roleCount : DecodedRegularDecision → Nat
   | .regularSat decoded => decoded.roleCount
+  | .finiteSat decoded => decoded.roleCount
   | .finiteUnsat decoded _ => decoded.roleCount
 
 def DecodedRegularDecision.ontology (decoded : DecodedRegularDecision) :
@@ -83,6 +86,7 @@ def DecodedRegularDecision.ontology (decoded : DecodedRegularDecision) :
       (Fin decoded.roleCount)) :=
   match decoded with
   | .regularSat regular => regular.certificate.ontology
+  | .finiteSat finite => finite.certificate.ontology
   | .finiteUnsat finite _ => finite.certificate.ontology
 
 structure DecodedNormalizedRegular where
@@ -440,6 +444,11 @@ def DecodedNormalizedRegular.SemanticallyValid
         (I : Interp Domain (Fin decoded.evidence.conceptCount)
           (Fin decoded.evidence.roleCount)),
         Nonempty Domain ∧ I.models decoded.normalization.source
+  | .finiteSat _ =>
+      ∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.evidence.conceptCount)
+          (Fin decoded.evidence.roleCount)),
+        Nonempty Domain ∧ I.models decoded.normalization.source
   | .finiteUnsat _ _ =>
       ¬∃ (Domain : Type)
         (I : Interp Domain (Fin decoded.evidence.conceptCount)
@@ -453,6 +462,12 @@ theorem DecodedNormalizedRegular.check_sound
   have htarget := evidence.check_sound hcheck
   cases evidence with
   | regularSat regular =>
+      simp only [DecodedNormalizedRegular.SemanticallyValid]
+      simp only [DecodedRegularDecision.SemanticallyCorrect] at htarget
+      rcases htarget with ⟨Domain, I, hdomain, hmodels⟩
+      exact ⟨Domain, I, hdomain,
+        (normalization.equivalent Domain I).mpr hmodels⟩
+  | finiteSat finite =>
       simp only [DecodedNormalizedRegular.SemanticallyValid]
       simp only [DecodedRegularDecision.SemanticallyCorrect] at htarget
       rcases htarget with ⟨Domain, I, hdomain, hmodels⟩

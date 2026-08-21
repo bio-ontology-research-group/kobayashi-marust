@@ -18,6 +18,7 @@ open Lean
 
 inductive WireRegularDecisionEvidence where
   | regular_sat (certificate : WireRegularCertificate)
+  | finite_sat (certificate : WireCertificate)
   | finite_unsat (certificate : WireCertificate)
 deriving FromJson, ToJson, Repr
 
@@ -28,6 +29,7 @@ deriving FromJson, ToJson, Repr
 
 inductive DecodedRegularDecision where
   | regularSat (decoded : DecodedRegularCertificate)
+  | finiteSat (decoded : DecodedCertificate)
   | finiteUnsat (decoded : DecodedCertificate)
       (tree : FiniteRefutationTree decoded.nodeCount decoded.conceptCount
         decoded.roleCount decoded.variableCount)
@@ -40,6 +42,10 @@ def WireRegularDecisionCertificate.decode
   match wire.evidence with
   | .regular_sat certificate =>
       return .regularSat (← certificate.decode)
+  | .finite_sat certificate =>
+      match ← certificate.decode with
+      | .sat decoded => return .finiteSat decoded
+      | _ => throw "finite SAT branch of regular HT decision must contain global sat evidence"
   | .finite_unsat certificate =>
       match ← certificate.decode with
       | .unsat decoded tree => return .finiteUnsat decoded tree
@@ -47,6 +53,7 @@ def WireRegularDecisionCertificate.decode
 
 def DecodedRegularDecision.check : DecodedRegularDecision → Bool
   | .regularSat decoded => decoded.check
+  | .finiteSat decoded => (DecodedEvidence.sat decoded).check
   | .finiteUnsat decoded tree => (DecodedEvidence.unsat decoded tree).check
 
 def WireRegularDecisionCertificate.check
@@ -56,6 +63,10 @@ def WireRegularDecisionCertificate.check
 def DecodedRegularDecision.SemanticallyCorrect :
     DecodedRegularDecision → Prop
   | .regularSat decoded =>
+      ∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.conceptCount) (Fin decoded.roleCount)),
+        Nonempty Domain ∧ I.models decoded.certificate.ontology
+  | .finiteSat decoded =>
       ∃ (Domain : Type)
         (I : Interp Domain (Fin decoded.conceptCount) (Fin decoded.roleCount)),
         Nonempty Domain ∧ I.models decoded.certificate.ontology
@@ -78,6 +89,9 @@ theorem DecodedRegularDecision.check_sound
       refine ⟨Domain, I, ?_, ?_⟩
       · exact ⟨⟨0, .root⟩⟩
       · exact decoded.check_models hcheck
+  | finiteSat decoded =>
+      change (DecodedEvidence.sat decoded).check = true at hcheck
+      exact DecodedEvidence.sat_sound decoded hcheck
   | finiteUnsat decoded tree =>
       change (DecodedEvidence.unsat decoded tree).check = true at hcheck
       exact DecodedEvidence.unsat_sound decoded tree hcheck
@@ -128,7 +142,12 @@ private def wrongFiniteOutcome : WireRegularDecisionCertificate where
   version := 1
   evidence := .finite_unsat finiteSatPayload
 
+private def finiteSatDocument : WireRegularDecisionCertificate where
+  version := 1
+  evidence := .finite_sat finiteSatPayload
+
 example : regularSatDocument.check = .ok true := by native_decide
+example : finiteSatDocument.check = .ok true := by native_decide
 example : (match wrongFiniteOutcome.decode with
   | .error _ => true | .ok _ => false) = true := by native_decide
 

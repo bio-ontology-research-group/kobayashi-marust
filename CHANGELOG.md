@@ -34,6 +34,15 @@
   materialization was already present for each body role. The same refinement
   feeds cardinality-aware folds, with number restrictions checked on the final
   materialized quotient because copied edges can affect maximum bounds.
+- Add a separately checked finite-model outcome to the regular HT decision
+  envelope. A saturated blocked leaf is first tested as a finite materialized
+  model by the ordinary Lean certificate checker. If that model is invalid,
+  KM tries the regular-unravelling certificate; if blocking made that candidate
+  invalid too, KM records the exact fold pairs and retries without them.
+- Prove the finite-model outcome sound in the regular search semantics and
+  carry it through normalized source transport and the unified production
+  route. The runtime global-verdict extractor recognizes the new checked SAT
+  form, while remaining fail-closed for ambiguous or query-only evidence.
 
 ### Unify total production HT global decisions
 

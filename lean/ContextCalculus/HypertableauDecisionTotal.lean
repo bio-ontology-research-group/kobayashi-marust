@@ -82,6 +82,11 @@ theorem CertifiedHTRoute.decides
           rcases hsemantics with ⟨Domain, I, hdomain, hmodels⟩
           exact ⟨.sat ⟨Domain, I, hdomain, hmodels, by
             simp [Interp.modelsCardinalityDefs]⟩⟩
+      | finiteSat certificate hontology hnonempty hcheck =>
+          simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
+          rcases hsemantics with ⟨Domain, I, hdomain, hmodels⟩
+          exact ⟨.sat ⟨Domain, I, hdomain, hmodels, by
+            simp [Interp.modelsCardinalityDefs]⟩⟩
       | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
           refine ⟨.unsat ?_⟩

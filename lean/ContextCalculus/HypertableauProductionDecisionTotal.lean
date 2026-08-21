@@ -103,6 +103,8 @@ theorem CertifiedHTProductionGlobalRoute.decides
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
+      | finiteSat certificate hontology hnonempty hcheck =>
+          exact ⟨.sat hsemantics⟩
       | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>

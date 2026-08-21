@@ -2454,6 +2454,7 @@ struct LeanHtRegularCertificate {
 #[serde(rename_all = "snake_case")]
 enum LeanHtRegularDecisionEvidence {
     RegularSat { certificate: serde_json::Value },
+    FiniteSat { certificate: serde_json::Value },
     FiniteUnsat { certificate: serde_json::Value },
 }
 
@@ -9216,7 +9217,9 @@ impl Ht {
             .get("evidence")
             .and_then(serde_json::Value::as_object)
             .is_some_and(|evidence| {
-                evidence.contains_key("regular_sat") || evidence.contains_key("finite_unsat")
+                evidence.contains_key("regular_sat")
+                    || evidence.contains_key("finite_sat")
+                    || evidence.contains_key("finite_unsat")
             });
         let Some(normalization) = self.lean_wire_normalization()? else {
             return Ok(payload.to_string());
@@ -10616,6 +10619,15 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_finite_sat_regular_decision_envelope(payload: String) -> Result<String, String> {
+        let certificate = serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        serde_json::to_string(&LeanHtRegularDecisionCertificate {
+            version: 1,
+            evidence: LeanHtRegularDecisionEvidence::FiniteSat { certificate },
+        })
+        .map_err(|error| error.to_string())
+    }
+
     fn lean_initial_refutation_state(
         &self,
         query_labels: &[(Node, CLit)],
@@ -10674,7 +10686,30 @@ impl Ht {
                     return Ok((false, self.finalize_lean_certificate(envelope)?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    let regular = self.lean_regular_blocked_open_certificate_json(&leaf)?;
+                    let finite = self.lean_blocked_open_certificate_json(
+                        &leaf,
+                        LeanHtEvidence::Sat,
+                    )?;
+                    let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
+                    let finite_candidate = self.finalize_lean_certificate(finite)?;
+                    if self.lean_decision_candidate_passes(&finite_candidate)? {
+                        return Ok((true, finite_candidate));
+                    }
+                    let regular = match self.lean_regular_blocked_open_certificate_json(&leaf) {
+                        Ok(regular) => regular,
+                        Err(error) => {
+                            let mut learned = false;
+                            for &fold in &leaf.folds {
+                                learned |= forbidden_folds.insert(fold);
+                            }
+                            if !learned {
+                                return Err(format!(
+                                    "regular decision candidate has no fresh fold: {error}"
+                                ));
+                            }
+                            continue;
+                        }
+                    };
                     let envelope = Self::lean_regular_decision_envelope(regular, true)?;
                     let candidate = self.finalize_lean_certificate(envelope)?;
                     if self.lean_decision_candidate_passes(&candidate)? {
@@ -24651,6 +24686,38 @@ mod tests {
             assert!(
                 accepted.status.success(),
                 "Lean must accept Rust's finite UNSAT decision at {}: {}",
+                path.display(),
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn regular_decision_prefers_a_checked_finite_sat_model() {
+        let reasoner = Ht::new_certified(Vec::new());
+        let (satisfiable, document) = reasoner
+            .lean_regular_equality_free_decision_certificate_json()
+            .expect("empty ontology has a finite SAT decision envelope");
+        assert!(satisfiable);
+        let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert!(wire["evidence"].get("finite_sat").is_some());
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
+            let mut checker = std::path::PathBuf::from(checker);
+            checker.set_file_name("ht-regular-decision-cert-check");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-regular-decision-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the native Lean regular decision checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept Rust's finite SAT decision at {}: {}",
                 path.display(),
                 String::from_utf8_lossy(&accepted.stderr),
             );

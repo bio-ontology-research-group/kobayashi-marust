@@ -28,6 +28,13 @@ inductive CheckedRegularRoundOutcome
       (hontology : certificate.ontology = ontology)
       (hnonempty : 0 < nodeCount)
       (hcheck : certificate.check = true)
+  | finiteSat
+      {nodeCount : Nat}
+      (certificate : FiniteSatCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkSat = true)
   | finiteUnsat
       {nodeCount : Nat}
       (certificate : FiniteSatCertificate
@@ -92,6 +99,7 @@ def CheckedRegularRoundOutcome.Semantics
       conceptCount roleCount variableCount ontology) : Prop :=
   match outcome with
   | .regularSat .. => HasNonemptyModel ontology
+  | .finiteSat .. => HasNonemptyModel ontology
   | .finiteUnsat .. => ¬HasNonemptyModel ontology
   | .frontier .. => False
 
@@ -107,6 +115,7 @@ def CheckedRegularRoundOutcome.SourceSemantics
       conceptCount roleCount variableCount target) : Prop :=
   match outcome with
   | .regularSat .. => HasNonemptyModel source
+  | .finiteSat .. => HasNonemptyModel source
   | .finiteUnsat .. => ¬HasNonemptyModel source
   | .frontier .. => False
 
@@ -122,6 +131,11 @@ theorem CheckedRegularRoundOutcome.source_semantics_of_equivalent
     outcome.SourceSemantics source := by
   cases outcome with
   | regularSat certificate hontology hnonempty hcheck =>
+      simp only [CheckedRegularRoundOutcome.Semantics,
+        CheckedRegularRoundOutcome.SourceSemantics] at hsemantics ⊢
+      rcases hsemantics with ⟨Domain, I, hdomain, htarget⟩
+      exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr htarget⟩
+  | finiteSat certificate hontology hnonempty hcheck =>
       simp only [CheckedRegularRoundOutcome.Semantics,
         CheckedRegularRoundOutcome.SourceSemantics] at hsemantics ⊢
       rcases hsemantics with ⟨Domain, I, hdomain, htarget⟩
@@ -152,6 +166,20 @@ theorem CheckedRegularRoundOutcome.regularSat_semantics
   refine ⟨Domain, interpretation, ⟨⟨0, .root⟩⟩, ?_⟩
   simpa [hontology] using certificate.check_models hcheck
 
+theorem CheckedRegularRoundOutcome.finiteSat_semantics
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteSatCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hontology : certificate.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hcheck : certificate.checkSat = true) :
+    HasNonemptyModel ontology := by
+  letI : Nonempty (Fin nodeCount) := ⟨⟨0, hnonempty⟩⟩
+  exact ⟨Fin nodeCount, certificate.state.canonical, inferInstance,
+    by simpa [hontology] using certificate.checkSat_models hcheck⟩
+
 theorem CheckedRegularRoundOutcome.finiteUnsat_semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -180,6 +208,10 @@ theorem CheckedRegularRoundOutcome.conclusive_semantics
   | regularSat certificate hontology hnonempty hcheck =>
       intro _
       exact CheckedRegularRoundOutcome.regularSat_semantics certificate
+        hontology hnonempty hcheck
+  | finiteSat certificate hontology hnonempty hcheck =>
+      intro _
+      exact CheckedRegularRoundOutcome.finiteSat_semantics certificate
         hontology hnonempty hcheck
   | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
       intro _
@@ -214,6 +246,12 @@ theorem checked_regular_doubling_decides
         exact hnone round (by
           rw [houtcome]
           exact CheckedRegularRoundOutcome.regularSat_semantics certificate
+            hontology hnonempty hcheck)
+    | finiteSat certificate hontology hnonempty hcheck =>
+        exfalso
+        exact hnone round (by
+          rw [houtcome]
+          exact CheckedRegularRoundOutcome.finiteSat_semantics certificate
             hontology hnonempty hcheck)
     | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
         exfalso
@@ -313,6 +351,7 @@ theorem checked_regular_fold_learning_doubling_decides_source
     outcome.source_semantics_of_equivalent equivalent hsemantics⟩
 
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
+#print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides
