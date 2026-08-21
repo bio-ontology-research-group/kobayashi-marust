@@ -71,6 +71,12 @@
   clauses at the shared variable width, checks the exact target ontology, and
   proves the original direct TBox plus native ABox has no model. A real
   Rust-to-Lean test accepts the complete document and rejects source omission.
+- Extend the same single-document boundary to mixed direct/Skolem-pair sources.
+  Lean quantifies over the source Skolem-function interpretation, reconstructs
+  the existential target ontology, composes native negative-role guards, and
+  proves source-plus-ABox unsatisfiability from the checked equality refutation.
+  The production Rust evidence passes the native checker; deleting its Skolem
+  pair is rejected.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.

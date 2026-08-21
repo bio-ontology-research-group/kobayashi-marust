@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauNativeABoxProjection
 import ContextCalculus.HypertableauDirectProjectionWire
+import ContextCalculus.HypertableauMixedProjectionWire
 import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauCardinalityDistinctWire
@@ -595,6 +596,96 @@ theorem DecodedDirectNativeABoxRefutation.source_unsatisfiable
     I value habox.1 decoded.variable_ge_two decoded.source).2
       ⟨hsource, habox.2.2.2.2⟩
 
+/-- Mixed direct/Skolem-pair source composed with the same exact native-ABox
+decision boundary. The target ontology is reconstructed inside Lean. -/
+structure WireMixedNativeABoxRefutation where
+  functions : List String
+  direct : List WireDirectSourceClause
+  pairs : List WireSkolemPair
+  refutation : WireNativeABoxRefutation
+deriving FromJson, ToJson, Repr
+
+structure DecodedMixedNativeABoxRefutation where
+  refutation : DecodedNativeABoxRefutation
+  variable_ge_two : 2 ≤ refutation.initial.seed.variableCount
+  functions : List String
+  direct : List (Clause (Fin refutation.initial.seed.variableCount)
+    (Fin refutation.initial.seed.abox.concepts.length)
+    (Fin refutation.initial.seed.abox.roles.length))
+  pairs : List (SkolemPairSpec (Fin refutation.initial.seed.variableCount)
+    (Fin refutation.initial.seed.abox.concepts.length)
+    (Fin refutation.initial.seed.abox.roles.length) (Fin functions.length))
+  unique_functions : (skolemPairFunctions pairs).Nodup
+  exact_projection :
+    (skolemProjectionOntology direct pairs ++
+      refutation.initial.seed.abox.negativeRoleClausesAt
+        refutation.initial.seed.variableCount variable_ge_two).toFinset =
+      refutation.initial.seed.state.base.base.ontology.toFinset
+
+def WireMixedNativeABoxRefutation.decode
+    (wire : WireMixedNativeABoxRefutation) :
+    Except String DecodedMixedNativeABoxRefutation := do
+  let refutation ← wire.refutation.decode
+  let variableWitness ← requireAtLeastTwoVariables refutation.initial.seed.variableCount
+  let hvariables := variableWitness.proof
+  if _hfunctions : wire.functions.Nodup then
+    let direct ← wire.direct.mapM (WireDirectSourceClause.decode
+      refutation.initial.seed.variableCount refutation.initial.seed.abox.concepts
+      refutation.initial.seed.abox.roles)
+    let pairs ← wire.pairs.mapM (WireSkolemPair.decode
+      refutation.initial.seed.variableCount refutation.initial.seed.abox.concepts
+      refutation.initial.seed.abox.roles wire.functions)
+    if hunique : (skolemPairFunctions pairs).Nodup then
+      if hequal : (skolemProjectionOntology direct pairs ++
+          refutation.initial.seed.abox.negativeRoleClausesAt
+            refutation.initial.seed.variableCount hvariables).toFinset =
+          refutation.initial.seed.state.base.base.ontology.toFinset then
+        return {
+          refutation
+          variable_ge_two := hvariables
+          functions := wire.functions
+          direct
+          pairs
+          unique_functions := hunique
+          exact_projection := hequal
+        }
+      else throw "mixed source conversion differs from the native ABox refutation ontology"
+    else throw "mixed native ABox projection reuses a Skolem function"
+  else throw "mixed native ABox function-name table contains duplicates"
+
+def WireMixedNativeABoxRefutation.check
+    (wire : WireMixedNativeABoxRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedMixedNativeABoxRefutation.source_unsatisfiable
+    (decoded : DecodedMixedNativeABoxRefutation) :
+    ¬∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.refutation.initial.seed.abox.concepts.length)
+          (Fin decoded.refutation.initial.seed.abox.roles.length))
+        (value : Fin decoded.refutation.initial.seed.abox.individuals.length → Domain),
+      Nonempty Domain ∧ decoded.refutation.initial.seed.abox.abox.models I value ∧
+      ∃ functions : SkolemInterp Domain (Fin decoded.functions.length),
+        I.models decoded.direct ∧ ModelsSkolemPairs I functions decoded.pairs := by
+  rintro ⟨Domain, I, value, hdomain, habox, functions, hdirect, hpairs⟩
+  letI : Nonempty Domain := hdomain
+  let base : SkolemInterp Domain (Fin decoded.functions.length) :=
+    ⟨fun _ _ => Classical.choice hdomain⟩
+  have hprojected : I.models (skolemProjectionOntology decoded.direct decoded.pairs) :=
+    (mixedSkolemProjection_sat_iff I base decoded.direct decoded.pairs
+      decoded.unique_functions).1 ⟨functions, hdirect, hpairs⟩
+  have happended : I.models (skolemProjectionOntology decoded.direct decoded.pairs ++
+      decoded.refutation.initial.seed.abox.negativeRoleClausesAt
+        decoded.refutation.initial.seed.variableCount decoded.variable_ge_two) :=
+    (decoded.refutation.initial.seed.abox.models_append_negativeRoleClausesAt_iff
+      I value habox.1 decoded.variable_ge_two
+      (skolemProjectionOntology decoded.direct decoded.pairs)).2
+        ⟨hprojected, habox.2.2.2.2⟩
+  have htarget : I.models decoded.refutation.initial.seed.state.base.base.ontology :=
+    (models_iff_of_toFinset_eq I _ _ decoded.exact_projection).1 happended
+  exact decoded.refutation.unsatisfiable
+    ⟨Domain, I, value, hdomain, htarget, habox⟩
+
 theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
     (_hcheck : wire.check = .ok true) :
@@ -741,6 +832,37 @@ example : validDirectNativeRefutation.check = .ok true := by native_decide
 example : rejected ({ validDirectNativeRefutation with source := [] }).check = true := by
   native_decide
 
+private def validMixedNativeRefutation : WireMixedNativeABoxRefutation where
+  functions := ["f"]
+  direct := [{
+    variableNames := ["x"]
+    body := [.con "A" "x" false]
+    head := []
+  }]
+  pairs := [{
+    variableNames := ["x"]
+    body := [.con "A" "x" false]
+    source := "x"
+    function := "f"
+    role := "r"
+    filler := "C"
+    neg := false
+  }]
+  refutation := { validRefutationExample with initial :=
+    { validRefutationExample.initial with
+      abox := { validRefutationExample.initial.abox with
+        concepts := ["a", "b", "A", "C"]
+        negative_role_assertions := [] }
+      ontology := [
+        { body := [.concept { concept := 2, neg := false } 0], head := [] },
+        { body := [.concept { concept := 2, neg := false } 0]
+          head := [.exists_ 0 { concept := 3, neg := false } 0] }
+      ] } }
+
+example : validMixedNativeRefutation.check = .ok true := by native_decide
+example : rejected ({ validMixedNativeRefutation with pairs := [] }).check = true := by
+  native_decide
+
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
 #print axioms DecodedNativeABox.models_append_negativeRoleClauses_iff
@@ -751,6 +873,7 @@ example : rejected ({ validDirectNativeRefutation with source := [] }).check = t
 #print axioms DecodedNativeABoxInitial.initializes
 #print axioms DecodedNativeABoxRefutation.unsatisfiable
 #print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
+#print axioms DecodedMixedNativeABoxRefutation.source_unsatisfiable
 
 end Tests
 
