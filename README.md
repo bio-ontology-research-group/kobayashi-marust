@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.180`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.181`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -151,6 +151,12 @@ earlier selector, recursive children use the exact witness, minimum, and
 maximum target constructions, and closure of all selected children proves
 closure of the parent. Concrete Rust field construction and well-founded total
 recursive outcome production are not yet connected.
+Cardinality minimum and maximum scans now retain stored definition IDs instead
+of identifying definitions structurally. Minimum suppression uses the same
+definition ID at any equality-equivalent previously expanded source, matching
+Rust's branch-local `minimums` metadata even when the definition list contains
+duplicates. Exact exhaustion, child closure, and active-source bounds are
+proved for both indexed scans.
 
 ## Classify an ontology
 

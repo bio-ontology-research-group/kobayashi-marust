@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.181] – 2026-08-21
+
+### Certify definition-indexed cardinality selection
+
+- Represent production cardinality sites by stored definition ID and finite
+  source ID, preserving distinct duplicate definition records.
+- Mirror Rust's minimum expansion guard exactly: the same definition ID is
+  suppressed at every equality-equivalent source recorded in the branch-local
+  expanded-minimum set.
+- Prove exact selector exhaustion, selected-rule closure, and active-source
+  bounds for indexed minimum sites.
+- Add the corresponding definition-indexed maximum scan and prove exact
+  exhaustion, closure through every unequal merge child, and active-source
+  bounds.
+- Switch the composed first-obstruction layer from structural definitions to
+  the indexed selectors used by production metadata.
+- Audit all indexed selector endpoints without `sorryAx`.
+
+The extensional progress measure, well-founded recursive outcome production,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.180] – 2026-08-21
 
 ### Compose cardinality first-obstruction closure
