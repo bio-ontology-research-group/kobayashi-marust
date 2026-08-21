@@ -31,6 +31,49 @@ def NativeABox.models (abox : NativeABox Individual Concept Role)
   (∀ assertion ∈ abox.negativeRoleAssertions,
       ¬I.role assertion.1 (value assertion.2.1) (value assertion.2.2))
 
+def NativeABox.mapConcepts (f : TargetConcept → SourceConcept)
+    (abox : NativeABox Individual TargetConcept Role) :
+    NativeABox Individual SourceConcept Role where
+  proxies individual := (abox.proxies individual).map f
+  assertions individual := (abox.assertions individual).map f
+  different := abox.different
+  roleAssertions := abox.roleAssertions
+  negativeRoleAssertions := abox.negativeRoleAssertions
+
+/-- Transport a native ABox model across a concept-signature extension. Only
+concepts actually occurring in the ABox require agreement; role and individual
+semantics are preserved exactly. -/
+theorem NativeABox.models_of_mapConcepts
+    (abox : NativeABox Individual TargetConcept Role)
+    (f : TargetConcept → SourceConcept)
+    (source : Interp Domain SourceConcept Role)
+    (target : Interp Domain TargetConcept Role)
+    (value : Individual → Domain)
+    (hconcept : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      target.concept concept = source.concept (f concept))
+    (hrole : target.role = source.role)
+    (hmodels : (abox.mapConcepts f).models source value) :
+    abox.models target value := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · intro individual proxy hproxy candidate
+    have hmapped : f proxy ∈ (abox.mapConcepts f).proxies individual :=
+      List.mem_map.mpr ⟨proxy, hproxy, rfl⟩
+    rw [hconcept individual proxy (List.mem_append_left _ hproxy)]
+    exact hmodels.1 individual (f proxy) hmapped candidate
+  · intro individual concept hassertion
+    have hmapped : f concept ∈ (abox.mapConcepts f).assertions individual :=
+      List.mem_map.mpr ⟨concept, hassertion, rfl⟩
+    rw [hconcept individual concept (List.mem_append_right _ hassertion)]
+    exact hmodels.2.1 individual (f concept) hmapped
+  · simpa [NativeABox.mapConcepts] using hmodels.2.2.1
+  · intro assertion hassertion
+    rw [hrole]
+    exact hmodels.2.2.2.1 assertion hassertion
+  · intro assertion hassertion
+    rw [hrole]
+    exact hmodels.2.2.2.2 assertion hassertion
+
 def nativeABoxSeed (abox : NativeABox Individual Concept Role) :
     DistinctEqState Individual Concept Role where
   base := {
@@ -206,6 +249,7 @@ theorem NativeABox.models_of_seeded
       hsingletons, hnegative⟩
 
 #print axioms nativeABoxSeed_realized_iff
+#print axioms NativeABox.models_of_mapConcepts
 #print axioms nativeABoxSeed_realized_of_seeded
 #print axioms NativeABox.models_of_seeded
 #print axioms models_negativeRoleAssertionClause_iff

@@ -77,6 +77,13 @@
   proves source-plus-ABox unsatisfiability from the checked equality refutation.
   The production Rust evidence passes the native checker; deleting its Skolem
   pair is rejected.
+- Prove the semantic preservation lemma required for bundle/RBox composition.
+  A native ABox can be transported across a concept-signature extension when
+  every ABox concept is a checked embedded source concept. Apply this to the
+  concrete bundle construction: the target interpretation preserves native
+  class, singleton, distinctness, positive-role, and negative-role semantics
+  while satisfying the projected bundles and checked RBox/domain consequences.
+  The executable bundle/ABox source-name map remains the next integration step.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
