@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+### Verify production bundle RBox evidence end to end
+
+- Extend finite bundle evidence with concrete super-role paths and associated
+  domain consequences.
+- Preserve generated two-variable role-inclusion and role-domain clauses as
+  explicit source premises instead of trusting Rust's closure result.
+- Prove an arbitrary finite inclusion path entails its endpoint inclusion and
+  compose that result with the complete bundle projection.
+- Make the Lean wire verify every path edge, final domain premise, generated
+  consequence, source symbol, and target clause extensionally.
+- Connect Rust production evidence to the native checker and test a two-edge
+  hierarchy against the real Lean executable. Complete evidence is accepted;
+  omitted clauses and forged shortcut paths are rejected.
+
+No release is cut for this intermediate step. It will be included in the next
+major end-to-end certification milestone.
+
 ## [0.3.204] – 2026-08-21
 
 ### Compose bundle projection with role-domain consequences

@@ -123,16 +123,15 @@ accepts direct and mixed documents. The Rust converter enforces the proved
 body, singleton-head, and variable wiring and drops malformed pairs. It now
 emits complete mixed evidence for exact simple pairs, and checker-enabled HT
 publishes only after the native projection checker accepts that evidence.
-Lean now also proves the finite multi-filler transformation through a
-structurally fresh concept sound and complete, but its whole-list wire and Rust
-evidence remain unfinished, so production still defers there. The projected
-role-domain clauses are separately proved redundant through source role
-inclusion and domain semantics; their wire reconstruction remains open. Cardinality
-replacement, nominal/ABox, and other non-direct projection constructors remain
-unfinished. The remaining HT
-fragment audit, CB, and automatic routing
-certification remain unfinished. Equality
-countermodel paths are unchanged.
+Lean proves the finite multi-filler transformation through structurally fresh
+concepts sound and complete for the whole bundle list. Rust emits the complete
+bundle evidence, including source and target concept tables, Skolem functions,
+fresh definers, RBox premise clauses, concrete super-role paths, and derived
+domain consequences. The native wire verifies every path edge and final domain
+premise before accepting exact target-clause equality. Cardinality replacement,
+nominal/ABox, and other non-direct projection constructors remain unfinished.
+The remaining HT fragment audit, CB, and automatic routing certification remain
+unfinished. Equality countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.
 Lean mirrors Rust's exact finite `apart`-list scan and proves both selected-clash

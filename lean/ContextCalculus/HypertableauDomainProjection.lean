@@ -29,6 +29,30 @@ def roleDomainClause (role : Role) (domain : Lit Concept)
   head := [.concept domain source]
 }
 
+def roleInclusionPathClauses (start : Role) (steps : List Role)
+    (source target : Variable) : List (Clause Variable Concept Role) :=
+  match steps with
+  | [] => []
+  | next :: rest =>
+      roleInclusionClause start next source target ::
+        roleInclusionPathClauses next rest source target
+
+def roleInclusionPathTarget (start : Role) (steps : List Role) : Role :=
+  match steps with
+  | [] => start
+  | next :: rest => roleInclusionPathTarget next rest
+
+theorem roleIncluded_refl (I : Interp Domain Concept Role) (role : Role) :
+    RoleIncluded I role role := by
+  intro source target hedge
+  exact hedge
+
+theorem roleIncluded_trans (I : Interp Domain Concept Role) (left middle right : Role)
+    (hleft : RoleIncluded I left middle) (hright : RoleIncluded I middle right) :
+    RoleIncluded I left right := by
+  intro source target hedge
+  exact hright source target (hleft source target hedge)
+
 theorem models_roleInclusionClause_iff [DecidableEq Variable]
     (I : Interp Domain Concept Role) (sub sup : Role) (source target : Variable)
     (hne : source ≠ target) :
@@ -80,6 +104,29 @@ theorem models_roleDomainClause_iff [DecidableEq Variable]
     have hedge := hbody (.role role source target) (by simp [roleDomainClause])
     exact ⟨.concept domain source, by simp [roleDomainClause],
       hdomain (assignment source) (assignment target) hedge⟩
+
+theorem models_roleInclusionPathClauses_implies [DecidableEq Variable]
+    (I : Interp Domain Concept Role) (start : Role) (steps : List Role)
+    (source target : Variable) (hne : source ≠ target)
+    (hmodels : I.models (roleInclusionPathClauses start steps source target)) :
+    RoleIncluded I start (roleInclusionPathTarget start steps) := by
+  induction steps generalizing start with
+  | nil =>
+      exact roleIncluded_refl I start
+  | cons next rest ih =>
+      have hfirst : I.modelsClause (roleInclusionClause start next source target) := by
+        apply hmodels
+        simp [roleInclusionPathClauses]
+      have htail : I.models (roleInclusionPathClauses next rest source target) := by
+        intro clause hclause
+        apply hmodels clause
+        simp only [roleInclusionPathClauses, List.mem_cons]
+        exact Or.inr hclause
+      have hstep : RoleIncluded I start next :=
+        (models_roleInclusionClause_iff I start next source target hne).1 hfirst
+      have hrest := ih next htail
+      exact roleIncluded_trans I start next
+        (roleInclusionPathTarget next rest) hstep hrest
 
 def domainConsequenceClause
     (body : List (Atom Variable Concept Role)) (source : Variable)
@@ -151,6 +198,7 @@ theorem add_domainConsequences_iff
 
 #print axioms models_roleInclusionClause_iff
 #print axioms models_roleDomainClause_iff
+#print axioms models_roleInclusionPathClauses_implies
 #print axioms domainConsequence_sound
 #print axioms domainConsequences_sound
 #print axioms add_domainConsequences_iff

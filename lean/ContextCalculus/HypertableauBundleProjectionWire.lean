@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauMixedProjectionWire
 import ContextCalculus.HypertableauSkolemBundleListProjection
+import ContextCalculus.HypertableauBundleDomainProjection
 import Mathlib.Data.List.FinRange
 import Mathlib.Logic.Equiv.Fin.Basic
 
@@ -57,6 +58,24 @@ def WireSkolemBundle.decode (variableCount : Nat)
   else
     throw "Skolem bundle variable table contains duplicates"
 
+structure WireBundleDomainExtra where
+  bundle : Nat
+  path : List String
+  domain : WireNamedLit
+deriving FromJson, ToJson, Repr
+
+def WireBundleDomainExtra.decode
+    (sourceConcepts roles : List String) (bundleCount : Nat)
+    (wire : WireBundleDomainExtra) : Except String
+      (IndexedBundleDomainSpec (Fin sourceConcepts.length) (Fin roles.length)
+        bundleCount) := do
+  return {
+    bundle := ← checkedFin "bundle" bundleCount wire.bundle
+    path := ← wire.path.mapM fun role => checkedName "role path" role roles
+    domain := ⟨← checkedName "domain concept" wire.domain.concept sourceConcepts,
+      wire.domain.neg⟩
+  }
+
 def decodedBundleSpecs
     (bundles : List (DecodedWireBundle Variable Concept Role Function TargetConcept)) :
     Fin bundles.length → BundleSpec Variable Concept Role Function :=
@@ -106,6 +125,7 @@ structure WireBundleProjection where
   functions : List String
   direct : List WireDirectSourceClause
   bundles : List WireSkolemBundle
+  domain_extras : List WireBundleDomainExtra
   target : List WireClause
 deriving FromJson, ToJson, Repr
 
@@ -121,6 +141,9 @@ structure DecodedBundleProjection where
   bundles : List
     (DecodedWireBundle (Fin variableCount) (Fin sourceConcepts.length)
       (Fin roles.length) (Fin functions.length) (Fin concepts.length))
+  domainExtras : List
+    (IndexedBundleDomainSpec (Fin sourceConcepts.length) (Fin roles.length)
+      bundles.length)
   target : List
     (Clause (Fin variableCount) (Fin concepts.length) (Fin roles.length))
   nonemptyBundles : bundles ≠ []
@@ -128,9 +151,20 @@ structure DecodedBundleProjection where
     (skolemPairFunctions (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup
   embeddingInjective : _root_.Function.Injective
     (bundleConceptEmbedding sourceTargets bundles)
+  rboxSource : Fin variableCount
+  rboxTarget : Fin variableCount
+  rboxDistinct : rboxSource ≠ rboxTarget
+  pathPremises : ∀ spec ∈ domainExtras, ∀ clause ∈
+    roleInclusionPathClauses
+      (decodedBundleSpecs bundles spec.bundle).role spec.path rboxSource rboxTarget,
+    clause ∈ direct
+  domainPremises : ∀ spec ∈ domainExtras,
+    roleDomainClause (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+      rboxSource rboxTarget ∈ direct
   exactProjection :
     (renameOntology (bundleConceptEmbedding sourceTargets bundles)
-      (indexedBundleOntology direct (decodedBundleSpecs bundles))).toFinset =
+      (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+        indexedBundleDomainOntology (decodedBundleSpecs bundles) domainExtras)).toFinset =
         target.toFinset
 
 def WireBundleProjection.decode (wire : WireBundleProjection) :
@@ -147,37 +181,71 @@ def WireBundleProjection.decode (wire : WireBundleProjection) :
             (WireSkolemBundle.decode wire.variable_count wire.source_concepts
               wire.concepts wire.roles wire.functions)
           if hnonempty : bundles ≠ [] then
-            let target ← wire.target.mapM
-              (WireClause.decode wire.variable_count wire.concepts.length wire.roles.length)
-            if hunique : (skolemPairFunctions
-                (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup then
-              if hinjective : (bundleEmbeddingValues sourceTargets bundles).Nodup then
-                if hequal :
-                    (renameOntology (bundleConceptEmbedding sourceTargets bundles)
-                      (indexedBundleOntology direct
-                        (decodedBundleSpecs bundles))).toFinset = target.toFinset then
-                  return {
-                    variableCount := wire.variable_count
-                    sourceConcepts := wire.source_concepts
-                    concepts := wire.concepts
-                    roles := wire.roles
-                    functions := wire.functions
-                    sourceTargets
-                    direct
-                    bundles
-                    target
-                    nonemptyBundles := hnonempty
-                    uniqueFunctions := hunique
-                    embeddingInjective :=
-                      bundleConceptEmbedding_injective_of_nodup sourceTargets bundles hinjective
-                    exactProjection := hequal
-                  }
+            if hrboxCount : 2 ≤ wire.variable_count then
+              let rboxSource : Fin wire.variable_count :=
+                ⟨0, lt_of_lt_of_le Nat.zero_lt_two hrboxCount⟩
+              let rboxTarget : Fin wire.variable_count := ⟨1, hrboxCount⟩
+              have hrboxDistinct : rboxSource ≠ rboxTarget := by
+                intro hequal
+                have hval := congrArg Fin.val hequal
+                simp [rboxSource, rboxTarget] at hval
+              let domainExtras ← wire.domain_extras.mapM
+                (WireBundleDomainExtra.decode wire.source_concepts wire.roles bundles.length)
+              let target ← wire.target.mapM
+                (WireClause.decode wire.variable_count wire.concepts.length wire.roles.length)
+              if hunique : (skolemPairFunctions
+                  (indexedBundlePairs (decodedBundleSpecs bundles))).Nodup then
+                if hinjective : (bundleEmbeddingValues sourceTargets bundles).Nodup then
+                  if hpaths : ∀ spec ∈ domainExtras, ∀ clause ∈
+                      roleInclusionPathClauses
+                        (decodedBundleSpecs bundles spec.bundle).role spec.path
+                          rboxSource rboxTarget,
+                      clause ∈ direct then
+                    if hdomains : ∀ spec ∈ domainExtras,
+                        roleDomainClause
+                          (spec.superRole (decodedBundleSpecs bundles)) spec.domain
+                            rboxSource rboxTarget ∈ direct then
+                      if hequal :
+                          (renameOntology (bundleConceptEmbedding sourceTargets bundles)
+                            (indexedBundleOntology direct (decodedBundleSpecs bundles) ++
+                              indexedBundleDomainOntology
+                                (decodedBundleSpecs bundles) domainExtras)).toFinset =
+                            target.toFinset then
+                        return {
+                          variableCount := wire.variable_count
+                          sourceConcepts := wire.source_concepts
+                          concepts := wire.concepts
+                          roles := wire.roles
+                          functions := wire.functions
+                          sourceTargets
+                          direct
+                          bundles
+                          domainExtras
+                          target
+                          nonemptyBundles := hnonempty
+                          uniqueFunctions := hunique
+                          embeddingInjective :=
+                            bundleConceptEmbedding_injective_of_nodup
+                              sourceTargets bundles hinjective
+                          rboxSource
+                          rboxTarget
+                          rboxDistinct := hrboxDistinct
+                          pathPremises := hpaths
+                          domainPremises := hdomains
+                          exactProjection := hequal
+                        }
+                      else
+                        throw "bundle source conversion differs from the claimed HT ontology"
+                    else
+                      throw "bundle domain premise is absent from the source ontology"
+                  else
+                    throw "bundle role-inclusion path is absent from the source ontology"
                 else
-                  throw "bundle source conversion differs from the claimed HT ontology"
+                  throw "bundle definers collide with each other or source concepts"
               else
-                throw "bundle definers collide with each other or source concepts"
+                throw "bundle projection reuses a Skolem function"
             else
-              throw "bundle projection reuses a Skolem function"
+              throw "bundle projection with RBox evidence requires two variables"
           else
             throw "bundle projection contains no bundles"
         else
@@ -209,8 +277,10 @@ theorem DecodedBundleProjection.models_source_iff_target
       (Sum (Fin decoded.bundles.length) (Fin decoded.sourceConcepts.length)) :=
     ⟨.inl ⟨0, hpositive⟩⟩
   obtain ⟨inverse, hleft⟩ := decoded.embeddingInjective.hasLeftInverse
-  rw [indexedBundleProjection_renamed_sat_iff base decoded.direct
-    (decodedBundleSpecs decoded.bundles) decoded.uniqueFunctions
+  rw [indexedBundleDomainProjection_renamed_sat_iff base decoded.direct
+    (decodedBundleSpecs decoded.bundles) decoded.uniqueFunctions decoded.domainExtras
+    decoded.rboxSource decoded.rboxTarget decoded.rboxDistinct
+    decoded.pathPremises decoded.domainPremises
     (bundleConceptEmbedding decoded.sourceTargets decoded.bundles) inverse hleft]
   constructor
   · rintro ⟨J, hmodels⟩
@@ -234,7 +304,7 @@ theorem WireBundleProjection.check_sound (wire : WireBundleProjection)
 section Tests
 
 private def bundleExample : WireBundleProjection where
-  variable_count := 1
+  variable_count := 2
   source_concepts := ["A", "B", "C"]
   concepts := ["A", "def_exfil_f", "C", "B"]
   roles := ["r"]
@@ -253,6 +323,7 @@ private def bundleExample : WireBundleProjection where
     fillers := [⟨"B", false⟩, ⟨"C", false⟩]
     definer := "def_exfil_f"
   }]
+  domain_extras := []
   target := [
     {
       body := [.concept ⟨0, false⟩ 0]

@@ -343,11 +343,19 @@ pub struct SkolemProjectionBundle {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct BundleProjectionDomainExtra {
+    pub bundle: usize,
+    pub path: Vec<String>,
+    pub domain: BundleProjectionLit,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BundleProjectionSource {
     pub source_concepts: Vec<String>,
     pub functions: Vec<String>,
     pub direct: Vec<DirectProjectionClause>,
     pub bundles: Vec<SkolemProjectionBundle>,
+    pub domain_extras: Vec<BundleProjectionDomainExtra>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -2177,6 +2185,7 @@ fn bundle_projection_source(clauses: &[JClause]) -> Option<BundleProjectionSourc
         functions,
         direct,
         bundles,
+        domain_extras: Vec::new(),
     })
 }
 
@@ -2465,7 +2474,7 @@ pub fn convert(
         .map(direct_projection_clause)
         .collect::<Option<Vec<_>>>();
     let mixed_projection_source = mixed_projection_source(clauses);
-    let bundle_projection_source = bundle_projection_source(clauses);
+    let mut bundle_projection_source = bundle_projection_source(clauses);
     // KM_HT_RULES: ground ABox facts intercepted in pass 1 (so they are not
     // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
     let mut abox_facts: Vec<AboxFact> = Vec::new();
@@ -2848,15 +2857,64 @@ pub fn convert(
         }
     }
 
-    // reflexive-transitive super-role closure
-    let super_roles = |r: &str| -> Vec<String> {
-        let mut seen: Vec<String> = vec![r.to_string()];
-        let mut frontier: Vec<String> = vec![r.to_string()];
-        while let Some(cur) = frontier.pop() {
+    // The bundle certificate treats generated RBox clauses as source premises.
+    // Preserve their exact two-variable clause forms so Lean can reconstruct
+    // every inclusion path and final domain premise independently of Rust's
+    // closure computation.
+    if let Some(source) = bundle_projection_source.as_mut() {
+        for (sub, sup) in &subrole_pairs {
+            source.direct.push(DirectProjectionClause {
+                variable_names: vec!["x".to_string(), "y".to_string()],
+                body: vec![DirectProjectionAtom::Rol {
+                    role: sub.clone(),
+                    source: "x".to_string(),
+                    target: "y".to_string(),
+                }],
+                head: vec![DirectProjectionAtom::Rol {
+                    role: sup.clone(),
+                    source: "x".to_string(),
+                    target: "y".to_string(),
+                }],
+            });
+        }
+        for (role, concepts) in domains.iter() {
+            for concept in concepts {
+                if !source
+                    .source_concepts
+                    .iter()
+                    .any(|candidate| candidate == concept)
+                {
+                    source.source_concepts.push(concept.clone());
+                }
+                source.direct.push(DirectProjectionClause {
+                    variable_names: vec!["x".to_string(), "y".to_string()],
+                    body: vec![DirectProjectionAtom::Rol {
+                        role: role.clone(),
+                        source: "x".to_string(),
+                        target: "y".to_string(),
+                    }],
+                    head: vec![DirectProjectionAtom::Con {
+                        concept: concept.clone(),
+                        node: "x".to_string(),
+                        neg: false,
+                    }],
+                });
+            }
+        }
+    }
+
+    // Reflexive-transitive super-role closure together with one concrete path
+    // for each reached role. Lean checks every edge of the selected path.
+    let super_role_paths = |r: &str| -> Vec<(String, Vec<String>)> {
+        let mut seen: Vec<(String, Vec<String>)> = vec![(r.to_string(), Vec::new())];
+        let mut frontier: Vec<(String, Vec<String>)> = vec![(r.to_string(), Vec::new())];
+        while let Some((cur, path)) = frontier.pop() {
             for (sub, sup) in &subrole_pairs {
-                if *sub == cur && !seen.iter().any(|s| s == sup) {
-                    seen.push(sup.clone());
-                    frontier.push(sup.clone());
+                if *sub == cur && !seen.iter().any(|(role, _)| role == sup) {
+                    let mut next_path = path.clone();
+                    next_path.push(sup.clone());
+                    seen.push((sup.clone(), next_path.clone()));
+                    frontier.push((sup.clone(), next_path));
                 }
             }
         }
@@ -2962,9 +3020,24 @@ pub fn convert(
             }],
         });
         // domain-obligation propagation
-        for sup in super_roles(role) {
+        for (sup, path) in super_role_paths(role) {
             let ds: Vec<String> = domains.get(&sup).to_vec();
             for d in ds {
+                if let Some(source) = bundle_projection_source.as_mut() {
+                    let bundle = source
+                        .functions
+                        .iter()
+                        .position(|candidate| candidate == f)
+                        .expect("bundle evidence covers every emitted Skolem function");
+                    source.domain_extras.push(BundleProjectionDomainExtra {
+                        bundle,
+                        path: path.clone(),
+                        domain: BundleProjectionLit {
+                            concept: d.clone(),
+                            neg: false,
+                        },
+                    });
+                }
                 let dc = ids.cid(&d);
                 ht.push(HtClause {
                     body: bod.clone(),

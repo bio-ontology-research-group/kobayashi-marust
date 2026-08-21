@@ -5296,6 +5296,7 @@ struct BundleProjectionDocument<'a> {
     functions: &'a [String],
     direct: &'a [crate::orchestrate::cb_to_ht::DirectProjectionClause],
     bundles: &'a [crate::orchestrate::cb_to_ht::SkolemProjectionBundle],
+    domain_extras: &'a [crate::orchestrate::cb_to_ht::BundleProjectionDomainExtra],
     target: Vec<DirectProjectionTargetClause>,
 }
 
@@ -5380,13 +5381,14 @@ fn check_direct_ht_projection(
     };
     let encoded = if let Some(source) = inp.bundle_projection_source.as_ref() {
         serde_json::to_vec(&BundleProjectionDocument {
-            variable_count,
+            variable_count: variable_count.max(2),
             source_concepts: &source.source_concepts,
             concepts: &inp.concepts,
             roles: &inp.roles,
             functions: &source.functions,
             direct: &source.direct,
             bundles: &source.bundles,
+            domain_extras: &source.domain_extras,
             target: target(),
         })
     } else if let Some(source) = inp.mixed_projection_source.as_ref() {
@@ -6198,9 +6200,14 @@ mod tests {
                 }],
             },
         ];
+        let rbox = vec![
+            vec!["subrole".into(), "r".into(), "s".into()],
+            vec!["subrole".into(), "s".into(), "t".into()],
+            vec!["domain".into(), "t".into(), "E".into()],
+        ];
         let producer = crate::orchestrate::cb_to_ht::convert(
             &source,
-            None,
+            Some(&rbox),
             &std::collections::HashSet::new(),
             &[],
             &[],
@@ -6209,19 +6216,39 @@ mod tests {
             &[],
             false,
         );
-        assert!(producer.bundle_projection_source.is_some());
+        let evidence = producer
+            .bundle_projection_source
+            .as_ref()
+            .expect("bundle projection evidence");
+        assert_eq!(evidence.domain_extras.len(), 1);
+        assert_eq!(evidence.domain_extras[0].path, ["s", "t"]);
         let consumer = consumer_input(&producer);
         let projected = clauses_of_tinput(&consumer);
         check_direct_ht_projection(&consumer, &projected, std::path::Path::new(&checker))
             .expect("the real bundle Lean checker accepts production evidence");
 
-        let mut omitted = projected;
+        let mut omitted = projected.clone();
         omitted.pop();
         assert!(
             check_direct_ht_projection(&consumer, &omitted, std::path::Path::new(&checker))
                 .unwrap_err()
                 .contains("rejected")
         );
+
+        let mut false_path = consumer;
+        false_path
+            .bundle_projection_source
+            .as_mut()
+            .expect("bundle evidence")
+            .domain_extras[0]
+            .path = vec!["t".into()];
+        assert!(check_direct_ht_projection(
+            &false_path,
+            &projected,
+            std::path::Path::new(&checker)
+        )
+        .unwrap_err()
+        .contains("rejected"));
     }
 
     #[test]
