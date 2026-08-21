@@ -88,6 +88,11 @@
   definers, role paths, domain premises, projected number restrictions,
   complementary-pair provenance, models, refutations, and every complete
   taxonomy matrix position.
+- Compose exact source-taxonomy publication for all six production projection
+  families. Every concept and ordered subsumption cell now carries both its
+  exact matrix coordinates and an equivalence between the Boolean published by
+  KM and source-level entailment, for direct, mixed, and bundled routes with
+  and without cardinality.
 
 ### Certify native-ABox cardinality taxonomies
 
