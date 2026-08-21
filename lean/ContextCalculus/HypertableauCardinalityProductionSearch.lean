@@ -607,12 +607,117 @@ theorem CardinalityRuntimeConfig.witnessChild_progress
       rw [hequal] at hlift
       simpa only [CardinalityRuntimeConfig.mem_progressFacts,
         EqState.mem_eqGuardedFacts] using hlift
+
     · intro hchild
       have hlift : (Sum.inl guarded :
           CardinalityProgressFact definitions nodeCount Concept Role) ∈
           (config.witnessChild parent ancestors hselect hfit).progressFacts := by
         simpa only [CardinalityRuntimeConfig.mem_progressFacts,
           EqState.mem_eqGuardedFacts] using hchild
+      rw [← hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts] using hlift
+
+theorem rustMaximumPrefixVector_lt_active
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hprefix : state.InactivePrefixFresh active)
+    (definition : CardinalityDef Concept Role) (source : Fin nodeCount)
+    (hwidth : definition.bound + 1 ≤
+      (rustMaximumRepresentatives state definition source).length)
+    (index : Fin (definition.bound + 1)) :
+    (rustPrefixVector (rustMaximumRepresentatives state definition source)
+      (definition.bound + 1) hwidth index).1 < active := by
+  have hfiller := (rustMaximumPrefixVector_qualifies state definition source
+    hwidth index).2
+  exact state.lt_active_of_closedLabel active hprefix _ (.pos definition.filler) hfiller
+
+theorem EqState.eqGuardedFacts_merge_ssubset
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) (left right : Node)
+    (hdistinct : ¬state.equiv left right) :
+    state.eqGuardedFacts ⊂ (state.merge left right).eqGuardedFacts := by
+  classical
+  let assignment : Bool → Node := fun side => if side then right else left
+  have habsent : ¬state.closedHoldsAtom assignment (.eq false true) := by
+    simpa [EqState.closedHoldsAtom, assignment] using hdistinct
+  simpa [EqState.assertAtom, assignment] using
+    (state.eqGuardedFacts_assertAtom_ssubset assignment (.eq false true) habsent)
+
+noncomputable def CardinalityRuntimeConfig.maximumChild
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    {site : IndexedCardinalitySite definitions nodeCount}
+    (_hselect : selectIndexedViolatingMaximum definitions config.state = some site)
+    (hwidth : (definitions.get site.1).bound + 1 ≤
+      (rustMaximumRepresentatives config.state (definitions.get site.1) site.2).length)
+    (left right : Fin ((definitions.get site.1).bound + 1)) (_hne : left ≠ right) :
+    CardinalityRuntimeConfig Concept Role definitions nodeCount where
+  state := config.state.merge
+    (rustPrefixVector
+      (rustMaximumRepresentatives config.state (definitions.get site.1) site.2)
+      ((definitions.get site.1).bound + 1) hwidth left)
+    (rustPrefixVector
+      (rustMaximumRepresentatives config.state (definitions.get site.1) site.2)
+      ((definitions.get site.1).bound + 1) hwidth right)
+  active := config.active
+  expanded := config.expanded
+  active_le := config.active_le
+  inactive_fresh := config.state.inactivePrefixFresh_merge config.active
+    config.inactive_fresh _ _
+    (rustMaximumPrefixVector_lt_active config.state config.active config.inactive_fresh
+      (definitions.get site.1) site.2 hwidth left)
+    (rustMaximumPrefixVector_lt_active config.state config.active config.inactive_fresh
+      (definitions.get site.1) site.2 hwidth right)
+
+theorem CardinalityRuntimeConfig.maximumChild_progress
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    {site : IndexedCardinalitySite definitions nodeCount}
+    (hselect : selectIndexedViolatingMaximum definitions config.state = some site)
+    (hwidth : (definitions.get site.1).bound + 1 ≤
+      (rustMaximumRepresentatives config.state (definitions.get site.1) site.2).length)
+    (left right : Fin ((definitions.get site.1).bound + 1)) (hne : left ≠ right) :
+    config.progressFacts ⊂
+      (config.maximumChild hselect hwidth left right hne).progressFacts := by
+  classical
+  let witnesses := rustPrefixVector
+    (rustMaximumRepresentatives config.state (definitions.get site.1) site.2)
+    ((definitions.get site.1).bound + 1) hwidth
+  have hdistinct : ¬config.state.base.equiv (witnesses left) (witnesses right) :=
+    rustMaximumPrefixVector_pairwise config.state (definitions.get site.1) site.2
+      hwidth left right hne
+  have hgrowth := config.state.base.eqGuardedFacts_merge_ssubset
+    (witnesses left) (witnesses right) hdistinct
+  rw [Finset.ssubset_iff_subset_ne] at hgrowth ⊢
+  constructor
+  · intro fact hfact
+    simp only [CardinalityRuntimeConfig.mem_progressFacts] at hfact ⊢
+    rcases fact with guarded | fact
+    · have hpreserved := hgrowth.1
+        (by simpa only [EqState.mem_eqGuardedFacts] using hfact)
+      simpa only [EqState.mem_eqGuardedFacts, witnesses] using hpreserved
+    · rcases fact with pair | expandedSite <;> exact hfact
+  · intro hequal
+    apply hgrowth.2
+    ext guarded
+    constructor
+    · intro hparent
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          config.progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts] using hparent
+      rw [hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts, witnesses] using hlift
+    · intro hchild
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          (config.maximumChild hselect hwidth left right hne).progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts, witnesses] using hchild
       rw [← hequal] at hlift
       simpa only [CardinalityRuntimeConfig.mem_progressFacts,
         EqState.mem_eqGuardedFacts] using hlift
@@ -794,5 +899,8 @@ theorem CardinalityProductionStep.closedRefutes_of_children
 #print axioms DistinctEqState.lt_active_of_obligation
 #print axioms selectCardinalityWitness_source_lt_active
 #print axioms CardinalityRuntimeConfig.witnessChild_progress
+#print axioms rustMaximumPrefixVector_lt_active
+#print axioms EqState.eqGuardedFacts_merge_ssubset
+#print axioms CardinalityRuntimeConfig.maximumChild_progress
 
 end ContextCalculus.Hypertableau

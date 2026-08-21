@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.184`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.185`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -171,6 +171,10 @@ assertion strictly grows the production progress set.
 Selected ordinary witness sources are now proved active. Their exact
 `active_nodes` successor configurations preserve the enlarged inactive-prefix
 invariant and strictly grow the same well-founded production progress set.
+Every deterministic maximum witness is now proved active, and every
+off-diagonal maximum merge is proved to add a genuinely new equality fact.
+Clause, witness, minimum, and maximum recursive children therefore all have
+strict-growth proofs over one well-founded production measure.
 
 ## Classify an ontology
 

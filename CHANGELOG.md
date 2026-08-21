@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.185] – 2026-08-21
+
+### Certify maximum merge progress
+
+- Prove every node in the deterministic greedy maximum witness prefix is below
+  `active_nodes`, using its quotient-closed filler label.
+- Prove merging two nodes from different equality classes strictly grows the
+  complete equality-aware guarded-fact set.
+- Construct each exact off-diagonal maximum matrix successor while preserving
+  active count, expanded-minimum metadata, and inactive-prefix freshness.
+- Use the proved pairwise quotient distinction of greedy witnesses to prove
+  every unequal maximum merge child strictly grows the combined production
+  progress set.
+- Audit all maximum-growth endpoints without `sorryAx`.
+
+All recursive transition families now have strict-growth proofs. Composing the
+total recursive outcome, concrete Rust field construction, CB, and automatic
+routing remain unfinished.
+
 ## [0.3.184] – 2026-08-21
 
 ### Certify ordinary witness progress
