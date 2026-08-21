@@ -392,6 +392,25 @@ theorem checked_regular_scheduled_fresh_fold_producer_decides_source
   exact document.checkScheduled_node_count budget
     (hscheduled budget retry document hconcepts hroles hcheck hrun)
 
+/-- Rust-branch form of the equality-free source capstone. Fresh rejection is
+carried by `GuardedFoldAttempt`, then erased into the generic finite-learning
+proof; callers no longer construct or justify a `FreshFoldProducer`. -/
+theorem checked_regular_guarded_fold_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, GuardedFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (hscheduled : ∀ budget retry document hconcepts hroles hcheck,
+      ((producer budget).toFreshFoldProducer.run retry) = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.checkScheduled budget = true) :
+    ∃ budget retry outcome,
+      (producer budget).toFreshFoldProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  exact checked_regular_scheduled_fresh_fold_producer_decides_source equivalent
+    (fun budget => (producer budget).toFreshFoldProducer) hscheduled
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
@@ -403,5 +422,6 @@ theorem checked_regular_scheduled_fresh_fold_producer_decides_source
 #print axioms checked_regular_fold_learning_doubling_decides_source
 #print axioms checked_regular_fresh_fold_producer_decides_source
 #print axioms checked_regular_scheduled_fresh_fold_producer_decides_source
+#print axioms checked_regular_guarded_fold_producer_decides_source
 
 end ContextCalculus.Hypertableau

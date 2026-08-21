@@ -213,6 +213,53 @@ structure FreshFoldProducer (Node Result : Type)
     attempt forbidden = .rejected folds →
       ∃ fold ∈ folds, fold ∉ forbidden
 
+/-- Proof-carrying result of the Rust checker/blacklist branch at one fixed
+budget. A rejected candidate stores its exact serialized fold set together
+with the fact established by at least one successful `HashSet::insert`.
+Consequently the fatal stale-fold branch is absent from this type. -/
+inductive GuardedFoldAttempt (Node Result : Type)
+    [DecidableEq Node] (forbidden : Finset (Node × Node)) : Type where
+  | done (result : Result)
+  | rejected (folds : Finset (Node × Node))
+      (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+def GuardedFoldAttempt.erase
+    [DecidableEq Node]
+    {forbidden : Finset (Node × Node)} :
+    GuardedFoldAttempt Node Result forbidden → FoldLearningOutcome Node Result
+  | .done result => .done result
+  | .rejected folds _ => .rejected folds
+
+/-- Rust-mirrored fixed-budget producer. Its attempt is indexed by the actual
+blacklist supplied to the search, and rejection can only be constructed from
+a candidate carrying a newly inserted blocker pair. -/
+structure GuardedFoldProducer (Node Result : Type)
+    [DecidableEq Node] where
+  attempt : ∀ forbidden : Finset (Node × Node),
+    GuardedFoldAttempt Node Result forbidden
+
+def GuardedFoldProducer.toFreshFoldProducer
+    [DecidableEq Node]
+    (producer : GuardedFoldProducer Node Result) :
+    FreshFoldProducer Node Result where
+  attempt forbidden := (producer.attempt forbidden).erase
+  rejectionFresh := by
+    intro forbidden folds hrejected
+    cases hattempt : producer.attempt forbidden with
+    | done result => simp [GuardedFoldAttempt.erase, hattempt] at hrejected
+    | rejected learned fresh =>
+        simp [GuardedFoldAttempt.erase, hattempt] at hrejected
+        subst learned
+        exact fresh
+
+theorem GuardedFoldProducer.rejected_has_fresh
+    [DecidableEq Node]
+    (producer : GuardedFoldProducer Node Result)
+    {forbidden folds : Finset (Node × Node)}
+    (hrejected : (producer.attempt forbidden).erase = .rejected folds) :
+    ∃ fold ∈ folds, fold ∉ forbidden := by
+  exact producer.toFreshFoldProducer.rejectionFresh forbidden folds hrejected
+
 def FreshFoldProducer.forbidden
     [DecidableEq Node]
     (producer : FreshFoldProducer Node Result) : Nat → Finset (Node × Node)
@@ -448,5 +495,6 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms FreshFoldProducer.rejected_not_subset
 #print axioms FreshFoldProducer.not_rejected_empty
 #print axioms FreshFoldProducer.eventually_done
+#print axioms GuardedFoldProducer.rejected_has_fresh
 
 end ContextCalculus.Hypertableau
