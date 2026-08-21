@@ -237,6 +237,147 @@ theorem FiniteEqFoldCertificate.closedHoldsAtom_base_of_roleFree
   | exists_ => exact hholds
   | eq => exact hholds
 
+/-- Exact producer condition for a residual clause: every closed role fact
+used by its body after edge materialization already held in the base equality
+state. Unlike the role-free sufficient condition, this admits arbitrary
+multi-edge bodies whenever the proposed fold is conservative for their roles. -/
+def FiniteEqFoldCertificate.BodyRoleConservative
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) : Prop :=
+  ∀ role sourceVariable targetVariable,
+    Atom.role role sourceVariable targetVariable ∈ clause.body →
+    ∀ source target,
+      certificate.materialize.state.closedEdge role source target →
+      certificate.base.state.closedEdge role source target
+
+/-- Executable closed-edge lookup specialized from the equality certificate's
+quotient atom evaluator. -/
+def FiniteEqCertificate.foldClosedEdgeB
+    (certificate : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (role : Fin roleCount) (source target : Fin nodeCount) : Bool :=
+  (List.finRange nodeCount).any fun edgeSource =>
+    (List.finRange nodeCount).any fun edgeTarget =>
+      (certificate.closedRelatedB edgeSource source &&
+        certificate.closedRelatedB edgeTarget target) &&
+      decide ((role, edgeSource, edgeTarget) ∈ certificate.base.edges)
+
+theorem FiniteEqCertificate.foldClosedEdgeB_eq_true
+    (certificate : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (role : Fin roleCount) (source target : Fin nodeCount) :
+    certificate.foldClosedEdgeB role source target = true ↔
+      certificate.state.closedEdge role source target := by
+  simp only [FiniteEqCertificate.foldClosedEdgeB, List.any_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq, EqState.closedEdge]
+  constructor
+  · rintro ⟨edgeSource, _, edgeTarget, _, ⟨hsource, htarget⟩, hedge⟩
+    exact ⟨edgeSource, edgeTarget,
+      (certificate.closedRelatedB_eq_true hvalid edgeSource source).mp hsource,
+      (certificate.closedRelatedB_eq_true hvalid edgeTarget target).mp htarget,
+      hedge⟩
+  · rintro ⟨edgeSource, edgeTarget, hsource, htarget, hedge⟩
+    exact ⟨edgeSource, List.mem_finRange edgeSource,
+      edgeTarget, List.mem_finRange edgeTarget,
+      ⟨(certificate.closedRelatedB_eq_true hvalid edgeSource source).mpr hsource,
+        (certificate.closedRelatedB_eq_true hvalid edgeTarget target).mpr htarget⟩,
+      hedge⟩
+
+/-- Exhaustive finite check of `BodyRoleConservative`. -/
+def FiniteEqFoldCertificate.bodyRoleConservativeB
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) : Bool :=
+  clause.body.all fun atom => match atom with
+    | .role role _ _ =>
+        (List.finRange nodeCount).all fun source =>
+          (List.finRange nodeCount).all fun target =>
+            !certificate.materialize.foldClosedEdgeB role source target ||
+              certificate.base.foldClosedEdgeB role source target
+    | _ => true
+
+theorem FiniteEqFoldCertificate.bodyRoleConservativeB_eq_true
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.equalityClosureValidB = true)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)) :
+    certificate.bodyRoleConservativeB clause = true ↔
+      certificate.BodyRoleConservative clause := by
+  simp only [FiniteEqFoldCertificate.bodyRoleConservativeB, List.all_eq_true]
+  constructor
+  · intro hcheck role sourceVariable targetVariable hrole source target hedge
+    have hcell := hcheck (.role role sourceVariable targetVariable) hrole
+    simp only [List.all_eq_true] at hcell
+    have hcell := hcell source (List.mem_finRange source)
+      target (List.mem_finRange target)
+    simp only [Bool.or_eq_true] at hcell
+    rcases hcell with hfalse | hbase
+    · have htrue :=
+        (certificate.materialize.foldClosedEdgeB_eq_true hvalid role source target).mpr
+          hedge
+      simp [htrue] at hfalse
+    · exact (certificate.base.foldClosedEdgeB_eq_true hvalid role source target).mp hbase
+  · intro hconservative atom hatom
+    cases atom with
+    | concept => rfl
+    | exists_ => rfl
+    | eq => rfl
+    | role role sourceVariable targetVariable =>
+        simp only [List.all_eq_true]
+        intro source _ target _
+        by_cases hedge : certificate.materialize.state.closedEdge role source target
+        · simp only [Bool.or_eq_true]
+          exact Or.inr ((certificate.base.foldClosedEdgeB_eq_true hvalid role source target).mpr
+            (hconservative role sourceVariable targetVariable hatom source target hedge))
+        · simp only [Bool.or_eq_true]
+          apply Or.inl
+          have hfalse : certificate.materialize.foldClosedEdgeB role source target = false :=
+            Bool.eq_false_iff.mpr fun htrue => hedge
+              ((certificate.materialize.foldClosedEdgeB_eq_true hvalid role source target).mp
+                htrue)
+          simp [hfalse]
+
+def FiniteEqFoldCertificate.bodyConservativeB
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  certificate.base.base.ontology.all certificate.bodyRoleConservativeB
+
+theorem FiniteEqFoldCertificate.bodyConservativeB_eq_true
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.equalityClosureValidB = true) :
+    certificate.bodyConservativeB = true ↔
+      ∀ clause ∈ certificate.base.base.ontology,
+        certificate.BodyRoleConservative clause := by
+  simp only [FiniteEqFoldCertificate.bodyConservativeB, List.all_eq_true]
+  constructor
+  · intro hcheck clause hclause
+    exact (certificate.bodyRoleConservativeB_eq_true hvalid clause).mp
+      (hcheck clause hclause)
+  · intro hconservative clause hclause
+    exact (certificate.bodyRoleConservativeB_eq_true hvalid clause).mpr
+      (hconservative clause hclause)
+
+theorem FiniteEqFoldCertificate.closedHoldsAtom_base_of_bodyConservative
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hconservative : certificate.BodyRoleConservative clause)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hatom : atom ∈ clause.body)
+    (hholds : certificate.materialize.state.closedHoldsAtom assignment atom) :
+    certificate.base.state.closedHoldsAtom assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role role source target =>
+      exact hconservative role source target hatom
+        (assignment source) (assignment target) hholds
+  | exists_ => exact hholds
+  | eq => exact hholds
+
 /-- A role implication valid in the base closed graph remains valid after
 folding. If the premise edge was copied, provenance identifies its blocker edge;
 the implication produces a base conclusion there, and the same fold copies that
@@ -524,6 +665,28 @@ theorem FiniteEqFoldCertificate.closedSaturatedFor_of_roleFree
   exact ⟨atom, hatom,
     certificate.closedHoldsAtom_of_base assignment atom hholds⟩
 
+/-- Base saturation survives any fold whose materialized role facts are
+conservative for every body role in the exact ontology. This is the reusable
+blocked-open refinement for equality and cardinality production. -/
+theorem FiniteEqFoldCertificate.closedSaturatedFor_of_bodyConservative
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hconservative : ∀ clause ∈ certificate.base.base.ontology,
+      certificate.BodyRoleConservative clause)
+    (hsaturated : certificate.base.state.ClosedSaturatedFor
+      certificate.base.base.ontology) :
+    certificate.materialize.state.ClosedSaturatedFor
+      certificate.base.base.ontology := by
+  intro clause hclause assignment hbody
+  have hbaseBody : ∀ atom ∈ clause.body,
+      certificate.base.state.closedHoldsAtom assignment atom := by
+    intro atom hatom
+    exact certificate.closedHoldsAtom_base_of_bodyConservative clause
+      (hconservative clause hclause) assignment atom hatom (hbody atom hatom)
+  rcases hsaturated clause hclause assignment hbaseBody with ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom,
+    certificate.closedHoldsAtom_of_base assignment atom hholds⟩
+
 def FiniteEqFoldCertificate.check
     (certificate : FiniteEqFoldCertificate
       nodeCount conceptCount roleCount variableCount) : Bool :=
@@ -569,6 +732,32 @@ theorem FiniteEqFoldCertificate.check_of_base_valid_roleFree
   · exact certificate.closedWitnessComplete_of_base hvalid.2.2.2.1
   · exact certificate.closedSaturatedFor_of_roleFree hroleFree hvalid.2.2.2.2
 
+/-- A valid equality endpoint produces an accepted finite fold whenever the
+materialized role relation is conservative for every ontology body role. The
+condition is exact and finite on production certificate types; it replaces the
+role-free limitation without trusting pairwise blocking as a semantic axiom. -/
+theorem FiniteEqFoldCertificate.check_of_base_valid_bodyConservative
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.Valid)
+    (hconservative : ∀ clause ∈ certificate.base.base.ontology,
+      certificate.BodyRoleConservative clause) :
+    certificate.check = true := by
+  apply certificate.check_complete_of hvalid.1 hvalid.2.1
+  · exact certificate.closedClashFree_of_base hvalid.2.2.1
+  · exact certificate.closedWitnessComplete_of_base hvalid.2.2.2.1
+  · exact certificate.closedSaturatedFor_of_bodyConservative
+      hconservative hvalid.2.2.2.2
+
+theorem FiniteEqFoldCertificate.check_of_base_valid_bodyConservativeB
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.base.Valid)
+    (hcheck : certificate.bodyConservativeB = true) :
+    certificate.check = true :=
+  certificate.check_of_base_valid_bodyConservative hvalid
+    ((certificate.bodyConservativeB_eq_true hvalid.1).mp hcheck)
+
 /-- Any accepted equality-aware fold is a model of the exact unchanged
 ontology. The theorem assumes no correctness property of the proposed folds. -/
 theorem FiniteEqFoldCertificate.check_satisfiable
@@ -595,6 +784,26 @@ theorem FiniteEqFoldCertificate.checkWithCardinality_eq_true_iff
         certificate.materialize.state.quotientCanonical.modelsCardinalityDefs
           definitions := by
   exact certificate.materialize.checkEqSatWithCardinality_eq_true_iff definitions
+
+/-- Cardinality-aware production reuses the conservative equality-fold proof.
+The remaining premise is exactly the finite quotient cardinality invariant:
+materialized folds may copy role edges, so minimum and maximum definitions must
+be checked on the resulting quotient rather than inferred from the base. -/
+theorem FiniteEqFoldCertificate.checkWithCardinality_of_base_valid_bodyConservative
+    (certificate : FiniteEqFoldCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hvalid : certificate.base.Valid)
+    (hconservative : ∀ clause ∈ certificate.base.base.ontology,
+      certificate.BodyRoleConservative clause)
+    (hcardinality :
+      certificate.materialize.state.quotientCanonical.modelsCardinalityDefs
+        definitions) :
+    certificate.checkWithCardinality definitions = true := by
+  apply (certificate.checkWithCardinality_eq_true_iff definitions).mpr
+  refine ⟨?_, hcardinality⟩
+  exact certificate.check_eq_true_iff_materialize_valid.mp
+    (certificate.check_of_base_valid_bodyConservative hvalid hconservative)
 
 /-- The same untrusted fold boundary for cardinality-aware search. Acceptance
 constructs one quotient interpretation satisfying both the exact ontology and
@@ -636,6 +845,8 @@ example : cyclicFold.materialize.base.edges =
     [(0, 0, 1), (0, 1, 2), (0, 2, 2), (0, 0, 2)] := by native_decide
 
 example : cyclicFold.check = true := by native_decide
+
+example : cyclicFold.bodyConservativeB = true := by native_decide
 
 /-! Pairwise labels and parent-role signatures do not make one-round folding
 closed under role chains.  The blocked node `2` has the same pairwise signature
@@ -695,6 +906,8 @@ example : (2, 0, 3) ∉ chainFold.foldedEdges := by native_decide
 
 example : chainFold.check = false := by native_decide
 
+example : chainFold.bodyConservativeB = false := by native_decide
+
 end EqFoldTests
 
 #print axioms FiniteEqFoldCertificate.check_satisfiable
@@ -713,7 +926,10 @@ end EqFoldTests
 #print axioms FiniteEqFoldCertificate.check_complete
 #print axioms FiniteEqFoldCertificate.check_complete_of
 #print axioms FiniteEqFoldCertificate.check_of_base_valid_roleFree
+#print axioms FiniteEqFoldCertificate.check_of_base_valid_bodyConservative
+#print axioms FiniteEqFoldCertificate.check_of_base_valid_bodyConservativeB
 #print axioms FiniteEqFoldCertificate.checkWithCardinality_eq_true_iff
+#print axioms FiniteEqFoldCertificate.checkWithCardinality_of_base_valid_bodyConservative
 #print axioms FiniteEqFoldCertificate.checkWithCardinality_models
 
 end ContextCalculus.Hypertableau

@@ -28,6 +28,12 @@
 - Keep exact rejected-fold learning: at a fixed node budget, each failed fold
   pair is attempted at most once. Lean composes this finite progress result
   with budget doubling without assuming that an unchecked fold is sound.
+- Replace the equality-fold proof's role-free-body limitation with an exact
+  executable conservativity check. Lean now proves that arbitrary residual
+  bodies remain saturated whenever every closed role edge introduced by fold
+  materialization was already present for each body role. The same refinement
+  feeds cardinality-aware folds, with number restrictions checked on the final
+  materialized quotient because copied edges can affect maximum bounds.
 
 ### Unify total production HT global decisions
 
