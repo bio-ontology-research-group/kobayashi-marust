@@ -12,6 +12,79 @@ maximum expansion uses the deterministic greedy prefix vector.
 
 namespace ContextCalculus.Hypertableau
 
+def liftActiveAssignment (hfit : active ≤ nodeCount)
+    (assignment : Variable → Fin active) : Variable → Fin nodeCount :=
+  fun variableId => ⟨(assignment variableId).1,
+    lt_of_lt_of_le (assignment variableId).2 hfit⟩
+
+/-- Clause groundings restricted to Rust's active node prefix. -/
+noncomputable def allActiveGroundings
+    [Fintype Variable] [DecidableEq Variable]
+    (ontology : List (Clause Variable Concept Role))
+    (active nodeCount : Nat) (hfit : active ≤ nodeCount) :
+    List (Grounding Variable (Fin nodeCount) Concept Role) := by
+  classical
+  exact ontology.flatMap fun clause =>
+    (Finset.univ.toList : List (Variable → Fin active)).map fun assignment =>
+      (clause, liftActiveAssignment hfit assignment)
+
+theorem mem_allActiveGroundings_properties
+    [Fintype Variable] [DecidableEq Variable]
+    (ontology : List (Clause Variable Concept Role))
+    (active nodeCount : Nat) (hfit : active ≤ nodeCount)
+    {grounding : Grounding Variable (Fin nodeCount) Concept Role}
+    (hmem : grounding ∈ allActiveGroundings ontology active nodeCount hfit) :
+    grounding.1 ∈ ontology ∧ AssignmentWithinActive grounding.2 active := by
+  classical
+  rcases List.mem_flatMap.mp hmem with ⟨clause, hclause, hgrounding⟩
+  rcases List.mem_map.mp hgrounding with ⟨assignment, _, heq⟩
+  rw [← heq]
+  exact ⟨hclause, fun variableId => (assignment variableId).2⟩
+
+noncomputable def selectActiveCardinalityClauseGrounding
+    [Fintype Variable] [DecidableEq Variable]
+    (ontology : List (Clause Variable Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hfit : active ≤ nodeCount) :
+    Option (Grounding Variable (Fin nodeCount) Concept Role) :=
+  firstMatch (eqGroundingUndischarged state.base)
+    (allActiveGroundings ontology active nodeCount hfit)
+
+theorem selectActiveCardinalityClauseGrounding_properties
+    [Fintype Variable] [DecidableEq Variable]
+    (ontology : List (Clause Variable Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hfit : active ≤ nodeCount)
+    {grounding : Grounding Variable (Fin nodeCount) Concept Role}
+    (hselect : selectActiveCardinalityClauseGrounding ontology state active hfit =
+      some grounding) :
+    grounding.1 ∈ ontology ∧ AssignmentWithinActive grounding.2 active ∧
+      (∀ atom ∈ grounding.1.body, state.base.closedHoldsAtom grounding.2 atom) ∧
+      (∀ atom ∈ grounding.1.head, ¬state.base.closedHoldsAtom grounding.2 atom) := by
+  classical
+  have hfound := firstMatch_eq_some_mem
+    (by simpa [selectActiveCardinalityClauseGrounding] using hselect)
+  have hmem := mem_allActiveGroundings_properties ontology active nodeCount hfit hfound.1
+  have hgrounding := eqGroundingUndischarged_eq_true_iff.mp hfound.2
+  exact ⟨hmem.1, hmem.2, hgrounding.1, hgrounding.2⟩
+
+theorem selectActiveCardinalityClauseGrounding_closedRefutes
+    [Fintype Variable] [DecidableEq Variable]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (state : DistinctEqState (Fin nodeCount) Concept Role)
+    (active : Nat) (hfit : active ≤ nodeCount)
+    {grounding : Grounding Variable (Fin nodeCount) Concept Role}
+    (hselect : selectActiveCardinalityClauseGrounding ontology state active hfit =
+      some grounding)
+    (children : ∀ atom, atom ∈ grounding.1.head →
+      ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions
+        (state.assertAtom grounding.2 atom)) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions state := by
+  have hproperties := selectActiveCardinalityClauseGrounding_properties ontology state active
+    hfit hselect
+  exact .branch state grounding.1 hproperties.1 grounding.2 hproperties.2.2.1 children
+
 abbrev IndexedCardinalitySite (definitions : List (CardinalityDef Concept Role))
     (nodeCount : Nat) := Fin definitions.length × Fin nodeCount
 
@@ -380,6 +453,74 @@ theorem CardinalityRuntimeConfig.minimumChild_progress
     exact (selectIndexedExpandableMinimum_not_expanded definitions config.state parent ancestors
       config.expanded hselect) (by simpa using hnew)
 
+def CardinalityRuntimeConfig.clauseChild
+    [Fintype Variable] [DecidableEq Variable]
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (ontology : List (Clause Variable Concept Role))
+    {grounding : Grounding Variable (Fin nodeCount) Concept Role}
+    (hselect : selectActiveCardinalityClauseGrounding ontology config.state config.active
+      config.active_le = some grounding)
+    (atom : Atom Variable Concept Role) :
+    CardinalityRuntimeConfig Concept Role definitions nodeCount where
+  state := config.state.assertAtom grounding.2 atom
+  active := config.active
+  expanded := config.expanded
+  active_le := config.active_le
+  inactive_fresh := config.state.inactivePrefixFresh_assertAtom config.active
+    config.inactive_fresh grounding.2
+    (selectActiveCardinalityClauseGrounding_properties ontology config.state config.active
+      config.active_le hselect).2.1 atom
+
+theorem CardinalityRuntimeConfig.clauseChild_progress
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (ontology : List (Clause Variable Concept Role))
+    {grounding : Grounding Variable (Fin nodeCount) Concept Role}
+    (hselect : selectActiveCardinalityClauseGrounding ontology config.state config.active
+      config.active_le = some grounding)
+    (atom : Atom Variable Concept Role) (hatom : atom ∈ grounding.1.head) :
+    config.progressFacts ⊂ (config.clauseChild ontology hselect atom).progressFacts := by
+  classical
+  have hproperties := selectActiveCardinalityClauseGrounding_properties ontology config.state
+    config.active config.active_le hselect
+  have hgrowth := config.state.base.eqGuardedFacts_assertAtom_ssubset grounding.2 atom
+    (hproperties.2.2.2 atom hatom)
+  rw [Finset.ssubset_iff_subset_ne] at hgrowth ⊢
+  constructor
+  · intro fact hfact
+    simp only [CardinalityRuntimeConfig.mem_progressFacts] at hfact ⊢
+    rcases fact with guarded | fact
+    · have hpreserved := hgrowth.1
+        (by simpa only [EqState.mem_eqGuardedFacts] using hfact)
+      simpa only [EqState.mem_eqGuardedFacts] using hpreserved
+    · rcases fact with pair | site
+      · exact hfact
+      · exact hfact
+  · intro hequal
+    apply hgrowth.2
+    ext guarded
+    constructor
+    · intro hparent
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          config.progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts] using hparent
+      rw [hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts] using hlift
+    · intro hchild
+      have hlift : (Sum.inl guarded :
+          CardinalityProgressFact definitions nodeCount Concept Role) ∈
+          (config.clauseChild ontology hselect atom).progressFacts := by
+        simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+          EqState.mem_eqGuardedFacts] using hchild
+      rw [← hequal] at hlift
+      simpa only [CardinalityRuntimeConfig.mem_progressFacts,
+        EqState.mem_eqGuardedFacts] using hlift
+
 def CardinalityStrictGrowth
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -410,7 +551,7 @@ inductive CardinalityProductionStep
     (parent : Fin nodeCount → Option (Fin nodeCount))
     (ancestors : Fin nodeCount → List (Fin nodeCount))
     (expanded : Finset (IndexedCardinalitySite definitions nodeCount))
-    (active : Nat) : Type where
+    (active : Nat) (activeFit : active ≤ nodeCount) : Type where
   | equalityApart
       (candidate : EqualityApartCandidate (Fin nodeCount))
       (hselect : selectEqualityApartClash state = some candidate)
@@ -422,11 +563,12 @@ inductive CardinalityProductionStep
       (hnoApart : selectEqualityApartClash state = none)
       (hnoClash : selectCardinalityConceptClash state = none)
       (grounding : Grounding Variable (Fin nodeCount) Concept Role)
-      (hselect : selectCardinalityClauseGrounding ontology state = some grounding)
+      (hselect : selectActiveCardinalityClauseGrounding ontology state active activeFit =
+        some grounding)
   | witness
       (hnoApart : selectEqualityApartClash state = none)
       (hnoClash : selectCardinalityConceptClash state = none)
-      (hnoClause : selectCardinalityClauseGrounding ontology state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology state active activeFit = none)
       (candidate : WitnessCandidate (Fin nodeCount) Concept Role)
       (hselect : selectEqUnblockedUnwitnessed state.base parent ancestors = some candidate)
       (hfit : active < nodeCount)
@@ -434,7 +576,7 @@ inductive CardinalityProductionStep
   | minimum
       (hnoApart : selectEqualityApartClash state = none)
       (hnoClash : selectCardinalityConceptClash state = none)
-      (hnoClause : selectCardinalityClauseGrounding ontology state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology state active activeFit = none)
       (hnoWitness : selectEqUnblockedUnwitnessed state.base parent ancestors = none)
       (site : IndexedCardinalitySite definitions nodeCount)
       (hselect : selectIndexedExpandableMinimum definitions state parent ancestors expanded =
@@ -444,7 +586,7 @@ inductive CardinalityProductionStep
   | maximum
       (hnoApart : selectEqualityApartClash state = none)
       (hnoClash : selectCardinalityConceptClash state = none)
-      (hnoClause : selectCardinalityClauseGrounding ontology state = none)
+      (hnoClause : selectActiveCardinalityClauseGrounding ontology state active activeFit = none)
       (hnoWitness : selectEqUnblockedUnwitnessed state.base parent ancestors = none)
       (hnoMinimum : selectIndexedExpandableMinimum definitions state parent ancestors expanded =
         none)
@@ -465,9 +607,9 @@ def CardinalityProductionStep.ChildrenClosed
     {parent : Fin nodeCount → Option (Fin nodeCount)}
     {ancestors : Fin nodeCount → List (Fin nodeCount)}
     {expanded : Finset (IndexedCardinalitySite definitions nodeCount)}
-    {active : Nat}
+    {active : Nat} {activeFit : active ≤ nodeCount}
     (step : CardinalityProductionStep ontology definitions state parent ancestors expanded
-      active) : Prop :=
+      active activeFit) : Prop :=
   match step with
   | .equalityApart _ _ => True
   | .conceptClash _ _ _ => True
@@ -508,9 +650,9 @@ theorem CardinalityProductionStep.closedRefutes_of_children
     {parent : Fin nodeCount → Option (Fin nodeCount)}
     {ancestors : Fin nodeCount → List (Fin nodeCount)}
     {expanded : Finset (IndexedCardinalitySite definitions nodeCount)}
-    {active : Nat}
+    {active : Nat} {activeFit : active ≤ nodeCount}
     (step : CardinalityProductionStep ontology definitions state parent ancestors expanded
-      active)
+      active activeFit)
     (hchildren : step.ChildrenClosed) :
     ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions state := by
   cases step with
@@ -519,8 +661,8 @@ theorem CardinalityProductionStep.closedRefutes_of_children
   | conceptClash hnoApart candidate hselect =>
       exact (selectCardinalityConceptClash_refutes ontology definitions state hselect).toClosed
   | branch hnoApart hnoClash grounding hselect =>
-      exact selectCardinalityClauseGrounding_closedRefutes ontology definitions state
-        hselect hchildren
+      exact selectActiveCardinalityClauseGrounding_closedRefutes ontology definitions state
+        active activeFit hselect hchildren
   | witness hnoApart hnoClash hnoClause candidate hselect hfit hprefix =>
       classical
       have hcandidate := firstMatch_eq_some_mem
@@ -550,5 +692,9 @@ theorem CardinalityProductionStep.closedRefutes_of_children
 #print axioms EqState.eqGuardedFacts_materializeMinimum_subset
 #print axioms CardinalityRuntimeConfig.minimumChild_progress
 #print axioms cardinalityStrictGrowth_wellFounded
+#print axioms mem_allActiveGroundings_properties
+#print axioms selectActiveCardinalityClauseGrounding_properties
+#print axioms selectActiveCardinalityClauseGrounding_closedRefutes
+#print axioms CardinalityRuntimeConfig.clauseChild_progress
 
 end ContextCalculus.Hypertableau

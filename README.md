@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.182`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.183`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -164,6 +164,10 @@ and minimum IDs, and strict inclusion of this set is proved well-founded. The
 exact minimum successor strictly grows that set, including a zero-width
 minimum whose progress comes only from the expansion marker. Growth proofs for
 the other recursive transitions are still pending.
+Cardinality clause search now quantifies assignments over `active_nodes`, not
+the larger fixed node budget. Selected assignments are proved active, their
+successors preserve inactive-prefix freshness, and every selected absent-head
+assertion strictly grows the production progress set.
 
 ## Classify an ontology
 

@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.183] – 2026-08-21
+
+### Certify active-prefix clause recursion
+
+- Replace the full-node-budget grounding domain in cardinality production with
+  assignments into `Fin active_nodes`, lifted into the fixed finite node budget.
+- Prove every enumerated and selected grounding uses only active IDs and that a
+  selected grounding carries the exact quotient-closed body and absent-head
+  premises.
+- Prove closure of all selected head children closes the parent state.
+- Switch every later first-obstruction constructor to exhaustion of this
+  active-prefix clause selector.
+- Construct exact clause successor configurations and prove they preserve the
+  inactive-prefix invariant.
+- Prove every selected head assertion strictly grows the production progress
+  fact set and audit all endpoints without `sorryAx`.
+
+Witness and maximum growth, total recursive outcome production, concrete Rust
+field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.182] – 2026-08-21
 
 ### Establish the cardinality production termination measure
