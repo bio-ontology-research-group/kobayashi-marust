@@ -243,6 +243,13 @@ one-role/one-filler constructor and requires this checker before certified HT
 publication. More general filler-definer and domain-propagation shapes remain
 fail-closed.
 
+`HypertableauSkolemDefinerProjection.lean` proves the general finite-filler
+case. It represents the generated filler concept as `none` in an
+`Option Concept` signature, constructs it as the exact filler intersection,
+and proves source-to-target soundness and target-to-source completeness while
+preserving all original direct clauses. Whole-list composition for several
+fresh definers and the corresponding wire constructor remain open.
+
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.
 `HypertableauCertificate.lean` checks finite saturated SAT branches, while

@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.199] – 2026-08-21
+
+### Prove fresh-definer Skolem projection exact
+
+- Model the production transformation that combines several singleton filler
+  clauses for one Skolem witness through one fresh concept.
+- Represent freshness structurally with `Option Concept`, separating the new
+  definer from every source concept without a string-level assumption.
+- Prove source concepts, roles, literals, atoms, clauses, and complete direct
+  ontologies preserve and reflect satisfaction through lifting/restriction.
+- Construct the fresh concept as the exact intersection of all source fillers
+  for projection soundness.
+- Recover a shared Skolem witness from the projected existential and use every
+  checked definer implication to prove projection completeness.
+- Establish `bundleProjection_sat_iff` for arbitrary finite filler lists plus
+  untouched direct clauses.
+
+Whole-list composition for several fresh definers, executable wire decoding,
+and the production role-domain consequences remain to be connected. Cardinality
+replacement, nominal/ABox projection, the remaining HT audit, CB, and routing
+certification remain unfinished.
+
 ## [0.3.198] – 2026-08-21
 
 ### Connect production Skolem evidence to Lean
