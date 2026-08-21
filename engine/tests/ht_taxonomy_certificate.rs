@@ -297,6 +297,28 @@ fn run_isolated_certification_interface(interface: &str) -> std::process::Output
     child.wait_with_output().unwrap()
 }
 
+fn run_projection_only_certification() -> std::process::Output {
+    let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+    install_direct_projection_fixture(&mut input);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tableau_cli"))
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input).unwrap())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -344,6 +366,19 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
             String::from_utf8_lossy(&output.stderr),
         );
     }
+}
+
+#[test]
+fn projection_check_alone_cannot_publish_an_unchecked_global_verdict() {
+    let output = run_projection_only_certification();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "unchecked global verdict was published");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("requires KM_HT_LEAN_CERT_CHECKER"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 #[test]

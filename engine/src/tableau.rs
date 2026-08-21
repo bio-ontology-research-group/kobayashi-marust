@@ -6309,8 +6309,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_OUT").map(std::path::PathBuf::from);
         let lean_taxonomy_checker =
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_CHECKER").map(std::path::PathBuf::from);
-        let lean_taxonomy_requested =
-            lean_taxonomy_path.is_some() || lean_taxonomy_checker.is_some();
+        let lean_taxonomy_requested = lean_taxonomy_path.is_some()
+            || lean_taxonomy_checker.is_some()
+            || lean_native_abox_taxonomy_matrix_checker.is_some()
+            || lean_native_abox_taxonomy_source_checker.is_some();
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
                 return Err(
@@ -6335,6 +6337,11 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
+            if !native_abox_active && lean_cert_checker.is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_CERT_CHECKER".to_string(),
+                );
+            }
             if native_abox_active && lean_taxonomy_requested {
                 if lean_native_abox_taxonomy_matrix_checker.is_none() {
                     return Err(
@@ -6352,10 +6359,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if std::env::var_os("KM_HT_QO").is_some() {
                 return Err("HT Lean certificate v1 does not certify the QO route".to_string());
             }
-            if !native_abox_active
-                && lean_taxonomy_requested
-                && (lean_cert_checker.is_none() || lean_taxonomy_checker.is_none())
-            {
+            if !native_abox_active && lean_taxonomy_requested && lean_taxonomy_checker.is_none() {
                 return Err(
                     "certified HT taxonomy publication requires both the global and taxonomy Lean checkers"
                         .to_string(),

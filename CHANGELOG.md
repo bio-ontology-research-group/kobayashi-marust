@@ -99,7 +99,9 @@
   and negative cells are equivalent to their exact semantic propositions.
 - Make every HT Lean checker interface enter the same fail-closed executable
   boundary. In particular, requesting a native-ABox matrix or source taxonomy
-  checker alone can no longer fall through to unchecked HT publication.
+  checker alone can no longer fall through to unchecked HT publication. Require
+  a global verdict checker for every non-ABox certified publication, and make
+  each native taxonomy interface force complete matrix and source checking.
 
 ### Certify native-ABox cardinality taxonomies
 
