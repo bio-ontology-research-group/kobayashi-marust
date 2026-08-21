@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauNativeABoxProjection
 import ContextCalculus.HypertableauWire
+import ContextCalculus.HypertableauCardinalityDistinctWire
 
 /-!
 # Checked native-ABox projection wire
@@ -112,6 +113,48 @@ def DecodedNativeABox.negativeRoleClauses (decoded : DecodedNativeABox) :
       (decoded.primaryProxy assertion.2.2)
       assertion.1 0 1
 
+def DecodedNativeABox.seededInB (decoded : DecodedNativeABox)
+    (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount) : Bool :=
+  ((List.finRange decoded.individuals.length).all fun individual =>
+    ((decoded.abox.proxies individual ++ decoded.abox.assertions individual).all
+      fun concept => decide
+        ((root individual, Lit.pos concept) ∈ state.base.base.labels))) &&
+  (decoded.roleAssertions.all fun assertion => decide
+    ((assertion.1, root assertion.2.1, root assertion.2.2) ∈
+      state.base.base.edges)) &&
+  (decoded.different.all fun pair => decide
+    ((root pair.1, root pair.2) ∈ state.apart))
+
+theorem DecodedNativeABox.seededInB_eq_true_iff
+    (decoded : DecodedNativeABox)
+    (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount) :
+    decoded.seededInB state root = true ↔ decoded.abox.SeededIn state.state root := by
+  simp only [DecodedNativeABox.seededInB, Bool.and_eq_true, List.all_eq_true,
+    decide_eq_true_eq, NativeABox.SeededIn, FiniteDistinctEqCertificate.state,
+    FiniteEqCertificate.state, FiniteSatCertificate.state,
+    decodedNativeABox, DecodedNativeABox.abox]
+  constructor
+  · rintro ⟨⟨hlabels, hedges⟩, hapart⟩
+    refine ⟨?_, ?_, ?_⟩
+    · intro individual concept hconcept
+      exact hlabels individual (List.mem_finRange individual) concept hconcept
+    · intro assertion hassertion
+      exact hedges assertion hassertion
+    · intro pair hpair
+      exact hapart pair hpair
+  · rintro ⟨hlabels, hedges, hapart⟩
+    refine ⟨⟨?_, ?_⟩, ?_⟩
+    · intro individual _ concept hconcept
+      exact hlabels individual concept hconcept
+    · intro assertion hassertion
+      exact hedges assertion hassertion
+    · intro pair hpair
+      exact hapart pair hpair
+
 theorem DecodedNativeABox.models_negativeRoleClauses_iff
     (decoded : DecodedNativeABox)
     (I : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
@@ -210,6 +253,58 @@ def WireNativeABox.check (wire : WireNativeABox) : Except String Bool := do
   let _ ← wire.decode
   return true
 
+/-- Joint payload used to prove that a concrete finite HT state retains every
+named-root fact. `roots` is ordered exactly like `abox.individuals`. -/
+structure WireNativeABoxSeed where
+  abox : WireNativeABox
+  node_count : Nat
+  variable_count : Nat
+  roots : List Nat
+  ontology : List WireClause
+  state : WireDistinctEqState
+deriving FromJson, ToJson, Repr
+
+structure DecodedNativeABoxSeed where
+  abox : DecodedNativeABox
+  nodeCount : Nat
+  variableCount : Nat
+  roots : Fin abox.individuals.length → Fin nodeCount
+  ontology : List (Clause (Fin variableCount)
+    (Fin abox.concepts.length) (Fin abox.roles.length))
+  state : FiniteDistinctEqCertificate nodeCount abox.concepts.length
+    abox.roles.length variableCount
+  seeded : abox.abox.SeededIn state.state roots
+
+def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
+    Except String DecodedNativeABoxSeed := do
+  let abox ← wire.abox.decode
+  let ontology ← wire.ontology.mapM
+    (WireClause.decode wire.variable_count abox.concepts.length abox.roles.length)
+  let roots ← decodeAssignment wire.node_count abox.individuals.length wire.roots
+  let state ← wire.state.decode wire.node_count abox.concepts.length
+    abox.roles.length wire.variable_count ontology
+  if hseeded : abox.seededInB state roots = true then
+    return {
+      abox
+      nodeCount := wire.node_count
+      variableCount := wire.variable_count
+      roots
+      ontology
+      state
+      seeded := (abox.seededInB_eq_true_iff state roots).1 hseeded
+    }
+  else throw "finite HT state omits a native ABox seed fact"
+
+def WireNativeABoxSeed.check (wire : WireNativeABoxSeed) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
+    (decoded : DecodedNativeABoxSeed) (_hdecode : wire.decode = .ok decoded)
+    (_hcheck : wire.check = .ok true) :
+    decoded.abox.abox.SeededIn decoded.state.state decoded.roots :=
+  decoded.seeded
+
 theorem DecodedNativeABox.models_iff_seed
     (decoded : DecodedNativeABox)
     (I : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
@@ -264,10 +359,41 @@ example : rejected ({ validExample with different := [(0, 2)] }).check = true :=
 example : rejected ({ validExample with role_assertions := [[1, 0, 1]] }).check = true := by native_decide
 example : rejected ({ validExample with role_assertions := [[0, 1]] }).check = true := by native_decide
 
+private def validSeedExample : WireNativeABoxSeed where
+  abox := validExample
+  node_count := 2
+  variable_count := 2
+  roots := [0, 1]
+  ontology := []
+  state := {
+    base := {
+      labels := [
+        { node := 0, literal := { concept := 0, neg := false } },
+        { node := 0, literal := { concept := 2, neg := false } },
+        { node := 1, literal := { concept := 1, neg := false } }
+      ]
+      edges := [{ role := 0, source := 0, target := 1 }]
+      obligations := []
+      equalities := []
+      representatives := [0, 1]
+      representative_paths := [[], []]
+    }
+    apart := [{ left := 0, right := 1 }]
+  }
+
+example : validSeedExample.check = .ok true := by native_decide
+example : rejected ({ validSeedExample with roots := [0] }).check = true := by native_decide
+example : rejected ({ validSeedExample with state :=
+    { validSeedExample.state with base :=
+      { validSeedExample.state.base with labels :=
+        validSeedExample.state.base.labels.drop 1 } } }).check = true := by native_decide
+
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
 #print axioms DecodedNativeABox.models_append_negativeRoleClauses_iff
+#print axioms DecodedNativeABox.seededInB_eq_true_iff
 #print axioms WireNativeABox.check_sound
+#print axioms WireNativeABoxSeed.check_sound
 
 end Tests
 

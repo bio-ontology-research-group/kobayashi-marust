@@ -12,7 +12,10 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      match (fromJson? json : Except String WireNativeABox) with
+      match (fromJson? json : Except String WireNativeABoxSeed) with
+      | .ok document => document.check
+      | .error nativeABoxSeedError =>
+       match (fromJson? json : Except String WireNativeABox) with
       | .ok document => document.check
       | .error nativeABoxError =>
        match (fromJson? json : Except String WireBundleCardinalityProjection) with
@@ -36,7 +39,7 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
                   match (fromJson? json : Except String WireDirectProjection) with
                   | .ok document => document.check
                   | .error directError =>
-                      throw s!"neither native-ABox ({nativeABoxError}), bundle-cardinality ({bundleCardinalityError}), mixed-cardinality ({mixedCardinalityError}), direct-cardinality ({combinedError}), cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
+                      throw s!"neither native-ABox seed ({nativeABoxSeedError}), native-ABox ({nativeABoxError}), bundle-cardinality ({bundleCardinalityError}), mixed-cardinality ({mixedCardinalityError}), direct-cardinality ({combinedError}), cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
     match result with
     | .ok true =>
         IO.println "HT source projection accepted"

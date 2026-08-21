@@ -59,6 +59,46 @@ def NativeABox.NegativeRoles
   ∀ assertion ∈ abox.negativeRoleAssertions,
     ¬I.role assertion.1 (value assertion.2.1) (value assertion.2.2)
 
+/-- The concrete completion state contains every positive fact installed by
+KM's native named-root initializer. Additional derived facts are allowed. -/
+def NativeABox.SeededIn (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role) (root : Individual → Node) : Prop :=
+  (∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+        state.base.base.label (root individual) (.pos concept)) ∧
+  (∀ assertion ∈ abox.roleAssertions,
+      state.base.base.edge assertion.1
+        (root assertion.2.1) (root assertion.2.2)) ∧
+  (∀ pair ∈ abox.different, state.apart (root pair.1) (root pair.2))
+
+theorem nativeABoxSeed_realized_of_seeded
+    (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role) (root : Individual → Node)
+    (I : Interp Domain Concept Role) (nodeValue : Node → Domain)
+    (hseeded : abox.SeededIn state root)
+    (hrealized : state.RealizedBy I nodeValue) :
+    (nativeABoxSeed abox).RealizedBy I (nodeValue ∘ root) := by
+  refine ⟨⟨⟨?_, ?_, ?_⟩, ?_⟩, ?_⟩
+  · intro individual literal hlabel
+    rcases hlabel with ⟨concept, hconcept, rfl⟩
+    exact hrealized.1.1.1 (root individual) (.pos concept)
+      (hseeded.1 individual concept hconcept)
+  · intro role source target hedge
+    exact hrealized.1.1.2.1 role (root source) (root target)
+      (hseeded.2.1 (role, source, target) hedge)
+  · intro _ _ _ hfalse
+    exact hfalse.elim
+  · intro left right hequal
+    subst right
+    exact hrealized.1.2 (root left) (root left)
+      (state.base.equiv_equivalence.1 (root left))
+  · intro left right hapart
+    rcases hapart with hdirect | hreverse
+    · exact hrealized.2 (root left) (root right)
+        (hseeded.2.2 (left, right) hdirect)
+    · exact (hrealized.2 (root right) (root left)
+        (hseeded.2.2 (right, left) hreverse)).symm
+
 def negativeRoleAssertionClause (sourceProxy targetProxy : Concept)
     (role : Role) (source target : Variable) : Clause Variable Concept Role := {
   body := [
@@ -152,7 +192,22 @@ theorem nativeABoxSeed_realized_iff
       · exact hdifferent (left, right) hdirect
       · exact (hdifferent (right, left) hreverse).symm
 
+theorem NativeABox.models_of_seeded
+    (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role) (root : Individual → Node)
+    (I : Interp Domain Concept Role) (nodeValue : Node → Domain)
+    (hseeded : abox.SeededIn state root)
+    (hrealized : state.RealizedBy I nodeValue)
+    (hsingletons : abox.ProxySingletons I (nodeValue ∘ root))
+    (hnegative : abox.NegativeRoles I (nodeValue ∘ root)) :
+    abox.models I (nodeValue ∘ root) := by
+  exact (nativeABoxSeed_realized_iff abox I (nodeValue ∘ root)).1
+    ⟨nativeABoxSeed_realized_of_seeded abox state root I nodeValue hseeded hrealized,
+      hsingletons, hnegative⟩
+
 #print axioms nativeABoxSeed_realized_iff
+#print axioms nativeABoxSeed_realized_of_seeded
+#print axioms NativeABox.models_of_seeded
 #print axioms models_negativeRoleAssertionClause_iff
 
 end ContextCalculus.Hypertableau

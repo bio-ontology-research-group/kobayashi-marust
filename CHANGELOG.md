@@ -10,6 +10,9 @@
 - Prove that the named-root seed state is realized exactly when the positive
   ABox facts and explicit inequalities hold, given the checked singleton and
   negative-role obligations.
+- Prove any later distinct-equality HT state that retains the named-root labels,
+  edges, and apart facts realizes the original seed. This permits derived facts
+  without weakening the source ABox obligation.
 - Prove each guarded negative-role clash clause is equivalent to absence of the
   corresponding ground role edge, then lift this result to the complete list
   appended to a projected TBox.
@@ -18,12 +21,16 @@
   ownership, and exact three-field role assertions.
 - Extend `ht-projection-cert-check` to accept native-ABox documents and make KM
   serialize the production payload for this checker.
+- Add a joint finite-state wire with an explicit root map and exact equality,
+  label, edge, obligation, and apart state. The checker proves the concrete
+  certificate state contains every native seed fact and rejects short root maps
+  or omitted labels.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
 
-Certified nominal/ABox routing remains closed until this evidence is composed
-with every TBox projection shape and the concrete seeded-search certificate.
+Certified nominal/ABox routing remains closed until KM emits this joint seeded
+state evidence with every TBox projection shape and the concrete search result.
 No release is cut for this intermediate proof unit.
 
 ### Compose bundles, RBox evidence, and cardinality projection
