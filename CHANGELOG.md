@@ -44,6 +44,12 @@
   certificate, a closed round carries a finite refutation, and a checked
   full-address frontier is the only inconclusive result. The finite blocking
   bound proves that doubling cannot return frontiers forever.
+- Construct that conclusive regular SAT outcome directly from the concrete
+  blocked runtime terminal and serializer-refinement invariants, deriving
+  checker acceptance instead of assuming it. Transport both eventual SAT and
+  UNSAT outcomes through the checked model-equivalent normalization, so the
+  total doubling theorem now states the correct result for the original source
+  ontology rather than only its normalized target.
 
 ### Certify native named-individual ABox projection
 

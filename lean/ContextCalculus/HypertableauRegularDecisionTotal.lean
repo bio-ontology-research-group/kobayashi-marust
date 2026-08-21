@@ -1,6 +1,8 @@
 import ContextCalculus.HypertableauRegularDecisionWire
 import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauEqualityFreeDecision
+import ContextCalculus.HypertableauRegularProduction
+import ContextCalculus.HypertableauNormalizedWire
 
 /-!
 # Total checked regular equality-free HT decision
@@ -42,6 +44,40 @@ inductive CheckedRegularRoundOutcome
       (hroles : document.role_count = roleCount)
       (hcheck : document.check = true)
 
+/-- Construct the conclusive SAT outcome directly from the concrete blocked
+runtime terminal and serializer refinement data. The certificate check is a
+theorem result, not an additional producer assumption. -/
+def CheckedRegularRoundOutcome.regularSat_of_blocked_runtime_terminal
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hontology : certificate.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hwitnessRefines : runtime.BlockedWitnessRefines blocked fold)
+    (hredirectRefines : State.BlockedRedirectRefines blocked fold
+      certificate.redirect)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverEdge : ∀ role source target,
+      certificate.coverRelation role source target →
+        certificate.state.edge role source target) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  .regularSat certificate hontology hnonempty
+    (certificate.check_of_blocked_runtime_terminal runtime blocked fold hstate
+      hterminal hwitnessRefines hredirectRefines hauthorized hguarded hheads
+      hcoverClosed hcoverEdge)
+
 def CheckedRegularRoundOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -51,6 +87,45 @@ def CheckedRegularRoundOutcome.Semantics
   | .regularSat .. => HasNonemptyModel ontology
   | .finiteUnsat .. => ¬HasNonemptyModel ontology
   | .frontier .. => False
+
+/-- Interpret a checked target-ontology round at the source side of a
+model-equivalent normalization. This is the statement needed by the public
+source-ontology decision boundary. -/
+def CheckedRegularRoundOutcome.SourceSemantics
+    {target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (source : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (outcome : CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount target) : Prop :=
+  match outcome with
+  | .regularSat .. => HasNonemptyModel source
+  | .finiteUnsat .. => ¬HasNonemptyModel source
+  | .frontier .. => False
+
+/-- Exact model equivalence transports both conclusive regular decisions from
+the normalized target back to the original source ontology. -/
+theorem CheckedRegularRoundOutcome.source_semantics_of_equivalent
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount target)
+    (equivalent : ModelEquivalent source target)
+    (hsemantics : outcome.Semantics) :
+    outcome.SourceSemantics source := by
+  cases outcome with
+  | regularSat certificate hontology hnonempty hcheck =>
+      simp only [CheckedRegularRoundOutcome.Semantics,
+        CheckedRegularRoundOutcome.SourceSemantics] at hsemantics ⊢
+      rcases hsemantics with ⟨Domain, I, hdomain, htarget⟩
+      exact ⟨Domain, I, hdomain, (equivalent Domain I).mpr htarget⟩
+  | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
+      simp only [CheckedRegularRoundOutcome.Semantics,
+        CheckedRegularRoundOutcome.SourceSemantics] at hsemantics ⊢
+      rintro ⟨Domain, I, hdomain, hsource⟩
+      exact hsemantics ⟨Domain, I, hdomain, (equivalent Domain I).mp hsource⟩
+  | frontier document hconcepts hroles hcheck =>
+      exact hsemantics
 
 theorem CheckedRegularRoundOutcome.regularSat_semantics
     {ontology : List
@@ -150,9 +225,27 @@ theorem checked_regular_doubling_decides
       hconcepts hroles
   exact hrejected (hchecks round)
 
+/-- Source-level totality for the checked equality-free regular route. Under
+KM's doubling schedule, a target normalization that is model-equivalent to the
+source eventually yields the correct SAT or UNSAT statement for the source. -/
+theorem checked_regular_doubling_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (run : Nat → CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount target)
+    (hnodes : ∀ round document hconcepts hroles hcheck,
+      run round = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ round) :
+    ∃ round, (run round).SourceSemantics source := by
+  obtain ⟨round, hsemantics⟩ := checked_regular_doubling_decides run hnodes
+  exact ⟨round, (run round).source_semantics_of_equivalent equivalent hsemantics⟩
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides
+#print axioms CheckedRegularRoundOutcome.source_semantics_of_equivalent
+#print axioms checked_regular_doubling_decides_source
 
 end ContextCalculus.Hypertableau
