@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauEqualityRuntimeSearch
 import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauEqualityNormalization
+import ContextCalculus.HypertableauRegularProduction
 
 /-!
 # Checked bounded equality-aware HT outcomes
@@ -193,11 +194,47 @@ theorem checked_equality_doubling_decides_source
   obtain ⟨round, hsemantics⟩ := checked_equality_doubling_decides run hnodes
   exact ⟨round, (run round).source_semantics_of_equivalent equivalent hsemantics⟩
 
+/-- Equality-aware production first learns away rejected blocker folds at each
+fixed budget, then uses the checked address frontier to justify doubling. -/
+theorem checked_equality_fold_learning_doubling_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (forbidden : ∀ budget,
+      Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (hlearn : ∀ budget retry folds,
+      attempt budget retry = .rejected folds →
+        forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+          ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      attempt budget retry = .done (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      attempt budget retry = .done outcome ∧ outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      attempt budget retry = .done outcome := by
+    intro budget
+    exact fold_learning_eventually_done (attempt budget) (forbidden budget)
+      (hlearn budget)
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hcheck,
+      settled budget = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_equality_doubling_decides_source equivalent settled hsettledNodes
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
 #print axioms checked_equality_doubling_decides
 #print axioms CheckedEqualityDecisionOutcome.source_semantics_of_equivalent
 #print axioms checked_equality_doubling_decides_source
+#print axioms checked_equality_fold_learning_doubling_decides_source
 
 end ContextCalculus.Hypertableau

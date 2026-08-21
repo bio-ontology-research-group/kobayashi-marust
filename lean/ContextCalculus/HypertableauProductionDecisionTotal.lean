@@ -44,11 +44,17 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (run : Nat → CheckedEqualityDecisionOutcome
-        conceptCount roleCount variableCount target)
-      (hnodes : ∀ round document hconcepts hroles hcheck,
-        run round = .frontier document hconcepts hroles hcheck →
-          document.node_count = 8 * 2 ^ round) :
+      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+        (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+      (forbidden : ∀ budget,
+        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (hlearn : ∀ budget retry folds,
+        attempt budget retry = .rejected folds →
+          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+      (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+        attempt budget retry = .done (.frontier document hconcepts hroles hcheck) →
+          document.node_count = 8 * 2 ^ budget) :
       CertifiedHTProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
       {source target : List
@@ -57,13 +63,22 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (run : Nat → CheckedCardinalityDecisionOutcome
-        conceptCount roleCount variableCount target definitions)
-      (hnodes : ∀ round document hconcepts hroles hdefinitions hcheck,
-        run round = .frontier document hconcepts hroles hdefinitions hcheck →
-          document.node_count = 8 * 2 ^ round)
-      (hwidth : ∀ round document hconcepts hroles hdefinitions hcheck,
-        run round = .frontier document hconcepts hroles hdefinitions hcheck →
+      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+        (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+          target definitions))
+      (forbidden : ∀ budget,
+        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (hlearn : ∀ budget retry folds,
+        attempt budget retry = .rejected folds →
+          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+      (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+        attempt budget retry = .done
+          (.frontier document hconcepts hroles hdefinitions hcheck) →
+          document.node_count = 8 * 2 ^ budget)
+      (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+        attempt budget retry = .done
+          (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.max_width = maxWidth) :
       CertifiedHTProductionGlobalRoute
         (CardinalityHasNonemptyModel source definitions)
@@ -76,13 +91,22 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (run : Nat → CheckedNativeABoxCardinalityOutcome Individual conceptCount
-        roleCount variableCount abox target definitions)
-      (hnodes : ∀ round document hconcepts hroles hdefinitions hcheck,
-        run round = .frontier document hconcepts hroles hdefinitions hcheck →
-          document.node_count = 8 * 2 ^ round)
-      (hwidth : ∀ round document hconcepts hroles hdefinitions hcheck,
-        run round = .frontier document hconcepts hroles hdefinitions hcheck →
+      (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+        (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+          variableCount abox target definitions))
+      (forbidden : ∀ budget,
+        Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (hlearn : ∀ budget retry folds,
+        attempt budget retry = .rejected folds →
+          forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+            ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+      (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+        attempt budget retry = .done
+          (.frontier document hconcepts hroles hdefinitions hcheck) →
+          document.node_count = 8 * 2 ^ budget)
+      (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+        attempt budget retry = .done
+          (.frontier document hconcepts hroles hdefinitions hcheck) →
           document.max_width = maxWidth) :
       CertifiedHTProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
@@ -109,10 +133,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent run hnodes =>
-      obtain ⟨round, hsemantics⟩ :=
-        checked_equality_doubling_decides_source equivalent run hnodes
-      generalize houtcome : run round = outcome at hsemantics
+  | equality equivalent attempt forbidden hlearn hnodes =>
+      obtain ⟨_, _, outcome, _, hsemantics⟩ :=
+        checked_equality_fold_learning_doubling_decides_source equivalent
+          attempt forbidden hlearn hnodes
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -120,11 +144,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth run hnodes hwidth =>
-      obtain ⟨round, hsemantics⟩ :=
-        checked_cardinality_doubling_decides_source equivalent maxWidth run
-          hnodes hwidth
-      generalize houtcome : run round = outcome at hsemantics
+  | cardinality equivalent maxWidth attempt forbidden hlearn hnodes hwidth =>
+      obtain ⟨_, _, outcome, _, hsemantics⟩ :=
+        checked_cardinality_fold_learning_doubling_decides_source equivalent
+          maxWidth attempt forbidden hlearn hnodes hwidth
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -132,11 +155,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth run hnodes hwidth =>
-      obtain ⟨round, hsemantics⟩ :=
-        checked_native_abox_cardinality_doubling_decides_source equivalent
-          maxWidth run hnodes hwidth
-      generalize houtcome : run round = outcome at hsemantics
+  | nativeABox equivalent maxWidth attempt forbidden hlearn hnodes hwidth =>
+      obtain ⟨_, _, outcome, _, hsemantics⟩ :=
+        checked_native_abox_cardinality_fold_learning_doubling_decides_source
+          equivalent maxWidth attempt forbidden hlearn hnodes hwidth
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>

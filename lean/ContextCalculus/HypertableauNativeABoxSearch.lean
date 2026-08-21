@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauCardinalityFrontierWire
 import ContextCalculus.HypertableauEqualityNormalization
+import ContextCalculus.HypertableauRegularProduction
 
 /-!
 # Total checked native-ABox cardinality search
@@ -218,9 +219,62 @@ theorem checked_native_abox_cardinality_doubling_decides_source
         (hroles round) (hdefinitions round) (hchecks round) (heq round))
   exact hrejected (hchecks round)
 
+/-- Native-ABox production also settles all fresh blocker rejections at a fixed
+budget before its checked cardinality frontier can justify doubling. -/
+theorem checked_native_abox_cardinality_fold_learning_doubling_decides_source
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (forbidden : ∀ budget,
+      Nat → Finset (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (hlearn : ∀ budget retry folds,
+      attempt budget retry = .rejected folds →
+        forbidden budget (retry + 1) = forbidden budget retry ∪ folds ∧
+          ∃ fold ∈ folds, fold ∉ forbidden budget retry)
+    (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      attempt budget retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.node_count = 8 * 2 ^ budget)
+    (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      attempt budget retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.max_width = maxWidth) :
+    ∃ budget retry outcome,
+      attempt budget retry = .done outcome ∧ outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      attempt budget retry = .done outcome := by
+    intro budget
+    exact fold_learning_eventually_done (attempt budget) (forbidden budget)
+      (hlearn budget)
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  have hsettledWidth : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.max_width = maxWidth := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hwidth budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_native_abox_cardinality_doubling_decides_source equivalent maxWidth
+      settled hsettledNodes hsettledWidth
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 #print axioms CheckedNativeABoxCardinalityOutcome.sat_semantics
 #print axioms CheckedNativeABoxCardinalityOutcome.closed_semantics
 #print axioms CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent
 #print axioms checked_native_abox_cardinality_doubling_decides_source
+#print axioms checked_native_abox_cardinality_fold_learning_doubling_decides_source
 
 end ContextCalculus.Hypertableau

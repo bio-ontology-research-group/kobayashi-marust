@@ -48,6 +48,15 @@
   attempts regular unravelling; rejection of either blocked candidate records
   its exact fold pairs and retries at the same node budget. Complete matrices
   continue to require the source-aware Lean taxonomy publication checker.
+- Preserve exact blocker provenance in equality and cardinality open states,
+  including native-ABox and taxonomy searches. If an independent Lean checker
+  rejects a materialized quotient, KM forbids those fold pairs and retries the
+  same budget; a rejected fold-free candidate fails closed instead of blindly
+  repeating the same state at a doubled budget.
+- Prove source-level learned-fold-plus-doubling theorems for equality,
+  cardinality, and native-ABox searches. The unified production-global route
+  now requires this two-level termination argument for every HT family, not
+  only for equality-free regular search.
 
 ### Unify total production HT global decisions
 

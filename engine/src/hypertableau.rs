@@ -3265,10 +3265,16 @@ impl LeanHtRefutationState {
             && closed_roles_equal(left, left_parent, right, right_parent)
     }
 
-    fn quotient_pairwise_blocker_ancestor(&self, node: Node) -> Option<Node> {
+    fn quotient_pairwise_blocker_ancestor_avoiding(
+        &self,
+        node: Node,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> Option<Node> {
         let mut ancestor = self.witness_parent.get(node).copied().flatten();
         while let Some(candidate) = ancestor {
-            if self.same_quotient_pairwise_signature(candidate, node) {
+            if !forbidden_folds.contains(&(node, candidate))
+                && self.same_quotient_pairwise_signature(candidate, node)
+            {
                 return Some(candidate);
             }
             ancestor = self.witness_parent.get(candidate).copied().flatten();
@@ -3276,14 +3282,17 @@ impl LeanHtRefutationState {
         None
     }
 
-    fn equality_blocked_open_state(&self) -> LeanHtEqState {
+    fn equality_blocked_open_state_avoiding(
+        &self,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> LeanHtEqState {
         let mut state = self.equality_wire_state(self.active_nodes);
         let mut folds: Vec<(Node, Node)> = self
             .obligations
             .iter()
             .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
             .filter_map(|&(_, _, source)| {
-                self.quotient_pairwise_blocker_ancestor(source)
+                self.quotient_pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
                     .map(|blocker| (source, blocker))
             })
             .collect();
@@ -3317,12 +3326,19 @@ impl LeanHtRefutationState {
         state
     }
 
-    fn cardinality_blocked_open_state(&self) -> LeanHtEqState {
+    fn cardinality_blocked_open_state_avoiding(
+        &self,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> LeanHtEqState {
         let mut state = self.equality_wire_state(self.active_nodes);
+        let mut folds = Vec::new();
         for blocked in 0..self.active_nodes {
-            let Some(blocker) = self.quotient_pairwise_blocker_ancestor(blocked) else {
+            let Some(blocker) =
+                self.quotient_pairwise_blocker_ancestor_avoiding(blocked, forbidden_folds)
+            else {
                 continue;
             };
+            folds.push((blocked, blocker));
             for &(role, source, target) in &self.edge_order {
                 if self.equivalent(source, blocker) {
                     state.edges.push(LeanHtEdge {
@@ -3340,6 +3356,9 @@ impl LeanHtRefutationState {
                 }
             }
         }
+        folds.sort_unstable();
+        folds.dedup();
+        state.folds = folds;
         state
             .edges
             .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
@@ -10763,6 +10782,21 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtEqRefutationOutcome {
+        self.lean_eq_refutation_avoiding_folds(
+            state,
+            variable_count,
+            node_budget,
+            &HashSet::new(),
+        )
+    }
+
+    fn lean_eq_refutation_avoiding_folds(
+        &self,
+        state: &mut LeanHtRefutationState,
+        variable_count: usize,
+        node_budget: usize,
+        forbidden_folds: &HashSet<(Node, Node)>,
+    ) -> LeanHtEqRefutationOutcome {
         if state.clashes() {
             return LeanHtEqRefutationOutcome::Closed(
                 LeanHtEqRefutationTree::Clash,
@@ -10799,7 +10833,12 @@ impl Ht {
                         "HT equality certificate recursion must add a finite fact"
                     );
                     let successor = state.equality_wire_state(node_budget);
-                    let result = self.lean_eq_refutation(state, variable_count, node_budget);
+                    let result = self.lean_eq_refutation_avoiding_folds(
+                        state,
+                        variable_count,
+                        node_budget,
+                        forbidden_folds,
+                    );
                     state.remove(atom, &assignment);
                     let (child, child_used) = match result {
                         LeanHtEqRefutationOutcome::Closed(child, child_used) => (child, child_used),
@@ -10832,7 +10871,11 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
-            .filter(|&(_, _, source)| state.quotient_pairwise_blocker_ancestor(source).is_none())
+            .filter(|&(_, _, source)| {
+                state
+                    .quotient_pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
+                    .is_none()
+            })
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -10863,7 +10906,12 @@ impl Ht {
             );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
-            let result = self.lean_eq_refutation(state, variable_count, node_budget);
+            let result = self.lean_eq_refutation_avoiding_folds(
+                state,
+                variable_count,
+                node_budget,
+                forbidden_folds,
+            );
             state.label_order.remove(0);
             state.edge_order.remove(0);
             state.labels.remove(&label);
@@ -10893,7 +10941,9 @@ impl Ht {
                 }
             };
         }
-        LeanHtEqRefutationOutcome::Open(state.equality_blocked_open_state())
+        LeanHtEqRefutationOutcome::Open(
+            state.equality_blocked_open_state_avoiding(forbidden_folds),
+        )
     }
 
     fn pad_distinct_cardinality_tree(
@@ -10915,6 +10965,23 @@ impl Ht {
         definitions: &[(C, CardDef)],
         variable_count: usize,
         node_budget: usize,
+    ) -> LeanHtDistinctCardinalityRefutationOutcome {
+        self.lean_distinct_cardinality_refutation_avoiding_folds(
+            state,
+            definitions,
+            variable_count,
+            node_budget,
+            &HashSet::new(),
+        )
+    }
+
+    fn lean_distinct_cardinality_refutation_avoiding_folds(
+        &self,
+        state: &mut LeanHtRefutationState,
+        definitions: &[(C, CardDef)],
+        variable_count: usize,
+        node_budget: usize,
+        forbidden_folds: &HashSet<(Node, Node)>,
     ) -> LeanHtDistinctCardinalityRefutationOutcome {
         if let Some((left, right)) = state.equality_apart_clash() {
             return LeanHtDistinctCardinalityRefutationOutcome::Closed(
@@ -10955,11 +11022,12 @@ impl Ht {
                         "HT distinct certificate recursion must add a finite fact"
                     );
                     let successor = state.distinct_wire_state(node_budget);
-                    let result = self.lean_distinct_cardinality_refutation(
+                    let result = self.lean_distinct_cardinality_refutation_avoiding_folds(
                         state,
                         definitions,
                         variable_count,
                         node_budget,
+                        forbidden_folds,
                     );
                     state.remove(atom, &assignment);
                     let (tree, depth) = match result {
@@ -11004,7 +11072,11 @@ impl Ht {
             .iter()
             .copied()
             .filter(|&(role, filler, source)| !state.witness_for(role, filler, source))
-            .filter(|&(_, _, source)| state.quotient_pairwise_blocker_ancestor(source).is_none())
+            .filter(|&(_, _, source)| {
+                state
+                    .quotient_pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
+                    .is_none()
+            })
             .min();
         if let Some((role, filler, source)) = obligation {
             if state.active_nodes >= node_budget {
@@ -11042,11 +11114,12 @@ impl Ht {
             );
             state.edge_order.insert(0, edge);
             state.label_order.insert(0, label);
-            let result = self.lean_distinct_cardinality_refutation(
+            let result = self.lean_distinct_cardinality_refutation_avoiding_folds(
                 state,
                 definitions,
                 variable_count,
                 node_budget,
+                forbidden_folds,
             );
             state.label_order.remove(0);
             state.edge_order.remove(0);
@@ -11095,7 +11168,9 @@ impl Ht {
                     || state.minimums.iter().any(|&(candidate, expanded)| {
                         candidate == definition_id && state.equivalent(expanded, source)
                     })
-                    || state.quotient_pairwise_blocker_ancestor(source).is_some()
+                    || state
+                        .quotient_pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
+                        .is_some()
                 {
                     continue;
                 }
@@ -11162,11 +11237,12 @@ impl Ht {
                     "HT minimum recursion must add finite facts"
                 );
                 let successor = state.distinct_wire_state(node_budget);
-                let result = self.lean_distinct_cardinality_refutation(
+                let result = self.lean_distinct_cardinality_refutation_avoiding_folds(
                     state,
                     definitions,
                     variable_count,
                     node_budget,
+                    forbidden_folds,
                 );
                 for &(node, literal) in &state.label_order[old_labels..] {
                     state.labels.remove(&(node, literal));
@@ -11263,11 +11339,12 @@ impl Ht {
                             "HT maximum recursion must add an equality fact"
                         );
                         let successor = state.distinct_wire_state(node_budget);
-                        let result = self.lean_distinct_cardinality_refutation(
+                        let result = self.lean_distinct_cardinality_refutation_avoiding_folds(
                             state,
                             definitions,
                             variable_count,
                             node_budget,
+                            forbidden_folds,
                         );
                         state.equalities.pop();
                         let (tree, depth) = match result {
@@ -11323,7 +11400,9 @@ impl Ht {
                 );
             }
         }
-        LeanHtDistinctCardinalityRefutationOutcome::Open(state.cardinality_blocked_open_state())
+        LeanHtDistinctCardinalityRefutationOutcome::Open(
+            state.cardinality_blocked_open_state_avoiding(forbidden_folds),
+        )
     }
 
     fn lean_eq_refutation_certificate_json(
@@ -11734,9 +11813,15 @@ impl Ht {
             role_count = role_count.max(role as usize + 1);
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
-            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+            match self.lean_eq_refutation_avoiding_folds(
+                &mut state,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
                 LeanHtEqRefutationOutcome::Closed(_, _) => {
                     let refutation = self.lean_native_abox_unsat_refutation_json()?;
                     let refutation: serde_json::Value =
@@ -11747,6 +11832,7 @@ impl Ht {
                     })).map_err(|error| error.to_string())?));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
+                    let folds = open.folds.clone();
                     let seed = self.lean_native_abox_seed_json(
                         open,
                         variable_count,
@@ -11770,11 +11856,16 @@ impl Ht {
                     if passes {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "native ABox equality",
-                    )?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free native ABox equality candidate"
+                                .to_string(),
+                        );
+                    }
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -11860,13 +11951,15 @@ impl Ht {
             })
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
-            match self.lean_distinct_cardinality_refutation(
+            match self.lean_distinct_cardinality_refutation_avoiding_folds(
                 &mut state,
                 &definitions,
                 variable_count,
                 node_budget,
+                &forbidden_folds,
             ) {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
                     let refutation = self.lean_native_abox_cardinality_unsat_refutation_json()?;
@@ -11882,6 +11975,7 @@ impl Ht {
                     ));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                    let folds = open.folds.clone();
                     let seed = self.lean_native_abox_seed_json(
                         open,
                         variable_count,
@@ -11910,11 +12004,16 @@ impl Ht {
                     if passes {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "native ABox cardinality",
-                    )?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free native ABox cardinality candidate"
+                                .to_string(),
+                        );
+                    }
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12369,13 +12468,20 @@ impl Ht {
         }
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
-            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+            match self.lean_eq_refutation_avoiding_folds(
+                &mut state,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
                 LeanHtEqRefutationOutcome::Closed(_, _) => {
                     return Ok((false, self.lean_unsat_certificate_json()?));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
+                    let folds = state.folds.clone();
                     let anchored_state = state.clone();
                     let node_count = state.representatives.len();
                     let raw = serde_json::to_string(&LeanHtEqCertificate {
@@ -12402,8 +12508,15 @@ impl Ht {
                             return Ok((true, anchored));
                         }
                     }
-                    node_budget =
-                        Self::deepen_after_rejected_candidate(node_budget, deepen, "equality")?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free equality decision candidate".to_string(),
+                        );
+                    }
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12439,18 +12552,21 @@ impl Ht {
             .collect();
         definitions.sort_unstable_by_key(|&(marker, _)| marker);
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
-            match self.lean_distinct_cardinality_refutation(
+            match self.lean_distinct_cardinality_refutation_avoiding_folds(
                 &mut state,
                 &definitions,
                 variable_count,
                 node_budget,
+                &forbidden_folds,
             ) {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
                     return Ok((false, self.lean_unsat_certificate_json()?));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
+                    let folds = state.folds.clone();
                     let node_count = state.representatives.len();
                     let equality = serde_json::to_string(&LeanHtEqCertificate {
                         version: 2,
@@ -12468,8 +12584,15 @@ impl Ht {
                     if self.lean_decision_candidate_passes(&candidate)? {
                         return Ok((true, candidate));
                     }
-                    node_budget =
-                        Self::deepen_after_rejected_candidate(node_budget, deepen, "cardinality")?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free cardinality decision candidate".to_string(),
+                        );
+                    }
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12554,18 +12677,21 @@ impl Ht {
                 .map(|(&marker, &definition)| (marker, definition))
                 .collect();
             definitions.sort_unstable_by_key(|&(marker, _)| marker);
+            let mut forbidden_folds = HashSet::new();
             loop {
                 let mut state = LeanHtRefutationState::root(&initial_labels);
-                match self.lean_distinct_cardinality_refutation(
+                match self.lean_distinct_cardinality_refutation_avoiding_folds(
                     &mut state,
                     &definitions,
                     variable_count,
                     node_budget,
+                    &forbidden_folds,
                 ) {
                     LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
                         return Ok((false, closed_document()?));
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
+                        let folds = state.folds.clone();
                         let node_count = state.representatives.len();
                         let anchored = self
                             .lean_anchored_cardinality_open_certificate_json(&state)
@@ -12592,11 +12718,16 @@ impl Ht {
                         if self.lean_taxonomy_candidate_passes(&candidate)? {
                             return Ok((true, candidate));
                         }
-                        node_budget = Self::deepen_after_rejected_candidate(
-                            node_budget,
-                            deepen,
-                            "cardinality taxonomy",
-                        )?;
+                        let mut learned = false;
+                        for fold in folds {
+                            learned |= forbidden_folds.insert(fold);
+                        }
+                        if !learned {
+                            return Err(
+                                "Lean rejected a fold-free cardinality taxonomy candidate"
+                                    .to_string(),
+                            );
+                        }
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                         return Err("taxonomy query reached the configured cardinality node cap"
@@ -12628,13 +12759,20 @@ impl Ht {
                 .any(|atom| matches!(atom, Atom::Eq { .. }))
         });
         if has_equality {
+            let mut forbidden_folds = HashSet::new();
             loop {
                 let mut state = LeanHtRefutationState::root(&initial_labels);
-                match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                match self.lean_eq_refutation_avoiding_folds(
+                    &mut state,
+                    variable_count,
+                    node_budget,
+                    &forbidden_folds,
+                ) {
                     LeanHtEqRefutationOutcome::Closed(_, _) => {
                         return Ok((false, closed_document()?));
                     }
                     LeanHtEqRefutationOutcome::Open(state) => {
+                        let folds = state.folds.clone();
                         if let Ok(anchored) =
                             self.lean_anchored_equality_open_certificate_json(&state)
                         {
@@ -12669,11 +12807,16 @@ impl Ht {
                         if self.lean_taxonomy_candidate_passes(&candidate)? {
                             return Ok((true, candidate));
                         }
-                        node_budget = Self::deepen_after_rejected_candidate(
-                            node_budget,
-                            deepen,
-                            "equality taxonomy",
-                        )?;
+                        let mut learned = false;
+                        for fold in folds {
+                            learned |= forbidden_folds.insert(fold);
+                        }
+                        if !learned {
+                            return Err(
+                                "Lean rejected a fold-free equality taxonomy candidate"
+                                    .to_string(),
+                            );
+                        }
                     }
                     LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                         return Err(
@@ -12856,13 +12999,15 @@ impl Ht {
             }),
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
-            match self.lean_distinct_cardinality_refutation(
+            match self.lean_distinct_cardinality_refutation_avoiding_folds(
                 &mut state,
                 &definitions,
                 variable_count,
                 node_budget,
+                &forbidden_folds,
             ) {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
                     let root_state = state.equality_wire_state(node_budget);
@@ -12912,6 +13057,7 @@ impl Ht {
                     return Ok((false, document));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                    let folds = open.folds.clone();
                     let seed = self.lean_native_abox_seed_json(
                         open,
                         variable_count,
@@ -12937,11 +13083,16 @@ impl Ht {
                     {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "native ABox cardinality taxonomy",
-                    )?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free native ABox cardinality taxonomy candidate"
+                                .to_string(),
+                        );
+                    }
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -13005,9 +13156,15 @@ impl Ht {
             }),
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
-            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+            match self.lean_eq_refutation_avoiding_folds(
+                &mut state,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
                 LeanHtEqRefutationOutcome::Closed(_, _) => {
                     let raw = self.lean_eq_refutation_certificate_json_impl(
                         &initial_labels,
@@ -13098,6 +13255,7 @@ impl Ht {
                     return Ok((false, document));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
+                    let folds = open.folds.clone();
                     let seed = self.lean_native_abox_seed_json(
                         open,
                         variable_count,
@@ -13118,11 +13276,16 @@ impl Ht {
                     if passes {
                         return Ok((true, candidate));
                     }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "native ABox taxonomy",
-                    )?;
+                    let mut learned = false;
+                    for fold in folds {
+                        learned |= forbidden_folds.insert(fold);
+                    }
+                    if !learned {
+                        return Err(
+                            "Lean rejected a fold-free native ABox taxonomy candidate"
+                                .to_string(),
+                        );
+                    }
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -24979,6 +25142,30 @@ mod tests {
             Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
         ];
         let equality = Ht::new_certified(clauses.clone());
+        let mut equality_state = LeanHtRefutationState::root(&[]);
+        let LeanHtEqRefutationOutcome::Open(equality_open) =
+            equality.lean_eq_refutation(&mut equality_state, 1, 4)
+        else {
+            panic!("the equality-aware cyclic branch must expose a blocker fold");
+        };
+        assert_eq!(equality_open.folds, vec![(2, 1)]);
+        let rejected: HashSet<_> = equality_open.folds.iter().copied().collect();
+        let mut equality_retry = LeanHtRefutationState::root(&[]);
+        match equality.lean_eq_refutation_avoiding_folds(
+            &mut equality_retry,
+            1,
+            4,
+            &rejected,
+        ) {
+            LeanHtEqRefutationOutcome::Open(retry) => {
+                assert!(retry.folds.iter().all(|fold| !rejected.contains(fold)));
+                assert!(retry.representatives.len() > equality_open.representatives.len());
+            }
+            LeanHtEqRefutationOutcome::Frontier(frontier) => {
+                assert_eq!(frontier.node_count, 4);
+            }
+            _ => panic!("rejected equality fold did not force expansion or a frontier"),
+        }
         let (sat, equality_document) = equality
             .lean_equality_decision_certificate_json()
             .expect("the equality-aware cyclic branch has a finite fold");
@@ -24996,6 +25183,37 @@ mod tests {
                 filler: CLit::pos(A),
             },
         )]));
+        let definitions = vec![(B, cardinality.card_defs[&B])];
+        let mut cardinality_state = LeanHtRefutationState::root(&[]);
+        let LeanHtDistinctCardinalityRefutationOutcome::Open(cardinality_open) = cardinality
+            .lean_distinct_cardinality_refutation(
+                &mut cardinality_state,
+                &definitions,
+                1,
+                4,
+            )
+        else {
+            panic!("the cardinality-aware cyclic branch must expose a blocker fold");
+        };
+        assert_eq!(cardinality_open.folds, vec![(2, 1)]);
+        let rejected: HashSet<_> = cardinality_open.folds.iter().copied().collect();
+        let mut cardinality_retry = LeanHtRefutationState::root(&[]);
+        match cardinality.lean_distinct_cardinality_refutation_avoiding_folds(
+            &mut cardinality_retry,
+            &definitions,
+            1,
+            4,
+            &rejected,
+        ) {
+            LeanHtDistinctCardinalityRefutationOutcome::Open(retry) => {
+                assert!(retry.folds.iter().all(|fold| !rejected.contains(fold)));
+                assert!(retry.representatives.len() > cardinality_open.representatives.len());
+            }
+            LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                assert_eq!(frontier.node_count, 4);
+            }
+            _ => panic!("rejected cardinality fold did not force expansion or a frontier"),
+        }
         let (sat, cardinality_document) = cardinality
             .lean_cardinality_decision_certificate_json()
             .expect("the cardinality-aware cyclic branch has a finite fold");
