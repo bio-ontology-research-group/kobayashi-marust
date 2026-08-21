@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.190`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.191`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -95,8 +95,10 @@ constructing the exact typed production state, active prefix, and
 expanded-minimum set. Checked concrete clause, witness, minimum, and maximum
 successors now equal the corresponding typed Lean production children,
 including exact active-node changes and extensional expanded-minimum `HashSet`
-semantics. Rust outcome correspondence, CB, and automatic routing remain
-unfinished. Equality
+semantics. The unified checked-successor predicate now proves every concrete
+recursive successor is a child in the well-founded production relation. Rust
+recursive result construction, CB, and automatic routing remain unfinished.
+Equality
 countermodel paths are unchanged.
 
 The cardinality runtime refinement now covers all six ordered controls.
@@ -159,8 +161,9 @@ production search well founded. Its total result is a checked closed branch, an
 independently checked nonempty cardinality model, or an explicit budget
 frontier. Concrete runtime fields now construct this typed search state after
 executable validation, and all four recursive Rust successor families now map
-to the exact typed child configurations. Exact Rust outcome construction
-remains to be connected.
+to the exact typed child configurations and therefore into the proved
+strict-growth recursion. Exact Rust recursive result construction remains to
+be connected.
 Cardinality minimum and maximum scans now retain stored definition IDs instead
 of identifying definitions structurally. Minimum suppression uses the same
 definition ID at any equality-equivalent previously expanded source, matching

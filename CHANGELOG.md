@@ -2,6 +2,24 @@
 
 ## [unreleased]
 
+## [0.3.191] – 2026-08-21
+
+### Connect checked Rust successors to production recursion
+
+- Define one concrete successor predicate by case over the selected
+  first-obstruction step.
+- Reject successors for immediate equality-apart and concept clashes.
+- Require every recursive clause, witness, minimum, or maximum successor to
+  pass its exact field-transition checker, including the selected head atom or
+  unequal maximum witness indices.
+- Prove every concrete checked successor is an exact `ChildConfig` of the
+  selected production step. This composes Rust mutation with the existing
+  strict-growth, well-founded recursion, and parent-closure theorems.
+- Audit the composition endpoint without `sorryAx`.
+
+Concrete Rust recursive result construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.190] – 2026-08-21
 
 ### Prove concrete cardinality production transitions exact

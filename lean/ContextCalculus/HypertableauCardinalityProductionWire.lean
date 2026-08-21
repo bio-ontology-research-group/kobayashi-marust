@@ -370,6 +370,78 @@ theorem FiniteCardinalityRuntimeFields.maximumTransitionB_config
       FiniteCardinalityRuntimeFields.mem_toConfig_expanded]
     exact hexpanded candidate
 
+/-- A concrete checked successor emitted for one selected production step.
+Immediate clashes have no successors. Each recursive case uses the exact Rust
+field mutation checked above. -/
+def FiniteCardinalityRuntimeFields.CheckedChildTransition
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (step : CardinalityProductionStep ontology definitions
+      (current.toConfig hcurrent).state parent ancestors
+      (current.toConfig hcurrent).expanded (current.toConfig hcurrent).active
+      (current.toConfig hcurrent).active_le) : Prop :=
+  match step with
+  | .equalityApart _ _ => False
+  | .conceptClash _ _ _ => False
+  | .branch _ _ grounding _ =>
+      ∃ atom, atom ∈ grounding.1.head ∧
+        current.clauseTransitionB next grounding.2 atom = true
+  | .witness _ _ _ candidate _ hfit _ =>
+      current.witnessTransitionB next candidate.2.2
+        (rustNextTarget (current.toConfig hcurrent).active nodeCount hfit)
+        candidate.1 candidate.2.1 = true
+  | .minimum _ _ _ _ site _ hfit _ =>
+      current.minimumTransitionB next site
+        (rustConsecutiveTargets (current.toConfig hcurrent).active
+          (definitions.get site.1).bound nodeCount hfit) = true
+  | .maximum _ _ _ _ _ site _ hwidth _ =>
+      ∃ left right, ∃ hne : left ≠ right,
+        current.maximumTransitionB next
+          (rustPrefixVector
+            (rustMaximumRepresentatives (current.toConfig hcurrent).state
+              (definitions.get site.1) site.2)
+            ((definitions.get site.1).bound + 1) hwidth left)
+          (rustPrefixVector
+            (rustMaximumRepresentatives (current.toConfig hcurrent).state
+              (definitions.get site.1) site.2)
+            ((definitions.get site.1).bound + 1) hwidth right) = true
+
+theorem FiniteCardinalityRuntimeFields.checkedChildTransition_childConfig
+    (current next : FiniteCardinalityRuntimeFields
+      nodeCount conceptCount roleCount variableCount definitions)
+    (hcurrent : current.check = true) (hnext : next.check = true)
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (step : CardinalityProductionStep ontology definitions
+      (current.toConfig hcurrent).state parent ancestors
+      (current.toConfig hcurrent).expanded (current.toConfig hcurrent).active
+      (current.toConfig hcurrent).active_le)
+    (htransition : current.CheckedChildTransition next hcurrent ontology parent ancestors step) :
+    step.ChildConfig (current.toConfig hcurrent) parent ancestors (next.toConfig hnext) := by
+  cases step with
+  | equalityApart candidate hselect => exact htransition.elim
+  | conceptClash hnoApart candidate hselect => exact htransition.elim
+  | branch hnoApart hnoClash grounding hselect =>
+      rcases htransition with ⟨atom, hatom, hchecked⟩
+      exact ⟨atom, hatom,
+        current.clauseTransitionB_config next hcurrent hnext ontology hselect atom hchecked⟩
+  | witness hnoApart hnoClash hnoClause candidate hselect hfit hprefix =>
+      exact current.witnessTransitionB_config next hcurrent hnext parent ancestors
+        hselect hfit htransition
+  | minimum hnoApart hnoClash hnoClause hnoWitness site hselect hfit hprefix =>
+      exact current.minimumTransitionB_config next hcurrent hnext parent ancestors
+        hselect hfit htransition
+  | maximum hnoApart hnoClash hnoClause hnoWitness hnoMinimum site hselect hwidth hprefix =>
+      rcases htransition with ⟨left, right, hne, hchecked⟩
+      exact ⟨left, right, hne,
+        current.maximumTransitionB_config next hcurrent hnext hselect hwidth
+          left right hne hchecked⟩
+
 #print axioms FiniteCardinalityRuntimeFields.mem_toConfig_expanded
 #print axioms FiniteCardinalityRuntimeFields.expandedMinimums_nodup
 #print axioms FiniteCardinalityRuntimeFields.expanded_kind
@@ -379,5 +451,6 @@ theorem FiniteCardinalityRuntimeFields.maximumTransitionB_config
 #print axioms FiniteCardinalityRuntimeFields.witnessTransitionB_config
 #print axioms FiniteCardinalityRuntimeFields.minimumTransitionB_config
 #print axioms FiniteCardinalityRuntimeFields.maximumTransitionB_config
+#print axioms FiniteCardinalityRuntimeFields.checkedChildTransition_childConfig
 
 end ContextCalculus.Hypertableau
