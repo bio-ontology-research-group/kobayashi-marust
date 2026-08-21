@@ -83,6 +83,11 @@
   projection. Skolem-pair source semantics, projected number restrictions,
   complementary cardinality provenance, countermodels, and refutations now
   remain tied to their exact concept and ordered subsumption matrix cells.
+- Carry exact taxonomy coordinates through the bundled native-ABox
+  cardinality projection. The evidence spans embedded source concepts, bundle
+  definers, role paths, domain premises, projected number restrictions,
+  complementary-pair provenance, models, refutations, and every complete
+  taxonomy matrix position.
 
 ### Certify native-ABox cardinality taxonomies
 

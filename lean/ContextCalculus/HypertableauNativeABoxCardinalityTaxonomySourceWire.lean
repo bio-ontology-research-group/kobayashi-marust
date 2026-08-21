@@ -1335,6 +1335,8 @@ structure DecodedBundleNativeABoxCardinalityTaxonomySat where
   query : DecodedNativeABoxTaxonomyQuery
     sourceProjection.certificate.seed.nodeCount
     sourceProjection.certificate.seed.abox.concepts.length
+  wireQuery : WireNativeABoxTaxonomyQuery
+  exactCoordinates : DecodedNativeABoxTaxonomyQuery.MatchesWire query wireQuery
   query_present : ∀ literal ∈ query.literals,
     (query.root, literal) ∈
       sourceProjection.certificate.seed.state.base.base.labels
@@ -1423,15 +1425,39 @@ inductive DecodedBundleNativeABoxCardinalityTaxonomyDecision where
   | sat (decoded : DecodedBundleNativeABoxCardinalityTaxonomySat)
   | unsat (decoded : DecodedBundleNativeABoxCardinalityTaxonomyUnsat)
 
+def DecodedBundleNativeABoxCardinalityTaxonomyDecision.wireQuery :
+    DecodedBundleNativeABoxCardinalityTaxonomyDecision → WireNativeABoxTaxonomyQuery
+  | .sat decoded => decoded.wireQuery
+  | .unsat decoded => decoded.taxonomy.wireQuery
+
+def DecodedBundleNativeABoxCardinalityTaxonomyDecision.CoordinatesExact
+    (expected : WireNativeABoxTaxonomyQuery) :
+    DecodedBundleNativeABoxCardinalityTaxonomyDecision → Prop
+  | .sat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.query expected
+  | .unsat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.taxonomy.query expected
+
+theorem DecodedBundleNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+    (decoded : DecodedBundleNativeABoxCardinalityTaxonomyDecision)
+    {expected : WireNativeABoxTaxonomyQuery}
+    (haligned : decoded.wireQuery = expected) :
+    decoded.CoordinatesExact expected := by
+  cases decoded with
+  | sat result => exact haligned ▸ result.exactCoordinates
+  | unsat result => exact haligned ▸ result.taxonomy.exactCoordinates
+
 structure WireBundleNativeABoxCardinalityTaxonomyDecision where
   version : Nat
   projection : WireBundleNativeABoxCardinalityTaxonomyProjection
   decision : WireNativeABoxCardinalityTaxonomyDecision
 deriving FromJson, ToJson, Repr
 
-def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
+set_option maxHeartbeats 800000 in
+def WireBundleNativeABoxCardinalityTaxonomyDecision.decodeExact
     (wire : WireBundleNativeABoxCardinalityTaxonomyDecision) :
-    Except String DecodedBundleNativeABoxCardinalityTaxonomyDecision := do
+    Except String { decoded : DecodedBundleNativeABoxCardinalityTaxonomyDecision //
+      decoded.wireQuery = wire.decision.query } := do
   if wire.version != 1 then
     throw s!"unsupported bundle native ABox cardinality taxonomy version {wire.version}"
   match wire.decision.evidence with
@@ -1447,28 +1473,31 @@ def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
         abox_source_map := wire.projection.abox_source_map
         certificate := certificateWire
       } : WireBundleNativeABoxCardinalitySatCertificate).decode
-      let query ← wire.decision.query.decode
+      let exactQuery ← wire.decision.query.decodeExact
         sourceProjection.certificate.seed.nodeCount
         sourceProjection.certificate.seed.abox.concepts.length
+      let query := exactQuery.query
       if hquery : query.labelsPresentB
           sourceProjection.certificate.seed.state.base.base.labels = true then
         let embedding := fun source => bundleConceptEmbedding
           sourceProjection.sourceTargets sourceProjection.bundles (.inr source)
         if hqueryEmbedded : queryConceptsEmbeddedB query.literals
             sourceProjection.sourceOf embedding = true then
-          return .sat {
+          return ⟨.sat {
             sourceProjection
             query
+            wireQuery := wire.decision.query
+            exactCoordinates := exactQuery.exactCoordinates
             query_present := query.labelsPresentB_sound _ hquery
             query_embedded := queryConceptsEmbeddedB_sound _ _ _ hqueryEmbedded
-          }
+          }, rfl⟩
         else throw "bundle cardinality taxonomy query is not an embedded source concept"
       else throw "bundle cardinality taxonomy countermodel omits its query literals"
   | .unsat .. =>
-      let taxonomy ← wire.decision.decode
-      let taxonomy ← match taxonomy with
-        | .unsat decoded => pure decoded
-        | .sat _ => throw "internal bundle cardinality taxonomy evidence mismatch"
+      let exactTaxonomy ← wire.decision.decodeExact
+      let taxonomyExact ← requireExactNativeABoxCardinalityTaxonomyUnsat
+        wire.decision exactTaxonomy
+      let taxonomy : DecodedNativeABoxCardinalityTaxonomyUnsat := taxonomyExact.val
       let variableWitness ← requireAtLeastTwoVariables taxonomy.initial.variableCount
       let hvariables := variableWitness.proof
       if _hsourceConcepts : wire.projection.source_concepts.Nodup then
@@ -1544,7 +1573,7 @@ def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
                                         taxonomy.initial.abox.negativeRoleClausesAt
                                           taxonomy.initial.variableCount hvariables).toFinset =
                                         taxonomy.initial.state.base.base.ontology.toFinset then
-                                    return .unsat {
+                                    return ⟨.unsat {
                                       taxonomy
                                       variable_ge_two := hvariables
                                       sourceConcepts := wire.projection.source_concepts
@@ -1578,7 +1607,7 @@ def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
                                       exactFlags := hflags
                                       definitions_equal := hdefinitions
                                       exact_ontology := hequal
-                                    }
+                                    }, taxonomyExact.property⟩
                                   else throw "bundle source conversion differs from the cardinality taxonomy refutation ontology"
                                 else throw "bundle cardinality definitions differ from the taxonomy refutation"
                               else throw "cardinality exact flags differ from complementary-pair provenance"
@@ -1594,6 +1623,11 @@ def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
           else throw "bundle cardinality taxonomy projection contains no bundles"
         else throw "bundle cardinality taxonomy function-name table contains duplicates"
       else throw "bundle cardinality taxonomy source concept-name table contains duplicates"
+
+def WireBundleNativeABoxCardinalityTaxonomyDecision.decode
+    (wire : WireBundleNativeABoxCardinalityTaxonomyDecision) :
+    Except String DecodedBundleNativeABoxCardinalityTaxonomyDecision := do
+  return (← wire.decodeExact).val
 
 def WireBundleNativeABoxCardinalityTaxonomyDecision.check
     (wire : WireBundleNativeABoxCardinalityTaxonomyDecision) : Except String Bool := do
@@ -1847,6 +1881,84 @@ structure DecodedBundleNativeABoxCardinalityTaxonomyMatrix where
   matrix : DecodedNativeABoxCardinalityTaxonomyMatrix
   concepts : List DecodedBundleNativeABoxCardinalityTaxonomyDecision
   subsumptions : List (List DecodedBundleNativeABoxCardinalityTaxonomyDecision)
+  concepts_exact : List.Forall₂
+    (fun concept decoded => decoded.wireQuery = .concept 0 concept)
+    matrix.named concepts
+  subsumptions_exact : List.Forall₂
+    (fun sub row => List.Forall₂
+      (fun sup decoded => decoded.wireQuery = .subsumption 0 sub sup)
+      matrix.named row)
+    matrix.named subsumptions
+
+private def decodeBundleNativeCardinalityTaxonomyDecisionAt
+    (projection : WireBundleNativeABoxCardinalityTaxonomyProjection)
+    (expected : WireNativeABoxTaxonomyQuery)
+    (wire : WireNativeABoxCardinalityTaxonomyDecision) :
+    Except String { decoded : DecodedBundleNativeABoxCardinalityTaxonomyDecision //
+      decoded.wireQuery = expected } := do
+  if hquery : wire.query = expected then
+    let decoded ← ({ version := 1, projection, decision := wire } :
+      WireBundleNativeABoxCardinalityTaxonomyDecision).decodeExact
+    return ⟨decoded.val, decoded.property.trans hquery⟩
+  else throw "bundle native ABox cardinality taxonomy cell is in the wrong position"
+
+private def decodeBundleNativeCardinalityTaxonomyConceptsExact
+    (projection : WireBundleNativeABoxCardinalityTaxonomyProjection) :
+    (named : List Nat) →
+    (wires : List WireNativeABoxCardinalityTaxonomyDecision) →
+    Except String {
+      decoded : List DecodedBundleNativeABoxCardinalityTaxonomyDecision //
+      List.Forall₂
+        (fun concept decision => decision.wireQuery = .concept 0 concept)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | concept :: named, wire :: wires => do
+      let decision ← decodeBundleNativeCardinalityTaxonomyDecisionAt projection
+        (.concept 0 concept) wire
+      let tail ← decodeBundleNativeCardinalityTaxonomyConceptsExact
+        projection named wires
+      return ⟨decision.val :: tail.val, .cons decision.property tail.property⟩
+  | _, _ => .error "bundle native ABox cardinality concept row is incomplete"
+
+private def decodeBundleNativeCardinalityTaxonomySubsumptionRowExact
+    (projection : WireBundleNativeABoxCardinalityTaxonomyProjection) (sub : Nat) :
+    (named : List Nat) →
+    (wires : List WireNativeABoxCardinalityTaxonomyDecision) →
+    Except String {
+      decoded : List DecodedBundleNativeABoxCardinalityTaxonomyDecision //
+      List.Forall₂
+        (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | sup :: named, wire :: wires => do
+      let decision ← decodeBundleNativeCardinalityTaxonomyDecisionAt projection
+        (.subsumption 0 sub sup) wire
+      let tail ← decodeBundleNativeCardinalityTaxonomySubsumptionRowExact
+        projection sub named wires
+      return ⟨decision.val :: tail.val, .cons decision.property tail.property⟩
+  | _, _ => .error "bundle native ABox cardinality subsumption row is incomplete"
+
+private def decodeBundleNativeCardinalityTaxonomyRowsExact
+    (projection : WireBundleNativeABoxCardinalityTaxonomyProjection)
+    (allNamed : List Nat) :
+    (named : List Nat) →
+    (rows : List (List WireNativeABoxCardinalityTaxonomyDecision)) →
+    Except String {
+      decoded : List (List DecodedBundleNativeABoxCardinalityTaxonomyDecision) //
+      List.Forall₂
+        (fun sub row => List.Forall₂
+          (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+          allNamed row)
+        named decoded }
+  | [], [] => .ok ⟨[], .nil⟩
+  | sub :: named, row :: rows => do
+      let decodedRow ← decodeBundleNativeCardinalityTaxonomySubsumptionRowExact
+        projection sub allNamed row
+      let decodedRows ← decodeBundleNativeCardinalityTaxonomyRowsExact
+        projection allNamed named rows
+      return ⟨decodedRow.val :: decodedRows.val,
+        .cons decodedRow.property decodedRows.property⟩
+  | _, _ => .error "bundle native ABox cardinality subsumption matrix is incomplete"
 
 def WireBundleNativeABoxCardinalityTaxonomyMatrix.decode
     (wire : WireBundleNativeABoxCardinalityTaxonomyMatrix) :
@@ -1854,15 +1966,17 @@ def WireBundleNativeABoxCardinalityTaxonomyMatrix.decode
   if wire.version != 1 then
     throw s!"unsupported bundle native ABox cardinality taxonomy matrix version {wire.version}"
   let matrix ← wire.matrix.decode
-  let wrap := fun decision => ({
-    version := 1
-    projection := wire.projection
-    decision
-  } : WireBundleNativeABoxCardinalityTaxonomyDecision)
-  let concepts ← wire.matrix.concepts.mapM fun decision => (wrap decision).decode
-  let subsumptions ← wire.matrix.subsumptions.mapM fun row =>
-    row.mapM fun decision => (wrap decision).decode
-  return { matrix, concepts, subsumptions }
+  let concepts ← decodeBundleNativeCardinalityTaxonomyConceptsExact
+    wire.projection matrix.named wire.matrix.concepts
+  let subsumptions ← decodeBundleNativeCardinalityTaxonomyRowsExact
+    wire.projection matrix.named matrix.named wire.matrix.subsumptions
+  return {
+    matrix
+    concepts := concepts.val
+    subsumptions := subsumptions.val
+    concepts_exact := concepts.property
+    subsumptions_exact := subsumptions.property
+  }
 
 def WireBundleNativeABoxCardinalityTaxonomyMatrix.check
     (wire : WireBundleNativeABoxCardinalityTaxonomyMatrix) : Except String Bool := do
@@ -1879,6 +1993,74 @@ def DecodedBundleNativeABoxCardinalityTaxonomyMatrix.SemanticallyValid
   decoded.matrix.wire.shapeB = true ∧ decoded.matrix.wire.queriesB = true ∧
   decoded.matrix.wire.sharedProblemB = true ∧
   ∀ decision ∈ decoded.allDecisions, decision.SemanticallyValid
+
+private theorem bundleCardinalityConceptAlignment_coordinates_exact
+    {named : List Nat}
+    {decisions : List DecodedBundleNativeABoxCardinalityTaxonomyDecision}
+    (haligned : List.Forall₂
+      (fun concept decision => decision.wireQuery = .concept 0 concept)
+      named decisions) :
+    List.Forall₂
+      (fun concept decision => decision.CoordinatesExact (.concept 0 concept))
+      named decisions := by
+  induction haligned with
+  | nil => exact .nil
+  | cons haligned _ ih =>
+      exact .cons
+        (DecodedBundleNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+          _ haligned) ih
+
+private theorem bundleCardinalitySubsumptionRowAlignment_coordinates_exact
+    (sub : Nat) {named : List Nat}
+    {decisions : List DecodedBundleNativeABoxCardinalityTaxonomyDecision}
+    (haligned : List.Forall₂
+      (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+      named decisions) :
+    List.Forall₂
+      (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+      named decisions := by
+  induction haligned with
+  | nil => exact .nil
+  | cons haligned _ ih =>
+      exact .cons
+        (DecodedBundleNativeABoxCardinalityTaxonomyDecision.coordinates_exact
+          _ haligned) ih
+
+private theorem bundleCardinalitySubsumptionAlignment_coordinates_exact
+    (allNamed : List Nat) {named : List Nat}
+    {rows : List (List DecodedBundleNativeABoxCardinalityTaxonomyDecision)}
+    (haligned : List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.wireQuery = .subsumption 0 sub sup)
+        allNamed row)
+      named rows) :
+    List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+        allNamed row)
+      named rows := by
+  induction haligned with
+  | nil => exact .nil
+  | cons hrow _ ih =>
+      exact .cons
+        (bundleCardinalitySubsumptionRowAlignment_coordinates_exact _ hrow) ih
+
+theorem DecodedBundleNativeABoxCardinalityTaxonomyMatrix.concept_coordinates_exact
+    (decoded : DecodedBundleNativeABoxCardinalityTaxonomyMatrix) :
+    List.Forall₂
+      (fun concept decision => decision.CoordinatesExact (.concept 0 concept))
+      decoded.matrix.named decoded.concepts :=
+  bundleCardinalityConceptAlignment_coordinates_exact decoded.concepts_exact
+
+theorem DecodedBundleNativeABoxCardinalityTaxonomyMatrix.subsumption_coordinates_exact
+    (decoded : DecodedBundleNativeABoxCardinalityTaxonomyMatrix) :
+    List.Forall₂
+      (fun sub row => List.Forall₂
+        (fun sup decision => decision.CoordinatesExact (.subsumption 0 sub sup))
+        decoded.matrix.named row)
+      decoded.matrix.named decoded.subsumptions :=
+  bundleCardinalitySubsumptionAlignment_coordinates_exact decoded.matrix.named
+    decoded.subsumptions_exact
 
 theorem DecodedBundleNativeABoxCardinalityTaxonomyMatrix.semantic_valid
     (decoded : DecodedBundleNativeABoxCardinalityTaxonomyMatrix) :
@@ -1900,6 +2082,8 @@ theorem DecodedBundleNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms DecodedMixedNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms DecodedBundleNativeABoxCardinalityTaxonomyDecision.semantic_valid
 #print axioms DecodedBundleNativeABoxCardinalityTaxonomyDecision.positive_eq_true_iff
+#print axioms DecodedBundleNativeABoxCardinalityTaxonomyMatrix.concept_coordinates_exact
+#print axioms DecodedBundleNativeABoxCardinalityTaxonomyMatrix.subsumption_coordinates_exact
 #print axioms DecodedBundleNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 
 end ContextCalculus.Hypertableau
