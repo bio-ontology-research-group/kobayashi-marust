@@ -105,6 +105,10 @@
 - Add a mandatory HT certification gate that builds the full Lean development,
   requires real checker executables, exercises all six Rust-to-Lean source
   taxonomy routes, and runs the publication and fail-closed integration suite.
+- Correct the Lean mirror of the certified-input gate to match production
+  native-ABox admission. Certified nominals are now accepted exactly when the
+  checked native ABox represents them; unrepresented nominals still fail
+  closed. The previous mirror incorrectly excluded every native-ABox input.
 
 ### Certify native-ABox cardinality taxonomies
 
