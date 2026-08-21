@@ -59,6 +59,12 @@
 - Reject zero-node native-ABox states before constructing quotient SAT evidence;
   the concrete HT search always contains query root zero, and the Lean wire now
   checks that production invariant explicitly.
+- Add a dedicated Rust publisher for normalized TBox/native-ABox equality
+  refutations. It emits the exact ordered multi-root state and apart facts and
+  is accepted by the native Lean checker in a real Rust-to-Lean test. The
+  ontology-only equality envelope remains fail closed on native apart facts,
+  since its empty-root theorem is intentionally not reused for this joint
+  semantic problem.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.

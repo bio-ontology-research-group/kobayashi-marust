@@ -11057,7 +11057,16 @@ impl Ht {
         initial_labels: &[(Node, CLit)],
         evidence: impl FnOnce(LeanHtEqRefutationTree) -> LeanHtEqEvidence,
     ) -> Result<String, String> {
-        if !self.native_abox.different.is_empty() {
+        self.lean_eq_refutation_certificate_json_impl(initial_labels, evidence, false)
+    }
+
+    fn lean_eq_refutation_certificate_json_impl(
+        &self,
+        initial_labels: &[(Node, CLit)],
+        evidence: impl FnOnce(LeanHtEqRefutationTree) -> LeanHtEqEvidence,
+        native_abox_refutation: bool,
+    ) -> Result<String, String> {
+        if !native_abox_refutation && !self.native_abox.different.is_empty() {
             return Err(
                 "equality HT refutation certificates do not encode native apart facts"
                     .to_string(),
@@ -11095,6 +11104,14 @@ impl Ht {
                 return Err("HT Lean equality query certificates require root node 0".to_string());
             }
             concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        for (proxies, assertions) in &self.native_abox.individuals {
+            for &concept in proxies.iter().chain(assertions) {
+                concept_count = concept_count.max(concept as usize + 1);
+            }
+        }
+        for &(role, _, _) in &self.native_abox.role_assertions {
+            role_count = role_count.max(role as usize + 1);
         }
         variable_count = variable_count.max(self.lean_source_variable_count());
         let ontology = self
@@ -11137,6 +11154,91 @@ impl Ht {
             state: root_state,
             evidence: evidence(tree),
         })
+        .map_err(|error| error.to_string())
+    }
+
+    /// Produce the standalone checked boundary for a normalized TBox together
+    /// with KM's exact native named-individual ABox. This deliberately bypasses
+    /// the ordinary ontology-only equality envelope, whose empty-root theorem
+    /// is not applicable to ABox-seeded search.
+    pub fn lean_native_abox_unsat_refutation_json(&self) -> Result<String, String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox refutation requires at least one individual".to_string());
+        }
+        if !self.card_defs.is_empty() {
+            return Err("native ABox equality refutation does not yet carry cardinality".to_string());
+        }
+        let raw = self.lean_eq_refutation_certificate_json_impl(
+            &[],
+            |tree| LeanHtEqEvidence::Unsat { tree },
+            true,
+        )?;
+        let certificate: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+        let node_count = certificate["node_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox refutation lacks node_count".to_string())?
+            as usize;
+        let concept_count = certificate["concept_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox refutation lacks concept_count".to_string())?
+            as usize;
+        let role_count = certificate["role_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox refutation lacks role_count".to_string())?
+            as usize;
+        let tree = certificate["evidence"]["unsat"]["tree"].clone();
+        if tree.is_null() {
+            return Err("native ABox refutation lacks a closed equality tree".to_string());
+        }
+        let individuals: Vec<_> = self
+            .native_abox
+            .individuals
+            .iter()
+            .map(|(proxies, assertions)| serde_json::json!({
+                "proxies": proxies,
+                "assertions": assertions,
+            }))
+            .collect();
+        let nominals: Vec<usize> = self
+            .native_abox
+            .individuals
+            .iter()
+            .flat_map(|(proxies, _)| proxies.iter().map(|&concept| concept as usize))
+            .collect();
+        let different: Vec<_> = self.native_abox.different.iter().map(|&(left, right)| {
+            serde_json::json!([left, right])
+        }).collect();
+        let role_assertions: Vec<_> = self.native_abox.role_assertions.iter().map(
+            |&(role, source, target)| serde_json::json!([role, source, target]),
+        ).collect();
+        let apart: Vec<_> = self.native_abox.different.iter().map(|&(left, right)| {
+            serde_json::json!({ "left": left + 1, "right": right + 1 })
+        }).collect();
+        let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
+        serde_json::to_string(&serde_json::json!({
+            "initial": {
+                "abox": {
+                    "complete": true,
+                    "concepts": (0..concept_count).map(|id| format!("c{id}")).collect::<Vec<_>>(),
+                    "roles": (0..role_count).map(|id| format!("r{id}")).collect::<Vec<_>>(),
+                    "nominals": nominals,
+                    "individuals": individuals,
+                    "different": different,
+                    "role_assertions": role_assertions,
+                    "negative_role_assertions": [],
+                },
+                "node_count": node_count,
+                "variable_count": certificate["variable_count"],
+                "roots": roots,
+                "ontology": certificate["ontology"],
+                "state": {
+                    "base": certificate["state"],
+                    "apart": apart,
+                },
+            },
+            "tree": tree,
+        }))
         .map_err(|error| error.to_string())
     }
 
@@ -21425,6 +21527,45 @@ mod tests {
             .lean_equality_decision_certificate_json()
             .expect_err("native apart facts require a distinct-aware certificate");
         assert!(error.contains("native apart"));
+    }
+
+    #[test]
+    fn native_abox_unsat_refutation_uses_joint_lean_boundary() {
+        const RIGHT: C = 2;
+        let mut reasoner = Ht::new_certified(vec![Clause::new(
+            vec![con(false, B, X)],
+            Vec::new(),
+        )]);
+        reasoner.set_nominals(vec![A]);
+        reasoner.set_native_abox(
+            vec![(vec![A], vec![B]), (vec![RIGHT], Vec::new())],
+            vec![(0, 1)],
+            Vec::new(),
+        );
+        let payload = reasoner
+            .lean_native_abox_unsat_refutation_json()
+            .expect("joint native ABox refutation must serialize");
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["initial"]["roots"], serde_json::json!([1, 2]));
+        assert_eq!(
+            value["initial"]["state"]["apart"],
+            serde_json::json!([{ "left": 1, "right": 2 }])
+        );
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_PROJECTION_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-native-abox-refutation-{}.json",
+                std::process::id()
+            ));
+            std::fs::write(&path, &payload).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .status()
+                .expect("run native ABox Lean refutation checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(accepted, "joint native ABox refutation must be accepted");
+        }
     }
 
     #[test]
