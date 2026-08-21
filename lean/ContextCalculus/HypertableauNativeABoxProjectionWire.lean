@@ -969,6 +969,166 @@ theorem DecodedMixedNativeABoxRefutation.source_unsatisfiable
   exact decoded.refutation.unsatisfiable
     ⟨Domain, I, value, hdomain, htarget, habox⟩
 
+/-- Mixed direct/Skolem source and frontend cardinality projection composed
+with the exact native-ABox cardinality refutation. -/
+structure WireMixedNativeABoxCardinalityRefutation where
+  functions : List String
+  direct : List WireDirectSourceClause
+  pairs : List WireSkolemPair
+  definitions : List WireProjectionCardinalityDef
+  exact_pairs : List WireComplementaryCardinalityPair
+  refutation : WireNativeABoxCardinalityRefutation
+deriving FromJson, ToJson, Repr
+
+structure DecodedMixedNativeABoxCardinalityRefutation where
+  refutation : DecodedNativeABoxCardinalityRefutation
+  variable_ge_two : 2 ≤ refutation.initial.initial.seed.variableCount
+  functions : List String
+  direct : List (Clause (Fin refutation.initial.initial.seed.variableCount)
+    (Fin refutation.initial.initial.seed.abox.concepts.length)
+    (Fin refutation.initial.initial.seed.abox.roles.length))
+  pairs : List (SkolemPairSpec (Fin refutation.initial.initial.seed.variableCount)
+    (Fin refutation.initial.initial.seed.abox.concepts.length)
+    (Fin refutation.initial.initial.seed.abox.roles.length) (Fin functions.length))
+  unique_functions : (skolemPairFunctions pairs).Nodup
+  definitionWires : List WireProjectionCardinalityDef
+  wireLength : definitionWires.length = refutation.definitions.length
+  uniqueDefinitions : refutation.definitions.Nodup
+  cardinalityPairs : List
+    (IndexedComplementaryCardinalityPair refutation.definitions)
+  uniquePairIndices : (exactPairIndices cardinalityPairs).Nodup
+  exactFlags : ∀ index : Fin refutation.definitions.length,
+    (definitionWires.get (wireLength.symm ▸ index)).exact =
+      decide (index.val ∈ exactPairIndices cardinalityPairs)
+  exact_projection :
+    (skolemProjectionOntology direct pairs ++
+      refutation.initial.initial.seed.abox.negativeRoleClausesAt
+        refutation.initial.initial.seed.variableCount variable_ge_two).toFinset =
+      refutation.initial.initial.seed.state.base.base.ontology.toFinset
+
+def DecodedMixedNativeABoxCardinalityRefutation.semanticPairs
+    (decoded : DecodedMixedNativeABoxCardinalityRefutation) :
+    List (PairedCardinality
+      (Fin decoded.refutation.initial.initial.seed.abox.concepts.length)
+      (Fin decoded.refutation.initial.initial.seed.abox.roles.length)) :=
+  decoded.cardinalityPairs.map IndexedComplementaryCardinalityPair.toPair
+
+theorem DecodedMixedNativeABoxCardinalityRefutation.semanticPairs_mem
+    (decoded : DecodedMixedNativeABoxCardinalityRefutation)
+    (pair : PairedCardinality
+      (Fin decoded.refutation.initial.initial.seed.abox.concepts.length)
+      (Fin decoded.refutation.initial.initial.seed.abox.roles.length))
+    (hpair : pair ∈ decoded.semanticPairs) :
+    pair.maximum ∈ decoded.refutation.definitions ∧
+      pair.minimum ∈ decoded.refutation.definitions := by
+  simp only [DecodedMixedNativeABoxCardinalityRefutation.semanticPairs,
+    List.mem_map] at hpair
+  rcases hpair with ⟨indexed, _, rfl⟩
+  exact ⟨List.get_mem decoded.refutation.definitions indexed.maximum,
+    List.get_mem decoded.refutation.definitions indexed.minimum⟩
+
+def WireMixedNativeABoxCardinalityRefutation.decode
+    (wire : WireMixedNativeABoxCardinalityRefutation) :
+    Except String DecodedMixedNativeABoxCardinalityRefutation := do
+  let refutation ← wire.refutation.decode
+  let variableWitness ← requireAtLeastTwoVariables
+    refutation.initial.initial.seed.variableCount
+  let hvariables := variableWitness.proof
+  if _hfunctions : wire.functions.Nodup then
+    let direct ← wire.direct.mapM (WireDirectSourceClause.decode
+      refutation.initial.initial.seed.variableCount
+      refutation.initial.initial.seed.abox.concepts
+      refutation.initial.initial.seed.abox.roles)
+    let pairs ← wire.pairs.mapM (WireSkolemPair.decode
+      refutation.initial.initial.seed.variableCount
+      refutation.initial.initial.seed.abox.concepts
+      refutation.initial.initial.seed.abox.roles wire.functions)
+    if hunique : (skolemPairFunctions pairs).Nodup then
+      let definitions ← wire.definitions.mapM
+        (WireProjectionCardinalityDef.decode
+          refutation.initial.initial.seed.abox.concepts.length
+          refutation.initial.initial.seed.abox.roles.length)
+      if hdefinitions : definitions = refutation.definitions then
+        if hlength : wire.definitions.length = refutation.definitions.length then
+          if hdefinitionUnique : refutation.definitions.Nodup then
+            let cardinalityPairs ← wire.exact_pairs.mapM
+              (WireComplementaryCardinalityPair.decode refutation.definitions)
+            if hpairs : (exactPairIndices cardinalityPairs).Nodup then
+              if hflags : ∀ index : Fin refutation.definitions.length,
+                  (wire.definitions.get (hlength.symm ▸ index)).exact =
+                    decide (index.val ∈ exactPairIndices cardinalityPairs) then
+                if hequal : (skolemProjectionOntology direct pairs ++
+                    refutation.initial.initial.seed.abox.negativeRoleClausesAt
+                      refutation.initial.initial.seed.variableCount hvariables).toFinset =
+                    refutation.initial.initial.seed.state.base.base.ontology.toFinset then
+                  return {
+                    refutation
+                    variable_ge_two := hvariables
+                    functions := wire.functions
+                    direct
+                    pairs
+                    unique_functions := hunique
+                    definitionWires := wire.definitions
+                    wireLength := hlength
+                    uniqueDefinitions := hdefinitionUnique
+                    cardinalityPairs
+                    uniquePairIndices := hpairs
+                    exactFlags := hflags
+                    exact_projection := hequal
+                  }
+                else throw "mixed source conversion differs from the native ABox cardinality refutation ontology"
+              else throw "cardinality exact flags differ from checked complementary-pair provenance"
+            else throw "an exact cardinality definition occurs in more than one complementary pair"
+          else throw "cardinality projection contains duplicate definitions"
+        else throw "internal cardinality-definition decode length mismatch"
+      else throw "mixed cardinality definitions differ from the native ABox refutation"
+    else throw "mixed native ABox projection reuses a Skolem function"
+  else throw "mixed native ABox function-name table contains duplicates"
+
+def WireMixedNativeABoxCardinalityRefutation.check
+    (wire : WireMixedNativeABoxCardinalityRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedMixedNativeABoxCardinalityRefutation.source_unsatisfiable
+    (decoded : DecodedMixedNativeABoxCardinalityRefutation) :
+    ¬∃ (Domain : Type)
+        (I : Interp Domain
+          (Fin decoded.refutation.initial.initial.seed.abox.concepts.length)
+          (Fin decoded.refutation.initial.initial.seed.abox.roles.length))
+        (value : Fin decoded.refutation.initial.initial.seed.abox.individuals.length → Domain),
+      Nonempty Domain ∧
+      decoded.refutation.initial.initial.seed.abox.abox.models I value ∧
+      (∃ functions : SkolemInterp Domain (Fin decoded.functions.length),
+        I.models decoded.direct ∧ ModelsSkolemPairs I functions decoded.pairs) ∧
+      I.modelsProjectedCardinalityDefs decoded.refutation.definitions
+        decoded.semanticPairs := by
+  rintro ⟨Domain, I, value, hdomain, habox, ⟨functions, hdirect, hpairs⟩,
+    hcardinality⟩
+  letI : Nonempty Domain := hdomain
+  let base : SkolemInterp Domain (Fin decoded.functions.length) :=
+    ⟨fun _ _ => Classical.choice hdomain⟩
+  have hprojected : I.models (skolemProjectionOntology decoded.direct decoded.pairs) :=
+    (mixedSkolemProjection_sat_iff I base decoded.direct decoded.pairs
+      decoded.unique_functions).1 ⟨functions, hdirect, hpairs⟩
+  have happended : I.models (skolemProjectionOntology decoded.direct decoded.pairs ++
+      decoded.refutation.initial.initial.seed.abox.negativeRoleClausesAt
+        decoded.refutation.initial.initial.seed.variableCount decoded.variable_ge_two) :=
+    (DecodedNativeABox.models_append_negativeRoleClausesAt_iff
+      decoded.refutation.initial.initial.seed.abox I value habox.1
+      decoded.variable_ge_two
+      (skolemProjectionOntology decoded.direct decoded.pairs)).2
+        ⟨hprojected, habox.2.2.2.2⟩
+  have htarget : I.models
+      decoded.refutation.initial.initial.seed.state.base.base.ontology :=
+    (models_iff_of_toFinset_eq I _ _ decoded.exact_projection).1 happended
+  have hdefinitions : I.modelsCardinalityDefs decoded.refutation.definitions :=
+    (modelsProjectedCardinalityDefs_iff_pairedTargets I
+      decoded.refutation.definitions decoded.semanticPairs
+      (fun pair hpair => decoded.semanticPairs_mem pair hpair)).1 hcardinality |>.1
+  exact decoded.refutation.unsatisfiable
+    ⟨Domain, I, value, hdomain, htarget, hdefinitions, habox⟩
+
 structure WireBundleNativeABoxRefutation where
   source_concepts : List String
   functions : List String
@@ -1416,6 +1576,24 @@ example : validMixedNativeRefutation.check = .ok true := by native_decide
 example : rejected ({ validMixedNativeRefutation with pairs := [] }).check = true := by
   native_decide
 
+private def validMixedNativeCardinalityRefutation :
+    WireMixedNativeABoxCardinalityRefutation where
+  functions := validMixedNativeRefutation.functions
+  direct := validMixedNativeRefutation.direct
+  pairs := validMixedNativeRefutation.pairs
+  definitions := []
+  exact_pairs := []
+  refutation := {
+    initial := validMixedNativeRefutation.refutation.initial
+    definitions := []
+    depth := 0
+    tree := .equality validMixedNativeRefutation.refutation.tree
+  }
+
+example : validMixedNativeCardinalityRefutation.check = .ok true := by native_decide
+example : rejected ({ validMixedNativeCardinalityRefutation with pairs := [] }).check = true := by
+  native_decide
+
 private def validBundleNativeRefutation : WireBundleNativeABoxRefutation where
   source_concepts := ["a", "b", "A", "C"]
   functions := ["f"]
@@ -1464,6 +1642,7 @@ example : rejected ({ validBundleNativeRefutation with
 #print axioms DecodedNativeABoxDistinctInitial.initializes
 #print axioms DecodedNativeABoxCardinalityRefutation.unsatisfiable
 #print axioms DecodedDirectNativeABoxCardinalityRefutation.source_unsatisfiable
+#print axioms DecodedMixedNativeABoxCardinalityRefutation.source_unsatisfiable
 #print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedMixedNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedBundleNativeABoxRefutation.source_unsatisfiable

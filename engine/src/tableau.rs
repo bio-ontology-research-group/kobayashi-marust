@@ -5603,6 +5603,34 @@ fn mixed_native_abox_refutation_document(
     .map_err(|error| format!("cannot encode joint mixed native ABox refutation: {error}"))
 }
 
+fn mixed_native_abox_cardinality_refutation_document(
+    inp: &TInput,
+    normalized_refutation: &str,
+) -> Result<Vec<u8>, String> {
+    if inp.card_defs.is_empty() || inp.bundle_projection_source.is_some() {
+        return Err(
+            "joint mixed native ABox cardinality refutation does not cover bundle projection"
+                .to_string(),
+        );
+    }
+    let source = inp.mixed_projection_source.as_ref().ok_or_else(|| {
+        "joint native ABox cardinality refutation has no complete mixed source projection"
+            .to_string()
+    })?;
+    let refutation = native_abox_refutation_value(inp, normalized_refutation)?;
+    serde_json::to_vec(&serde_json::json!({
+        "functions": &source.functions,
+        "direct": &source.direct,
+        "pairs": &source.pairs,
+        "definitions": &inp.card_defs,
+        "exact_pairs": &inp.cardinality_exact_pairs,
+        "refutation": refutation,
+    }))
+    .map_err(|error| {
+        format!("cannot encode joint mixed native ABox cardinality refutation: {error}")
+    })
+}
+
 fn bundle_native_abox_refutation_document(
     inp: &TInput,
     normalized_refutation: &str,
@@ -7005,6 +7033,123 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-mixed-native-abox-refutation",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn mixed_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            CardDefJson, DirectProjectionAtom, MixedProjectionSource, NativeAboxJson,
+            NativeIndividualJson, SkolemProjectionPair,
+        };
+        let pair = SkolemProjectionPair {
+            variable_names: vec!["x".into()],
+            body: vec![DirectProjectionAtom::Con {
+                concept: "marker".into(),
+                node: "x".into(),
+                neg: false,
+            }],
+            source: "x".into(),
+            function: "f".into(),
+            role: "r".into(),
+            filler: "filler".into(),
+            neg: false,
+        };
+        let mut producer = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec![
+                "subject".into(),
+                "left".into(),
+                "right".into(),
+                "marker".into(),
+                "filler".into(),
+            ],
+            roles: vec!["r".into()],
+            nominals: vec![0, 1, 2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![
+                    NativeIndividualJson {
+                        proxies: vec![0],
+                        assertions: vec![3],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![1],
+                        assertions: vec![4],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![2],
+                        assertions: vec![4],
+                    },
+                ],
+                different: vec![(1, 2)],
+                role_assertions: vec![(0, 0, 1), (0, 0, 2)],
+                negative_role_assertions: Vec::new(),
+            },
+            mixed_projection_source: Some(MixedProjectionSource {
+                functions: vec!["f".into()],
+                direct: Vec::new(),
+                pairs: vec![pair],
+            }),
+            card_defs: vec![CardDefJson {
+                marker: 3,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 4,
+                exact: false,
+            }],
+            cardinality_projection_complete: true,
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        };
+        let inp = consumer_input(&producer);
+        let clauses = vec![Clause::new(
+            vec![con(false, 3, 0)],
+            vec![exists(0, false, 4, 0)],
+        )];
+        let mut reasoner = hypertableau::Ht::new_certified(clauses);
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![
+                (vec![0], vec![3]),
+                (vec![1], vec![4]),
+                (vec![2], vec![4]),
+            ],
+            vec![(1, 2)],
+            vec![(0, 0, 1), (0, 0, 2)],
+        );
+        reasoner.set_card_defs_raw(&[(3, false, 1, 0, 4, false)]);
+        let normalized = reasoner
+            .lean_native_abox_cardinality_unsat_refutation_json()
+            .expect("normalized mixed native ABox cardinality refutation");
+        let document =
+            mixed_native_abox_cardinality_refutation_document(&inp, &normalized)
+                .expect("compose mixed source and native ABox cardinality refutation");
+        run_ht_projection_checker(
+            &document,
+            std::path::Path::new(&checker),
+            "mixed-native-abox-cardinality-refutation",
+        )
+        .expect("combined mixed cardinality/native ABox refutation passes Lean");
+
+        producer
+            .mixed_projection_source
+            .as_mut()
+            .unwrap()
+            .pairs
+            .clear();
+        let forged_input = consumer_input(&producer);
+        let forged =
+            mixed_native_abox_cardinality_refutation_document(&forged_input, &normalized)
+                .expect("serialize forged mixed projection");
+        assert!(run_ht_projection_checker(
+            &forged,
+            std::path::Path::new(&checker),
+            "forged-mixed-native-abox-cardinality-refutation",
         )
         .unwrap_err()
         .contains("rejected"));

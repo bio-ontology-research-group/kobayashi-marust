@@ -109,6 +109,11 @@
   direct target, definition values, exact-pair provenance, negative-role
   guards, and normalized ontology in one signature. Its Rust-to-Lean test
   accepts the genuine document and rejects a forged cardinality bound.
+- Extend the same cardinality/native-ABox composition through mixed direct and
+  Skolem-pair sources. Lean checks function uniqueness, reconstructs the exact
+  existential target, validates cardinality provenance and ABox guards, and
+  proves source-level unsatisfiability. The Rust-to-Lean test includes a live
+  Skolem existential and rejects deletion of its source pair.
 
 Certified nominal/ABox routing remains closed until KM emits this joint seeded
 state evidence with every TBox projection shape and the concrete search result.
