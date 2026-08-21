@@ -8,8 +8,13 @@ def checkNativeABoxTaxonomySourceFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      let document : WireDirectNativeABoxTaxonomyMatrix ← fromJson? json
-      document.check
+      match (fromJson? json : Except String WireMixedNativeABoxTaxonomyMatrix) with
+      | .ok document => document.check
+      | .error mixedError =>
+          match (fromJson? json : Except String WireDirectNativeABoxTaxonomyMatrix) with
+          | .ok document => document.check
+          | .error directError =>
+              throw s!"no native ABox taxonomy source format matched: mixed ({mixedError}), direct ({directError})"
     match result with
     | .ok true =>
         IO.println "source-composed HT native ABox taxonomy accepted"
