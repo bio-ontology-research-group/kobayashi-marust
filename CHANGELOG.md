@@ -26,6 +26,10 @@
 - Repair the cardinality taxonomy decoder after exact-cardinality evidence was
   added to its shared certificate type. A clean checker rebuild now verifies
   the current structure instead of relying on a stale object file.
+- Prove production taxonomy totality from the complete family of checked,
+  iteratively deepened concept and ordered-subsumption searches. Checked
+  frontiers remain non-verdicts, every positive and negative cell must
+  terminate, and the resulting matrix is an exact `CompleteTaxonomyCertificate`.
 
 ### Certify native-ABox cardinality taxonomies
 
