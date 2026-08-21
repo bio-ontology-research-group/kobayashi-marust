@@ -6121,6 +6121,23 @@ fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> 
     Ok(())
 }
 
+/// Whether this invocation requested proof-carrying HT publication. Keep this
+/// test outside the individual worker branches: rules consistency, the
+/// Konclude bridge, and the legacy tableau all precede or follow the fast-Ht
+/// arm and must not bypass its Lean checker boundary.
+fn ht_lean_certification_requested() -> bool {
+    [
+        "KM_HT_LEAN_CERT_OUT",
+        "KM_HT_LEAN_CERT_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+        "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
+        "KM_HT_LEAN_TAXONOMY_CERT_OUT",
+        "KM_HT_LEAN_TAXONOMY_CERT_CHECKER",
+    ]
+    .iter()
+    .any(|name| std::env::var_os(name).is_some())
+}
+
 /// `forced_ht` is used only by the wire-contract regression tests. Production
 /// always passes `None` and reads the selected mechanism from the environment.
 fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String> {
@@ -6128,6 +6145,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
     let native_abox = validate_native_abox(&inp)?;
     let native_abox_active = native_abox.active;
     let ht_enabled = forced_ht.unwrap_or_else(|| std::env::var_os("KM_HT").is_some());
+    let lean_cert_requested = ht_lean_certification_requested();
+    if lean_cert_requested && !ht_enabled {
+        return Err("HT Lean certification requires the hypertableau mechanism".to_string());
+    }
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
         return Err("native ABox requires the hypertableau mechanism".to_string());
     }
@@ -6149,6 +6170,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
     // default Tableau (whose `find_model` seeds one root per nominal and applies the
     // o-rule). Run on a large stack since the careful DFS can recurse deeply.
     if std::env::var_os("KM_RULES_CONSISTENCY").is_some() {
+        if lean_cert_requested {
+            return Err(
+                "HT Lean certification cannot publish the unchecked rules-consistency route"
+                    .to_string(),
+            );
+        }
         let consistent = rules_consistency_verdict(&inp, clauses.clone())?;
         let out = TOutput {
             consistent,
@@ -6173,7 +6200,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
     // non-deterministic ones by candidate extraction + pairwise unsat probes.
     // `None` ⇒ DEFER (unsupported clause shape / nominals / a STOPped drive):
     // fall through to the other arms — the bridge only ever ADDS coverage.
-    if std::env::var_os("KM_HT_BRIDGE").is_some() {
+    if std::env::var_os("KM_HT_BRIDGE").is_some() && !lean_cert_requested {
         // The bridge consumes the producer-side TInput (cb_to_ht) — same wire
         // format as this worker's TInput; re-parse the raw input for it.
         let tin_bridge: crate::orchestrate::cb_to_ht::TInput =
@@ -6224,11 +6251,17 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
     // the ≤n merge (qmerge) and pairwise blocking. Inverse stays fenced (SHOIQ
     // needs the NN-rule, not yet ported).
     let ht_nom = forced_ht == Some(true) || std::env::var_os("KM_HT_NOMINALS").is_some();
-    if ht_enabled
+    let ht_route_selected = ht_enabled
         && (ht_force
             || (!inp.number && !inp.inverse && inp.nominals.is_empty())
-            || (ht_nom && !inp.inverse))
-    {
+            || (ht_nom && !inp.inverse));
+    if lean_cert_requested && !ht_route_selected {
+        return Err(
+            "HT Lean certification has no certified hypertableau route for this input"
+                .to_string(),
+        );
+    }
+    if ht_route_selected {
         let mut ht_clauses = clauses.clone();
         let q = queries.clone();
         let noms = inp.nominals.clone();
@@ -6271,12 +6304,6 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             std::env::var_os("KM_HT_LEAN_TAXONOMY_CERT_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_requested =
             lean_taxonomy_path.is_some() || lean_taxonomy_checker.is_some();
-        let lean_cert_requested =
-            lean_cert_path.is_some()
-                || lean_cert_checker.is_some()
-                || lean_native_abox_decision_checker.is_some()
-                || lean_native_abox_source_decision_checker.is_some()
-                || lean_taxonomy_requested;
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
                 return Err(

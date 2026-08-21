@@ -10,6 +10,9 @@
 - Prove that every such route eventually returns either that proposition or
   its negation. Checked node-budget frontiers remain non-verdicts, including
   for the native-ABox route that was absent from the earlier unified theorem.
+- Enforce the certification request before route dispatch. The rules-only
+  consistency helper, Konclude bridge, and legacy tableau can no longer return
+  an unchecked answer before or after the fast-HT Lean publication gate.
 
 ### Certify native-ABox cardinality taxonomies
 

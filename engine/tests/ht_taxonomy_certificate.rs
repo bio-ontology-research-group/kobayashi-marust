@@ -247,6 +247,37 @@ fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::proc
     child.wait_with_output().unwrap()
 }
 
+fn run_certification_bypass_probe(
+    extra_env: &[(&str, &str)],
+    enable_ht: bool,
+) -> std::process::Output {
+    let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+    install_direct_projection_fixture(&mut input);
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    if enable_ht {
+        command.env("KM_HT", "1").env("KM_HT_FORCE", "1");
+    }
+    command
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        // A branch that bypasses certification would incorrectly succeed.
+        .env("KM_HT_LEAN_CERT_CHECKER", "/bin/false")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for &(name, value) in extra_env {
+        command.env(name, value);
+    }
+    let mut child = command.spawn().expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input).unwrap())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -259,6 +290,21 @@ fn certified_publication_requires_checker_and_source_projection() {
     assert!(!missing_source.status.success());
     assert!(String::from_utf8_lossy(&missing_source.stderr)
         .contains("no proved source-to-HT projection"));
+}
+
+#[test]
+fn certified_publication_cannot_bypass_through_bridge_rules_or_legacy_tableau() {
+    let bridge = run_certification_bypass_probe(&[("KM_HT_BRIDGE", "1")], true);
+    assert!(!bridge.status.success());
+    assert!(String::from_utf8_lossy(&bridge.stderr).contains("no unchecked fallback"));
+
+    let rules = run_certification_bypass_probe(&[("KM_RULES_CONSISTENCY", "1")], true);
+    assert!(!rules.status.success());
+    assert!(String::from_utf8_lossy(&rules.stderr).contains("rules-consistency"));
+
+    let legacy = run_certification_bypass_probe(&[], false);
+    assert!(!legacy.status.success());
+    assert!(String::from_utf8_lossy(&legacy.stderr).contains("hypertableau mechanism"));
 }
 
 #[test]
