@@ -285,6 +285,13 @@ only decoded evidence to those proved checkers. Build the native executable with
 `LEAN_NUM_THREADS=2 lake build ht-cert-check`. The separate complete-taxonomy
 decoder is built with
 `LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check`.
+
+For the HT milestone gate, run `lean/run-ht-certification-gate.sh` from the
+repository root. The gate builds the complete Lean development, requires the
+actual checker executables, exercises all six direct/mixed/bundled source
+taxonomy routes through Rust and Lean, and runs the publication and fail-closed
+integration suite. Unlike the individual conditional Rust tests, the gate
+fails when a checker executable is absent.
 The SAT checker is exact for its endpoint contract:
 `checkSat_eq_true_iff_valid` proves acceptance equivalent to guardedness, clash
 freedom, witness completion, and saturation. For a blocked fold,

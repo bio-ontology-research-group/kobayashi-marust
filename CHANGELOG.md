@@ -102,6 +102,9 @@
   checker alone can no longer fall through to unchecked HT publication. Require
   a global verdict checker for every non-ABox certified publication, and make
   each native taxonomy interface force complete matrix and source checking.
+- Add a mandatory HT certification gate that builds the full Lean development,
+  requires real checker executables, exercises all six Rust-to-Lean source
+  taxonomy routes, and runs the publication and fail-closed integration suite.
 
 ### Certify native-ABox cardinality taxonomies
 
