@@ -49,6 +49,11 @@
 - Prove the same source-level polarity equivalence for all three cardinality
   projection families, preserving the complete ABox, projected number
   restrictions, and query literals in one semantic statement.
+- Replace lossy native taxonomy query decoding with exact decoding evidence.
+  Every bounded query now carries a proof that its root, concept, subclass,
+  and superclass coordinates are exactly those supplied by the wire. The old
+  decoder is a projection of this stronger result, so accepted JSON and runtime
+  behavior is unchanged while matrix-position proofs retain their indices.
 
 ### Certify native-ABox cardinality taxonomies
 

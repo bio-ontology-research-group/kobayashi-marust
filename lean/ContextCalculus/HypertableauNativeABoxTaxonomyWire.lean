@@ -21,19 +21,53 @@ inductive DecodedNativeABoxTaxonomyQuery (nodeCount conceptCount : Nat) where
   | concept (root : Fin nodeCount) (concept : Fin conceptCount)
   | subsumption (root : Fin nodeCount) (sub sup : Fin conceptCount)
 
+/-- Proof that a bounded query retains exactly the coordinates supplied by the
+untrusted wire. -/
+inductive DecodedNativeABoxTaxonomyQuery.MatchesWire :
+    DecodedNativeABoxTaxonomyQuery nodeCount conceptCount →
+      WireNativeABoxTaxonomyQuery → Prop where
+  | concept (root : Fin nodeCount) (concept : Fin conceptCount) :
+      MatchesWire (.concept root concept) (.concept root.val concept.val)
+  | subsumption (root : Fin nodeCount) (sub sup : Fin conceptCount) :
+      MatchesWire (.subsumption root sub sup)
+        (.subsumption root.val sub.val sup.val)
+
+structure ExactDecodedNativeABoxTaxonomyQuery
+    (wire : WireNativeABoxTaxonomyQuery) (nodeCount conceptCount : Nat) where
+  query : DecodedNativeABoxTaxonomyQuery nodeCount conceptCount
+  exactCoordinates : DecodedNativeABoxTaxonomyQuery.MatchesWire query wire
+
+private def checkedFinExact (kind : String) (bound value : Nat) :
+    Except String { index : Fin bound // index.val = value } :=
+  if h : value < bound then .ok ⟨⟨value, h⟩, rfl⟩
+  else .error s!"{kind} id {value} is outside [0,{bound})"
+
+def WireNativeABoxTaxonomyQuery.decodeExact
+    (wire : WireNativeABoxTaxonomyQuery) (nodeCount conceptCount : Nat) :
+    Except String (ExactDecodedNativeABoxTaxonomyQuery wire nodeCount conceptCount) :=
+  match wire with
+  | .concept rootValue conceptValue => do
+      let root ← checkedFinExact "taxonomy query root" nodeCount rootValue
+      let concept ← checkedFinExact "taxonomy concept" conceptCount conceptValue
+      have hwire : WireNativeABoxTaxonomyQuery.concept root.val.val concept.val.val =
+          WireNativeABoxTaxonomyQuery.concept rootValue conceptValue := by
+        rw [root.property, concept.property]
+      return ⟨.concept root.val concept.val, hwire ▸ .concept root.val concept.val⟩
+  | .subsumption rootValue subValue supValue => do
+      let root ← checkedFinExact "taxonomy query root" nodeCount rootValue
+      let sub ← checkedFinExact "taxonomy subclass" conceptCount subValue
+      let sup ← checkedFinExact "taxonomy superclass" conceptCount supValue
+      have hwire : WireNativeABoxTaxonomyQuery.subsumption
+          root.val.val sub.val.val sup.val.val =
+          WireNativeABoxTaxonomyQuery.subsumption rootValue subValue supValue := by
+        rw [root.property, sub.property, sup.property]
+      return ⟨.subsumption root.val sub.val sup.val,
+        hwire ▸ .subsumption root.val sub.val sup.val⟩
+
 def WireNativeABoxTaxonomyQuery.decode
     (wire : WireNativeABoxTaxonomyQuery) (nodeCount conceptCount : Nat) :
-    Except String (DecodedNativeABoxTaxonomyQuery nodeCount conceptCount) :=
-  match wire with
-  | WireNativeABoxTaxonomyQuery.concept root conceptId => do
-      return DecodedNativeABoxTaxonomyQuery.concept
-        (← checkedFin "taxonomy query root" nodeCount root)
-        (← checkedFin "taxonomy concept" conceptCount conceptId)
-  | WireNativeABoxTaxonomyQuery.subsumption root sub sup => do
-      return DecodedNativeABoxTaxonomyQuery.subsumption
-        (← checkedFin "taxonomy query root" nodeCount root)
-        (← checkedFin "taxonomy subclass" conceptCount sub)
-        (← checkedFin "taxonomy superclass" conceptCount sup)
+    Except String (DecodedNativeABoxTaxonomyQuery nodeCount conceptCount) := do
+  return (← wire.decodeExact nodeCount conceptCount).query
 
 def DecodedNativeABoxTaxonomyQuery.root :
     DecodedNativeABoxTaxonomyQuery nodeCount conceptCount → Fin nodeCount
@@ -146,6 +180,8 @@ structure DecodedNativeABoxTaxonomySat where
   certificate : DecodedNativeABoxSatCertificate
   query : DecodedNativeABoxTaxonomyQuery certificate.seed.nodeCount
     certificate.seed.abox.concepts.length
+  wireQuery : WireNativeABoxTaxonomyQuery
+  exactCoordinates : DecodedNativeABoxTaxonomyQuery.MatchesWire query wireQuery
   query_present : ∀ literal ∈ query.literals,
     (query.root, literal) ∈ certificate.seed.state.base.base.labels
 
@@ -153,6 +189,8 @@ structure DecodedNativeABoxTaxonomyUnsat where
   initial : DecodedNativeABoxSeed
   query : DecodedNativeABoxTaxonomyQuery initial.nodeCount
     initial.abox.concepts.length
+  wireQuery : WireNativeABoxTaxonomyQuery
+  exactCoordinates : DecodedNativeABoxTaxonomyQuery.MatchesWire query wireQuery
   query_root_disjoint : ∀ individual, query.root ≠ initial.roots individual
   exact_initial : initial.abox.abox.ExactEqQuerySeed query.literals
     initial.state.base.state initial.roots query.root
@@ -172,12 +210,15 @@ def WireNativeABoxTaxonomyDecision.decode
   match wire.evidence with
   | .sat certificateWire =>
       let certificate ← certificateWire.decode
-      let query ← wire.query.decode certificate.seed.nodeCount
+      let exactQuery ← wire.query.decodeExact certificate.seed.nodeCount
         certificate.seed.abox.concepts.length
+      let query := exactQuery.query
       if hquery : query.labelsPresentB certificate.seed.state.base.base.labels = true then
         return .sat {
           certificate
           query
+          wireQuery := wire.query
+          exactCoordinates := exactQuery.exactCoordinates
           query_present := query.labelsPresentB_sound _ hquery
         }
       else throw "native ABox taxonomy countermodel omits its query literals"
@@ -186,7 +227,8 @@ def WireNativeABoxTaxonomyDecision.decode
       unless initialWire.roots == expectedRoots do
         throw "native ABox taxonomy roots must be ordered nodes 1 through N"
       let initial ← initialWire.decode
-      let query ← wire.query.decode initial.nodeCount initial.abox.concepts.length
+      let exactQuery ← wire.query.decodeExact initial.nodeCount initial.abox.concepts.length
+      let query := exactQuery.query
       let queryZero : Fin initial.nodeCount :=
         ⟨0, Nat.pos_of_ne_zero initial.node_nonzero⟩
       if hqueryRoot : query.root = queryZero then
@@ -199,6 +241,8 @@ def WireNativeABoxTaxonomyDecision.decode
               return .unsat {
                 initial
                 query
+                wireQuery := wire.query
+                exactCoordinates := exactQuery.exactCoordinates
                 query_root_disjoint := hdisjoint
                 exact_initial := initial.abox.exactEqQuerySeedB_sound
                   initial.state.base initial.roots query hexact
