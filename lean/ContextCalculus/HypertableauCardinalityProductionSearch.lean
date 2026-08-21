@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauCardinalityRuntimeSearch
+import ContextCalculus.HypertableauCardinalityBlockedSearch
 
 /-!
 # Production-shaped cardinality hypertableau expansion
@@ -1191,6 +1192,64 @@ theorem cardinalityControl_search_total
         rw [hcontrol]
         trivial⟩
 
+/-- A stopped control remains inconclusive unless it is a terminal accompanied
+by an independently accepted global model certificate. -/
+def CardinalityControlOutcome.IsCheckedFrontier
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {definitions : List (CardinalityDef Concept Role)}
+    {config : CardinalityRuntimeConfig Concept Role definitions nodeCount}
+    {parent : Fin nodeCount → Option (Fin nodeCount)}
+    {ancestors : Fin nodeCount → List (Fin nodeCount)}
+    (hasCheckedModel : Prop) :
+    CardinalityControlOutcome ontology definitions config parent ancestors → Prop
+  | .step _ => False
+  | .witnessFrontier .. => True
+  | .minimumFrontier .. => True
+  | .terminal .. => ¬hasCheckedModel
+
+/-- Finite production search with the independent model checker composed at
+terminal states. The SAT disjunct requires accepted model evidence; rejected
+terminal evidence and node frontiers remain explicit. -/
+theorem cardinalityControl_checked_semantic_or_frontier
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (nodeCount : Nat)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount)) :
+    ∀ root : CardinalityRuntimeConfig (Fin conceptCount) (Fin roleCount)
+        definitions nodeCount,
+      ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions root.state ∨
+        CardinalityHasNonemptyModel ontology definitions ∨
+          ∃ leaf,
+            CardinalityProductionDescends ontology definitions parent ancestors root leaf ∧
+            (cardinalityControl ontology definitions leaf parent ancestors).IsCheckedFrontier
+              (HasCheckedCardinalityModel (nodeCount := nodeCount) ontology definitions) := by
+  intro root
+  rcases cardinalityControl_search_total ontology definitions nodeCount parent ancestors root with
+    hclosed | ⟨leaf, hdescends, hstop⟩
+  · exact Or.inl hclosed
+  · generalize hcontrol : cardinalityControl ontology definitions leaf parent ancestors = outcome
+    cases outcome with
+    | step selected =>
+        rw [hcontrol] at hstop
+        exact hstop.elim
+    | witnessFrontier hnoApart hnoClash hnoClause candidate hselect hfull =>
+        exact Or.inr (Or.inr ⟨leaf, hdescends, by rw [hcontrol]; trivial⟩)
+    | minimumFrontier hnoApart hnoClash hnoClause hnoWitness site hselect hoverflow =>
+        exact Or.inr (Or.inr ⟨leaf, hdescends, by rw [hcontrol]; trivial⟩)
+    | terminal hnoApart hnoClash hnoClause hnoWitness hnoMinimum hnoMaximum =>
+        by_cases hmodel : HasCheckedCardinalityModel (nodeCount := nodeCount)
+            ontology definitions
+        · exact Or.inr (Or.inl (hasCardinalityModel_of_checked hmodel))
+        · exact Or.inr (Or.inr ⟨leaf, hdescends, by
+            rw [hcontrol]
+            exact hmodel⟩)
+
 #print axioms CardinalityProductionStep.closedRefutes_of_children
 #print axioms selectIndexedExpandableMinimum_eq_none_iff
 #print axioms selectIndexedExpandableMinimum_closedRefutes
@@ -1217,5 +1276,6 @@ theorem cardinalityControl_search_total
 #print axioms cardinalityProduction_induction
 #print axioms cardinalityControl_total
 #print axioms cardinalityControl_search_total
+#print axioms cardinalityControl_checked_semantic_or_frontier
 
 end ContextCalculus.Hypertableau

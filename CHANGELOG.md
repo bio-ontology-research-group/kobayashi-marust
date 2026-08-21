@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+## [0.3.188] – 2026-08-21
+
+### Compose checked SAT evidence with cardinality production search
+
+- Import the independent finite equality/cardinality model checker into the
+  production search layer.
+- Define checked-frontier semantics: ordinary witness and minimum budget stops
+  are always inconclusive; a selector-exhausted terminal is inconclusive unless
+  accepted global model evidence exists.
+- Prove finite production search returns one of three semantically distinct
+  results: a quotient-closed refutation, a nonempty ontology/cardinality model
+  derived from an accepted certificate, or an explicit descendant frontier.
+- Prove rejected or absent model evidence at an exhausted terminal cannot
+  produce SAT.
+- Audit the checked-search endpoint without `sorryAx`.
+
+Concrete Rust field and outcome construction, CB, and automatic routing remain
+unfinished.
+
 ## [0.3.187] – 2026-08-21
 
 ### Prove total finite-budget cardinality control search

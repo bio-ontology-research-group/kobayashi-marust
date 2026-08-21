@@ -41,7 +41,7 @@ cargo build --release --locked
 
 The main executable is `engine/target/release/km`. Versioned source releases
 are available from the repository tags; the current certification release is
-`v0.3.187`. Lean now proves the finite equality-free, equality-aware,
+`v0.3.188`. Lean now proves the finite equality-free, equality-aware,
 equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
 and complete relative to their semantic finite refutation relations.
 Equality-changing transitions reconstruct checked canonical representative
@@ -186,6 +186,11 @@ reaches a descendant explicitly marked as an ordinary-witness frontier,
 minimum-width frontier, or selector-exhausted terminal. Node exhaustion is
 never treated as a logical open branch. Exhausted terminals still require the
 independent checked-model composition before they can produce SAT.
+That checked-model composition is now proved. Production search yields a sound
+refutation, a nonempty ontology/cardinality model derived from an accepted
+independent certificate, or an explicit frontier descendant. An exhausted
+terminal whose model evidence is missing or rejected remains inconclusive and
+cannot produce SAT.
 
 ## Classify an ontology
 
