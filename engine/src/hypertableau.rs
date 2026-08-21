@@ -2974,7 +2974,11 @@ impl LeanHtRefutationState {
         if labels.iter().any(|(node, _)| *node != 0) {
             return Err("HT Lean query labels must use root node 0".to_string());
         }
-        let mut state = Self::root(labels);
+        // Keep the serialized insertion order identical to Lean's exact seed:
+        // all native-individual facts first, followed by the fresh query root.
+        // Search uses set membership, so this does not change the derivation
+        // relation; it makes the checked finite root canonical.
+        let mut state = Self::root(&[]);
         let roots: Vec<Node> = (1..=native_abox.individuals.len()).collect();
         state.active_nodes = 1 + roots.len();
         state.witness_parent.resize(state.active_nodes, None);
@@ -2990,6 +2994,11 @@ impl LeanHtRefutationState {
                 if state.labels.insert(fact) {
                     state.label_order.push(fact);
                 }
+            }
+        }
+        for &fact in labels {
+            if state.labels.insert(fact) {
+                state.label_order.push(fact);
             }
         }
         for &(left, right) in &native_abox.different {
@@ -9358,6 +9367,24 @@ impl Ht {
         self.lean_decision_candidate_passes(&candidate)
     }
 
+    /// Validate one joint native-ABox taxonomy cell when either the production
+    /// publication checker or the test-only checker is configured.  Both SAT
+    /// and UNSAT cells cross this boundary; a refutation is not privileged over
+    /// a countermodel merely because the search closed.
+    fn lean_native_abox_taxonomy_candidate_passes(
+        &self,
+        payload: &str,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
+            });
+        match checker {
+            Some(checker) => self.lean_candidate_passes_with(payload, &checker),
+            None => Ok(true),
+        }
+    }
+
     fn deepen_after_rejected_candidate(
         node_budget: usize,
         deepen: bool,
@@ -12252,6 +12279,9 @@ impl Ht {
         &self,
         query: LeanHtTaxonomyQuery,
     ) -> Result<(bool, String), String> {
+        if !self.native_abox.individuals.is_empty() && self.card_defs.is_empty() {
+            return self.lean_native_abox_taxonomy_query_decision_certificate_json(query);
+        }
         let initial_labels = query.initial_labels();
         let closed_document = || match query {
             LeanHtTaxonomyQuery::Concept(concept) => {
@@ -12437,6 +12467,180 @@ impl Ht {
                     })?;
                 }
                 LeanHtRefutationOutcome::Invalid(error) => return Err(error),
+            }
+        }
+    }
+
+    /// Decide one taxonomy cell in the same finite state as the complete
+    /// native ABox. Query root zero and named roots one through N are checked
+    /// together by the dedicated Lean wire. An ontology-only taxonomy cell is
+    /// never used for a search initialized with named individuals.
+    fn lean_native_abox_taxonomy_query_decision_certificate_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String), String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox taxonomy requires at least one individual".to_string());
+        }
+        if !self.card_defs.is_empty() {
+            return Err(
+                "native ABox taxonomy query wire does not yet include cardinality".to_string(),
+            );
+        }
+        let initial_labels = query.initial_labels();
+        let (mut variable_count, mut concept_count, mut role_count, ontology) =
+            self.lean_decision_signature();
+        variable_count = variable_count.max(2);
+        for &(_, literal) in &initial_labels {
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        for (proxies, assertions) in &self.native_abox.individuals {
+            for &concept in proxies.iter().chain(assertions) {
+                concept_count = concept_count.max(concept as usize + 1);
+            }
+        }
+        for &(role, _, _) in &self.native_abox.role_assertions {
+            role_count = role_count.max(role as usize + 1);
+        }
+        let query_json = match query {
+            LeanHtTaxonomyQuery::Concept(concept) => serde_json::json!({
+                "concept": { "root": 0, "concept": concept },
+            }),
+            LeanHtTaxonomyQuery::Subsumption(sub, sup) => serde_json::json!({
+                "subsumption": { "root": 0, "sub": sub, "sup": sup },
+            }),
+        };
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        loop {
+            let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
+            match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
+                LeanHtEqRefutationOutcome::Closed(_, _) => {
+                    let raw = self.lean_eq_refutation_certificate_json_impl(
+                        &initial_labels,
+                        |tree| LeanHtEqEvidence::Unsat { tree },
+                        true,
+                    )?;
+                    let certificate: serde_json::Value =
+                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+                    let tree = certificate["evidence"]["unsat"]["tree"].clone();
+                    if tree.is_null() {
+                        return Err("native ABox taxonomy refutation omitted its tree".to_string());
+                    }
+                    let individuals: Vec<_> = self
+                        .native_abox
+                        .individuals
+                        .iter()
+                        .map(|(proxies, assertions)| serde_json::json!({
+                            "proxies": proxies,
+                            "assertions": assertions,
+                        }))
+                        .collect();
+                    let nominals: Vec<usize> = self
+                        .native_abox
+                        .individuals
+                        .iter()
+                        .flat_map(|(proxies, _)| proxies.iter().map(|&concept| concept as usize))
+                        .collect();
+                    let different: Vec<_> = self
+                        .native_abox
+                        .different
+                        .iter()
+                        .map(|&(left, right)| serde_json::json!([left, right]))
+                        .collect();
+                    let role_assertions: Vec<_> = self
+                        .native_abox
+                        .role_assertions
+                        .iter()
+                        .map(|&(role, source, target)| {
+                            serde_json::json!([role, source, target])
+                        })
+                        .collect();
+                    let apart: Vec<_> = self
+                        .native_abox
+                        .different
+                        .iter()
+                        .map(|&(left, right)| serde_json::json!({
+                            "left": left + 1,
+                            "right": right + 1,
+                        }))
+                        .collect();
+                    let roots: Vec<usize> =
+                        (1..=self.native_abox.individuals.len()).collect();
+                    let initial = serde_json::json!({
+                        "abox": {
+                            "complete": true,
+                            "concepts": (0..concept_count)
+                                .map(|id| format!("c{id}"))
+                                .collect::<Vec<_>>(),
+                            "roles": (0..role_count)
+                                .map(|id| format!("r{id}"))
+                                .collect::<Vec<_>>(),
+                            "nominals": nominals,
+                            "individuals": individuals,
+                            "different": different,
+                            "role_assertions": role_assertions,
+                            "negative_role_assertions": [],
+                        },
+                        "node_count": certificate["node_count"],
+                        "variable_count": certificate["variable_count"],
+                        "roots": roots,
+                        "ontology": certificate["ontology"],
+                        "state": {
+                            "base": certificate["state"],
+                            "apart": apart,
+                        },
+                    });
+                    let document = serde_json::to_string(&serde_json::json!({
+                        "version": 1,
+                        "query": query_json.clone(),
+                        "evidence": { "unsat": { "initial": initial, "tree": tree } },
+                    }))
+                    .map_err(|error| error.to_string())?;
+                    if !self.lean_native_abox_taxonomy_candidate_passes(&document)? {
+                        return Err(
+                            "Lean rejected the native ABox taxonomy refutation".to_string(),
+                        );
+                    }
+                    return Ok((false, document));
+                }
+                LeanHtEqRefutationOutcome::Open(open) => {
+                    let seed = self.lean_native_abox_seed_json(
+                        open,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        &ontology,
+                    )?;
+                    let seed: serde_json::Value =
+                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                    let candidate = serde_json::to_string(&serde_json::json!({
+                        "version": 1,
+                        "query": query_json.clone(),
+                        "evidence": { "sat": { "certificate": { "seed": seed } } },
+                    }))
+                    .map_err(|error| error.to_string())?;
+                    let passes =
+                        self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
+                    if passes {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "native ABox taxonomy",
+                    )?;
+                }
+                LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "native ABox taxonomy reached the configured node cap".to_string(),
+                    );
+                }
+                LeanHtEqRefutationOutcome::Frontier(_) => {
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "native ABox taxonomy node budget overflowed usize".to_string()
+                    })?;
+                }
+                LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
     }
@@ -13045,6 +13249,56 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_native_abox_taxonomy_certificate_json(
+        &self,
+        named: &[C],
+    ) -> Result<String, String> {
+        let mut concepts = Vec::with_capacity(named.len());
+        let mut subsumptions = Vec::with_capacity(named.len());
+        for &concept in named {
+            let (_, document) = self.lean_native_abox_taxonomy_query_decision_certificate_json(
+                LeanHtTaxonomyQuery::Concept(concept),
+            )?;
+            concepts.push(
+                serde_json::from_str::<serde_json::Value>(&document)
+                    .map_err(|error| error.to_string())?,
+            );
+        }
+        for &sub in named {
+            let mut row = Vec::with_capacity(named.len());
+            for &sup in named {
+                let (_, document) =
+                    self.lean_native_abox_taxonomy_query_decision_certificate_json(
+                        LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                    )?;
+                row.push(
+                    serde_json::from_str::<serde_json::Value>(&document)
+                        .map_err(|error| error.to_string())?,
+                );
+            }
+            subsumptions.push(row);
+        }
+        let payload = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concepts": concepts,
+            "subsumptions": subsumptions,
+        }))
+        .map_err(|error| error.to_string())?;
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
+        });
+        if let Some(checker) = checker {
+            if !self.lean_candidate_passes_with(&payload, &checker)? {
+                return Err("Lean rejected the complete native ABox taxonomy".to_string());
+            }
+        }
+        Ok(payload)
+    }
+
     fn lean_cardinality_taxonomy_certificate_json(
         &mut self,
         named: &[C],
@@ -13153,6 +13407,9 @@ impl Ht {
         let mut unique = HashSet::with_capacity(named.len());
         if !named.iter().all(|concept| unique.insert(*concept)) {
             return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
+        }
+        if !self.native_abox.individuals.is_empty() && self.card_defs.is_empty() {
+            return self.lean_native_abox_taxonomy_certificate_json(named);
         }
         if !self.card_defs.is_empty() {
             return self.lean_cardinality_taxonomy_certificate_json(named);
@@ -22078,6 +22335,130 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr)
             );
         }
+    }
+
+    #[test]
+    fn native_abox_taxonomy_cells_use_one_joint_checked_state() {
+        const NOMINAL: C = 20;
+        const ASSERTED: C = 21;
+        let mut reasoner = Ht::new_certified(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![con(false, B, X)],
+        )]);
+        reasoner.set_nominals(vec![NOMINAL]);
+        reasoner.set_native_abox(
+            vec![(vec![NOMINAL], vec![ASSERTED])],
+            Vec::new(),
+            Vec::new(),
+        );
+
+        let cases = [
+            (LeanHtTaxonomyQuery::Concept(B), true),
+            (LeanHtTaxonomyQuery::Concept(A), true),
+            (LeanHtTaxonomyQuery::Subsumption(B, A), true),
+            (LeanHtTaxonomyQuery::Subsumption(A, B), false),
+        ];
+        let mut documents = Vec::new();
+        for (query, expected_sat) in cases {
+            let (sat, document) = reasoner
+                .lean_native_abox_taxonomy_query_decision_certificate_json(query)
+                .expect("joint native ABox taxonomy cell must be certified");
+            assert_eq!(sat, expected_sat);
+            let wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+            let seed = wire["evidence"]
+                .get("sat")
+                .map(|sat| &sat["certificate"]["seed"])
+                .or_else(|| wire["evidence"].get("unsat").map(|unsat| &unsat["initial"]))
+                .expect("taxonomy cell has SAT or UNSAT evidence");
+            assert_eq!(seed["roots"], serde_json::json!([1]));
+            let labels = &seed["state"]["base"]["labels"];
+            assert!(
+                labels.as_array().is_some_and(|labels| labels.iter().any(|label| {
+                    label["node"] == 1 && label["literal"]["concept"] == ASSERTED
+                })),
+                "the query certificate must retain the native ABox assertion"
+            );
+            documents.push(document);
+        }
+
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
+        else {
+            return;
+        };
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-native-abox-taxonomy-tamper-{}.json",
+            std::process::id()
+        ));
+        let mut tampered: serde_json::Value =
+            serde_json::from_str(&documents[0]).expect("taxonomy document is JSON");
+        let labels = tampered["evidence"]["sat"]["certificate"]["seed"]["state"]["base"]
+            ["labels"]
+            .as_array_mut()
+            .expect("SAT seed labels");
+        labels.retain(|label| {
+            !(label["node"] == 1 && label["literal"]["concept"] == ASSERTED)
+        });
+        std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
+        let output = std::process::Command::new(checker)
+            .arg(&path)
+            .output()
+            .expect("run native ABox taxonomy checker on a tampered cell");
+        let _ = std::fs::remove_file(path);
+        assert!(
+            !output.status.success(),
+            "Lean must reject a taxonomy countermodel with its ABox assertion removed"
+        );
+    }
+
+    #[test]
+    fn native_abox_taxonomy_matrix_is_complete_and_tamper_evident() {
+        const NOMINAL: C = 20;
+        let mut reasoner = Ht::new_certified(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![con(false, B, X)],
+        )]);
+        reasoner.set_nominals(vec![NOMINAL]);
+        reasoner.set_native_abox(
+            vec![(vec![NOMINAL], vec![A])],
+            Vec::new(),
+            Vec::new(),
+        );
+        let document = reasoner
+            .lean_taxonomy_certificate_json(&[A, B])
+            .expect("complete native ABox taxonomy must be checker ready");
+        let mut wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert_eq!(wire["concepts"].as_array().unwrap().len(), 2);
+        assert_eq!(wire["subsumptions"].as_array().unwrap().len(), 2);
+        assert!(wire["subsumptions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row.as_array().is_some_and(|row| row.len() == 2)));
+
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
+        else {
+            return;
+        };
+        wire["subsumptions"][0]
+            .as_array_mut()
+            .expect("first subsumption row")
+            .pop();
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-native-abox-taxonomy-matrix-tamper-{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
+        let output = std::process::Command::new(checker)
+            .arg(&path)
+            .output()
+            .expect("run complete native ABox taxonomy checker on missing cell");
+        let _ = std::fs::remove_file(path);
+        assert!(
+            !output.status.success(),
+            "Lean must reject a native ABox taxonomy with a missing cell"
+        );
     }
 
     #[test]

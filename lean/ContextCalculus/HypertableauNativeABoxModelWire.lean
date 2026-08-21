@@ -97,27 +97,51 @@ def WireNativeABoxSatCertificate.check
   let _ ← wire.decode
   return true
 
+theorem DecodedNativeABoxSatCertificate.canonical_model
+    (decoded : DecodedNativeABoxSatCertificate) :
+    ∃ value : Fin decoded.seed.abox.individuals.length →
+        decoded.seed.state.base.state.QuotientDomain,
+      Nonempty decoded.seed.state.base.state.QuotientDomain ∧
+      decoded.seed.state.base.state.quotientCanonical.models
+        decoded.seed.state.base.base.ontology ∧
+      decoded.seed.abox.abox.models
+        decoded.seed.state.base.state.quotientCanonical value := by
+  letI : Nonempty (Fin decoded.seed.nodeCount) :=
+    ⟨⟨0, Nat.pos_of_ne_zero decoded.seed.node_nonzero⟩⟩
+  have hparts := decoded.sat
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hparts
+  let nodeValue : Fin decoded.seed.nodeCount →
+      decoded.seed.state.base.state.QuotientDomain :=
+    fun node ↦ Quotient.mk decoded.seed.state.base.state.nodeSetoid node
+  have hbaseRealized : decoded.seed.state.base.state.RealizedBy
+      decoded.seed.state.base.state.quotientCanonical nodeValue :=
+    decoded.seed.state.base.checkEqSat_realizes decoded.sat
+  have hapartSound := decoded.seed.state.apartSeparatedB_sound
+    hparts.1.1.1.1 decoded.seed.apart_check
+  have hdistinctRealized : decoded.seed.state.state.RealizedBy
+      decoded.seed.state.base.state.quotientCanonical nodeValue := by
+    refine ⟨hbaseRealized, ?_⟩
+    intro left right hlisted hequal
+    exact hapartSound (left, right) hlisted (Quotient.exact hequal)
+  letI : Nonempty decoded.seed.state.base.state.QuotientDomain :=
+    ⟨Quotient.mk decoded.seed.state.base.state.nodeSetoid
+      (Classical.choice (inferInstance : Nonempty (Fin decoded.seed.nodeCount)))⟩
+  refine ⟨nodeValue ∘ decoded.seed.roots, inferInstance,
+    decoded.seed.state.base.checkEqSat_models decoded.sat, ?_⟩
+  exact decoded.seed.abox.abox.models_of_seeded decoded.seed.state.state
+    decoded.seed.roots decoded.seed.state.base.state.quotientCanonical nodeValue
+    decoded.seed.seeded hdistinctRealized
+    (decoded.seed.proxySingletonsB_sound hparts.1.1.1.1 decoded.singleton_proxies)
+    (decoded.seed.negativeRolesB_sound hparts.1.1.1.1 decoded.negative_roles)
+
 theorem DecodedNativeABoxSatCertificate.satisfiable
     (decoded : DecodedNativeABoxSatCertificate) :
     decoded.seed.abox.abox.SatisfiableWith
       decoded.seed.state.base.base.ontology := by
-  letI : Nonempty (Fin decoded.seed.nodeCount) :=
-    ⟨⟨0, Nat.pos_of_ne_zero decoded.seed.node_nonzero⟩⟩
-  exact decoded.seed.state.checkEqSat_native_satisfiable
-    decoded.seed.abox.abox decoded.seed.roots decoded.seed.seeded decoded.sat
-    decoded.seed.apart_check
-    (decoded.seed.proxySingletonsB_sound
-      (by
-        have hparts := decoded.sat
-        simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hparts
-        exact hparts.1.1.1.1)
-      decoded.singleton_proxies)
-    (decoded.seed.negativeRolesB_sound
-      (by
-        have hparts := decoded.sat
-        simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hparts
-        exact hparts.1.1.1.1)
-      decoded.negative_roles)
+  rcases decoded.canonical_model with ⟨value, hdomain, hontology, habox⟩
+  exact ⟨decoded.seed.state.base.state.QuotientDomain,
+    decoded.seed.state.base.state.quotientCanonical, value,
+    hdomain, hontology, habox⟩
 
 inductive WireNativeABoxDecisionEvidence where
   | sat (certificate : WireNativeABoxSatCertificate)
@@ -340,6 +364,7 @@ theorem DecodedNativeABoxCardinalityDecision.semantic_valid
 #print axioms DecodedNativeABoxSeed.proxySingletonsB_sound
 #print axioms DecodedNativeABoxSeed.negativeRolesB_sound
 #print axioms DecodedNativeABoxSatCertificate.satisfiable
+#print axioms DecodedNativeABoxSatCertificate.canonical_model
 #print axioms DecodedNativeABoxDecision.semantic_valid
 #print axioms DecodedNativeABoxCardinalitySatCertificate.satisfiable
 #print axioms DecodedNativeABoxCardinalitySatCertificate.canonical_model
