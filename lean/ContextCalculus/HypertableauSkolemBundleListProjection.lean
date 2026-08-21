@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauSkolemDefinerProjection
+import ContextCalculus.HypertableauConceptRenaming
 
 /-!
 # Simultaneous multi-filler Skolem-bundle projection
@@ -279,8 +280,25 @@ theorem indexedBundleProjection_sat_iff [DecidableEq Function]
       ⟨functions, hdirect, hbundles⟩
     exact ⟨indexedRestrict J, functions, hdirect, hbundles⟩
 
+theorem indexedBundleProjection_renamed_sat_iff [DecidableEq Function]
+    (base : SkolemInterp Domain Function)
+    (direct : List (Clause Variable Concept Role))
+    (specs : Fin n → BundleSpec Variable Concept Role Function)
+    (hunique : (skolemPairFunctions (indexedBundlePairs specs)).Nodup)
+    (embedding : Sum (Fin n) Concept → TargetConcept)
+    (inverse : TargetConcept → Sum (Fin n) Concept)
+    (hleft : ∀ concept, inverse (embedding concept) = concept) :
+    (∃ I : Interp Domain Concept Role, ∃ functions : SkolemInterp Domain Function,
+      I.models direct ∧ ModelsBundles I functions specs) ↔
+    (∃ J : Interp Domain TargetConcept Role,
+      J.models (renameOntology embedding (indexedBundleOntology direct specs))) := by
+  rw [indexedBundleProjection_sat_iff base direct specs hunique]
+  exact renameOntology_sat_iff_of_leftInverse embedding inverse hleft
+    (indexedBundleOntology direct specs)
+
 #print axioms indexedBundleProjection_sound
 #print axioms indexedBundleProjection_complete
 #print axioms indexedBundleProjection_sat_iff
+#print axioms indexedBundleProjection_renamed_sat_iff
 
 end ContextCalculus.Hypertableau

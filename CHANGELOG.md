@@ -2,6 +2,27 @@
 
 ## [unreleased]
 
+## [0.3.202] – 2026-08-21
+
+### Check multi-bundle projection documents
+
+- Prove generic HT concept renaming preserves models under pullback and reflects
+  models when the concept embedding has a left inverse.
+- Transport the simultaneous fresh-definer theorem from its structural `Sum`
+  signature to arbitrary production concept identifiers.
+- Add a bundle projection wire with separate source and target concept tables,
+  independently decoded direct clauses, bundles, fillers, definers, and target
+  clauses.
+- Check that every source concept and fresh definer maps injectively into the
+  target table, rejecting definer collisions by computation.
+- Check unique Skolem function keys and exact whole-target clause-set equality.
+- Prove every accepted bundle document preserves and reflects satisfiability,
+  and extend `ht-projection-cert-check` to dispatch this format.
+
+Rust does not yet emit bundle documents, and role-domain extras are not yet part
+of this wire. Cardinality replacement, nominal/ABox projection, the remaining
+HT audit, CB, and routing certification remain unfinished.
+
 ## [0.3.201] – 2026-08-21
 
 ### Compose all fresh-definer Skolem bundles simultaneously

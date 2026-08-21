@@ -255,8 +255,17 @@ source concept has the disjoint name `Sum.inr c`, and all uniquely keyed
 Skolem witnesses live in one shared function interpretation. The module proves
 soundness, completeness, and whole-ontology equisatisfiability for the lifted
 direct clauses, every generated existential, and every generated definer
-implication simultaneously. The corresponding executable wire constructor
-remains open.
+implication simultaneously.
+
+`HypertableauConceptRenaming.lean` proves the model transport from that
+structural signature to arbitrary finite production concept identifiers.
+`HypertableauBundleProjectionWire.lean` uses it in a native checker: source
+concepts and generated definers must map injectively into the target symbol
+table, all names and local variables are resolved independently, Skolem keys
+must be unique, and the complete reconstructed and claimed target clause sets
+must agree. Every accepted document has proved source/target
+equisatisfiability. Rust emission of these documents and role-domain extras
+remain open.
 
 `HypertableauDomainProjection.lean` proves the extra domain consequences that
 Rust emits beside an existential are redundant. Two-variable role-inclusion
