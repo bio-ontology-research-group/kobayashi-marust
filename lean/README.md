@@ -230,10 +230,16 @@ Skolem role/filler pair equisatisfiable with the HT existential that replaces
 it, in both directions. `mixedSkolemProjection_sat_iff` composes any finite
 uniquely named pair list in one shared Skolem interpretation together with
 untouched direct clauses. Rust now enforces the theorem's identical-body,
-singleton-head, and `R(x, f(x))` / `C(f(x))` preconditions. The projection wire does not yet encode
-this two-source-to-one-target constructor, so certified runs still defer on
-function-bearing source clauses. Bottom-head erasure, cardinality replacement,
-and nominal/ABox compilation still require additional projection constructors.
+singleton-head, and `R(x, f(x))` / `C(f(x))` preconditions. Bottom-head erasure,
+cardinality replacement, and nominal/ABox compilation still require additional
+projection constructors.
+
+`HypertableauMixedProjectionWire.lean` provides that constructor's checked
+wire semantics. It independently resolves direct clauses and Skolem-pair names,
+requires globally unique function keys, and accepts only when the projected and
+actual target clause sets coincide. `ht-projection-cert-check` dispatches both
+mixed and direct documents. Rust production evidence generation remains to be
+connected, so the production certified path continues to fail closed here.
 
 `Hypertableau.lean` defines the guarded finite-branch semantics, sound
 hyper-rule branching, exhaustive refutation trees, and canonical-model endpoint.

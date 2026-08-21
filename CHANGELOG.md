@@ -2,6 +2,28 @@
 
 ## [unreleased]
 
+## [0.3.197] – 2026-08-21
+
+### Check mixed direct and Skolem HT projections
+
+- Add a bounded mixed-projection wire with independent concept, role,
+  function, and local-variable name resolution.
+- Decode untouched clauses and common-body unary Skolem pairs into the finite
+  semantic objects used by the whole-list theorem.
+- Reject duplicate symbol tables, duplicate local-variable tables, reused
+  Skolem functions, unknown names, omitted target clauses, and added or
+  altered target clauses.
+- Compare source-derived and actual HT ontologies extensionally, and prove
+  equal clause sets have identical `Interp.models` semantics regardless of
+  ordering or duplicate clauses.
+- Extend `ht-projection-cert-check` to accept mixed documents while preserving
+  compatibility with direct documents.
+
+Rust does not yet produce mixed projection evidence, so checker-enabled HT
+still defers on function-bearing source clauses. General multi-filler/definer
+projection, cardinality replacement, nominal/ABox projection, the remaining
+HT audit, CB, and routing certification remain unfinished.
+
 ## [0.3.196] – 2026-08-21
 
 ### Compose all HT Skolem pairs in one interpretation

@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauDirectProjectionWire
+import ContextCalculus.HypertableauMixedProjectionWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -8,20 +8,25 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      let document : WireDirectProjection ← fromJson? json
-      document.check
+      match (fromJson? json : Except String WireMixedProjection) with
+      | .ok document => document.check
+      | .error mixedError =>
+          match (fromJson? json : Except String WireDirectProjection) with
+          | .ok document => document.check
+          | .error directError =>
+              throw s!"neither mixed ({mixedError}) nor direct ({directError}) projection JSON"
     match result with
     | .ok true =>
-        IO.println "HT direct source projection accepted"
+        IO.println "HT source projection accepted"
         return (0 : UInt32)
     | .ok false =>
-        IO.eprintln "HT direct source projection rejected"
+        IO.eprintln "HT source projection rejected"
         return (1 : UInt32)
     | .error error =>
-        IO.eprintln s!"HT direct source projection rejected: {error}"
+        IO.eprintln s!"HT source projection rejected: {error}"
         return (1 : UInt32)
   catch error =>
-    IO.eprintln s!"HT direct source projection read error: {error}"
+    IO.eprintln s!"HT source projection read error: {error}"
     return (2 : UInt32)
 
 def main (args : List String) : IO UInt32 :=
