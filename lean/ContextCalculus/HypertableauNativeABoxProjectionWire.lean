@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauNativeABoxProjection
+import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauCardinalityDistinctWire
 
@@ -275,6 +276,9 @@ structure DecodedNativeABoxSeed where
   state : FiniteDistinctEqCertificate nodeCount abox.concepts.length
     abox.roles.length variableCount
   seeded : abox.abox.SeededIn state.state roots
+  apart_check : state.apartSeparatedB = true
+  apart_separated : ∀ pair ∈ state.apart,
+    ¬state.base.state.equiv pair.1 pair.2
 
 def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
     Except String DecodedNativeABoxSeed := do
@@ -294,18 +298,24 @@ def WireNativeABoxSeed.decode (wire : WireNativeABoxSeed) :
         simpa only [finCast_transport_back] using hcast
       let state ← wire.state.decode wire.node_count abox.concepts.length
         abox.roles.length wire.variable_count ontology
-      if hseeded : abox.seededInB state roots = true then
-        return {
-          abox
-          nodeCount := wire.node_count
-          variableCount := wire.variable_count
-          roots
-          roots_injective := hrootsInjective
-          ontology
-          state
-          seeded := (abox.seededInB_eq_true_iff state roots).1 hseeded
-        }
-      else throw "finite HT state omits a native ABox seed fact"
+      if hvalid : state.base.equalityClosureValidB = true then
+        if hapart : state.apartSeparatedB = true then
+          if hseeded : abox.seededInB state roots = true then
+            return {
+              abox
+              nodeCount := wire.node_count
+              variableCount := wire.variable_count
+              roots
+              roots_injective := hrootsInjective
+              ontology
+              state
+              seeded := (abox.seededInB_eq_true_iff state roots).1 hseeded
+              apart_check := hapart
+              apart_separated := state.apartSeparatedB_sound hvalid hapart
+            }
+          else throw "finite HT state omits a native ABox seed fact"
+        else throw "finite HT state merges an explicitly different individual"
+      else throw "finite HT state has invalid equality representatives"
     else throw "native ABox roots must be pairwise distinct"
   else throw s!"native ABox root map has {decodedRoots.length} entries, expected {abox.individuals.length}"
 
@@ -318,6 +328,21 @@ theorem WireNativeABoxSeed.check_sound (wire : WireNativeABoxSeed)
     (_hcheck : wire.check = .ok true) :
     decoded.abox.abox.SeededIn decoded.state.state decoded.roots :=
   decoded.seeded
+
+theorem DecodedNativeABoxSeed.checkEqSat_native_satisfiable
+    (decoded : DecodedNativeABoxSeed)
+    (hcheck : decoded.state.base.checkEqSat = true)
+    (hsingletons : decoded.abox.abox.ProxySingletons
+      decoded.state.base.state.quotientCanonical
+      (fun individual => Quotient.mk decoded.state.base.state.nodeSetoid
+        (decoded.roots individual)))
+    (hnegative : decoded.abox.abox.NegativeRoles
+      decoded.state.base.state.quotientCanonical
+      (fun individual => Quotient.mk decoded.state.base.state.nodeSetoid
+        (decoded.roots individual))) :
+    decoded.abox.abox.SatisfiableWith decoded.state.base.base.ontology := by
+  exact decoded.state.checkEqSat_native_satisfiable decoded.abox.abox
+    decoded.roots decoded.seeded hcheck decoded.apart_check hsingletons hnegative
 
 theorem DecodedNativeABox.models_iff_seed
     (decoded : DecodedNativeABox)
@@ -402,6 +427,12 @@ example : rejected ({ validSeedExample with state :=
     { validSeedExample.state with base :=
       { validSeedExample.state.base with labels :=
         validSeedExample.state.base.labels.drop 1 } } }).check = true := by native_decide
+example : rejected ({ validSeedExample with state :=
+    { validSeedExample.state with base :=
+      { validSeedExample.state.base with
+        equalities := [{ left := 0, right := 1 }]
+        representatives := [0, 0]
+        representative_paths := [[], [0]] } } }).check = true := by native_decide
 
 #print axioms DecodedNativeABox.models_iff_seed
 #print axioms DecodedNativeABox.models_negativeRoleClauses_iff
@@ -409,6 +440,7 @@ example : rejected ({ validSeedExample with state :=
 #print axioms DecodedNativeABox.seededInB_eq_true_iff
 #print axioms WireNativeABox.check_sound
 #print axioms WireNativeABoxSeed.check_sound
+#print axioms DecodedNativeABoxSeed.checkEqSat_native_satisfiable
 
 end Tests
 

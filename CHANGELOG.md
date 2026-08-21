@@ -36,6 +36,14 @@
   possibility of searching the TBox alone while the optimized graph used an
   ABox; publication remains gated until Lean composes this multi-root seed with
   the decision theorem.
+- Define the semantic decision target for a normalized TBox together with its
+  native ABox. Prove that a checked equality SAT state realizes its exact finite
+  labels, edges, obligations, and quotient equalities, then compose this with
+  the named-root seed into a model of the joint TBox/ABox problem.
+- Add an executable apart-separation check and prove it excludes equality of
+  every explicitly different pair. The joint wire now validates equality paths,
+  rejects a terminal state that merges different individuals, and carries the
+  resulting semantic proof into the native-ABox SAT composition theorem.
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.

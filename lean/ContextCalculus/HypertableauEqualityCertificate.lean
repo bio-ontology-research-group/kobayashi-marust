@@ -712,6 +712,38 @@ theorem FiniteEqCertificate.checkEqSat_models
     exact ⟨atom, hatom,
       (certificate.quotientHoldsAtomB_eq_true hvalid assignment atom).mp hholds⟩
 
+/-- The canonical quotient accepted by `checkEqSat` realizes the exact finite
+equality state, not only its ontology. This is the bridge needed to compose a
+checked terminal HT state with native-ABox seed preservation. -/
+theorem FiniteEqCertificate.checkEqSat_realizes
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hcheck : certificate.checkEqSat = true) :
+    certificate.state.RealizedBy certificate.state.quotientCanonical
+      (fun node => Quotient.mk certificate.state.nodeSetoid node) := by
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true,
+    List.all_eq_true] at hcheck
+  rcases hcheck with ⟨⟨⟨⟨hvalid, _hguarded⟩, hclash⟩, hwitness⟩, _hsaturated⟩
+  have hclashFree : certificate.state.ClosedClashFree := by
+    have hclashFalse : certificate.closedClashB = false := by simpa using hclash
+    exact certificate.not_closedClashB_closedClashFree hvalid hclashFalse
+  refine ⟨⟨?_, ?_, ?_⟩, ?_⟩
+  · intro node literal hlabel
+    exact certificate.state.quotientCanonical_sat_closedLabel hclashFree
+      node literal ⟨node, certificate.state.equiv_equivalence.1 node, hlabel⟩
+  · intro role source target hedge
+    exact ⟨source, target, rfl, rfl, hedge⟩
+  · intro role filler node hobligation
+    have h := hwitness (role, filler, node) hobligation
+    simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+    rcases h with ⟨witness, _, hedge, hlabel⟩
+    refine ⟨Quotient.mk certificate.state.nodeSetoid witness,
+      ⟨node, witness, rfl, rfl, hedge⟩, ?_⟩
+    exact certificate.state.quotientCanonical_sat_closedLabel hclashFree
+      witness filler
+      ⟨witness, certificate.state.equiv_equivalence.1 witness, hlabel⟩
+  · intro left right hequivalent
+    exact Quotient.sound hequivalent
+
 theorem FiniteEqCertificate.checkEqSat_satisfiable
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (hcheck : certificate.checkEqSat = true) :
@@ -1421,6 +1453,7 @@ end EqualitySatCheckerTests
 #print axioms FiniteEqCertificate.checkEqSat_complete
 #print axioms FiniteEqCertificate.checkEqSat_eq_true_iff_valid
 #print axioms FiniteEqCertificate.checkEqSat_models
+#print axioms FiniteEqCertificate.checkEqSat_realizes
 #print axioms FiniteEqCertificate.checkEqSat_satisfiable
 #print axioms FiniteEqCertificate.checkEqSat_not_entailsSub
 #print axioms FiniteEqCertificate.checkEqSat_not_unsatisfiableConcept
