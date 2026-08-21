@@ -2,6 +2,30 @@
 
 ## [unreleased]
 
+## [0.3.203] – 2026-08-21
+
+### Emit checked multi-filler bundle evidence from Rust
+
+- Recognize only exact common-body multi-filler Skolem bundles with one role
+  clause, at least two singleton filler clauses, unary `f(x)` wiring, and no
+  bottom filler.
+- Preserve the complete source concept table, direct clauses, function table,
+  bundle bodies, fillers, roles, and generated definer names in `TInput`.
+- Serialize production bundle evidence to the native Lean projection checker
+  before checker-enabled HT publication.
+- Add a real Rust-to-Lean test that accepts complete production evidence and
+  rejects an omitted generated clause.
+- Make concurrent projection checks use process-and-sequence-unique temporary
+  filenames instead of racing on one process-wide path.
+- Correct the nominal existential regression fixture to use the two
+  singleton-head clauses emitted by sound normalization; disjunctive Skolem
+  heads continue to defer and are never strengthened into conjunctions.
+
+The complete release Rust suite passes 2,083 tests with 8 explicitly ignored.
+Role-domain extras still make the exact bundle checker defer until their source
+premises are wired. Cardinality replacement, nominal/ABox projection, the
+remaining HT audit, CB, and routing certification remain unfinished.
+
 ## [0.3.202] – 2026-08-21
 
 ### Check multi-bundle projection documents

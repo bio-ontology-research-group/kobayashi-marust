@@ -4867,6 +4867,8 @@ pub struct TInput {
     #[serde(default)]
     pub mixed_projection_source: Option<crate::orchestrate::cb_to_ht::MixedProjectionSource>,
     #[serde(default)]
+    pub bundle_projection_source: Option<crate::orchestrate::cb_to_ht::BundleProjectionSource>,
+    #[serde(default)]
     pub queries: Vec<C>,
     /// Converter omissions are part of the certification boundary. The
     /// ordinary measurement routes may defer around them, but a certified run
@@ -5285,6 +5287,18 @@ struct MixedProjectionDocument<'a> {
     target: Vec<DirectProjectionTargetClause>,
 }
 
+#[derive(Serialize)]
+struct BundleProjectionDocument<'a> {
+    variable_count: usize,
+    source_concepts: &'a [String],
+    concepts: &'a [String],
+    roles: &'a [String],
+    functions: &'a [String],
+    direct: &'a [crate::orchestrate::cb_to_ht::DirectProjectionClause],
+    bundles: &'a [crate::orchestrate::cb_to_ht::SkolemProjectionBundle],
+    target: Vec<DirectProjectionTargetClause>,
+}
+
 fn direct_projection_target_atom(atom: &Atom) -> DirectProjectionTargetAtom {
     match *atom {
         Atom::Concept { lit, t } => DirectProjectionTargetAtom::Concept {
@@ -5349,6 +5363,9 @@ fn direct_projection_variable_count(clauses: &[Clause]) -> usize {
         .unwrap_or(0)
 }
 
+static HT_PROJECTION_TEMP_SEQUENCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 fn check_direct_ht_projection(
     inp: &TInput,
     clauses: &[Clause],
@@ -5361,7 +5378,18 @@ fn check_direct_ht_projection(
             .map(direct_projection_target_clause)
             .collect::<Vec<_>>()
     };
-    let encoded = if let Some(source) = inp.mixed_projection_source.as_ref() {
+    let encoded = if let Some(source) = inp.bundle_projection_source.as_ref() {
+        serde_json::to_vec(&BundleProjectionDocument {
+            variable_count,
+            source_concepts: &source.source_concepts,
+            concepts: &inp.concepts,
+            roles: &inp.roles,
+            functions: &source.functions,
+            direct: &source.direct,
+            bundles: &source.bundles,
+            target: target(),
+        })
+    } else if let Some(source) = inp.mixed_projection_source.as_ref() {
         serde_json::to_vec(&MixedProjectionDocument {
             variable_count,
             concepts: &inp.concepts,
@@ -5384,8 +5412,9 @@ fn check_direct_ht_projection(
         })
     }
     .map_err(|error| format!("cannot encode HT direct projection: {error}"))?;
+    let sequence = HT_PROJECTION_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "km-ht-direct-projection-{}.json",
+        "km-ht-direct-projection-{}-{sequence}.json",
         std::process::id()
     ));
     std::fs::write(&path, encoded)
@@ -6121,9 +6150,78 @@ mod tests {
 
         let mut omitted = projected;
         omitted.pop();
-        assert!(check_direct_ht_projection(&consumer, &omitted, std::path::Path::new(&checker))
-            .unwrap_err()
-            .contains("rejected"));
+        assert!(
+            check_direct_ht_projection(&consumer, &omitted, std::path::Path::new(&checker))
+                .unwrap_err()
+                .contains("rejected")
+        );
+    }
+
+    #[test]
+    fn multi_filler_bundle_projection_passes_the_real_lean_checker_and_rejects_omission() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
+            return;
+        };
+        use crate::json_io::{JAtom as SourceAtom, JClause as SourceClause, JTerm};
+        let x = || JTerm::Var { name: "x".into() };
+        let fx = || JTerm::Fun {
+            function: "f".into(),
+            arg: Box::new(x()),
+        };
+        let body = || {
+            vec![SourceAtom::Concept {
+                concept: "A".into(),
+                term: x(),
+            }]
+        };
+        let source = vec![
+            SourceClause {
+                body: body(),
+                head: vec![SourceAtom::Role {
+                    role: "r".into(),
+                    source: x(),
+                    target: fx(),
+                }],
+            },
+            SourceClause {
+                body: body(),
+                head: vec![SourceAtom::Concept {
+                    concept: "C".into(),
+                    term: fx(),
+                }],
+            },
+            SourceClause {
+                body: body(),
+                head: vec![SourceAtom::Concept {
+                    concept: "D".into(),
+                    term: fx(),
+                }],
+            },
+        ];
+        let producer = crate::orchestrate::cb_to_ht::convert(
+            &source,
+            None,
+            &std::collections::HashSet::new(),
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert!(producer.bundle_projection_source.is_some());
+        let consumer = consumer_input(&producer);
+        let projected = clauses_of_tinput(&consumer);
+        check_direct_ht_projection(&consumer, &projected, std::path::Path::new(&checker))
+            .expect("the real bundle Lean checker accepts production evidence");
+
+        let mut omitted = projected;
+        omitted.pop();
+        assert!(
+            check_direct_ht_projection(&consumer, &omitted, std::path::Path::new(&checker))
+                .unwrap_err()
+                .contains("rejected")
+        );
     }
 
     #[test]

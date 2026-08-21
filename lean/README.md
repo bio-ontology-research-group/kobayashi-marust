@@ -264,8 +264,10 @@ concepts and generated definers must map injectively into the target symbol
 table, all names and local variables are resolved independently, Skolem keys
 must be unique, and the complete reconstructed and claimed target clause sets
 must agree. Every accepted document has proved source/target
-equisatisfiability. Rust emission of these documents and role-domain extras
-remain open.
+equisatisfiability. Rust emits this document for exact common-body
+multi-filler bundles, and a production integration test invokes the native
+checker on the complete target and a tampered omission. Role-domain extras
+remain open and therefore continue to fail the exact target comparison.
 
 `HypertableauDomainProjection.lean` proves the extra domain consequences that
 Rust emits beside an existential are redundant. Two-variable role-inclusion

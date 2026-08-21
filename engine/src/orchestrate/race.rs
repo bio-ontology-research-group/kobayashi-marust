@@ -2993,17 +2993,25 @@ mod tests {
                     concept: "HasA".into(),
                     term: var(),
                 }],
-                head: vec![
-                    JAtom::Role {
-                        role: "r".into(),
-                        source: var(),
-                        target: fun(),
-                    },
-                    JAtom::Concept {
-                        concept: "__nom__a".into(),
-                        term: fun(),
-                    },
-                ],
+                head: vec![JAtom::Role {
+                    role: "r".into(),
+                    source: var(),
+                    target: fun(),
+                }],
+            },
+            // Existential normalization emits role and filler obligations as
+            // separate singleton-head clauses with one common body. A single
+            // two-atom head would be disjunctive and must never be folded into
+            // the conjunctive existential pair.
+            JClause {
+                body: vec![JAtom::Concept {
+                    concept: "HasA".into(),
+                    term: var(),
+                }],
+                head: vec![JAtom::Concept {
+                    concept: "__nom__a".into(),
+                    term: fun(),
+                }],
             },
         ];
         let nominal_abox = NominalAboxMeta {
