@@ -5723,6 +5723,129 @@ fn bundle_native_abox_cardinality_refutation_document(
     })
 }
 
+fn native_abox_source_map(
+    inp: &TInput,
+    source_concepts: &[String],
+) -> Result<Vec<usize>, String> {
+    if source_concepts.is_empty() {
+        return Err("bundle native ABox projection has no source concepts".to_string());
+    }
+    inp.concepts
+        .iter()
+        .map(|target| {
+            Ok(source_concepts
+                .iter()
+                .position(|candidate| candidate == target)
+                // Definer-only target concepts have no source counterpart. The
+                // Lean checker requires exact round-tripping for every concept
+                // that actually occurs in the native ABox.
+                .unwrap_or(0))
+        })
+        .collect()
+}
+
+/// Bind one checked native-ABox verdict to the exact source projection used to
+/// create its HT ontology.  The resulting document is checked by a theorem
+/// whose conclusion is SAT/UNSAT of the source theory, rather than by two
+/// independent checks with an unproved relationship between their payloads.
+fn native_abox_source_decision_document(
+    inp: &TInput,
+    normalized_decision: &str,
+    consistent: bool,
+) -> Result<Vec<u8>, String> {
+    if !inp.card_defs.is_empty() {
+        return Err(
+            "source-composed native ABox decisions do not yet cover cardinality".to_string(),
+        );
+    }
+    let decision: serde_json::Value = serde_json::from_str(normalized_decision)
+        .map_err(|error| format!("invalid normalized native ABox decision: {error}"))?;
+    let evidence = decision
+        .get("evidence")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "normalized native ABox decision omitted its evidence".to_string())?;
+    let (tag, target_key, mut target_value) = if consistent {
+        let value = evidence
+            .get("sat")
+            .and_then(|sat| sat.get("certificate"))
+            .cloned()
+            .ok_or_else(|| {
+                "consistent native ABox decision omitted its SAT certificate".to_string()
+            })?;
+        ("sat", "certificate", value)
+    } else {
+        let value = evidence
+            .get("unsat")
+            .and_then(|unsat| unsat.get("refutation"))
+            .cloned()
+            .ok_or_else(|| {
+                "inconsistent native ABox decision omitted its UNSAT refutation".to_string()
+            })?;
+        ("unsat", "refutation", value)
+    };
+    let seed = if consistent {
+        target_value.get_mut("seed")
+    } else {
+        target_value.get_mut("initial")
+    }
+    .and_then(serde_json::Value::as_object_mut)
+    .ok_or_else(|| "native ABox source decision omitted its seed".to_string())?;
+    seed.insert(
+        "abox".to_string(),
+        serde_json::to_value(NativeAboxProjectionDocument {
+            complete: inp.native_abox.complete,
+            concepts: &inp.concepts,
+            roles: &inp.roles,
+            nominals: &inp.nominals,
+            individuals: &inp.native_abox.individuals,
+            different: &inp.native_abox.different,
+            role_assertions: &inp.native_abox.role_assertions,
+            negative_role_assertions: &inp.native_abox.negative_role_assertions,
+        })
+        .map_err(|error| format!("cannot encode source-decision native ABox: {error}"))?,
+    );
+
+    let payload = if let Some(source) = inp.bundle_projection_source.as_ref() {
+        if source.source_concepts.is_empty() {
+            return Err("bundle native ABox projection has no source concepts".to_string());
+        }
+        let mut payload = serde_json::json!({
+            "source_concepts": &source.source_concepts,
+            "functions": &source.functions,
+            "direct": &source.direct,
+            "bundles": &source.bundles,
+            "domain_extras": &source.domain_extras,
+            "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
+        });
+        payload[target_key] = target_value;
+        payload
+    } else if let Some(source) = inp.mixed_projection_source.as_ref() {
+        let mut payload = serde_json::json!({
+            "functions": &source.functions,
+            "direct": &source.direct,
+            "pairs": &source.pairs,
+        });
+        payload[target_key] = target_value;
+        payload
+    } else {
+        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+            "native ABox decision has no complete source projection".to_string()
+        })?;
+        let mut payload = serde_json::json!({ "source": source });
+        payload[target_key] = target_value;
+        payload
+    };
+    let mut constructor = serde_json::Map::new();
+    constructor.insert(target_key.to_string(), payload);
+    let mut evidence = serde_json::Map::new();
+    evidence.insert(tag.to_string(), serde_json::Value::Object(constructor));
+    serde_json::to_vec(&serde_json::json!({
+        "version": 1,
+        "evidence": evidence,
+    }))
+    .map_err(|error| format!("cannot encode source-composed native ABox decision: {error}"))
+}
+
 fn check_direct_ht_projection(
     inp: &TInput,
     clauses: &[Clause],
@@ -5967,6 +6090,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_native_abox_decision_checker =
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER")
                 .map(std::path::PathBuf::from);
+        let lean_native_abox_source_decision_checker =
+            std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+                .map(std::path::PathBuf::from);
         let lean_projection_checker =
             std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_path =
@@ -5979,6 +6105,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             lean_cert_path.is_some()
                 || lean_cert_checker.is_some()
                 || lean_native_abox_decision_checker.is_some()
+                || lean_native_abox_source_decision_checker.is_some()
                 || lean_taxonomy_requested;
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
@@ -5995,6 +6122,15 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if native_abox_active && lean_native_abox_decision_checker.is_none() {
                 return Err(
                     "native ABox HT certification requires KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER"
+                        .to_string(),
+                );
+            }
+            if native_abox_active
+                && inp.card_defs.is_empty()
+                && lean_native_abox_source_decision_checker.is_none()
+            {
+                return Err(
+                    "native ABox HT certification requires KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER"
                         .to_string(),
                 );
             }
@@ -6035,6 +6171,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             .iter()
             .map(|d| (d.marker, d.min, d.n, d.role, d.filler, d.exact))
             .collect();
+        let ht_chains = inp.chains.clone();
+        let ht_transitive = inp.transitive.clone();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -6053,8 +6191,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 // Ht chain-unfolding (faithful Konclude generateRoleChainAutomat
                 // Concept).  The chains are side data in the TInput (the raw
                 // axioms are excluded from the clause set to avoid cb_to_ht bloat).
-                if !lean_cert_requested && (!inp.chains.is_empty() || !inp.transitive.is_empty()) {
-                    ht.set_chains(inp.chains.clone(), inp.transitive.clone());
+                if !lean_cert_requested && (!ht_chains.is_empty() || !ht_transitive.is_empty()) {
+                    ht.set_chains(ht_chains, ht_transitive);
                 }
                 // A number KB routed to the fast Ht (e.g. under KM_HT_FORCE or the
                 // nominal route) must run the qualified-cardinality rules (≤n / ≥n
@@ -6163,6 +6301,20 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             checker.display()
                         ));
                     }
+                }
+                if native_abox_active && inp.card_defs.is_empty() {
+                    let checker = lean_native_abox_source_decision_checker
+                        .as_deref()
+                        .ok_or_else(|| {
+                            "missing native ABox source-decision Lean checker".to_string()
+                        })?;
+                    let source_decision =
+                        native_abox_source_decision_document(&inp, &certificate, consistent)?;
+                    run_ht_projection_checker(
+                        &source_decision,
+                        checker,
+                        "native-abox-source-decision",
+                    )?;
                 }
                 if let Some(taxonomy_certificate) = taxonomy_certificate {
                     let taxonomy_value: serde_json::Value =
@@ -6951,12 +7103,88 @@ mod tests {
         )
         .expect("combined direct source/native ABox refutation passes Lean");
 
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+                .expect("compose direct native ABox source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "direct-native-abox-source-decision",
+            )
+            .expect("direct native ABox source decision passes Lean");
+
+            let mut forged: serde_json::Value =
+                serde_json::from_slice(&source_decision).unwrap();
+            forged["evidence"]["unsat"]["refutation"]["source"] =
+                serde_json::json!([]);
+            assert!(run_ht_projection_checker(
+                &serde_json::to_vec(&forged).unwrap(),
+                std::path::Path::new(&source_checker),
+                "forged-direct-native-abox-source-decision",
+            )
+            .unwrap_err()
+            .contains("rejected"));
+        }
+
         let mut forged: serde_json::Value = serde_json::from_slice(&document).unwrap();
         forged["source"] = serde_json::json!([]);
         assert!(run_ht_projection_checker(
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-direct-native-abox-refutation",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_sat_source_decision_passes_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        else {
+            return;
+        };
+        let mut producer = native_wire_input();
+        producer.direct_projection_source = Some(Vec::new());
+        let inp = consumer_input(&producer);
+        let mut reasoner = hypertableau::Ht::new_certified(Vec::new());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        let (consistent, decision) = reasoner
+            .lean_native_abox_decision_certificate_json()
+            .expect("native ABox SAT decision");
+        assert!(consistent);
+        let source_decision = native_abox_source_decision_document(&inp, &decision, true)
+            .expect("compose direct native ABox SAT source decision");
+        run_ht_projection_checker(
+            &source_decision,
+            std::path::Path::new(&checker),
+            "direct-native-abox-sat-source-decision",
+        )
+        .expect("direct native ABox SAT source decision passes Lean");
+
+        let mut forged: serde_json::Value = serde_json::from_slice(&source_decision).unwrap();
+        forged["evidence"]["sat"]["certificate"]["source"] = serde_json::json!([{
+            "variable_names": ["x"],
+            "body": [{"concept": "A", "node": "x", "neg": false}],
+            "head": [],
+        }]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-sat-source-decision",
         )
         .unwrap_err()
         .contains("rejected"));
@@ -7114,6 +7342,25 @@ mod tests {
             "mixed-native-abox-refutation",
         )
         .expect("combined mixed source/native ABox refutation passes Lean");
+
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+                .expect("compose mixed native ABox source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "mixed-native-abox-source-decision",
+            )
+            .expect("mixed native ABox source decision passes Lean");
+        }
 
         let mut forged: serde_json::Value = serde_json::from_slice(&document).unwrap();
         forged["pairs"] = serde_json::json!([]);
@@ -7304,6 +7551,25 @@ mod tests {
             "bundle-native-abox-refutation",
         )
         .expect("combined bundle source/native ABox refutation passes Lean");
+
+        if let Some(source_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
+        {
+            let refutation: serde_json::Value = serde_json::from_str(&normalized).unwrap();
+            let decision = serde_json::json!({
+                "version": 1,
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+            .to_string();
+            let source_decision = native_abox_source_decision_document(&inp, &decision, false)
+                .expect("compose bundle native ABox source decision");
+            run_ht_projection_checker(
+                &source_decision,
+                std::path::Path::new(&source_checker),
+                "bundle-native-abox-source-decision",
+            )
+            .expect("bundle native ABox source decision passes Lean");
+        }
 
         let mut forged: serde_json::Value = serde_json::from_slice(&document).unwrap();
         forged["abox_source_map"][2] = serde_json::json!(3);

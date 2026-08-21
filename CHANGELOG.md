@@ -90,6 +90,14 @@
   ABox checker. Certified execution now admits a complete native ABox, while
   validation requires the proxy ownership relation to cover the nominal set
   exactly; an unrepresented nominal still fails closed.
+- Compose native-ABox SAT and UNSAT evidence with the exact frontend source
+  theory for direct, mixed Skolem-pair, and bundle/definer projections. The new
+  source-decision checker proves the published verdict about the source theory
+  itself, so independently valid projection and target documents can no longer
+  be paired across different ontologies. The production supervisor requires
+  this composed checker for non-cardinality native-ABox certification. Real
+  Lean checker tests cover all three UNSAT projection forms, a generated SAT
+  decision, and modified-source rejection.
 
 ### Certify native named-individual ABox projection
 

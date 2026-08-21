@@ -352,6 +352,59 @@ theorem DecodedBundleProjection.source_model_to_target_model_preserving_nativeAB
   · rfl
   · exact habox
 
+/-- Recover a source bundle model from a checked target model while pulling the
+native ABox back to its source concept names.  Unlike bare equisatisfiability,
+this theorem keeps the target ABox and source ontology in one shared domain and
+therefore supports a source-level SAT decision certificate. -/
+theorem DecodedBundleProjection.target_model_to_source_model_preserving_nativeABox
+    (decoded : DecodedBundleProjection)
+    (abox : NativeABox Individual (Fin decoded.concepts.length)
+      (Fin decoded.roles.length))
+    (sourceOf : Fin decoded.concepts.length → Fin decoded.sourceConcepts.length)
+    (hembedded : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      bundleConceptEmbedding decoded.sourceTargets decoded.bundles
+        (.inr (sourceOf concept)) = concept)
+    (J : Interp Domain (Fin decoded.concepts.length) (Fin decoded.roles.length))
+    (base : SkolemInterp Domain (Fin decoded.functions.length))
+    (value : Individual → Domain)
+    (htarget : J.models decoded.target)
+    (habox : abox.models J value) :
+    ∃ I : Interp Domain (Fin decoded.sourceConcepts.length)
+        (Fin decoded.roles.length),
+      ∃ functions : SkolemInterp Domain (Fin decoded.functions.length),
+        I.models decoded.direct ∧
+          ModelsBundles I functions (decodedBundleSpecs decoded.bundles) ∧
+          (abox.mapConcepts sourceOf).models I value := by
+  let embedding := bundleConceptEmbedding decoded.sourceTargets decoded.bundles
+  let combined := indexedBundleOntology decoded.direct
+      (decodedBundleSpecs decoded.bundles) ++
+    indexedBundleDomainOntology (decodedBundleSpecs decoded.bundles)
+      decoded.domainExtras
+  have hrenamed : J.models (renameOntology embedding combined) :=
+    (models_iff_of_toFinset_eq J _ _ decoded.exactProjection).2 htarget
+  let K := pullbackConcepts embedding J
+  have hcombined : K.models combined :=
+    (models_rename_pullback_iff embedding J combined).1 hrenamed
+  have hcore : K.models
+      (indexedBundleOntology decoded.direct
+        (decodedBundleSpecs decoded.bundles)) := by
+    intro clause hclause
+    exact hcombined clause (List.mem_append_left _ hclause)
+  rcases indexedBundleProjection_complete K base decoded.direct
+      (decodedBundleSpecs decoded.bundles) decoded.uniqueFunctions hcore with
+    ⟨functions, hdirect, hbundles⟩
+  let I := indexedRestrict K
+  have haboxSource : (abox.mapConcepts sourceOf).models I value :=
+    abox.mapConcepts_models_of sourceOf I J value
+      (by
+        intro individual concept hused
+        change J.concept concept = J.concept (embedding (.inr (sourceOf concept)))
+        simpa [embedding] using
+          congrArg J.concept (hembedded individual concept hused).symm)
+      rfl habox
+  exact ⟨I, functions, hdirect, hbundles, haboxSource⟩
+
 /-- Forward bundle projection while preserving both a checked native ABox and
 the cardinality target contract in the same constructed interpretation. -/
 theorem DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox_cardinality
@@ -531,6 +584,7 @@ example : bundleRejected ({ bundleExample with target := bundleExample.target.dr
 
 #print axioms DecodedBundleProjection.models_source_iff_target
 #print axioms DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox
+#print axioms DecodedBundleProjection.target_model_to_source_model_preserving_nativeABox
 #print axioms DecodedBundleProjection.source_model_to_target_model_preserving_nativeABox_cardinality
 #print axioms WireBundleProjection.check_sound
 

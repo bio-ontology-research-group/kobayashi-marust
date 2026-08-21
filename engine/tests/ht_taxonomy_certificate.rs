@@ -158,6 +158,12 @@ fn install_direct_projection_fixture(input: &mut serde_json::Value) {
         })
         .collect();
     input["direct_projection_source"] = serde_json::Value::Array(source);
+    if input["card_defs"]
+        .as_array()
+        .is_some_and(|definitions| !definitions.is_empty())
+    {
+        input["cardinality_projection_complete"] = serde_json::Value::Bool(true);
+    }
 }
 
 fn run_with_input(

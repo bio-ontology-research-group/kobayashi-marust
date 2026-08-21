@@ -74,6 +74,42 @@ theorem NativeABox.models_of_mapConcepts
     rw [hrole]
     exact hmodels.2.2.2.2 assertion hassertion
 
+/-- Pull a target native-ABox model back along a concept map.  This is the
+converse preservation direction needed when a checked HT quotient model is
+decoded back through a source projection.  The map need only preserve concepts
+that actually occur in the ABox. -/
+theorem NativeABox.mapConcepts_models_of
+    (abox : NativeABox Individual TargetConcept Role)
+    (f : TargetConcept → SourceConcept)
+    (source : Interp Domain SourceConcept Role)
+    (target : Interp Domain TargetConcept Role)
+    (value : Individual → Domain)
+    (hconcept : ∀ individual concept,
+      concept ∈ abox.proxies individual ++ abox.assertions individual →
+      target.concept concept = source.concept (f concept))
+    (hrole : target.role = source.role)
+    (hmodels : abox.models target value) :
+    (abox.mapConcepts f).models source value := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · intro individual proxy hproxy candidate
+    rcases List.mem_map.mp hproxy with ⟨targetProxy, htargetProxy, rfl⟩
+    rw [← hconcept individual targetProxy
+      (List.mem_append_left _ htargetProxy)]
+    exact hmodels.1 individual targetProxy htargetProxy candidate
+  · intro individual concept hassertion
+    rcases List.mem_map.mp hassertion with
+      ⟨targetConcept, htargetAssertion, rfl⟩
+    rw [← hconcept individual targetConcept
+      (List.mem_append_right _ htargetAssertion)]
+    exact hmodels.2.1 individual targetConcept htargetAssertion
+  · simpa [NativeABox.mapConcepts] using hmodels.2.2.1
+  · intro assertion hassertion
+    rw [← hrole]
+    exact hmodels.2.2.2.1 assertion hassertion
+  · intro assertion hassertion
+    rw [← hrole]
+    exact hmodels.2.2.2.2 assertion hassertion
+
 def nativeABoxSeed (abox : NativeABox Individual Concept Role) :
     DistinctEqState Individual Concept Role where
   base := {
@@ -250,6 +286,7 @@ theorem NativeABox.models_of_seeded
 
 #print axioms nativeABoxSeed_realized_iff
 #print axioms NativeABox.models_of_mapConcepts
+#print axioms NativeABox.mapConcepts_models_of
 #print axioms nativeABoxSeed_realized_of_seeded
 #print axioms NativeABox.models_of_seeded
 #print axioms models_negativeRoleAssertionClause_iff
