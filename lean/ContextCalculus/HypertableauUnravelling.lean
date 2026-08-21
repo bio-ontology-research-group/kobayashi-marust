@@ -503,6 +503,21 @@ inductive EndpointRole
   | refl {role source} (rule : rules.reflexive role) :
       EndpointRole state redirect rules role source source
 
+/-- A syntactically simple endpoint role can only have been introduced by one
+raw edge at the redirected source. -/
+theorem EndpointRole.raw_of_syntacticallySimple
+    {state : State Node Concept Role} {redirect : Node → Node}
+    {rules : UnravellingRoleRules Role} {role source target}
+    (hsimple : rules.SyntacticallySimple role)
+    (edge : EndpointRole state redirect rules role source target) :
+    state.edge role (redirect source) target := by
+  cases edge with
+  | direct edge => exact edge
+  | sub rule edge => exact False.elim (hsimple.1 _ rule)
+  | inverse rule edge => exact False.elim (hsimple.2.1 _ rule)
+  | chain rule left right => exact False.elim (hsimple.2.2.1 _ _ rule)
+  | refl rule => exact False.elim (hsimple.2.2.2 rule)
+
 theorem UnravellingRole.endpoint
     {state : State Node Concept Role} {redirect : Node → Node}
     {slotAllowed : Node → Role → Node → Nat → Prop} {root : Node}

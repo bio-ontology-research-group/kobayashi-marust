@@ -2,6 +2,33 @@
 
 ## [unreleased]
 
+### Strengthen the certified HT blocking boundary
+
+- Include pending existential obligations in ordinary and equality-quotient
+  pairwise blocking signatures. Matching concept labels alone can fold nodes
+  whose witness requirements differ, so KM now compares local obligations at
+  both the blocked node and its parent. The proved finite signature bound and
+  the executable frontier bound use the enlarged signature space.
+- Prove that a blocked redirect preserves local concept and obligation facts
+  when every selected fold preserves the complete local signature. This turns
+  the runtime fold relation into the local invariant needed by regular-model
+  certificate production.
+- Prove the equality-free blocked-open producer theorem for residual clauses
+  containing positive concept tests and at most one directed role edge, when
+  that body role's endpoint cover is contained in the raw graph at redirected
+  sources. Endpoint-cover groundings in this fragment pull back to the raw
+  saturated completion state, so all cover roles no longer need the false
+  premise that they already occur verbatim in the raw graph.
+- Reject regular certificates outside that proved local fragment, including
+  arbitrary multi-edge joins and any body-role cover edge absent from the raw
+  redirected graph. Safe role-chain conclusions remain accepted when they
+  satisfy that exact condition. Pairwise blocking does not preserve arbitrary
+  joins, so unsafe cases now fail closed instead of relying on an invalid
+  generalization.
+- Keep exact rejected-fold learning: at a fixed node budget, each failed fold
+  pair is attempted at most once. Lean composes this finite progress result
+  with budget doubling without assuming that an unchecked fold is sound.
+
 ### Unify total production HT global decisions
 
 - Put the regular, equality, cardinality, and native-ABox certificate searches

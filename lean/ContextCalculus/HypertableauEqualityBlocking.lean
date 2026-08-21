@@ -26,6 +26,22 @@ noncomputable def EqState.closedLabelSet
   classical
   simp [EqState.closedLabelSet]
 
+noncomputable def EqState.closedObligationSet
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) (node : Node) :
+    Finset (Role × Lit Concept) := by
+  classical
+  exact Finset.univ.filter fun obligation =>
+    state.closedObligation obligation.1 obligation.2 node
+
+noncomputable def EqState.closedLocalBlockingFacts
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : EqState Node Concept Role) (node : Node) :
+    LocalBlockingFacts Concept Role :=
+  (state.closedLabelSet node, state.closedObligationSet node)
+
 noncomputable def EqState.closedForwardParentRoles
     [Fintype Role] [DecidableEq Role]
     (state : EqState Node Concept Role) (parent node : Node) : Finset Role := by
@@ -46,8 +62,8 @@ noncomputable def EqState.quotientRoleBlockingSignature
     [Fintype Role] [DecidableEq Role]
     (state : EqState Node Concept Role) (parent : Node → Option Node) (node : Node) :
     RoleBlockingSignature Concept Role :=
-  (state.closedLabelSet node, parent node |>.map fun predecessor =>
-    (state.closedLabelSet predecessor,
+  (state.closedLocalBlockingFacts node, parent node |>.map fun predecessor =>
+    (state.closedLocalBlockingFacts predecessor,
       state.closedForwardParentRoles predecessor node,
       state.closedBackwardParentRoles predecessor node))
 
@@ -59,7 +75,7 @@ theorem EqState.quotientRoleBlockingSignature_label
     (hequal : state.quotientRoleBlockingSignature parent left =
       state.quotientRoleBlockingSignature parent right) :
     state.closedLabelSet left = state.closedLabelSet right := by
-  exact congrArg Prod.fst hequal
+  exact congrArg (fun signature => signature.1.1) hequal
 
 theorem EqState.quotientRoleBlockingSignature_parent_context
     [Fintype Concept] [DecidableEq Concept]
@@ -77,15 +93,15 @@ theorem EqState.quotientRoleBlockingSignature_parent_context
         state.closedBackwardParentRoles blockedParent blocked := by
   have hsecond := congrArg Prod.snd hequal
   have hcontext :
-      (state.closedLabelSet blockerParent,
+      (state.closedLocalBlockingFacts blockerParent,
         state.closedForwardParentRoles blockerParent blocker,
         state.closedBackwardParentRoles blockerParent blocker) =
-      (state.closedLabelSet blockedParent,
+      (state.closedLocalBlockingFacts blockedParent,
         state.closedForwardParentRoles blockedParent blocked,
         state.closedBackwardParentRoles blockedParent blocked) := by
     simpa [EqState.quotientRoleBlockingSignature,
       hblockerParent, hblockedParent] using hsecond
-  exact ⟨congrArg Prod.fst hcontext,
+  exact ⟨congrArg (fun context => context.1.1) hcontext,
     congrArg (fun context => context.2.1) hcontext,
     congrArg (fun context => context.2.2) hcontext⟩
 

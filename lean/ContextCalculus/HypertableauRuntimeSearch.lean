@@ -691,6 +691,56 @@ def State.BlockedRedirectRefines
   (∀ source, blocked source = false → redirect source = source) ∧
   (∀ source blocker, fold source blocker → redirect source = blocker)
 
+/-- Local node facts are invariant under a blocker redirect. Obligations must
+be included alongside labels because the producer stores existential heads
+outside the signed concept label. -/
+def State.RedirectLocalFacts
+    (state : State Node Concept Role) (redirect : Node → Node) : Prop :=
+  (∀ node literal, state.label node literal ↔
+    state.label (redirect node) literal) ∧
+  ∀ node role filler, state.obligation role filler node ↔
+    state.obligation role filler (redirect node)
+
+/-- Every concrete fold preserves all node-local facts consulted by a local HT
+residual clause. Existential obligations are explicit because Rust stores them
+outside the signed concept label. -/
+def State.FoldPreservesLocalFacts
+    (state : State Node Concept Role) (fold : Node → Node → Prop) : Prop :=
+  ∀ source blocker, fold source blocker →
+    (∀ literal, state.label source literal ↔ state.label blocker literal) ∧
+    ∀ role filler, state.obligation role filler source ↔
+      state.obligation role filler blocker
+
+/-- The runtime fold table is total exactly on nodes marked blocked. -/
+def State.BlockedFoldTotal
+    (blocked : Node → Bool) (fold : Node → Node → Prop) : Prop :=
+  ∀ source, blocked source = true → ∃ blocker, fold source blocker
+
+/-- A total local-fact-preserving fold and its concrete redirect establish the
+redirect invariant used by the local regular-cover producer theorem. -/
+theorem State.redirectLocalFacts_of_fold
+    (state : State Node Concept Role) (blocked : Node → Bool)
+    (fold : Node → Node → Prop) (redirect : Node → Node)
+    (htotal : State.BlockedFoldTotal blocked fold)
+    (hpreserves : state.FoldPreservesLocalFacts fold)
+    (hredirect : State.BlockedRedirectRefines blocked fold redirect) :
+    state.RedirectLocalFacts redirect := by
+  constructor
+  · intro source literal
+    cases hblocked : blocked source with
+    | false => simp [hredirect.1 source hblocked]
+    | true =>
+        obtain ⟨blocker, hfold⟩ := htotal source hblocked
+        rw [hredirect.2 source blocker hfold]
+        exact (hpreserves source blocker hfold).1 literal
+  · intro source role filler
+    cases hblocked : blocked source with
+    | false => simp [hredirect.1 source hblocked]
+    | true =>
+        obtain ⟨blocker, hfold⟩ := htotal source hblocked
+        rw [hredirect.2 source blocker hfold]
+        exact (hpreserves source blocker hfold).2 role filler
+
 /-- A blocked terminal already has every witness needed by the regular
 unravelling at the redirected endpoint. Unblocked obligations retain their
 ordinary witness; a blocked unwitnessed obligation uses the checked blocker's

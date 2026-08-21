@@ -66,17 +66,24 @@ def CheckedRegularRoundOutcome.regularSat_of_blocked_runtime_terminal
     (hauthorized : ∀ rule ∈ certificate.roleClauses,
       rule.Authorized certificate.rules)
     (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hshape : ∀ clause ∈ certificate.residual, clause.SingleDirectRoleBody)
     (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
       PathLiftableHead atom)
+    (hfoldTotal : State.BlockedFoldTotal blocked fold)
+    (hfoldPreserves : certificate.state.FoldPreservesLocalFacts fold)
+    (hdirect : ∀ clause ∈ certificate.residual,
+      certificate.state.DirectCoverForBody certificate.redirect
+        certificate.coverRelation clause)
     (hcoverClosed : certificate.CoverClosed)
-    (hcoverEdge : ∀ role source target,
-      certificate.coverRelation role source target →
-        certificate.state.edge role source target) :
+    :
     CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  have hlocal : certificate.state.RedirectLocalFacts certificate.redirect :=
+    certificate.state.redirectLocalFacts_of_fold blocked fold certificate.redirect
+      hfoldTotal hfoldPreserves hredirectRefines
   .regularSat certificate hontology hnonempty
-    (certificate.check_of_blocked_runtime_terminal runtime blocked fold hstate
-      hterminal hwitnessRefines hredirectRefines hauthorized hguarded hheads
-      hcoverClosed hcoverEdge)
+    (certificate.check_of_local_blocked_runtime_terminal runtime blocked fold hstate
+      hterminal hwitnessRefines hredirectRefines hauthorized hguarded hshape
+      hheads hlocal hdirect hcoverClosed)
 
 def CheckedRegularRoundOutcome.Semantics
     {ontology : List

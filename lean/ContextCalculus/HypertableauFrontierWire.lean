@@ -37,7 +37,8 @@ structure DecodedAddressFrontier
 /-- Executable cardinality of the full signed pairwise signature over finite
 concept and role identifiers. -/
 def roleBlockingSignatureCard (conceptCount roleCount : Nat) : Nat :=
-  2 ^ (2 * conceptCount) * (1 + 2 ^ (2 * conceptCount + 2 * roleCount))
+  let localFactBits := 2 * conceptCount + roleCount * (2 * conceptCount)
+  2 ^ localFactBits * (1 + 2 ^ (localFactBits + 2 * roleCount))
 
 theorem card_lit_fin (count : Nat) :
     Fintype.card (Lit (Fin count)) = 2 * count := by
@@ -47,9 +48,9 @@ theorem card_lit_fin (count : Nat) :
 theorem card_roleBlockingSignature_fin (conceptCount roleCount : Nat) :
     Fintype.card (RoleBlockingSignature (Fin conceptCount) (Fin roleCount)) =
       roleBlockingSignatureCard conceptCount roleCount := by
-  simp only [RoleBlockingSignature, Fintype.card_prod, Fintype.card_finset,
+  simp only [RoleBlockingSignature, LocalBlockingFacts, Fintype.card_prod, Fintype.card_finset,
     Fintype.card_option, Fintype.card_fin, card_lit_fin]
-  simp only [roleBlockingSignatureCard, pow_add]
+  simp only [roleBlockingSignatureCard, pow_add, Nat.mul_comm]
   ring
 
 def WireWitnessStep.decode (conceptCount roleCount : Nat)

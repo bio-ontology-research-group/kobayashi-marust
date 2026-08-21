@@ -684,9 +684,11 @@ example : chainBase.state.quotientRoleBlockingSignature chainParent 1 =
       | trans _ _ _ _ _ ih₁ ih₂ => exact ih₁.trans ih₂
     · rintro rfl
       exact Relation.EqvGen.refl _
-  simp [EqState.quotientRoleBlockingSignature, EqState.closedLabelSet,
+  simp [EqState.quotientRoleBlockingSignature, EqState.closedLocalBlockingFacts,
+    EqState.closedLabelSet, EqState.closedObligationSet,
     EqState.closedForwardParentRoles, EqState.closedBackwardParentRoles,
-    EqState.closedLabel, EqState.closedEdge, heqvgenFalse, chainBase,
+    EqState.closedLabel, EqState.closedObligation, EqState.closedEdge,
+    heqvgenFalse, chainBase,
     chainParent, FiniteEqCertificate.state, FiniteSatCertificate.state]
 
 example : (2, 0, 3) ∉ chainFold.foldedEdges := by native_decide

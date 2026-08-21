@@ -3107,7 +3107,7 @@ impl LeanHtRefutationState {
     }
 
     fn same_pairwise_signature(&self, left: Node, right: Node) -> bool {
-        let labels_equal = |a: Node, b: Node| {
+        let local_facts_equal = |a: Node, b: Node| {
             self.labels
                 .iter()
                 .filter(|(node, _)| *node == a)
@@ -3117,8 +3117,18 @@ impl LeanHtRefutationState {
                     .iter()
                     .filter(|(node, _)| *node == b)
                     .all(|(_, literal)| self.labels.contains(&(a, *literal)))
+                && self
+                    .obligations
+                    .iter()
+                    .filter(|(_, _, source)| *source == a)
+                    .all(|(role, filler, _)| self.obligations.contains(&(*role, *filler, b)))
+                && self
+                    .obligations
+                    .iter()
+                    .filter(|(_, _, source)| *source == b)
+                    .all(|(role, filler, _)| self.obligations.contains(&(*role, *filler, a)))
         };
-        if !labels_equal(left, right) {
+        if !local_facts_equal(left, right) {
             return false;
         }
         let (Some(left_parent), Some(right_parent)) = (
@@ -3127,7 +3137,7 @@ impl LeanHtRefutationState {
         ) else {
             return false;
         };
-        if !labels_equal(left_parent, right_parent) {
+        if !local_facts_equal(left_parent, right_parent) {
             return false;
         }
         let roles_equal = |a_source: Node, a_target: Node, b_source: Node, b_target: Node| {
@@ -3171,7 +3181,7 @@ impl LeanHtRefutationState {
     }
 
     fn same_quotient_pairwise_signature(&self, left: Node, right: Node) -> bool {
-        let closed_labels_equal = |a: Node, b: Node| {
+        let closed_local_facts_equal = |a: Node, b: Node| {
             self.labels.iter().all(|&(node, literal)| {
                 !self.equivalent(node, a)
                     || self.labels.iter().any(|&(other, candidate)| {
@@ -3182,9 +3192,23 @@ impl LeanHtRefutationState {
                     || self.labels.iter().any(|&(other, candidate)| {
                         candidate == literal && self.equivalent(other, a)
                     })
+            }) && self.obligations.iter().all(|&(role, filler, source)| {
+                !self.equivalent(source, a)
+                    || self.obligations.iter().any(|&(candidate, candidate_filler, other)| {
+                        candidate == role
+                            && candidate_filler == filler
+                            && self.equivalent(other, b)
+                    })
+            }) && self.obligations.iter().all(|&(role, filler, source)| {
+                !self.equivalent(source, b)
+                    || self.obligations.iter().any(|&(candidate, candidate_filler, other)| {
+                        candidate == role
+                            && candidate_filler == filler
+                            && self.equivalent(other, a)
+                    })
             })
         };
-        if !closed_labels_equal(left, right) {
+        if !closed_local_facts_equal(left, right) {
             return false;
         }
         let (Some(left_parent), Some(right_parent)) = (
@@ -3193,7 +3217,7 @@ impl LeanHtRefutationState {
         ) else {
             return false;
         };
-        if !closed_labels_equal(left_parent, right_parent) {
+        if !closed_local_facts_equal(left_parent, right_parent) {
             return false;
         }
         let closed_roles_equal =
@@ -9632,12 +9656,14 @@ impl Ht {
             return true;
         }
         let concept_bits = concept_count.saturating_mul(2);
+        let obligation_bits = role_count.saturating_mul(concept_bits);
+        let local_fact_bits = concept_bits.saturating_add(obligation_bits);
         let role_bits = role_count.saturating_mul(2);
-        let labels = Self::capped_pow2_reaches(concept_bits, target);
+        let local_facts = Self::capped_pow2_reaches(local_fact_bits, target);
         let parent_contexts =
-            Self::capped_pow2_reaches(concept_bits.saturating_add(role_bits), target);
+            Self::capped_pow2_reaches(local_fact_bits.saturating_add(role_bits), target);
         let optional_parent = parent_contexts.saturating_add(1).min(target);
-        labels.saturating_mul(optional_parent).min(target) == target
+        local_facts.saturating_mul(optional_parent).min(target) == target
     }
 
     /// Fail-closed producer-side counterpart of Lean's exact depth check. The
@@ -9999,6 +10025,7 @@ impl Ht {
         let mut role_count = 0usize;
         let mut role_clauses = Vec::new();
         let mut residual = Vec::new();
+        let mut residual_body_roles = Vec::new();
         let mut sub_roles = Vec::new();
         let mut inverse_roles = Vec::new();
         let mut chains = Vec::new();
@@ -10134,6 +10161,26 @@ impl Ht {
             }) {
                 return Err("regular HT residual clause has an unguarded body atom".to_string());
             }
+            let mut body_role = None;
+            for atom in &clause.body {
+                match atom {
+                    Atom::Concept { .. } => {}
+                    Atom::Role { r, s, t } if s != t && body_role.is_none() => {
+                        body_role = Some(*r);
+                    }
+                    Atom::Role { .. } => {
+                        return Err(
+                            "regular HT residual body is not single-edge local".to_string(),
+                        );
+                    }
+                    Atom::Eq { .. } => {
+                        return Err(
+                            "regular HT residual body contains equality".to_string(),
+                        );
+                    }
+                    Atom::Exists { .. } => unreachable!("unguarded body was rejected above"),
+                }
+            }
             let nominal_guard = |variable: Var| {
                 clause.body.iter().any(|atom| {
                     matches!(atom, Atom::Concept { lit, t }
@@ -10152,6 +10199,7 @@ impl Ht {
                 body: clause.body.iter().map(Self::lean_wire_atom).collect(),
                 head: clause.head.iter().map(Self::lean_wire_atom).collect(),
             });
+            residual_body_roles.push(body_role);
         }
 
         sub_roles.sort_unstable_by_key(|rule| (rule.premise, rule.conclusion));
@@ -10225,6 +10273,26 @@ impl Ht {
             }
             if !changed {
                 break;
+            }
+        }
+
+        // The local regular-model theorem needs only the exact operational
+        // condition below, not the stronger syntactic requirement that every
+        // residual body role be simple.  A role-chain conclusion is safe when
+        // its complete endpoint cover is already represented at each
+        // redirected raw source.  Conversely, a fold that creates a genuinely
+        // new body-role edge must not be certified by this producer.
+        for role in residual_body_roles.into_iter().flatten() {
+            let role = role as usize;
+            let direct = cover.iter().all(|&(candidate, source, target)| {
+                candidate != role
+                    || regular_edges.contains(&(role as R, redirect[source], target))
+            });
+            if !direct {
+                return Err(
+                    "regular HT redirected cover creates a non-local residual body edge"
+                        .to_string(),
+                );
             }
         }
 
@@ -24184,7 +24252,12 @@ mod tests {
 
     #[test]
     fn equality_free_frontier_uses_the_exact_capped_signature_cardinality() {
-        for (concepts, roles, exact) in [(0, 0, 2), (1, 0, 20), (1, 1, 68), (2, 1, 1040)] {
+        for (concepts, roles, exact) in [
+            (0, 0, 2),
+            (1, 0, 20),
+            (1, 1, 1040),
+            (2, 1, 262_400),
+        ] {
             assert!(Ht::role_blocking_signature_card_reaches(
                 concepts, roles, exact
             ));
@@ -24510,6 +24583,50 @@ mod tests {
     }
 
     #[test]
+    fn regular_certificate_rejects_residuals_outside_the_proved_local_shape() {
+        let empty_leaf = LeanHtBlockedOpenLeaf {
+            node_count: 1,
+            labels: Vec::new(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
+            folds: Vec::new(),
+        };
+        let joined = Ht::new_certified(vec![Clause::new(
+            vec![
+                Atom::Role { r: R0, s: 0, t: 1 },
+                Atom::Role { r: R0, s: 1, t: 2 },
+            ],
+            vec![con(false, A, 0)],
+        )]);
+        assert!(joined
+            .lean_regular_blocked_open_certificate_json(&empty_leaf)
+            .unwrap_err()
+            .contains("not single-edge local"));
+
+        let non_simple = Ht::new_certified(vec![
+            Clause::new(
+                vec![Atom::Role { r: R0, s: 0, t: 1 }],
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+            ),
+            Clause::new(
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+                vec![con(false, A, 0)],
+            ),
+        ]);
+        let nonlocal_leaf = LeanHtBlockedOpenLeaf {
+            node_count: 2,
+            labels: Vec::new(),
+            edges: vec![(R0, 0, 1)],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+        };
+        assert!(non_simple
+            .lean_regular_blocked_open_certificate_json(&nonlocal_leaf)
+            .unwrap_err()
+            .contains("non-local residual body edge"));
+    }
+
+    #[test]
     fn regular_decision_envelope_carries_finite_unsat_and_lean_checks_it() {
         let reasoner = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         let (satisfiable, document) = reasoner
@@ -24591,6 +24708,15 @@ mod tests {
         state.labels.insert((2, a));
         state.edges.insert((R0, 0, 1));
         state.edges.insert((R0, 1, 2));
+        assert!(state.pairwise_blocked_by_ancestor(2));
+
+        state.obligations.insert((R1, lit(false, B), 1));
+        assert!(!state.pairwise_blocked_by_ancestor(2));
+        state.obligations.insert((R1, lit(false, B), 2));
+        // Pairwise blocking compares both nodes and both parents.  Node 1 is
+        // simultaneously the candidate and node 2's parent, so its matching
+        // parent fact must also be present at node 0.
+        state.obligations.insert((R1, lit(false, B), 0));
         assert!(state.pairwise_blocked_by_ancestor(2));
 
         state.edges.remove(&(R0, 1, 2));

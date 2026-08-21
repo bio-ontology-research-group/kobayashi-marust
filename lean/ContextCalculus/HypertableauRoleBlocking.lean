@@ -14,9 +14,28 @@ signature.
 
 namespace ContextCalculus.Hypertableau
 
+abbrev LocalBlockingFacts (Concept Role : Type) :=
+  Finset (Lit Concept) × Finset (Role × Lit Concept)
+
 abbrev RoleBlockingSignature (Concept Role : Type) :=
-  Finset (Lit Concept) ×
-    Option (Finset (Lit Concept) × Finset Role × Finset Role)
+  LocalBlockingFacts Concept Role ×
+    Option (LocalBlockingFacts Concept Role × Finset Role × Finset Role)
+
+noncomputable def State.obligationSet
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) (node : Node) :
+    Finset (Role × Lit Concept) := by
+  classical
+  exact Finset.univ.filter fun obligation =>
+    state.obligation obligation.1 obligation.2 node
+
+noncomputable def State.localBlockingFacts
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) (node : Node) :
+    LocalBlockingFacts Concept Role :=
+  (state.labelSet node, state.obligationSet node)
 
 noncomputable def State.forwardParentRoles
     [Fintype Role] [DecidableEq Role]
@@ -37,8 +56,8 @@ noncomputable def State.roleBlockingSignature
     [Fintype Role] [DecidableEq Role]
     (state : State Node Concept Role) (parent : Node → Option Node) (node : Node) :
     RoleBlockingSignature Concept Role :=
-  (state.labelSet node, parent node |>.map fun predecessor =>
-    (state.labelSet predecessor,
+  (state.localBlockingFacts node, parent node |>.map fun predecessor =>
+    (state.localBlockingFacts predecessor,
       state.forwardParentRoles predecessor node,
       state.backwardParentRoles predecessor node))
 
@@ -50,7 +69,17 @@ theorem State.roleBlockingSignature_label
     (hequal : state.roleBlockingSignature parent left =
       state.roleBlockingSignature parent right) :
     state.labelSet left = state.labelSet right := by
-  exact congrArg Prod.fst hequal
+  exact congrArg (fun signature => signature.1.1) hequal
+
+theorem State.roleBlockingSignature_obligation
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) (parent : Node → Option Node)
+    {left right : Node}
+    (hequal : state.roleBlockingSignature parent left =
+      state.roleBlockingSignature parent right) :
+    state.obligationSet left = state.obligationSet right := by
+  exact congrArg (fun signature => signature.1.2) hequal
 
 theorem State.roleBlockingSignature_blocks
     [Fintype Concept] [DecidableEq Concept]
@@ -80,14 +109,14 @@ theorem State.roleBlockingSignature_parent_context
         state.backwardParentRoles blockedParent blocked := by
   have hsecond := congrArg Prod.snd hequal
   have hcontext :
-      (state.labelSet blockerParent,
+      (state.localBlockingFacts blockerParent,
         state.forwardParentRoles blockerParent blocker,
         state.backwardParentRoles blockerParent blocker) =
-      (state.labelSet blockedParent,
+      (state.localBlockingFacts blockedParent,
         state.forwardParentRoles blockedParent blocked,
         state.backwardParentRoles blockedParent blocked) := by
     simpa [State.roleBlockingSignature, hblockerParent, hblockedParent] using hsecond
-  exact ⟨congrArg Prod.fst hcontext,
+  exact ⟨congrArg (fun context => context.1.1) hcontext,
     congrArg (fun context => context.2.1) hcontext,
     congrArg (fun context => context.2.2) hcontext⟩
 
