@@ -70,12 +70,12 @@ theorem DecodedCardinalityEqCertificate.exists_checked_global_outcome
       let outcome : CheckedCardinalityDecisionOutcome
           decoded.base.conceptCount decoded.base.roleCount decoded.base.variableCount
           certificate.base.ontology decoded.definitions :=
-        .sat certificate rfl hcheck.1 hcheck.2
+        .sat certificate rfl hcheck.1.1 hcheck.1.2
       have hex : ∃ outcome : CheckedCardinalityDecisionOutcome
           decoded.base.conceptCount decoded.base.roleCount decoded.base.variableCount
           certificate.base.ontology decoded.definitions, outcome.Semantics :=
         ⟨outcome, CheckedCardinalityDecisionOutcome.sat_semantics
-          certificate rfl hcheck.1 hcheck.2⟩
+          certificate rfl hcheck.1.1 hcheck.1.2⟩
       have hroot : decoded.base.rootCertificate = certificate := by
         unfold DecodedEqCertificate.rootCertificate
         rw [hevidence]
@@ -143,7 +143,7 @@ theorem DecodedCardinalityEqCertificate.productionGlobalVerdict_semantics
         rw [hevidence]
       rw [hroot]
       exact CheckedCardinalityDecisionOutcome.sat_semantics
-        certificate rfl hcheck.1 hcheck.2
+        certificate rfl hcheck.1.1 hcheck.1.2
   | unsat certificate ignoredTree =>
       simp only [DecodedCardinalityEqCertificate.productionGlobalVerdict, hevidence,
         Option.some.injEq] at hverdict

@@ -378,6 +378,16 @@ def FiniteEqCertificate.checkMaximumDefExact
   certificate.checkCardinalityDef definition &&
     certificate.checkMaximumRecognition definition
 
+def FiniteEqCertificate.checkMaximumDefsExact
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Bool :=
+  definitions.all certificate.checkMaximumDefExact
+
+def Interp.modelsCardinalityDefsExact
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role)) : Prop :=
+  ∀ definition ∈ definitions, I.modelsCardinalityDefExact definition
+
 theorem FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (hvalid : certificate.equalityClosureValidB = true)
@@ -389,6 +399,18 @@ theorem FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
     certificate.checkCardinalityDef_eq_true_iff_models hvalid,
     certificate.checkMaximumRecognition_eq_true_iff hvalid definition hkind,
     modelsCardinalityDef_and_recognition_iff_exact]
+
+theorem FiniteEqCertificate.checkMaximumDefsExact_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hmaximum : ∀ definition ∈ definitions, definition.kind = .maximum)
+    (hcheck : certificate.checkMaximumDefsExact definitions = true) :
+    certificate.state.quotientCanonical.modelsCardinalityDefsExact definitions := by
+  intro definition hmem
+  have hdefinition := (List.all_eq_true.mp hcheck) definition hmem
+  exact (certificate.checkMaximumDefExact_eq_true_iff hvalid definition
+    (hmaximum definition hmem)).mp hdefinition
 
 #print axioms mem_maximumBody
 #print axioms mem_maximumHead
@@ -403,5 +425,6 @@ theorem FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
 #print axioms FiniteEqCertificate.checkMaximumRecognition_complete
 #print axioms FiniteEqCertificate.checkMaximumRecognition_eq_true_iff
 #print axioms FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
+#print axioms FiniteEqCertificate.checkMaximumDefsExact_sound
 
 end ContextCalculus.Hypertableau

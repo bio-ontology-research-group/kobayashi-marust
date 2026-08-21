@@ -2757,6 +2757,7 @@ struct LeanHtCardinalityCertificate {
     version: usize,
     certificate: LeanHtEqCertificate,
     definitions: Vec<LeanHtCardinalityDef>,
+    exact_maximums: Vec<usize>,
     refutation_depth: usize,
     refutation: Option<LeanHtEqRefutationTree>,
     distinct_refutation_depth: usize,
@@ -9183,6 +9184,13 @@ impl Ht {
             .map(|(&marker, &definition)| (marker, definition))
             .collect();
         definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let exact_maximums: Vec<usize> = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (_, definition))| {
+                (definition.kind == CardKind::Max).then_some(index)
+            })
+            .collect();
         let definitions: Vec<serde_json::Value> = definitions
             .into_iter()
             .map(|(marker, definition)| {
@@ -9199,6 +9207,7 @@ impl Ht {
             "version": 2,
             "certificate": certificate,
             "definitions": definitions,
+            "exact_maximums": exact_maximums,
             "refutation_depth": 0,
             "refutation": null,
             "distinct_refutation_depth": 0,
@@ -11104,6 +11113,13 @@ impl Ht {
                 }
             })
             .collect();
+        let exact_maximums = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (_, definition))| {
+                (definition.kind == CardKind::Max).then_some(index)
+            })
+            .collect();
         let ontology: Vec<LeanHtClause> = self
             .clauses
             .iter()
@@ -11154,6 +11170,7 @@ impl Ht {
                 evidence: evidence(placeholder),
             },
             definitions: wire_definitions,
+            exact_maximums,
             refutation_depth: 0,
             refutation: None,
             distinct_refutation_depth: depth,
@@ -21474,6 +21491,7 @@ mod tests {
         .expect("cardinality certificate is JSON");
         assert_eq!(wire["version"], 2);
         assert_eq!(wire["definitions"].as_array().unwrap().len(), 2);
+        assert_eq!(wire["exact_maximums"], serde_json::json!([1]));
         assert!(wire["distinct_refutation_depth"].as_u64().unwrap() >= 3);
         assert!(wire["distinct_refutation"].get("branch").is_some());
     }
