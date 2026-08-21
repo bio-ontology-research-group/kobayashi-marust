@@ -10099,6 +10099,21 @@ impl Ht {
             }
         }
 
+        // Lean's producer-refinement theorem turns ordinary saturated-state
+        // discharge into regular-cover discharge when every cover edge is
+        // present in the serialized completion graph. Role clauses have
+        // already saturated this graph, so a miss is an implementation error,
+        // not an inconclusive model candidate.
+        if let Some(&(role, source, target)) = cover.iter().find(|&&(role, source, target)| {
+            !regular_edges.iter().any(|&(edge_role, edge_source, edge_target)| {
+                edge_role as usize == role && edge_source == source && edge_target == target
+            })
+        }) {
+            return Err(format!(
+                "regular HT endpoint cover edge {role}({source},{target}) is absent from the saturated completion graph"
+            ));
+        }
+
         let mut labels = leaf
             .labels
             .iter()
@@ -23081,10 +23096,38 @@ mod tests {
             ),
             Clause::new(Vec::new(), vec![Atom::Role { r: 4, s: 0, t: 0 }]),
         ]);
-        let leaf = LeanHtBlockedOpenLeaf {
+        let unsaturated = LeanHtBlockedOpenLeaf {
             node_count: 3,
             labels: Vec::new(),
             edges: vec![(R0, 0, 1), (R0, 1, 2)],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+        };
+        assert!(
+            reasoner
+                .lean_regular_blocked_open_certificate_json(&unsaturated)
+                .is_err(),
+            "the producer boundary must reject a leaf missing its role closure"
+        );
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: 3,
+            labels: Vec::new(),
+            // A production blocked-open leaf is already saturated under the
+            // four normalized role clauses. Keep this fixture faithful to
+            // that producer invariant rather than asking the serializer to
+            // repair an unsaturated search state.
+            edges: vec![
+                (R0, 0, 1),
+                (R0, 1, 2),
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 0),
+                (2, 2, 1),
+                (3, 0, 2),
+                (4, 0, 0),
+                (4, 1, 1),
+                (4, 2, 2),
+            ],
             obligations: Vec::new(),
             folds: Vec::new(),
         };

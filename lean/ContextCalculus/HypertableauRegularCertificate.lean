@@ -76,6 +76,64 @@ def FiniteRegularCertificate.CoverClosed
   (∀ role, certificate.rules.reflexive role →
     ∀ source, certificate.coverRelation role source source)
 
+/-- The production serializer computes role closure separately from the raw
+completion graph.  When every serialized cover edge is also present in that
+graph, a cover-body match is an ordinary saturated-state body match. -/
+theorem FiniteRegularCertificate.coverHoldsAtom_to_holdsAtom
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcoverEdge : ∀ role source target,
+      certificate.coverRelation role source target →
+        certificate.state.edge role source target)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hholds : certificate.state.CoverHoldsAtom certificate.coverRelation
+      assignment atom) : certificate.state.holdsAtom assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role role source target => exact hcoverEdge role _ _ hholds
+  | exists_ => exact hholds
+  | eq => exact hholds
+
+/-- Concept and existential heads use identical truth tests in the finite
+state and its role cover. -/
+theorem FiniteRegularCertificate.holdsAtom_to_coverHoldsAtom_of_pathLiftable
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : Fin variableCount → Fin nodeCount)
+    (atom : Atom (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hliftable : PathLiftableHead atom)
+    (hholds : certificate.state.holdsAtom assignment atom) :
+    certificate.state.CoverHoldsAtom certificate.coverRelation assignment atom := by
+  cases atom with
+  | concept => exact hholds
+  | role => contradiction
+  | exists_ => exact hholds
+  | eq => contradiction
+
+/-- Ordinary finite saturation implies regular-cover saturation when the
+producer's role cover contains no edge absent from the saturated graph. -/
+theorem FiniteRegularCertificate.coverDischarges_of_discharges
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcoverEdge : ∀ role source target,
+      certificate.coverRelation role source target →
+        certificate.state.edge role source target)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : certificate.state.Discharges clause) :
+    certificate.state.CoverDischarges certificate.coverRelation clause := by
+  intro assignment hbody
+  have hordinaryBody : ∀ atom ∈ clause.body,
+      certificate.state.holdsAtom assignment atom := by
+    intro atom hatom
+    exact certificate.coverHoldsAtom_to_holdsAtom hcoverEdge assignment atom
+      (hbody atom hatom)
+  rcases hdischarges assignment hordinaryBody with ⟨atom, hatom, hholds⟩
+  exact ⟨atom, hatom,
+    certificate.holdsAtom_to_coverHoldsAtom_of_pathLiftable assignment atom
+      (hheads atom hatom) hholds⟩
+
 theorem FiniteRegularCertificate.coverClosed_covers
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount)
@@ -106,6 +164,36 @@ def FiniteRegularCertificate.Valid
   certificate.CoverClosed ∧
   (∀ clause ∈ certificate.residual,
     certificate.state.CoverDischarges certificate.coverRelation clause)
+
+/-- Producer-facing refinement theorem.  Rust's exhaustive search already
+establishes ordinary residual saturation.  Its serializer needs only preserve
+that finite state, compute a closed role cover contained in the serialized
+edge set, and preserve blocker witnesses. These operational premises construct
+the exact `Valid` invariant accepted by the independent checker. -/
+theorem FiniteRegularCertificate.valid_of_producer_invariants
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hclash : certificate.state.ClashFree)
+    (hwitness : certificate.state.WitnessComplete)
+    (hredirect : ∀ node role filler,
+      certificate.state.obligation role filler node →
+      certificate.state.obligation role filler (certificate.redirect node))
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverEdge : ∀ role source target,
+      certificate.coverRelation role source target →
+        certificate.state.edge role source target)
+    (hsaturated : certificate.state.SaturatedFor certificate.residual) :
+    certificate.Valid := by
+  refine ⟨hauthorized, hguarded, hheads, hclash, hwitness, hredirect,
+    hcoverClosed, ?_⟩
+  intro clause hclause
+  exact certificate.coverDischarges_of_discharges hcoverEdge clause
+    (hheads clause hclause) (hsaturated clause hclause)
 
 def FiniteRegularCertificate.authorizedB
     (certificate : FiniteRegularCertificate
@@ -462,6 +550,32 @@ theorem FiniteRegularCertificate.check_complete
               ((List.all_eq_true.mp hall) atom hatom)
       simp [hbodyB]
 
+/-- End-to-end producer boundary: the finite invariants naturally available
+from exhaustive search and serialization are sufficient for executable checker
+acceptance. -/
+theorem FiniteRegularCertificate.check_of_producer_invariants
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hclash : certificate.state.ClashFree)
+    (hwitness : certificate.state.WitnessComplete)
+    (hredirect : ∀ node role filler,
+      certificate.state.obligation role filler node →
+      certificate.state.obligation role filler (certificate.redirect node))
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverEdge : ∀ role source target,
+      certificate.coverRelation role source target →
+        certificate.state.edge role source target)
+    (hsaturated : certificate.state.SaturatedFor certificate.residual) :
+    certificate.check = true :=
+  certificate.check_complete (certificate.valid_of_producer_invariants
+    hauthorized hguarded hheads hclash hwitness hredirect hcoverClosed
+    hcoverEdge hsaturated)
+
 theorem FiniteRegularCertificate.check_eq_true_iff_valid
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount) :
@@ -538,11 +652,15 @@ example : emptyRegularCertificate.check = true := by native_decide
 example : missingDirectCover.check = false := by native_decide
 
 #print axioms FiniteRegularCertificate.coverClosed_covers
+#print axioms FiniteRegularCertificate.coverHoldsAtom_to_holdsAtom
+#print axioms FiniteRegularCertificate.coverDischarges_of_discharges
+#print axioms FiniteRegularCertificate.valid_of_producer_invariants
 #print axioms FiniteRegularCertificate.coverClosedB_sound
 #print axioms FiniteRegularCertificate.coverClosedB_complete
 #print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
 #print axioms FiniteRegularCertificate.check_complete
+#print axioms FiniteRegularCertificate.check_of_producer_invariants
 #print axioms FiniteRegularCertificate.check_eq_true_iff_valid
 #print axioms FiniteRegularCertificate.models
 #print axioms FiniteRegularCertificate.check_models

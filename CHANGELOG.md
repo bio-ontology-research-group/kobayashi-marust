@@ -15,6 +15,15 @@
   decoded regular model cannot be rejected because the executable checker
   missed a case. The remaining totality obligation is to prove that Rust's
   blocked-open serializer always constructs this `Valid` invariant.
+- Prove the first producer-refinement bridge: ordinary residual saturation,
+  authorized role-rule partitioning, clash and witness invariants, blocker
+  redirection, a closed endpoint cover, and containment of that cover in the
+  serialized completion graph construct `Valid` and force checker acceptance.
+  These bridge the concrete exhaustive search invariant to cover-based regular
+  unravelling without assuming residual-clause discharge separately.
+- Make the Rust regular serializer check the cover-containment premise and fail
+  closed on an unsaturated completion graph. The role-cover integration fixture
+  now represents a genuinely role-saturated blocked-open search leaf.
 
 ### Certify native named-individual ABox projection
 
