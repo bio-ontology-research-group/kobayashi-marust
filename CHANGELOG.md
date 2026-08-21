@@ -54,6 +54,12 @@
   and superclass coordinates are exactly those supplied by the wire. The old
   decoder is a projection of this stronger result, so accepted JSON and runtime
   behavior is unchanged while matrix-position proofs retain their indices.
+- Strengthen complete native-ABox taxonomy matrices with proof-carrying
+  row and column alignment. Every decoded concept cell is now tied to its
+  declared concept, and every decoded subsumption cell to its declared
+  subclass and superclass. Lean then carries the exact finite coordinates
+  into each cell's semantic certificate; a full 3,440-job build confirms that
+  all production source and cardinality routes respect the stronger boundary.
 
 ### Certify native-ABox cardinality taxonomies
 

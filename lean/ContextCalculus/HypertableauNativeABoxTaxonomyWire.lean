@@ -15,7 +15,7 @@ open Lean
 inductive WireNativeABoxTaxonomyQuery where
   | concept (root concept : Nat)
   | subsumption (root sub sup : Nat)
-deriving FromJson, ToJson, Repr
+deriving FromJson, ToJson, Repr, DecidableEq
 
 inductive DecodedNativeABoxTaxonomyQuery (nodeCount conceptCount : Nat) where
   | concept (root : Fin nodeCount) (concept : Fin conceptCount)
@@ -202,9 +202,32 @@ inductive DecodedNativeABoxTaxonomyDecision where
   | sat (decoded : DecodedNativeABoxTaxonomySat)
   | unsat (decoded : DecodedNativeABoxTaxonomyUnsat)
 
-def WireNativeABoxTaxonomyDecision.decode
+def DecodedNativeABoxTaxonomyDecision.wireQuery :
+    DecodedNativeABoxTaxonomyDecision → WireNativeABoxTaxonomyQuery
+  | .sat decoded => decoded.wireQuery
+  | .unsat decoded => decoded.wireQuery
+
+def DecodedNativeABoxTaxonomyDecision.CoordinatesExact
+    (expected : WireNativeABoxTaxonomyQuery) :
+    DecodedNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.query expected
+  | .unsat decoded =>
+      DecodedNativeABoxTaxonomyQuery.MatchesWire decoded.query expected
+
+theorem DecodedNativeABoxTaxonomyDecision.coordinates_exact
+    (decoded : DecodedNativeABoxTaxonomyDecision)
+    {expected : WireNativeABoxTaxonomyQuery}
+    (haligned : decoded.wireQuery = expected) :
+    decoded.CoordinatesExact expected := by
+  cases decoded with
+  | sat result => exact haligned ▸ result.exactCoordinates
+  | unsat result => exact haligned ▸ result.exactCoordinates
+
+def WireNativeABoxTaxonomyDecision.decodeExact
     (wire : WireNativeABoxTaxonomyDecision) :
-    Except String DecodedNativeABoxTaxonomyDecision := do
+    Except String { decoded : DecodedNativeABoxTaxonomyDecision //
+      decoded.wireQuery = wire.query } := do
   if wire.version != 1 then
     throw s!"unsupported native ABox taxonomy decision version {wire.version}"
   match wire.evidence with
@@ -214,13 +237,13 @@ def WireNativeABoxTaxonomyDecision.decode
         certificate.seed.abox.concepts.length
       let query := exactQuery.query
       if hquery : query.labelsPresentB certificate.seed.state.base.base.labels = true then
-        return .sat {
+        return ⟨.sat {
           certificate
           query
           wireQuery := wire.query
           exactCoordinates := exactQuery.exactCoordinates
           query_present := query.labelsPresentB_sound _ hquery
-        }
+        }, rfl⟩
       else throw "native ABox taxonomy countermodel omits its query literals"
   | .unsat initialWire treeWire =>
       let expectedRoots := (List.range initialWire.abox.individuals.length).map (· + 1)
@@ -238,7 +261,7 @@ def WireNativeABoxTaxonomyDecision.decode
             let tree ← treeWire.decode initial.nodeCount initial.abox.concepts.length
               initial.abox.roles.length initial.variableCount initial.ontology
             if htree : tree.check initial.state.base = true then
-              return .unsat {
+              return ⟨.unsat {
                 initial
                 query
                 wireQuery := wire.query
@@ -248,16 +271,35 @@ def WireNativeABoxTaxonomyDecision.decode
                   initial.state.base initial.roots query hexact
                 tree
                 checked := htree
-              }
+              }, rfl⟩
             else throw "native ABox taxonomy equality refutation did not close"
           else throw "native ABox taxonomy refutation root is not the exact joint query seed"
         else throw "native ABox taxonomy query root overlaps a named-individual root"
       else throw "native ABox taxonomy query root must be node zero"
 
+def WireNativeABoxTaxonomyDecision.decode
+    (wire : WireNativeABoxTaxonomyDecision) :
+    Except String DecodedNativeABoxTaxonomyDecision := do
+  return (← wire.decodeExact).val
+
 def WireNativeABoxTaxonomyDecision.check
     (wire : WireNativeABoxTaxonomyDecision) : Except String Bool := do
   let _ ← wire.decode
   return true
+
+theorem WireNativeABoxTaxonomyDecision.decode_wireQuery
+    {wire : WireNativeABoxTaxonomyDecision}
+    {decoded : DecodedNativeABoxTaxonomyDecision}
+    (hdecode : wire.decode = .ok decoded) :
+    decoded.wireQuery = wire.query := by
+  simp only [WireNativeABoxTaxonomyDecision.decode] at hdecode
+  generalize hexact : wire.decodeExact = result at hdecode
+  cases result with
+  | error message => simp at hdecode
+  | ok exact =>
+      simp at hdecode
+      subst decoded
+      exact exact.property
 
 theorem DecodedNativeABoxTaxonomyUnsat.unsatisfiable
     (decoded : DecodedNativeABoxTaxonomyUnsat) :
