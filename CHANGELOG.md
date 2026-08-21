@@ -13,6 +13,19 @@
 - Enforce the certification request before route dispatch. The rules-only
   consistency helper, Konclude bridge, and legacy tableau can no longer return
   an unchecked answer before or after the fast-HT Lean publication gate.
+- Prove that a checked blocked regular model retaining the production query
+  root is a countermodel for a rejected subsumption or a witness for concept
+  satisfiability. This supplies the open-branch half of equality-free taxonomy
+  completeness without treating a blocked finite graph as the model itself.
+- Extend the mixed taxonomy wire with regular-unravelling cells, fixed shared
+  vocabulary decoding, exact query-root checks, and ontology-permutation
+  transport. Executable fixtures reject forged roots and omitted query labels.
+- Make production KM emit regular countermodels for equality-free open taxonomy
+  branches and widen their local signatures to the complete matrix signature.
+  The real Rust-to-Lean matrix test now exercises and accepts this route.
+- Repair the cardinality taxonomy decoder after exact-cardinality evidence was
+  added to its shared certificate type. A clean checker rebuild now verifies
+  the current structure instead of relying on a stale object file.
 
 ### Certify native-ABox cardinality taxonomies
 

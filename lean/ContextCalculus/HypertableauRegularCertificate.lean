@@ -603,6 +603,60 @@ theorem FiniteRegularCertificate.check_models
       certificate.ontology :=
   certificate.models (certificate.check_sound hcheck)
 
+/-- A checked blocked regular model that retains `A` and `¬B` at the production
+query root is a countermodel to `A ⊑ B`. This is the open-branch half needed by
+complete equality-free taxonomy search. -/
+theorem FiniteRegularCertificate.check_not_entailsSub
+    [NeZero nodeCount]
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (sub sup : Fin conceptCount)
+    (hsub : certificate.state.label 0 (.pos sub))
+    (hnotSup : certificate.state.label 0 (.negated sup))
+    (hcheck : certificate.check = true) :
+    ¬EntailsSub certificate.ontology sub sup := by
+  let interpretation := certificate.state.regularUnravelling
+    certificate.redirect (fun _ _ _ _ => True) 0 certificate.rules
+  let value : UnravellingDomain certificate.state certificate.redirect
+      (fun _ _ _ _ => True) 0 := ⟨0, .root⟩
+  intro hentails
+  have hsubValue : interpretation.concept sub value := by
+    simpa [interpretation, Interp.satLit, Lit.pos] using
+      certificate.state.regularUnravelling_sat_label certificate.redirect
+        (fun _ _ _ _ => True) 0 certificate.rules
+        (certificate.check_sound hcheck).2.2.2.1 value (.pos sub) hsub
+  have hsupValue := hentails _ interpretation (certificate.check_models hcheck)
+    value hsubValue
+  have hnotSupValue : ¬interpretation.concept sup value := by
+    simpa [interpretation, Interp.satLit, Lit.negated] using
+      certificate.state.regularUnravelling_sat_label certificate.redirect
+        (fun _ _ _ _ => True) 0 certificate.rules
+        (certificate.check_sound hcheck).2.2.2.1 value (.negated sup) hnotSup
+  exact hnotSupValue hsupValue
+
+/-- A checked blocked regular model retaining `A` at the production query root
+witnesses satisfiability of `A`. -/
+theorem FiniteRegularCertificate.check_not_unsatisfiableConcept
+    [NeZero nodeCount]
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (concept : Fin conceptCount)
+    (hconcept : certificate.state.label 0 (.pos concept))
+    (hcheck : certificate.check = true) :
+    ¬UnsatisfiableConcept certificate.ontology concept := by
+  let interpretation := certificate.state.regularUnravelling
+    certificate.redirect (fun _ _ _ _ => True) 0 certificate.rules
+  let value : UnravellingDomain certificate.state certificate.redirect
+      (fun _ _ _ _ => True) 0 := ⟨0, .root⟩
+  intro hunsatisfiable
+  have hconceptValue : interpretation.concept concept value := by
+    simpa [interpretation, Interp.satLit, Lit.pos] using
+      certificate.state.regularUnravelling_sat_label certificate.redirect
+        (fun _ _ _ _ => True) 0 certificate.rules
+        (certificate.check_sound hcheck).2.2.2.1 value (.pos concept) hconcept
+  exact hunsatisfiable _ interpretation (certificate.check_models hcheck)
+    value hconceptValue
+
 private def emptyRegularCertificate : FiniteRegularCertificate 1 1 1 1 where
   labels := []
   edges := []
@@ -633,6 +687,8 @@ example : emptyRegularCertificate.check = true := by native_decide
 example : missingDirectCover.check = false := by native_decide
 
 #print axioms FiniteRegularCertificate.coverClosed_covers
+#print axioms FiniteRegularCertificate.check_not_entailsSub
+#print axioms FiniteRegularCertificate.check_not_unsatisfiableConcept
 #print axioms FiniteRegularCertificate.coverHoldsAtom_to_holdsAtom
 #print axioms FiniteRegularCertificate.coverDischarges_of_discharges
 #print axioms FiniteRegularCertificate.valid_of_producer_invariants

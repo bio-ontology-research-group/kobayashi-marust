@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauTaxonomyWire
 import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauAnchoredEqualityWire
+import ContextCalculus.HypertableauRegularWire
 
 /-!
 # Mixed equality-free/equality-aware HT taxonomy certificates
@@ -20,7 +21,35 @@ inductive WireMixedQueryPayload where
   | plain (payload : WireQueryPayload)
   | equality (node_count : Nat) (state : WireEqState) (evidence : WireEqEvidence)
   | anchored (certificate : WireAnchoredEqCertificate) (evidence : WireEqEvidence)
+  | regular (certificate : WireRegularCertificate) (evidence : WireEqEvidence)
 deriving FromJson, ToJson, Repr
+
+theorem Interp.models_iff_of_perm
+    (I : Interp Domain Concept Role)
+    {left right : List (Clause Variable Concept Role)}
+    (hperm : left.Perm right) : I.models left ↔ I.models right := by
+  constructor <;> intro hmodels clause hclause
+  · exact hmodels clause (hperm.mem_iff.mpr hclause)
+  · exact hmodels clause (hperm.mem_iff.mp hclause)
+
+theorem notUnsatisfiableConcept_of_perm
+    {left right : List (Clause Variable Concept Role)}
+    (hperm : left.Perm right)
+    (hnot : ¬UnsatisfiableConcept left concept) :
+    ¬UnsatisfiableConcept right concept := by
+  intro hright
+  apply hnot
+  intro Domain I hleft value
+  exact hright Domain I ((I.models_iff_of_perm hperm).mp hleft) value
+
+theorem notEntailsSub_of_perm
+    {left right : List (Clause Variable Concept Role)}
+    (hperm : left.Perm right)
+    (hnot : ¬EntailsSub left sub sup) : ¬EntailsSub right sub sup := by
+  intro hright
+  apply hnot
+  intro Domain I hleft value hsub
+  exact hright Domain I ((I.models_iff_of_perm hperm).mp hleft) value hsub
 
 structure WireMixedTaxonomyCertificate where
   version : Nat
@@ -103,7 +132,7 @@ def WireMixedQueryPayload.decodeConcept
       let certificate := decoded.certificate
       if hontology : certificate.equality.base.ontology = ontology then
         match evidence with
-        | .satisfiable_concept root concept =>
+        | .satisfiable_concept root concept => do
             let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
             let concept ← checkedFin "concept" conceptCount concept
             if hconcept : concept = expected then
@@ -134,6 +163,30 @@ def WireMixedQueryPayload.decodeConcept
             else throw "anchored concept evidence is in the wrong matrix position"
         | _ => throw "expected anchored concept countermodel evidence"
       else throw "anchored concept model has a different ontology"
+  | .regular wire evidence =>
+      let decoded ← wire.decodeAt conceptCount roleCount variableCount
+      let certificate := decoded.certificate
+      letI : NeZero decoded.nodeCount := ⟨Nat.ne_of_gt decoded.positive⟩
+      if hontology : certificate.ontology.Perm ontology then
+        match evidence with
+        | .satisfiable_concept root concept => do
+            let root ← checkedFin "regular query root" decoded.nodeCount root
+            let concept ← checkedFin "concept" conceptCount concept
+            if hroot : root = 0 then
+              if hconcept : concept = expected then
+                if hlabel : ((0, .pos expected) :
+                    Fin decoded.nodeCount × Lit (Fin conceptCount)) ∈ certificate.labels then
+                  if hmodel : certificate.check = true then
+                    have hquery : certificate.state.label 0 (.pos expected) := by
+                      simpa [FiniteRegularCertificate.state] using hlabel
+                    return .satisfiable (notUnsatisfiableConcept_of_perm hontology
+                      (certificate.check_not_unsatisfiableConcept expected hquery hmodel))
+                  else throw "regular concept model was rejected"
+                else throw "regular concept model omits its declared root label"
+              else throw "regular concept evidence is in the wrong matrix position"
+            else throw "regular concept model has the wrong query root"
+        | _ => throw "expected regular concept countermodel evidence"
+      else throw "regular concept model has a different ontology"
 
 def WireMixedQueryPayload.decodeSubsumption
     (payload : WireMixedQueryPayload)
@@ -187,7 +240,7 @@ def WireMixedQueryPayload.decodeSubsumption
       let certificate := decoded.certificate
       if hontology : certificate.equality.base.ontology = ontology then
         match evidence with
-        | .non_subsumption root sub sup =>
+        | .non_subsumption root sub sup => do
             let root ← checkedFin "anchored equality node" decoded.eqNodeCount root
             let sub ← checkedFin "concept" conceptCount sub
             let sup ← checkedFin "concept" conceptCount sup
@@ -230,6 +283,39 @@ def WireMixedQueryPayload.decodeSubsumption
             else throw "anchored non-subsumption evidence has the wrong subclass"
         | _ => throw "expected anchored subsumption countermodel evidence"
       else throw "anchored subsumption model has a different ontology"
+  | .regular wire evidence =>
+      let decoded ← wire.decodeAt conceptCount roleCount variableCount
+      let certificate := decoded.certificate
+      letI : NeZero decoded.nodeCount := ⟨Nat.ne_of_gt decoded.positive⟩
+      if hontology : certificate.ontology.Perm ontology then
+        match evidence with
+        | .non_subsumption root sub sup => do
+            let root ← checkedFin "regular query root" decoded.nodeCount root
+            let sub ← checkedFin "concept" conceptCount sub
+            let sup ← checkedFin "concept" conceptCount sup
+            if hroot : root = 0 then
+              if hsub : sub = expectedSub then
+                if hsup : sup = expectedSup then
+                  if hsubLabel : ((0, .pos expectedSub) :
+                      Fin decoded.nodeCount × Lit (Fin conceptCount)) ∈ certificate.labels then
+                    if hnotSupLabel : ((0, .negated expectedSup) :
+                        Fin decoded.nodeCount × Lit (Fin conceptCount)) ∈ certificate.labels then
+                      if hmodel : certificate.check = true then
+                        have hsubQuery : certificate.state.label 0 (.pos expectedSub) := by
+                          simpa [FiniteRegularCertificate.state] using hsubLabel
+                        have hnotSupQuery : certificate.state.label 0 (.negated expectedSup) := by
+                          simpa [FiniteRegularCertificate.state] using hnotSupLabel
+                        return .notEntailed (notEntailsSub_of_perm hontology
+                          (certificate.check_not_entailsSub expectedSub expectedSup
+                            hsubQuery hnotSupQuery hmodel))
+                      else throw "regular subsumption model was rejected"
+                    else throw "regular countermodel omits the negative superclass"
+                  else throw "regular countermodel omits the subclass"
+                else throw "regular non-subsumption evidence has the wrong superclass"
+              else throw "regular non-subsumption evidence has the wrong subclass"
+            else throw "regular subsumption model has the wrong query root"
+        | _ => throw "expected regular subsumption countermodel evidence"
+      else throw "regular subsumption model has a different ontology"
 
 def decodeMixedConceptEntries
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
@@ -458,6 +544,34 @@ private def anchoredNonSubsumption (sub sup : Nat) : WireMixedQueryPayload := .a
     { node := 1, literal := ⟨sup, true⟩ }])
   (.non_subsumption 1 sub sup)
 
+private def regularCertificate (labels : List WireLabel) : WireRegularCertificate where
+  version := 1
+  node_count := 1
+  concept_count := 2
+  role_count := 1
+  variable_count := 0
+  labels := labels
+  edges := []
+  obligations := []
+  redirect := [0]
+  cover := []
+  sub_roles := []
+  inverse_roles := []
+  chains := []
+  reflexive_roles := []
+  role_clauses := []
+  residual := []
+
+private def regularConcept (concept : Nat) : WireMixedQueryPayload := .regular
+  (regularCertificate [{ node := 0, literal := ⟨concept, false⟩ }])
+  (.satisfiable_concept 0 concept)
+
+private def regularNonSubsumption (sub sup : Nat) : WireMixedQueryPayload := .regular
+  (regularCertificate [
+    { node := 0, literal := ⟨sub, false⟩ },
+    { node := 0, literal := ⟨sup, true⟩ }])
+  (.non_subsumption 0 sub sup)
+
 private def accepted : WireMixedTaxonomyCertificate where
   version := 2
   concept_count := 2
@@ -480,6 +594,28 @@ private def anchoredAccepted : WireMixedTaxonomyCertificate :=
       [plainNonSubsumption 1 0, plainReflexive 1]] }
 
 example : anchoredAccepted.check = true := by native_decide
+
+private def regularAccepted : WireMixedTaxonomyCertificate :=
+  { accepted with
+    concepts := [regularConcept 0, plainConcept 1]
+    subsumptions := [
+      [eqReflexive 0, regularNonSubsumption 0 1],
+      [plainNonSubsumption 1 0, plainReflexive 1]] }
+
+example : regularAccepted.check = true := by native_decide
+
+private def forgedRegularRoot : WireMixedTaxonomyCertificate :=
+  { regularAccepted with concepts := [.regular
+      (regularCertificate [{ node := 0, literal := ⟨0, false⟩ }])
+      (.satisfiable_concept 1 0), plainConcept 1] }
+
+example : forgedRegularRoot.check = false := by native_decide
+
+private def forgedRegularLabel : WireMixedTaxonomyCertificate :=
+  { regularAccepted with concepts := [.regular
+      (regularCertificate []) (.satisfiable_concept 0 0), plainConcept 1] }
+
+example : forgedRegularLabel.check = false := by native_decide
 
 private def forgedAnchored : WireMixedTaxonomyCertificate :=
   { anchoredAccepted with concepts := [.anchored

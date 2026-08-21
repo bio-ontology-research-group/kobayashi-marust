@@ -89,6 +89,13 @@ structure DecodedRegularCertificate where
   certificate : FiniteRegularCertificate
     nodeCount conceptCount roleCount variableCount
 
+structure DecodedRegularCertificateAt
+    (conceptCount roleCount variableCount : Nat) where
+  nodeCount : Nat
+  positive : 0 < nodeCount
+  certificate : FiniteRegularCertificate
+    nodeCount conceptCount roleCount variableCount
+
 def decodeRedirect (nodeCount : Nat) (values : List Nat) :
     Except String (Fin nodeCount → Fin nodeCount) := do
   let decoded ← values.mapM (checkedFin "redirect node" nodeCount)
@@ -139,6 +146,73 @@ def WireRegularCertificate.decode (wire : WireRegularCertificate) :
       conceptCount := wire.concept_count
       roleCount := wire.role_count
       variableCount := wire.variable_count
+      positive := hpositive
+      certificate := {
+        labels := labels
+        edges := edges
+        obligations := obligations
+        redirect := redirect
+        cover := cover
+        subRoles := subRoles
+        inverseRoles := inverseRoles
+        chains := chains
+        reflexiveRoles := reflexiveRoles
+        roleClauses := roleClauses
+        residual := residual
+      }
+    }
+  else
+    throw "regular hypertableau certificate requires at least one node"
+
+/-- Decode a regular certificate inside a container that fixes its vocabulary.
+This avoids dependent casts in mixed taxonomy cells and rejects a certificate
+whose dimensions differ from the shared matrix ontology. -/
+def WireRegularCertificate.decodeAt (wire : WireRegularCertificate)
+    (conceptCount roleCount variableCount : Nat) :
+    Except String (DecodedRegularCertificateAt conceptCount roleCount variableCount) := do
+  if wire.version != 1 then
+    throw s!"unsupported regular hypertableau certificate version {wire.version}"
+  if wire.concept_count != conceptCount then
+    throw "regular certificate concept count does not match its container"
+  if wire.role_count != roleCount then
+    throw "regular certificate role count does not match its container"
+  if wire.variable_count != variableCount then
+    throw "regular certificate variable count does not match its container"
+  if hpositive : 0 < wire.node_count then
+    let labels ← wire.labels.mapM fun label => do
+      return (← checkedFin "node" wire.node_count label.node,
+        ← label.literal.decode conceptCount)
+    let edges ← wire.edges.mapM fun edge => do
+      return (← checkedFin "role" roleCount edge.role,
+        ← checkedFin "node" wire.node_count edge.source,
+        ← checkedFin "node" wire.node_count edge.target)
+    let obligations ← wire.obligations.mapM fun obligation => do
+      return (← checkedFin "role" roleCount obligation.role,
+        ← obligation.filler.decode conceptCount,
+        ← checkedFin "node" wire.node_count obligation.node)
+    let redirect ← decodeRedirect wire.node_count wire.redirect
+    let cover ← wire.cover.mapM fun edge => do
+      return (← checkedFin "cover role" roleCount edge.role,
+        ← checkedFin "cover source" wire.node_count edge.source,
+        ← checkedFin "cover target" wire.node_count edge.target)
+    let subRoles ← wire.sub_roles.mapM fun rule => do
+      return (← checkedFin "subrole premise" roleCount rule.premise,
+        ← checkedFin "subrole conclusion" roleCount rule.conclusion)
+    let inverseRoles ← wire.inverse_roles.mapM fun rule => do
+      return (← checkedFin "inverse premise" roleCount rule.premise,
+        ← checkedFin "inverse conclusion" roleCount rule.conclusion)
+    let chains ← wire.chains.mapM fun rule => do
+      return (← checkedFin "chain first role" roleCount rule.first,
+        ← checkedFin "chain second role" roleCount rule.second,
+        ← checkedFin "chain conclusion" roleCount rule.conclusion)
+    let reflexiveRoles ← wire.reflexive_roles.mapM
+      (checkedFin "reflexive role" roleCount)
+    let roleClauses ← wire.role_clauses.mapM
+      (WireNormalizedRoleClause.decode variableCount roleCount)
+    let residual ← wire.residual.mapM
+      (WireClause.decode variableCount conceptCount roleCount)
+    return {
+      nodeCount := wire.node_count
       positive := hpositive
       certificate := {
         labels := labels

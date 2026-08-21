@@ -150,8 +150,13 @@ structure DecodedEqEvidenceFor
 def DecodedCardinalityQueryPayload.certificate
     (decoded : DecodedCardinalityQueryPayload conceptCount roleCount variableCount
       ontology definitions) : DecodedCardinalityEqCertificate :=
-  ⟨⟨decoded.nodeCount, conceptCount, roleCount, variableCount, decoded.evidence⟩,
-    definitions, decoded.refutation, decoded.distinctRefutation⟩
+  { base := ⟨decoded.nodeCount, conceptCount, roleCount, variableCount, decoded.evidence⟩
+    definitions := definitions
+    exactMaximums := []
+    exactMaximumKinds := by simp
+    exactDefinitions := []
+    refutation := decoded.refutation
+    distinctRefutation := decoded.distinctRefutation }
 
 private def WireCardinalityQueryPayload.decode
     (payload : WireCardinalityQueryPayload)

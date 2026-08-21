@@ -2559,20 +2559,6 @@ impl LeanHtTaxonomyQuery {
         }
     }
 
-    fn plain_open_evidence(self) -> LeanHtEvidence {
-        match self {
-            Self::Concept(concept) => LeanHtEvidence::SatisfiableConcept {
-                root: 0,
-                concept: concept as usize,
-            },
-            Self::Subsumption(sub, sup) => LeanHtEvidence::NonSubsumption {
-                root: 0,
-                sub: sub as usize,
-                sup: sup as usize,
-            },
-        }
-    }
-
     fn equality_open_evidence(self) -> LeanHtEqEvidence {
         match self {
             Self::Concept(concept) => LeanHtEqEvidence::SatisfiableConcept {
@@ -12465,18 +12451,26 @@ impl Ht {
                     return Ok((false, closed_document()?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    let candidate = self.lean_blocked_open_certificate_json(
-                        &leaf,
-                        query.plain_open_evidence(),
-                    )?;
-                    if self.lean_taxonomy_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
-                    }
-                    node_budget = Self::deepen_after_rejected_candidate(
-                        node_budget,
-                        deepen,
-                        "equality-free taxonomy",
-                    )?;
+                    // A blocked branch denotes the regular unravelling, not in
+                    // general the finite graph obtained by identifying a node
+                    // with its blocker. Keep that semantics in the taxonomy
+                    // cell; the complete matrix checker validates the regular
+                    // certificate before KM publishes any answer.
+                    let regular: serde_json::Value = serde_json::from_str(
+                        &self.lean_regular_blocked_open_certificate_json(&leaf)?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let candidate = serde_json::to_string(&serde_json::json!({
+                        "version": 9,
+                        "concept_count": concept_count,
+                        "role_count": role_count,
+                        "variable_count": variable_count,
+                        "ontology": ontology.clone(),
+                        "certificate": regular,
+                        "evidence": query.equality_open_evidence(),
+                    }))
+                    .map_err(|error| error.to_string())?;
+                    return Ok((true, candidate));
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -13692,6 +13686,17 @@ impl Ht {
                     });
                     Ok((value, None, mixed, true))
                 }
+                9 => {
+                    let mixed = serde_json::json!({
+                        "regular": {
+                            "certificate": object.get("certificate").cloned()
+                                .ok_or("missing regular certificate")?,
+                            "evidence": object.get("evidence").cloned()
+                                .ok_or("missing regular evidence")?,
+                        }
+                    });
+                    Ok((value, None, mixed, true))
+                }
                 other => Err(format!("unsupported HT query certificate version {other}")),
             }
         };
@@ -13757,6 +13762,31 @@ impl Ht {
                 .max()
                 .unwrap_or(0),
         );
+        // Each query search sizes its local vocabulary from that query. The
+        // complete matrix has one shared vocabulary, so widen every regular
+        // cell to the final matrix dimensions before Lean decodes it with
+        // `decodeAt`. Widening finite index bounds preserves every serialized
+        // identifier and does not alter the represented ontology or model.
+        let role_count = base["role_count"].clone();
+        let variable_count = base["variable_count"].clone();
+        let widen_regular = |cell: &mut serde_json::Value| {
+            if let Some(certificate) = cell
+                .get_mut("regular")
+                .and_then(|regular| regular.get_mut("certificate"))
+            {
+                certificate["concept_count"] = serde_json::json!(concept_count);
+                certificate["role_count"] = role_count.clone();
+                certificate["variable_count"] = variable_count.clone();
+            }
+        };
+        for cell in &mut mixed_concepts {
+            widen_regular(cell);
+        }
+        for row in &mut mixed_subsumptions {
+            for cell in row {
+                widen_regular(cell);
+            }
+        }
         let (version, concepts, subsumptions) = if has_equality {
             (2, mixed_concepts, mixed_subsumptions)
         } else {
@@ -13782,8 +13812,8 @@ impl Ht {
         let payload = serde_json::to_string(&serde_json::json!({
             "version": version,
             "concept_count": concept_count,
-            "role_count": base["role_count"],
-            "variable_count": base["variable_count"],
+            "role_count": role_count,
+            "variable_count": variable_count,
             "ontology": base["ontology"],
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concepts": concepts,
@@ -23385,13 +23415,19 @@ mod tests {
                 .expect("the empty ontology has finite evidence for every cell"),
         )
         .expect("taxonomy certificate is JSON");
+        assert_eq!(wire["version"], 2);
         assert_eq!(wire["named"], serde_json::json!([A, B]));
         assert_eq!(wire["concepts"].as_array().unwrap().len(), 2);
         let rows = wire["subsumptions"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|row| row.as_array().unwrap().len() == 2));
-        assert!(wire["subsumptions"][0][0]["evidence"]["subsumption"].is_object());
-        assert!(wire["subsumptions"][0][1]["evidence"]["non_subsumption"].is_object());
+        assert!(wire["concepts"][0]["regular"].is_object());
+        assert!(wire["subsumptions"][0][0]["plain"]["payload"]["evidence"]
+            ["subsumption"]
+            .is_object());
+        assert!(wire["subsumptions"][0][1]["regular"]["evidence"]
+            ["non_subsumption"]
+            .is_object());
         assert!(t.lean_taxonomy_certificate_json(&[A, A]).is_err());
     }
 
@@ -24737,6 +24773,19 @@ mod tests {
                 .lean_taxonomy_certificate_json(&[A, B])
                 .expect("produce complete anchored cardinality taxonomy"),
         ];
+        let plain_wire: serde_json::Value =
+            serde_json::from_str(&documents[0]).expect("regular taxonomy is JSON");
+        let plain_payload = if plain_wire["version"] == 3 || plain_wire["version"] == 4 {
+            &plain_wire["payload"]["mixed"]["certificate"]
+        } else {
+            &plain_wire
+        };
+        assert!(
+            plain_payload["concepts"]
+                .as_array()
+                .is_some_and(|cells| cells.iter().any(|cell| cell.get("regular").is_some())),
+            "blocked equality-free taxonomy cells must publish regular countermodels"
+        );
         let mixed_wire: serde_json::Value =
             serde_json::from_str(&documents[1]).expect("mixed taxonomy is JSON");
         let mixed_payload = if mixed_wire["version"] == 3 || mixed_wire["version"] == 4 {
@@ -24765,18 +24814,16 @@ mod tests {
                 .is_some_and(|cells| cells.iter().any(|cell| !cell["anchored"].is_null())),
             "cardinality taxonomy cells must publish anchored fallback countermodels"
         );
-        for document in &documents {
+        for (index, document) in documents.iter().enumerate() {
             std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");
-            let accepted = std::process::Command::new(&checker)
+            let output = std::process::Command::new(&checker)
                 .arg(&path)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .expect("run native Lean HT taxonomy checker")
-                .success();
+                .output()
+                .expect("run native Lean HT taxonomy checker");
             assert!(
-                accepted,
-                "Lean must accept the complete Rust taxonomy matrix"
+                output.status.success(),
+                "Lean must accept Rust taxonomy matrix {index}: {}\n{document}",
+                String::from_utf8_lossy(&output.stderr)
             );
         }
         let document = &documents[1];
