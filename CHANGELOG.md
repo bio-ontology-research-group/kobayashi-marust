@@ -2,6 +2,15 @@
 
 ## [unreleased]
 
+### Unify total production HT global decisions
+
+- Put the regular, equality, cardinality, and native-ABox certificate searches
+  behind one indexed Lean route type whose index is the exact source-level
+  satisfiability proposition.
+- Prove that every such route eventually returns either that proposition or
+  its negation. Checked node-budget frontiers remain non-verdicts, including
+  for the native-ABox route that was absent from the earlier unified theorem.
+
 ### Certify native-ABox cardinality taxonomies
 
 - Define the joint semantics of one taxonomy query, the normalized ontology,
