@@ -86,6 +86,10 @@
   recognition obligations, singleton proxies, role assertions, and explicit
   differences in one interpretation. Native taxonomy remains deferred until
   its corresponding source-composed wire is connected.
+- Remove the obsolete production coverage fence that predated the joint native
+  ABox checker. Certified execution now admits a complete native ABox, while
+  validation requires the proxy ownership relation to cover the nominal set
+  exactly; an unrepresented nominal still fails closed.
 
 ### Certify native named-individual ABox projection
 

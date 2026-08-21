@@ -5117,6 +5117,12 @@ fn validate_native_abox(inp: &TInput) -> Result<ValidatedNativeAbox, String> {
         }
         individuals.push((proxies, assertions));
     }
+    if proxy_owners != nominal_set {
+        return Err(
+            "native ABox does not assign every nominal proxy to exactly one individual"
+                .to_string(),
+        );
+    }
 
     let in_individual_range =
         |left: usize, right: usize| left < individuals.len() && right < individuals.len();
@@ -5828,8 +5834,11 @@ fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> 
             inp.fenced.len()
         ));
     }
-    if !inp.nominals.is_empty() || native_abox_active {
-        return Err("HT Lean certification does not yet cover nominals or native ABoxes".into());
+    if !inp.nominals.is_empty() && !native_abox_active {
+        return Err(
+            "HT Lean certification requires every nominal to be represented by the checked native ABox"
+                .into(),
+        );
     }
     if inp.inverse && inp.number && !inp.inverse_cardinality_role_separable {
         return Err("HT Lean certification requires inverse/cardinality role separation".into());
@@ -6446,8 +6455,9 @@ mod tests {
 
         producer.nominals.push(0);
         assert!(check_certified_ht_input_coverage(&consumer_input(&producer), false).is_err());
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_ok());
         producer.nominals.clear();
-        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_err());
+        assert!(check_certified_ht_input_coverage(&consumer_input(&producer), true).is_ok());
     }
 
     fn con(neg: bool, c: C, t: Var) -> Atom {
@@ -6848,7 +6858,7 @@ mod tests {
     }
 
     #[test]
-    fn native_abox_wire_contract_rejects_empty_duplicate_and_non_nominal_proxies() {
+    fn native_abox_wire_contract_rejects_empty_duplicate_or_unowned_nominal_proxies() {
         let mut empty = native_wire_input();
         empty.native_abox.individuals[0].proxies.clear();
         assert!(validate_native_abox(&consumer_input(&empty))
@@ -6866,6 +6876,12 @@ mod tests {
         assert!(validate_native_abox(&consumer_input(&absent))
             .unwrap_err()
             .contains("absent from nominals"));
+
+        let mut unowned = native_wire_input();
+        unowned.nominals.push(2);
+        assert!(validate_native_abox(&consumer_input(&unowned))
+            .unwrap_err()
+            .contains("every nominal proxy"));
     }
 
     #[test]
