@@ -276,7 +276,27 @@ def FiniteEqCertificate.checkMaximumRecognition
           (allAssignments nodeCount (definition.bound + 1)).any fun witnesses =>
             certificate.quotientInjectiveB witnesses &&
               (List.finRange (definition.bound + 1)).all fun index =>
+              certificate.cardinalitySuccessorB definition source (witnesses index)
+
+def FiniteEqCertificate.checkMinimumRecognition
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) : Bool :=
+  match definition.kind with
+  | .maximum => true
+  | .minimum =>
+      (List.finRange nodeCount).all fun source =>
+        certificate.quotientPositiveB source definition.marker ||
+          (allAssignments nodeCount definition.bound).all fun witnesses =>
+            !certificate.quotientInjectiveB witnesses ||
+              !(List.finRange definition.bound).all fun index =>
                 certificate.cardinalitySuccessorB definition source (witnesses index)
+
+def FiniteEqCertificate.checkCardinalityRecognition
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) : Bool :=
+  match definition.kind with
+  | .maximum => certificate.checkMaximumRecognition definition
+  | .minimum => certificate.checkMinimumRecognition definition
 
 theorem FiniteEqCertificate.checkMaximumRecognition_sound
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
@@ -372,16 +392,125 @@ theorem FiniteEqCertificate.checkMaximumRecognition_eq_true_iff
   · exact certificate.checkMaximumRecognition_sound hvalid definition hkind
   · exact certificate.checkMaximumRecognition_complete hvalid definition hkind
 
+theorem FiniteEqCertificate.checkMinimumRecognition_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount))
+    (hkind : definition.kind = .minimum)
+    (hcheck : certificate.checkMinimumRecognition definition = true) :
+    certificate.state.quotientCanonical.modelsCardinalityRecognition definition := by
+  intro semanticSource hcondition
+  rcases Quotient.exists_rep semanticSource with ⟨source, rfl⟩
+  simp only [FiniteEqCertificate.checkMinimumRecognition, hkind,
+    List.all_eq_true] at hcheck
+  have hsource := hcheck source (List.mem_finRange source)
+  cases hmarkerB : certificate.quotientPositiveB source definition.marker with
+  | true =>
+      exact (certificate.quotientPositiveB_eq_true hvalid source definition.marker).mp hmarkerB
+  | false =>
+      simp only [hmarkerB, Bool.false_or] at hsource
+      have hatLeast : HasAtLeast definition.bound
+          (certificate.state.quotientCanonical.cardinalitySuccessor definition
+            (Quotient.mk certificate.state.nodeSetoid source)) := by
+        simpa [Interp.cardinalityCondition, hkind] using hcondition
+      rcases hatLeast with ⟨semanticWitnesses, hinjective, hsuccessors⟩
+      have representatives : ∀ index, ∃ node,
+          Quotient.mk certificate.state.nodeSetoid node = semanticWitnesses index :=
+        fun index => Quotient.exists_rep (semanticWitnesses index)
+      choose witnesses hwitnesses using representatives
+      have hcandidate := (List.all_eq_true.mp hsource) witnesses
+        (mem_allAssignments nodeCount definition.bound witnesses)
+      have hinjectiveB : certificate.quotientInjectiveB witnesses = true :=
+        (certificate.quotientInjectiveB_eq_true hvalid witnesses).mpr (by
+          intro left right hequal
+          apply hinjective
+          simpa only [hwitnesses] using hequal)
+      have hsuccessorsB : (List.finRange definition.bound).all (fun index =>
+          certificate.cardinalitySuccessorB definition source (witnesses index)) = true := by
+        rw [List.all_eq_true]
+        intro index _
+        apply (certificate.cardinalitySuccessorB_eq_true hvalid definition source
+          (witnesses index)).mpr
+        simpa only [hwitnesses] using hsuccessors index
+      simp [hinjectiveB, hsuccessorsB] at hcandidate
+
+theorem FiniteEqCertificate.checkMinimumRecognition_complete
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount))
+    (hkind : definition.kind = .minimum)
+    (hrecognition :
+      certificate.state.quotientCanonical.modelsCardinalityRecognition definition) :
+    certificate.checkMinimumRecognition definition = true := by
+  simp only [FiniteEqCertificate.checkMinimumRecognition, hkind, List.all_eq_true]
+  intro source _
+  cases hmarkerB : certificate.quotientPositiveB source definition.marker with
+  | true => simp
+  | false =>
+      simp only [Bool.false_or]
+      rw [List.all_eq_true]
+      intro witnesses _
+      cases hinjectiveB : certificate.quotientInjectiveB witnesses with
+      | false => simp
+      | true =>
+          simp only [Bool.not_true, Bool.false_or]
+          cases hsuccessorsB : (List.finRange definition.bound).all (fun index =>
+              certificate.cardinalitySuccessorB definition source (witnesses index)) with
+          | false => simp
+          | true =>
+              have hatLeast : HasAtLeast definition.bound
+                  (certificate.state.quotientCanonical.cardinalitySuccessor definition
+                    (Quotient.mk certificate.state.nodeSetoid source)) := by
+                refine ⟨fun index => Quotient.mk certificate.state.nodeSetoid
+                  (witnesses index),
+                  (certificate.quotientInjectiveB_eq_true hvalid witnesses).mp hinjectiveB, ?_⟩
+                intro index
+                apply (certificate.cardinalitySuccessorB_eq_true hvalid definition source
+                  (witnesses index)).mp
+                exact (List.all_eq_true.mp hsuccessorsB) index (List.mem_finRange index)
+              have hmarker := hrecognition
+                (Quotient.mk certificate.state.nodeSetoid source) (by
+                  simpa [Interp.cardinalityCondition, hkind] using hatLeast)
+              have := (certificate.quotientPositiveB_eq_true hvalid source
+                definition.marker).mpr hmarker
+              simp [hmarkerB] at this
+
+theorem FiniteEqCertificate.checkCardinalityRecognition_eq_true_iff
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) :
+    certificate.checkCardinalityRecognition definition = true ↔
+      certificate.state.quotientCanonical.modelsCardinalityRecognition definition := by
+  cases hkind : definition.kind with
+  | minimum =>
+      simp only [FiniteEqCertificate.checkCardinalityRecognition, hkind]
+      exact ⟨certificate.checkMinimumRecognition_sound hvalid definition hkind,
+        certificate.checkMinimumRecognition_complete hvalid definition hkind⟩
+  | maximum =>
+      simp only [FiniteEqCertificate.checkCardinalityRecognition, hkind]
+      exact certificate.checkMaximumRecognition_eq_true_iff hvalid definition hkind
+
 def FiniteEqCertificate.checkMaximumDefExact
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) : Bool :=
   certificate.checkCardinalityDef definition &&
     certificate.checkMaximumRecognition definition
 
+def FiniteEqCertificate.checkCardinalityDefExact
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) : Bool :=
+  certificate.checkCardinalityDef definition &&
+    certificate.checkCardinalityRecognition definition
+
 def FiniteEqCertificate.checkMaximumDefsExact
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Bool :=
   definitions.all certificate.checkMaximumDefExact
+
+def FiniteEqCertificate.checkCardinalityDefsExact
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Bool :=
+  definitions.all certificate.checkCardinalityDefExact
 
 def Interp.modelsCardinalityDefsExact
     (I : Interp Domain Concept Role)
@@ -400,6 +529,17 @@ theorem FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
     certificate.checkMaximumRecognition_eq_true_iff hvalid definition hkind,
     modelsCardinalityDef_and_recognition_iff_exact]
 
+theorem FiniteEqCertificate.checkCardinalityDefExact_eq_true_iff
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definition : CardinalityDef (Fin conceptCount) (Fin roleCount)) :
+    certificate.checkCardinalityDefExact definition = true ↔
+      certificate.state.quotientCanonical.modelsCardinalityDefExact definition := by
+  rw [FiniteEqCertificate.checkCardinalityDefExact, Bool.and_eq_true,
+    certificate.checkCardinalityDef_eq_true_iff_models hvalid,
+    certificate.checkCardinalityRecognition_eq_true_iff hvalid,
+    modelsCardinalityDef_and_recognition_iff_exact]
+
 theorem FiniteEqCertificate.checkMaximumDefsExact_sound
     (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
     (hvalid : certificate.equalityClosureValidB = true)
@@ -411,6 +551,16 @@ theorem FiniteEqCertificate.checkMaximumDefsExact_sound
   have hdefinition := (List.all_eq_true.mp hcheck) definition hmem
   exact (certificate.checkMaximumDefExact_eq_true_iff hvalid definition
     (hmaximum definition hmem)).mp hdefinition
+
+theorem FiniteEqCertificate.checkCardinalityDefsExact_sound
+    (certificate : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hvalid : certificate.equalityClosureValidB = true)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (hcheck : certificate.checkCardinalityDefsExact definitions = true) :
+    certificate.state.quotientCanonical.modelsCardinalityDefsExact definitions := by
+  intro definition hmem
+  have hdefinition := (List.all_eq_true.mp hcheck) definition hmem
+  exact (certificate.checkCardinalityDefExact_eq_true_iff hvalid definition).mp hdefinition
 
 #print axioms mem_maximumBody
 #print axioms mem_maximumHead
@@ -424,7 +574,12 @@ theorem FiniteEqCertificate.checkMaximumDefsExact_sound
 #print axioms FiniteEqCertificate.checkMaximumRecognition_sound
 #print axioms FiniteEqCertificate.checkMaximumRecognition_complete
 #print axioms FiniteEqCertificate.checkMaximumRecognition_eq_true_iff
+#print axioms FiniteEqCertificate.checkMinimumRecognition_sound
+#print axioms FiniteEqCertificate.checkMinimumRecognition_complete
+#print axioms FiniteEqCertificate.checkCardinalityRecognition_eq_true_iff
 #print axioms FiniteEqCertificate.checkMaximumDefExact_eq_true_iff
+#print axioms FiniteEqCertificate.checkCardinalityDefExact_eq_true_iff
 #print axioms FiniteEqCertificate.checkMaximumDefsExact_sound
+#print axioms FiniteEqCertificate.checkCardinalityDefsExact_sound
 
 end ContextCalculus.Hypertableau

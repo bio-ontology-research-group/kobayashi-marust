@@ -40,6 +40,9 @@ structure WireCardinalityEqCertificate where
   /-- Definition indices whose dropped source recognition split requires an
   exact maximum marker in every published countermodel. -/
   exact_maximums : List Nat := []
+  /-- Definition indices requiring exact marker recognition. This is the
+  production field; `exact_maximums` remains accepted for version-2 documents. -/
+  exact_definitions : List Nat := []
   refutation_depth : Nat := 0
   refutation : Option WireCardinalityEqRefutationTree := none
   distinct_refutation_depth : Nat := 0
@@ -61,6 +64,8 @@ structure DecodedCardinalityEqCertificate where
   exactMaximums : List
     (CardinalityDef (Fin base.conceptCount) (Fin base.roleCount))
   exactMaximumKinds : ∀ definition ∈ exactMaximums, definition.kind = .maximum
+  exactDefinitions : List
+    (CardinalityDef (Fin base.conceptCount) (Fin base.roleCount))
   refutation : Option (DecodedCardinalityEqRefutation base.nodeCount base.conceptCount
     base.roleCount base.variableCount)
   distinctRefutation : Option (DecodedDistinctCardinalityRefutation base.nodeCount
@@ -84,6 +89,10 @@ def WireCardinalityEqCertificate.decode (wire : WireCardinalityEqCertificate) :
           pure ⟨definition, hkind⟩
         else
           throw s!"exact maximum definition index {index} names a minimum definition"
+  let exactDefinitions ← wire.exact_definitions.mapM fun index =>
+    match definitions[index]? with
+    | none => throw s!"exact cardinality definition index {index} is out of range"
+    | some definition => pure definition
   let refutation : Option (DecodedCardinalityEqRefutation base.nodeCount
       base.conceptCount base.roleCount base.variableCount) ← match wire.refutation with
     | none => pure none
@@ -109,22 +118,23 @@ def WireCardinalityEqCertificate.decode (wire : WireCardinalityEqCertificate) :
       simp only [List.mem_map] at hmem
       rcases hmem with ⟨item, _, rfl⟩
       exact item.2
+    exactDefinitions := exactDefinitions ++ exactMaximums.map (·.1)
     refutation
     distinctRefutation
   }
 
-def DecodedCardinalityEqCertificate.checkExactMaximums
+def DecodedCardinalityEqCertificate.checkExactDefinitions
     (decoded : DecodedCardinalityEqCertificate) : Bool :=
-  decoded.base.rootCertificate.checkMaximumDefsExact decoded.exactMaximums
+  decoded.base.rootCertificate.checkCardinalityDefsExact decoded.exactDefinitions
 
-theorem DecodedCardinalityEqCertificate.checkExactMaximums_sound
+theorem DecodedCardinalityEqCertificate.checkExactDefinitions_sound
     (decoded : DecodedCardinalityEqCertificate)
     (hvalid : decoded.base.rootCertificate.equalityClosureValidB = true)
-    (hcheck : decoded.checkExactMaximums = true) :
+    (hcheck : decoded.checkExactDefinitions = true) :
     decoded.base.rootCertificate.state.quotientCanonical.modelsCardinalityDefsExact
-      decoded.exactMaximums :=
-  decoded.base.rootCertificate.checkMaximumDefsExact_sound hvalid
-    decoded.exactMaximums decoded.exactMaximumKinds hcheck
+      decoded.exactDefinitions :=
+  decoded.base.rootCertificate.checkCardinalityDefsExact_sound hvalid
+    decoded.exactDefinitions hcheck
 
 def DecodedCardinalityEqCertificate.check
     (decoded : DecodedCardinalityEqCertificate) : Bool :=
@@ -132,16 +142,16 @@ def DecodedCardinalityEqCertificate.check
   | .sat certificate =>
       decide (0 < decoded.base.nodeCount) &&
         certificate.checkEqSatWithCardinality decoded.definitions &&
-        decoded.checkExactMaximums
+        decoded.checkExactDefinitions
   | .nonSubsumption certificate root sub sup =>
       decide ((root, .pos sub) ∈ certificate.base.labels) &&
       decide ((root, .negated sup) ∈ certificate.base.labels) &&
         certificate.checkEqSatWithCardinality decoded.definitions &&
-        decoded.checkExactMaximums
+        decoded.checkExactDefinitions
   | .satisfiableConcept certificate root concept =>
       decide ((root, .pos concept) ∈ certificate.base.labels) &&
         certificate.checkEqSatWithCardinality decoded.definitions &&
-        decoded.checkExactMaximums
+        decoded.checkExactDefinitions
   | .unsat certificate _ =>
       match decoded.distinctRefutation with
       | some refutation =>
@@ -306,7 +316,7 @@ theorem DecodedCardinalityEqCertificate.check_sat_models_exact
     certificate.state.quotientCanonical.models certificate.base.ontology ∧
       certificate.state.quotientCanonical.modelsCardinalityDefs decoded.definitions ∧
       certificate.state.quotientCanonical.modelsCardinalityDefsExact
-        decoded.exactMaximums := by
+        decoded.exactDefinitions := by
   simp only [DecodedCardinalityEqCertificate.check, hevidence,
     Bool.and_eq_true, decide_eq_true_eq] at hcheck
   have hmodels := certificate.checkEqSatWithCardinality_models
@@ -317,7 +327,7 @@ theorem DecodedCardinalityEqCertificate.check_sat_models_exact
   have hvalid : certificate.equalityClosureValidB = true := hsat.1.1.1.1.1
   have hroot : decoded.base.rootCertificate = certificate := by
     simp [DecodedEqCertificate.rootCertificate, hevidence]
-  have hexact := decoded.checkExactMaximums_sound
+  have hexact := decoded.checkExactDefinitions_sound
     (by rw [hroot]; exact hvalid) hcheck.2
   rw [hroot] at hexact
   exact ⟨hmodels.1, hmodels.2, hexact⟩
