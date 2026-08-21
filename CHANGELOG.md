@@ -104,6 +104,11 @@
   in the native ABox, fixing an omission exposed by the proof boundary. A real
   Rust-to-Lean test accepts an ABox-only at-most pigeonhole refutation with
   asserted distinct successors.
+- Compose direct source clauses and frontend cardinality expansions with the
+  exact native-ABox cardinality refutation. The combined decoder checks the
+  direct target, definition values, exact-pair provenance, negative-role
+  guards, and normalized ontology in one signature. Its Rust-to-Lean test
+  accepts the genuine document and rejects a forged cardinality bound.
 
 Certified nominal/ABox routing remains closed until KM emits this joint seeded
 state evidence with every TBox projection shape and the concrete search result.

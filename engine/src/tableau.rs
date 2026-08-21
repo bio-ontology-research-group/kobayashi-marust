@@ -5545,6 +5545,41 @@ fn direct_native_abox_refutation_document(
     .map_err(|error| format!("cannot encode joint direct native ABox refutation: {error}"))
 }
 
+fn direct_native_abox_cardinality_refutation_document(
+    inp: &TInput,
+    clauses: &[Clause],
+    normalized_refutation: &str,
+) -> Result<Vec<u8>, String> {
+    if inp.card_defs.is_empty()
+        || inp.bundle_projection_source.is_some()
+        || inp.mixed_projection_source.is_some()
+    {
+        return Err(
+            "joint direct native ABox cardinality refutation requires only direct source projection"
+                .to_string(),
+        );
+    }
+    let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+        "joint native ABox cardinality refutation has no complete direct source projection"
+            .to_string()
+    })?;
+    let target = clauses
+        .iter()
+        .map(direct_projection_target_clause)
+        .collect::<Vec<_>>();
+    let refutation = native_abox_refutation_value(inp, normalized_refutation)?;
+    serde_json::to_vec(&serde_json::json!({
+        "source": source,
+        "target": target,
+        "definitions": &inp.card_defs,
+        "exact_pairs": &inp.cardinality_exact_pairs,
+        "refutation": refutation,
+    }))
+    .map_err(|error| {
+        format!("cannot encode joint direct native ABox cardinality refutation: {error}")
+    })
+}
+
 fn mixed_native_abox_refutation_document(
     inp: &TInput,
     normalized_refutation: &str,
@@ -6806,6 +6841,103 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-direct-native-abox-refutation",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn direct_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            CardDefJson, NativeAboxJson, NativeIndividualJson,
+        };
+        let mut producer = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec![
+                "subject".into(),
+                "left".into(),
+                "right".into(),
+                "marker".into(),
+                "filler".into(),
+            ],
+            roles: vec!["r".into()],
+            nominals: vec![0, 1, 2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![
+                    NativeIndividualJson {
+                        proxies: vec![0],
+                        assertions: vec![3],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![1],
+                        assertions: vec![4],
+                    },
+                    NativeIndividualJson {
+                        proxies: vec![2],
+                        assertions: vec![4],
+                    },
+                ],
+                different: vec![(1, 2)],
+                role_assertions: vec![(0, 0, 1), (0, 0, 2)],
+                negative_role_assertions: Vec::new(),
+            },
+            direct_projection_source: Some(Vec::new()),
+            card_defs: vec![CardDefJson {
+                marker: 3,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 4,
+                exact: false,
+            }],
+            cardinality_projection_complete: true,
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        };
+        let inp = consumer_input(&producer);
+        let clauses = Vec::<Clause>::new();
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![
+                (vec![0], vec![3]),
+                (vec![1], vec![4]),
+                (vec![2], vec![4]),
+            ],
+            vec![(1, 2)],
+            vec![(0, 0, 1), (0, 0, 2)],
+        );
+        reasoner.set_card_defs_raw(&[(3, false, 1, 0, 4, false)]);
+        let normalized = reasoner
+            .lean_native_abox_cardinality_unsat_refutation_json()
+            .expect("normalized native ABox cardinality refutation");
+        let document = direct_native_abox_cardinality_refutation_document(
+            &inp,
+            &clauses,
+            &normalized,
+        )
+        .expect("compose direct source and native ABox cardinality refutation");
+        run_ht_projection_checker(
+            &document,
+            std::path::Path::new(&checker),
+            "direct-native-abox-cardinality-refutation",
+        )
+        .expect("combined direct cardinality/native ABox refutation passes Lean");
+
+        producer.card_defs[0].n = 2;
+        let forged_input = consumer_input(&producer);
+        let forged = direct_native_abox_cardinality_refutation_document(
+            &forged_input,
+            &clauses,
+            &normalized,
+        )
+        .expect("serialize forged definition");
+        assert!(run_ht_projection_checker(
+            &forged,
+            std::path::Path::new(&checker),
+            "forged-direct-native-abox-cardinality-refutation",
         )
         .unwrap_err()
         .contains("rejected"));
