@@ -5,6 +5,8 @@ import ContextCalculus.HypertableauBundleProjectionWire
 import ContextCalculus.HypertableauNativeABoxDecision
 import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauCardinalityDistinctWire
+import ContextCalculus.HypertableauCardinalityProjectionWire
+import ContextCalculus.HypertableauCardinalityWire
 
 /-!
 # Checked native-ABox projection wire
@@ -210,6 +212,34 @@ theorem DecodedNativeABox.exactEqSeedB_sound
     · intro hequal
       subst right
       exact Relation.EqvGen.refl left
+
+def DecodedNativeABox.apartJustifiedB (decoded : DecodedNativeABox)
+    (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount) : Bool :=
+  state.apart.all fun listed => decoded.different.any fun source =>
+    decide (listed = (root source.1, root source.2)) ||
+    decide (listed = (root source.2, root source.1))
+
+theorem DecodedNativeABox.apartJustifiedB_sound
+    (decoded : DecodedNativeABox)
+    (state : FiniteDistinctEqCertificate nodeCount decoded.concepts.length
+      decoded.roles.length variableCount)
+    (root : Fin decoded.individuals.length → Fin nodeCount)
+    (hcheck : decoded.apartJustifiedB state root = true) :
+    ∀ left right, state.state.apart left right →
+      ∃ pair ∈ decoded.abox.different,
+        (left = root pair.1 ∧ right = root pair.2) ∨
+        (left = root pair.2 ∧ right = root pair.1) := by
+  simp only [DecodedNativeABox.apartJustifiedB, List.all_eq_true,
+    List.any_eq_true, Bool.or_eq_true, decide_eq_true_eq,
+    FiniteDistinctEqCertificate.state] at hcheck
+  intro left right hlisted
+  rcases hcheck (left, right) hlisted with ⟨pair, hpair, horientation⟩
+  refine ⟨pair, hpair, ?_⟩
+  rcases horientation with hforward | hreverse
+  · exact Or.inl ⟨congrArg Prod.fst hforward, congrArg Prod.snd hforward⟩
+  · exact Or.inr ⟨congrArg Prod.fst hreverse, congrArg Prod.snd hreverse⟩
 
 theorem DecodedNativeABox.seededInB_eq_true_iff
     (decoded : DecodedNativeABox)
@@ -479,6 +509,11 @@ structure DecodedNativeABoxInitial where
   seed : DecodedNativeABoxSeed
   exact_initial : seed.abox.abox.ExactEqSeed seed.state.base.state seed.roots
 
+structure DecodedNativeABoxDistinctInitial where
+  initial : DecodedNativeABoxInitial
+  exact_distinct : initial.seed.abox.abox.ExactDistinctSeed
+    initial.seed.state.state initial.seed.roots
+
 def WireNativeABoxSeed.decodeInitial (wire : WireNativeABoxSeed) :
     Except String DecodedNativeABoxInitial := do
   let expectedRoots := (List.range wire.abox.individuals.length).map (· + 1)
@@ -497,6 +532,27 @@ def WireNativeABoxSeed.checkInitial (wire : WireNativeABoxSeed) :
     Except String Bool := do
   let _ ← wire.decodeInitial
   return true
+
+def WireNativeABoxSeed.decodeDistinctInitial (wire : WireNativeABoxSeed) :
+    Except String DecodedNativeABoxDistinctInitial := do
+  let initial ← wire.decodeInitial
+  if hapart : initial.seed.abox.apartJustifiedB initial.seed.state
+      initial.seed.roots = true then
+    return {
+      initial
+      exact_distinct := ⟨initial.exact_initial,
+        initial.seed.abox.apartJustifiedB_sound initial.seed.state
+          initial.seed.roots hapart⟩
+    }
+  else throw "finite HT initial apart fact is not justified by DifferentIndividuals"
+
+theorem DecodedNativeABoxDistinctInitial.initializes
+    (decoded : DecodedNativeABoxDistinctInitial) :
+    decoded.initial.seed.abox.abox.InitializesDistinctState
+      decoded.initial.seed.state.state :=
+  decoded.exact_distinct.initializes decoded.initial.seed.abox.abox
+    decoded.initial.seed.state.state decoded.initial.seed.roots
+    decoded.initial.seed.roots_injective
 
 theorem DecodedNativeABoxInitial.initializes (decoded : DecodedNativeABoxInitial) :
     decoded.seed.abox.abox.InitializesEqState decoded.seed.state.base.state :=
@@ -537,6 +593,63 @@ theorem DecodedNativeABoxRefutation.unsatisfiable
       decoded.initial.seed.state.base.base.ontology :=
   decoded.tree.check_native_abox_unsatisfiable
     decoded.initial.seed.state.base decoded.initial.seed.abox.abox
+    decoded.initial.initializes decoded.checked
+
+structure WireNativeABoxCardinalityRefutation where
+  initial : WireNativeABoxSeed
+  definitions : List WireCardinalityDef
+  depth : Nat
+  tree : WireDistinctCardinalityRefutationTree
+deriving FromJson, ToJson, Repr
+
+structure DecodedNativeABoxCardinalityRefutation where
+  initial : DecodedNativeABoxDistinctInitial
+  definitions : List (CardinalityDef
+    (Fin initial.initial.seed.abox.concepts.length)
+    (Fin initial.initial.seed.abox.roles.length))
+  depth : Nat
+  tree : FiniteDistinctCardinalityRefutationTree
+    initial.initial.seed.nodeCount initial.initial.seed.abox.concepts.length
+    initial.initial.seed.abox.roles.length initial.initial.seed.variableCount depth
+  checked : tree.checkClosed definitions initial.initial.seed.state = true
+
+def WireNativeABoxCardinalityRefutation.decode
+    (wire : WireNativeABoxCardinalityRefutation) :
+    Except String DecodedNativeABoxCardinalityRefutation := do
+  let initial ← wire.initial.decodeDistinctInitial
+  let definitions ← wire.definitions.mapM (WireCardinalityDef.decode
+    initial.initial.seed.abox.concepts.length initial.initial.seed.abox.roles.length)
+  let decodedTree ← wire.tree.decode initial.initial.seed.nodeCount
+    initial.initial.seed.abox.concepts.length initial.initial.seed.abox.roles.length
+    initial.initial.seed.variableCount wire.depth
+    initial.initial.seed.ontology definitions
+  if hcheck : decodedTree.tree.checkClosed definitions initial.initial.seed.state = true then
+    return {
+      initial
+      definitions
+      depth := decodedTree.depth
+      tree := decodedTree.tree
+      checked := hcheck
+    }
+  else throw "native ABox cardinality refutation did not close"
+
+def WireNativeABoxCardinalityRefutation.check
+    (wire : WireNativeABoxCardinalityRefutation) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem DecodedNativeABoxCardinalityRefutation.unsatisfiable
+    (decoded : DecodedNativeABoxCardinalityRefutation) :
+    ¬∃ (Domain : Type)
+        (I : Interp Domain (Fin decoded.initial.initial.seed.abox.concepts.length)
+          (Fin decoded.initial.initial.seed.abox.roles.length))
+        (value : Fin decoded.initial.initial.seed.abox.individuals.length → Domain),
+      Nonempty Domain ∧
+      I.models decoded.initial.initial.seed.state.base.base.ontology ∧
+      I.modelsCardinalityDefs decoded.definitions ∧
+      decoded.initial.initial.seed.abox.abox.models I value :=
+  decoded.tree.checkClosed_native_abox_unsatisfiable decoded.definitions
+    decoded.initial.initial.seed.state decoded.initial.initial.seed.abox.abox
     decoded.initial.initializes decoded.checked
 
 /-- One checked document connecting direct source clauses, native ABox
@@ -1050,6 +1163,24 @@ example : validRefutationExample.check = .ok true := by native_decide
 example : rejected ({ validRefutationExample with tree := .clash }).check = true := by
   native_decide
 
+private def validNativeCardinalityRefutation : WireNativeABoxCardinalityRefutation where
+  initial := validRefutationExample.initial
+  definitions := []
+  depth := 0
+  tree := .equality validRefutationExample.tree
+
+example : validNativeCardinalityRefutation.check = .ok true := by native_decide
+example : rejected ({ validNativeCardinalityRefutation with initial :=
+    { validNativeCardinalityRefutation.initial with abox :=
+      { validNativeCardinalityRefutation.initial.abox with different := [] } } }).check = true := by
+  native_decide
+example : rejected ({ validNativeCardinalityRefutation with initial :=
+    { validNativeCardinalityRefutation.initial with state :=
+      { validNativeCardinalityRefutation.initial.state with apart :=
+        validNativeCardinalityRefutation.initial.state.apart ++
+          [({ left := 0, right := 1 } : WireApart)] } } }).check = true := by
+  native_decide
+
 private def validDirectNativeRefutation : WireDirectNativeABoxRefutation where
   source := [{
     variableNames := ["x"]
@@ -1142,6 +1273,8 @@ example : rejected ({ validBundleNativeRefutation with
 #print axioms DecodedNativeABoxSeed.checkEqSat_native_satisfiable
 #print axioms DecodedNativeABoxInitial.initializes
 #print axioms DecodedNativeABoxRefutation.unsatisfiable
+#print axioms DecodedNativeABoxDistinctInitial.initializes
+#print axioms DecodedNativeABoxCardinalityRefutation.unsatisfiable
 #print axioms DecodedDirectNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedMixedNativeABoxRefutation.source_unsatisfiable
 #print axioms DecodedBundleNativeABoxRefutation.source_unsatisfiable

@@ -93,6 +93,17 @@
 - Test the real Rust-to-Lean path, including rejection of duplicate proxy
   ownership and missing nominal declarations. The test also caught and fixed
   the flat-JSON-triple wire representation before integration.
+- Extend exact native-ABox initialization to distinct cardinality search. Every
+  initial apart edge must now be justified by a decoded
+  `DifferentIndividuals` fact; the checker rejects both a deleted source fact
+  and an injected apart edge. A checked finite cardinality refutation tree from
+  this state proves the normalized TBox, cardinality definitions, and native
+  ABox jointly unsatisfiable.
+- Add the corresponding Rust publisher and checker document. Cardinality
+  certificate signature sizing now includes concepts and roles that occur only
+  in the native ABox, fixing an omission exposed by the proof boundary. A real
+  Rust-to-Lean test accepts an ABox-only at-most pigeonhole refutation with
+  asserted distinct successors.
 
 Certified nominal/ABox routing remains closed until KM emits this joint seeded
 state evidence with every TBox projection shape and the concrete search result.

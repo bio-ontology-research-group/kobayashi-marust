@@ -11249,6 +11249,115 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Produce a checked cardinality refutation for the exact normalized TBox
+    /// together with KM's native named-individual ABox. The ordinary
+    /// cardinality envelope proves an empty-root ontology statement and cannot
+    /// justify an ABox-seeded contradiction, so this uses the dedicated joint
+    /// initial-state boundary.
+    pub fn lean_native_abox_cardinality_unsat_refutation_json(&self) -> Result<String, String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox cardinality refutation requires at least one individual"
+                .to_string());
+        }
+        if self.card_defs.is_empty() {
+            return Err("native ABox cardinality refutation requires a cardinality definition"
+                .to_string());
+        }
+        let raw = self.lean_cardinality_refutation_certificate_json(&[], |_| {
+            LeanHtEqEvidence::Unsat {
+                tree: LeanHtEqRefutationTree::Clash,
+            }
+        })?;
+        let certificate: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+        let base = certificate
+            .get("certificate")
+            .ok_or_else(|| "native ABox cardinality refutation lacks its base certificate"
+                .to_string())?;
+        let tree = certificate
+            .get("distinct_refutation")
+            .filter(|tree| !tree.is_null())
+            .cloned()
+            .ok_or_else(|| "native ABox cardinality refutation lacks a closed tree".to_string())?;
+        let node_count = base["node_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox cardinality refutation lacks node_count".to_string())?
+            as usize;
+        let concept_count = base["concept_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox cardinality refutation lacks concept_count".to_string())?
+            as usize;
+        let role_count = base["role_count"]
+            .as_u64()
+            .ok_or_else(|| "native ABox cardinality refutation lacks role_count".to_string())?
+            as usize;
+        let individuals: Vec<_> = self
+            .native_abox
+            .individuals
+            .iter()
+            .map(|(proxies, assertions)| serde_json::json!({
+                "proxies": proxies,
+                "assertions": assertions,
+            }))
+            .collect();
+        let nominals: Vec<usize> = self
+            .native_abox
+            .individuals
+            .iter()
+            .flat_map(|(proxies, _)| proxies.iter().map(|&concept| concept as usize))
+            .collect();
+        let different: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!([left, right]))
+            .collect();
+        let role_assertions: Vec<_> = self
+            .native_abox
+            .role_assertions
+            .iter()
+            .map(|&(role, source, target)| serde_json::json!([role, source, target]))
+            .collect();
+        let apart: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!({
+                "left": left + 1,
+                "right": right + 1,
+            }))
+            .collect();
+        let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
+        serde_json::to_string(&serde_json::json!({
+            "initial": {
+                "abox": {
+                    "complete": true,
+                    "concepts": (0..concept_count).map(|id| format!("c{id}"))
+                        .collect::<Vec<_>>(),
+                    "roles": (0..role_count).map(|id| format!("r{id}"))
+                        .collect::<Vec<_>>(),
+                    "nominals": nominals,
+                    "individuals": individuals,
+                    "different": different,
+                    "role_assertions": role_assertions,
+                    "negative_role_assertions": [],
+                },
+                "node_count": node_count,
+                "variable_count": base["variable_count"],
+                "roots": roots,
+                "ontology": base["ontology"],
+                "state": {
+                    "base": base["state"],
+                    "apart": apart,
+                },
+            },
+            "definitions": certificate["definitions"],
+            "depth": certificate["distinct_refutation_depth"],
+            "tree": tree,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     fn lean_cardinality_refutation_certificate_json(
         &self,
         initial_labels: &[(Node, CLit)],
@@ -11288,6 +11397,17 @@ impl Ht {
                 );
             }
             concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        for (proxies, assertions) in &self.native_abox.individuals {
+            for &concept in proxies.iter().chain(assertions) {
+                concept_count = concept_count.max(concept as usize + 1);
+            }
+        }
+        for &(role, _, _) in &self.native_abox.role_assertions {
+            role_count = role_count.max(role as usize + 1);
+        }
+        if !self.native_abox.individuals.is_empty() {
+            variable_count = variable_count.max(2);
         }
         let mut definitions: Vec<(C, CardDef)> = self
             .card_defs
@@ -21602,6 +21722,57 @@ mod tests {
         distinct.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER, false)]);
         distinct.set_number(true);
         assert_eq!(distinct.consistent(&[]), Some(false));
+    }
+
+    #[test]
+    fn native_abox_cardinality_refutation_uses_joint_lean_boundary() {
+        const SUBJECT: C = 20;
+        const LEFT: C = 21;
+        const RIGHT: C = 22;
+        const MARKER: C = 23;
+        const FILLER: C = 24;
+        let mut reasoner = Ht::new_certified(Vec::new());
+        reasoner.set_nominals(vec![SUBJECT, LEFT, RIGHT]);
+        reasoner.set_native_abox(
+            vec![
+                (vec![SUBJECT], vec![MARKER]),
+                (vec![LEFT], vec![FILLER]),
+                (vec![RIGHT], vec![FILLER]),
+            ],
+            vec![(1, 2)],
+            vec![(R0, 0, 1), (R0, 0, 2)],
+        );
+        reasoner.set_card_defs_raw(&[(MARKER, false, 1, R0, FILLER, false)]);
+
+        let payload = reasoner
+            .lean_native_abox_cardinality_unsat_refutation_json()
+            .expect("joint native ABox cardinality refutation must serialize");
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        assert_eq!(value["initial"]["roots"], serde_json::json!([1, 2, 3]));
+        assert_eq!(
+            value["initial"]["state"]["apart"],
+            serde_json::json!([{ "left": 2, "right": 3 }])
+        );
+        assert_eq!(value["definitions"].as_array().unwrap().len(), 1);
+        assert!(value["tree"].is_object());
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_PROJECTION_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-native-abox-cardinality-refutation-{}.json",
+                std::process::id()
+            ));
+            std::fs::write(&path, &payload).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .status()
+                .expect("run native ABox cardinality Lean refutation checker")
+                .success();
+            let _ = std::fs::remove_file(path);
+            assert!(
+                accepted,
+                "joint native ABox cardinality refutation must be accepted"
+            );
+        }
     }
 
     fn negative_edge_clash(role_id: R, source_nominal: C, target_nominal: C) -> Clause {

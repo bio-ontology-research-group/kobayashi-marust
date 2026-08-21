@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauNativeABoxProjection
 import ContextCalculus.HypertableauEqualityCertificate
 import ContextCalculus.HypertableauCardinalityDistinctCertificate
+import ContextCalculus.HypertableauCardinalityRuntimeSearch
 
 /-!
 # Native-ABox hypertableau decision semantics
@@ -48,6 +49,63 @@ def NativeABox.ExactEqSeed
   (∀ role filler node, ¬state.base.obligation role filler node) ∧
   (∀ left right, state.equiv left right ↔ left = right)
 
+def NativeABox.ExactDistinctSeed
+    (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role)
+    (root : Individual → Node) : Prop :=
+  abox.ExactEqSeed state.base root ∧
+  ∀ left right, state.apart left right →
+    ∃ pair ∈ abox.different,
+      (left = root pair.1 ∧ right = root pair.2) ∨
+      (left = root pair.2 ∧ right = root pair.1)
+
+def NativeABox.InitializesDistinctState
+    (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role)
+      [Nonempty Domain] (value : Individual → Domain),
+    abox.models I value → ∃ nodeValue : Node → Domain,
+      state.RealizedBy I nodeValue
+
+theorem NativeABox.ExactDistinctSeed.initializes
+    (abox : NativeABox Individual Concept Role)
+    (state : DistinctEqState Node Concept Role) (root : Individual → Node)
+    (hroot : Function.Injective root)
+    (hexact : abox.ExactDistinctSeed state root) :
+    abox.InitializesDistinctState state := by
+  intro Domain I _ value habox
+  classical
+  let fallback : Domain := Classical.choice (inferInstance : Nonempty Domain)
+  let nodeValue : Node → Domain := Function.extend root value (fun _ => fallback)
+  have hrootValue : ∀ individual, nodeValue (root individual) = value individual :=
+    fun individual => hroot.extend_apply value (fun _ => fallback) individual
+  have hbase : state.base.RealizedBy I nodeValue := by
+    refine ⟨⟨?_, ?_, ?_⟩, ?_⟩
+    · intro node literal hlabel
+      rcases (hexact.1.1 node literal).1 hlabel with
+        ⟨individual, concept, rfl, hconcept, rfl⟩
+      rcases List.mem_append.mp hconcept with hproxy | hassertion
+      · simpa [Interp.satLit, hrootValue] using
+          (habox.1 individual concept hproxy (value individual)).2 rfl
+      · simpa [Interp.satLit, hrootValue] using
+          habox.2.1 individual concept hassertion
+    · intro role source target hedge
+      rcases (hexact.1.2.1 role source target).1 hedge with
+        ⟨assertion, hassertion, rfl, rfl, rfl⟩
+      simpa [hrootValue] using habox.2.2.2.1 assertion hassertion
+    · intro role filler node hobligation
+      exact (hexact.1.2.2.1 role filler node hobligation).elim
+    · intro left right hequivalent
+      exact congrArg nodeValue ((hexact.1.2.2.2 left right).1 hequivalent)
+  refine ⟨nodeValue, ⟨hbase, ?_⟩⟩
+  intro left right hapart hequal
+  rcases hexact.2 left right hapart with
+    ⟨pair, hpair, horientation⟩
+  have hdifferent := habox.2.2.1 pair hpair
+  rcases horientation with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+  · exact hdifferent (by simpa [hrootValue] using hequal)
+  · exact hdifferent (by simpa [hrootValue] using hequal.symm)
+
 theorem NativeABox.ExactEqSeed.initializes
     (abox : NativeABox Individual Concept Role)
     (state : EqState Node Concept Role) (root : Individual → Node)
@@ -89,6 +147,25 @@ theorem FiniteEqRefutationTree.check_native_abox_unsatisfiable
   rcases hinitial Domain I value habox with ⟨nodeValue, hrealized⟩
   exact tree.check_unsatisfiable certificate hcheck
     ⟨Domain, I, nodeValue, hmodels, hrealized⟩
+
+theorem FiniteDistinctCardinalityRefutationTree.checkClosed_native_abox_unsatisfiable
+    (tree : FiniteDistinctCardinalityRefutationTree
+      nodeCount conceptCount roleCount variableCount depth)
+    (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (certificate : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (hinitial : abox.InitializesDistinctState certificate.state)
+    (hcheck : tree.checkClosed definitions certificate = true) :
+    ¬∃ (Domain : Type) (I : Interp Domain (Fin conceptCount) (Fin roleCount))
+        (value : Individual → Domain),
+      Nonempty Domain ∧ I.models certificate.base.base.ontology ∧
+        I.modelsCardinalityDefs definitions ∧ abox.models I value := by
+  rintro ⟨Domain, I, value, hdomain, hmodels, hcardinality, habox⟩
+  letI : Nonempty Domain := hdomain
+  rcases hinitial Domain I value habox with ⟨nodeValue, hrealized⟩
+  exact tree.checkClosed_unsatisfiable definitions certificate hcheck
+    ⟨Domain, I, nodeValue, hmodels, hcardinality, hrealized⟩
 
 def FiniteDistinctEqCertificate.apartSeparatedB
     (certificate : FiniteDistinctEqCertificate
@@ -159,5 +236,7 @@ theorem FiniteDistinctEqCertificate.checkEqSat_native_satisfiable
 #print axioms FiniteDistinctEqCertificate.apartSeparatedB_sound
 #print axioms FiniteEqRefutationTree.check_native_abox_unsatisfiable
 #print axioms NativeABox.ExactEqSeed.initializes
+#print axioms NativeABox.ExactDistinctSeed.initializes
+#print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_native_abox_unsatisfiable
 
 end ContextCalculus.Hypertableau
