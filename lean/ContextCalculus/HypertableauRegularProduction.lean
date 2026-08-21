@@ -242,6 +242,30 @@ theorem FreshFoldProducer.rejected_step
     rw [hattempt]
   · exact producer.rejectionFresh _ _ hattempt
 
+/-- A conforming producer cannot reject a candidate whose complete fold report
+is already contained in the blacklist. This is the exact progress guard used
+by the executable retry loop: rejection is permitted only when it teaches the
+next attempt at least one new blocker pair. -/
+theorem FreshFoldProducer.rejected_not_subset
+    [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result)
+    {forbidden folds : Finset (Node × Node)}
+    (hrejected : producer.attempt forbidden = .rejected folds) :
+    ¬ folds ⊆ forbidden := by
+  obtain ⟨fold, hfold, hfresh⟩ := producer.rejectionFresh forbidden folds hrejected
+  exact fun hsubset => hfresh (hsubset hfold)
+
+/-- In particular, the modeled production retry can never reach Rust's fatal
+"fold-free candidate rejected" branch. Such an outcome carries no fresh fold
+and therefore contradicts the producer contract. -/
+theorem FreshFoldProducer.not_rejected_empty
+    [DecidableEq Node]
+    (producer : FreshFoldProducer Node Result)
+    (forbidden : Finset (Node × Node)) :
+    producer.attempt forbidden ≠ .rejected ∅ := by
+  intro hrejected
+  exact producer.rejected_not_subset hrejected (Finset.empty_subset _)
+
 /-- The concrete retry layer terminates at every fixed node budget. This turns
 the Rust producer's learned-fold loop into a total constructor of the checked
 round outcome expected by the existing doubling theorem. -/
@@ -369,6 +393,8 @@ theorem FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
 #print axioms no_infinite_fresh_fold_rejections
 #print axioms fold_learning_eventually_done
 #print axioms FreshFoldProducer.rejected_step
+#print axioms FreshFoldProducer.rejected_not_subset
+#print axioms FreshFoldProducer.not_rejected_empty
 #print axioms FreshFoldProducer.eventually_done
 
 end ContextCalculus.Hypertableau
