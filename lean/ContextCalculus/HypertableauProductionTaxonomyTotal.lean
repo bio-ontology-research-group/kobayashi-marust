@@ -3,6 +3,7 @@ import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauCardinalityTaxonomyWire
 import ContextCalculus.HypertableauNativeABoxTaxonomy
 import ContextCalculus.HypertableauNativeABoxCardinalityTaxonomyWire
+import ContextCalculus.HypertableauRegularProduction
 
 /-!
 # Total production hypertableau taxonomy search
@@ -105,6 +106,35 @@ theorem checked_taxonomy_doubling_decides
       hconcepts hroles
   exact hrejected (hchecks round)
 
+/-- Totality of the two-level production taxonomy search used by Rust. At a
+fixed node budget, rejected blocker certificates add a fresh forbidden fold
+until a checked cell outcome remains. Checked frontiers alone advance the
+outer doubling schedule. Consequently one retry at one budget proves either
+the cell statement or its negation. -/
+theorem checked_taxonomy_fresh_fold_producer_decides
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount statement))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧ outcome.Semantics := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      (producer budget).run retry = .done outcome := by
+    intro budget
+    exact (producer budget).eventually_done
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hcheck,
+      settled budget = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_taxonomy_doubling_decides settled hsettledNodes
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 /-- All checked searches used to construct one production taxonomy.  Each
 field is indexed by the exact source-level query that its result decides. -/
 structure CertifiedHTProductionTaxonomyRoute
@@ -153,7 +183,8 @@ theorem CertifiedHTProductionTaxonomyRoute.decides
     | holds proof => exact .unsatisfiable hsemantics
     | refutes proof => exact .satisfiable hsemantics
     | frontier document hconcepts hroles hcheck =>
-        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+      simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
   · intro sub hsub sup hsup
     have hround : Nonempty { round //
         (route.subsumptionRun sub hsub sup hsup round).Semantics } := by
@@ -165,6 +196,78 @@ theorem CertifiedHTProductionTaxonomyRoute.decides
     let round := selected.1
     have hsemantics := selected.2
     generalize houtcome : route.subsumptionRun sub hsub sup hsup round = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .entailed hsemantics
+    | refutes proof => exact .notEntailed hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+
+/-- Production equality-free taxonomy route with Rust's concrete inner
+learned-fold loop represented explicitly for every concept and subsumption
+cell. The route no longer assumes that a single search attempt per node budget
+has already settled. -/
+structure CertifiedHTFreshFoldProductionTaxonomyRoute
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (named : List (Fin conceptCount)) where
+  conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
+    FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (UnsatisfiableConcept ontology concept))
+  conceptNodes : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
+    (conceptProducer concept hnamed budget).run retry =
+        .done (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget
+  subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
+    ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount
+        (EntailsSub ontology sub sup))
+  subsumptionNodes :
+    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
+      (subsumptionProducer sub hsub sup hsup budget).run retry =
+          .done (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget
+
+theorem CertifiedHTFreshFoldProductionTaxonomyRoute.decides
+    (route : CertifiedHTFreshFoldProductionTaxonomyRoute conceptCount roleCount
+      variableCount ontology named) :
+    Nonempty (CompleteTaxonomyCertificate ontology named) := by
+  classical
+  refine ⟨{ concept := ?_, subsumption := ?_ }⟩
+  · intro concept hnamed
+    have hresult : Nonempty { selected :
+        Nat × Nat × CheckedTaxonomyRoundOutcome conceptCount roleCount
+          (UnsatisfiableConcept ontology concept) //
+      (route.conceptProducer concept hnamed selected.1).run selected.2.1 =
+          .done selected.2.2 ∧ selected.2.2.Semantics } := by
+      rcases checked_taxonomy_fresh_fold_producer_decides
+          (route.conceptProducer concept hnamed)
+          (route.conceptNodes concept hnamed) with
+        ⟨budget, retry, outcome, hrun, hsemantics⟩
+      exact ⟨⟨(budget, retry, outcome), hrun, hsemantics⟩⟩
+    let selected := Classical.choice hresult
+    have hsemantics := selected.property.2
+    generalize houtcome : selected.1.2.2 = outcome at hsemantics
+    cases outcome with
+    | holds proof => exact .unsatisfiable hsemantics
+    | refutes proof => exact .satisfiable hsemantics
+    | frontier document hconcepts hroles hcheck =>
+        simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
+  · intro sub hsub sup hsup
+    have hresult : Nonempty { selected :
+        Nat × Nat × CheckedTaxonomyRoundOutcome conceptCount roleCount
+          (EntailsSub ontology sub sup) //
+      (route.subsumptionProducer sub hsub sup hsup selected.1).run selected.2.1 =
+          .done selected.2.2 ∧ selected.2.2.Semantics } := by
+      rcases checked_taxonomy_fresh_fold_producer_decides
+          (route.subsumptionProducer sub hsub sup hsup)
+          (route.subsumptionNodes sub hsub sup hsup) with
+        ⟨budget, retry, outcome, hrun, hsemantics⟩
+      exact ⟨⟨(budget, retry, outcome), hrun, hsemantics⟩⟩
+    let selected := Classical.choice hresult
+    have hsemantics := selected.property.2
+    generalize houtcome : selected.1.2.2 = outcome at hsemantics
     cases outcome with
     | holds proof => exact .entailed hsemantics
     | refutes proof => exact .notEntailed hsemantics
@@ -363,7 +466,9 @@ theorem CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
         simp only [CheckedTaxonomyRoundOutcome.Semantics] at hsemantics
 #print axioms CheckedTaxonomyRoundOutcome.conclusive_semantics
 #print axioms checked_taxonomy_doubling_decides
+#print axioms checked_taxonomy_fresh_fold_producer_decides
 #print axioms CertifiedHTProductionTaxonomyRoute.decides
+#print axioms CertifiedHTFreshFoldProductionTaxonomyRoute.decides
 #print axioms CertifiedHTCardinalityProductionTaxonomyRoute.decides
 #print axioms CertifiedHTNativeABoxProductionTaxonomyRoute.decides
 #print axioms CertifiedHTNativeABoxCardinalityProductionTaxonomyRoute.decides
