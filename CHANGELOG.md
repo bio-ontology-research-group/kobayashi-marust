@@ -113,6 +113,14 @@
   Lean predicate over all 128 combinations of projection loss, fences,
   inverse roles, number restrictions, role separation, nominals, and native
   ABox activation.
+- Bind the global HT verdict and complete taxonomy to one source problem inside
+  Lean. One joint document carries the source projection and native ABox once;
+  the checker injects them into both the global evidence and every taxonomy
+  cell before decoding. This covers direct, mixed Skolem-pair, and bundled
+  projections, with and without cardinality. Production taxonomy publication
+  now requires this joint checker in addition to all existing checks. The
+  mandatory gate exercises all six routes and rejects independently forged
+  source and ABox fields.
 
 ### Certify native-ABox cardinality taxonomies
 

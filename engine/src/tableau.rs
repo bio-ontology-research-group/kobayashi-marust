@@ -5997,6 +5997,116 @@ fn native_abox_source_taxonomy_document(
     serde_json::to_vec(&payload)
     .map_err(|error| format!("cannot encode source-composed native ABox taxonomy: {error}"))
 }
+/// Bind the global source decision and complete source taxonomy to one shared
+/// source projection and one shared native ABox.  The existing decision,
+/// matrix, source-decision, and source-taxonomy checks remain independent
+/// prerequisites; this document adds the cross-document identity check.
+fn native_abox_joint_source_classification_document(
+    inp: &TInput,
+    clauses: &[Clause],
+    normalized_decision: &str,
+    normalized_taxonomy: &str,
+) -> Result<Vec<u8>, String> {
+    let global: serde_json::Value = serde_json::from_str(normalized_decision)
+        .map_err(|error| format!("invalid joint native ABox global decision: {error}"))?;
+    if !global.is_object() {
+        return Err("joint native ABox global decision is not an object".to_string());
+    }
+    let taxonomy: serde_json::Value = serde_json::from_str(normalized_taxonomy)
+        .map_err(|error| format!("invalid joint native ABox taxonomy: {error}"))?;
+    if !taxonomy.is_object() {
+        return Err("joint native ABox taxonomy is not an object".to_string());
+    }
+    let abox = NativeAboxProjectionDocument {
+        complete: inp.native_abox.complete,
+        concepts: &inp.concepts,
+        roles: &inp.roles,
+        nominals: &inp.nominals,
+        individuals: &inp.native_abox.individuals,
+        different: &inp.native_abox.different,
+        role_assertions: &inp.native_abox.role_assertions,
+        negative_role_assertions: &inp.native_abox.negative_role_assertions,
+    };
+
+    let document = if !inp.card_defs.is_empty() {
+        let projection = if let Some(source) = inp.bundle_projection_source.as_ref() {
+            serde_json::json!({
+                "source_concepts": &source.source_concepts,
+                "functions": &source.functions,
+                "direct": &source.direct,
+                "bundles": &source.bundles,
+                "domain_extras": &source.domain_extras,
+                "definitions": bundle_cardinality_definitions(inp, source)?,
+                "exact_pairs": &inp.cardinality_exact_pairs,
+                "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
+            })
+        } else if let Some(source) = inp.mixed_projection_source.as_ref() {
+            serde_json::json!({
+                "functions": &source.functions,
+                "direct": &source.direct,
+                "pairs": &source.pairs,
+                "definitions": &inp.card_defs,
+                "exact_pairs": &inp.cardinality_exact_pairs,
+            })
+        } else {
+            let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+                "joint native ABox cardinality classification has no complete source projection"
+                    .to_string()
+            })?;
+            serde_json::json!({
+                "source": source,
+                "target": clauses.iter().map(direct_projection_target_clause)
+                    .collect::<Vec<_>>(),
+                "definitions": &inp.card_defs,
+                "exact_pairs": &inp.cardinality_exact_pairs,
+            })
+        };
+        serde_json::json!({
+            "version": 1,
+            "projection": projection,
+            "abox": abox,
+            "global": global,
+            "taxonomy": taxonomy,
+        })
+    } else if let Some(source) = inp.bundle_projection_source.as_ref() {
+        serde_json::json!({
+            "version": 1,
+            "source_concepts": &source.source_concepts,
+            "functions": &source.functions,
+            "direct": &source.direct,
+            "bundles": &source.bundles,
+            "domain_extras": &source.domain_extras,
+            "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
+            "abox": abox,
+            "global": global,
+            "taxonomy": taxonomy,
+        })
+    } else if let Some(source) = inp.mixed_projection_source.as_ref() {
+        serde_json::json!({
+            "version": 1,
+            "functions": &source.functions,
+            "direct": &source.direct,
+            "pairs": &source.pairs,
+            "abox": abox,
+            "global": global,
+            "taxonomy": taxonomy,
+        })
+    } else {
+        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+            "joint native ABox source classification has no complete source projection".to_string()
+        })?;
+        serde_json::json!({
+            "version": 1,
+            "source": source,
+            "abox": abox,
+            "global": global,
+            "taxonomy": taxonomy,
+        })
+    };
+    serde_json::to_vec(&document)
+        .map_err(|error| format!("cannot encode joint native ABox classification: {error}"))
+}
+
 
 fn check_direct_ht_projection(
     inp: &TInput,
@@ -6137,6 +6247,7 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
     "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
     "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+    "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
 ];
 
 fn ht_lean_certification_requested() -> bool {
@@ -6303,6 +6414,10 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             )
             .map(std::path::PathBuf::from)
         };
+        let lean_native_abox_joint_source_classification_checker = std::env::var_os(
+            "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
+        )
+        .map(std::path::PathBuf::from);
         let lean_projection_checker =
             std::env::var_os("KM_HT_LEAN_PROJECTION_CHECKER").map(std::path::PathBuf::from);
         let lean_taxonomy_path =
@@ -6312,7 +6427,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_taxonomy_requested = lean_taxonomy_path.is_some()
             || lean_taxonomy_checker.is_some()
             || lean_native_abox_taxonomy_matrix_checker.is_some()
-            || lean_native_abox_taxonomy_source_checker.is_some();
+            || lean_native_abox_taxonomy_source_checker.is_some()
+            || lean_native_abox_joint_source_classification_checker.is_some();
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
                 return Err(
@@ -6352,6 +6468,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 if lean_native_abox_taxonomy_source_checker.is_none() {
                     return Err(
                         "native ABox HT taxonomy certification requires its source-composition Lean checker"
+                            .to_string(),
+                    );
+                }
+                if lean_native_abox_joint_source_classification_checker.is_none() {
+                    return Err(
+                        "native ABox HT taxonomy certification requires KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER"
                             .to_string(),
                     );
                 }
@@ -6596,6 +6718,24 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             &source_taxonomy,
                             source_checker,
                             "native-abox-taxonomy-source",
+                        )?;
+                        let joint_checker = lean_native_abox_joint_source_classification_checker
+                            .as_deref()
+                            .ok_or_else(|| {
+                                "missing native ABox joint source-classification Lean checker"
+                                    .to_string()
+                            })?;
+                        let joint_classification =
+                            native_abox_joint_source_classification_document(
+                                &inp,
+                                &source_decision_clauses,
+                                &certificate,
+                                &taxonomy_certificate,
+                            )?;
+                        run_ht_projection_checker(
+                            &joint_classification,
+                            joint_checker,
+                            "native-abox-joint-source-classification",
                         )?;
                     }
                     let taxonomy_version = taxonomy_value["version"].as_u64();
@@ -6917,6 +7057,7 @@ mod tests {
             "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
             "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
             "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+            "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
         ] {
             assert!(
                 HT_LEAN_CERTIFICATION_ENV.contains(&required),
@@ -6977,6 +7118,75 @@ mod tests {
     fn consumer_input(producer: &crate::orchestrate::cb_to_ht::TInput) -> TInput {
         serde_json::from_slice(&serde_json::to_vec(producer).unwrap()).unwrap()
     }
+
+    fn checked_joint_native_abox_classification(
+        checker: &std::path::Path,
+        producer: &crate::orchestrate::cb_to_ht::TInput,
+        clauses: Vec<Clause>,
+        queries: &[C],
+        label: &str,
+    ) -> Vec<u8> {
+        let inp = consumer_input(producer);
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            inp.native_abox
+                .individuals
+                .iter()
+                .map(|individual| {
+                    (
+                        individual
+                            .proxies
+                            .iter()
+                            .map(|&concept| concept as C)
+                            .collect(),
+                        individual
+                            .assertions
+                            .iter()
+                            .map(|&concept| concept as C)
+                            .collect(),
+                    )
+                })
+                .collect(),
+            inp.native_abox.different.clone(),
+            inp.native_abox
+                .role_assertions
+                .iter()
+                .map(|&(role, source, target)| (role as R, source, target))
+                .collect(),
+        );
+        if !inp.card_defs.is_empty() {
+            reasoner.set_number(true);
+            reasoner.set_card_defs_raw(
+                &inp.card_defs
+                    .iter()
+                    .map(|definition| {
+                        (
+                            definition.marker as C,
+                            definition.min,
+                            definition.n,
+                            definition.role as R,
+                            definition.filler as C,
+                            definition.exact,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+        let (_, global) = reasoner
+            .lean_global_decision_certificate_json()
+            .expect("normalized native ABox global decision");
+        let taxonomy = reasoner
+            .lean_taxonomy_certificate_json(queries)
+            .expect("normalized native ABox taxonomy matrix");
+        let document =
+            native_abox_joint_source_classification_document(&inp, &clauses, &global, &taxonomy)
+                .expect("compose joint native ABox classification");
+        run_ht_projection_checker(&document, checker, label)
+            .expect("joint source-classification checker accepts production evidence");
+        document
+    }
+
 
     #[test]
     fn mixed_skolem_projection_passes_the_real_lean_checker_and_rejects_omission() {
@@ -7561,6 +7771,248 @@ mod tests {
         .unwrap_err()
         .contains("rejected"));
     }
+
+    #[test]
+    fn joint_native_abox_classification_carries_one_source_and_abox() {
+        let mut producer = native_wire_input();
+        producer.direct_projection_source = Some(Vec::new());
+        let inp = consumer_input(&producer);
+        let clauses = clauses_of_tinput(&inp);
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        let (consistent, global) = reasoner
+            .lean_native_abox_decision_certificate_json()
+            .expect("normalized native ABox decision");
+        assert!(consistent);
+        let taxonomy = reasoner
+            .lean_taxonomy_certificate_json(&[2])
+            .expect("normalized native ABox taxonomy matrix");
+        let document =
+            native_abox_joint_source_classification_document(&inp, &clauses, &global, &taxonomy)
+                .expect("compose joint native ABox classification");
+        let wire: serde_json::Value = serde_json::from_slice(&document).unwrap();
+        assert_eq!(wire["version"], 1);
+        assert_eq!(wire["source"], serde_json::json!([]));
+        assert_eq!(wire["abox"]["complete"], true);
+        assert_eq!(
+            wire["abox"]["individuals"],
+            serde_json::to_value(&inp.native_abox.individuals).unwrap()
+        );
+        assert_eq!(
+            wire["global"],
+            serde_json::from_str::<serde_json::Value>(&global).unwrap()
+        );
+        assert_eq!(
+            wire["taxonomy"],
+            serde_json::from_str::<serde_json::Value>(&taxonomy).unwrap()
+        );
+    }
+
+    #[test]
+    fn joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes() {
+        use crate::orchestrate::cb_to_ht::{
+            BundleProjectionLit, BundleProjectionSource, CardDefJson, DirectProjectionAtom,
+            DirectProjectionClause, MixedProjectionSource, NativeAboxJson, NativeIndividualJson,
+            SkolemProjectionBundle, SkolemProjectionPair,
+        };
+        let checker = std::env::var_os("KM_HT_TEST_LEAN_JOINT_NATIVE_ABOX_CLASSIFICATION_CHECKER")
+            .expect("the HT certification gate must provide the real joint Lean checker");
+        let checker = std::path::Path::new(&checker);
+        let body = || {
+            vec![DirectProjectionAtom::Con {
+                concept: "A".into(),
+                node: "x".into(),
+                neg: false,
+            }]
+        };
+        let direct_clause = || DirectProjectionClause {
+            variable_names: vec!["x".into()],
+            body: body(),
+            head: Vec::new(),
+        };
+
+        let mut direct = native_wire_input();
+        direct.direct_projection_source = Some(Vec::new());
+        let direct_document = checked_joint_native_abox_classification(
+            checker,
+            &direct,
+            Vec::new(),
+            &[2],
+            "joint-direct-native-abox-classification",
+        );
+
+        let mut mixed = native_wire_input();
+        mixed.concepts.push("C".into());
+        mixed.mixed_projection_source = Some(MixedProjectionSource {
+            functions: vec!["f".into()],
+            direct: vec![direct_clause()],
+            pairs: vec![SkolemProjectionPair {
+                variable_names: vec!["x".into()],
+                body: body(),
+                source: "x".into(),
+                function: "f".into(),
+                role: "r".into(),
+                filler: "C".into(),
+                neg: false,
+            }],
+        });
+        checked_joint_native_abox_classification(
+            checker,
+            &mixed,
+            vec![
+                Clause::new(vec![con(false, 2, 0)], Vec::new()),
+                Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+            ],
+            &[2, 3],
+            "joint-mixed-native-abox-classification",
+        );
+
+        let mut bundle = native_wire_input();
+        bundle.concepts.extend(["D".into(), "C".into()]);
+        bundle.bundle_projection_source = Some(BundleProjectionSource {
+            source_concepts: vec!["NA".into(), "NB".into(), "A".into(), "C".into()],
+            functions: vec!["f".into()],
+            direct: vec![direct_clause()],
+            bundles: vec![SkolemProjectionBundle {
+                variable_names: vec!["x".into()],
+                body: body(),
+                source: "x".into(),
+                function: "f".into(),
+                role: "r".into(),
+                fillers: vec![BundleProjectionLit {
+                    concept: "C".into(),
+                    neg: false,
+                }],
+                definer: "D".into(),
+            }],
+            domain_extras: Vec::new(),
+        });
+        checked_joint_native_abox_classification(
+            checker,
+            &bundle,
+            vec![
+                Clause::new(vec![con(false, 2, 0)], Vec::new()),
+                Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+                Clause::new(vec![con(false, 3, 0)], vec![con(false, 4, 0)]),
+            ],
+            &[2, 4],
+            "joint-bundle-native-abox-classification",
+        );
+
+        let direct_cardinality = crate::orchestrate::cb_to_ht::TInput {
+            concepts: vec!["marker".into(), "filler".into(), "nominal".into()],
+            roles: vec!["r".into()],
+            nominals: vec![2],
+            native_abox: NativeAboxJson {
+                complete: true,
+                individuals: vec![NativeIndividualJson {
+                    proxies: vec![2],
+                    assertions: vec![0],
+                }],
+                ..NativeAboxJson::default()
+            },
+            direct_projection_source: Some(Vec::new()),
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+                exact: false,
+            }],
+            cardinality_projection_complete: true,
+            ..crate::orchestrate::cb_to_ht::TInput::default()
+        };
+        checked_joint_native_abox_classification(
+            checker,
+            &direct_cardinality,
+            Vec::new(),
+            &[0, 1],
+            "joint-direct-native-abox-cardinality-classification",
+        );
+
+        let mut mixed_cardinality = mixed;
+        mixed_cardinality.concepts.push("marker".into());
+        mixed_cardinality.card_defs = vec![CardDefJson {
+            marker: 4,
+            min: false,
+            n: 1,
+            role: 0,
+            filler: 3,
+            exact: false,
+        }];
+        mixed_cardinality.cardinality_projection_complete = true;
+        checked_joint_native_abox_classification(
+            checker,
+            &mixed_cardinality,
+            vec![
+                Clause::new(vec![con(false, 2, 0)], Vec::new()),
+                Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+            ],
+            &[2, 3],
+            "joint-mixed-native-abox-cardinality-classification",
+        );
+
+        let mut bundle_cardinality = bundle;
+        bundle_cardinality.concepts.push("M".into());
+        bundle_cardinality
+            .bundle_projection_source
+            .as_mut()
+            .unwrap()
+            .source_concepts
+            .push("M".into());
+        bundle_cardinality.card_defs = vec![CardDefJson {
+            marker: 5,
+            min: false,
+            n: 1,
+            role: 0,
+            filler: 4,
+            exact: false,
+        }];
+        bundle_cardinality.cardinality_projection_complete = true;
+        checked_joint_native_abox_classification(
+            checker,
+            &bundle_cardinality,
+            vec![
+                Clause::new(vec![con(false, 2, 0)], Vec::new()),
+                Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+                Clause::new(vec![con(false, 3, 0)], vec![con(false, 4, 0)]),
+            ],
+            &[2, 4],
+            "joint-bundle-native-abox-cardinality-classification",
+        );
+
+        let mut forged_source: serde_json::Value =
+            serde_json::from_slice(&direct_document).unwrap();
+        forged_source["source"] = serde_json::json!([{
+            "variableNames": ["x"],
+            "body": [{"con": {"concept": "A", "node": "x", "neg": false}}],
+            "head": []
+        }]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged_source).unwrap(),
+            checker,
+            "forged-joint-native-abox-source",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+
+        let mut forged_abox: serde_json::Value = serde_json::from_slice(&direct_document).unwrap();
+        forged_abox["abox"]["individuals"][0]["assertions"] = serde_json::json!([1]);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged_abox).unwrap(),
+            checker,
+            "forged-joint-native-abox-shared-abox",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
 
     #[test]
     fn direct_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {

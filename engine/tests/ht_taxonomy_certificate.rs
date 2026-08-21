@@ -319,6 +319,59 @@ fn run_projection_only_certification() -> std::process::Output {
     child.wait_with_output().unwrap()
 }
 
+fn run_native_abox_taxonomy_certification(
+    source_taxonomy_checker: &str,
+    joint_checker: Option<&str>,
+) -> std::process::Output {
+    let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
+    input["nominals"] = serde_json::json!([0]);
+    input["native_abox"] = serde_json::json!({
+        "complete": true,
+        "individuals": [{"proxies": [0], "assertions": []}],
+        "different": [],
+        "role_assertions": [],
+        "negative_role_assertions": []
+    });
+    install_direct_projection_fixture(&mut input);
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
+    command
+        .env("KM_HT", "1")
+        .env("KM_HT_FORCE", "1")
+        .env("KM_HT_GLOBAL", "1")
+        .env("KM_HT_LEAN_PROJECTION_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
+            source_taxonomy_checker,
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(checker) = joint_checker {
+        command.env(
+            "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
+            checker,
+        );
+    }
+    let mut child = command.spawn().expect("spawn tableau worker");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&serde_json::to_vec(&input).unwrap())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn certified_publication_requires_checker_and_source_projection() {
     let missing_checker = run_raw_certified(WIRE, None);
@@ -366,6 +419,57 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
             String::from_utf8_lossy(&output.stderr),
         );
     }
+}
+
+#[test]
+fn native_abox_taxonomy_requires_the_joint_source_classification_checker() {
+    let output = run_native_abox_taxonomy_certification("/bin/true", None);
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+#[test]
+fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
+    let rejected = run_native_abox_taxonomy_certification("/bin/true", Some("/bin/false"));
+    assert!(!rejected.status.success());
+    assert!(
+        rejected.stdout.is_empty(),
+        "unchecked taxonomy was published"
+    );
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr)
+            .contains("native-abox-joint-source-classification"),
+        "{}",
+        String::from_utf8_lossy(&rejected.stderr),
+    );
+
+    let accepted = run_native_abox_taxonomy_certification("/bin/true", Some("/bin/true"));
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr),
+    );
+    let classification: serde_json::Value =
+        serde_json::from_slice(&accepted.stdout).expect("classification is JSON");
+    assert_eq!(classification["consistent"], true);
+}
+
+#[test]
+fn joint_checker_does_not_replace_the_source_taxonomy_checker() {
+    let output = run_native_abox_taxonomy_certification("/bin/false", Some("/bin/true"));
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("native-abox-taxonomy-source"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
 }
 
 #[test]
