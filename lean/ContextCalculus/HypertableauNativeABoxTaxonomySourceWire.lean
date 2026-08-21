@@ -136,6 +136,39 @@ theorem DecodedDirectNativeABoxTaxonomyDecision.semantic_valid
   | sat result => exact result.source_satisfiable
   | unsat result => exact result.source_unsatisfiable
 
+def DecodedDirectNativeABoxTaxonomyDecision.positive :
+    DecodedDirectNativeABoxTaxonomyDecision → Bool
+  | .sat _ => false
+  | .unsat _ => true
+
+def DecodedDirectNativeABoxTaxonomyDecision.QueryEntailed :
+    DecodedDirectNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      ¬decoded.taxonomy.certificate.seed.abox.abox.SatisfiableWithQuery
+        decoded.source decoded.taxonomy.query.literals
+  | .unsat decoded =>
+      ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithQuery
+        decoded.source decoded.taxonomy.query.literals
+
+theorem DecodedDirectNativeABoxTaxonomyDecision.positive_eq_true_iff
+    (decision : DecodedDirectNativeABoxTaxonomyDecision) :
+    decision.positive = true ↔ decision.QueryEntailed := by
+  cases decision with
+  | sat decoded =>
+      have hsemantic := decoded.source_satisfiable
+      change (false = true ↔
+        ¬decoded.taxonomy.certificate.seed.abox.abox.SatisfiableWithQuery
+          decoded.source decoded.taxonomy.query.literals)
+      constructor
+      · intro hfalse; contradiction
+      · intro hnot; exact False.elim (hnot hsemantic)
+  | unsat decoded =>
+      have hsemantic := decoded.source_unsatisfiable
+      change (true = true ↔
+        ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithQuery
+          decoded.source decoded.taxonomy.query.literals)
+      exact ⟨fun _ => hsemantic, fun _ => rfl⟩
+
 /-! ## Complete direct-source matrix -/
 
 structure WireDirectNativeABoxTaxonomyMatrix where
@@ -364,6 +397,38 @@ theorem DecodedMixedNativeABoxTaxonomyDecision.semantic_valid
   cases decoded with
   | sat result => exact result.source_satisfiable
   | unsat result => exact result.source_unsatisfiable
+
+def DecodedMixedNativeABoxTaxonomyDecision.positive :
+    DecodedMixedNativeABoxTaxonomyDecision → Bool
+  | .sat _ => false
+  | .unsat _ => true
+
+def DecodedMixedNativeABoxTaxonomyDecision.QueryEntailed :
+    DecodedMixedNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      ¬decoded.projection.certificate.seed.abox.abox.SatisfiableWithMixedQuery
+        decoded.projection.direct decoded.projection.pairs decoded.query.literals
+  | .unsat decoded =>
+      ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithMixedQuery
+        decoded.direct decoded.pairs decoded.taxonomy.query.literals
+
+theorem DecodedMixedNativeABoxTaxonomyDecision.positive_eq_true_iff
+    (decision : DecodedMixedNativeABoxTaxonomyDecision) :
+    decision.positive = true ↔ decision.QueryEntailed := by
+  cases decision with
+  | sat decoded =>
+      have hsemantic := decoded.source_satisfiable
+      change (false = true ↔
+        ¬decoded.projection.certificate.seed.abox.abox.SatisfiableWithMixedQuery
+          decoded.projection.direct decoded.projection.pairs decoded.query.literals)
+      exact ⟨fun hfalse => by contradiction,
+        fun hnot => False.elim (hnot hsemantic)⟩
+  | unsat decoded =>
+      have hsemantic := decoded.source_unsatisfiable
+      change (true = true ↔
+        ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithMixedQuery
+          decoded.direct decoded.pairs decoded.taxonomy.query.literals)
+      exact ⟨fun _ => hsemantic, fun _ => rfl⟩
 
 structure WireMixedNativeABoxTaxonomyMatrix where
   version : Nat
@@ -947,6 +1012,44 @@ theorem DecodedBundleNativeABoxTaxonomyDecision.semantic_valid
   | sat result => exact result.source_satisfiable
   | unsat result => exact result.source_unsatisfiable
 
+def DecodedBundleNativeABoxTaxonomyDecision.positive :
+    DecodedBundleNativeABoxTaxonomyDecision → Bool
+  | .sat _ => false
+  | .unsat _ => true
+
+def DecodedBundleNativeABoxTaxonomyDecision.QueryEntailed :
+    DecodedBundleNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      ¬decoded.projection.certificate.seed.abox.abox.SatisfiableWithBundleQuery
+        decoded.projection.sourceOf decoded.projection.direct
+        (decodedBundleSpecs decoded.projection.bundles)
+        (decoded.query.literals.map (renameLit decoded.projection.sourceOf))
+  | .unsat decoded =>
+      ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithBundleQuery
+        decoded.sourceOf decoded.direct (decodedBundleSpecs decoded.bundles)
+        (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf))
+
+theorem DecodedBundleNativeABoxTaxonomyDecision.positive_eq_true_iff
+    (decision : DecodedBundleNativeABoxTaxonomyDecision) :
+    decision.positive = true ↔ decision.QueryEntailed := by
+  cases decision with
+  | sat decoded =>
+      have hsemantic := decoded.source_satisfiable
+      change (false = true ↔
+        ¬decoded.projection.certificate.seed.abox.abox.SatisfiableWithBundleQuery
+          decoded.projection.sourceOf decoded.projection.direct
+          (decodedBundleSpecs decoded.projection.bundles)
+          (decoded.query.literals.map (renameLit decoded.projection.sourceOf)))
+      exact ⟨fun hfalse => by contradiction,
+        fun hnot => False.elim (hnot hsemantic)⟩
+  | unsat decoded =>
+      have hsemantic := decoded.source_unsatisfiable
+      change (true = true ↔
+        ¬decoded.taxonomy.initial.abox.abox.SatisfiableWithBundleQuery
+          decoded.sourceOf decoded.direct (decodedBundleSpecs decoded.bundles)
+          (decoded.taxonomy.query.literals.map (renameLit decoded.sourceOf)))
+      exact ⟨fun _ => hsemantic, fun _ => rfl⟩
+
 structure WireBundleNativeABoxTaxonomyMatrix where
   version : Nat
   source_concepts : List String
@@ -1011,10 +1114,13 @@ theorem DecodedBundleNativeABoxTaxonomyMatrix.semantic_valid
 #print axioms DecodedDirectNativeABoxTaxonomySat.source_satisfiable
 #print axioms DecodedDirectNativeABoxTaxonomyUnsat.source_unsatisfiable
 #print axioms DecodedDirectNativeABoxTaxonomyDecision.semantic_valid
+#print axioms DecodedDirectNativeABoxTaxonomyDecision.positive_eq_true_iff
 #print axioms DecodedDirectNativeABoxTaxonomyMatrix.semantic_valid
 #print axioms DecodedMixedNativeABoxTaxonomyDecision.semantic_valid
+#print axioms DecodedMixedNativeABoxTaxonomyDecision.positive_eq_true_iff
 #print axioms DecodedMixedNativeABoxTaxonomyMatrix.semantic_valid
 #print axioms DecodedBundleNativeABoxTaxonomyDecision.semantic_valid
+#print axioms DecodedBundleNativeABoxTaxonomyDecision.positive_eq_true_iff
 #print axioms DecodedBundleNativeABoxTaxonomyMatrix.semantic_valid
 
 end ContextCalculus.Hypertableau

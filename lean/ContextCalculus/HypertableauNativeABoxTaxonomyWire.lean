@@ -246,8 +246,55 @@ theorem DecodedNativeABoxTaxonomyDecision.semantic_valid
         result.initial.state.base.base.ontology result.query.literals
       exact result.unsatisfiable
 
+/-- The Boolean polarity consumed by KM's taxonomy readout.  `true` denotes a
+closed query, hence an unsatisfiable concept or an entailed subsumption. -/
+def DecodedNativeABoxTaxonomyDecision.positive :
+    DecodedNativeABoxTaxonomyDecision → Bool
+  | .sat _ => false
+  | .unsat _ => true
+
+def DecodedNativeABoxTaxonomyDecision.QueryEntailed :
+    DecodedNativeABoxTaxonomyDecision → Prop
+  | .sat decoded =>
+      ¬decoded.certificate.seed.abox.abox.SatisfiableWithQuery
+        decoded.certificate.seed.state.base.base.ontology decoded.query.literals
+  | .unsat decoded =>
+      ¬decoded.initial.abox.abox.SatisfiableWithQuery
+        decoded.initial.state.base.base.ontology decoded.query.literals
+
+theorem DecodedNativeABoxTaxonomyDecision.positive_eq_true_iff
+    (decision : DecodedNativeABoxTaxonomyDecision) :
+    decision.positive = true ↔ decision.QueryEntailed := by
+  cases decision with
+  | sat decoded =>
+      have hsemantic := (DecodedNativeABoxTaxonomyDecision.sat decoded).semantic_valid
+      change decoded.certificate.seed.abox.abox.SatisfiableWithQuery
+        decoded.certificate.seed.state.base.base.ontology
+        decoded.query.literals at hsemantic
+      change (false = true ↔
+        ¬decoded.certificate.seed.abox.abox.SatisfiableWithQuery
+          decoded.certificate.seed.state.base.base.ontology decoded.query.literals)
+      constructor
+      · intro hfalse
+        contradiction
+      · intro hnot
+        exact False.elim (hnot hsemantic)
+  | unsat decoded =>
+      have hsemantic := (DecodedNativeABoxTaxonomyDecision.unsat decoded).semantic_valid
+      change ¬decoded.initial.abox.abox.SatisfiableWithQuery
+        decoded.initial.state.base.base.ontology decoded.query.literals at hsemantic
+      change (true = true ↔
+        ¬decoded.initial.abox.abox.SatisfiableWithQuery
+          decoded.initial.state.base.base.ontology decoded.query.literals)
+      constructor
+      · intro _
+        exact hsemantic
+      · intro _
+        rfl
+
 #print axioms DecodedNativeABox.exactEqQuerySeedB_sound
 #print axioms DecodedNativeABoxTaxonomyUnsat.unsatisfiable
 #print axioms DecodedNativeABoxTaxonomyDecision.semantic_valid
+#print axioms DecodedNativeABoxTaxonomyDecision.positive_eq_true_iff
 
 end ContextCalculus.Hypertableau

@@ -422,6 +422,57 @@ theorem DecodedNativeABoxCardinalityTaxonomyDecision.semantic_valid
         result.query.literals result.query_present
   | unsat result => exact result.unsatisfiable
 
+def DecodedNativeABoxCardinalityTaxonomyDecision.positive :
+    DecodedNativeABoxCardinalityTaxonomyDecision → Bool
+  | .sat _ => false
+  | .unsat _ => true
+
+def DecodedNativeABoxCardinalityTaxonomyDecision.QueryEntailed :
+    DecodedNativeABoxCardinalityTaxonomyDecision → Prop
+  | .sat decoded =>
+      ¬decoded.certificate.seed.abox.abox.SatisfiableWithCardinalityQuery
+        decoded.certificate.seed.state.base.base.ontology
+        decoded.certificate.definitions decoded.query.literals
+  | .unsat decoded =>
+      ¬decoded.initial.abox.abox.SatisfiableWithCardinalityQuery
+        decoded.initial.state.base.base.ontology decoded.definitions
+        decoded.query.literals
+
+theorem DecodedNativeABoxCardinalityTaxonomyDecision.positive_eq_true_iff
+    (decision : DecodedNativeABoxCardinalityTaxonomyDecision) :
+    decision.positive = true ↔ decision.QueryEntailed := by
+  cases decision with
+  | sat decoded =>
+      have hsemantic :=
+        (DecodedNativeABoxCardinalityTaxonomyDecision.sat decoded).semantic_valid
+      change decoded.certificate.seed.abox.abox.SatisfiableWithCardinalityQuery
+        decoded.certificate.seed.state.base.base.ontology
+        decoded.certificate.definitions decoded.query.literals at hsemantic
+      change (false = true ↔
+        ¬decoded.certificate.seed.abox.abox.SatisfiableWithCardinalityQuery
+          decoded.certificate.seed.state.base.base.ontology
+          decoded.certificate.definitions decoded.query.literals)
+      constructor
+      · intro hfalse
+        contradiction
+      · intro hnot
+        exact False.elim (hnot hsemantic)
+  | unsat decoded =>
+      have hsemantic :=
+        (DecodedNativeABoxCardinalityTaxonomyDecision.unsat decoded).semantic_valid
+      change ¬decoded.initial.abox.abox.SatisfiableWithCardinalityQuery
+        decoded.initial.state.base.base.ontology decoded.definitions
+        decoded.query.literals at hsemantic
+      change (true = true ↔
+        ¬decoded.initial.abox.abox.SatisfiableWithCardinalityQuery
+          decoded.initial.state.base.base.ontology decoded.definitions
+          decoded.query.literals)
+      constructor
+      · intro _
+        exact hsemantic
+      · intro _
+        rfl
+
 structure WireNativeABoxCardinalityTaxonomyMatrix where
   version : Nat
   named : List Nat
@@ -547,6 +598,7 @@ theorem DecodedNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms NativeABox.ExactDistinctQuerySeed.initializes
 #print axioms FiniteDistinctCardinalityRefutationTree.checkClosed_native_abox_query_unsatisfiable
 #print axioms DecodedNativeABoxCardinalityTaxonomyDecision.semantic_valid
+#print axioms DecodedNativeABoxCardinalityTaxonomyDecision.positive_eq_true_iff
 #print axioms DecodedNativeABoxCardinalityTaxonomyMatrix.semantic_valid
 #print axioms CompleteNativeABoxCardinalityTaxonomyCertificate.unsatisfiable_exact
 #print axioms CompleteNativeABoxCardinalityTaxonomyCertificate.subsumptions_exact

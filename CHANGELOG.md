@@ -39,6 +39,16 @@
   and combined native-ABox/cardinality taxonomies. Membership in each emitted
   unsatisfiable or subsumption list is equivalent to the corresponding joint
   semantic proposition; omission is backed by a checked countermodel.
+- Connect the native-ABox wire polarity consumed by the Rust readout to Lean
+  semantics. For both ordinary and cardinality-aware native matrices, a cell
+  is marked positive exactly when its joint ABox/query problem is unsatisfiable.
+- Lift that polarity theorem through every non-cardinality native source
+  projection emitted by KM: direct clauses, mixed Skolem pairs, and bundled
+  definers. The published bit now denotes the source query proposition rather
+  than only the normalized target query.
+- Prove the same source-level polarity equivalence for all three cardinality
+  projection families, preserving the complete ABox, projected number
+  restrictions, and query literals in one semantic statement.
 
 ### Certify native-ABox cardinality taxonomies
 
