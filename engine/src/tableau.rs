@@ -5921,13 +5921,22 @@ fn native_abox_source_taxonomy_document(
         }
     }
     let payload = if !inp.card_defs.is_empty() {
-        if inp.bundle_projection_source.is_some() {
-            return Err(
-                "bundle native ABox cardinality taxonomy source wrapper is not connected"
-                    .to_string(),
-            );
-        }
-        if let Some(source) = inp.mixed_projection_source.as_ref() {
+        if let Some(source) = inp.bundle_projection_source.as_ref() {
+            serde_json::json!({
+                "version": 1,
+                "projection": {
+                    "source_concepts": &source.source_concepts,
+                    "functions": &source.functions,
+                    "direct": &source.direct,
+                    "bundles": &source.bundles,
+                    "domain_extras": &source.domain_extras,
+                    "definitions": bundle_cardinality_definitions(inp, source)?,
+                    "exact_pairs": &inp.cardinality_exact_pairs,
+                    "abox_source_map": native_abox_source_map(inp, &source.source_concepts)?,
+                },
+                "matrix": matrix,
+            })
+        } else if let Some(source) = inp.mixed_projection_source.as_ref() {
             serde_json::json!({
                 "version": 1,
                 "projection": {
@@ -6302,12 +6311,6 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 if lean_native_abox_taxonomy_source_checker.is_none() {
                     return Err(
                         "native ABox HT taxonomy certification requires its source-composition Lean checker"
-                            .to_string(),
-                    );
-                }
-                if !inp.card_defs.is_empty() && inp.bundle_projection_source.is_some() {
-                    return Err(
-                        "native ABox cardinality taxonomy source certification does not yet include bundle projection"
                             .to_string(),
                     );
                 }
@@ -7601,6 +7604,100 @@ mod tests {
             &serde_json::to_vec(&forged).unwrap(),
             std::path::Path::new(&checker),
             "forged-mixed-native-abox-cardinality-taxonomy-source",
+        )
+        .unwrap_err()
+        .contains("rejected"));
+    }
+
+    #[test]
+    fn bundle_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let Some(checker) = std::env::var_os(
+            "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
+        ) else {
+            return;
+        };
+        use crate::orchestrate::cb_to_ht::{
+            BundleProjectionLit, BundleProjectionSource, CardDefJson,
+            DirectProjectionAtom, DirectProjectionClause, SkolemProjectionBundle,
+        };
+        let mut producer = native_wire_input();
+        producer.concepts.extend(["D".into(), "C".into(), "M".into()]);
+        let body = vec![DirectProjectionAtom::Con {
+            concept: "A".into(),
+            node: "x".into(),
+            neg: false,
+        }];
+        producer.bundle_projection_source = Some(BundleProjectionSource {
+            source_concepts: vec![
+                "NA".into(), "NB".into(), "A".into(), "C".into(), "M".into(),
+            ],
+            functions: vec!["f".into()],
+            direct: vec![DirectProjectionClause {
+                variable_names: vec!["x".into()],
+                body: body.clone(),
+                head: Vec::new(),
+            }],
+            bundles: vec![SkolemProjectionBundle {
+                variable_names: vec!["x".into()],
+                body,
+                source: "x".into(),
+                function: "f".into(),
+                role: "r".into(),
+                fillers: vec![BundleProjectionLit {
+                    concept: "C".into(),
+                    neg: false,
+                }],
+                definer: "D".into(),
+            }],
+            domain_extras: Vec::new(),
+        });
+        producer.card_defs = vec![CardDefJson {
+            marker: 5,
+            min: false,
+            n: 1,
+            role: 0,
+            filler: 4,
+            exact: false,
+        }];
+        producer.cardinality_projection_complete = true;
+        let inp = consumer_input(&producer);
+        let clauses = vec![
+            Clause::new(vec![con(false, 2, 0)], Vec::new()),
+            Clause::new(vec![con(false, 2, 0)], vec![exists(0, false, 3, 0)]),
+            Clause::new(vec![con(false, 3, 0)], vec![con(false, 4, 0)]),
+        ];
+        let mut reasoner = hypertableau::Ht::new_certified(clauses.clone());
+        reasoner.set_nominals(inp.nominals.clone());
+        reasoner.set_native_abox(
+            vec![(vec![0], vec![2]), (vec![1], Vec::new())],
+            vec![(0, 1)],
+            vec![(0, 0, 1)],
+        );
+        reasoner.set_number(true);
+        reasoner.set_card_defs_raw(&[(5, false, 1, 0, 4, false)]);
+        let normalized = reasoner
+            .lean_taxonomy_certificate_json(&[2, 4])
+            .expect("normalized bundle native ABox cardinality taxonomy matrix");
+        let source_taxonomy = native_abox_source_taxonomy_document(
+            &inp,
+            &clauses,
+            &normalized,
+        )
+        .expect("compose bundle source with native ABox cardinality taxonomy");
+        run_ht_projection_checker(
+            &source_taxonomy,
+            std::path::Path::new(&checker),
+            "bundle-native-abox-cardinality-taxonomy-source",
+        )
+        .expect("bundle source native ABox cardinality taxonomy passes Lean");
+
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&source_taxonomy).unwrap();
+        forged["projection"]["abox_source_map"][2] = serde_json::json!(3);
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&forged).unwrap(),
+            std::path::Path::new(&checker),
+            "forged-bundle-native-abox-cardinality-taxonomy-source",
         )
         .unwrap_err()
         .contains("rejected"));

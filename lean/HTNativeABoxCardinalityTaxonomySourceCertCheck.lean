@@ -11,8 +11,12 @@ def checkNativeABoxCardinalityTaxonomySourceJson (json : Json) : Except String B
       match (fromJson? json : Except String
           WireMixedNativeABoxCardinalityTaxonomyMatrix) with
       | .ok mixed => mixed.check
-      | .error mixedError => throw
-          s!"unsupported native ABox cardinality taxonomy source format; direct: {directError}; mixed: {mixedError}"
+      | .error mixedError =>
+          match (fromJson? json : Except String
+              WireBundleNativeABoxCardinalityTaxonomyMatrix) with
+          | .ok bundle => bundle.check
+          | .error bundleError => throw
+              s!"unsupported native ABox cardinality taxonomy source format; direct: {directError}; mixed: {mixedError}; bundle: {bundleError}"
 
 def checkNativeABoxCardinalityTaxonomySourceFile
     (path : System.FilePath) : IO UInt32 := do

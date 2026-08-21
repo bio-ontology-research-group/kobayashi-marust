@@ -15,13 +15,15 @@
 - Add Rust production search and serialization for this joint route. Query root
   zero and named-individual roots one through N now participate in the same
   exhaustive cardinality-aware search; TBox-only evidence is never substituted.
-- Compose the direct and mixed direct/Skolem-pair cardinality projections with
-  every matrix cell and prove source-level SAT/UNSAT query semantics. Add
-  dedicated normalized and format-dispatching source checker executables,
+- Compose the direct, mixed direct/Skolem-pair, and multi-filler bundle
+  cardinality projections with every matrix cell and prove source-level
+  SAT/UNSAT query semantics. The bundle theorem transports source clauses,
+  bundle witnesses, the complete native ABox, projected cardinalities, and the
+  exact query in one interpretation in both directions.
+- Add dedicated normalized and format-dispatching source checker executables,
   publication gates, real SAT/UNSAT matrix tests, and rejection tests for
-  forged bounds, missing Skolem pairs, and inconsistent per-cell definitions.
-- Keep bundle cardinality taxonomy source publication fail closed until its
-  query-preserving source composition is added.
+  forged bounds, missing Skolem pairs, inconsistent per-cell definitions, and
+  forged bundle concept maps.
 
 ### Compose bundle source native-ABox taxonomy
 
