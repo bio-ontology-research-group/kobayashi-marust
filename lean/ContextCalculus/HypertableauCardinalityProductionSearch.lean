@@ -881,6 +881,122 @@ theorem CardinalityProductionStep.closedRefutes_of_children
       exact selectIndexedViolatingMaximum_closedRefutes ontology definitions state hselect
         hwidth hchildren
 
+/-- Exact recursive child configurations exposed by one selected production
+obstruction. Immediate clashes have no children. -/
+def CardinalityProductionStep.ChildConfig
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {definitions : List (CardinalityDef Concept Role)}
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (step : CardinalityProductionStep ontology definitions config.state parent ancestors
+      config.expanded config.active config.active_le)
+    (child : CardinalityRuntimeConfig Concept Role definitions nodeCount) : Prop :=
+  match step with
+  | .equalityApart _ _ => False
+  | .conceptClash _ _ _ => False
+  | .branch _ _ grounding hselect =>
+      ∃ atom, ∃ hatom : atom ∈ grounding.1.head,
+        child = config.clauseChild ontology hselect atom
+  | .witness _ _ _ candidate hselect hfit _ =>
+      child = config.witnessChild parent ancestors hselect hfit
+  | .minimum _ _ _ _ site hselect hfit _ =>
+      child = config.minimumChild parent ancestors hselect hfit
+  | .maximum _ _ _ _ _ site hselect hwidth _ =>
+      ∃ left right, ∃ hne : left ≠ right,
+        child = config.maximumChild hselect hwidth left right hne
+
+theorem CardinalityProductionStep.child_strictGrowth
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {definitions : List (CardinalityDef Concept Role)}
+    {config child : CardinalityRuntimeConfig Concept Role definitions nodeCount}
+    {parent : Fin nodeCount → Option (Fin nodeCount)}
+    {ancestors : Fin nodeCount → List (Fin nodeCount)}
+    (step : CardinalityProductionStep ontology definitions config.state parent ancestors
+      config.expanded config.active config.active_le)
+    (hchild : step.ChildConfig config parent ancestors child) :
+    CardinalityStrictGrowth child config := by
+  cases step with
+  | equalityApart candidate hselect => exact hchild.elim
+  | conceptClash hnoApart candidate hselect => exact hchild.elim
+  | branch hnoApart hnoClash grounding hselect =>
+      rcases hchild with ⟨atom, hatom, rfl⟩
+      exact config.clauseChild_progress ontology hselect atom hatom
+  | witness hnoApart hnoClash hnoClause candidate hselect hfit hprefix =>
+      subst child
+      exact config.witnessChild_progress parent ancestors hselect hfit
+  | minimum hnoApart hnoClash hnoClause hnoWitness site hselect hfit hprefix =>
+      subst child
+      exact config.minimumChild_progress parent ancestors hselect hfit
+  | maximum hnoApart hnoClash hnoClause hnoWitness hnoMinimum site hselect hwidth hprefix =>
+      rcases hchild with ⟨left, right, hne, rfl⟩
+      exact config.maximumChild_progress hselect hwidth left right hne
+
+theorem CardinalityProductionStep.closedRefutes_of_childConfigs
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    {ontology : List (Clause Variable Concept Role)}
+    {definitions : List (CardinalityDef Concept Role)}
+    (config : CardinalityRuntimeConfig Concept Role definitions nodeCount)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (step : CardinalityProductionStep ontology definitions config.state parent ancestors
+      config.expanded config.active config.active_le)
+    (hchildren : ∀ child, step.ChildConfig config parent ancestors child →
+      ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions child.state) :
+    ClosedDistinctCardinalityRefutes (Fin nodeCount) ontology definitions config.state := by
+  apply step.closedRefutes_of_children
+  cases step with
+  | equalityApart candidate hselect => trivial
+  | conceptClash hnoApart candidate hselect => trivial
+  | branch hnoApart hnoClash grounding hselect =>
+      intro atom hatom
+      simpa [CardinalityRuntimeConfig.clauseChild] using
+        hchildren (config.clauseChild ontology hselect atom) ⟨atom, hatom, rfl⟩
+  | witness hnoApart hnoClash hnoClause candidate hselect hfit hprefix =>
+      simpa [CardinalityRuntimeConfig.witnessChild] using
+        hchildren (config.witnessChild parent ancestors hselect hfit) rfl
+  | minimum hnoApart hnoClash hnoClause hnoWitness site hselect hfit hprefix =>
+      simpa [CardinalityRuntimeConfig.minimumChild] using
+        hchildren (config.minimumChild parent ancestors hselect hfit) rfl
+  | maximum hnoApart hnoClash hnoClause hnoWitness hnoMinimum site hselect hwidth hprefix =>
+      intro left right hne
+      simpa [CardinalityRuntimeConfig.maximumChild] using
+        hchildren (config.maximumChild hselect hwidth left right hne)
+          ⟨left, right, hne, rfl⟩
+
+/-- Well-founded induction principle for the exact production child relation.
+It is the recursion kernel used to construct total finite-budget outcomes. -/
+theorem cardinalityProduction_induction
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (definitions : List (CardinalityDef Concept Role))
+    (nodeCount : Nat)
+    (parent : Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Fin nodeCount → List (Fin nodeCount))
+    (P : CardinalityRuntimeConfig Concept Role definitions nodeCount → Prop)
+    (hstep : ∀ config,
+      (∀ (step : CardinalityProductionStep ontology definitions config.state parent ancestors
+          config.expanded config.active config.active_le) child,
+        step.ChildConfig config parent ancestors child → P child) → P config) :
+    ∀ config, P config := by
+  intro root
+  induction root using
+      (cardinalityStrictGrowth_wellFounded Concept Role definitions nodeCount).induction with
+  | h config ih =>
+      apply hstep config
+      intro step child hchild
+      exact ih child (step.child_strictGrowth hchild)
+
 #print axioms CardinalityProductionStep.closedRefutes_of_children
 #print axioms selectIndexedExpandableMinimum_eq_none_iff
 #print axioms selectIndexedExpandableMinimum_closedRefutes
@@ -902,5 +1018,8 @@ theorem CardinalityProductionStep.closedRefutes_of_children
 #print axioms rustMaximumPrefixVector_lt_active
 #print axioms EqState.eqGuardedFacts_merge_ssubset
 #print axioms CardinalityRuntimeConfig.maximumChild_progress
+#print axioms CardinalityProductionStep.child_strictGrowth
+#print axioms CardinalityProductionStep.closedRefutes_of_childConfigs
+#print axioms cardinalityProduction_induction
 
 end ContextCalculus.Hypertableau

@@ -2,6 +2,26 @@
 
 ## [unreleased]
 
+## [0.3.186] – 2026-08-21
+
+### Compose the cardinality production recursion kernel
+
+- Define the exact child-configuration predicate for each selected production
+  obstruction: no children for immediate clashes, head-assertion children for
+  clauses, one exact child for witness and minimum expansion, and every
+  off-diagonal greedy merge child for maximum restrictions.
+- Prove every child configuration is a strict step in the common well-founded
+  production relation by composing the four transition-specific growth
+  theorems.
+- Prove that semantic closure of every child configuration constructs a
+  quotient-closed cardinality refutation of the parent configuration.
+- Derive a well-founded induction principle over the exact production child
+  relation. This is the recursion kernel for finite-budget outcome production.
+- Audit all composition endpoints without `sorryAx`.
+
+The executable first-obstruction decision and recursive outcome value,
+concrete Rust field construction, CB, and automatic routing remain unfinished.
+
 ## [0.3.185] – 2026-08-21
 
 ### Certify maximum merge progress
