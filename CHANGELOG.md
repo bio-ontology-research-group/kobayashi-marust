@@ -15,15 +15,17 @@
   decoded regular model cannot be rejected because the executable checker
   missed a case. The remaining totality obligation is to prove that Rust's
   blocked-open serializer always constructs this `Valid` invariant.
-- Prove the first producer-refinement bridge: ordinary residual saturation,
+- Prove a conditional producer-refinement bridge: ordinary residual saturation,
   authorized role-rule partitioning, clash and witness invariants, blocker
-  redirection, a closed endpoint cover, and containment of that cover in the
-  serialized completion graph construct `Valid` and force checker acceptance.
-  These bridge the concrete exhaustive search invariant to cover-based regular
-  unravelling without assuming residual-clause discharge separately.
-- Make the Rust regular serializer check the cover-containment premise and fail
-  closed on an unsaturated completion graph. The role-cover integration fixture
-  now represents a genuinely role-saturated blocked-open search leaf.
+  redirection, and a closed endpoint cover force checker acceptance when that
+  cover is contained in the serialized completion graph. The proof audit later
+  showed that literal containment is sufficient but not necessary for blocked
+  sources, so this theorem is not claimed as the final production bridge.
+- Keep raw blocked edges separate from redirected endpoint-cover edges. The
+  serializer submits the exact enlarged cover to the independent Lean residual
+  checker; rejection resumes iterative deepening. This restores cyclic regular
+  models that were incorrectly rejected by the stronger literal-containment
+  condition.
 - Classify the concrete blocker-aware selector's empty result exactly. It is
   either a refutation, a clash-free and clause-saturated blocked-open terminal
   in which every unwitnessed source is marked blocked, or a finite-node
@@ -68,6 +70,11 @@
   native-ABox initialization, checked closed refutations, model-equivalent
   source normalization, and cardinality frontier doubling to obtain total
   source-level SAT-or-UNSAT semantics for native-ABox cardinality search.
+- Apply the same fail-closed iterative-deepening boundary to every taxonomy
+  countermodel branch. Equality-free, equality-aware, anchored-equality, and
+  cardinality cells now run their source-aware model checker before the search
+  accepts an open fold; checker rejection increases the node bound instead of
+  allowing the eventual matrix publication step to fail after search stopped.
 
 ### Certify native named-individual ABox projection
 

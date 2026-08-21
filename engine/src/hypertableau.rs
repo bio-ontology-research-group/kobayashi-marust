@@ -9330,6 +9330,26 @@ impl Ht {
         Ok(status?.success())
     }
 
+    /// Check one raw taxonomy-cell candidate through the same source-aware
+    /// checker used at publication. The complete taxonomy wire stores cells
+    /// without their repeated normalization envelope, so iterative deepening
+    /// temporarily restores that envelope before accepting an open fold.
+    fn lean_taxonomy_candidate_passes(&self, payload: &str) -> Result<bool, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(payload).map_err(|error| error.to_string())?;
+        let candidate = if value.get("version").and_then(serde_json::Value::as_u64) == Some(8) {
+            let anchored = value
+                .get("certificate")
+                .ok_or_else(|| "anchored taxonomy candidate has no certificate".to_string())?;
+            self.wrap_normalized_anchored_equality_certificate(
+                serde_json::to_string(anchored).map_err(|error| error.to_string())?,
+            )?
+        } else {
+            self.finalize_lean_certificate(payload.to_string())?
+        };
+        self.lean_decision_candidate_passes(&candidate)
+    }
+
     fn deepen_after_rejected_candidate(
         node_budget: usize,
         deepen: bool,
@@ -10090,20 +10110,12 @@ impl Ht {
             }
         }
 
-        // Lean's producer-refinement theorem turns ordinary saturated-state
-        // discharge into regular-cover discharge when every cover edge is
-        // present in the serialized completion graph. Role clauses have
-        // already saturated this graph, so a miss is an implementation error,
-        // not an inconclusive model candidate.
-        if let Some(&(role, source, target)) = cover.iter().find(|&&(role, source, target)| {
-            !regular_edges.iter().any(|&(edge_role, edge_source, edge_target)| {
-                edge_role as usize == role && edge_source == source && edge_target == target
-            })
-        }) {
-            return Err(format!(
-                "regular HT endpoint cover edge {role}({source},{target}) is absent from the saturated completion graph"
-            ));
-        }
+        // Redirected endpoint closure intentionally contains edges whose source
+        // is a blocked node while the raw graph stores the corresponding edge
+        // at its blocker. Do not require literal cover containment in the raw
+        // graph. The independent Lean checker evaluates every residual clause
+        // against this exact cover; a newly activated body rejects the model
+        // candidate and iterative deepening resumes.
 
         let mut labels = leaf
             .labels
@@ -11978,7 +11990,7 @@ impl Ht {
                             concept_count,
                             role_count,
                             variable_count,
-                            ontology,
+                            ontology: ontology.clone(),
                             state,
                             evidence: query.equality_open_evidence(),
                         })
@@ -11989,11 +12001,16 @@ impl Ht {
                         if let Some(anchored) = anchored {
                             document["anchored"] = anchored;
                         }
-                        return Ok((
-                            true,
-                            serde_json::to_string(&document)
-                                .map_err(|error| error.to_string())?,
-                        ));
+                        let candidate = serde_json::to_string(&document)
+                            .map_err(|error| error.to_string())?;
+                        if self.lean_taxonomy_candidate_passes(&candidate)? {
+                            return Ok((true, candidate));
+                        }
+                        node_budget = Self::deepen_after_rejected_candidate(
+                            node_budget,
+                            deepen,
+                            "cardinality taxonomy",
+                        )?;
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                         return Err("taxonomy query reached the configured cardinality node cap"
@@ -12032,9 +12049,7 @@ impl Ht {
                         {
                             let anchored: serde_json::Value = serde_json::from_str(&anchored)
                                 .map_err(|error| error.to_string())?;
-                            return Ok((
-                                true,
-                                serde_json::to_string(&serde_json::json!({
+                            let candidate = serde_json::to_string(&serde_json::json!({
                                     "version": 8,
                                     "concept_count": concept_count,
                                     "role_count": role_count,
@@ -12043,24 +12058,31 @@ impl Ht {
                                     "certificate": anchored,
                                     "evidence": query.equality_open_evidence(),
                                 }))
-                                .map_err(|error| error.to_string())?,
-                            ));
+                                .map_err(|error| error.to_string())?;
+                            if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                return Ok((true, candidate));
+                            }
                         }
                         let node_count = state.representatives.len();
-                        return Ok((
-                            true,
-                            serde_json::to_string(&LeanHtEqCertificate {
+                        let candidate = serde_json::to_string(&LeanHtEqCertificate {
                                 version: 2,
                                 node_count,
                                 concept_count,
                                 role_count,
                                 variable_count,
-                                ontology,
+                                ontology: ontology.clone(),
                                 state,
                                 evidence: query.equality_open_evidence(),
                             })
-                            .map_err(|error| error.to_string())?,
-                        ));
+                            .map_err(|error| error.to_string())?;
+                        if self.lean_taxonomy_candidate_passes(&candidate)? {
+                            return Ok((true, candidate));
+                        }
+                        node_budget = Self::deepen_after_rejected_candidate(
+                            node_budget,
+                            deepen,
+                            "equality taxonomy",
+                        )?;
                     }
                     LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                         return Err(
@@ -12084,13 +12106,18 @@ impl Ht {
                     return Ok((false, closed_document()?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    return Ok((
-                        true,
-                        self.lean_blocked_open_certificate_json(
-                            &leaf,
-                            query.plain_open_evidence(),
-                        )?,
-                    ));
+                    let candidate = self.lean_blocked_open_certificate_json(
+                        &leaf,
+                        query.plain_open_evidence(),
+                    )?;
+                    if self.lean_taxonomy_candidate_passes(&candidate)? {
+                        return Ok((true, candidate));
+                    }
+                    node_budget = Self::deepen_after_rejected_candidate(
+                        node_budget,
+                        deepen,
+                        "equality-free taxonomy",
+                    )?;
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -22977,12 +23004,20 @@ mod tests {
             serde_json::from_str(&regular_raw).expect("regular SAT candidate is JSON");
         assert_eq!(regular["redirect"], serde_json::json!([0, 1, 1]));
         assert!(
-            regular["edges"]
+            !regular["edges"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .any(|edge| edge["source"] == 2 && edge["target"] == 2),
-            "regular evidence must give every finite obligation a witness edge"
+            "regular evidence must preserve the raw blocked completion graph"
+        );
+        assert!(
+            regular["cover"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|edge| edge["source"] == 2 && edge["target"] == 2),
+            "the redirected endpoint cover must expose the blocker's witness"
         );
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(
@@ -23102,12 +23137,9 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
         };
-        assert!(
-            reasoner
-                .lean_regular_blocked_open_certificate_json(&unsaturated)
-                .is_err(),
-            "the producer boundary must reject a leaf missing its role closure"
-        );
+        let unsaturated_document = reasoner
+            .lean_regular_blocked_open_certificate_json(&unsaturated)
+            .expect("the endpoint cover closes role rules independently of raw edges");
         let leaf = LeanHtBlockedOpenLeaf {
             node_count: 3,
             labels: Vec::new(),
@@ -23152,7 +23184,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = std::process::Command::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -23161,6 +23193,16 @@ mod tests {
                 "Lean must accept Rust's normalized role cover at {}: {}",
                 path.display(),
                 String::from_utf8_lossy(&accepted.stderr),
+            );
+            std::fs::write(&path, unsaturated_document).unwrap();
+            let accepted_cover = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run the regular checker on role closure supplied by the cover");
+            assert!(
+                accepted_cover.status.success(),
+                "Lean must accept role closure represented only in the endpoint cover: {}",
+                String::from_utf8_lossy(&accepted_cover.stderr),
             );
             let _ = std::fs::remove_file(path);
         }
