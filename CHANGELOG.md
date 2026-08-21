@@ -70,6 +70,11 @@
   declared concept or ordered subsumption cell. Countermodel and refutation
   branches retain the same coordinate evidence despite their different
   projection pipelines.
+- Carry exact taxonomy coordinates through bundled native-ABox source
+  projection. The evidence now survives embedded source-concept maps, bundle
+  definers, role-inclusion paths, domain premises, and both model and
+  refutation decoding. Complete bundle matrices certify each concept and
+  ordered subsumption position explicitly.
 
 ### Certify native-ABox cardinality taxonomies
 
