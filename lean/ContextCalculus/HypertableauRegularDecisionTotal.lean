@@ -92,6 +92,138 @@ def CheckedRegularRoundOutcome.regularSat_of_blocked_runtime_terminal
       hterminal hwitnessRefines hredirectRefines hauthorized hguarded hshape
       hheads hlocal hdirect hcoverClosed)
 
+/-- Complete checked result of one Rust equality-free control attempt. Every
+accepted serializer branch stores the proof returned by its Lean checker;
+frontiers additionally store the executable schedule check. Rejection stores
+the exact candidate folds and a successful fresh insertion. -/
+inductive CheckedRegularControlAttempt
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))) : Type where
+  | regularSat
+      {nodeCount : Nat}
+      (certificate : FiniteRegularCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.check = true)
+  | finiteSat
+      {nodeCount : Nat}
+      (certificate : FiniteSatCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkSat = true)
+  | finiteUnsat
+      {nodeCount : Nat}
+      (certificate : FiniteSatCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (tree : FiniteRefutationTree
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hempty : certificate.EmptyRoot)
+      (hcheck : tree.check certificate = true)
+  | frontier
+      (document : WireAddressFrontier)
+      (hconcepts : document.concept_count = conceptCount)
+      (hroles : document.role_count = roleCount)
+      (hscheduled : document.checkScheduled budget = true)
+  | rejected
+      (folds : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+def CheckedRegularControlAttempt.toGuarded
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedRegularControlAttempt conceptCount roleCount variableCount
+      ontology budget forbidden) :
+    GuardedFoldAttempt (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology)
+      forbidden :=
+  match attempt with
+  | .regularSat certificate hontology hnonempty hcheck =>
+      .done (.regularSat certificate hontology hnonempty hcheck)
+  | .finiteSat certificate hontology hnonempty hcheck =>
+      .done (.finiteSat certificate hontology hnonempty hcheck)
+  | .finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
+      .done (.finiteUnsat certificate tree hontology hnonempty hempty hcheck)
+  | .frontier document hconcepts hroles hscheduled =>
+      .done (.frontier document hconcepts hroles
+        (document.checkScheduled_check budget hscheduled))
+  | .rejected folds fresh => .rejected folds fresh
+
+theorem CheckedRegularControlAttempt.frontier_scheduled
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedRegularControlAttempt conceptCount roleCount variableCount
+      ontology budget forbidden)
+    {document : WireAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hcheck : document.check = true}
+    (herase : attempt.toGuarded.erase = .done
+      (.frontier document hconcepts hroles hcheck)) :
+    document.checkScheduled budget = true := by
+  cases attempt with
+  | regularSat certificate hontology hnonempty hcertificate =>
+      simp [CheckedRegularControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | finiteSat certificate hontology hnonempty hcertificate =>
+      simp [CheckedRegularControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | finiteUnsat certificate tree hontology hnonempty hempty hcertificate =>
+      simp [CheckedRegularControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | frontier frontier frontierConcepts frontierRoles hscheduled =>
+      simp only [CheckedRegularControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+      cases herase
+      exact hscheduled
+  | rejected folds fresh =>
+      simp [CheckedRegularControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+
+/-- Fixed-budget Rust control family. The blacklist indexes each attempt, so
+its erasure constructs the guarded producer expected by the termination proof
+without any additional producer-refinement assumptions. -/
+structure CheckedRegularControlProducer
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat) where
+  attempt : ∀ forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+    CheckedRegularControlAttempt conceptCount roleCount variableCount ontology
+      budget forbidden
+
+def CheckedRegularControlProducer.toGuarded
+    (producer : CheckedRegularControlProducer conceptCount roleCount variableCount
+      ontology budget) :
+    GuardedFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology) where
+  attempt forbidden := (producer.attempt forbidden).toGuarded
+
+theorem CheckedRegularControlProducer.frontier_scheduled
+    (producer : CheckedRegularControlProducer conceptCount roleCount variableCount
+      ontology budget)
+    {retry : Nat} {document : WireAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hcheck : document.check = true}
+    (hrun : producer.toGuarded.toFreshFoldProducer.run retry = .done
+      (.frontier document hconcepts hroles hcheck)) :
+    document.checkScheduled budget = true := by
+  apply CheckedRegularControlAttempt.frontier_scheduled
+    (producer.attempt
+      (producer.toGuarded.toFreshFoldProducer.forbidden retry))
+  simpa [GuardedFoldProducer.toFreshFoldProducer, FreshFoldProducer.run,
+    CheckedRegularControlProducer.toGuarded] using hrun
+
 def CheckedRegularRoundOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -411,6 +543,25 @@ theorem checked_regular_guarded_fold_producer_decides_source
   exact checked_regular_scheduled_fresh_fold_producer_decides_source equivalent
     (fun budget => (producer budget).toFreshFoldProducer) hscheduled
 
+/-- Fully checked Rust-control form of the equality-free source capstone.
+Fresh fold progress and the exact frontier-doubling schedule are both carried
+by the producer's branch type, so totality has no residual control-flow
+premises beyond model equivalence of preprocessing. -/
+theorem checked_regular_control_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget,
+      CheckedRegularControlProducer conceptCount roleCount variableCount
+        target budget) :
+    ∃ budget retry outcome,
+      (producer budget).toGuarded.toFreshFoldProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_regular_guarded_fold_producer_decides_source equivalent
+    (fun budget => (producer budget).toGuarded)
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact (producer budget).frontier_scheduled hrun
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
@@ -423,5 +574,8 @@ theorem checked_regular_guarded_fold_producer_decides_source
 #print axioms checked_regular_fresh_fold_producer_decides_source
 #print axioms checked_regular_scheduled_fresh_fold_producer_decides_source
 #print axioms checked_regular_guarded_fold_producer_decides_source
+#print axioms CheckedRegularControlAttempt.frontier_scheduled
+#print axioms CheckedRegularControlProducer.frontier_scheduled
+#print axioms checked_regular_control_producer_decides_source
 
 end ContextCalculus.Hypertableau
