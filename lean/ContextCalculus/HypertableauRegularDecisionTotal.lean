@@ -371,6 +371,27 @@ theorem checked_regular_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
 
+/-- Wire-scheduled source capstone. Frontier dimensions are recovered from the
+executable serialized schedule check, removing the free node-count equality
+from the equality-free global producer boundary. -/
+theorem checked_regular_scheduled_fresh_fold_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (hscheduled : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.checkScheduled budget = true) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_regular_fresh_fold_producer_decides_source equivalent producer
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact document.checkScheduled_node_count budget
+    (hscheduled budget retry document hconcepts hroles hcheck hrun)
+
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
@@ -381,5 +402,6 @@ theorem checked_regular_fresh_fold_producer_decides_source
 #print axioms checked_regular_doubling_decides_source
 #print axioms checked_regular_fold_learning_doubling_decides_source
 #print axioms checked_regular_fresh_fold_producer_decides_source
+#print axioms checked_regular_scheduled_fresh_fold_producer_decides_source
 
 end ContextCalculus.Hypertableau

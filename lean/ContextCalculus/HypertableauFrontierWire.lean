@@ -100,6 +100,31 @@ def WireAddressFrontier.decode (document : WireAddressFrontier) :
 def WireAddressFrontier.check (document : WireAddressFrontier) : Bool :=
   document.decode.isOk
 
+/-- Check both the untrusted address frontier and the exact production budget
+encoded by its node count. The retry number is intentionally absent: retries
+at one budget share the same finite node universe. -/
+def WireAddressFrontier.checkScheduled
+    (document : WireAddressFrontier) (budget : Nat) : Bool :=
+  document.check && decide (document.node_count = 8 * 2 ^ budget)
+
+theorem WireAddressFrontier.checkScheduled_check
+    (document : WireAddressFrontier) (budget : Nat)
+    (hcheck : document.checkScheduled budget = true) :
+    document.check = true := by
+  simp only [WireAddressFrontier.checkScheduled, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.1
+
+/-- Acceptance of the scheduled wire payload supplies the former abstract
+frontier-dimension premise directly. -/
+theorem WireAddressFrontier.checkScheduled_node_count
+    (document : WireAddressFrontier) (budget : Nat)
+    (hcheck : document.checkScheduled budget = true) :
+    document.node_count = 8 * 2 ^ budget := by
+  simp only [WireAddressFrontier.checkScheduled, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.2
+
 /-- Checker acceptance is the exact concrete refinement premise consumed by
 the outer iterative-deepening theorem. -/
 theorem WireAddressFrontier.check_refines (document : WireAddressFrontier)
@@ -150,6 +175,8 @@ theorem mode6_doubling_eventually_rejects_checked_frontier
     (hnodes round) (hconcepts round) (hroles round) address hinjective
 
 #print axioms WireAddressFrontier.check_refines
+#print axioms WireAddressFrontier.checkScheduled_check
+#print axioms WireAddressFrontier.checkScheduled_node_count
 #print axioms mode6_doubling_eventually_rejects_checked_frontier
 
 end ContextCalculus.Hypertableau
