@@ -2,6 +2,23 @@
 
 ## [unreleased]
 
+### Compose bundles, RBox evidence, and cardinality projection
+
+- Prove the complete finite frontend cardinality family equivalent to an
+  index-stable target contract: every definition remains directional and both
+  members of each checked complementary pair are exact.
+- Prove directional and exact cardinality semantics commute with concept
+  renaming and compose with ontology renaming under a checked left inverse.
+- Prove one satisfiability equivalence covering direct source clauses, all
+  Skolem bundles, frontend cardinality expansions, and first-class target
+  cardinality definitions in a shared interpretation.
+- Extend that equivalence through checked role-inclusion/domain consequences
+  and the target concept-table embedding used by production evidence.
+
+No release is cut for this intermediate step. The next release requires the
+complete executable source-to-HT projection boundary, including its combined
+wire and production integration.
+
 ### Verify production bundle RBox evidence end to end
 
 - Extend finite bundle evidence with concrete super-role paths and associated

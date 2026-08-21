@@ -566,6 +566,62 @@ theorem modelsProjectedCardinalityDefs_iff_targets
         pair.complementary).mpr
         ⟨hmaximum, hminimum⟩ |>.2.2
 
+/-- Index-stable form of the target semantics. Every definition retains its
+directional meaning, while both members of every checked pair additionally
+receive exact recognition. Unlike the value-membership presentation above,
+this form transports directly through injective concept embeddings. -/
+def Interp.modelsPairedCardinalityTargets
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role)) : Prop :=
+  (∀ definition ∈ definitions, I.modelsCardinalityDef definition) ∧
+    ∀ pair ∈ pairs,
+      I.modelsCardinalityDefExact pair.maximum ∧
+        I.modelsCardinalityDefExact pair.minimum
+
+theorem modelsProjectedCardinalityTargets_iff_paired
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role))
+    (hpairs : ∀ pair ∈ pairs,
+      pair.maximum ∈ definitions ∧ pair.minimum ∈ definitions) :
+    I.modelsProjectedCardinalityTargets definitions pairs ↔
+      I.modelsPairedCardinalityTargets definitions pairs := by
+  constructor
+  · intro htargets
+    constructor
+    · intro definition hdefinition
+      by_cases hpaired : pairedCardinalityDefinition pairs definition
+      · have hexact := (htargets definition hdefinition).1 hpaired
+        intro source hmarker
+        simpa [Interp.modelsCardinalityDef, Interp.cardinalityCondition] using
+          (hexact source).1 hmarker
+      · exact (htargets definition hdefinition).2 hpaired
+    · intro pair hpair
+      constructor
+      · apply (htargets pair.maximum (hpairs pair hpair).1).1
+        exact ⟨pair, hpair, Or.inl rfl⟩
+      · apply (htargets pair.minimum (hpairs pair hpair).2).1
+        exact ⟨pair, hpair, Or.inr rfl⟩
+  · rintro ⟨hdefinitions, hpairsExact⟩ definition hdefinition
+    constructor
+    · rintro ⟨pair, hpair, rfl | rfl⟩
+      · exact (hpairsExact pair hpair).1
+      · exact (hpairsExact pair hpair).2
+    · intro _
+      exact hdefinitions definition hdefinition
+
+theorem modelsProjectedCardinalityDefs_iff_pairedTargets
+    (I : Interp Domain Concept Role)
+    (definitions : List (CardinalityDef Concept Role))
+    (pairs : List (PairedCardinality Concept Role))
+    (hpairs : ∀ pair ∈ pairs,
+      pair.maximum ∈ definitions ∧ pair.minimum ∈ definitions) :
+    I.modelsProjectedCardinalityDefs definitions pairs ↔
+      I.modelsPairedCardinalityTargets definitions pairs := by
+  rw [modelsProjectedCardinalityDefs_iff_targets I definitions pairs hpairs,
+    modelsProjectedCardinalityTargets_iff_paired I definitions pairs hpairs]
+
 theorem modelsCardinalityDef_and_recognition_iff_exact
     (I : Interp Domain Concept Role)
     (definition : CardinalityDef Concept Role) :
@@ -907,6 +963,7 @@ theorem FiniteEqCertificate.checkCardinalityDefsExact_sound
 #print axioms frontendCardinalityFamily_sat_iff_exact
 #print axioms modelsProjectedCardinalityDef_iff
 #print axioms modelsProjectedCardinalityDefs_iff_targets
+#print axioms modelsProjectedCardinalityDefs_iff_pairedTargets
 #print axioms modelsCardinalityDef_and_recognition_iff_exact
 #print axioms modelsCardinalityDefExact_models
 #print axioms FiniteEqCertificate.checkMaximumRecognition_sound
