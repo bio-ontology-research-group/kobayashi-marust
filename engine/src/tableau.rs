@@ -5309,9 +5309,12 @@ struct BundleProjectionDocument<'a> {
 }
 
 #[derive(Serialize)]
-struct CardinalityProjectionDocument<'a> {
-    concept_count: usize,
-    role_count: usize,
+struct DirectCardinalityProjectionDocument<'a> {
+    variable_count: usize,
+    concepts: &'a [String],
+    roles: &'a [String],
+    source: &'a [crate::orchestrate::cb_to_ht::DirectProjectionClause],
+    target: Vec<DirectProjectionTargetClause>,
     definitions: &'a [JCardDef],
     exact_pairs: &'a [crate::orchestrate::cb_to_ht::CardinalityExactPairJson],
 }
@@ -5395,7 +5398,28 @@ fn check_direct_ht_projection(
             .map(direct_projection_target_clause)
             .collect::<Vec<_>>()
     };
-    let encoded = if let Some(source) = inp.bundle_projection_source.as_ref() {
+    if inp.card_defs.is_empty() && !inp.cardinality_exact_pairs.is_empty() {
+        return Err("HT cardinality projection has exact pairs but no definitions".to_string());
+    }
+    let encoded = if !inp.card_defs.is_empty() {
+        if !inp.cardinality_projection_complete {
+            return Err(
+                "HT cardinality projection lacks complete frontend expansion evidence".to_string(),
+            );
+        }
+        let source = inp.direct_projection_source.as_deref().ok_or_else(|| {
+            "HT Lean certification has no combined direct/cardinality projection".to_string()
+        })?;
+        serde_json::to_vec(&DirectCardinalityProjectionDocument {
+            variable_count,
+            concepts: &inp.concepts,
+            roles: &inp.roles,
+            source,
+            target: target(),
+            definitions: &inp.card_defs,
+            exact_pairs: &inp.cardinality_exact_pairs,
+        })
+    } else if let Some(source) = inp.bundle_projection_source.as_ref() {
         serde_json::to_vec(&BundleProjectionDocument {
             variable_count: variable_count.max(2),
             source_concepts: &source.source_concepts,
@@ -5452,58 +5476,6 @@ fn check_direct_ht_projection(
     if !status.success() {
         return Err(format!(
             "HT source projection checker {} rejected the conversion ({status})",
-            checker.display()
-        ));
-    }
-    Ok(())
-}
-
-fn check_cardinality_ht_projection(
-    inp: &TInput,
-    checker: &std::path::Path,
-) -> Result<(), String> {
-    if inp.card_defs.is_empty() {
-        if inp.cardinality_exact_pairs.is_empty() {
-            return Ok(());
-        }
-        return Err(
-            "HT cardinality projection has exact pairs but no definitions".to_string(),
-        );
-    }
-    if !inp.cardinality_projection_complete {
-        return Err(
-            "HT cardinality projection lacks complete frontend expansion evidence".to_string(),
-        );
-    }
-    let encoded = serde_json::to_vec(&CardinalityProjectionDocument {
-        concept_count: inp.concepts.len(),
-        role_count: inp.roles.len(),
-        definitions: &inp.card_defs,
-        exact_pairs: &inp.cardinality_exact_pairs,
-    })
-    .map_err(|error| format!("cannot encode HT cardinality projection: {error}"))?;
-    let sequence = HT_PROJECTION_TEMP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!(
-        "km-ht-cardinality-projection-{}-{sequence}.json",
-        std::process::id()
-    ));
-    std::fs::write(&path, encoded)
-        .map_err(|error| format!("cannot write HT cardinality projection: {error}"))?;
-    let status = std::process::Command::new(checker)
-        .arg(&path)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|error| {
-            format!(
-                "cannot execute HT cardinality projection checker {}: {error}",
-                checker.display()
-            )
-        });
-    let _ = std::fs::remove_file(&path);
-    let status = status?;
-    if !status.success() {
-        return Err(format!(
-            "HT cardinality projection checker {} rejected the conversion ({status})",
             checker.display()
         ));
     }
@@ -5688,12 +5660,6 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             check_direct_ht_projection(
                 &inp,
                 &ht_clauses,
-                lean_projection_checker
-                    .as_deref()
-                    .expect("certified projection checker was required above"),
-            )?;
-            check_cardinality_ht_projection(
-                &inp,
                 lean_projection_checker
                     .as_deref()
                     .expect("certified projection checker was required above"),
@@ -6239,8 +6205,30 @@ mod tests {
             return;
         };
         let mut producer = crate::orchestrate::cb_to_ht::TInput {
-            concepts: vec!["Qmax".into(), "Qmin".into(), "C".into(), "positive".into()],
+            concepts: vec![
+                "Qmax".into(),
+                "Qmin".into(),
+                "C".into(),
+                "positive".into(),
+                "A".into(),
+                "B".into(),
+            ],
             roles: vec!["r".into()],
+            direct_projection_source: Some(vec![
+                crate::orchestrate::cb_to_ht::DirectProjectionClause {
+                    variable_names: vec!["x".into()],
+                    body: vec![crate::orchestrate::cb_to_ht::DirectProjectionAtom::Con {
+                        concept: "A".into(),
+                        node: "x".into(),
+                        neg: false,
+                    }],
+                    head: vec![crate::orchestrate::cb_to_ht::DirectProjectionAtom::Con {
+                        concept: "B".into(),
+                        node: "x".into(),
+                        neg: false,
+                    }],
+                },
+            ]),
             card_defs: vec![
                 crate::orchestrate::cb_to_ht::CardDefJson {
                     marker: 0,
@@ -6277,13 +6265,17 @@ mod tests {
             ..crate::orchestrate::cb_to_ht::TInput::default()
         };
         let consumer = consumer_input(&producer);
-        check_cardinality_ht_projection(&consumer, std::path::Path::new(&checker))
-            .expect("the real Lean checker accepts exact production cardinality provenance");
+        let projected = vec![Clause {
+            body: vec![con(false, 4, 0)],
+            head: vec![con(false, 5, 0)],
+        }];
+        check_direct_ht_projection(&consumer, &projected, std::path::Path::new(&checker))
+            .expect("the combined Lean checker accepts the residual and cardinality projection");
 
         producer.card_defs[2].exact = true;
         let malformed = consumer_input(&producer);
         assert!(
-            check_cardinality_ht_projection(&malformed, std::path::Path::new(&checker))
+            check_direct_ht_projection(&malformed, &projected, std::path::Path::new(&checker))
                 .unwrap_err()
                 .contains("rejected")
         );

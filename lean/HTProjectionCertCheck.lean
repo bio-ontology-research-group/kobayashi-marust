@@ -1,5 +1,5 @@
 import ContextCalculus.HypertableauBundleProjectionWire
-import ContextCalculus.HypertableauCardinalityProjectionWire
+import ContextCalculus.HypertableauDirectCardinalityProjectionWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -9,9 +9,12 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      match (fromJson? json : Except String WireCardinalityProjection) with
+      match (fromJson? json : Except String WireDirectCardinalityProjection) with
       | .ok document => document.check
-      | .error cardinalityError =>
+      | .error combinedError =>
+        match (fromJson? json : Except String WireCardinalityProjection) with
+        | .ok document => document.check
+        | .error cardinalityError =>
           match (fromJson? json : Except String WireBundleProjection) with
           | .ok document => document.check
           | .error bundleError =>
@@ -21,7 +24,7 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
                   match (fromJson? json : Except String WireDirectProjection) with
                   | .ok document => document.check
                   | .error directError =>
-                      throw s!"neither cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
+                      throw s!"neither combined ({combinedError}), cardinality ({cardinalityError}), bundle ({bundleError}), mixed ({mixedError}), nor direct ({directError}) projection JSON"
     match result with
     | .ok true =>
         IO.println "HT source projection accepted"
