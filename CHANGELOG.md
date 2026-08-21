@@ -14,6 +14,9 @@
   cardinality definitions in a shared interpretation.
 - Extend that equivalence through checked role-inclusion/domain consequences
   and the target concept-table embedding used by production evidence.
+- Add a combined finite wire that reuses the complete bundle/RBox decoder,
+  checks cardinality definitions and disjoint complementary-pair indices over
+  the source signature, and proves the resulting joint document sound.
 
 No release is cut for this intermediate step. The next release requires the
 complete executable source-to-HT projection boundary, including its combined
