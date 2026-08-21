@@ -64,6 +64,12 @@
   taxonomy decisions and matrices. Cardinality countermodels and finite
   refutations now retain their original wire coordinates, while complete
   matrices prove exact concept and ordered subsumption placement cell by cell.
+- Carry exact taxonomy coordinates through direct and mixed native-ABox source
+  projections. Both source decoders now return proof-aligned decisions, and
+  their complete matrices prove that every source-semantic result occupies its
+  declared concept or ordered subsumption cell. Countermodel and refutation
+  branches retain the same coordinate evidence despite their different
+  projection pipelines.
 
 ### Certify native-ABox cardinality taxonomies
 
