@@ -88,6 +88,25 @@ structure CartesianFoldExpansionRuntime (Node Result : Type)
     (inner forbidden).onExhausted rejected exhausted = .expand pairs fresh →
       pairs = foldOptionPairs ((inner forbidden).options rejected)
 
+/-- Embed an already settled checked search result into the common nested
+production-runtime interface.  Both finite learning spaces are empty, so the
+only executable branch returns `result`; an outer expansion is definitionally
+impossible. -/
+def CartesianFoldExpansionRuntime.done
+    [DecidableEq Node] (result : Result) :
+    CartesianFoldExpansionRuntime Node Result where
+  inner := fun forbidden => {
+    options := fun _ => []
+    optionNonempty := by simp
+    check := fun _ _ => .inl (.done result)
+    onExhausted := fun _ _ => .done result }
+  checkConclusive := by
+    intro forbidden rejected assignment outcome hcheck
+    exact ⟨result, by simpa using hcheck.symm⟩
+  expansionExact := by
+    intro forbidden rejected exhausted pairs fresh hexpand
+    simp at hexpand
+
 /-! ### Concrete execution traces
 
 The totality theorem above the production boundary used to retain only the
@@ -488,6 +507,7 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldDoublingExecution.conclusive
 #print axioms CartesianFoldAssignmentRuntime.execute
 #print axioms CartesianFoldExpansionRuntime.execute
+#print axioms CartesianFoldExpansionRuntime.done
 #print axioms CartesianFoldExpansionRuntime.settledExecution
 #print axioms CartesianFoldDoublingExecution.executeThrough
 

@@ -1,6 +1,7 @@
 import ContextCalculus.HypertableauDecisionTotal
 import ContextCalculus.HypertableauNativeABoxSearch
 import ContextCalculus.HypertableauExpansionProduction
+import ContextCalculus.HypertableauEqualityBlockedSearch
 
 /-!
 # Total production hypertableau global decision
@@ -335,6 +336,94 @@ def EqualityBudgetOutcomeConstruction.classify
   | .frontier address injective produced => by
       subst outcome
       exact classifyEqualityAddressFrontier address injective
+
+/-- Execute one complete equality-aware finite search and construct the exact
+checked production result.  Semantic closure is reified as a checked canonical
+refutation tree, a blocked terminal is accepted only through the independent
+fold checker, and node exhaustion retains its injective address witness. -/
+noncomputable def finiteEqualityRoundBudgetConstruction
+    (root : FiniteEqCertificate (8 * 2 ^ budget) conceptCount roleCount
+      variableCount)
+    (hontology : root.base.ontology = ontology)
+    (hempty : root.EmptyRoot)
+    (parent : EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (terminalFold : ∀ state,
+      EqRuntimeTerminal ontology parent ancestors state →
+        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology)
+    (frontierAddress : ∀ leaf,
+      SearchDescends (eqRuntimeNextClashFirst ontology parent ancestors)
+        root.state leaf →
+      EqRuntimeNodeFrontier ontology leaf (parent leaf) (ancestors leaf) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        Function.Injective address) :
+    ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+      ontology budget := by
+  classical
+  exact Classical.choice (show Nonempty
+      (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+        ontology budget) from by
+    rcases finite_eqRuntime_semantic_or_terminal ontology parent ancestors
+        root.state with hrefutes | ⟨leaf, hdescends, hterminal⟩
+    · let certificate := root.canonicalizeEqualityClosure
+      obtain ⟨tree, htree⟩ := hrefutes.exists_checkClosed_tree certificate
+        (by simpa [certificate] using hontology) rfl
+        (by exact root.canonicalizeEqualityClosure_valid)
+      have hempty' : certificate.EmptyRoot := by
+        simpa [certificate, FiniteEqCertificate.EmptyRoot,
+          FiniteEqCertificate.canonicalizeEqualityClosure] using hempty
+      let outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+          variableCount ontology :=
+        .closed certificate tree (by simpa [certificate] using hontology)
+          (by positivity) hempty' htree
+      exact ⟨⟨outcome, .conclusive (by
+        simp [outcome, EqualityProductionConclusive])⟩⟩
+    · rcases hterminal with hblocked | hfrontier
+      · obtain ⟨fold, hfoldOntology, hfoldCheck⟩ :=
+          terminalFold leaf hblocked
+        let outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+            variableCount ontology :=
+          .sat fold.materialize (by simpa using hfoldOntology) (by positivity)
+            hfoldCheck
+        exact ⟨⟨outcome, .conclusive (by
+          simp [outcome, EqualityProductionConclusive])⟩⟩
+      · obtain ⟨address, hinjective⟩ :=
+          frontierAddress leaf hdescends hfrontier
+        exact ⟨⟨CheckedEqualityDecisionOutcome.frontier_of_address address
+          hinjective, .frontier address hinjective rfl⟩⟩)
+
+/-- Embed the exhaustive equality search at one node budget into the common
+evidence-carrying production runtime. Equality search has already settled its
+own finite branching and blocking, so no synthetic blocker-learning choices
+are introduced here. -/
+noncomputable def CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearch
+    (root : FiniteEqCertificate (8 * 2 ^ budget) conceptCount roleCount
+      variableCount)
+    (hontology : root.base.ontology = ontology)
+    (hempty : root.EmptyRoot)
+    (parent : EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (terminalFold : ∀ state,
+      EqRuntimeTerminal ontology parent ancestors state →
+        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology)
+    (frontierAddress : ∀ leaf,
+      SearchDescends (eqRuntimeNextClashFirst ontology parent ancestors)
+        root.state leaf →
+      EqRuntimeNodeFrontier ontology leaf (parent leaf) (ancestors leaf) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        Function.Injective address) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+        ontology budget) :=
+  CartesianFoldExpansionRuntime.done
+    (finiteEqualityRoundBudgetConstruction root hontology hempty parent
+      ancestors terminalFold frontierAddress)
 
 theorem checked_equality_doubling_execution_decides_source
     {source target : List
@@ -1022,6 +1111,42 @@ theorem checked_constructed_equality_runtime_decides_source
       (hrejected ((document budget).checkScheduled_check budget
         (hscheduled budget)))
 
+/-- End-to-end equality-aware source decision constructed from the concrete
+well-founded finite search at every doubling budget. -/
+theorem checked_equality_finite_search_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (root : ∀ budget, FiniteEqCertificate (8 * 2 ^ budget) conceptCount
+      roleCount variableCount)
+    (hontology : ∀ budget, (root budget).base.ontology = target)
+    (hempty : ∀ budget, (root budget).EmptyRoot)
+    (parent : ∀ budget,
+      EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount) →
+        Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : ∀ budget,
+      EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount) →
+        Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (terminalFold : ∀ budget state,
+      EqRuntimeTerminal target (parent budget) (ancestors budget) state →
+        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) target)
+    (frontierAddress : ∀ budget leaf,
+      SearchDescends
+        (eqRuntimeNextClashFirst target (parent budget) (ancestors budget))
+        (root budget).state leaf →
+      EqRuntimeNodeFrontier target leaf (parent budget leaf)
+        (ancestors budget leaf) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        Function.Injective address) :
+    ∃ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount target, outcome.SourceSemantics source := by
+  apply checked_constructed_equality_runtime_decides_source equivalent
+  intro budget
+  exact CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearch
+    (root budget) (hontology budget) (hempty budget) (parent budget)
+    (ancestors budget) (terminalFold budget) (frontierAddress budget)
+
 theorem checked_cardinality_runtime_through_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -1625,8 +1750,11 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_equality_runtime_eventually_conclusive
 #print axioms checked_equality_runtime_decides_source
 #print axioms EqualityBudgetOutcomeConstruction.classify
+#print axioms finiteEqualityRoundBudgetConstruction
+#print axioms CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearch
 #print axioms checked_equality_runtime_decides_source_of_construction
 #print axioms checked_constructed_equality_runtime_decides_source
+#print axioms checked_equality_finite_search_decides_source
 #print axioms checked_cardinality_runtime_eventually_conclusive
 #print axioms checked_cardinality_runtime_decides_source
 #print axioms CardinalityBudgetOutcomeConstruction.classify

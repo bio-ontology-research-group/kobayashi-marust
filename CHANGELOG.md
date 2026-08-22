@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Connect the well-founded equality-aware finite search to evidence-carrying
+  production results. Root closure constructs a canonical checked equality
+  refutation, blocked terminals materialize only independently accepted folds,
+  and node exhaustion retains an injective address frontier. The equality
+  cross-budget capstone now constructs its runtime family from this search.
 - Construct the complete regular fixed-budget runtime from exhaustive finite
   search and carry dependent construction evidence through accepted fold
   assignments and fold-free exhaustion. The cross-budget capstone now builds
