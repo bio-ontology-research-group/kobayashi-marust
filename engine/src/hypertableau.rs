@@ -2928,6 +2928,9 @@ struct LeanHtEqProductionBlockingDocument {
     options: Vec<LeanHtProductionBlockingOption>,
     rejected: Vec<Vec<LeanHtProductionBlockingPair>>,
     all_blockable_sources: bool,
+    validate_rejections: bool,
+    definitions: Vec<LeanHtCardinalityDef>,
+    exact_definitions: Vec<usize>,
 }
 
 impl LeanHtBlockedOpenLeaf {
@@ -10583,6 +10586,7 @@ impl Ht {
         state: &LeanHtEqState,
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
         all_blockable_sources: bool,
+        validate_rejections: bool,
     ) -> Result<String, String> {
         let node_count = state.representatives.len();
         if state.witness_parent.len() != node_count {
@@ -10622,8 +10626,37 @@ impl Ht {
                     .collect()
             })
             .collect();
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let exact_definitions = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (marker, _))| {
+                self.cert_exact_cardinality_markers
+                    .contains(marker)
+                    .then_some(index)
+            })
+            .collect();
+        let definitions = if all_blockable_sources {
+            definitions
+                .into_iter()
+                .map(|(marker, definition)| LeanHtCardinalityDef {
+                    marker: marker as usize,
+                    minimum: definition.kind == CardKind::Min,
+                    bound: definition.n as usize,
+                    role: definition.role as usize,
+                    filler: definition.filler.c as usize,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         serde_json::to_string(&LeanHtEqProductionBlockingDocument {
-            version: 1,
+            version: 2,
             base: LeanHtEqCertificate {
                 version: 2,
                 node_count,
@@ -10639,6 +10672,9 @@ impl Ht {
             options,
             rejected,
             all_blockable_sources,
+            validate_rejections,
+            definitions,
+            exact_definitions,
         })
         .map_err(|error| error.to_string())
     }
@@ -10648,6 +10684,7 @@ impl Ht {
         state: &LeanHtEqState,
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
         all_blockable_sources: bool,
+        validate_rejections: bool,
     ) -> Result<bool, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
@@ -10665,6 +10702,7 @@ impl Ht {
             state,
             rejected_assignments,
             all_blockable_sources,
+            validate_rejections,
         )?;
         self.lean_candidate_passes_with(&document, &checker)
     }
@@ -12467,6 +12505,7 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         false,
+                        false,
                     )? {
                         return Err("Lean rejected the native ABox equality production blocker table".to_string());
                     }
@@ -12624,6 +12663,7 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         true,
+                        false,
                     )? {
                         return Err("Lean rejected the native ABox cardinality production blocker table".to_string());
                     }
@@ -13141,6 +13181,7 @@ impl Ht {
                         &state,
                         &rejected_assignments,
                         false,
+                        true,
                     )? {
                         return Err("Lean rejected the equality production blocker table".to_string());
                     }
@@ -13225,6 +13266,7 @@ impl Ht {
                     if !self.lean_equality_production_blocking_passes(
                         &state,
                         &rejected_assignments,
+                        true,
                         true,
                     )? {
                         return Err("Lean rejected the cardinality production blocker table".to_string());
@@ -13373,6 +13415,7 @@ impl Ht {
                             &state,
                             &rejected_assignments,
                             true,
+                            true,
                         )? {
                             return Err("Lean rejected the cardinality taxonomy production blocker table".to_string());
                         }
@@ -13473,6 +13516,7 @@ impl Ht {
                             &state,
                             &rejected_assignments,
                             false,
+                            true,
                         )? {
                             return Err("Lean rejected the equality taxonomy production blocker table".to_string());
                         }
@@ -13754,6 +13798,7 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         true,
+                        false,
                     )? {
                         return Err("Lean rejected the native ABox cardinality taxonomy production blocker table".to_string());
                     }
@@ -13957,6 +14002,7 @@ impl Ht {
                     if !self.lean_equality_production_blocking_passes(
                         &open,
                         &rejected_assignments,
+                        false,
                         false,
                     )? {
                         return Err("Lean rejected the native ABox taxonomy production blocker table".to_string());
@@ -24959,7 +25005,9 @@ mod tests {
                 assert!(rejected.insert(assignment));
             }
             let document = cyclic
-                .lean_equality_production_blocking_document_json(&open, &rejected, false)
+                .lean_equality_production_blocking_document_json(
+                    &open, &rejected, false, false,
+                )
                 .expect("serialize exact quotient blocker control evidence");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-equality-production-blocking-{}-{}.json",
@@ -24975,6 +25023,19 @@ mod tests {
                 accepted.status.success(),
                 "Lean must accept exact quotient blocker evidence: {}",
                 String::from_utf8_lossy(&accepted.stderr),
+            );
+
+            let mut forged_rejections: serde_json::Value =
+                serde_json::from_str(&document).unwrap();
+            forged_rejections["validate_rejections"] = serde_json::json!(true);
+            std::fs::write(&path, serde_json::to_vec(&forged_rejections).unwrap()).unwrap();
+            let rejected_document = std::process::Command::new(&checker)
+                .arg(&path)
+                .status()
+                .expect("run checker on a falsely rejected valid fold candidate");
+            assert!(
+                !rejected_document.success(),
+                "Lean must not authorize expansion when a rejected assignment is a valid model",
             );
 
             let mut missing_blocker: serde_json::Value =
@@ -25078,6 +25139,59 @@ mod tests {
         assert!(satisfiable);
         let wire: serde_json::Value = serde_json::from_str(&certificate).unwrap();
         assert_eq!(wire["evidence"], serde_json::json!("sat"));
+    }
+
+    #[test]
+    fn equality_production_blocking_checks_rejection_provenance() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
+        else {
+            return;
+        };
+        let mut reasoner = Ht::new_certified(vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, 1, X)],
+                Vec::new(),
+            ),
+            Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
+        ]);
+        reasoner.block_mode = 6;
+        let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+        let LeanHtEqRefutationOutcome::Open(open) =
+            reasoner.lean_eq_refutation(&mut state, 2, 4)
+        else {
+            panic!("the role-cycle obstruction must expose finite blocker assignments");
+        };
+        let mut rejected = HashSet::new();
+        while let Some(assignment) = open.next_fold_assignment(&rejected) {
+            assert!(rejected.insert(assignment));
+        }
+        assert!(!rejected.is_empty());
+        let document = reasoner
+            .lean_equality_production_blocking_document_json(
+                &open,
+                &rejected,
+                false,
+                true,
+            )
+            .expect("serialize rejection-validated quotient blocker evidence");
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-equality-production-rejection-provenance-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, document).unwrap();
+        let accepted = std::process::Command::new(checker)
+            .arg(&path)
+            .output()
+            .expect("run production checker on genuinely invalid fold candidates");
+        let _ = std::fs::remove_file(path);
+        assert!(
+            accepted.status.success(),
+            "Lean must accept complete genuine rejection provenance: {}",
+            String::from_utf8_lossy(&accepted.stderr),
+        );
     }
 
     #[test]
@@ -26330,6 +26444,7 @@ mod tests {
                     &cardinality_open,
                     &exhausted,
                     true,
+                    false,
                 )
                 .expect("serialize exact cardinality blocker control evidence");
             let path = std::env::temp_dir().join(format!(

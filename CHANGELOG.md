@@ -50,6 +50,14 @@
   genuine runtime evidence and reject incomplete options or exhaustion.
   Accepted nonempty tables expose a pair absent from the prior forbidden set,
   proving that KM's exact pair-union update strictly grows the outer state.
+- Validate the provenance of every rejected equality or cardinality blocker
+  assignment on ontology-only production routes. Wire version 2 carries the
+  exact cardinality definitions and markers needed to reconstruct each folded
+  candidate; Lean replays the finite equality or cardinality model checker and
+  accepts learning only when every serialized rejected assignment really
+  fails. Cross-language tests accept a genuine all-invalid blocker product and
+  reject a forged claim that a valid fold failed. Native-ABox production routes
+  leave this stronger flag disabled until their joint source payload is added.
 - Preserve inactive bounded-domain nodes as roots when serializing equality
   predecessor forests. This removes a bound-versus-active-prefix panic exposed
   by the production checker and makes the finite-domain convention explicit.

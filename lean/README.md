@@ -695,6 +695,12 @@ set. Its capstone derives `SourceExpansionControlled` for every emitted option.
 For every nonempty accepted table it also derives a blocker pair outside the
 prior forbidden set, so unioning the exact emitted pair set is a strict outer
 learning step.
+For ontology-only equality and cardinality routes, wire version 2 additionally
+serializes exact cardinality definitions and markers and asks Lean to replay
+the finite candidate checker for every purported rejection. Acceptance proves
+that each listed assignment is not a valid equality or cardinality fold, rather
+than trusting Rust's rejection label. Native-ABox routes do not yet enable this
+replay because their blocker document still lacks the joint source/ABox payload.
 The native `ht-equality-production-blocking-check` guards equality,
 cardinality, native-ABox, and taxonomy learning transitions in Rust.
 

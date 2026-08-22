@@ -1,6 +1,8 @@
 import ContextCalculus.HypertableauProductionBlockingWire
 import ContextCalculus.HypertableauEqualityBlocking
+import ContextCalculus.HypertableauEqualityBlockingCertificate
 import ContextCalculus.HypertableauEqualityWire
+import ContextCalculus.HypertableauCardinalityWire
 
 /-!
 # Equality-quotient production-blocking control wire
@@ -27,6 +29,11 @@ structure WireEqProductionBlockingTable where
   /-- Cardinality search retains every node having a blocker. Ordinary
   equality search retains precisely raw unwitnessed sources. -/
   all_blockable_sources : Bool
+  /-- Ontology-only routes can replay every rejected finite candidate exactly.
+  Native-ABox routes require the separate joint source payload. -/
+  validate_rejections : Bool := false
+  definitions : List WireCardinalityDef := []
+  exact_definitions : List Nat := []
 deriving FromJson, ToJson, Repr
 
 structure FiniteEqProductionBlockingTable
@@ -51,6 +58,10 @@ structure DecodedEqProductionBlockingTable where
   table : FiniteEqProductionBlockingTable
     nodeCount conceptCount roleCount variableCount
   rejected : Finset (FoldAssignment (Fin nodeCount))
+  rejectedList : List (FoldAssignment (Fin nodeCount))
+  validateRejections : Bool
+  definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))
+  exactDefinitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))
 
 /-! ## Executable equality-closed facts -/
 
@@ -387,6 +398,37 @@ theorem DecodedEqProductionBlockingTable.optionsNonempty_eq_true_iff
       ∀ option ∈ decoded.table.options, option.2 ≠ [] := by
   simp [DecodedEqProductionBlockingTable.optionsNonempty]
 
+def finiteFoldPairs (nodeCount : Nat) : List (Fin nodeCount × Fin nodeCount) :=
+  (List.finRange nodeCount).flatMap fun source =>
+    (List.finRange nodeCount).map fun blocker => (source, blocker)
+
+def DecodedEqProductionBlockingTable.assignmentCandidateValidB
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) : Bool :=
+  let certificate : FiniteEqFoldCertificate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount := {
+    base := decoded.table.base
+    folds := (finiteFoldPairs decoded.nodeCount).filter fun pair =>
+      decide (pair ∈ assignment)
+  }
+  if decoded.table.allBlockableSources then
+    certificate.checkWithCardinality decoded.definitions &&
+      certificate.materialize.checkCardinalityDefsExact decoded.exactDefinitions
+  else
+    certificate.check
+
+def DecodedEqProductionBlockingTable.rejectedCandidatesInvalid
+    (decoded : DecodedEqProductionBlockingTable) : Bool :=
+  decoded.rejectedList.all fun assignment =>
+    !decoded.assignmentCandidateValidB assignment
+
+theorem DecodedEqProductionBlockingTable.rejectedCandidatesInvalid_eq_true_iff
+    (decoded : DecodedEqProductionBlockingTable) :
+    decoded.rejectedCandidatesInvalid = true ↔
+      ∀ assignment ∈ decoded.rejectedList,
+        decoded.assignmentCandidateValidB assignment = false := by
+  simp [DecodedEqProductionBlockingTable.rejectedCandidatesInvalid]
+
 theorem FiniteEqProductionBlockingTable.expectedOptions_filtered
     (table : FiniteEqProductionBlockingTable
       nodeCount conceptCount roleCount variableCount)
@@ -428,11 +470,17 @@ theorem DecodedEqProductionBlockingTable.checked_foldOptionPairs_has_fresh
 def WireEqProductionBlockingTable.decode
     (wire : WireEqProductionBlockingTable) :
     Except String DecodedEqProductionBlockingTable := do
-  if wire.version != 1 then
+  if wire.version != 1 && wire.version != 2 then
     throw s!"unsupported equality production blocker table version {wire.version}"
   let decodedBase ← wire.base.decode
   match decodedBase.evidence with
   | .sat certificate =>
+      let definitions ← wire.definitions.mapM
+        (WireCardinalityDef.decode decodedBase.conceptCount decodedBase.roleCount)
+      let exactDefinitions ← wire.exact_definitions.mapM fun index =>
+        match definitions[index]? with
+        | some definition => pure definition
+        | none => throw s!"exact production cardinality definition index {index} is out of range"
       let parent ← decodeProductionParents decodedBase.nodeCount wire.parents
       let forbidden ← wire.forbidden.mapM fun pair => do
         return (← checkedFin "forbidden source" decodedBase.nodeCount pair.source,
@@ -460,6 +508,10 @@ def WireEqProductionBlockingTable.decode
           allBlockableSources := wire.all_blockable_sources
         }
         rejected := rejected.toFinset
+        rejectedList := rejected
+        validateRejections := wire.validate_rejections
+        definitions := definitions
+        exactDefinitions := exactDefinitions
       }
   | _ => throw "equality production blocker base is not a SAT-state payload"
 
@@ -467,7 +519,14 @@ def WireEqProductionBlockingTable.check
     (wire : WireEqProductionBlockingTable) : Except String Bool := do
   let decoded ← wire.decode
   return decoded.table.computableCheck && decoded.assignmentsExhausted &&
-    decoded.optionsNonempty
+    decoded.optionsNonempty &&
+    decide (decoded.rejected = decoded.rejectedList.toFinset) &&
+    (!decoded.validateRejections ||
+      ((if decoded.table.allBlockableSources then
+          !decoded.definitions.isEmpty
+        else
+          decoded.definitions.isEmpty && decoded.exactDefinitions.isEmpty) &&
+        decoded.rejectedCandidatesInvalid))
 
 theorem WireEqProductionBlockingTable.check_sound
     (wire : WireEqProductionBlockingTable)
@@ -479,19 +538,41 @@ theorem WireEqProductionBlockingTable.check_sound
       decoded.table.options = decoded.table.expectedOptions ∧
       (∀ assignment ∈ enumerateFoldAssignments decoded.table.options,
         assignment ∈ decoded.rejected) ∧
-      (∀ option ∈ decoded.table.options, option.2 ≠ []) := by
+      (∀ option ∈ decoded.table.options, option.2 ≠ []) ∧
+      decoded.rejected = decoded.rejectedList.toFinset ∧
+      (decoded.validateRejections = true →
+        decoded.rejectedCandidatesInvalid = true) := by
   simp only [WireEqProductionBlockingTable.check, hdecode] at hcheck
   have hbool : (decoded.table.computableCheck &&
-      decoded.assignmentsExhausted && decoded.optionsNonempty) = true := by
+      decoded.assignmentsExhausted && decoded.optionsNonempty &&
+      decide (decoded.rejected = decoded.rejectedList.toFinset) &&
+      (!decoded.validateRejections ||
+        ((if decoded.table.allBlockableSources then
+            !decoded.definitions.isEmpty
+          else
+            decoded.definitions.isEmpty && decoded.exactDefinitions.isEmpty) &&
+          decoded.rejectedCandidatesInvalid))) = true := by
     simpa using hcheck
   have checks : decoded.table.computableCheck = true ∧
       decoded.assignmentsExhausted = true ∧
-      decoded.optionsNonempty = true := by
+      decoded.optionsNonempty = true ∧
+      decide (decoded.rejected = decoded.rejectedList.toFinset) = true ∧
+      (!decoded.validateRejections ||
+        ((if decoded.table.allBlockableSources then
+            !decoded.definitions.isEmpty
+          else
+            decoded.definitions.isEmpty && decoded.exactDefinitions.isEmpty) &&
+          decoded.rejectedCandidatesInvalid)) = true := by
     simpa only [Bool.and_eq_true, and_assoc] using hbool
   have htable := decoded.table.computableCheck_sound checks.1
-  exact ⟨htable.1, htable.2.1, htable.2.2,
+  refine ⟨htable.1, htable.2.1, htable.2.2,
     decoded.assignmentsExhausted_eq_true_iff.mp checks.2.1,
-    decoded.optionsNonempty_eq_true_iff.mp checks.2.2⟩
+    decoded.optionsNonempty_eq_true_iff.mp checks.2.2.1,
+    of_decide_eq_true checks.2.2.2.1, ?_⟩
+  intro hvalidate
+  have hrejections := checks.2.2.2.2
+  simp only [hvalidate, Bool.not_true, Bool.false_or, Bool.and_eq_true] at hrejections
+  exact hrejections.2
 
 theorem WireEqProductionBlockingTable.checked_sourceExpansionControlled
     (wire : WireEqProductionBlockingTable)
@@ -502,8 +583,25 @@ theorem WireEqProductionBlockingTable.checked_sourceExpansionControlled
     (hoption : (source, blockers) ∈ decoded.table.options) :
     SourceExpansionControlled decoded.rejected source blockers := by
   have checked := wire.check_sound decoded hdecode hcheck
-  exact sourceExpansionControlled_of_assignment_exhaustion checked.2.2.2.2
+  exact sourceExpansionControlled_of_assignment_exhaustion checked.2.2.2.2.1
     decoded.rejected checked.2.2.2.1 hoption
+
+theorem WireEqProductionBlockingTable.checked_rejectedCandidate_invalid
+    (wire : WireEqProductionBlockingTable)
+    (decoded : DecodedEqProductionBlockingTable)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true)
+    (hvalidate : decoded.validateRejections = true)
+    {assignment : FoldAssignment (Fin decoded.nodeCount)}
+    (hrejected : assignment ∈ decoded.rejected) :
+    decoded.assignmentCandidateValidB assignment = false := by
+  have checked := wire.check_sound decoded hdecode hcheck
+  have hinvalid := decoded.rejectedCandidatesInvalid_eq_true_iff.mp
+    (checked.2.2.2.2.2.2 hvalidate)
+  apply hinvalid assignment
+  have hrepresentation := checked.2.2.2.2.2.1
+  rw [hrepresentation] at hrejected
+  simpa using hrejected
 
 theorem WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
     (wire : WireEqProductionBlockingTable)
@@ -515,7 +613,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
       pair ∉ decoded.table.forbidden := by
   have checked := wire.check_sound decoded hdecode hcheck
   exact decoded.checked_foldOptionPairs_has_fresh checked.2.2.1 hnonempty
-    checked.2.2.2.2
+    checked.2.2.2.2.1
 
 theorem WireEqProductionBlockingTable.checked_expansion_strict
     (wire : WireEqProductionBlockingTable)
@@ -537,6 +635,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_strict
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound
 #print axioms WireEqProductionBlockingTable.checked_sourceExpansionControlled
+#print axioms WireEqProductionBlockingTable.checked_rejectedCandidate_invalid
 #print axioms WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
 #print axioms WireEqProductionBlockingTable.checked_expansion_strict
 
