@@ -4,6 +4,7 @@ import ContextCalculus.HypertableauEqualityBlockingCertificate
 import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauCardinalityWire
 import ContextCalculus.HypertableauNativeABoxModelWire
+import ContextCalculus.HypertableauFiniteProductionTerminalWire
 
 /-!
 # Equality-quotient production-blocking control wire
@@ -95,11 +96,14 @@ structure WireEqProductionTerminal where
   version : Nat
   table : WireEqProductionBlockingTable
   assignment : List WireNodePair
+  result : WireEqCertificate
 deriving FromJson, ToJson, Repr
 
 structure DecodedEqProductionTerminal where
   table : DecodedEqProductionBlockingTable
   assignment : FoldAssignment (Fin table.nodeCount)
+  result : FiniteEqCertificate table.nodeCount table.conceptCount
+    table.roleCount table.variableCount
 
 def WireProductionNativeABoxContext.decode
     (wire : WireProductionNativeABoxContext)
@@ -822,6 +826,68 @@ def WireEqProductionBlockingTable.decode
       }
   | _ => throw "equality production blocker base is not a SAT-state payload"
 
+private def decodeEqTerminalResult
+    (wire : WireEqCertificate) (base : DecodedEqProductionBlockingTable) :
+    Except String (FiniteEqCertificate base.nodeCount base.conceptCount
+      base.roleCount base.variableCount) := do
+  let decoded ← wire.decode
+  if hnodes : decoded.nodeCount = base.nodeCount then
+    if hconcepts : decoded.conceptCount = base.conceptCount then
+      if hroles : decoded.roleCount = base.roleCount then
+        if hvariables : decoded.variableCount = base.variableCount then
+          match decoded.evidence with
+          | .sat certificate =>
+              return hvariables ▸ hroles ▸ hconcepts ▸ hnodes ▸ certificate
+          | _ => throw "equality production result is not a SAT payload"
+        else throw "equality production result variable count differs from blocked state"
+      else throw "equality production result role count differs from blocked state"
+    else throw "equality production result concept count differs from blocked state"
+  else throw "equality production result node count differs from blocked state"
+
+def FiniteEqCertificate.productionMatchesB
+    (left right : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) : Bool :=
+  left.base.matchesB right.base &&
+    listMembershipEqB left.equalities right.equalities
+
+theorem FiniteEqCertificate.productionMatchesB_eq_true_iff
+    (left right : FiniteEqCertificate nodeCount conceptCount roleCount variableCount) :
+    left.productionMatchesB right = true ↔
+      left.base.ontology = right.base.ontology ∧
+      left.base.state = right.base.state ∧
+      (∀ pair, pair ∈ left.equalities ↔ pair ∈ right.equalities) := by
+  simp [FiniteEqCertificate.productionMatchesB,
+    FiniteSatCertificate.matchesB_eq_true_iff,
+    listMembershipEqB_eq_true_iff, and_assoc]
+
+theorem FiniteEqCertificate.productionMatchesB_state
+    (left right : FiniteEqCertificate nodeCount conceptCount roleCount variableCount)
+    (hmatch : left.productionMatchesB right = true) :
+    left.base.ontology = right.base.ontology ∧ left.state = right.state := by
+  have parts := (left.productionMatchesB_eq_true_iff right).mp hmatch
+  refine ⟨parts.1, EqState.ext parts.2.1 ?_⟩
+  funext source target
+  apply propext
+  simp only [FiniteEqCertificate.state]
+  constructor
+  · intro related
+    induction related with
+    | rel leftNode rightNode member =>
+        exact Relation.EqvGen.rel _ _
+          ((parts.2.2 (leftNode, rightNode)).mp member)
+    | refl node => exact Relation.EqvGen.refl node
+    | symm leftNode rightNode _ ih => exact Relation.EqvGen.symm _ _ ih
+    | trans leftNode middle rightNode _ _ leftIH rightIH =>
+        exact Relation.EqvGen.trans _ _ _ leftIH rightIH
+  · intro related
+    induction related with
+    | rel leftNode rightNode member =>
+        exact Relation.EqvGen.rel _ _
+          ((parts.2.2 (leftNode, rightNode)).mpr member)
+    | refl node => exact Relation.EqvGen.refl node
+    | symm leftNode rightNode _ ih => exact Relation.EqvGen.symm _ _ ih
+    | trans leftNode middle rightNode _ _ leftIH rightIH =>
+        exact Relation.EqvGen.trans _ _ _ leftIH rightIH
+
 def WireEqProductionTerminal.decode
     (wire : WireEqProductionTerminal) :
     Except String DecodedEqProductionTerminal := do
@@ -831,7 +897,8 @@ def WireEqProductionTerminal.decode
   let pairs ← wire.assignment.mapM fun pair => do
     return (← checkedFin "terminal fold source" decoded.nodeCount pair.source,
       ← checkedFin "terminal fold blocker" decoded.nodeCount pair.target)
-  return ⟨decoded, pairs.toFinset⟩
+  let result ← decodeEqTerminalResult wire.result decoded
+  return ⟨decoded, pairs.toFinset, result⟩
 
 /-- Check exact terminal provenance independently of the final materialized
 SAT document.  The table must reconstruct its computed blocker options, the
@@ -844,7 +911,10 @@ def WireEqProductionTerminal.check
     decoded.table.table.computableCheck &&
     decide (decoded.assignment ∈
       enumerateFoldAssignments decoded.table.table.options) &&
-    decoded.table.assignmentCandidateValidB decoded.assignment
+    decoded.table.assignmentCandidateValidB decoded.assignment &&
+    decoded.result.productionMatchesB
+      (decoded.table.materializeAssignment decoded.assignment) &&
+    decoded.result.checkEqSat
 
 theorem WireEqProductionTerminal.check_sound
     (wire : WireEqProductionTerminal)
@@ -855,24 +925,33 @@ theorem WireEqProductionTerminal.check_sound
       decoded.table.table.computableCheck = true ∧
       decoded.assignment ∈
         enumerateFoldAssignments decoded.table.table.options ∧
-      decoded.table.assignmentCandidateValidB decoded.assignment = true := by
+      decoded.table.assignmentCandidateValidB decoded.assignment = true ∧
+      decoded.result.productionMatchesB
+        (decoded.table.materializeAssignment decoded.assignment) = true ∧
+      decoded.result.checkEqSat = true := by
   have hbool :
       ((decoded.table.table.allBlockableSources == false) &&
         decoded.table.table.computableCheck &&
         decide (decoded.assignment ∈
           enumerateFoldAssignments decoded.table.table.options) &&
-        decoded.table.assignmentCandidateValidB decoded.assignment) = true := by
+        decoded.table.assignmentCandidateValidB decoded.assignment &&
+        decoded.result.productionMatchesB
+          (decoded.table.materializeAssignment decoded.assignment) &&
+        decoded.result.checkEqSat) = true := by
     simpa [WireEqProductionTerminal.check, hdecode] using hcheck
   have checks :
       (decoded.table.table.allBlockableSources == false) = true ∧
       decoded.table.table.computableCheck = true ∧
       decide (decoded.assignment ∈
         enumerateFoldAssignments decoded.table.table.options) = true ∧
-      decoded.table.assignmentCandidateValidB decoded.assignment = true := by
-    simp only [Bool.and_eq_true] at hbool
-    exact ⟨hbool.1.1.1, hbool.1.1.2, hbool.1.2, hbool.2⟩
+      decoded.table.assignmentCandidateValidB decoded.assignment = true ∧
+      decoded.result.productionMatchesB
+        (decoded.table.materializeAssignment decoded.assignment) = true ∧
+      decoded.result.checkEqSat = true := by
+    simpa only [Bool.and_eq_true, and_assoc] using hbool
   exact ⟨beq_iff_eq.mp checks.1, checks.2.1,
-    of_decide_eq_true checks.2.2.1, checks.2.2.2⟩
+    of_decide_eq_true checks.2.2.1, checks.2.2.2.1,
+    checks.2.2.2.2.1, checks.2.2.2.2.2⟩
 
 def WireEqProductionBlockingTable.check
     (wire : WireEqProductionBlockingTable) : Except String Bool := do
@@ -994,6 +1073,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_strict
     exact Finset.mem_union_right decoded.table.forbidden hpairs⟩
 
 #print axioms FiniteEqCertificate.computableQuotientRoleBlockingSignature_eq
+#print axioms FiniteEqCertificate.productionMatchesB_state
 #print axioms DecodedEqProductionBlockingTable.assignmentCandidateValidB_eq_foldCheck
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound

@@ -71,6 +71,7 @@ checkers=(
     ht-cardinality-taxonomy-run-matrix-check
     ht-ordinary-taxonomy-run-matrix-check
     ht-source-bound-ordinary-taxonomy-check
+    ht-source-bound-ordinary-global-check
     ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
@@ -210,6 +211,8 @@ done
     export KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-cardinality-taxonomy-run-matrix-check"
     export KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
+    export KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER="$bin_root/ht-source-bound-ordinary-global-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER="$bin_root/ht-source-bound-ordinary-global-check"
     export KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"

@@ -3020,6 +3020,7 @@ struct LeanHtEqProductionTerminalDocument {
     version: usize,
     table: serde_json::Value,
     assignment: Vec<LeanHtProductionBlockingPair>,
+    result: serde_json::Value,
 }
 
 #[derive(serde::Serialize)]
@@ -10065,8 +10066,8 @@ impl Ht {
         let target_ontology = payload["ontology"]
             .as_array()
             .ok_or_else(|| "HT taxonomy payload has no ontology array".to_string())?;
-        let mut normalization = serde_json::to_value(normalization)
-            .map_err(|error| error.to_string())?;
+        let mut normalization =
+            serde_json::to_value(normalization).map_err(|error| error.to_string())?;
         let records = normalization
             .as_array_mut()
             .ok_or_else(|| "HT taxonomy normalization is not an array".to_string())?;
@@ -11036,12 +11037,12 @@ impl Ht {
     /// of frontier rounds that preceded it. Lean derives the terminal search
     /// cap from the trace length, checks that the terminal state fits that cap,
     /// and matches its ontology and finite signature to the final frontier.
-    fn lean_ordinary_production_run_passes(
+    fn lean_ordinary_production_run_document(
         &self,
         frontiers: &[serde_json::Value],
         terminal_kind: &str,
         terminal: serde_json::Value,
-    ) -> Result<bool, String> {
+    ) -> Result<(String, std::ffi::OsString), String> {
         let checker = std::env::var_os("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
@@ -11067,17 +11068,45 @@ impl Ht {
             }
         }
         let document = serde_json::to_string(&document).map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        Ok((document, checker))
     }
 
-    /// Bind the exact ordinary or equality-aware closing tree to every
-    /// iterative-deepening frontier that preceded it in the same run.
-    fn lean_ordinary_unsat_production_run_passes(
+    fn lean_ordinary_production_run(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal_kind: &str,
+        terminal: serde_json::Value,
+    ) -> Result<Option<serde_json::Value>, String> {
+        let (document, checker) =
+            self.lean_ordinary_production_run_document(frontiers, terminal_kind, terminal)?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(Some(
+                serde_json::from_str(&document).map_err(|error| error.to_string())?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_ordinary_production_run_passes(
         &self,
         frontiers: &[serde_json::Value],
         terminal_kind: &str,
         terminal: serde_json::Value,
     ) -> Result<bool, String> {
+        Ok(self
+            .lean_ordinary_production_run(frontiers, terminal_kind, terminal)?
+            .is_some())
+    }
+
+    /// Bind the exact ordinary or equality-aware closing tree to every
+    /// iterative-deepening frontier that preceded it in the same run.
+    fn lean_ordinary_unsat_production_run(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal_kind: &str,
+        terminal: serde_json::Value,
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker =
             std::env::var_os("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER")
                 .or_else(|| {
@@ -11103,6 +11132,127 @@ impl Ht {
             "start_budget": 0,
             "frontiers": frontiers,
             "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(Some(
+                serde_json::from_str(&document).map_err(|error| error.to_string())?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_ordinary_unsat_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal_kind: &str,
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_ordinary_unsat_production_run(frontiers, terminal_kind, terminal)?
+            .is_some())
+    }
+
+    fn lean_source_bound_ordinary_global_passes(
+        &self,
+        source: &str,
+        production_kind: &str,
+        run: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER"))
+            .ok_or_else(|| {
+                "ordinary HT publication requires KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER"
+                    .to_string()
+            })?;
+        let source: serde_json::Value =
+            serde_json::from_str(source).map_err(|error| error.to_string())?;
+        let identity_normalization =
+            |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+                let variable_count = target["variable_count"]
+                    .as_u64()
+                    .or_else(|| {
+                        target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
+                    })
+                    .or_else(|| {
+                        target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
+                    })
+                    .or_else(|| {
+                        target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
+                    })
+                    .ok_or_else(|| {
+                        "identity-normalized global decision has no variable_count".to_string()
+                    })? as usize;
+                let ontology = target["ontology"]
+                    .as_array()
+                    .or_else(|| {
+                        target["evidence"]["regular_sat"]["certificate"]["ontology"].as_array()
+                    })
+                    .or_else(|| {
+                        target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
+                    })
+                    .or_else(|| {
+                        target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
+                    })
+                    .ok_or_else(|| {
+                        "identity-normalized global decision has no ontology".to_string()
+                    })?;
+                let representatives: Vec<_> = (0..variable_count).collect();
+                let representative_paths: Vec<Vec<_>> =
+                    (0..variable_count).map(|variable| vec![variable]).collect();
+                Ok(ontology
+                    .iter()
+                    .map(|clause| {
+                        serde_json::json!({
+                            "source": clause,
+                            "representatives": representatives,
+                            "representative_paths": representative_paths,
+                        })
+                    })
+                    .collect())
+            };
+        let source = match source.get("version").and_then(serde_json::Value::as_u64) {
+            Some(1) => {
+                let regular = source
+                    .get("evidence")
+                    .and_then(serde_json::Value::as_object)
+                    .is_some_and(|evidence| {
+                        evidence.contains_key("regular_sat")
+                            || evidence.contains_key("finite_sat")
+                            || evidence.contains_key("finite_unsat")
+                    });
+                let payload = if regular {
+                    serde_json::json!({ "regular": { "certificate": source.clone() } })
+                } else {
+                    serde_json::json!({ "plain": { "certificate": source.clone() } })
+                };
+                serde_json::json!({
+                    "version": 3,
+                    "normalization": identity_normalization(&source)?,
+                    "payload": payload,
+                })
+            }
+            Some(2) => serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": { "equality": { "certificate": source } },
+            }),
+            _ => source,
+        };
+        let production = match production_kind {
+            "sat" => serde_json::json!({ "sat": { "run": run } }),
+            "unsat" => serde_json::json!({ "unsat": { "run": run } }),
+            _ => {
+                return Err(format!(
+                    "unsupported ordinary global production kind {production_kind}"
+                ))
+            }
+        };
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "source": source,
+            "production": production,
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -11605,26 +11755,28 @@ impl Ht {
         // identical.  The public API historically returns the raw v1/v2
         // target in this case; make that identity proof explicit inside the
         // source-bound publication document.
-        let identity_normalization = |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
-            let variable_count = target["variable_count"]
-                .as_u64()
-                .ok_or_else(|| "identity-normalized taxonomy has no variable_count".to_string())?
-                as usize;
-            let ontology = target["ontology"]
-                .as_array()
-                .ok_or_else(|| "identity-normalized taxonomy has no ontology".to_string())?;
-            let representatives: Vec<_> = (0..variable_count).collect();
-            let representative_paths: Vec<Vec<_>> =
-                (0..variable_count).map(|variable| vec![variable]).collect();
-            Ok(ontology
-                .iter()
-                .map(|clause| serde_json::json!({
-                    "source": clause,
-                    "representatives": representatives,
-                    "representative_paths": representative_paths,
-                }))
-                .collect())
-        };
+        let identity_normalization =
+            |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+                let variable_count = target["variable_count"].as_u64().ok_or_else(|| {
+                    "identity-normalized taxonomy has no variable_count".to_string()
+                })? as usize;
+                let ontology = target["ontology"]
+                    .as_array()
+                    .ok_or_else(|| "identity-normalized taxonomy has no ontology".to_string())?;
+                let representatives: Vec<_> = (0..variable_count).collect();
+                let representative_paths: Vec<Vec<_>> =
+                    (0..variable_count).map(|variable| vec![variable]).collect();
+                Ok(ontology
+                    .iter()
+                    .map(|clause| {
+                        serde_json::json!({
+                            "source": clause,
+                            "representatives": representatives,
+                            "representative_paths": representative_paths,
+                        })
+                    })
+                    .collect())
+            };
         let source = match source.get("version").and_then(serde_json::Value::as_u64) {
             Some(1) => serde_json::json!({
                 "version": 3,
@@ -11655,13 +11807,13 @@ impl Ht {
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
-    fn lean_regular_production_terminal_passes(
+    fn lean_regular_production_terminal_run(
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
         assignment: &[(Node, Node)],
         regular: &str,
         frontier_history: &[serde_json::Value],
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os("KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"))
             .ok_or_else(|| {
@@ -11683,21 +11835,33 @@ impl Ht {
         })
         .map_err(|error| error.to_string())?;
         if !self.lean_candidate_passes_with(&document, &checker)? {
-            return Ok(false);
+            return Ok(None);
         }
         let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(frontier_history, "regular", terminal)
+        self.lean_ordinary_production_run(frontier_history, "regular", terminal)
+    }
+
+    fn lean_regular_production_terminal_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        assignment: &[(Node, Node)],
+        regular: &str,
+        frontier_history: &[serde_json::Value],
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_regular_production_terminal_run(leaf, assignment, regular, frontier_history)?
+            .is_some())
     }
 
     /// Prove that one finite SAT certificate is exactly the materialization of
     /// the blocked state under the selected Cartesian assignment.
-    fn lean_finite_production_terminal_passes(
+    fn lean_finite_production_terminal_run(
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
         assignment: &[(Node, Node)],
         finite: &str,
         frontier_history: &[serde_json::Value],
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os("KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"))
             .ok_or_else(|| {
@@ -11719,10 +11883,22 @@ impl Ht {
         })
         .map_err(|error| error.to_string())?;
         if !self.lean_candidate_passes_with(&document, &checker)? {
-            return Ok(false);
+            return Ok(None);
         }
         let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(frontier_history, "finite", terminal)
+        self.lean_ordinary_production_run(frontier_history, "finite", terminal)
+    }
+
+    fn lean_finite_production_terminal_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        assignment: &[(Node, Node)],
+        finite: &str,
+        frontier_history: &[serde_json::Value],
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_finite_production_terminal_run(leaf, assignment, finite, frontier_history)?
+            .is_some())
     }
 
     /// Equality-aware counterpart of the production blocker table. Lean
@@ -11894,12 +12070,12 @@ impl Ht {
     /// blocked production state and one assignment in that state's computed
     /// Cartesian blocker product. The ordinary SAT checker still validates the
     /// materialized model; this checker validates its search provenance.
-    fn lean_equality_production_terminal_passes(
+    fn lean_equality_production_terminal_run(
         &self,
         state: &LeanHtEqState,
         assignment: &[(Node, Node)],
         frontier_history: &[serde_json::Value],
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"))
             .ok_or_else(|| {
@@ -11915,6 +12091,25 @@ impl Ht {
         )?;
         let table: serde_json::Value =
             serde_json::from_str(&table).map_err(|error| error.to_string())?;
+        if assignment.iter().any(|&(source, blocker)| {
+            source >= state.representatives.len() || blocker >= state.representatives.len()
+        }) {
+            return Ok(None);
+        }
+        let candidate_state = state.with_fold_assignment(assignment.to_vec());
+        let node_count = candidate_state.representatives.len();
+        let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
+        let result = serde_json::to_value(LeanHtEqCertificate {
+            version: 2,
+            node_count,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            state: candidate_state,
+            evidence: LeanHtEqEvidence::Sat,
+        })
+        .map_err(|error| error.to_string())?;
         let assignment = assignment
             .iter()
             .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
@@ -11923,13 +12118,25 @@ impl Ht {
             version: 1,
             table,
             assignment,
+            result,
         })
         .map_err(|error| error.to_string())?;
         if !self.lean_candidate_passes_with(&document, &checker)? {
-            return Ok(false);
+            return Ok(None);
         }
         let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(frontier_history, "equality", terminal)
+        self.lean_ordinary_production_run(frontier_history, "equality", terminal)
+    }
+
+    fn lean_equality_production_terminal_passes(
+        &self,
+        state: &LeanHtEqState,
+        assignment: &[(Node, Node)],
+        frontier_history: &[serde_json::Value],
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_equality_production_terminal_run(state, assignment, frontier_history)?
+            .is_some())
     }
 
     /// Check one exhausted equality-aware blocking round and append it to the
@@ -12647,18 +12854,26 @@ impl Ht {
                     )?;
                     let terminal: serde_json::Value =
                         serde_json::from_str(&finite).map_err(|error| error.to_string())?;
-                    if !self.lean_ordinary_unsat_production_run_passes(
+                    let Some(run) = self.lean_ordinary_unsat_production_run(
                         &frontier_history,
                         "ordinary",
                         terminal,
-                    )? {
+                    )?
+                    else {
                         return Err(
                             "Lean rejected the regular equality-free UNSAT production run"
                                 .to_string(),
                         );
-                    }
+                    };
                     let envelope = Self::lean_regular_decision_envelope(finite, false)?;
-                    return Ok((false, self.finalize_lean_certificate(envelope)?));
+                    let source = self.finalize_lean_certificate(envelope)?;
+                    if !self.lean_source_bound_ordinary_global_passes(&source, "unsat", run)? {
+                        return Err(
+                            "Lean rejected the source-bound regular equality-free UNSAT run"
+                                .to_string(),
+                        );
+                    }
+                    return Ok((false, source));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let mut rejected_assignments = HashSet::new();
@@ -12669,7 +12884,7 @@ impl Ht {
                             &candidate_leaf,
                             LeanHtEvidence::Sat,
                         )?;
-                        if self.lean_finite_production_terminal_passes(
+                        if let Some(run) = self.lean_finite_production_terminal_run(
                             &leaf,
                             &folds,
                             &finite,
@@ -12677,14 +12892,20 @@ impl Ht {
                         )? {
                             let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
                             let finite_candidate = self.finalize_lean_certificate(finite)?;
-                            if self.lean_decision_candidate_passes(&finite_candidate)? {
+                            if self.lean_decision_candidate_passes(&finite_candidate)?
+                                && self.lean_source_bound_ordinary_global_passes(
+                                    &finite_candidate,
+                                    "sat",
+                                    run,
+                                )?
+                            {
                                 return Ok((true, finite_candidate));
                             }
                         }
                         if let Ok(regular) =
                             self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
                         {
-                            if self.lean_regular_production_terminal_passes(
+                            if let Some(run) = self.lean_regular_production_terminal_run(
                                 &leaf,
                                 &folds,
                                 &regular,
@@ -12692,7 +12913,11 @@ impl Ht {
                             )? {
                                 let envelope = Self::lean_regular_decision_envelope(regular, true)?;
                                 let candidate = self.finalize_lean_certificate(envelope)?;
-                                if self.lean_decision_candidate_passes(&candidate)? {
+                                if self.lean_decision_candidate_passes(&candidate)?
+                                    && self.lean_source_bound_ordinary_global_passes(
+                                        &candidate, "sat", run,
+                                    )?
+                                {
                                     return Ok((true, candidate));
                                 }
                             }
@@ -14666,23 +14891,40 @@ impl Ht {
                     )?;
                     let terminal: serde_json::Value =
                         serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-                    if !self.lean_ordinary_unsat_production_run_passes(
+                    let Some(run) = self.lean_ordinary_unsat_production_run(
                         &frontier_history,
                         "ordinary",
                         terminal,
-                    )? {
+                    )?
+                    else {
                         return Err(
                             "Lean rejected the equality-free UNSAT production run".to_string()
                         );
+                    };
+                    let source = self.finalize_lean_certificate(raw)?;
+                    if !self.lean_source_bound_ordinary_global_passes(&source, "unsat", run)? {
+                        return Err(
+                            "Lean rejected the source-bound equality-free UNSAT run".to_string()
+                        );
                     }
-                    return Ok((false, self.finalize_lean_certificate(raw)?));
+                    return Ok((false, source));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let raw =
                         self.lean_blocked_open_certificate_json(&leaf, LeanHtEvidence::Sat)?;
-                    let candidate = self.finalize_lean_certificate(raw)?;
-                    if self.lean_decision_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
+                    if let Some(run) = self.lean_finite_production_terminal_run(
+                        &leaf,
+                        &leaf.folds,
+                        &raw,
+                        &frontier_history,
+                    )? {
+                        let candidate = self.finalize_lean_certificate(raw)?;
+                        if self.lean_decision_candidate_passes(&candidate)?
+                            && self
+                                .lean_source_bound_ordinary_global_passes(&candidate, "sat", run)?
+                        {
+                            return Ok((true, candidate));
+                        }
                     }
                     node_budget = Self::deepen_after_rejected_candidate(
                         node_budget,
@@ -14805,32 +15047,40 @@ impl Ht {
                     )?;
                     let terminal: serde_json::Value =
                         serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-                    if !self.lean_ordinary_unsat_production_run_passes(
+                    let Some(run) = self.lean_ordinary_unsat_production_run(
                         &frontier_history,
                         "equality",
                         terminal,
-                    )? {
+                    )?
+                    else {
                         return Err(
                             "Lean rejected the equality-aware UNSAT production run".to_string()
                         );
+                    };
+                    let source = self.finalize_lean_certificate(raw)?;
+                    if !self.lean_source_bound_ordinary_global_passes(&source, "unsat", run)? {
+                        return Err(
+                            "Lean rejected the source-bound equality-aware UNSAT run".to_string()
+                        );
                     }
-                    return Ok((false, self.finalize_lean_certificate(raw)?));
+                    return Ok((false, source));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
                     while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
-                        if !self.lean_equality_production_terminal_passes(
+                        let Some(run) = self.lean_equality_production_terminal_run(
                             &state,
                             &folds,
                             &frontier_history,
-                        )? {
+                        )?
+                        else {
                             let inserted = rejected_assignments.insert(folds);
                             assert!(
                                 inserted,
                                 "equality terminal assignment search must progress"
                             );
                             continue;
-                        }
+                        };
                         let candidate_state = state.with_fold_assignment(folds.clone());
                         let node_count = candidate_state.representatives.len();
                         let raw = serde_json::to_string(&LeanHtEqCertificate {
@@ -14845,7 +15095,10 @@ impl Ht {
                         })
                         .map_err(|error| error.to_string())?;
                         let candidate = self.finalize_lean_certificate(raw)?;
-                        if self.lean_decision_candidate_passes(&candidate)? {
+                        if self.lean_decision_candidate_passes(&candidate)?
+                            && self
+                                .lean_source_bound_ordinary_global_passes(&candidate, "sat", run)?
+                        {
                             return Ok((true, candidate));
                         }
                         if let Ok(anchored) =
@@ -16999,8 +17252,7 @@ impl Ht {
         // Retaining a second legacy rendering here would require trusting an
         // unproved conversion between the published target and the run-derived
         // target.
-        let (version, concepts, subsumptions) =
-            (2, mixed_concepts, mixed_subsumptions);
+        let (version, concepts, subsumptions) = (2, mixed_concepts, mixed_subsumptions);
         let payload = serde_json::to_string(&serde_json::json!({
             "version": version,
             "concept_count": concept_count,
@@ -27031,9 +27283,23 @@ mod tests {
             let assignment = open
                 .next_fold_assignment(&HashSet::new())
                 .expect("cyclic terminal exposes a Cartesian fold assignment");
-            assert!(cyclic
-                .lean_equality_production_terminal_passes(&open, &assignment, &[])
-                .expect("run terminal provenance checker"));
+            let run = cyclic
+                .lean_equality_production_terminal_run(&open, &assignment, &[])
+                .expect("run terminal provenance checker")
+                .expect("exact equality terminal must be accepted");
+            if std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER").is_some() {
+                let result = serde_json::to_string(&run["equality"]["result"]).unwrap();
+                assert!(cyclic
+                    .lean_source_bound_ordinary_global_passes(&result, "sat", run.clone())
+                    .expect("check exact source-bound equality run"));
+                let detached = serde_json::to_string(&run["equality"]["table"]["base"]).unwrap();
+                assert!(
+                    !cyclic
+                        .lean_source_bound_ordinary_global_passes(&detached, "sat", run)
+                        .expect("reject detached pre-fold equality state"),
+                    "a valid pre-fold SAT certificate must not replace the run result"
+                );
+            }
             assert!(!cyclic
                 .lean_equality_production_terminal_passes(
                     &open,
@@ -29321,9 +29587,9 @@ mod tests {
 
     #[test]
     fn source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target() {
-        let Some(checker) = std::env::var_os(
-            "KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
-        ) else {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER")
+        else {
             return;
         };
         let tableau = ht(Vec::new());
@@ -29406,7 +29672,10 @@ mod tests {
         let certificate = &mut bundle["source"]["payload"]["mixed"]["certificate"];
         certificate["named"] = serde_json::json!([A as usize]);
         certificate["concepts"].as_array_mut().unwrap().truncate(1);
-        certificate["subsumptions"].as_array_mut().unwrap().truncate(1);
+        certificate["subsumptions"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(1);
         certificate["subsumptions"][0]
             .as_array_mut()
             .unwrap()

@@ -98,7 +98,7 @@ def WireEqProductionTerminal.checkedEqualityTerminalCandidate
       decoded.table.table.base.state :=
   let checked := wire.check_sound decoded hdecode hcheck
   decoded.table.checkedEqualityTerminalCandidate decoded.assignment checked.1
-    checked.2.2.2
+    checked.2.2.2.1
 
 /-- The common semantic result of a certified production-global route. -/
 inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
