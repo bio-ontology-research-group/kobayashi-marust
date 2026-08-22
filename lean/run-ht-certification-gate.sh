@@ -6,6 +6,10 @@ lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_root="$lean_root/.lake/build/bin"
 target_root="$repo_root/.work/target"
+artifact_root="$repo_root/.work/artifacts"
+surface_log="$artifact_root/ht-certification-surface.log"
+
+mkdir -p "$artifact_root"
 
 preflight="$repo_root/tools/workspace-preflight.sh"
 if [[ -x "$preflight" ]]; then
@@ -44,12 +48,40 @@ checkers=(
 (
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
-    LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauCertificationSurface
     # The default Lake facets build the libraries, not every native checker.
     # Build the exact executables consumed below so an old binary can never
     # make a cross-language certification test pass or fail spuriously.
     LEAN_NUM_THREADS=4 lake build "${checkers[@]}"
 )
+
+# Build the release theorem surface separately and retain its axiom report.
+# A cached replay still emits the `#print axioms` messages, so this audit does
+# not silently disappear on incremental builds.
+(
+    cd "$lean_root"
+    LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauCertificationSurface \
+        2>&1 | tee "$surface_log"
+)
+
+if grep -q 'sorryAx' "$surface_log"; then
+    echo "HT certification surface depends on an admitted theorem" >&2
+    exit 1
+fi
+
+surface_theorems=(
+    certifiedHTGlobalPublication
+    certifiedHTRegularTaxonomyPublication
+    certifiedHTCardinalityTaxonomyPublication
+    certifiedHTNativeABoxTaxonomyPublication
+    certifiedHTNativeABoxCardinalityTaxonomyPublication
+)
+for theorem in "${surface_theorems[@]}"; do
+    grep -q "HypertableauCertificationSurface.*$theorem\|'ContextCalculus.Hypertableau.$theorem'" \
+        "$surface_log" || {
+        echo "missing HT certification-surface axiom audit: $theorem" >&2
+        exit 1
+    }
+done
 
 for checker in "${checkers[@]}"; do
     [[ -x "$bin_root/$checker" ]] || {
