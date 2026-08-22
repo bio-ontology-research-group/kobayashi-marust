@@ -79,6 +79,10 @@
   The candidate retains the named-root map, seed, separated-apart, proxy
   singleton, negative-role, ontology, and cardinality checks, and additionally
   proves that its distinct equality state is the reached production leaf.
+- Construct both cardinality terminal candidates from checked production
+  runtime fields. The decoded finite certificate is also the certificate used
+  by `toConfig`, so equality with the reached logical state is definitional;
+  producers retain only the independent semantic and ABox checker obligations.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

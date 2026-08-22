@@ -4,6 +4,7 @@ import ContextCalculus.HypertableauExpansionProduction
 import ContextCalculus.HypertableauEqualityBlockedSearch
 import ContextCalculus.HypertableauEqualityProductionBlockingWire
 import ContextCalculus.HypertableauCardinalityProductionSearch
+import ContextCalculus.HypertableauCardinalityProductionWire
 import ContextCalculus.HypertableauCardinalityClosedCompleteness
 
 /-!
@@ -870,6 +871,21 @@ def CheckedCardinalityTerminalCandidate.hasCheckedModel
   ⟨candidate.certificate, candidate.positive, candidate.ontology_eq,
     candidate.check⟩
 
+/-- Build a cardinality terminal candidate from the exact runtime fields
+decoded by the production wire.  The certificate and runtime configuration
+share their state by construction. -/
+def FiniteCardinalityRuntimeFields.checkedTerminalCandidate
+    (fields : FiniteCardinalityRuntimeFields nodeCount conceptCount roleCount
+      variableCount definitions)
+    (hfields : fields.check = true)
+    (hpositive : 0 < nodeCount)
+    (hcheck : fields.certificate.base.checkEqSatWithCardinality definitions =
+      true) :
+    CheckedCardinalityTerminalCandidate nodeCount conceptCount roleCount
+      variableCount fields.certificate.base.base.ontology definitions
+      (fields.toConfig hfields).state :=
+  ⟨fields.certificate.base, rfl, hpositive, rfl, hcheck⟩
+
 /-- Execute one fixed-budget cardinality production search and construct its
 checked result.  Closure is serialized through the quotient-closed checker
 completeness theorem. Every non-closed stop supplies either an independently
@@ -1246,6 +1262,34 @@ def CheckedNativeABoxCardinalityTerminalCandidate.hasCheckedModel
   ⟨candidate.certificate, candidate.root, candidate.ontology_eq,
     candidate.positive, candidate.seeded, candidate.check, candidate.apart,
     candidate.singletons, candidate.negative⟩
+
+/-- Build a native-ABox cardinality terminal from the same decoded runtime
+fields used to construct the reached leaf. -/
+def FiniteCardinalityRuntimeFields.checkedNativeABoxTerminalCandidate
+    (fields : FiniteCardinalityRuntimeFields nodeCount conceptCount roleCount
+      variableCount definitions)
+    (hfields : fields.check = true)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (root : Individual → Fin nodeCount)
+    (hpositive : 0 < nodeCount)
+    (hseeded : abox.SeededIn fields.certificate.state root)
+    (hcheck : fields.certificate.base.checkEqSatWithCardinality definitions =
+      true)
+    (hapart : fields.certificate.apartSeparatedB = true)
+    (hsingletons : abox.ProxySingletons
+      fields.certificate.base.state.quotientCanonical
+      (fun individual ↦ Quotient.mk
+        fields.certificate.base.state.nodeSetoid (root individual)))
+    (hnegative : abox.NegativeRoles
+      fields.certificate.base.state.quotientCanonical
+      (fun individual ↦ Quotient.mk
+        fields.certificate.base.state.nodeSetoid (root individual))) :
+    CheckedNativeABoxCardinalityTerminalCandidate Individual conceptCount
+      roleCount variableCount nodeCount abox
+      fields.certificate.base.base.ontology definitions
+      (fields.toConfig hfields).state :=
+  ⟨fields.certificate, root, rfl, rfl, hpositive, hseeded, hcheck, hapart,
+    hsingletons, hnegative⟩
 
 /-- Construct one native-ABox cardinality result from the certified
 cardinality production search started at the exact named-individual state. -/
