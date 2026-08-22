@@ -52,6 +52,71 @@ inductive CheckedRegularRoundOutcome
       (hroles : document.role_count = roleCount)
       (hcheck : document.check = true)
 
+/-- Construct an accepted regular frontier outcome from the mathematical
+rooted-address invariant. The wire payload and checker proof are generated in
+Lean rather than supplied by the runtime producer. -/
+def CheckedRegularRoundOutcome.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  let document := WireAddressFrontier.ofAddress address
+  .frontier document rfl rfl
+    (document.checkScheduled_check budget
+      (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl))
+
+/-- Settle one complete equality-free production search using semantic search
+results plus the concrete rooted-address refinement. Closure and frontier wire
+evidence are constructed here; neither is accepted as a producer-selected
+Boolean result. -/
+noncomputable def finiteProductionRoundSettlement
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)))
+    (hrootEmpty : root = ∅)
+    (frontierAddress : ∀
+      (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        (stateOfGuardedFacts leaf).RootedAddressRefines address) :
+    ∀ forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+      CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology ⊕
+        ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden := by
+  classical
+  apply finiteProductionSearchSettlement ontology parent ancestors hheads root
+  · intro _forbidden hrefutes
+    subst root
+    exact Classical.choice (show Nonempty
+        (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology)
+        from by
+      obtain ⟨certificate, tree, hontology, hnodes, hempty, hcheck⟩ :=
+        hrefutes.exists_checked_empty_root_certificate ontology (by positivity)
+      exact ⟨.finiteUnsat certificate tree hontology hnodes hempty hcheck⟩)
+  · intro forbidden leaf hdescends hfrontier
+    exact Classical.choice (show Nonempty
+        (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology)
+        from by
+      obtain ⟨address, hrefines⟩ :=
+        frontierAddress forbidden leaf hdescends hfrontier
+      exact ⟨CheckedRegularRoundOutcome.frontier_of_address address hrefines.1⟩)
+
 /-- Construct KM's exact checked regular-UNSAT outcome directly from the
 semantic refutation returned by exhaustive finite search at the empty global
 root. The finite certificate, recursive tree, empty-root proof, and Boolean
@@ -227,6 +292,18 @@ inductive CheckedRegularControlAttempt
       (folds : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
       (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+/-- Construct the scheduled control frontier directly from an injective
+rooted-address map at the current production budget. -/
+def CheckedRegularControlAttempt.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedRegularControlAttempt conceptCount roleCount variableCount ontology
+      budget forbidden :=
+  let document := WireAddressFrontier.ofAddress address
+  .frontier document rfl rfl
+    (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl)
 
 def CheckedRegularControlAttempt.toGuarded
     {forbidden : Finset
@@ -704,6 +781,8 @@ theorem checked_regular_control_producer_decides_source
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_of_empty_root_refutes
+#print axioms CheckedRegularRoundOutcome.frontier_of_address
+#print axioms finiteProductionRoundSettlement
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides
 #print axioms checked_regular_fold_learning_doubling_decides
@@ -716,6 +795,7 @@ theorem checked_regular_control_producer_decides_source
 #print axioms checked_regular_scheduled_fresh_fold_producer_decides_source
 #print axioms checked_regular_guarded_fold_producer_decides_source
 #print axioms CheckedRegularControlAttempt.frontier_scheduled
+#print axioms CheckedRegularControlAttempt.frontier_of_address
 #print axioms CheckedRegularControlProducer.frontier_scheduled
 #print axioms checked_regular_control_producer_decides_source
 

@@ -59,6 +59,35 @@ def WireWitnessStep.decode (conceptCount roleCount : Nat)
   return (← checkedFin "role" roleCount step.role,
     ← step.filler.decode conceptCount)
 
+def WireWitnessStep.encode
+    (step : WitnessSlot (Fin conceptCount) (Fin roleCount)) : WireWitnessStep where
+  role := step.1.val
+  filler := WireLit.encode step.2
+
+@[simp] theorem WireWitnessStep.decode_encode
+    (step : WitnessSlot (Fin conceptCount) (Fin roleCount)) :
+    (WireWitnessStep.encode step).decode conceptCount roleCount = .ok step := by
+  rcases step with ⟨role, literal⟩
+  simp only [WireWitnessStep.encode, WireWitnessStep.decode,
+    checkedFin_value, WireLit.decode_encode]
+  rfl
+
+def encodeWireWitnessAddress
+    (address : WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount)) :
+    List WireWitnessStep :=
+  address.2.1.map WireWitnessStep.encode
+
+private theorem mapM_decode_encoded_steps
+    (steps : List (WitnessSlot (Fin conceptCount) (Fin roleCount))) :
+    (steps.map WireWitnessStep.encode).mapM
+      (WireWitnessStep.decode conceptCount roleCount) = .ok steps := by
+  induction steps with
+  | nil => rfl
+  | cons step rest ih =>
+      simp only [List.map_cons, List.mapM_cons,
+        WireWitnessStep.decode_encode, ih]
+      rfl
+
 def decodeWireWitnessAddress (conceptCount roleCount : Nat)
     (steps : List WireWitnessStep) :
     Except String (WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount)) := do
@@ -69,6 +98,63 @@ def decodeWireWitnessAddress (conceptCount roleCount : Nat)
       exact hdepth⟩)
   else
     throw s!"witness address depth {decoded.length} exceeds the full-signature bound"
+
+@[simp] theorem decodeWireWitnessAddress_encode
+    (address : WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount)) :
+    decodeWireWitnessAddress conceptCount roleCount
+      (encodeWireWitnessAddress address) = .ok address := by
+  unfold decodeWireWitnessAddress encodeWireWitnessAddress
+  rw [mapM_decode_encoded_steps]
+  have hdepth : address.2.1.length ≤
+      roleBlockingSignatureCard conceptCount roleCount := by
+    rw [← card_roleBlockingSignature_fin]
+    exact address.2.2
+  change Except.bind (Except.ok address.2.1) _ = Except.ok address
+  rw [Except.bind]
+  rw [dif_pos hdepth]
+  apply congrArg (Except.ok (ε := String))
+  apply Prod.ext
+  · exact Subsingleton.elim _ _
+  · apply Subtype.ext
+    rfl
+
+private theorem mapM_decode_encoded_addresses
+    (addresses : List
+      (WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))) :
+    (addresses.map encodeWireWitnessAddress).mapM
+      (decodeWireWitnessAddress conceptCount roleCount) = .ok addresses := by
+  induction addresses with
+  | nil => rfl
+  | cons address rest ih =>
+      simp only [List.map_cons, List.mapM_cons,
+        decodeWireWitnessAddress_encode, ih]
+      rfl
+
+private theorem mapM_decode_encoded_address_function
+    (nodes : List (Fin nodeCount))
+    (address : Fin nodeCount →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount)) :
+    nodes.mapM (decodeWireWitnessAddress conceptCount roleCount ∘
+      encodeWireWitnessAddress ∘ address) =
+        .ok (nodes.map address) := by
+  induction nodes with
+  | nil => rfl
+  | cons node rest ih =>
+      simp only [List.mapM_cons, List.map_cons, Function.comp_apply,
+        decodeWireWitnessAddress_encode, ih]
+      rfl
+
+/-- Canonical wire document for a complete finite rooted-address map. -/
+def WireAddressFrontier.ofAddress
+    (address : Fin nodeCount →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount)) :
+    WireAddressFrontier where
+  version := 1
+  node_count := nodeCount
+  concept_count := conceptCount
+  role_count := roleCount
+  addresses := (List.finRange nodeCount).map
+    (encodeWireWitnessAddress ∘ address)
 
 def WireAddressFrontier.decode (document : WireAddressFrontier) :
     Except String (DecodedAddressFrontier document.node_count
@@ -106,6 +192,29 @@ at one budget share the same finite node universe. -/
 def WireAddressFrontier.checkScheduled
     (document : WireAddressFrontier) (budget : Nat) : Bool :=
   document.check && decide (document.node_count = 8 * 2 ^ budget)
+
+/-- Every injective complete rooted-address map has a checker-accepted wire
+representation at its exact production budget. This is frontier serializer
+completeness, not merely checker soundness. -/
+theorem WireAddressFrontier.ofAddress_checkScheduled
+    (address : Fin nodeCount →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address)
+    (hnodes : nodeCount = 8 * 2 ^ budget) :
+    (WireAddressFrontier.ofAddress address).checkScheduled budget = true := by
+  classical
+  have hnodup : ((List.finRange nodeCount).map address).Nodup :=
+    (List.nodup_finRange nodeCount).map hinjective
+  simp only [WireAddressFrontier.checkScheduled, WireAddressFrontier.check,
+    WireAddressFrontier.ofAddress]
+  unfold WireAddressFrontier.decode
+  simp [mapM_decode_encoded_address_function]
+  constructor
+  · change (Except.bind (Except.ok ((List.finRange nodeCount).map address)) _).isOk = true
+    rw [Except.bind]
+    simp [hnodup]
+    rfl
+  · exact hnodes
 
 theorem WireAddressFrontier.checkScheduled_check
     (document : WireAddressFrontier) (budget : Nat)
@@ -175,6 +284,8 @@ theorem mode6_doubling_eventually_rejects_checked_frontier
     (hnodes round) (hconcepts round) (hroles round) address hinjective
 
 #print axioms WireAddressFrontier.check_refines
+#print axioms decodeWireWitnessAddress_encode
+#print axioms WireAddressFrontier.ofAddress_checkScheduled
 #print axioms WireAddressFrontier.checkScheduled_check
 #print axioms WireAddressFrontier.checkScheduled_node_count
 #print axioms mode6_doubling_eventually_rejects_checked_frontier

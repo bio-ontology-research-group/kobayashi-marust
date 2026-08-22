@@ -19,6 +19,17 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Prove completeness of the equality-free rooted-address frontier serializer.
+  Any injective complete address map now generates a canonical versioned wire
+  document whose ordinary and scheduled checks succeed at the exact doubling
+  budget. This removes producer-supplied checker acceptance from frontier
+  construction.
+- Connect exhaustive finite production search directly to checked regular
+  outcomes. An empty-root closure constructs its finite refutation certificate;
+  a frontier carrying the rooted-address refinement constructs its checked wire
+  outcome; and only a blocked-open terminal enters fold learning. The remaining
+  frontier obligation is the substantive correspondence between KM's creation
+  metadata and `State.RootedAddressRefines`, not serialization correctness.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine
