@@ -41,6 +41,8 @@ checkers=(
     ht-frontier-check
     ht-address-refinement-check
     ht-production-blocking-check
+    ht-finite-production-terminal-check
+    ht-regular-production-terminal-check
     ht-equality-production-blocking-check
     ht-equality-production-trace-check
     ht-equality-production-terminal-check
@@ -141,6 +143,10 @@ done
     export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
+    export KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-finite-production-terminal-check"
+    export KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-finite-production-terminal-check"
+    export KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-regular-production-terminal-check"
+    export KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-regular-production-terminal-check"
     export KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-equality-production-blocking-check"
     export KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-equality-production-blocking-check"
     export KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER="$bin_root/ht-equality-production-trace-check"
@@ -159,6 +165,7 @@ done
     cargo test --release equality_production_blocking_checks_rejection_provenance -- --nocapture
     cargo test --release native_abox_production_blocking_checks_joint_rejection_provenance -- --nocapture
     cargo test --release equality_and_cardinality_folds_copy_incoming_blocker_edges -- --nocapture
+    cargo test --release equality_free_refutation_pairwise_blocks_a_satisfiable_cycle -- --nocapture
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
     cargo test --release regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture

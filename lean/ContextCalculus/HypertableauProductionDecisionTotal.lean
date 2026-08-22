@@ -7,6 +7,7 @@ import ContextCalculus.HypertableauCardinalityProductionSearch
 import ContextCalculus.HypertableauCardinalityProductionWire
 import ContextCalculus.HypertableauCardinalityClosedCompleteness
 import ContextCalculus.HypertableauRegularProductionTerminalWire
+import ContextCalculus.HypertableauFiniteProductionTerminalWire
 
 /-!
 # Total production hypertableau global decision

@@ -19,6 +19,20 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Add a combined finite-production terminal wire and native Lean checker. It
+  reconstructs the exact finite fold materialization from the blocked table
+  and selected Cartesian assignment, requires the published finite certificate
+  to have the same ontology and extensionally identical completion state, and
+  reruns the complete finite semantic checker. The comparison intentionally
+  ignores fact order and duplicates because HT states use membership semantics.
+- Require both global and equality-free taxonomy finite-SAT publication to pass
+  this provenance checker before their existing result checkers. Missing
+  checker configuration fails closed. Regression coverage accepts the genuine
+  cyclic fold and rejects a certificate with forged materialized edges.
+- Include finite, regular, and equality production-terminal checkers in the
+  top-level HT certification boundary and release gate, closing a configuration
+  path that previously recognized only blocker-table and trace checkers.
+
 - Tighten the final hypertableau global-decision boundary so every route now
   consumes its concrete finite-search family and derives the runtime in Lean.
   Regular and equality-aware family records join the cardinality and

@@ -6254,7 +6254,10 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+    "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+    "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
     "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+    "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
     "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
 ];
 
@@ -6468,9 +6471,27 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
+            if std::env::var_os("KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER for finite equality-free SAT publication"
+                        .to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER for regular equality-free SAT publication"
+                        .to_string(),
+                );
+            }
             if std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER").is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER for exhausted equality-aware blocker assignments"
+                        .to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER for equality-aware SAT publication"
                         .to_string(),
                 );
             }
@@ -7109,7 +7130,10 @@ mod tests {
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+            "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+            "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
             "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
             "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
         ] {
             assert!(

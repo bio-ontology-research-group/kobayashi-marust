@@ -2971,6 +2971,14 @@ struct LeanHtRegularProductionTerminalDocument {
     assignment: Vec<LeanHtProductionBlockingPair>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtFiniteProductionTerminalDocument {
+    version: usize,
+    table: serde_json::Value,
+    finite: serde_json::Value,
+    assignment: Vec<LeanHtProductionBlockingPair>,
+}
+
 impl LeanHtBlockedOpenLeaf {
     fn next_fold_assignment(
         &self,
@@ -10789,6 +10797,43 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Prove that one finite SAT certificate is exactly the materialization of
+    /// the blocked state under the selected Cartesian assignment.
+    fn lean_finite_production_terminal_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        assignment: &[(Node, Node)],
+        finite: &str,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+                .to_string()
+        })?;
+        let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
+        let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
+        let finite = serde_json::from_str(finite).map_err(|error| error.to_string())?;
+        let assignment = assignment
+            .iter()
+            .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
+            .collect();
+        let document = serde_json::to_string(&LeanHtFiniteProductionTerminalDocument {
+            version: 1,
+            table,
+            finite,
+            assignment,
+        })
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Equality-aware counterpart of the production blocker table. Lean
     /// validates the supplied equivalence closure, reconstructs every
     /// quotient pairwise signature, and checks complete assignment exhaustion
@@ -11714,10 +11759,16 @@ impl Ht {
                             &candidate_leaf,
                             LeanHtEvidence::Sat,
                         )?;
-                        let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
-                        let finite_candidate = self.finalize_lean_certificate(finite)?;
-                        if self.lean_decision_candidate_passes(&finite_candidate)? {
-                            return Ok((true, finite_candidate));
+                        if self.lean_finite_production_terminal_passes(
+                            &leaf,
+                            &folds,
+                            &finite,
+                        )? {
+                            let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
+                            let finite_candidate = self.finalize_lean_certificate(finite)?;
+                            if self.lean_decision_candidate_passes(&finite_candidate)? {
+                                return Ok((true, finite_candidate));
+                            }
                         }
                         if let Ok(regular) =
                             self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
@@ -13961,8 +14012,14 @@ impl Ht {
                             &candidate_leaf,
                             query.finite_open_evidence(),
                         )?;
-                        if self.lean_taxonomy_candidate_passes(&finite)? {
-                            return Ok((true, finite));
+                        if self.lean_finite_production_terminal_passes(
+                            &leaf,
+                            &folds,
+                            &finite,
+                        )? {
+                            if self.lean_taxonomy_candidate_passes(&finite)? {
+                                return Ok((true, finite));
+                            }
                         }
                         if let Ok(regular) =
                             self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
@@ -26190,6 +26247,34 @@ mod tests {
                 .any(|edge| { edge["role"] == R0 && edge["source"] == 0 && edge["target"] == 2 }),
             "bidirectional fold materialization must copy incoming blocker edges"
         );
+        if std::env::var_os(
+            "KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .is_some()
+        {
+            assert!(
+                cyclic
+                    .lean_finite_production_terminal_passes(
+                        &leaf,
+                        &leaf.folds,
+                        &raw_certificate,
+                    )
+                    .expect("run the finite production terminal checker"),
+                "Lean must accept the exact finite fold materialization",
+            );
+            let mut forged = certificate.clone();
+            forged["edges"].as_array_mut().unwrap().pop();
+            assert!(
+                !cyclic
+                    .lean_finite_production_terminal_passes(
+                        &leaf,
+                        &leaf.folds,
+                        &serde_json::to_string(&forged).unwrap(),
+                    )
+                    .expect("run the finite terminal checker on forged edges"),
+                "Lean must reject finite evidence detached from materialization",
+            );
+        }
         let regular_raw = cyclic
             .lean_regular_blocked_open_certificate_json(&leaf)
             .expect("materialize the blocked leaf as a regular-model candidate");
