@@ -197,6 +197,14 @@ name = "ht-source-bound-ordinary-global-check"
 root = "HTSourceBoundOrdinaryGlobalCheck"
 
 [[lean_exe]]
+name = "ht-source-bound-cardinality-global-check"
+root = "HTSourceBoundCardinalityGlobalCheck"
+
+[[lean_exe]]
+name = "ht-source-bound-cardinality-taxonomy-check"
+root = "HTSourceBoundCardinalityTaxonomyCheck"
+
+[[lean_exe]]
 name = "ht-native-abox-taxonomy-run-matrix-check"
 root = "HTNativeABoxTaxonomyRunMatrixCheck"
 

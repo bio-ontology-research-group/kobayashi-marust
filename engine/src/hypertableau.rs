@@ -11260,11 +11260,11 @@ impl Ht {
 
     /// Bind one first-class cardinality SAT/UNSAT terminal to the full
     /// state-bearing frontier history from the same production decision.
-    fn lean_cardinality_production_run_passes(
+    fn lean_cardinality_production_run(
         &self,
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
@@ -11284,6 +11284,76 @@ impl Ht {
             "max_width": max_width,
             "frontiers": frontiers,
             "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(Some(
+                serde_json::from_str(&document).map_err(|error| error.to_string())?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_cardinality_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_cardinality_production_run(frontiers, terminal)?
+            .is_some())
+    }
+
+    fn lean_source_bound_cardinality_global_passes(
+        &self,
+        source: &str,
+        run: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER")
+            })
+            .ok_or_else(|| {
+                "cardinality HT publication requires KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER"
+                    .to_string()
+            })?;
+        let source: serde_json::Value =
+            serde_json::from_str(source).map_err(|error| error.to_string())?;
+        let source = if source.get("payload").is_some() {
+            source
+        } else {
+            let certificate = &source["certificate"];
+            let variable_count = certificate["variable_count"]
+                .as_u64()
+                .ok_or_else(|| "cardinality source has no variable_count".to_string())?
+                as usize;
+            let ontology = certificate["ontology"]
+                .as_array()
+                .ok_or_else(|| "cardinality source has no ontology".to_string())?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            let normalization: Vec<_> = ontology
+                .iter()
+                .map(|clause| {
+                    serde_json::json!({
+                        "source": clause,
+                        "representatives": representatives,
+                        "representative_paths": representative_paths,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "version": 3,
+                "normalization": normalization,
+                "payload": { "cardinality": { "certificate": source } },
+            })
+        };
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "source": source,
+            "run": run,
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -11580,6 +11650,70 @@ impl Ht {
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concept_runs": concept_runs,
             "subsumption_runs": subsumption_runs,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
+    fn lean_source_bound_cardinality_taxonomy_passes(
+        &self,
+        source: &str,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "cardinality taxonomy publication requires KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER"
+                .to_string()
+        })?;
+        let source: serde_json::Value =
+            serde_json::from_str(source).map_err(|error| error.to_string())?;
+        let source = if matches!(source["version"].as_u64(), Some(6 | 7)) {
+            source
+        } else {
+            let variable_count = source["variable_count"]
+                .as_u64()
+                .ok_or_else(|| "cardinality taxonomy has no variable_count".to_string())?
+                as usize;
+            let ontology = source["ontology"]
+                .as_array()
+                .ok_or_else(|| "cardinality taxonomy has no ontology".to_string())?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            let normalization: Vec<_> = ontology
+                .iter()
+                .map(|clause| {
+                    serde_json::json!({
+                        "source": clause,
+                        "representatives": representatives,
+                        "representative_paths": representative_paths,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "version": 6,
+                "normalization": normalization,
+                "certificate": source,
+            })
+        };
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "source": source,
+            "runs": {
+                "version": 1,
+                "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+                "concept_runs": concept_runs,
+                "subsumption_runs": subsumption_runs,
+            },
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -15196,15 +15330,20 @@ impl Ht {
                         },
                     )?;
                     let terminal = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-                    if !self.lean_cardinality_production_run_passes(
-                        &cardinality_frontier_history,
-                        terminal,
-                    )? {
+                    let Some(run) = self
+                        .lean_cardinality_production_run(&cardinality_frontier_history, terminal)?
+                    else {
                         return Err(
                             "Lean rejected the closed cardinality production run".to_string()
                         );
+                    };
+                    let source = self.finalize_lean_certificate(raw)?;
+                    if !self.lean_source_bound_cardinality_global_passes(&source, run)? {
+                        return Err(
+                            "Lean rejected the source-bound closed cardinality run".to_string()
+                        );
                     }
-                    return Ok((false, self.finalize_lean_certificate(raw)?));
+                    return Ok((false, source));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
@@ -15226,13 +15365,17 @@ impl Ht {
                         let terminal = serde_json::from_str(&cardinality)
                             .map_err(|error| error.to_string())?;
                         let candidate = self.finalize_lean_certificate(cardinality)?;
-                        if self.lean_decision_candidate_passes(&candidate)?
-                            && self.lean_cardinality_production_run_passes(
+                        if self.lean_decision_candidate_passes(&candidate)? {
+                            if let Some(run) = self.lean_cardinality_production_run(
                                 &cardinality_frontier_history,
                                 terminal,
-                            )?
-                        {
-                            return Ok((true, candidate));
+                            )? {
+                                if self
+                                    .lean_source_bound_cardinality_global_passes(&candidate, run)?
+                                {
+                                    return Ok((true, candidate));
+                                }
+                            }
                         }
                         let inserted = rejected_assignments.insert(folds);
                         assert!(inserted, "cardinality fold assignment search must progress");
@@ -17050,12 +17193,21 @@ impl Ht {
         .map_err(|error| error.to_string())?;
         if !self.lean_cardinality_taxonomy_run_matrix_passes(
             named,
-            concept_runs,
-            subsumption_runs,
+            concept_runs.clone(),
+            subsumption_runs.clone(),
         )? {
             return Err("Lean rejected the complete cardinality taxonomy run matrix".to_string());
         }
-        self.wrap_normalized_cardinality_taxonomy_certificate(payload)
+        let source = self.wrap_normalized_cardinality_taxonomy_certificate(payload)?;
+        if !self.lean_source_bound_cardinality_taxonomy_passes(
+            &source,
+            named,
+            concept_runs,
+            subsumption_runs,
+        )? {
+            return Err("Lean rejected the source-bound cardinality taxonomy".to_string());
+        }
+        Ok(source)
     }
 
     /// Produce a complete checker-ready named taxonomy. Every concept and every
