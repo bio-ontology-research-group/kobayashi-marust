@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauRegularDecisionWire
 import ContextCalculus.HypertableauFrontierWire
+import ContextCalculus.HypertableauAddressRefinement
 import ContextCalculus.HypertableauEqualityFreeDecision
 import ContextCalculus.HypertableauRegularProduction
 import ContextCalculus.HypertableauNormalizedWire
@@ -93,7 +94,7 @@ noncomputable def finiteProductionRoundSettlement
           (ancestors leaf) forbidden) →
       ∃ address : Fin (8 * 2 ^ budget) →
           WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
-        (stateOfGuardedFacts leaf).RootedAddressRefines address) :
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true) :
     ∀ forbidden : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
       CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology ⊕
@@ -115,7 +116,9 @@ noncomputable def finiteProductionRoundSettlement
         from by
       obtain ⟨address, hrefines⟩ :=
         frontierAddress forbidden leaf hdescends hfrontier
-      exact ⟨CheckedRegularRoundOutcome.frontier_of_address address hrefines.1⟩)
+      have hrefines' :=
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines_sound address hrefines
+      exact ⟨CheckedRegularRoundOutcome.frontier_of_address address hrefines'.1⟩)
 
 /-- Construct KM's exact checked regular-UNSAT outcome directly from the
 semantic refutation returned by exhaustive finite search at the empty global

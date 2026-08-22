@@ -30,6 +30,12 @@
   outcome; and only a blocked-open terminal enters fold learning. The remaining
   frontier obligation is the substantive correspondence between KM's creation
   metadata and `State.RootedAddressRefines`, not serialization correctness.
+- Add an executable finite-state rooted-address refinement checker and prove
+  both acceptance soundness and checker completeness. It checks address
+  injectivity, the finite blocking-depth bound, and every occupied canonical
+  existential slot against the exact edge and filler facts. Regular production
+  settlement now consumes this Boolean check instead of trusting a semantic
+  `RootedAddressRefines` premise.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine
