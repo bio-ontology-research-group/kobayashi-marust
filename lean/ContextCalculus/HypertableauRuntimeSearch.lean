@@ -948,6 +948,81 @@ noncomputable def runtimeNextFacts
     List (Finset (GuardedFact Node Concept Role)) :=
   (runtimeNext ontology (stateOfGuardedFacts facts)).map State.guardedFacts
 
+/-- Guarded-fact representation of the concrete blocker-aware successor
+enumerator. The blocker is recomputed from each recursive state, matching the
+production search rather than being frozen at the root. -/
+noncomputable def runtimeNextBlockedFacts
+    [Fintype Variable] [DecidableEq Variable]
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (blocked : Finset (GuardedFact Node Concept Role) → Node → Bool)
+    (facts : Finset (GuardedFact Node Concept Role)) :
+    List (Finset (GuardedFact Node Concept Role)) :=
+  (runtimeNextBlocked ontology (stateOfGuardedFacts facts) (blocked facts)).map
+    State.guardedFacts
+
+/-- Finite exhaustive correspondence for the actual blocker-aware recursive
+selector. Every root is refuted, or reaches a descended leaf classified
+exactly as a blocked terminal or an explicit finite-node frontier. In
+particular, this theorem does not turn a blocked terminal into a model; that
+step remains the responsibility of the independently checked finite or regular
+certificate. -/
+theorem finite_runtimeNextBlocked_terminal_or_frontier
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (blocked : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → Bool)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom) :
+    ∀ root,
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      ∃ leaf, SearchDescends (runtimeNextBlockedFacts ontology blocked) root leaf ∧
+        ((stateOfGuardedFacts leaf).BlockedRuntimeTerminal ontology
+            (blocked leaf) ∨
+          (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+            (blocked leaf)) := by
+  apply finite_exhaustive_search_total (runtimeNextBlockedFacts ontology blocked)
+    (fun facts => Refutes (Fin nodeCount) ontology (stateOfGuardedFacts facts))
+    (fun facts =>
+      (stateOfGuardedFacts facts).BlockedRuntimeTerminal ontology
+          (blocked facts) ∨
+        (stateOfGuardedFacts facts).BlockedRuntimeFrontier ontology
+          (blocked facts))
+  · intro parent child hchild
+    have hnonempty : runtimeNextBlockedFacts ontology blocked parent ≠ [] := by
+      intro hempty
+      simp [hempty] at hchild
+    have hruntime : runtimeNextBlocked ontology (stateOfGuardedFacts parent)
+        (blocked parent) ≠ [] := by
+      intro hempty
+      apply hnonempty
+      simp [runtimeNextBlockedFacts, hempty]
+    have hstep := runtimeNextBlocked_firstObstructionStep ontology
+      (stateOfGuardedFacts parent) (blocked parent) hheads hruntime
+    rcases List.mem_map.mp hchild with ⟨runtimeChild, hruntimeChild, rfl⟩
+    simpa using hstep.children_strictGrowth hruntimeChild
+  · intro facts hempty
+    have hruntimeEmpty : runtimeNextBlocked ontology (stateOfGuardedFacts facts)
+        (blocked facts) = [] := by
+      simpa [runtimeNextBlockedFacts] using hempty
+    exact runtimeNextBlocked_empty_semantics ontology
+      (stateOfGuardedFacts facts) (blocked facts) hheads hruntimeEmpty
+  · intro facts hnonempty hchildren
+    have hruntime : runtimeNextBlocked ontology (stateOfGuardedFacts facts)
+        (blocked facts) ≠ [] := by
+      intro hempty
+      apply hnonempty
+      simp [runtimeNextBlockedFacts, hempty]
+    have hstep := runtimeNextBlocked_firstObstructionStep ontology
+      (stateOfGuardedFacts facts) (blocked facts) hheads hruntime
+    apply hstep.exhaustiveStep.refutes_of_children
+    intro child hchild
+    have hchildFacts : child.guardedFacts ∈
+        runtimeNextBlockedFacts ontology blocked facts := by
+      exact List.mem_map_of_mem hchild
+    have hrefutes := hchildren child.guardedFacts hchildFacts
+    simpa using hrefutes
+
 /-- The finite HT decision theorem instantiated with the concrete executable
 clause/witness selector. Only checked terminal production remains a runtime
 premise; transition validity and strict growth are now derived in Lean. -/
@@ -1063,5 +1138,6 @@ theorem finite_runtimeNext_semantic_or_frontier
 #print axioms runtimeNext_empty_semantics
 #print axioms finite_runtimeNext_decides
 #print axioms finite_runtimeNext_semantic_or_frontier
+#print axioms finite_runtimeNextBlocked_terminal_or_frontier
 
 end ContextCalculus.Hypertableau

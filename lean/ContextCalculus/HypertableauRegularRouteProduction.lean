@@ -91,6 +91,45 @@ theorem State.productionBlocked_eq_true_iff
       ∃ blocker, state.productionFold parent ancestors forbidden source blocker := by
   simp [State.productionBlocked]
 
+/-! ## Concrete recursive production search -/
+
+noncomputable def productionBlockedFacts
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (parent : Finset (GuardedFact Node Concept Role) → Node → Option Node)
+    (ancestors : Finset (GuardedFact Node Concept Role) → Node → List Node)
+    (forbidden : Finset (Node × Node))
+    (facts : Finset (GuardedFact Node Concept Role)) (source : Node) : Bool :=
+  (stateOfGuardedFacts facts).productionBlocked (parent facts)
+    (ancestors facts) forbidden source
+
+/-- Instantiate the exhaustive blocker-aware recursion theorem with KM's exact
+production blocker predicate. Every fixed-budget run is therefore a refutation
+or descends to a concretely classified production terminal/frontier; no
+abstract successor or terminal producer remains in this recursion layer. -/
+theorem finite_productionBlocked_terminal_or_frontier
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → List (Fin nodeCount))
+    (forbidden : Finset (Fin nodeCount × Fin nodeCount))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom) :
+    ∀ root,
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      ∃ leaf, SearchDescends
+          (runtimeNextBlockedFacts ontology
+            (productionBlockedFacts parent ancestors forbidden)) root leaf ∧
+        ((stateOfGuardedFacts leaf).BlockedRuntimeTerminal ontology
+            ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+              (ancestors leaf) forbidden) ∨
+          (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+            ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+              (ancestors leaf) forbidden)) := by
+  exact finite_runtimeNextBlocked_terminal_or_frontier ontology
+    (productionBlockedFacts parent ancestors forbidden) hheads
+
 theorem State.productionBlocked_foldTotal
     [Fintype Concept] [DecidableEq Concept]
     [Fintype Role] [DecidableEq Role]
@@ -195,6 +234,50 @@ theorem FiniteSatCertificate.checkSat_of_empty_production_terminal
     exact hwitness obligation.2.2 obligation.1 obligation.2.1 hobligation
   · rw [FiniteSatCertificate.ofState_state]
     exact hterminal.saturatedFor
+
+/-- The concrete recursive production search separates all fixed-budget leaf
+meanings needed by the outer controller. A fold-free terminal already carries
+an accepted exact finite certificate; only a terminal with a nonempty blocked
+source table proceeds to Cartesian fold learning. -/
+theorem finite_productionBlocked_checked_leaf
+    (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → List (Fin nodeCount))
+    (forbidden : Finset (Fin nodeCount × Fin nodeCount))
+    (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom) :
+    ∀ root,
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) ∨
+      ∃ leaf, SearchDescends
+          (runtimeNextBlockedFacts ontology
+            (productionBlockedFacts parent ancestors forbidden)) root leaf ∧
+        (((stateOfGuardedFacts leaf).productionUnwitnessedSources = [] ∧
+            (FiniteSatCertificate.ofState ontology
+              (stateOfGuardedFacts leaf)).checkSat = true) ∨
+          ((stateOfGuardedFacts leaf).productionUnwitnessedSources ≠ [] ∧
+            (stateOfGuardedFacts leaf).BlockedRuntimeTerminal ontology
+              ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+                (ancestors leaf) forbidden)) ∨
+          (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+            ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+              (ancestors leaf) forbidden)) := by
+  intro root
+  rcases finite_productionBlocked_terminal_or_frontier ontology parent ancestors
+      forbidden hheads root with hrefutes | ⟨leaf, hdescends, hleaf⟩
+  · exact Or.inl hrefutes
+  · right
+    refine ⟨leaf, hdescends, ?_⟩
+    rcases hleaf with hterminal | hfrontier
+    · by_cases hempty :
+        (stateOfGuardedFacts leaf).productionUnwitnessedSources = []
+      · exact Or.inl ⟨hempty,
+          FiniteSatCertificate.checkSat_of_empty_production_terminal ontology
+            (stateOfGuardedFacts leaf) (parent leaf) (ancestors leaf) forbidden
+            hguarded hterminal hempty⟩
+      · exact Or.inr (Or.inl ⟨hempty, hterminal⟩)
+    · exact Or.inr (Or.inr hfrontier)
 
 theorem State.productionTerminal_sources_blocked
     [Fintype Node] [DecidableEq Node]
@@ -403,12 +486,14 @@ noncomputable def CartesianFoldExpansionRuntime.ofProductionTerminals
       · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm }
 
 #print axioms State.productionBlocked_eq_true_iff
+#print axioms finite_productionBlocked_terminal_or_frontier
 #print axioms FiniteSatCertificate.ofState_state
 #print axioms State.productionBlocked_foldTotal
 #print axioms State.productionFold_not_forbidden
 #print axioms State.mem_productionUnwitnessedSources_iff
 #print axioms State.productionUnwitnessedSources_eq_nil_iff
 #print axioms FiniteSatCertificate.checkSat_of_empty_production_terminal
+#print axioms finite_productionBlocked_checked_leaf
 #print axioms State.productionTerminal_sources_blocked
 #print axioms State.productionTerminal_foldTable
 #print axioms State.productionFoldOptions_filtered

@@ -14,6 +14,12 @@
   production blocker is fresh, accepted fold checks can only terminate, and
   assignment exhaustion either returns the fold-free result or expands by
   exactly the current blocker-pair union.
+- Prove finite exhaustive correspondence for the concrete blocker-aware
+  recursive successor selector, with the blocker recomputed at each state.
+  Every fixed-budget production run now yields a refutation, an explicitly
+  descended blocked terminal, or a node frontier. Fold-free terminals carry
+  their accepted exact finite certificate immediately; only nonempty blocked
+  terminals proceed to Cartesian fold learning.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise

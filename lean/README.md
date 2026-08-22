@@ -661,6 +661,14 @@ expand only by the exact union of its current blocker options; a checked fold
 candidate can only finish, and an empty source table returns the supplied
 fold-free result.
 
+`HypertableauRuntimeSearch.lean` now proves finite exhaustive correspondence
+for `runtimeNextBlockedFacts`, recomputing the blocker from every recursive
+state. `HypertableauRegularRouteProduction.lean` instantiates this theorem with
+the exact production blocker. A fixed-budget root is therefore refuted or
+descends to a blocked terminal/frontier. The refined leaf theorem attaches the
+accepted finite certificate to a fold-free terminal and sends only a terminal
+with a nonempty blocked-source table to blocker-assignment learning.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion
