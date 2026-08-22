@@ -4,6 +4,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Replace the unified production-global proof boundary with a constructor-
+  guarded complete-assignment route for regular, equality, cardinality, and
+  native-ABox cardinality search. The capstone proves that every such route
+  returns a source-level SAT or UNSAT theorem after finite assignment retries
+  and checked frontier growth.
 - Include pending existential obligations in ordinary and equality-quotient
   pairwise blocking signatures. Matching concept labels alone can fold nodes
   whose witness requirements differ, so KM now compares local obligations at

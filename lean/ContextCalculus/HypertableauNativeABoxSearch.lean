@@ -438,6 +438,79 @@ theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hwidth
 
+/-- Native-ABox source-level totality for complete simultaneous blocker
+assignments.  Rejection is assignment-indexed, so constituent fold pairs remain
+available in other candidates. -/
+theorem checked_native_abox_cardinality_fold_assignment_producer_decides_source
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.node_count = 8 * 2 ^ budget)
+    (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.max_width = maxWidth) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      (producer budget).run retry = .done outcome := fun budget =>
+    (producer budget).eventually_done
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  have hsettledWidth : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.max_width = maxWidth := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hwidth budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_native_abox_cardinality_doubling_decides_source equivalent maxWidth
+      settled hsettledNodes hsettledWidth
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
+theorem checked_native_abox_cardinality_guarded_fold_assignment_producer_decides_source
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (producer : ∀ budget, GuardedFoldAssignmentProducer
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).toFoldAssignmentProducer.run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.node_count = 8 * 2 ^ budget)
+    (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).toFoldAssignmentProducer.run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.max_width = maxWidth) :
+    ∃ budget retry outcome,
+      (producer budget).toFoldAssignmentProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  exact checked_native_abox_cardinality_fold_assignment_producer_decides_source
+    equivalent maxWidth
+    (fun budget => (producer budget).toFoldAssignmentProducer) hnodes hwidth
+
 /-- Native-ABox cardinality totality with every control-flow obligation stored
 by the checked producer. -/
 theorem checked_native_abox_cardinality_control_producer_decides_source
@@ -469,6 +542,8 @@ theorem checked_native_abox_cardinality_control_producer_decides_source
 #print axioms CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent
 #print axioms checked_native_abox_cardinality_doubling_decides_source
 #print axioms checked_native_abox_cardinality_fold_learning_doubling_decides_source
+#print axioms checked_native_abox_cardinality_fold_assignment_producer_decides_source
+#print axioms checked_native_abox_cardinality_guarded_fold_assignment_producer_decides_source
 #print axioms checked_native_abox_cardinality_fresh_fold_producer_decides_source
 #print axioms CheckedNativeABoxCardinalityControlAttempt.frontier_scheduled
 #print axioms CheckedNativeABoxCardinalityControlProducer.frontier_scheduled
