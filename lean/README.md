@@ -653,6 +653,14 @@ concrete blocked terminal with no production unwitnessed source yields an
 accepted finite SAT certificate directly; this endpoint no longer relies on a
 separate serializer-completeness premise.
 
+The module also constructs the full two-level equality-free learning runtime
+from the concrete terminal at every outer forbidden-pair set. Production fold
+membership proves each option was not previously forbidden, so nonempty exact
+assignment exhaustion has a fresh expansion. The constructed outer runtime can
+expand only by the exact union of its current blocker options; a checked fold
+candidate can only finish, and an empty source table returns the supplied
+fold-free result.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion

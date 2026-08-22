@@ -9,6 +9,11 @@
   exactly that state. If the concrete equality-free production terminal has no
   unwitnessed source, Lean derives witness completeness and checker acceptance
   without assuming that an external serializer preserved the state.
+- Construct the complete equality-free outer learning runtime from the concrete
+  terminal rebuilt at each forbidden-pair set. Lean proves that every exposed
+  production blocker is fresh, accepted fold checks can only terminate, and
+  assignment exhaustion either returns the fold-free result or expands by
+  exactly the current blocker-pair union.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise

@@ -106,6 +106,19 @@ theorem State.productionBlocked_foldTotal
   exact (state.productionBlocked_eq_true_iff parent ancestors forbidden source).mp
     hblocked
 
+theorem State.productionFold_not_forbidden
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    [DecidableEq Node]
+    (state : State Node Concept Role)
+    (parent : Node → Option Node)
+    (ancestors : Node → List Node)
+    (forbidden : Finset (Node × Node))
+    {source blocker : Node}
+    (hfold : state.productionFold parent ancestors forbidden source blocker) :
+    (source, blocker) ∉ forbidden :=
+  hfold.2.2
+
 noncomputable def State.productionUnwitnessedSources
     [Fintype Node] [DecidableEq Node]
     [Fintype Concept] [DecidableEq Concept]
@@ -226,6 +239,64 @@ theorem State.productionTerminal_foldTable
     state.productionTerminal_sources_blocked ontology parent ancestors forbidden
       hterminal⟩
 
+theorem State.productionFoldOptions_filtered
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state]
+    (parent : Node → Option Node)
+    (ancestors : Node → List Node)
+    (forbidden : Finset (Node × Node)) :
+    ∀ source blockers,
+      (source, blockers) ∈ foldOptionsUsing
+        (state.productionFold parent ancestors forbidden)
+        (Classical.decRel
+          (state.productionFold parent ancestors forbidden))
+        state.productionUnwitnessedSources →
+      ∀ blocker ∈ blockers, (source, blocker) ∉ forbidden := by
+  classical
+  intro source blockers hoption blocker hblocker
+  simp only [foldOptionsUsing, foldOptions] at hoption
+  rcases List.mem_map.mp hoption with ⟨candidate, _, heq⟩
+  cases heq
+  have hfold :
+      state.productionFold parent ancestors forbidden source blocker := by
+    simpa [foldBlockers] using hblocker
+  exact state.productionFold_not_forbidden parent ancestors forbidden hfold
+
+/-- A concrete production terminal with at least one unwitnessed source always
+exposes a fresh pair for the exact outer forbidden-pair expansion. -/
+theorem State.productionFoldOptionPairs_has_fresh
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (state : State Node Concept Role) [DecidableState state]
+    (ontology : List (Clause Variable Concept Role))
+    (parent : Node → Option Node)
+    (ancestors : Node → List Node)
+    (forbidden : Finset (Node × Node))
+    (hterminal : state.BlockedRuntimeTerminal ontology
+      (state.productionBlocked parent ancestors forbidden))
+    (hne : state.productionUnwitnessedSources ≠ []) :
+    ∃ pair ∈ foldOptionPairs (foldOptionsUsing
+        (state.productionFold parent ancestors forbidden)
+        (Classical.decRel
+          (state.productionFold parent ancestors forbidden))
+        state.productionUnwitnessedSources),
+      pair ∉ forbidden := by
+  classical
+  apply foldOptionPairs_has_fresh_of_filtered
+  · simpa [foldOptionsUsing, foldOptions] using hne
+  · intro option hoption
+    exact foldOptions_option_nonempty
+      (state.productionBlocked parent ancestors forbidden)
+      (state.productionFold parent ancestors forbidden)
+      (state.productionBlocked_foldTotal parent ancestors forbidden)
+      state.productionUnwitnessedSources
+      (state.productionTerminal_sources_blocked ontology parent ancestors forbidden
+        hterminal) option (by simpa [foldOptionsUsing] using hoption)
+  · exact state.productionFoldOptions_filtered parent ancestors forbidden
+
 /-- Construct the complete inner assignment runtime from one concrete
 equality-free blocked terminal.  The options are fixed for that saturated leaf,
 as in Rust; only the rejected complete-assignment set changes between retries.
@@ -265,13 +336,83 @@ noncomputable def CartesianFoldAssignmentRuntime.ofProductionTerminal
         hterminal source hsource)
     check onExhausted
 
+/-- Construct both finite learning layers from the concrete terminal rebuilt
+for each outer forbidden-pair set. Checked fold candidates can only finish;
+exact Cartesian exhaustion either returns the supplied fold-free result or
+expands by precisely the current production blocker pairs. -/
+noncomputable def CartesianFoldExpansionRuntime.ofProductionTerminals
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (state : Finset (Node × Node) → State Node Concept Role)
+    (decision : ∀ forbidden, DecidableState (state forbidden))
+    (parent : Finset (Node × Node) → Node → Option Node)
+    (ancestors : Finset (Node × Node) → Node → List Node)
+    (terminal : ∀ forbidden,
+      (state forbidden).BlockedRuntimeTerminal ontology
+        ((state forbidden).productionBlocked (parent forbidden)
+          (ancestors forbidden) forbidden))
+    (candidate : ∀ _forbidden : Finset (Node × Node),
+      Finset (FoldAssignment Node) → FoldAssignment Node → Option Result)
+    (foldFree : ∀ forbidden,
+      (state forbidden).productionUnwitnessedSources = [] → Result) :
+    CartesianFoldExpansionRuntime Node Result := by
+  classical
+  let options (forbidden : Finset (Node × Node)) :=
+    foldOptionsUsing
+      ((state forbidden).productionFold (parent forbidden)
+        (ancestors forbidden) forbidden)
+      (Classical.decRel
+        ((state forbidden).productionFold (parent forbidden)
+          (ancestors forbidden) forbidden))
+      (state forbidden).productionUnwitnessedSources
+  let exhaustedOutcome (forbidden : Finset (Node × Node)) :=
+    fun (_rejected : Finset (FoldAssignment Node))
+        (_exhausted : ∀ assignment ∈ enumerateFoldAssignments
+          (options forbidden), assignment ∈ _rejected) =>
+      if hempty : (state forbidden).productionUnwitnessedSources = [] then
+        GuardedFoldExpansionOutcome.done (foldFree forbidden hempty)
+      else
+        GuardedFoldExpansionOutcome.expand
+          (foldOptionPairs (options forbidden))
+          ((state forbidden).productionFoldOptionPairs_has_fresh ontology
+            (parent forbidden) (ancestors forbidden) forbidden
+            (terminal forbidden) hempty)
+  let inner (forbidden : Finset (Node × Node)) :=
+    letI := decision forbidden
+    CartesianFoldAssignmentRuntime.ofProductionTerminal
+      (state forbidden) ontology (parent forbidden)
+      (ancestors forbidden) forbidden (terminal forbidden)
+      (fun rejected assignment =>
+        checkedFoldCandidate (candidate forbidden) forbidden rejected assignment)
+      (exhaustedOutcome forbidden)
+  exact {
+    inner := inner
+    checkConclusive := by
+      intro forbidden rejected assignment outcome hcheck
+      exact checkedFoldCandidate_conclusive (candidate forbidden) forbidden
+        rejected assignment outcome hcheck
+    expansionExact := by
+      intro forbidden rejected exhausted pairs fresh hexpand
+      dsimp [inner, CartesianFoldAssignmentRuntime.ofProductionTerminal,
+        CartesianFoldAssignmentRuntime.ofFoldTable] at hexpand ⊢
+      dsimp [exhaustedOutcome] at hexpand
+      split at hexpand
+      · simp at hexpand
+      · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm }
+
 #print axioms State.productionBlocked_eq_true_iff
 #print axioms FiniteSatCertificate.ofState_state
 #print axioms State.productionBlocked_foldTotal
+#print axioms State.productionFold_not_forbidden
 #print axioms State.mem_productionUnwitnessedSources_iff
 #print axioms State.productionUnwitnessedSources_eq_nil_iff
 #print axioms FiniteSatCertificate.checkSat_of_empty_production_terminal
 #print axioms State.productionTerminal_sources_blocked
 #print axioms State.productionTerminal_foldTable
+#print axioms State.productionFoldOptions_filtered
+#print axioms State.productionFoldOptionPairs_has_fresh
+#print axioms CartesianFoldExpansionRuntime.ofProductionTerminals
 
 end ContextCalculus.Hypertableau
