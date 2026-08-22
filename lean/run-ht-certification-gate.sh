@@ -51,6 +51,7 @@ checkers=(
     ht-rooted-ordinary-taxonomy-production-run-check
     ht-rooted-cardinality-taxonomy-production-run-check
     ht-cardinality-taxonomy-production-run-check
+    ht-ordinary-taxonomy-production-run-check
     ht-production-blocking-check
     ht-production-trace-check
     ht-finite-production-terminal-check
@@ -68,6 +69,7 @@ checkers=(
     ht-native-abox-cardinality-taxonomy-decision-check
     ht-native-abox-cardinality-taxonomy-run-matrix-check
     ht-cardinality-taxonomy-run-matrix-check
+    ht-ordinary-taxonomy-run-matrix-check
     ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
@@ -131,6 +133,7 @@ surface_theorems=(
     certifiedHTRegularTaxonomyPublication
     certifiedHTCardinalityTaxonomyPublication
     certifiedHTCardinalityTaxonomyRunMatrixPublication
+    certifiedHTOrdinaryTaxonomyRunMatrixPublication
     certifiedHTNativeABoxTaxonomyPublication
     certifiedHTNativeABoxCardinalityTaxonomyPublication
 )
@@ -180,6 +183,8 @@ done
     export KM_HT_TEST_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-taxonomy-production-run-check"
     export KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-cardinality-taxonomy-production-run-check"
     export KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-cardinality-taxonomy-production-run-check"
+    export KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-taxonomy-production-run-check"
+    export KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-taxonomy-production-run-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
@@ -202,6 +207,8 @@ done
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-run-matrix-check"
     export KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-cardinality-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-cardinality-taxonomy-run-matrix-check"
+    export KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
+    export KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
     export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"
@@ -220,6 +227,7 @@ done
     cargo test --release cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds -- --nocapture
     cargo test --release cardinality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
     cargo test --release cardinality_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
+    cargo test --release ordinary_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
     cargo test --release native_abox_global_decision_uses_joint_sat_wire -- --nocapture
     cargo test --release rooted_ordinary_run_rejects_a_terminal_from_another_abox -- --nocapture
     KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \

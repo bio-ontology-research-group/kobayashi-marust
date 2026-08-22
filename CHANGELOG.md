@@ -103,6 +103,13 @@
   frontier identity. A run-derived matrix checker then verifies complete
   concept and ordered-pair coverage, exact coordinates, one shared problem,
   and every full run before exposing the complete taxonomy semantics.
+- Bind every ontology-only ordinary taxonomy cell to the exact production run
+  that decided it, including equality-free, regular, equality-aware, and
+  anchored terminals. Closed cells now serialize the actual root state and
+  refutation tree instead of rerunning the query. Lean derives the complete
+  taxonomy from the retained runs and checks every query coordinate, shared
+  ontology and vocabulary, retry frontier, terminal budget, and semantic
+  result in one matrix artifact.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search

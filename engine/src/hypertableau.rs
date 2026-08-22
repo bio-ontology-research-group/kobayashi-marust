@@ -2842,6 +2842,22 @@ impl LeanHtTaxonomyQuery {
         }
     }
 
+    fn equality_closed_evidence_with(self, tree: LeanHtEqRefutationTree) -> LeanHtEqEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEqEvidence::UnsatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+                tree,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEqEvidence::Subsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+                tree,
+            },
+        }
+    }
+
     fn finite_open_evidence(self) -> LeanHtEvidence {
         match self {
             Self::Concept(concept) => LeanHtEvidence::SatisfiableConcept {
@@ -2852,6 +2868,22 @@ impl LeanHtTaxonomyQuery {
                 root: 0,
                 sub: sub as usize,
                 sup: sup as usize,
+            },
+        }
+    }
+
+    fn finite_closed_evidence(self, tree: LeanHtRefutationTree) -> LeanHtEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEvidence::UnsatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+                tree,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEvidence::Subsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+                tree,
             },
         }
     }
@@ -11372,6 +11404,147 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    fn lean_ordinary_taxonomy_query_payload(document: &str) -> Result<serde_json::Value, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(document).map_err(|error| error.to_string())?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| "HT ordinary taxonomy terminal is not an object".to_string())?;
+        let version = object
+            .get("version")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "HT ordinary taxonomy terminal has no version".to_string())?;
+        match version {
+            1 => Ok(serde_json::json!({
+                "plain": { "payload": {
+                    "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
+                    "labels": object.get("labels").cloned().ok_or("missing labels")?,
+                    "edges": object.get("edges").cloned().ok_or("missing edges")?,
+                    "obligations": object.get("obligations").cloned().ok_or("missing obligations")?,
+                    "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+                } }
+            })),
+            2 => Ok(serde_json::json!({
+                "equality": {
+                    "node_count": object.get("node_count").cloned().ok_or("missing node_count")?,
+                    "state": object.get("state").cloned().ok_or("missing equality state")?,
+                    "evidence": object.get("evidence").cloned().ok_or("missing evidence")?,
+                }
+            })),
+            8 => Ok(serde_json::json!({
+                "anchored": {
+                    "certificate": object.get("certificate").cloned()
+                        .ok_or("missing anchored certificate")?,
+                    "evidence": object.get("evidence").cloned()
+                        .ok_or("missing anchored evidence")?,
+                }
+            })),
+            9 => Ok(serde_json::json!({
+                "regular": {
+                    "certificate": object.get("certificate").cloned()
+                        .ok_or("missing regular certificate")?,
+                    "evidence": object.get("evidence").cloned()
+                        .ok_or("missing regular evidence")?,
+                }
+            })),
+            other => Err(format!(
+                "unsupported HT ordinary taxonomy terminal version {other}"
+            )),
+        }
+    }
+
+    fn lean_widen_ordinary_taxonomy_terminal(
+        document: String,
+        concept_count: usize,
+        role_count: usize,
+        variable_count: usize,
+    ) -> Result<String, String> {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        let version = value["version"]
+            .as_u64()
+            .ok_or_else(|| "HT ordinary taxonomy terminal has no version".to_string())?;
+        if version == 1 {
+            value["concept_count"] = serde_json::json!(concept_count);
+            value["role_count"] = serde_json::json!(role_count);
+            value["variable_count"] = serde_json::json!(variable_count);
+        } else if version == 9 {
+            value["concept_count"] = serde_json::json!(concept_count);
+            value["role_count"] = serde_json::json!(role_count);
+            value["variable_count"] = serde_json::json!(variable_count);
+            value["certificate"]["concept_count"] = serde_json::json!(concept_count);
+            value["certificate"]["role_count"] = serde_json::json!(role_count);
+            value["certificate"]["variable_count"] = serde_json::json!(variable_count);
+        }
+        serde_json::to_string(&value).map_err(|error| error.to_string())
+    }
+
+    fn lean_ordinary_taxonomy_production_run_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+        frontiers: &[serde_json::Value],
+        terminal_document: &str,
+    ) -> Result<String, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "ordinary taxonomy publication requires KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+                .to_string()
+        })?;
+        let terminal: serde_json::Value =
+            serde_json::from_str(terminal_document).map_err(|error| error.to_string())?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "concept_count": terminal["concept_count"],
+            "role_count": terminal["role_count"],
+            "variable_count": terminal["variable_count"],
+            "ontology": terminal["ontology"],
+            "query": query.wire_json(),
+            "frontiers": frontiers,
+            "terminal": Self::lean_ordinary_taxonomy_query_payload(terminal_document)?,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(document)
+        } else {
+            Err("Lean rejected the ordinary taxonomy production run".to_string())
+        }
+    }
+
+    fn lean_ordinary_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker =
+            std::env::var_os("KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER",
+                    )
+                })
+                .ok_or_else(|| {
+                    "ordinary taxonomy publication requires KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER"
+                        .to_string()
+                })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -14279,6 +14452,62 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_ordinary_taxonomy_closed_run_certificate_json(
+        &self,
+        node_count: usize,
+        variable_count: usize,
+        concept_count: usize,
+        role_count: usize,
+        ontology: Vec<LeanHtClause>,
+        initial_labels: &[(Node, CLit)],
+        query: LeanHtTaxonomyQuery,
+        tree: LeanHtRefutationTree,
+    ) -> Result<String, String> {
+        serde_json::to_string(&LeanHtCertificate {
+            version: 1,
+            node_count,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            labels: initial_labels
+                .iter()
+                .map(|&(node, literal)| LeanHtLabel {
+                    node,
+                    literal: Self::lean_wire_lit(literal),
+                })
+                .collect(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
+            evidence: query.finite_closed_evidence(tree),
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn lean_equality_taxonomy_closed_run_certificate_json(
+        &self,
+        node_budget: usize,
+        variable_count: usize,
+        concept_count: usize,
+        role_count: usize,
+        ontology: Vec<LeanHtClause>,
+        root_state: LeanHtEqState,
+        query: LeanHtTaxonomyQuery,
+        tree: LeanHtEqRefutationTree,
+    ) -> Result<String, String> {
+        serde_json::to_string(&LeanHtEqCertificate {
+            version: 2,
+            node_count: node_budget,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            state: root_state,
+            evidence: query.equality_closed_evidence_with(tree),
+        })
+        .map_err(|error| error.to_string())
+    }
+
     pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
         self.finalize_lean_certificate(self.lean_unsat_certificate_json_raw()?)
     }
@@ -14858,33 +15087,25 @@ impl Ht {
     /// Decide one taxonomy cell with the same total certification search used
     /// for global consistency. The returned document is deliberately the raw
     /// normalized-ontology evidence consumed by the complete taxonomy wrapper.
-    fn lean_taxonomy_query_decision_certificate_json(
+    fn lean_taxonomy_query_decision_and_run_json(
         &self,
         query: LeanHtTaxonomyQuery,
-    ) -> Result<(bool, String), String> {
+        minimum_concept_count: usize,
+    ) -> Result<(bool, String, String), String> {
         if !self.native_abox.individuals.is_empty() {
             return if self.card_defs.is_empty() {
-                self.lean_native_abox_taxonomy_query_decision_certificate_json(query)
+                self.lean_native_abox_taxonomy_query_decision_and_run_json(query)
             } else {
-                self.lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(query)
+                self.lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(query)
             };
         }
         if !self.card_defs.is_empty() {
-            let (answer, terminal, _) =
-                self.lean_cardinality_taxonomy_query_decision_and_run_json(query)?;
-            return Ok((answer, terminal));
+            return self.lean_cardinality_taxonomy_query_decision_and_run_json(query);
         }
         let initial_labels = query.initial_labels();
-        let closed_document = || match query {
-            LeanHtTaxonomyQuery::Concept(concept) => {
-                self.lean_unsatisfiable_concept_certificate_json_raw(concept)
-            }
-            LeanHtTaxonomyQuery::Subsumption(sub, sup) => {
-                self.lean_subsumption_certificate_json_raw(sub, sup)
-            }
-        };
         let (variable_count, mut concept_count, role_count, ontology) =
             self.lean_decision_signature();
+        concept_count = concept_count.max(minimum_concept_count);
         for &(_, literal) in &initial_labels {
             concept_count = concept_count.max(literal.c as usize + 1);
         }
@@ -14910,8 +15131,28 @@ impl Ht {
                     node_budget,
                     &forbidden_folds,
                 ) {
-                    LeanHtEqRefutationOutcome::Closed(_, _) => {
-                        return Ok((false, closed_document()?));
+                    LeanHtEqRefutationOutcome::Closed(tree, _) => {
+                        let terminal = self.lean_equality_taxonomy_closed_run_certificate_json(
+                            node_budget,
+                            variable_count,
+                            concept_count,
+                            role_count,
+                            ontology.clone(),
+                            state.equality_wire_state(node_budget),
+                            query,
+                            tree,
+                        )?;
+                        if !self.lean_taxonomy_candidate_passes(&terminal)? {
+                            return Err(
+                                "Lean rejected the exact equality taxonomy refutation".to_string()
+                            );
+                        }
+                        let run = self.lean_ordinary_taxonomy_production_run_json(
+                            query,
+                            &frontier_history,
+                            &terminal,
+                        )?;
+                        return Ok((false, terminal, run));
                     }
                     LeanHtEqRefutationOutcome::Open(state) => {
                         let mut rejected_assignments = HashSet::new();
@@ -14934,7 +15175,12 @@ impl Ht {
                                 }))
                                 .map_err(|error| error.to_string())?;
                                 if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                    return Ok((true, candidate));
+                                    let run = self.lean_ordinary_taxonomy_production_run_json(
+                                        query,
+                                        &frontier_history,
+                                        &candidate,
+                                    )?;
+                                    return Ok((true, candidate, run));
                                 }
                             }
                             let node_count = candidate_state.representatives.len();
@@ -14950,7 +15196,12 @@ impl Ht {
                             })
                             .map_err(|error| error.to_string())?;
                             if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                return Ok((true, candidate));
+                                let run = self.lean_ordinary_taxonomy_production_run_json(
+                                    query,
+                                    &frontier_history,
+                                    &candidate,
+                                )?;
+                                return Ok((true, candidate, run));
                             }
                             let inserted = rejected_assignments.insert(folds);
                             assert!(
@@ -15012,8 +15263,28 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtRefutationOutcome::Closed(_, _) => {
-                    return Ok((false, closed_document()?));
+                LeanHtRefutationOutcome::Closed(tree, node_count) => {
+                    let terminal = self.lean_ordinary_taxonomy_closed_run_certificate_json(
+                        node_count,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        ontology.clone(),
+                        &initial_labels,
+                        query,
+                        tree,
+                    )?;
+                    if !self.lean_taxonomy_candidate_passes(&terminal)? {
+                        return Err(
+                            "Lean rejected the exact equality-free taxonomy refutation".to_string()
+                        );
+                    }
+                    let run = self.lean_ordinary_taxonomy_production_run_json(
+                        query,
+                        &frontier_history,
+                        &terminal,
+                    )?;
+                    return Ok((false, terminal, run));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let mut rejected_assignments = HashSet::new();
@@ -15030,8 +15301,19 @@ impl Ht {
                             &finite,
                             &frontier_history,
                         )? {
+                            let finite = Self::lean_widen_ordinary_taxonomy_terminal(
+                                finite,
+                                concept_count,
+                                role_count,
+                                variable_count,
+                            )?;
                             if self.lean_taxonomy_candidate_passes(&finite)? {
-                                return Ok((true, finite));
+                                let run = self.lean_ordinary_taxonomy_production_run_json(
+                                    query,
+                                    &frontier_history,
+                                    &finite,
+                                )?;
+                                return Ok((true, finite, run));
                             }
                         }
                         if let Ok(regular) =
@@ -15055,8 +15337,19 @@ impl Ht {
                                     "evidence": query.equality_open_evidence(),
                                 }))
                                 .map_err(|error| error.to_string())?;
+                                let candidate = Self::lean_widen_ordinary_taxonomy_terminal(
+                                    candidate,
+                                    concept_count,
+                                    role_count,
+                                    variable_count,
+                                )?;
                                 if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                    return Ok((true, candidate));
+                                    let run = self.lean_ordinary_taxonomy_production_run_json(
+                                        query,
+                                        &frontier_history,
+                                        &candidate,
+                                    )?;
+                                    return Ok((true, candidate, run));
                                 }
                             }
                         }
@@ -15105,6 +15398,14 @@ impl Ht {
                 LeanHtRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
+    }
+
+    fn lean_taxonomy_query_decision_certificate_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String), String> {
+        let (answer, terminal, _) = self.lean_taxonomy_query_decision_and_run_json(query, 0)?;
+        Ok((answer, terminal))
     }
 
     /// Decide one taxonomy cell in the joint query/native-ABox state while
@@ -16485,9 +16786,16 @@ impl Ht {
         let mut mixed_concepts = Vec::with_capacity(named.len());
         let mut legacy_subsumptions = Vec::with_capacity(named.len());
         let mut mixed_subsumptions = Vec::with_capacity(named.len());
+        let mut concept_runs = Vec::with_capacity(named.len());
+        let mut subsumption_runs = Vec::with_capacity(named.len());
         let mut base: Option<serde_json::Value> = None;
         let mut concept_count = 0u64;
         let mut has_equality = false;
+        let matrix_concept_count = named
+            .iter()
+            .map(|&concept| concept as usize + 1)
+            .max()
+            .unwrap_or(0);
 
         let mut note_document =
             |document: String| -> Result<(Option<serde_json::Value>, serde_json::Value), String> {
@@ -16511,27 +16819,39 @@ impl Ht {
             };
 
         for &concept in named {
-            let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+            let (_, document, run) = self.lean_taxonomy_query_decision_and_run_json(
                 LeanHtTaxonomyQuery::Concept(concept),
+                matrix_concept_count,
             )?;
             let (legacy, mixed) = note_document(document)?;
             legacy_concepts.push(legacy);
             mixed_concepts.push(mixed);
+            concept_runs.push(
+                serde_json::from_str::<serde_json::Value>(&run)
+                    .map_err(|error| error.to_string())?,
+            );
         }
 
         for &sub in named {
             let mut legacy_row = Vec::with_capacity(named.len());
             let mut mixed_row = Vec::with_capacity(named.len());
+            let mut run_row = Vec::with_capacity(named.len());
             for &sup in named {
-                let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+                let (_, document, run) = self.lean_taxonomy_query_decision_and_run_json(
                     LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                    matrix_concept_count,
                 )?;
                 let (legacy, mixed) = note_document(document)?;
                 legacy_row.push(legacy);
                 mixed_row.push(mixed);
+                run_row.push(
+                    serde_json::from_str::<serde_json::Value>(&run)
+                        .map_err(|error| error.to_string())?,
+                );
             }
             legacy_subsumptions.push(legacy_row);
             mixed_subsumptions.push(mixed_row);
+            subsumption_runs.push(run_row);
         }
 
         let base = base.ok_or_else(|| "HT Lean taxonomy has no evidence".to_string())?;
@@ -16600,6 +16920,9 @@ impl Ht {
             "subsumptions": subsumptions,
         }))
         .map_err(|error| error.to_string())?;
+        if !self.lean_ordinary_taxonomy_run_matrix_passes(named, concept_runs, subsumption_runs)? {
+            return Err("Lean rejected the complete ordinary taxonomy run matrix".to_string());
+        }
         self.wrap_normalized_lean_taxonomy_certificate(payload)
     }
 
@@ -28813,6 +29136,78 @@ mod tests {
         assert!(
             !run_checker(&matrix),
             "Lean must reject a run retained under the wrong matrix coordinate"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn ordinary_taxonomy_run_matrix_binds_every_query_coordinate() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER")
+        else {
+            return;
+        };
+        let tableau = ht(Vec::new());
+        let named = [A, B];
+        let concept_count = B as usize + 1;
+        let concept_runs: Vec<_> = named
+            .iter()
+            .map(|&concept| {
+                let (_, _, run) = tableau
+                    .lean_taxonomy_query_decision_and_run_json(
+                        LeanHtTaxonomyQuery::Concept(concept),
+                        concept_count,
+                    )
+                    .expect("produce a checked ordinary concept run");
+                serde_json::from_str::<serde_json::Value>(&run).unwrap()
+            })
+            .collect();
+        let subsumption_runs: Vec<Vec<_>> = named
+            .iter()
+            .map(|&sub| {
+                named
+                    .iter()
+                    .map(|&sup| {
+                        let (_, _, run) = tableau
+                            .lean_taxonomy_query_decision_and_run_json(
+                                LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                                concept_count,
+                            )
+                            .expect("produce a checked ordinary subsumption run");
+                        serde_json::from_str::<serde_json::Value>(&run).unwrap()
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut matrix = serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
+        });
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-ordinary-taxonomy-run-matrix-{}.json",
+            std::process::id()
+        ));
+        let run_checker = |document: &serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(document).unwrap())
+                .expect("write ordinary taxonomy run matrix");
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run ordinary taxonomy matrix checker")
+                .success()
+        };
+        assert!(
+            run_checker(&matrix),
+            "Lean must accept the exact ordinary run matrix"
+        );
+        matrix["subsumption_runs"][0][1]["query"] = LeanHtTaxonomyQuery::Concept(B).wire_json();
+        assert!(
+            !run_checker(&matrix),
+            "Lean must reject an ordinary run retained under the wrong matrix coordinate"
         );
         let _ = std::fs::remove_file(path);
     }

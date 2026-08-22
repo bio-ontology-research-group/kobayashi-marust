@@ -181,6 +181,14 @@ name = "ht-cardinality-taxonomy-run-matrix-check"
 root = "HTCardinalityTaxonomyRunMatrixCheck"
 
 [[lean_exe]]
+name = "ht-ordinary-taxonomy-production-run-check"
+root = "HTOrdinaryTaxonomyProductionRunCheck"
+
+[[lean_exe]]
+name = "ht-ordinary-taxonomy-run-matrix-check"
+root = "HTOrdinaryTaxonomyRunMatrixCheck"
+
+[[lean_exe]]
 name = "ht-native-abox-taxonomy-run-matrix-check"
 root = "HTNativeABoxTaxonomyRunMatrixCheck"
 
