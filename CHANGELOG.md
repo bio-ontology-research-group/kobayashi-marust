@@ -42,6 +42,10 @@
   typed decoder fixes the concept, role, and variable vocabulary, enforces the
   current doubling node budget and exact ontology, reruns the regular semantic
   checker, and returns the capstone fallback package only after all checks pass.
+- Reconstruct equality fold certificates directly from decoded production
+  assignments and prove that equality-only assignment acceptance is exactly
+  the fold check used by finite equality terminals. A checker-accepted wire
+  assignment now constructs `HasCheckedEqFoldModel` for the decoded ontology.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

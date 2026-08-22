@@ -485,17 +485,22 @@ def finiteFoldPairs (nodeCount : Nat) : List (Fin nodeCount × Fin nodeCount) :=
   (List.finRange nodeCount).flatMap fun source =>
     (List.finRange nodeCount).map fun blocker => (source, blocker)
 
+def DecodedEqProductionBlockingTable.assignmentFoldCertificate
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) :
+    FiniteEqFoldCertificate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount := {
+  base := decoded.table.base
+  folds := (finiteFoldPairs decoded.nodeCount).filter fun pair =>
+    decide (pair ∈ assignment)
+}
+
 def DecodedEqProductionBlockingTable.materializeAssignment
     (decoded : DecodedEqProductionBlockingTable)
     (assignment : FoldAssignment (Fin decoded.nodeCount)) :
     FiniteEqCertificate decoded.nodeCount decoded.conceptCount
       decoded.roleCount decoded.variableCount :=
-  ({
-    base := decoded.table.base
-    folds := (finiteFoldPairs decoded.nodeCount).filter fun pair =>
-      decide (pair ∈ assignment)
-  } : FiniteEqFoldCertificate decoded.nodeCount decoded.conceptCount
-      decoded.roleCount decoded.variableCount).materialize
+  (decoded.assignmentFoldCertificate assignment).materialize
 
 def DecodedEqProductionBlockingTable.assignmentCandidateValidB
     (decoded : DecodedEqProductionBlockingTable)
@@ -506,6 +511,20 @@ def DecodedEqProductionBlockingTable.assignmentCandidateValidB
       materialized.checkCardinalityDefsExact decoded.exactDefinitions
   else
     (decoded.materializeAssignment assignment).checkEqSat
+
+/-- In the equality-only mode, assignment acceptance is exactly acceptance of
+the concrete fold certificate reconstructed from the decoded production
+state. -/
+theorem DecodedEqProductionBlockingTable.assignmentCandidateValidB_eq_foldCheck
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount))
+    (hmode : decoded.table.allBlockableSources = false) :
+    decoded.assignmentCandidateValidB assignment =
+      (decoded.assignmentFoldCertificate assignment).check := by
+  simp [DecodedEqProductionBlockingTable.assignmentCandidateValidB,
+    DecodedEqProductionBlockingTable.assignmentFoldCertificate,
+    DecodedEqProductionBlockingTable.materializeAssignment,
+    FiniteEqFoldCertificate.check, hmode]
 
 def FiniteProductionNativeABoxContext.seededB
     (context : FiniteProductionNativeABoxContext
@@ -911,6 +930,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_strict
     exact Finset.mem_union_right decoded.table.forbidden hpairs⟩
 
 #print axioms FiniteEqCertificate.computableQuotientRoleBlockingSignature_eq
+#print axioms DecodedEqProductionBlockingTable.assignmentCandidateValidB_eq_foldCheck
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound
 #print axioms DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB_sound

@@ -2,6 +2,7 @@ import ContextCalculus.HypertableauDecisionTotal
 import ContextCalculus.HypertableauNativeABoxSearch
 import ContextCalculus.HypertableauExpansionProduction
 import ContextCalculus.HypertableauEqualityBlockedSearch
+import ContextCalculus.HypertableauEqualityProductionBlockingWire
 import ContextCalculus.HypertableauCardinalityProductionSearch
 import ContextCalculus.HypertableauCardinalityClosedCompleteness
 
@@ -16,6 +17,20 @@ problem or a proof of its negation. A frontier is never a verdict.
 -/
 
 namespace ContextCalculus.Hypertableau
+
+/-- A checker-accepted equality-only assignment from the production wire is
+exactly the checked fold model required by a finite equality terminal. -/
+theorem DecodedEqProductionBlockingTable.hasCheckedEqFoldModel_of_assignment
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount))
+    (hmode : decoded.table.allBlockableSources = false)
+    (hcheck : decoded.assignmentCandidateValidB assignment = true) :
+    HasCheckedEqFoldModel (nodeCount := decoded.nodeCount)
+      decoded.table.base.base.ontology := by
+  let certificate := decoded.assignmentFoldCertificate assignment
+  refine ⟨certificate, rfl, ?_⟩
+  have heq := decoded.assignmentCandidateValidB_eq_foldCheck assignment hmode
+  simpa [certificate] using heq ▸ hcheck
 
 /-- The common semantic result of a certified production-global route. -/
 inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
