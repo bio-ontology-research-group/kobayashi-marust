@@ -150,18 +150,17 @@ def CheckedRegularRoundOutcome.regularSat_of_fold_free_runtime_terminal
     (hauthorized : ∀ rule ∈ certificate.roleClauses,
       rule.Authorized certificate.rules)
     (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
-    (hshape : ∀ clause ∈ certificate.residual, clause.SingleDirectRoleBody)
     (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
       PathLiftableHead atom)
-    (hdirect : ∀ clause ∈ certificate.residual,
-      certificate.state.DirectCoverForBody certificate.redirect
-        certificate.coverRelation clause)
-    (hcoverClosed : certificate.CoverClosed) :
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverGenerated : certificate.CoverGenerated)
+    (hroleClosed : certificate.state.RoleClosed certificate.rules) :
     CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
   .regularSat certificate hontology hnonempty
-    (certificate.check_of_fold_free_runtime_terminal runtime blocked fold hstate
-      hterminal hfoldTotal hfoldFree hredirect hauthorized hguarded hshape
-      hheads hdirect hcoverClosed)
+    (certificate.check_of_fold_free_roleClosed_runtime_terminal runtime blocked
+      fold hstate
+      hterminal hfoldTotal hfoldFree hredirect hauthorized hguarded hheads
+      hcoverClosed hcoverGenerated hroleClosed)
 
 /-- Complete checked result of one Rust equality-free control attempt. Every
 accepted serializer branch stores the proof returned by its Lean checker;

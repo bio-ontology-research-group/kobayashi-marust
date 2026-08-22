@@ -4,6 +4,19 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Reconstruct equality-free production blocker options from the concrete Lean
+  state, parent relation, ancestor lists, and outer forbidden-pair set. Every
+  listed source is proved unwitnessed, every option is a matching full pairwise
+  ancestor, and blocked-terminal semantics derive option non-emptiness and
+  fold-table totality.
+- Make the Cartesian exhaustion continuation proof-indexed. It can run only
+  with evidence that every assignment generated from the exact current option
+  table belongs to the rejected set, eliminating unconstrained behavior on
+  impossible exhaustion states.
+- Remove the single-direct-role-body restriction from the final fold-free
+  regular outcome. A generated endpoint cover over a role-closed raw graph and
+  identity redirect proves all cover edges raw, so the checker accepts the
+  full guarded residual fragment.
 - Lift the proved fold-free regular-checker completeness result into the actual
   checked equality-free round outcome. Under the concrete blocked-terminal and
   role-cover serializer invariants, KM's final empty-fold retry is necessarily

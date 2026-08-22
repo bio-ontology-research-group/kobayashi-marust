@@ -630,6 +630,19 @@ loops. It checks that every listed source has a blocker and that inserting the
 exposed pair set strictly enlarges the global forbidden set. Tests cover normal
 growth, repeated-product rejection, and an empty blocker family.
 
+`HypertableauRegularRouteProduction.lean` now reconstructs the equality-free
+open leaf's exact blocker table in Lean. Its sources are precisely nodes with
+an unwitnessed obligation; each option is a non-forbidden ancestor with the
+same full pairwise blocking signature. A concrete blocked runtime terminal
+therefore derives fold-table totality and option non-emptiness and constructs
+the executable Cartesian runtime without caller-supplied blocker assertions.
+The exhaustion continuation is proof-indexed: it receives a proof that every
+generated complete assignment was rejected, so concrete routes no longer need
+to assign semantics to an unverified exhaustion state. For the final fold-free
+candidate, generated endpoint cover plus raw role closure and identity redirect
+prove every cover edge is raw. The regular checker therefore accepts arbitrary
+guarded residual bodies, without the former single-direct-role-body restriction.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion

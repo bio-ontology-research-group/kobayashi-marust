@@ -34,8 +34,8 @@ structure CartesianFoldExpansionRuntime (Node Result : Type)
   checkConclusive : ∀ forbidden rejected assignment outcome,
     (inner forbidden).check rejected assignment = .inl outcome →
       ∃ result, outcome = .done result
-  expansionExact : ∀ forbidden rejected pairs fresh,
-    (inner forbidden).onExhausted rejected = .expand pairs fresh →
+  expansionExact : ∀ forbidden rejected exhausted pairs fresh,
+    (inner forbidden).onExhausted rejected exhausted = .expand pairs fresh →
       pairs = foldOptionPairs ((inner forbidden).options rejected)
 
 /-- Select the terminating outcome of the finite inner Cartesian loop.  The
@@ -109,12 +109,14 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
     (runtime : CartesianFoldExpansionRuntime Node Result)
     {forbidden : Finset (Node × Node)}
     {rejected : Finset (FoldAssignment Node)}
+    {exhausted : ∀ assignment ∈ enumerateFoldAssignments
+      ((runtime.inner forbidden).options rejected), assignment ∈ rejected}
     {pairs : Finset (Node × Node)}
     {fresh : ∃ pair ∈ pairs, pair ∉ forbidden}
-    (hexhausted : (runtime.inner forbidden).onExhausted rejected =
+    (hexhausted : (runtime.inner forbidden).onExhausted rejected exhausted =
       .expand pairs fresh) :
     pairs = foldOptionPairs ((runtime.inner forbidden).options rejected) :=
-  runtime.expansionExact forbidden rejected pairs fresh hexhausted
+  runtime.expansionExact forbidden rejected exhausted pairs fresh hexhausted
 
 #print axioms CartesianFoldExpansionRuntime.eventually_done
 #print axioms CartesianFoldExpansionRuntime.expansion_strict

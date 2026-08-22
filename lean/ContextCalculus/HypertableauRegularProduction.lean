@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauRuntimeSearch
 import ContextCalculus.HypertableauRegularCertificate
+import ContextCalculus.HypertableauEndpointRoleEvidence
 
 /-!
 # Equality-free blocked-open regular certificate production
@@ -863,7 +864,9 @@ structure CartesianFoldAssignmentRuntime (Node Result : Type)
   optionNonempty : ∀ rejected option,
     option ∈ options rejected → option.2 ≠ []
   check : Finset (FoldAssignment Node) → FoldAssignment Node → Result ⊕ Unit
-  onExhausted : Finset (FoldAssignment Node) → Result
+  onExhausted : ∀ rejected,
+    (∀ assignment ∈ enumerateFoldAssignments (options rejected),
+      assignment ∈ rejected) → Result
 
 /-! ### Runtime options derived from a total fold table -/
 
@@ -902,6 +905,14 @@ theorem foldOptions_option_nonempty
   rw [hempty] at hmem
   simp at hmem
 
+/-- Explicit-instance form of `foldOptions` for dependent exhaustion
+interfaces. -/
+noncomputable def foldOptionsUsing [Fintype Node] [DecidableEq Node]
+    (fold : Node → Node → Prop) (foldDecidable : DecidableRel fold)
+    (sources : List Node) : List (Node × List Node) := by
+  letI := foldDecidable
+  exact foldOptions fold sources
+
 /-- Build the executable inner producer from the blocked sources and total
 fold relation exposed by a concrete runtime terminal. -/
 noncomputable def CartesianFoldAssignmentRuntime.ofFoldTable
@@ -916,24 +927,40 @@ noncomputable def CartesianFoldAssignmentRuntime.ofFoldTable
       blocked rejected source = true)
     (check : Finset (FoldAssignment Node) → FoldAssignment Node →
       Result ⊕ Unit)
-    (onExhausted : Finset (FoldAssignment Node) → Result) :
+    (onExhausted : ∀ rejected,
+      (∀ assignment ∈ enumerateFoldAssignments
+        (foldOptionsUsing (fold rejected) (foldDecidable rejected)
+          (sources rejected)),
+        assignment ∈ rejected) → Result) :
     CartesianFoldAssignmentRuntime Node Result where
-  options rejected :=
-    letI := foldDecidable rejected
-    foldOptions (fold rejected) (sources rejected)
+  options rejected := foldOptionsUsing (fold rejected) (foldDecidable rejected)
+    (sources rejected)
   optionNonempty rejected option hoption := by
     letI := foldDecidable rejected
     exact foldOptions_option_nonempty (blocked rejected) (fold rejected)
-      (hfoldTotal rejected) (sources rejected) (hsources rejected) option hoption
+      (hfoldTotal rejected) (sources rejected) (hsources rejected) option
+      (by simpa [foldOptionsUsing] using hoption)
   check := check
   onExhausted := onExhausted
 
 def CartesianFoldAssignmentRuntime.toProducer
     [DecidableEq Node]
     (runtime : CartesianFoldAssignmentRuntime Node Result) :
-    CartesianFoldAssignmentProducer Node Result :=
-  CartesianFoldAssignmentProducer.ofRuntime runtime.options
-    runtime.optionNonempty runtime.check runtime.onExhausted
+    CartesianFoldAssignmentProducer Node Result where
+  options := runtime.options
+  optionNonempty := runtime.optionNonempty
+  attempt rejected :=
+    match hselected : firstFreshFoldAssignment rejected
+        (enumerateFoldAssignments (runtime.options rejected)) with
+    | none => .done (runtime.onExhausted rejected
+        ((firstFreshFoldAssignment_eq_none_iff rejected
+          (enumerateFoldAssignments (runtime.options rejected))).mp hselected))
+    | some assignment =>
+        match runtime.check rejected assignment with
+        | .inl result => .done result
+        | .inr _ => .rejected assignment
+            (firstFreshFoldAssignment_eq_some_mem hselected)
+            (firstFreshFoldAssignment_eq_some_fresh hselected)
 
 theorem CartesianFoldAssignmentRuntime.eventually_done
     [Fintype Node] [DecidableEq Node]
@@ -1202,6 +1229,55 @@ theorem FiniteRegularCertificate.check_of_simple_local_blocked_runtime_terminal
       (hsimple clause hclause)
   · exact hcoverClosed
 
+/-- A saturated runtime terminal with no blocker folds is accepted for the
+full guarded residual fragment when the serializer's generated endpoint cover
+is backed by a role-closed raw graph. Identity redirect turns every generated
+endpoint edge into an ordinary raw edge, so no restriction on the number or
+orientation of residual body roles is needed. -/
+theorem FiniteRegularCertificate.check_of_fold_free_roleClosed_runtime_terminal
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hfoldTotal : State.BlockedFoldTotal blocked fold)
+    (hfoldFree : ∀ source blocker, ¬ fold source blocker)
+    (hredirect : certificate.redirect = id)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverGenerated : certificate.CoverGenerated)
+    (hroleClosed : certificate.state.RoleClosed certificate.rules) :
+    certificate.check = true := by
+  have hunblocked : ∀ source, blocked source = false := by
+    intro source
+    cases hblocked : blocked source with
+    | false => rfl
+    | true =>
+        obtain ⟨blocker, hfold⟩ := hfoldTotal source hblocked
+        exact (hfoldFree source blocker hfold).elim
+  have hwitnessRefines : runtime.BlockedWitnessRefines blocked fold := by
+    intro source role filler hobligation hblocked
+    simp [hunblocked source] at hblocked
+  have hredirectRefines : State.BlockedRedirectRefines blocked fold
+      certificate.redirect := by
+    constructor
+    · intro source _
+      simp [hredirect]
+    · intro source blocker hfold
+      exact (hfoldFree source blocker hfold).elim
+  apply certificate.check_of_blocked_runtime_terminal runtime blocked fold
+    hstate hterminal hwitnessRefines hredirectRefines hauthorized hguarded
+    hheads hcoverClosed
+  intro role source target hcover
+  exact (hcoverGenerated role source target hcover).raw_of_identity_roleClosed
+    (by simp [hredirect]) hroleClosed
+
 /-- A saturated runtime terminal with no blocker folds is accepted using the
 identity redirect. Fold-table totality forces every node to be unblocked, so
 every existential obligation already has an ordinary runtime witness. This is
@@ -1259,6 +1335,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms State.coverDischarges_of_redirectCoverFacts
 #print axioms FiniteRegularCertificate.check_of_redirect_cover_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_simple_local_blocked_runtime_terminal
+#print axioms FiniteRegularCertificate.check_of_fold_free_roleClosed_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms no_infinite_fresh_fold_rejections
 #print axioms fold_learning_eventually_done
