@@ -25224,17 +25224,49 @@ mod tests {
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ));
-        std::fs::write(&path, document).unwrap();
+        std::fs::write(&path, &document).unwrap();
         let accepted = std::process::Command::new(checker)
             .arg(&path)
             .output()
             .expect("run production checker on genuinely invalid fold candidates");
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(&path);
         assert!(
             accepted.status.success(),
             "Lean must accept complete genuine rejection provenance: {}",
             String::from_utf8_lossy(&accepted.stderr),
         );
+
+        if let Some(trace_checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER")
+        {
+            let round: serde_json::Value = serde_json::from_str(&document).unwrap();
+            let trace = serde_json::json!({"version": 1, "rounds": [round]});
+            std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();
+            let traced = std::process::Command::new(&trace_checker)
+                .arg(&path)
+                .output()
+                .expect("run complete equality production trace checker");
+            assert!(
+                traced.status.success(),
+                "Lean must accept a genuine initial execution round: {}",
+                String::from_utf8_lossy(&traced.stderr),
+            );
+
+            let forged = serde_json::json!({
+                "version": 1,
+                "rounds": [trace["rounds"][0].clone(), trace["rounds"][0].clone()]
+            });
+            std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
+            let stale = std::process::Command::new(trace_checker)
+                .arg(&path)
+                .output()
+                .expect("run trace checker on a stale forbidden-set transition");
+            assert!(
+                !stale.status.success(),
+                "Lean must reject a rerun that did not learn the exhausted option union"
+            );
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]

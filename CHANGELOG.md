@@ -20,6 +20,13 @@
   conclusive checked outcome. Source-level publication theorems now consume
   such traces directly for regular, equality, cardinality, and native-ABox
   cardinality runs, independently of the abstract total-producer interface.
+- Add the executable equality-aware production-history wire and native checker.
+  It rechecks every embedded equality/cardinality/native-ABox blocker document,
+  requires an empty initial forbidden set, preserves exact source-problem
+  metadata across reruns, and accepts each transition only when the next
+  forbidden set equals the prior set union the exhausted option-pair set. A
+  cross-language test accepts genuine evidence and rejects a duplicated stale
+  rerun that learned nothing.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no
