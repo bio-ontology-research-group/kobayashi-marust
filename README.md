@@ -9,24 +9,25 @@
 
 Kobayashi-MaRust, or KM, combines a disjunctive consequence-based engine, an
 EL++ completion path, and feature-gated completion procedures in one automatic
-classifier. The default command profiles an ontology and selects a route
-without using the expected answer.
+OWL classifier. The default command profiles an ontology and chooses a route
+without access to the expected answer.
 
 ## Highlights
 
-- `km classify` completes **591 of 592** ORE 2015 ontologies under the
-  240-second, 20-GiB benchmark contract.
-- The automatic results comprise **588 exact retained or independently derived
-  full-IRI signatures** and three independently adjudicated results: contested
-  consistency cases 2669 and 15516, and inconsistent ontology 10860. Ontology
-  1194 is the only remaining non-completing input.
-- KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle and fails
-  closed when conversion, routing, or reasoning cannot produce a complete
-  answer.
-- The CLI also provides ontology profiles, bounded source-axiom explanations,
-  and incremental reasoning. A Protégé 5.6 plugin is included.
-- A separate Lean development proves results about selected abstract calculus
-  components. It does not verify the complete Rust executable.
+- `km classify` completes 591 of 592 ORE 2015 ontologies under the documented
+  240-second and 20-GiB benchmark contract.
+- Those results comprise 588 exact retained or independently derived full-IRI
+  signatures and three independently adjudicated cases: 2669, 15516, and
+  10860. Ontology 1194 is the remaining non-completing input.
+- KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle.
+- Conversion, routing, and certification paths fail closed when they cannot
+  justify a complete result.
+- A Protégé 5.6 plugin, ontology profiling, bounded explanations, and
+  incremental reasoning interfaces are included.
+- Lean currently provides a sorry-free, proof-carrying semantic surface for
+  KM's supported hypertableau evidence and production-control structures. The
+  final executable route-construction theorem is still in progress, followed
+  by certification of ELC, CB, and automatic routing.
 
 ## Install
 
@@ -39,502 +40,143 @@ cargo build --release --locked
 ./target/release/km --help
 ```
 
-The main executable is `engine/target/release/km`. Versioned source releases
-are available from the repository tags; the current certification release is
-`v0.3.204`. Lean now also composes finite multi-filler Skolem-bundle
-projection with every role-domain consequence justified by matching semantic
-role-inclusion and domain premises. The executable checker does not yet accept
-these extras until its wire reconstructs those premises from source clauses.
-Lean proves the finite equality-free, equality-aware,
-equality/cardinality, and distinct-cardinality HT refutation-tree formats sound
-and complete relative to their semantic finite refutation relations.
-Equality-changing transitions reconstruct checked canonical representative
-paths, finite branch families receive verified depth padding, and the complete
-finite HT source language and finite assignments have proved lossless bounded
-JSON encodings. Every accepted ordinary or equality-aware finite HT refutation
-tree also has an exact recursive JSON representation, including equality
-representatives and paths. The checked ELC certificate has an exact public
-taxonomy and inconsistency contract, including residual-source inputs and
-unsatisfiable-class bottom rows. Cardinality refutation vectors, checked node
-vectors, square matrices, and canonical depth-indexed cells also have proved
-lossless encodings. Every checker-accepted finite equality/cardinality
-refutation now has a bounded recursive wire document that decodes to an
-accepted refutation at the same depth. Checked successors are preserved;
-maximum-rule diagonal cells alone are canonicalized because the checker does
-not inspect them. The same recursive representability result now covers
-distinct-cardinality refutations, including exact preservation of every
-directed `apart` pair in checked successor states. Accepted production-global
-cardinality documents now pass an executable shape check and construct typed
-checked SAT or closed outcomes with their model or inconsistency semantics.
-Complete cardinality taxonomy documents already provide a positive-or-negative
-decision for every named concept and ordered named pair. The concrete
-equality-free clause-first runtime selector is total at each finite node budget:
-it refutes, reaches a canonical model, or reports explicit node exhaustion for
-iterative deepening. For equality-aware search, Lean now certifies the exact
-quotient-clash-first control and the following ontology-order,
-finite-assignment-order scan for quotient-closed undischarged clauses.
-The finite executable quotient evaluator is proved equivalent to semantic
-closed matching. Lean also certifies nearest-ancestor quotient pairwise
-blocking, unblocked explicit-witness selection, equality-fresh-node selection,
-and reconstruction of a closed recursive witness branch. A dedicated
-quotient-closed recursive equality refutation relation now matches Rust's
-grounding semantics and is proved sound; concrete clash, clause, and witness
-selectors reconstruct its constructors. The production equality UNSAT and
-query checker now evaluates branch bodies modulo the checked equality quotient,
-matching Rust's closed grounding semantics, and accepted trees prove ontology
-inconsistency, subsumption, or concept unsatisfiability as appropriate. Exact
-recursive completeness now constructs an accepted tree from every finite
-quotient-closed refutation, and every accepted tree has an exact decodable JSON
-representation. A finite measure containing ordinary HT facts and equality
-pairs now proves global termination of the clash-first equality runtime at each
-node budget: it refutes or reaches a blocked/saturated terminal or explicit
-frontier. Blocked equality terminals become SAT only when an independently
-checked finite equality fold validates the fully materialized quotient graph;
-global search composes that check while preserving node exhaustion as
-inconclusive. Both production equality SAT JSON formats, the normalized finite
-quotient and normalized anchored fallback, now have source-level soundness
-theorems directly from successful decode and `Except.ok true`. Concrete
-cardinality runtime fields now decode from bounded JSON and are checked before
-constructing the exact typed production state, active prefix, and
-expanded-minimum set. Checked concrete clause, witness, minimum, and maximum
-successors now equal the corresponding typed Lean production children,
-including exact active-node changes and extensional expanded-minimum `HashSet`
-semantics. The unified checked-successor predicate now proves every concrete
-recursive successor is a child in the well-founded production relation. Rust
-global HT publication now derives the semantic Boolean from the checker-ready
-evidence shape and rejects any mismatch with the recursive search result. The
-certified HT input boundary now preserves and checks converter omission fields.
-Lean proves that every accepted input summary has no dropped or fenced axioms,
-excludes nominal and native-ABox inputs, and requires independently checked
-role separation when inverse roles and cardinality restrictions coexist. This
-gate is a fail-closed projection theorem, not yet a full inverse-HT completeness
-theorem. Checker-enabled HT publication now also requires the independent
-`ht-projection-cert-check` executable. Its Lean decoder resolves source symbol
-and variable names and accepts only when the complete direct source conversion
-is exactly the ontology certified by HT. Missing evidence and transformations
-without a proved projection constructor defer instead of publishing. The
-exact common-body unary Skolem-pair replacement is now proved sound, complete,
-and equisatisfiable. A finite composition theorem installs every uniquely named
-pair in one shared Skolem interpretation and combines the result with untouched
-direct clauses. The mixed projection wire independently resolves its finite
-names, rejects reused functions, and checks the complete source-derived target
-extensionally against the ontology handed to HT. The native projection checker
-accepts direct and mixed documents. The Rust converter enforces the proved
-body, singleton-head, and variable wiring and drops malformed pairs. It now
-emits complete mixed evidence for exact simple pairs, and checker-enabled HT
-publishes only after the native projection checker accepts that evidence.
-Lean proves the finite multi-filler transformation through structurally fresh
-concepts sound and complete for the whole bundle list. Rust emits the complete
-bundle evidence, including source and target concept tables, Skolem functions,
-fresh definers, RBox premise clauses, concrete super-role paths, and derived
-domain consequences. The native wire verifies every path edge and final domain
-premise before accepting exact target-clause equality. Cardinality replacement,
-nominal/ABox, and other non-direct projection constructors remain unfinished.
-The remaining HT fragment audit, CB, and automatic routing certification remain
-unfinished. Equality countermodel paths are unchanged.
-
-The cardinality runtime refinement now covers all six ordered controls.
-Lean mirrors Rust's exact finite `apart`-list scan and proves both selected-clash
-soundness and exhaustive no-clash correspondence. It then lifts the certified
-quotient concept-clash selector into the distinct-cardinality calculus. A new
-quotient-closed distinct-cardinality refutation relation proves the exact
-`closed_holds` clause scan sound, including selected and exhausted outcomes.
-The quotient-blocked existential scan now composes with an executable
-distinct-fresh-node selector, proving selected witness recursion sound and
-fresh-node exhaustion exact. Minimum selection now uses the exact
-quotient-closed marker and blocking premises, with a proved marker-relocation
-lemma for materializing pairwise-distinct witnesses. Maximum selection now
-enumerates the exact `n+1` quotient-distinct qualifying successors and proves
-all unequal merge children necessary and sound. Terminal classification now
-proves exact exhaustion of all six ordered controls. A terminal becomes SAT
-only through an independently checked quotient/fold model; that checker/runtime
-composition now proves accepted finite equality/cardinality models sound and
-keeps closure, model, and frontier outcomes disjoint. Exact recursive runtime
-production of those outcomes remains to be connected. The complete recursive
-distinct-cardinality refutation checker now evaluates clause, minimum, and
-maximum premises through checked equality closure and proves every accepted
-tree semantically inconsistent. Both the standalone distinct-cardinality wire
-and production global cardinality documents invoke this checker. Successful
-production decoding and checking proves ontology inconsistency, subsumption,
-or concept unsatisfiability for the stated result mode. Minimum restriction
-selection now uses the production definition-major, ascending-node-ID scan,
-with exact exhaustion and selected-branch theorems. Rust's consecutive
-`active_nodes + index` target vector is proved in bounds, injective, fresh under
-the active-prefix invariant, and sound when composed with that selector. The
-finite wire-state checker now validates this invariant by checking every
-inactive ID for equality freshness and absence from directed `apart` facts,
-and accepted evidence yields freshness of the complete target vector. Ordinary
-witness and minimum materialization now preserve the active-prefix invariant
-at their exact enlarged prefix; accepted minimum successor transitions inherit
-that invariant through their checked finite state equality. Clause-head
-assertion and maximum equality merge also preserve it when their referenced
-nodes are active, and accepted finite successor transitions transport these
-results to their decoded states. Maximum successor selection now mirrors
-Rust's ascending-ID scan and first-representative-per-equality-class greedy
-phase; every selected node is proved qualifying and all selected nodes are
-pairwise quotient-distinct. Once `bound + 1` representatives exist, their exact
-prefix is converted to the dependent witness vector and proved to satisfy the
-executable maximum-candidate predicate. Greedy selection is complete for
-equality classes: every qualifying target is represented, and sufficient
-greedy width is equivalent to existence of a semantic `bound + 1`
-pairwise-distinct qualifying witness family. Maximum sites are now scanned in
-the production definition-major, ascending-source-ID order; selected sites are
-sound, exhaustive absence is exact, and finite terminal classification uses
-this concrete selector. The checked active-prefix invariant now also proves
-that every selected minimum or maximum source lies below Rust's
-`active_nodes` boundary, reconciling the finite Lean scans with production's
-active-only loops.
-The six controls are now composed into one typed production-shaped
-first-obstruction layer. Each later constructor carries exhaustion of every
-earlier selector, recursive children use the exact witness, minimum, and
-maximum target constructions, and closure of all selected children proves
-closure of the parent. A common strict-growth relation proves the recursive
-production search well founded. Its total result is a checked closed branch, an
-independently checked nonempty cardinality model, or an explicit budget
-frontier. Concrete runtime fields now construct this typed search state after
-executable validation, and all four recursive Rust successor families now map
-to the exact typed child configurations and therefore into the proved
-strict-growth recursion. Exact Rust recursive result construction remains to
-be audited for the remaining supported HT fragments.
-Cardinality minimum and maximum scans now retain stored definition IDs instead
-of identifying definitions structurally. Minimum suppression uses the same
-definition ID at any equality-equivalent previously expanded source, matching
-Rust's branch-local `minimums` metadata even when the definition list contains
-duplicates. Exact exhaustion, child closure, and active-source bounds are
-proved for both indexed scans.
-The production termination state now explicitly combines logical facts,
-`active_nodes`, and indexed expanded-minimum metadata. Its finite progress set
-matches Rust's labels, edges, obligations, equalities, directed apart pairs,
-and minimum IDs, and strict inclusion of this set is proved well-founded. The
-exact minimum successor strictly grows that set, including a zero-width
-minimum whose progress comes only from the expansion marker. Growth proofs for
-the other recursive transitions are still pending.
-Cardinality clause search now quantifies assignments over `active_nodes`, not
-the larger fixed node budget. Selected assignments are proved active, their
-successors preserve inactive-prefix freshness, and every selected absent-head
-assertion strictly grows the production progress set.
-Selected ordinary witness sources are now proved active. Their exact
-`active_nodes` successor configurations preserve the enlarged inactive-prefix
-invariant and strictly grow the same well-founded production progress set.
-Every deterministic maximum witness is now proved active, and every
-off-diagonal maximum merge is proved to add a genuinely new equality fact.
-Clause, witness, minimum, and maximum recursive children therefore all have
-strict-growth proofs over one well-founded production measure.
-Those transitions are now composed into an exact child-configuration relation.
-Every child is proved smaller, closure of every child closes its parent, and a
-well-founded induction principle provides the kernel for the total production
-outcome evaluator. The executable first-obstruction decision that instantiates
-this kernel remains unfinished.
-The finite-budget cardinality control is now total in production priority
-order. Well-founded search either constructs a quotient-closed refutation or
-reaches a descendant explicitly marked as an ordinary-witness frontier,
-minimum-width frontier, or selector-exhausted terminal. Node exhaustion is
-never treated as a logical open branch. Exhausted terminals still require the
-independent checked-model composition before they can produce SAT.
-That checked-model composition is now proved. Production search yields a sound
-refutation, a nonempty ontology/cardinality model derived from an accepted
-independent certificate, or an explicit frontier descendant. An exhausted
-terminal whose model evidence is missing or rejected remains inconclusive and
-cannot produce SAT.
+The main executable is `engine/target/release/km`.
 
 ## Classify an ontology
 
 ```sh
-cd engine
-./target/release/km classify ../examples/ontologies/kinship.ofn
-./target/release/km classify ontology.owl
-./target/release/km classify ontology.owx
-./target/release/km classify ontology.ttl
+km classify ontology.owl
 ```
 
-The result is JSON containing named-class subsumptions, unsatisfiable classes,
-consistency, and completion status. Plain `km classify` uses automatic routing.
-It never needs Python.
-
-Useful commands:
+Write the JSON classification result to a file:
 
 ```sh
-# Inspect ontology features and the selected route
-./target/release/km profile ontology.owl
-
-# List explicit routes
-./target/release/km routes
-
-# Force a named route for testing
-./target/release/km classify --route production_all ontology.owl
-
-# Explain a named-class subsumption
-./target/release/km explain ontology.ofn subclass \
-  http://example.org/A http://example.org/B
-
-# Start a JSONL incremental-reasoning session
-./target/release/km incremental
+km classify ontology.owl > classification.json
 ```
 
-Use explicit routes for diagnostics and reproducibility. For ordinary inputs,
-use the default automatic route. Route definitions and safety gates are in
-[`docs/ROUTING.md`](docs/ROUTING.md).
+Inspect the accepted options and worker commands:
 
-### Input contract
+```sh
+km classify --help
+km profile ontology.owl
+km explain ontology.owl subclass EX:Child EX:Parent
+```
 
-KM detects functional syntax, OWL/XML, RDF/XML, and Turtle from content and
-filename. Use `--format functional|owlxml|rdfxml|turtle` to override detection.
-The CLI does not fetch imports. Supply a self-contained ontology with its
-imports already merged. See [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md).
+`km classify` accepts the standard OWL serializations listed above. It converts
+the input to KM's normalized clause representation, profiles its features, and
+selects a compatible reasoning route. Worker entry points are also available
+as `km ofn`, `km elc`, `km engine`, and `km tableau` for development and
+diagnostics.
 
-## Current ORE 2015 result
+## ORE 2015 benchmark
 
-The production benchmark covers one deployable command, `km classify`, over all
-592 ontologies. Order-balanced paired job `50554161` verifies every result,
-checkpoint, route trace, collision-sensitive full-IRI fingerprint, and binary
-identity. The tested release-candidate binary is `bbef8d7efbc6…`.
+The table reports the automatic KM route, not an oracle-selected union of
+manually chosen configurations. Correct counts require agreement with the
+retained or independently adjudicated full-IRI result signature. Times and
+memory are computed over correct completions.
 
-| procedure | tested source | empirically correct | `status=ok` | wall mean s | wall median s | peak mean MiB | peak median MiB |
+| Reasoner | Tested version / commit | Correct | Completed | Mean time (s) | Median time (s) | Mean peak RSS (MiB) | Median peak RSS (MiB) |
 |---|---|---:|---:|---:|---:|---:|---:|
-| **KM automatic, `km classify`** | `v0.2.36` / `6851533` (binary `bbef8d7efbc6…`) | **591** | **591** | **3.2383** | **0.1628** | **427.88** | **35.39** |
-| Konclude | `v0.7.0-1138` / `0002e8063540` | 587 | 589 | 3.2657 | 0.2813 | 558.09 | 76.53 |
+| KM | v0.2.36; benchmark binary `bbef8d7` | 591/592 | 591/592 | 3.2383 | 0.1628 | 427.88 | 35.39 |
+| Konclude | v0.7.0-1138; `0002e8063540` | 587/592 | 589/592 | 3.2657 | 0.2813 | 558.09 | 76.53 |
 
-Values are measured on exclusive Intel Xeon Gold 6248 nodes with a 240-second
-timeout and 20-GiB memory cap. All 592 paired comparisons agree in status,
-verdict, consistency, selected route, solved state, answer counts, and full-IRI
-signature. KM is below the frozen Konclude measurements on mean and median wall
-time and mean and median peak memory.
-
-The automatic route uses four bounded subject workers for the large SRIQ bridge
-profile represented by ORE14817 and two for the large SHI profile represented
-by ORE3215. Three-pair focused gates preserve each gold signature and reduce
-median wall time from 91.8347 to 75.0825 seconds and from 125.5704 to 89.1692
-seconds, respectively.
+The benchmark corpus, limits, canonical signatures, adjudications, special
+cases, and route history are documented in
+[`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md),
+[`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md), and
+[`results/benchmarks/`](results/benchmarks/). The table records the exact
+tested artifacts; it is not automatically attributed to later source releases.
 
 ## Protégé plugin
 
-The plugin invokes the native `km` executable and exposes the inferred named
-class hierarchy and unsatisfiable classes in Protégé 5.6.
+Build the plugin with Maven:
 
 ```sh
 cd protege
-mvn test
 mvn package
 ```
 
-Copy `target/kobayashi-marust-protege-0.3.0.jar` into Protégé's `plugins/`
-directory and configure `KM_BIN` or `-Dkm.bin`. Platform-specific installation
-and explanation integration are documented in
-[`protege/README.md`](protege/README.md).
+Copy the generated JAR from `target/` into Protégé's `plugins/` directory and
+place the `km` executable on `PATH`. Restart Protégé, select KM from the
+reasoner menu, and start the reasoner. Detailed setup and troubleshooting are
+in [`protege/README.md`](protege/README.md).
 
-## Formalisation and correctness scope
+## Lean certification
 
-The `lean/` directory contains a `sorry`-free Lean development for abstract
-resolution, selected context-calculus constructions, inverse-role encoding,
-nominal rules, and small certificate checkers. Build it separately:
+The Lean development is under [`lean/`](lean/). Build it with:
 
 ```sh
 cd lean
 lake exe cache get
-lake build
-# Native checker linking can otherwise use one compiler per workstation core.
-LEAN_NUM_THREADS=2 lake build elc-cert-check
-LEAN_NUM_THREADS=2 lake build ht-cert-check
-LEAN_NUM_THREADS=2 lake build ht-eq-cert-check
-LEAN_NUM_THREADS=2 lake build ht-taxonomy-cert-check
+lake build -j 4
 ```
 
-The formalization proves soundness and canonical-model completeness for the
-pure ELC normal-form calculus used by the Rust worker: NF1–NF7, explicit top
-and bottom, existential bottom propagation, role hierarchy, reflexive roles,
-and role chains. It proves that a sound, closed materialization yields the exact
-taxonomy and inconsistency result. It also proves fail-closed composition for
-abstract workers, sequential fallbacks, races, and profile-based routing.
+Run the production HT certification gate from the repository root:
 
-The certification build provides `elc-cert-check`, a native Lean checker for
-the versioned Rust certificate wire format. Wire version 5 carries the exact
-raw ELC clauses, variable signature, generated conjunction origins, normalized
-ontology, completion trace, and published result. Lean recomputes and validates
-the raw-to-normal transformation before checking completion. Set
-`KM_ELC_LEAN_CERT_CHECKER=/path/to/elc-cert-check` to require proof-trace,
-closure, and Rust-state agreement before the pure ELC worker can publish. It
-also checks exact residual-compilation evidence, the NF3 witness rewrite, and
-canonical-model composition. The production worker can publish residual
-results only after this checker accepts the complete wire-v5 certificate; it
-fails closed if any stage fails. Unchecked repair output is never published by
-this opt-in path.
+```sh
+./lean/run-ht-certification-gate.sh
+```
 
-The certification build also provides `ht-cert-check`. It bounds-checks a
-versioned finite HT SAT or UNSAT document, then checks guarded bodies, branch
-labels and edges, existential witnesses, saturation, clashes, and exhaustive
-disjunctive children. Acceptance proves that SAT evidence constructs a model or
-that empty-root UNSAT evidence excludes every nonempty-domain model. The Rust HT
-worker emits checked decision evidence when
-`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check` and `KM_HT_GLOBAL=1` are set.
-For equality-free inputs, an open blocked branch produces a regular-unravelling
-model certificate while a closed search produces a finite refutation. The main
-checker transfers either result through checked trigger absorption,
-contrapositive extension, and body-equality normalization to the original
-source ontology. The worker publishes global consistency only after Lean
-accepts this source-aware document, and otherwise fails closed. For default
-certification-only full pairwise blocking, Rust materializes each proposed
-finite fold as ordinary edges in both predecessor directions. Lean exhaustively
-checks the folded graph, so blocker selection remains outside the trust
-boundary. A rejected fold resumes iterative deepening and is never published.
-Full pairwise-signature equality alone does not guarantee that one-round folding
-is closed under multi-edge role chains; Lean includes an executable
-counterexample. Moreover, inverse roles combined with counting do not have the
-finite-model property. Finite folded SAT evidence is therefore a sound
-acceptance path, not a completeness argument for full SROIQ. Completing HT
-certification requires a checked regular/unravelled-model certificate for that
-fragment. For inconsistent clause sets admitting a finite
-refutation, Rust independently constructs an exhaustive empty-root tree over
-concept, role, and existential facts. An existential obligation may bind a
-fresh certificate node to its semantic witness; Lean checks freshness before
-accepting the added edge and filler label. Version 2 checks both global SAT and
-UNSAT evidence with equality heads. SAT acceptance constructs a nonempty model
-on node-equivalence classes after exhaustively checking labels, edges,
-obligations, and every guarded grounding modulo equality. UNSAT children carry
-the exact equality history, representative vector, and paths witnessing the
-quotient. Publication occurs only after Lean accepts the evidence. Certified
-full-pairwise mode lazily enumerates every finite variable assignment and
-deepens its node frontier whenever a branch reaches it. A genuinely open branch
-or an explicitly configured diagnostic node cap still declines. Equality-aware
-query countermodels and taxonomy evidence, inverse roles, nominals, native ABoxes,
-QO, and runtime termination/blocking correspondence remain separate HT
-certification tasks.
+### Current certified HT boundary
 
-The formalization also defines the canonical rooted-forest domain for the
-next equality/nominal regular-model stage. Anonymous witnesses retain path
-identity, while every selected nominal root denotes one domain value; Lean
-proves the corresponding nominal concept has a singleton extension. Lean also
-defines the anchored role model, closes direct edges under the
-normalized RBox, proves witness and nominal-label satisfaction, and proves its
-canonical-model theorem for guarded ontologies. Executable equality/nominal
-regular publication still requires equality-closure evidence connecting Rust's
-representatives and nominal carriers to the checked anchored model.
+`ContextCalculus.HypertableauCertificationSurface` exports the current
+production capstones for:
 
-The native `ht-anchored-premises-check` bounds-checks a complete regular
-certificate plus its nominal-root vector. Acceptance proves clash freedom,
-exact nominal-label coherence, redirected witness completion, finite residual
-saturation, and normalized RBox closure, then constructs an anchored
-nominal-aware model of the exact decoded ontology. Equality/nominal publication
-still requires checked evidence connecting Rust's union-find representatives
-to these canonical nominal roots.
+- global HT classification;
+- regular taxonomy classification;
+- equality and cardinality taxonomy classification;
+- native-ABox taxonomy classification; and
+- native-ABox cardinality taxonomy classification.
 
-The anchored checker also accepts equality heads when either equality variable
-has a checked positive nominal guard in the same clause body. Lean proves that
-the guard makes the endpoint canonical, so finite endpoint equality entails
-semantic equality. Unguarded equality heads remain rejected.
+Given a checked production-route structure, Lean proves termination of its
+bounded search and sound and complete classification relative to the checked
+source projection and finite semantic problem. The development covers the
+production control order for clauses, existential witnesses, equality,
+inequality, minimum cardinality, maximum cardinality, blocking, forbidden-pair
+learning, and iterative budget growth. Accepted SAT results carry a checked
+finite model. Accepted UNSAT and taxonomy results carry checked recursive
+evidence.
 
-The build additionally provides `ht-regular-cert-check`,
-`ht-regular-cardinality-cert-check`, and
-`ht-anchored-cardinality-cert-check`. These executables decode the bounded
-regular wires and run the proved finite cover, residual-clause, witness, and
-cardinality checks. The anchored cardinality checker also validates the dense
-equality image, nominal roots, explicit successor slots, and exact shared
-dimensions; acceptance constructs one anchored interpretation satisfying the
-ontology and all cardinality definitions. The ordinary regular checker
-constructs the infinite regular unravelling model rather than relying on a
-finite folded graph. The Rust producer emits the ordinary regular wire through
-the equality-free global certification API. The dedicated
-executables remain useful lower-layer checker targets; this does not claim that
-the complete production HT route is certified for every SROIQ feature. The
-Rust producer emits checker-accepted regular
-documents for blocked equality-free branches, including normalized role-rule
-partitioning, redirect witnesses, and finite endpoint closure. Production
-publication uses one checked regular-SAT/finite-refutation envelope and composes
-it with source preprocessing before the main checker accepts it.
+The gate builds the complete Lean development and the explicit capstone,
+audits its axiom report for `sorryAx`, checks that its inventory matches all 29
+HT checker executables declared in `lakefile.toml`, builds and runs those
+checkers, and executes the Rust-to-Lean integration tests. The exported
+capstones currently report only Lean's standard `propext`, `Classical.choice`,
+and `Quot.sound` axioms.
 
-Certified mode 6 also checks before SAT serialization that every generated
-node has a strictly earlier predecessor and that no full-signature-blocked node
-retains a generated child. Lean proves these invariants bound every expanded
-ALC(H) path by the finite role-sensitive signature vocabulary. Cross-query SAT
-caches are disabled in certified construction because they have no local
-blocker witness.
+This is a proof-carrying checker boundary. It proves the semantics of results
+whose source projection and evidence are accepted by the Lean-derived checker
+contracts. It does not verify the Rust compiler, operating system, process
+supervision, or arbitrary unchecked Rust execution.
 
-Over the resulting finite fact vocabulary, Lean proves strict branch growth is
-well-founded and proves the exhaustive-search completeness capstone: a concrete
-transition enumerator that exposes every terminal obstruction and combines all
-closed children must either refute the root or reach a canonical model of the
-exact guarded ontology. The equality-free production-global route additionally
-models rejected blocker certificates explicitly: KM learns every rejected fold,
-Lean proves that these retries terminate at each finite node budget, and the
-settled attempts compose with checked frontier doubling and source projection.
-The remaining equality-free producer obligation is to prove that one of the
-finitely explored blocker choices constructs the exact regular-cover terminal
-invariant whenever the source ontology is satisfiable.
+The current public capstones still receive the per-budget runtime and its
+computed-outcome classification through `CertifiedHT…Route` fields. Complete
+HT certification additionally requires constructing those fields from the
+production input and executable checker path. The HT milestone will not be
+released until that final correspondence is part of the public surface.
 
-Lean now represents an equality-free HT state exactly as a finite set of label,
-edge, and obligation facts. It proves round-trip decoding, strict growth for
-each absent branch head and fresh witness, and exact child closure for the
-disjunctive and existential `Refutes` constructors. The completeness theorem is
-specialized directly to this representation. Establishing the blocked fresh
-address supply and matching Rust's enumerator to these transitions remains.
+### Certification roadmap
 
-Lean characterizes fresh witness nodes exactly as addresses absent from the
-finite active-node set, proves a fresh node exists while that universe has
-capacity, and proves a blocked path below the signature depth can be extended
-by one successor slot. An unused obligation-specific extension is therefore a
-valid fresh witness. The remaining tree invariant must connect used extensions
-to already-discharged obligations.
+Certification releases are made only for complete layers:
 
-`ht-taxonomy-cert-check` checks one complete named taxonomy matrix: one concept
-decision for every named class and one subsumption decision for every ordered
-pair. Positive answers carry finite refutations and negative answers carry
-finite countermodels. Position checks, exact row widths, exact row count,
-bounded identifiers, and duplicate-free named classes prevent omitted,
-duplicated, or reassigned cells. Set
-`KM_HT_LEAN_PROJECTION_CHECKER=/path/to/ht-projection-cert-check`,
-`KM_HT_LEAN_CERT_CHECKER=/path/to/ht-cert-check`, and
-`KM_HT_LEAN_TAXONOMY_CERT_CHECKER=/path/to/ht-taxonomy-cert-check`, together
-with `KM_HT_GLOBAL=1`, to enable fail-closed certified taxonomy publication.
-The worker derives its published taxonomy directly from the accepted matrix and
-publishes nothing if either the global or taxonomy checker rejects. This covers
-the equality-free ALC(H) fragment and checker-accepted finite or anchored
-equality, nominal, and cardinality countermodels. Complete correspondence
-between every Rust transition and the formal search remains unfinished. This
-is not a certificate for all HT inputs or for
-automatic routing.
+1. complete production HT certification;
+2. complete ELC soundness and completeness certification;
+3. complete CB soundness and completeness certification;
+4. complete automatic-routing soundness and completeness certification; and
+5. an integrated cross-layer audit followed by v1.0.0.
 
-The Lean development also proves semantic exactness of the direct
-frontend-to-NF1–NF7 translations. The checker validates the optimized Rust ELC
-state against the formal closure, the complete active concept set, the ID-level
-public relation, its named-string materialization, and the inconsistency flag.
-Checker-enabled Rust publishes that verified named result directly. The
-OWL/frontend-clause-to-normal-form translation has semantic proofs for direct
-forms, conservative n-ary auxiliary expansion, and the raw two-clause Skolem
-encoding of existential introduction. Executable raw recognizers check
-variable wiring, Skolem pairing, whole-list assembly, auxiliary identity, and
-equality with Rust's emitted normal forms. The residual formalization proves the canonical-model composition theorem
-needed by plain `CertMode::Check`, over the same live concept-only domain Rust
-enumerates, and provides a proved finite checker for compiled residual clauses.
-CB, concrete production routing, and the remaining HT features are not yet
-certified. ORE results are empirical and successful termination alone is not
-correctness evidence. See
-[`lean/README.md`](lean/README.md).
-
-## Documentation
-
-- [`engine/README.md`](engine/README.md): normalized clause engine and JSON API
-- [`docs/ROUTING.md`](docs/ROUTING.md): routes, profiles, and safety gates
-- [`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md): supported OWL syntaxes
-- [`docs/EXPLANATIONS.md`](docs/EXPLANATIONS.md): explanation CLI and schema
-- [`docs/INCREMENTAL-REASONING.md`](docs/INCREMENTAL-REASONING.md): incremental protocol
-- [`CHANGELOG.md`](CHANGELOG.md): release and implementation history
+ELC, CB, and routing are not claimed complete until their respective public
+capstones, executable correspondence, axiom audits, and integration gates all
+pass.
 
 ## Repository layout
 
-```text
-engine/       Rust reasoner and `km` executable
-lean/         Lean formalisation
-protege/      Protégé plugin
-docs/         user, architecture, and evidence documentation
-results/      benchmark results and reproducibility records
-validation/   small certificate examples
-examples/     example ontologies
-```
+- [`engine/`](engine/) – Rust reasoner, frontends, orchestration, and tests
+- [`lean/`](lean/) – Lean definitions, proofs, and executable checkers
+- [`protege/`](protege/) – Protégé integration
+- [`docs/`](docs/) – architecture, formats, benchmarks, and operational notes
+- [`CHANGELOG.md`](CHANGELOG.md) – release history and detailed proof milestones
 
-## License and citation
+## License
 
-KM is available under the BSD-3-Clause license. See [LICENSE](LICENSE) and
-[CITATION.cff](CITATION.cff).
-
-The consequence-based calculus follows work by Tena-Cucala, Cuenca Grau, and
-Horrocks and the Sequoia reasoner. Konclude, HermiT, and independent witnesses
-provide comparison evidence where identified by the retained benchmark record.
+KM is distributed under the [BSD 3-Clause License](LICENSE).

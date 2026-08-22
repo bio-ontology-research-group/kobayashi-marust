@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+### Consolidate certification documentation
+
+- Replace the incremental proof diary in the project README with the current
+  user interface, version-bound benchmark evidence, the exact exported HT
+  certification boundary, its trusted-base qualification, and the unfinished
+  ELC, CB, and routing obligations.
+- Reserve certification releases for complete layers: HT, ELC, CB, routing,
+  and the final integrated certification. Intermediate proof steps remain
+  ordinary commits instead of separate releases.
+- Record the exact remaining HT boundary: the present publication capstones
+  consume a `CertifiedHT…Route` containing the per-budget runtime and
+  computed-outcome classification. The HT release requires an executable
+  route-construction theorem rather than treating this conditional interface
+  as the finished milestone.
+
 ### Strengthen the certified HT blocking boundary
 
 - Define a concrete, proof-indexed execution trace for KM's nested
