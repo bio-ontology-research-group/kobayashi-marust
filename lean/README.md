@@ -611,9 +611,14 @@ every generated assignment has been rejected. The production capstones now
 take ordinary executable functions for option reconstruction, candidate
 checking, and the post-exhaustion continuation; callers no longer supply a
 dependent producer as an assumption. Lean constructs one settled checked
-outcome for every budget and composes those outcomes with address frontier
-doubling and source-model equivalence. The same executable-assignment capstone
-covers regular, equality, cardinality, native-ABox, and combined
+inner outcome for every outer forbidden-pair state. Exact assignment
+exhaustion may rerun saturation only when the continuation exhibits at least
+one newly forbidden pair; finite strict growth proves that these reruns also
+terminate. A fold-free retry that cannot add a pair is therefore outside the
+certified completeness interface rather than an assumed result. Lean composes
+the settled two-level outcomes with address frontier doubling and source-model
+equivalence. The same executable-assignment and expansion capstone covers
+regular, equality, cardinality, native-ABox, and combined
 native-ABox-cardinality global and taxonomy routes.
 
 `HypertableauRegularDecisionWire.lean` supplies a checked sum envelope at the

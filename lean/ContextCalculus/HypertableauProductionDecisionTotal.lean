@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauDecisionTotal
 import ContextCalculus.HypertableauNativeABoxSearch
+import ContextCalculus.HypertableauExpansionProduction
 
 /-!
 # Total production hypertableau global decision
@@ -121,12 +122,13 @@ theorem CertifiedHTProductionGlobalRoute.decides
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedNativeABoxCardinalityOutcome.SourceSemantics] at hsemantics
 
-/-! ## Current complete-assignment production route
+/-! ## Current complete-assignment and expansion production route
 
 The legacy route above records pair-set rejection.  Current KM rejects one
 complete simultaneous fold assignment and retains its constituent pairs for
-other candidates.  This route is the end-to-end semantic interface for that
-control. -/
+other candidates. After exact assignment exhaustion, a rerun must add a fresh
+forbidden pair. This route is the end-to-end semantic interface for both finite
+learning layers. -/
 
 inductive CertifiedHTAssignmentProductionGlobalRoute :
     (semantics : Prop) → Type 2 where
@@ -134,11 +136,11 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, CartesianFoldAssignmentRuntime
+      (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
       (scheduled : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hcheck) →
         document.checkScheduled budget = true) :
       CertifiedHTAssignmentProductionGlobalRoute (HasNonemptyModel source)
@@ -146,11 +148,11 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, CartesianFoldAssignmentRuntime
+      (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
       (nodes : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hcheck) →
         document.node_count = 8 * 2 ^ budget) :
       CertifiedHTAssignmentProductionGlobalRoute (EqualityHasNonemptyModel source)
@@ -161,16 +163,16 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (producer : ∀ budget, CartesianFoldAssignmentRuntime
+      (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
           target definitions))
       (nodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
       (width : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.max_width = maxWidth) :
       CertifiedHTAssignmentProductionGlobalRoute
@@ -184,16 +186,16 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (producer : ∀ budget, CartesianFoldAssignmentRuntime
+      (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
           variableCount abox target definitions))
       (nodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
       (width : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry = .done
+        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
           (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.max_width = maxWidth) :
       CertifiedHTAssignmentProductionGlobalRoute
@@ -206,9 +208,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
   cases route with
   | regular equivalent producer scheduled =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_regular_scheduled_fold_assignment_producer_decides_source equivalent
+        checked_regular_scheduled_fresh_fold_producer_decides_source equivalent
           (fun budget =>
-            (producer budget).toProducer.toGuarded.toFoldAssignmentProducer)
+            (producer budget).toGuardedFoldProducer.toFreshFoldProducer)
           scheduled
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
@@ -221,9 +223,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
   | equality equivalent producer nodes =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_equality_fold_assignment_producer_decides_source equivalent
+        checked_equality_fresh_fold_producer_decides_source equivalent
           (fun budget =>
-            (producer budget).toProducer.toGuarded.toFoldAssignmentProducer)
+            (producer budget).toGuardedFoldProducer.toFreshFoldProducer)
           nodes
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
@@ -234,9 +236,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
   | cardinality equivalent maxWidth producer nodes width =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_cardinality_fold_assignment_producer_decides_source equivalent
+        checked_cardinality_fresh_fold_producer_decides_source equivalent
           maxWidth (fun budget =>
-            (producer budget).toProducer.toGuarded.toFoldAssignmentProducer)
+            (producer budget).toGuardedFoldProducer.toFreshFoldProducer)
           nodes width
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
@@ -247,9 +249,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
   | nativeABox equivalent maxWidth producer nodes width =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_native_abox_cardinality_guarded_fold_assignment_producer_decides_source
+        checked_native_abox_cardinality_fresh_fold_producer_decides_source
           equivalent maxWidth
-          (fun budget => (producer budget).toProducer.toGuarded)
+          (fun budget =>
+            (producer budget).toGuardedFoldProducer.toFreshFoldProducer)
           nodes width
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart

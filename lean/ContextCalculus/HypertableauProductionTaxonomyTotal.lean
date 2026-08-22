@@ -3,7 +3,7 @@ import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauCardinalityTaxonomyWire
 import ContextCalculus.HypertableauNativeABoxTaxonomy
 import ContextCalculus.HypertableauNativeABoxCardinalityTaxonomyWire
-import ContextCalculus.HypertableauRegularProduction
+import ContextCalculus.HypertableauExpansionProduction
 
 /-!
 # Total production hypertableau taxonomy search
@@ -250,6 +250,26 @@ theorem checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
   exact checked_taxonomy_scheduled_guarded_fold_assignment_producer_decision
     (fun budget => (producer budget).toProducer.toGuarded)
     hscheduled ofHolds ofRefutes
+
+/-- Full production control: complete assignments settle at each outer state,
+and assignment exhaustion may rerun only after adding a fresh forbidden pair. -/
+theorem checked_taxonomy_scheduled_fold_expansion_producer_decision
+    (producer : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedTaxonomyRoundOutcome conceptCount roleCount statement))
+    (hscheduled : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
+        .done (.frontier document hconcepts hroles hcheck) →
+      document.checkScheduled budget = true)
+    (ofHolds : statement → Decision)
+    (ofRefutes : ¬statement → Decision) : Nonempty Decision := by
+  apply checked_taxonomy_fresh_fold_producer_decision
+    (fun budget =>
+      (producer budget).toGuardedFoldProducer.toFreshFoldProducer) _
+    ofHolds ofRefutes
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact document.checkScheduled_node_count budget
+    (hscheduled budget retry document hconcepts hroles hcheck hrun)
 
 /-- Serialized-frontier form of the producer theorem. The exact doubling
 dimension is extracted from an executable schedule check rather than supplied
@@ -721,7 +741,8 @@ theorem CertifiedHTFreshFoldNativeABoxCardinalityProductionTaxonomyRoute.decides
 
 These are the production interfaces used by the current Rust search.  A
 checker rejection excludes one complete simultaneous fold assignment, not the
-individual pairs occurring in that assignment. -/
+individual pairs occurring in that assignment. Exhausting all assignments can
+rerun only through a strictly growing forbidden-pair set. -/
 
 structure CertifiedHTFoldAssignmentProductionTaxonomyRoute
     (conceptCount roleCount variableCount : Nat)
@@ -729,20 +750,20 @@ structure CertifiedHTFoldAssignmentProductionTaxonomyRoute
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (named : List (Fin conceptCount)) where
   conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
-    CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (UnsatisfiableConcept ontology concept))
   conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
         .done (.frontier document hconcepts hroles hcheck) →
       document.checkScheduled budget = true
   subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
-    ∀ budget, CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (EntailsSub ontology sub sup))
   subsumptionScheduled :
     ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
           .done (.frontier document hconcepts hroles hcheck) →
         document.checkScheduled budget = true
 
@@ -753,12 +774,12 @@ theorem CertifiedHTFoldAssignmentProductionTaxonomyRoute.decides
   classical
   refine ⟨{ concept := ?_, subsumption := ?_ }⟩
   · intro concept hnamed
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.conceptProducer concept hnamed)
       (route.conceptScheduled concept hnamed)
       ConceptDecision.unsatisfiable ConceptDecision.satisfiable)
   · intro sub hsub sup hsup
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.subsumptionProducer sub hsub sup hsup)
       (route.subsumptionScheduled sub hsub sup hsup)
       SubsumptionDecision.entailed SubsumptionDecision.notEntailed)
@@ -771,20 +792,20 @@ structure CertifiedHTFoldAssignmentCardinalityProductionTaxonomyRoute
       (CardinalityDef (Fin conceptCount) (Fin roleCount)))
     (named : List (Fin conceptCount)) where
   conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
-    CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (UnsatisfiableConceptWithCardinality ontology definitions concept))
   conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
         .done (.frontier document hconcepts hroles hcheck) →
       document.checkScheduled budget = true
   subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
-    ∀ budget, CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (EntailsSubWithCardinality ontology definitions sub sup))
   subsumptionScheduled :
     ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
           .done (.frontier document hconcepts hroles hcheck) →
         document.checkScheduled budget = true
 
@@ -795,13 +816,13 @@ theorem CertifiedHTFoldAssignmentCardinalityProductionTaxonomyRoute.decides
   classical
   refine ⟨{ concept := ?_, subsumption := ?_ }⟩
   · intro concept hnamed
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.conceptProducer concept hnamed)
       (route.conceptScheduled concept hnamed)
       CardinalityConceptDecision.unsatisfiable
       CardinalityConceptDecision.satisfiable)
   · intro sub hsub sup hsup
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.subsumptionProducer sub hsub sup hsup)
       (route.subsumptionScheduled sub hsub sup hsup)
       CardinalitySubsumptionDecision.entailed
@@ -814,20 +835,20 @@ structure CertifiedHTFoldAssignmentNativeABoxProductionTaxonomyRoute
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (named : List (Fin conceptCount)) where
   conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
-    CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.UnsatisfiableConceptWith ontology concept))
   conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
         .done (.frontier document hconcepts hroles hcheck) →
       document.checkScheduled budget = true
   subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
-    ∀ budget, CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.EntailsSubWith ontology sub sup))
   subsumptionScheduled :
     ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
           .done (.frontier document hconcepts hroles hcheck) →
         document.checkScheduled budget = true
 
@@ -838,13 +859,13 @@ theorem CertifiedHTFoldAssignmentNativeABoxProductionTaxonomyRoute.decides
   classical
   refine ⟨{ concept := ?_, subsumption := ?_ }⟩
   · intro concept hnamed
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.conceptProducer concept hnamed)
       (route.conceptScheduled concept hnamed)
       NativeABoxConceptDecision.unsatisfiable
       NativeABoxConceptDecision.satisfiable)
   · intro sub hsub sup hsup
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.subsumptionProducer sub hsub sup hsup)
       (route.subsumptionScheduled sub hsub sup hsup)
       NativeABoxSubsumptionDecision.entailed
@@ -859,20 +880,20 @@ structure CertifiedHTFoldAssignmentNativeABoxCardinalityProductionTaxonomyRoute
       (CardinalityDef (Fin conceptCount) (Fin roleCount)))
     (named : List (Fin conceptCount)) where
   conceptProducer : ∀ concept, concept ∈ named → ∀ budget,
-    CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.UnsatisfiableConceptWithCardinality ontology definitions concept))
   conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
         .done (.frontier document hconcepts hroles hcheck) →
       document.checkScheduled budget = true
   subsumptionProducer : ∀ sub, sub ∈ named → ∀ sup, sup ∈ named →
-    ∀ budget, CartesianFoldAssignmentRuntime (Fin (8 * 2 ^ budget))
+    ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.EntailsSubWithCardinality ontology definitions sub sup))
   subsumptionScheduled :
     ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toProducer.toGuarded.toFoldAssignmentProducer.run retry =
+      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
           .done (.frontier document hconcepts hroles hcheck) →
         document.checkScheduled budget = true
 
@@ -884,13 +905,13 @@ theorem CertifiedHTFoldAssignmentNativeABoxCardinalityProductionTaxonomyRoute.de
   classical
   refine ⟨{ concept := ?_, subsumption := ?_ }⟩
   · intro concept hnamed
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.conceptProducer concept hnamed)
       (route.conceptScheduled concept hnamed)
       NativeABoxCardinalityConceptDecision.unsatisfiable
       NativeABoxCardinalityConceptDecision.satisfiable)
   · intro sub hsub sup hsup
-    exact Classical.choice (checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+    exact Classical.choice (checked_taxonomy_scheduled_fold_expansion_producer_decision
       (route.subsumptionProducer sub hsub sup hsup)
       (route.subsumptionScheduled sub hsub sup hsup)
       NativeABoxCardinalitySubsumptionDecision.entailed
@@ -904,6 +925,7 @@ theorem CertifiedHTFoldAssignmentNativeABoxCardinalityProductionTaxonomyRoute.de
 #print axioms checked_taxonomy_scheduled_fold_assignment_producer_decision
 #print axioms checked_taxonomy_scheduled_guarded_fold_assignment_producer_decision
 #print axioms checked_taxonomy_scheduled_cartesian_fold_assignment_producer_decision
+#print axioms checked_taxonomy_scheduled_fold_expansion_producer_decision
 #print axioms checked_taxonomy_scheduled_fresh_fold_producer_decision
 #print axioms checked_taxonomy_scheduled_guarded_fold_producer_decision
 #print axioms CertifiedHTProductionTaxonomyRoute.decides

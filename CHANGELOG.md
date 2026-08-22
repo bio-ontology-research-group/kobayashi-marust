@@ -89,6 +89,13 @@
   exhaustion, and invokes the forced-expansion continuation only in that case.
   Global and taxonomy routes consume these ordinary option, checker, and
   exhaustion functions directly.
+- Model KM's second blocking-control layer explicitly. After the inner
+  Cartesian assignment product settles, an exhausted state may rerun only by
+  exposing a nonempty set containing at least one pair not already forbidden.
+  Lean reduces these guarded expansion steps to strict finite-set growth and
+  proves that the outer loop also terminates. All global and taxonomy HT
+  capstones now require this two-level runtime, so a fold-free retry that adds
+  no pair can no longer satisfy the completeness interface.
 
 ### Unify total production HT global decisions
 
