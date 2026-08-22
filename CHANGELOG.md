@@ -50,6 +50,10 @@
   requires only source equivalence where applicable, the concrete nested
   runtime, and a checked classification of each outcome computed by that
   runtime. Legacy producer theorems remain outside the exported surface.
+- Expand the HT release gate from a partial checker subset to all 29 HT
+  executables declared by Lake. The gate now compares its checker inventory to
+  the manifest and fails on drift, then builds and verifies every binary before
+  running the cross-language publication tests.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem

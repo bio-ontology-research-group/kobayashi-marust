@@ -28,7 +28,12 @@ else
 fi
 
 checkers=(
+    ht-cert-check
+    ht-eq-cert-check
+    ht-cardinality-cert-check
     ht-regular-cert-check
+    ht-regular-cardinality-cert-check
+    ht-regular-decision-cert-check
     ht-cover-obstruction-check
     ht-endpoint-role-evidence-check
     ht-cover-refinement-check
@@ -38,12 +43,44 @@ checkers=(
     ht-equality-production-blocking-check
     ht-equality-production-trace-check
     ht-cardinality-frontier-check
+    ht-native-abox-decision-cert-check
+    ht-native-abox-source-decision-cert-check
+    ht-native-abox-taxonomy-cert-check
     ht-native-abox-taxonomy-matrix-cert-check
     ht-native-abox-cardinality-taxonomy-cert-check
+    ht-direct-native-abox-cardinality-taxonomy-cert-check
+    ht-mixed-native-abox-cardinality-taxonomy-cert-check
     ht-native-abox-taxonomy-source-cert-check
     ht-native-abox-cardinality-taxonomy-source-cert-check
     ht-joint-native-abox-classification-cert-check
+    ht-anchored-premises-check
+    ht-anchored-eq-cert-check
+    ht-anchored-cardinality-cert-check
+    ht-taxonomy-cert-check
 )
+
+# Keep the release gate exhaustive as checker executables are added. A new HT
+# checker in the Lake manifest must be deliberately added above and exercised
+# by this gate rather than silently remaining outside release validation.
+mapfile -t declared_ht_checkers < <(
+    awk '
+        /^name = "ht-/ {
+            value = $3
+            gsub(/"/, "", value)
+            print value
+        }
+    ' "$lean_root/lakefile.toml" | sort -u
+)
+checker_drift=$(
+    comm -3 \
+        <(printf '%s\n' "${checkers[@]}" | sort -u) \
+        <(printf '%s\n' "${declared_ht_checkers[@]}")
+)
+if [[ -n "$checker_drift" ]]; then
+    echo "HT checker manifest and certification gate differ:" >&2
+    echo "$checker_drift" >&2
+    exit 1
+fi
 
 (
     cd "$lean_root"
