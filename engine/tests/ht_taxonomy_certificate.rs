@@ -540,6 +540,7 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
         "KM_HT_LEAN_FRONTIER_CHECKER",
         "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
+        "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     ] {
         let output = run_isolated_certification_interface(interface);
         assert!(!output.status.success(), "{interface} bypassed certification");

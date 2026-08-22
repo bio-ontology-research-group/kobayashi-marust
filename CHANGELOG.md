@@ -52,6 +52,19 @@
   ordinary witness-address maps using the same canonical checked serializer;
   equality search no longer needs an independently asserted frontier-check
   result at this construction boundary.
+- Replace the single-root cardinality frontier assumption for native ABoxes
+  with a root-tagged address contract. Lean proves canonical encoding,
+  scheduled-check completeness, extraction of the injective multi-root address
+  map, and eventual rejection by the doubling schedule for every fixed finite
+  root signature. Native-ABox search and production totality now carry the
+  checked root count through every frontier round.
+- Track the exact number of parentless query and named-individual roots in the
+  Rust certificate search. KM serializes native cardinality addresses as
+  `(root, path)` pairs, invokes a dedicated Lean checker, and fails closed when
+  that checker is missing from a certified native-ABox run. A cross-language
+  regression accepts three distinct empty-path roots and rejects a duplicated
+  root/path pair. This fixes a completeness defect in which any named root
+  after node zero was treated as malformed frontier metadata.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine

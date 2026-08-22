@@ -49,6 +49,10 @@ name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 
 [[lean_exe]]
+name = "ht-rooted-cardinality-frontier-check"
+root = "HTRootedCardinalityFrontierCheck"
+
+[[lean_exe]]
 name = "ht-eq-cert-check"
 root = "HTEqCertCheck"
 

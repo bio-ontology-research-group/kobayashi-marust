@@ -180,12 +180,12 @@ def NativeABoxProductionFrontier
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount)))
-    (maxWidth budget : Nat)
+    (rootCount maxWidth budget : Nat)
     (outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
       roleCount variableCount abox ontology definitions) : Prop :=
   ∃ document hconcepts hroles hdefinitions hcheck,
     outcome = .frontier document hconcepts hroles hdefinitions hcheck ∧
-      document.checkScheduled budget maxWidth = true
+      document.checkScheduled budget rootCount maxWidth = true
 
 def NativeABoxProductionConclusive
     {Individual : Type}
@@ -207,6 +207,7 @@ theorem checked_native_abox_doubling_execution_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (runtime : ∀ budget, CartesianFoldExpansionRuntime
       (Fin (8 * 2 ^ budget))
@@ -216,7 +217,7 @@ theorem checked_native_abox_doubling_execution_decides_source
       roleCount variableCount abox target definitions}
     (trace : CartesianFoldDoublingExecution _ runtime
       (NativeABoxProductionFrontier Individual conceptCount roleCount
-        variableCount abox target definitions maxWidth)
+        variableCount abox target definitions rootCount maxWidth)
       NativeABoxProductionConclusive 0 outcome) :
     outcome.SourceSemantics source := by
   have hconclusive := trace.conclusive
@@ -498,6 +499,7 @@ theorem checked_native_abox_runtime_through_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (runtime : ∀ budget, CartesianFoldExpansionRuntime
       (Fin (8 * 2 ^ budget))
@@ -507,7 +509,7 @@ theorem checked_native_abox_runtime_through_decides_source
       let fixed := (runtime budget).execute ∅
       PLift (NativeABoxProductionConclusive fixed.1) ⊕
         PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
-          variableCount abox target definitions maxWidth budget fixed.1))
+          variableCount abox target definitions rootCount maxWidth budget fixed.1))
     (fuel : Nat)
     (terminal :
       let fixed := (runtime fuel).execute ∅
@@ -517,18 +519,19 @@ theorem checked_native_abox_runtime_through_decides_source
         outcome.SourceSemantics source := by
   let run := CartesianFoldDoublingExecution.executeThrough runtime
     (NativeABoxProductionFrontier Individual conceptCount roleCount variableCount
-      abox target definitions maxWidth) NativeABoxProductionConclusive classify
+      abox target definitions rootCount maxWidth) NativeABoxProductionConclusive classify
       0 fuel (by
         rw [Nat.zero_add]
         exact terminal)
   exact ⟨run.1, checked_native_abox_doubling_execution_decides_source
-    equivalent maxWidth runtime run.2⟩
+    equivalent rootCount maxWidth runtime run.2⟩
 
 theorem checked_native_abox_runtime_eventually_conclusive
     {Individual : Type}
     {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (rootCount : Nat)
     (maxWidth : Nat)
     (runtime : ∀ budget, CartesianFoldExpansionRuntime
       (Fin (8 * 2 ^ budget))
@@ -538,7 +541,7 @@ theorem checked_native_abox_runtime_eventually_conclusive
       let fixed := (runtime budget).execute ∅
       PLift (NativeABoxProductionConclusive fixed.1) ⊕
         PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
-          variableCount abox target definitions maxWidth budget fixed.1)) :
+          variableCount abox target definitions rootCount maxWidth budget fixed.1)) :
     ∃ budget,
       let fixed := (runtime budget).execute ∅
       NativeABoxProductionConclusive fixed.1 := by
@@ -547,7 +550,8 @@ theorem checked_native_abox_runtime_eventually_conclusive
   push Not at hnone
   have hfrontier : ∀ budget,
       NativeABoxProductionFrontier Individual conceptCount roleCount variableCount
-        abox target definitions maxWidth budget ((runtime budget).execute ∅).1 := by
+        abox target definitions rootCount maxWidth budget
+          ((runtime budget).execute ∅).1 := by
     intro budget
     rcases classify budget with hconclusive | hfrontier
     · exact False.elim (hnone budget hconclusive.down)
@@ -555,13 +559,16 @@ theorem checked_native_abox_runtime_eventually_conclusive
   choose document hconcepts hroles hdefinitions hcheck heq hscheduled using
     hfrontier
   obtain ⟨budget, hrejected⟩ :=
-    cardinality_doubling_eventually_rejects_checked_frontier document
-      conceptCount roleCount definitions.length maxWidth
-      (fun budget => (document budget).checkScheduled_node_count budget maxWidth
-        (hscheduled budget)) hconcepts hroles hdefinitions
-      (fun budget => (document budget).checkScheduled_max_width budget maxWidth
+    rooted_cardinality_doubling_eventually_rejects_checked_frontier document
+      rootCount conceptCount roleCount definitions.length maxWidth
+      (fun budget => (document budget).checkScheduled_node_count budget rootCount
+        maxWidth (hscheduled budget))
+      (fun budget => (document budget).checkScheduled_root_count budget rootCount
+        maxWidth (hscheduled budget))
+      hconcepts hroles hdefinitions
+      (fun budget => (document budget).checkScheduled_max_width budget rootCount maxWidth
         (hscheduled budget))
-  exact hrejected ((document budget).checkScheduled_check budget maxWidth
+  exact hrejected ((document budget).checkScheduled_check budget rootCount maxWidth
     (hscheduled budget))
 
 theorem checked_native_abox_runtime_decides_source
@@ -572,6 +579,7 @@ theorem checked_native_abox_runtime_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (runtime : ∀ budget, CartesianFoldExpansionRuntime
       (Fin (8 * 2 ^ budget))
@@ -581,14 +589,14 @@ theorem checked_native_abox_runtime_decides_source
       let fixed := (runtime budget).execute ∅
       PLift (NativeABoxProductionConclusive fixed.1) ⊕
         PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
-          variableCount abox target definitions maxWidth budget fixed.1)) :
+          variableCount abox target definitions rootCount maxWidth budget fixed.1)) :
     ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
       roleCount variableCount abox target definitions,
         outcome.SourceSemantics source := by
   obtain ⟨budget, hterminal⟩ :=
-    checked_native_abox_runtime_eventually_conclusive maxWidth runtime classify
-  exact checked_native_abox_runtime_through_decides_source equivalent maxWidth
-    runtime classify budget hterminal
+    checked_native_abox_runtime_eventually_conclusive rootCount maxWidth runtime classify
+  exact checked_native_abox_runtime_through_decides_source equivalent rootCount
+    maxWidth runtime classify budget hterminal
 
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
@@ -631,10 +639,11 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {definitions : List
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
+      (rootCount : Nat)
       (maxWidth : Nat)
       (producer : ∀ budget,
         CheckedNativeABoxCardinalityControlProducer Individual conceptCount
-          roleCount variableCount abox target definitions budget maxWidth) :
+          roleCount variableCount abox target definitions budget rootCount maxWidth) :
       CertifiedHTProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -680,10 +689,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth producer =>
+  | nativeABox equivalent rootCount maxWidth producer =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
         checked_native_abox_cardinality_control_producer_decides_source
-          equivalent maxWidth producer
+          equivalent rootCount maxWidth producer
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>
@@ -755,6 +764,7 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       {definitions : List
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
+      (rootCount : Nat)
       (maxWidth : Nat)
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
@@ -764,7 +774,7 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         let fixed := (producer budget).execute ∅
         PLift (NativeABoxProductionConclusive fixed.1) ⊕
           PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
-            variableCount abox target definitions maxWidth budget fixed.1)) :
+            variableCount abox target definitions rootCount maxWidth budget fixed.1)) :
       CertifiedHTAssignmentProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -806,9 +816,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth producer classify =>
+  | nativeABox equivalent rootCount maxWidth producer classify =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_native_abox_runtime_decides_source equivalent maxWidth producer
+        checked_native_abox_runtime_decides_source equivalent rootCount maxWidth producer
           classify
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart

@@ -1,5 +1,5 @@
 import ContextCalculus.HypertableauNativeABoxDecision
-import ContextCalculus.HypertableauCardinalityFrontierWire
+import ContextCalculus.HypertableauRootedCardinalityFrontierWire
 import ContextCalculus.HypertableauEqualityNormalization
 import ContextCalculus.HypertableauRegularProduction
 
@@ -51,7 +51,7 @@ inductive CheckedNativeABoxCardinalityOutcome
       (hinitial : abox.InitializesDistinctState certificate.state)
       (hcheck : tree.checkClosed definitions certificate = true)
   | frontier
-      (document : WireCardinalityAddressFrontier)
+      (document : WireRootedCardinalityAddressFrontier)
       (hconcepts : document.concept_count = conceptCount)
       (hroles : document.role_count = roleCount)
       (hdefinitions : document.definition_count = definitions.length)
@@ -67,7 +67,7 @@ inductive CheckedNativeABoxCardinalityControlAttempt
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount)))
-    (budget maxWidth : Nat)
+    (budget rootCount maxWidth : Nat)
     (forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))) : Type where
   | sat
@@ -98,11 +98,11 @@ inductive CheckedNativeABoxCardinalityControlAttempt
       (hinitial : abox.InitializesDistinctState certificate.state)
       (hcheck : tree.checkClosed definitions certificate = true)
   | frontier
-      (document : WireCardinalityAddressFrontier)
+      (document : WireRootedCardinalityAddressFrontier)
       (hconcepts : document.concept_count = conceptCount)
       (hroles : document.role_count = roleCount)
       (hdefinitions : document.definition_count = definitions.length)
-      (hscheduled : document.checkScheduled budget maxWidth = true)
+      (hscheduled : document.checkScheduled budget rootCount maxWidth = true)
   | rejected
       (folds : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
@@ -112,7 +112,7 @@ def CheckedNativeABoxCardinalityControlAttempt.toGuarded
     {forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
     (attempt : CheckedNativeABoxCardinalityControlAttempt Individual conceptCount
-      roleCount variableCount abox ontology definitions budget maxWidth forbidden) :
+      roleCount variableCount abox ontology definitions budget rootCount maxWidth forbidden) :
     GuardedFoldAttempt (Fin (8 * 2 ^ budget))
       (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
         variableCount abox ontology definitions) forbidden :=
@@ -125,22 +125,22 @@ def CheckedNativeABoxCardinalityControlAttempt.toGuarded
       .done (.closed certificate tree hontology hinitial hcheck)
   | .frontier document hconcepts hroles hdefinitions hscheduled =>
       .done (.frontier document hconcepts hroles hdefinitions
-        (document.checkScheduled_check budget maxWidth hscheduled))
+        (document.checkScheduled_check budget rootCount maxWidth hscheduled))
   | .rejected folds fresh => .rejected folds fresh
 
 theorem CheckedNativeABoxCardinalityControlAttempt.frontier_scheduled
     {forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
     (attempt : CheckedNativeABoxCardinalityControlAttempt Individual conceptCount
-      roleCount variableCount abox ontology definitions budget maxWidth forbidden)
-    {document : WireCardinalityAddressFrontier}
+      roleCount variableCount abox ontology definitions budget rootCount maxWidth forbidden)
+    {document : WireRootedCardinalityAddressFrontier}
     {hconcepts : document.concept_count = conceptCount}
     {hroles : document.role_count = roleCount}
     {hdefinitions : document.definition_count = definitions.length}
     {hcheck : document.check = true}
     (herase : attempt.toGuarded.erase = .done
       (.frontier document hconcepts hroles hdefinitions hcheck)) :
-    document.checkScheduled budget maxWidth = true := by
+    document.checkScheduled budget rootCount maxWidth = true := by
   cases attempt with
   | sat certificate root hontology hnonempty hseeded hcertificate hapart
       hsingletons hnegative =>
@@ -166,15 +166,15 @@ structure CheckedNativeABoxCardinalityControlProducer
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount)))
-    (budget maxWidth : Nat) where
+    (budget rootCount maxWidth : Nat) where
   attempt : ∀ forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
     CheckedNativeABoxCardinalityControlAttempt Individual conceptCount roleCount
-      variableCount abox ontology definitions budget maxWidth forbidden
+      variableCount abox ontology definitions budget rootCount maxWidth forbidden
 
 def CheckedNativeABoxCardinalityControlProducer.toGuarded
     (producer : CheckedNativeABoxCardinalityControlProducer Individual conceptCount
-      roleCount variableCount abox ontology definitions budget maxWidth) :
+      roleCount variableCount abox ontology definitions budget rootCount maxWidth) :
     GuardedFoldProducer (Fin (8 * 2 ^ budget))
       (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
         variableCount abox ontology definitions) where
@@ -182,15 +182,15 @@ def CheckedNativeABoxCardinalityControlProducer.toGuarded
 
 theorem CheckedNativeABoxCardinalityControlProducer.frontier_scheduled
     (producer : CheckedNativeABoxCardinalityControlProducer Individual conceptCount
-      roleCount variableCount abox ontology definitions budget maxWidth)
-    {retry : Nat} {document : WireCardinalityAddressFrontier}
+      roleCount variableCount abox ontology definitions budget rootCount maxWidth)
+    {retry : Nat} {document : WireRootedCardinalityAddressFrontier}
     {hconcepts : document.concept_count = conceptCount}
     {hroles : document.role_count = roleCount}
     {hdefinitions : document.definition_count = definitions.length}
     {hcheck : document.check = true}
     (hrun : producer.toGuarded.toFreshFoldProducer.run retry = .done
       (.frontier document hconcepts hroles hdefinitions hcheck)) :
-    document.checkScheduled budget maxWidth = true := by
+    document.checkScheduled budget rootCount maxWidth = true := by
   apply CheckedNativeABoxCardinalityControlAttempt.frontier_scheduled
     (producer.attempt
       (producer.toGuarded.toFreshFoldProducer.forbidden retry))
@@ -311,12 +311,16 @@ theorem checked_native_abox_cardinality_doubling_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (run : Nat → CheckedNativeABoxCardinalityOutcome Individual conceptCount
       roleCount variableCount abox target definitions)
     (hnodes : ∀ round document hconcepts hroles hdefinitions hcheck,
       run round = .frontier document hconcepts hroles hdefinitions hcheck →
         document.node_count = 8 * 2 ^ round)
+    (hroots : ∀ round document hconcepts hroles hdefinitions hcheck,
+      run round = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.root_count = rootCount)
     (hwidth : ∀ round document hconcepts hroles hdefinitions hcheck,
       run round = .frontier document hconcepts hroles hdefinitions hcheck →
         document.max_width = maxWidth) :
@@ -350,9 +354,11 @@ theorem checked_native_abox_cardinality_doubling_decides_source
         exact ⟨document, hconcepts, hroles, hdefinitions, hcheck, rfl⟩
   choose document hconcepts hroles hdefinitions hchecks heq using hfrontier
   obtain ⟨round, hrejected⟩ :=
-    cardinality_doubling_eventually_rejects_checked_frontier
-      document conceptCount roleCount definitions.length maxWidth
+    rooted_cardinality_doubling_eventually_rejects_checked_frontier
+      document rootCount conceptCount roleCount definitions.length maxWidth
       (fun round ↦ hnodes round (document round) (hconcepts round)
+        (hroles round) (hdefinitions round) (hchecks round) (heq round))
+      (fun round ↦ hroots round (document round) (hconcepts round)
         (hroles round) (hdefinitions round) (hchecks round) (heq round))
       hconcepts hroles hdefinitions
       (fun round ↦ hwidth round (document round) (hconcepts round)
@@ -368,6 +374,7 @@ theorem checked_native_abox_cardinality_fold_learning_doubling_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (attempt : ∀ budget, Nat → FoldLearningOutcome (Fin (8 * 2 ^ budget))
       (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
@@ -382,6 +389,10 @@ theorem checked_native_abox_cardinality_fold_learning_doubling_decides_source
       attempt budget retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
+    (hroots : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      attempt budget retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.root_count = rootCount)
     (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
       attempt budget retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
@@ -406,9 +417,15 @@ theorem checked_native_abox_cardinality_fold_learning_doubling_decides_source
     intro budget document hconcepts hroles hdefinitions hcheck houtcome
     exact hwidth budget (retry budget) document hconcepts hroles hdefinitions hcheck
       (by rw [hsettled budget, houtcome])
+  have hsettledRoots : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.root_count = rootCount := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hroots budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
   obtain ⟨budget, hsemantics⟩ :=
-    checked_native_abox_cardinality_doubling_decides_source equivalent maxWidth
-      settled hsettledNodes hsettledWidth
+    checked_native_abox_cardinality_doubling_decides_source equivalent rootCount
+      maxWidth settled hsettledNodes hsettledRoots hsettledWidth
   exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
 
 theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
@@ -418,6 +435,7 @@ theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
       (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
@@ -426,6 +444,10 @@ theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
       (producer budget).run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
+    (hroots : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.root_count = rootCount)
     (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
       (producer budget).run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
@@ -434,9 +456,9 @@ theorem checked_native_abox_cardinality_fresh_fold_producer_decides_source
       (producer budget).run retry = .done outcome ∧
         outcome.SourceSemantics source := by
   exact checked_native_abox_cardinality_fold_learning_doubling_decides_source
-    equivalent maxWidth (fun budget => (producer budget).run)
+    equivalent rootCount maxWidth (fun budget => (producer budget).run)
     (fun budget => (producer budget).forbidden)
-    (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hwidth
+    (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hroots hwidth
 
 /-- Native-ABox source-level totality for complete simultaneous blocker
 assignments.  Rejection is assignment-indexed, so constituent fold pairs remain
@@ -448,6 +470,7 @@ theorem checked_native_abox_cardinality_fold_assignment_producer_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
       (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
@@ -456,6 +479,10 @@ theorem checked_native_abox_cardinality_fold_assignment_producer_decides_source
       (producer budget).run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
+    (hroots : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.root_count = rootCount)
     (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
       (producer budget).run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
@@ -479,9 +506,15 @@ theorem checked_native_abox_cardinality_fold_assignment_producer_decides_source
     intro budget document hconcepts hroles hdefinitions hcheck houtcome
     exact hwidth budget (retry budget) document hconcepts hroles hdefinitions hcheck
       (by rw [hsettled budget, houtcome])
+  have hsettledRoots : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.root_count = rootCount := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hroots budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
   obtain ⟨budget, hsemantics⟩ :=
-    checked_native_abox_cardinality_doubling_decides_source equivalent maxWidth
-      settled hsettledNodes hsettledWidth
+    checked_native_abox_cardinality_doubling_decides_source equivalent rootCount
+      maxWidth settled hsettledNodes hsettledRoots hsettledWidth
   exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
 
 theorem checked_native_abox_cardinality_guarded_fold_assignment_producer_decides_source
@@ -491,6 +524,7 @@ theorem checked_native_abox_cardinality_guarded_fold_assignment_producer_decides
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (producer : ∀ budget, GuardedFoldAssignmentProducer
       (Fin (8 * 2 ^ budget))
@@ -500,6 +534,10 @@ theorem checked_native_abox_cardinality_guarded_fold_assignment_producer_decides
       (producer budget).toFoldAssignmentProducer.run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
         document.node_count = 8 * 2 ^ budget)
+    (hroots : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).toFoldAssignmentProducer.run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.root_count = rootCount)
     (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
       (producer budget).toFoldAssignmentProducer.run retry = .done
         (.frontier document hconcepts hroles hdefinitions hcheck) →
@@ -508,8 +546,8 @@ theorem checked_native_abox_cardinality_guarded_fold_assignment_producer_decides
       (producer budget).toFoldAssignmentProducer.run retry = .done outcome ∧
         outcome.SourceSemantics source := by
   exact checked_native_abox_cardinality_fold_assignment_producer_decides_source
-    equivalent maxWidth
-    (fun budget => (producer budget).toFoldAssignmentProducer) hnodes hwidth
+    equivalent rootCount maxWidth
+    (fun budget => (producer budget).toFoldAssignmentProducer) hnodes hroots hwidth
 
 /-- Native-ABox cardinality totality with every control-flow obligation stored
 by the checked producer. -/
@@ -520,21 +558,25 @@ theorem checked_native_abox_cardinality_control_producer_decides_source
     {definitions : List
       (CardinalityDef (Fin conceptCount) (Fin roleCount))}
     (equivalent : ModelEquivalent source target)
+    (rootCount : Nat)
     (maxWidth : Nat)
     (producer : ∀ budget,
       CheckedNativeABoxCardinalityControlProducer Individual conceptCount
-        roleCount variableCount abox target definitions budget maxWidth) :
+        roleCount variableCount abox target definitions budget rootCount maxWidth) :
     ∃ budget retry outcome,
       (producer budget).toGuarded.toFreshFoldProducer.run retry = .done outcome ∧
         outcome.SourceSemantics source := by
   apply checked_native_abox_cardinality_fresh_fold_producer_decides_source
-    equivalent maxWidth
+    equivalent rootCount maxWidth
     (fun budget => (producer budget).toGuarded.toFreshFoldProducer)
   · intro budget retry document hconcepts hroles hdefinitions hcheck hrun
-    exact document.checkScheduled_node_count budget maxWidth
+    exact document.checkScheduled_node_count budget rootCount maxWidth
       ((producer budget).frontier_scheduled hrun)
   · intro budget retry document hconcepts hroles hdefinitions hcheck hrun
-    exact document.checkScheduled_max_width budget maxWidth
+    exact document.checkScheduled_root_count budget rootCount maxWidth
+      ((producer budget).frontier_scheduled hrun)
+  · intro budget retry document hconcepts hroles hdefinitions hcheck hrun
+    exact document.checkScheduled_max_width budget rootCount maxWidth
       ((producer budget).frontier_scheduled hrun)
 
 #print axioms CheckedNativeABoxCardinalityOutcome.sat_semantics

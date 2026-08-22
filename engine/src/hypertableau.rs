@@ -2855,7 +2855,7 @@ struct LeanHtFrontierDocument {
     addresses: Vec<Vec<LeanHtFrontierStep>>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum LeanHtCardinalityAddressStep {
     Ordinary(R, CLit),
     Minimum { definition: usize, index: usize },
@@ -2872,9 +2872,10 @@ struct LeanHtCardinalityFrontierStep {
 
 struct LeanHtCardinalityAddressFrontier {
     node_count: usize,
+    root_count: usize,
     definition_count: usize,
     max_width: usize,
-    addresses: Vec<Vec<LeanHtCardinalityAddressStep>>,
+    addresses: Vec<(usize, Vec<LeanHtCardinalityAddressStep>)>,
 }
 
 #[derive(serde::Serialize)]
@@ -2886,6 +2887,24 @@ struct LeanHtCardinalityFrontierDocument {
     definition_count: usize,
     max_width: usize,
     addresses: Vec<Vec<LeanHtCardinalityFrontierStep>>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtRootedCardinalityFrontierAddress {
+    root: usize,
+    steps: Vec<LeanHtCardinalityFrontierStep>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtRootedCardinalityFrontierDocument {
+    version: usize,
+    node_count: usize,
+    root_count: usize,
+    concept_count: usize,
+    role_count: usize,
+    definition_count: usize,
+    max_width: usize,
+    addresses: Vec<LeanHtRootedCardinalityFrontierAddress>,
 }
 
 #[derive(Clone)]
@@ -3231,6 +3250,9 @@ struct LeanHtRefutationState {
     apart: Vec<(Node, Node)>,
     minimums: HashSet<(usize, Node)>,
     active_nodes: usize,
+    /// Number of parentless creation roots. Ordinary searches have one query
+    /// root; native-ABox searches add one root per named individual.
+    root_count: usize,
     /// Creation predecessor for the equality-free certificate search. Roots
     /// have `None`; fresh existential witnesses append `Some(source)`. Other
     /// certificate producers do not consult this certification-only field.
@@ -3298,6 +3320,7 @@ impl LeanHtRefutationState {
             apart: Vec::new(),
             minimums: HashSet::new(),
             active_nodes: 1,
+            root_count: 1,
             witness_parent: vec![None],
             witness_step: vec![None],
             cardinality_parent: vec![None],
@@ -3327,6 +3350,7 @@ impl LeanHtRefutationState {
         let mut state = Self::root(&[]);
         let roots: Vec<Node> = (1..=native_abox.individuals.len()).collect();
         state.active_nodes = 1 + roots.len();
+        state.root_count = state.active_nodes;
         state.witness_parent.resize(state.active_nodes, None);
         state.witness_step.resize(state.active_nodes, None);
         state.cardinality_parent.resize(state.active_nodes, None);
@@ -3436,12 +3460,12 @@ impl LeanHtRefutationState {
         {
             return Err("cardinality frontier address metadata length mismatch".to_string());
         }
-        let mut addresses: Vec<Vec<LeanHtCardinalityAddressStep>> =
+        let mut addresses: Vec<(usize, Vec<LeanHtCardinalityAddressStep>)> =
             Vec::with_capacity(self.active_nodes);
         let mut occupied = HashSet::with_capacity(self.active_nodes);
         for node in 0..self.active_nodes {
             let address = match (self.cardinality_parent[node], self.cardinality_step[node]) {
-                (None, None) if node == 0 => Vec::new(),
+                (None, None) if node < self.root_count => (node, Vec::new()),
                 (Some(parent), Some(step)) if parent < node => {
                     match step {
                         LeanHtCardinalityAddressStep::Ordinary(_, _) => {}
@@ -3453,11 +3477,11 @@ impl LeanHtRefutationState {
                             }
                         }
                     }
-                    let mut address = addresses.get(parent).cloned().ok_or_else(|| {
+                    let (root, mut address) = addresses.get(parent).cloned().ok_or_else(|| {
                         format!("cardinality frontier parent {parent} has no address")
                     })?;
                     address.push(step);
-                    address
+                    (root, address)
                 }
                 (parent, step) => {
                     return Err(format!(
@@ -3475,6 +3499,7 @@ impl LeanHtRefutationState {
         }
         Ok(LeanHtCardinalityAddressFrontier {
             node_count: self.active_nodes,
+            root_count: self.root_count,
             definition_count,
             max_width,
             addresses,
@@ -10076,7 +10101,7 @@ impl Ht {
             return Err("HT cardinality frontier node/address count mismatch".to_string());
         }
         let (_, mut concept_count, mut role_count, _) = self.lean_decision_signature();
-        for address in &frontier.addresses {
+        for (_, address) in &frontier.addresses {
             if !Self::role_blocking_signature_card_reaches(concept_count, role_count, address.len())
             {
                 return Err(format!(
@@ -10088,7 +10113,7 @@ impl Ht {
         let addresses = frontier
             .addresses
             .iter()
-            .map(|address| {
+            .map(|(_, address)| {
                 address
                     .iter()
                     .map(|step| match *step {
@@ -10122,6 +10147,74 @@ impl Ht {
         serde_json::to_string(&LeanHtCardinalityFrontierDocument {
             version: 1,
             node_count: frontier.node_count,
+            concept_count,
+            role_count,
+            definition_count: frontier.definition_count,
+            max_width: frontier.max_width,
+            addresses,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn lean_rooted_cardinality_address_frontier_json(
+        &self,
+        frontier: &LeanHtCardinalityAddressFrontier,
+    ) -> Result<String, String> {
+        if frontier.node_count != frontier.addresses.len() {
+            return Err("HT rooted cardinality frontier node/address count mismatch".to_string());
+        }
+        if frontier.root_count == 0 || frontier.root_count > frontier.node_count {
+            return Err("HT rooted cardinality frontier has an invalid root count".to_string());
+        }
+        let (_, mut concept_count, mut role_count, _) = self.lean_decision_signature();
+        let mut addresses = Vec::with_capacity(frontier.addresses.len());
+        for (root, address) in &frontier.addresses {
+            if *root >= frontier.root_count {
+                return Err(format!(
+                    "HT rooted cardinality frontier root {root} is out of range"
+                ));
+            }
+            if !Self::role_blocking_signature_card_reaches(concept_count, role_count, address.len())
+            {
+                return Err(format!(
+                    "HT rooted cardinality frontier address depth {} exceeds the full-signature bound",
+                    address.len()
+                ));
+            }
+            let steps = address
+                .iter()
+                .map(|step| match *step {
+                    LeanHtCardinalityAddressStep::Ordinary(role, filler) => {
+                        concept_count = concept_count.max(filler.c as usize + 1);
+                        role_count = role_count.max(role as usize + 1);
+                        LeanHtCardinalityFrontierStep {
+                            kind: 0,
+                            role: role as usize,
+                            filler: Self::lean_wire_lit(filler),
+                            definition: 0,
+                            index: 0,
+                        }
+                    }
+                    LeanHtCardinalityAddressStep::Minimum { definition, index } => {
+                        LeanHtCardinalityFrontierStep {
+                            kind: 1,
+                            role: 0,
+                            filler: LeanHtLit {
+                                concept: 0,
+                                neg: false,
+                            },
+                            definition,
+                            index,
+                        }
+                    }
+                })
+                .collect();
+            addresses.push(LeanHtRootedCardinalityFrontierAddress { root: *root, steps });
+        }
+        serde_json::to_string(&LeanHtRootedCardinalityFrontierDocument {
+            version: 1,
+            node_count: frontier.node_count,
+            root_count: frontier.root_count,
             concept_count,
             role_count,
             definition_count: frontier.definition_count,
@@ -10167,14 +10260,28 @@ impl Ht {
                 frontier.node_count
             ));
         }
-        let checker = std::env::var_os("KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER")
-            });
+        let rooted = frontier.root_count > 1;
+        let checker = if rooted {
+            std::env::var_os("KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
+                    )
+                })
+        } else {
+            std::env::var_os("KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER")
+                .or_else(|| {
+                    std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER")
+                })
+        };
         let Some(checker) = checker else {
             return Ok(true);
         };
-        let document = self.lean_cardinality_address_frontier_json(frontier)?;
+        let document = if rooted {
+            self.lean_rooted_cardinality_address_frontier_json(frontier)?
+        } else {
+            self.lean_cardinality_address_frontier_json(frontier)?
+        };
         self.lean_candidate_passes_with(&document, &checker)
     }
 
@@ -25702,13 +25809,67 @@ mod tests {
 
         let cardinality = LeanHtCardinalityAddressFrontier {
             node_count: 1,
+            root_count: 1,
             definition_count: 0,
             max_width: 0,
-            addresses: vec![Vec::new()],
+            addresses: vec![(0, Vec::new())],
         };
         assert!(reasoner
             .lean_cardinality_address_frontier_passes(&cardinality, 2)
             .is_err());
+    }
+
+    #[test]
+    fn native_abox_cardinality_frontier_preserves_distinct_root_addresses() {
+        let native = NativeAboxState {
+            individuals: vec![(vec![A], Vec::new()), (vec![B], Vec::new())],
+            ..NativeAboxState::default()
+        };
+        let (state, _) = LeanHtRefutationState::rooted_native_abox(&[], &native)
+            .expect("construct three parentless native/query roots");
+        let frontier = state
+            .cardinality_address_frontier(0, 0)
+            .expect("root-tagged native frontier");
+        assert_eq!(frontier.root_count, 3);
+        assert_eq!(
+            frontier.addresses,
+            vec![(0, Vec::new()), (1, Vec::new()), (2, Vec::new())]
+        );
+
+        let reasoner = ht(Vec::new());
+        let document = reasoner
+            .lean_rooted_cardinality_address_frontier_json(&frontier)
+            .expect("serialize all native roots");
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER")
+        else {
+            return;
+        };
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-rooted-cardinality-frontier-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, &document).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .output()
+            .expect("run rooted cardinality checker");
+        assert!(
+            accepted.status.success(),
+            "Lean must accept distinct parentless native roots: {}",
+            String::from_utf8_lossy(&accepted.stderr)
+        );
+
+        let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
+        duplicate["addresses"][2]["root"] = serde_json::json!(1);
+        std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
+        let rejected = std::process::Command::new(checker)
+            .arg(&path)
+            .status()
+            .expect("run checker on duplicate rooted address");
+        let _ = std::fs::remove_file(path);
+        assert!(!rejected.success(), "Lean must reject duplicate root/path pairs");
     }
 
     #[test]
