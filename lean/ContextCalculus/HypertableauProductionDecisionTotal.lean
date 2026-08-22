@@ -101,6 +101,62 @@ def RegularBudgetOutcomeConstruction.classify
       subst outcome
       exact classifyRegularAddressFrontier address injective
 
+/-- Translate the witness-preserving result of exhaustive regular search into
+the construction interface consumed by the global production route. -/
+def ConstructedRegularRoundOutcome.toBudgetConstruction
+    (constructed : ConstructedRegularRoundOutcome conceptCount roleCount
+      variableCount ontology budget) :
+    RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
+      ontology budget constructed.outcome :=
+  match constructed with
+  | .conclusive outcome proof => .conclusive proof
+  | .frontier address injective => .frontier address injective rfl
+
+/-- Every early result of the concrete exhaustive regular search carries the
+exact typed construction evidence required by the global decision route.  The
+other arm is a genuine blocked leaf and is intentionally left to the finite
+fold-assignment settlement. -/
+noncomputable def finiteProductionRoundBudgetConstructionSettlement
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)))
+    (hrootEmpty : root = ∅)
+    (frontierAddress : ∀
+      (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true) :
+    ∀ forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+      (Σ outcome : CheckedRegularRoundOutcome conceptCount roleCount
+          variableCount ontology,
+        RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
+          ontology budget outcome) ⊕
+        ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden := by
+  intro forbidden
+  let settled := finiteProductionRoundConstructionSettlement ontology parent
+    ancestors hheads root hrootEmpty frontierAddress forbidden
+  exact match settled with
+  | .inl constructed =>
+      .inl ⟨constructed.outcome, constructed.toBudgetConstruction⟩
+  | .inr blocked => .inr blocked
+
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
 theorem checked_regular_doubling_execution_decides_source
@@ -1203,6 +1259,8 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_regular_runtime_eventually_conclusive
 #print axioms checked_regular_runtime_decides_source
 #print axioms RegularBudgetOutcomeConstruction.classify
+#print axioms ConstructedRegularRoundOutcome.toBudgetConstruction
+#print axioms finiteProductionRoundBudgetConstructionSettlement
 #print axioms checked_regular_runtime_decides_source_of_construction
 #print axioms checked_equality_runtime_eventually_conclusive
 #print axioms checked_equality_runtime_decides_source

@@ -66,6 +66,91 @@ def CheckedRegularRoundOutcome.frontier_of_address
     (document.checkScheduled_check budget
       (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl))
 
+/-- One exhaustive regular search round together with the construction data
+that explains its result.  A conclusive result carries the fact that it is not
+a frontier.  A frontier retains the injective rooted-address map from which
+its checked wire document is built.  This prevents the finite search boundary
+from erasing the witness later required by the production decision proof. -/
+inductive ConstructedRegularRoundOutcome
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat) : Type where
+  | conclusive
+      (outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+        ontology)
+      (proof : match outcome with | .frontier .. => False | _ => True)
+  | frontier
+      (address : Fin (8 * 2 ^ budget) →
+        WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+      (injective : Function.Injective address)
+
+def ConstructedRegularRoundOutcome.outcome
+    (constructed : ConstructedRegularRoundOutcome conceptCount roleCount
+      variableCount ontology budget) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  match constructed with
+  | .conclusive outcome _ => outcome
+  | .frontier address injective =>
+      CheckedRegularRoundOutcome.frontier_of_address address injective
+
+/-- Preserve the exact construction witness returned by exhaustive regular
+search.  Closure produces a checked finite refutation; a runtime frontier
+produces its canonical rooted-address document; only a genuinely blocked open
+leaf remains for the finite fold-assignment layer. -/
+noncomputable def finiteProductionRoundConstructionSettlement
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)))
+    (hrootEmpty : root = ∅)
+    (frontierAddress : ∀
+      (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true) :
+    ∀ forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+      ConstructedRegularRoundOutcome conceptCount roleCount variableCount
+          ontology budget ⊕
+        ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden := by
+  classical
+  apply finiteProductionSearchSettlement ontology parent ancestors hheads root
+  · intro _forbidden hrefutes
+    subst root
+    exact Classical.choice (show Nonempty
+        (ConstructedRegularRoundOutcome conceptCount roleCount variableCount
+          ontology budget) from by
+      obtain ⟨certificate, tree, hontology, hnodes, hempty, hcheck⟩ :=
+        hrefutes.exists_checked_empty_root_certificate ontology (by positivity)
+      exact ⟨.conclusive
+        (.finiteUnsat certificate tree hontology hnodes hempty hcheck) trivial⟩)
+  · intro forbidden leaf hdescends hfrontier
+    exact Classical.choice (show Nonempty
+        (ConstructedRegularRoundOutcome conceptCount roleCount variableCount
+          ontology budget) from by
+      obtain ⟨address, hrefines⟩ :=
+        frontierAddress forbidden leaf hdescends hfrontier
+      have hinjective :=
+        ((stateOfGuardedFacts leaf).checkRootedAddressRefines_sound address
+          hrefines).1
+      exact ⟨.frontier address hinjective⟩)
+
 /-- Settle one complete equality-free production search using semantic search
 results plus the concrete rooted-address refinement. Closure and frontier wire
 evidence are constructed here; neither is accepted as a producer-selected
@@ -785,6 +870,8 @@ theorem checked_regular_control_producer_decides_source
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_of_empty_root_refutes
 #print axioms CheckedRegularRoundOutcome.frontier_of_address
+#print axioms ConstructedRegularRoundOutcome.outcome
+#print axioms finiteProductionRoundConstructionSettlement
 #print axioms finiteProductionRoundSettlement
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides

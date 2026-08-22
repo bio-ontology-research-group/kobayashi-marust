@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Preserve the canonical rooted-address witness across exhaustive regular
+  search settlement and translate every early closure or frontier directly
+  into `RegularBudgetOutcomeConstruction`. A genuine blocked-open leaf remains
+  visibly separate for the finite fold-assignment layer, instead of erasing
+  the distinction behind an abstract fixed-budget classifier.
 - Prove completeness of the equality-free rooted-address frontier serializer.
   Any injective complete address map now generates a canonical versioned wire
   document whose ordinary and scheduled checks succeed at the exact doubling
