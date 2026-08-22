@@ -47,6 +47,7 @@ checkers=(
     ht-ordinary-unsat-production-run-check
     ht-cardinality-production-run-check
     ht-rooted-cardinality-production-run-check
+    ht-rooted-ordinary-production-run-check
     ht-production-blocking-check
     ht-production-trace-check
     ht-finite-production-terminal-check
@@ -163,6 +164,8 @@ done
     export KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-cardinality-production-run-check"
     export KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-production-run-check"
     export KM_HT_TEST_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-production-run-check"
+    export KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-ordinary-production-run-check"
+    export KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-ordinary-production-run-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
@@ -196,6 +199,8 @@ done
     cargo test --release equality_free_refutation_pairwise_blocks_a_satisfiable_cycle -- --nocapture
     cargo test --release cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds -- --nocapture
     cargo test --release cardinality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
+    cargo test --release native_abox_global_decision_uses_joint_sat_wire -- --nocapture
+    cargo test --release rooted_ordinary_run_rejects_a_terminal_from_another_abox -- --nocapture
     cargo test --release native_abox_cardinality_global_decision_uses_joint_wire -- --nocapture
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture

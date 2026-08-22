@@ -11125,6 +11125,35 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind one joint native-ABox SAT/UNSAT terminal to every ordinary
+    /// state-bearing frontier traversed by the same equality-aware run.
+    fn lean_rooted_ordinary_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker =
+            std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+                    )
+                })
+                .ok_or_else(|| {
+                    "native ABox publication requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
+                        .to_string()
+                })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "root_count": self.native_abox.individuals.len() + 1,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -13014,6 +13043,17 @@ impl Ht {
             |tree| LeanHtEqEvidence::Unsat { tree },
             true,
         )?;
+        self.lean_native_abox_unsat_refutation_from_equality(raw)
+    }
+
+    /// Compose a native-ABox refutation from an already-produced equality
+    /// closure. Production callers use this path to retain the exact closing
+    /// tree and root state returned by the run whose frontier history they
+    /// publish.
+    fn lean_native_abox_unsat_refutation_from_equality(
+        &self,
+        raw: String,
+    ) -> Result<String, String> {
         let certificate: serde_json::Value =
             serde_json::from_str(&raw).map_err(|error| error.to_string())?;
         let node_count = certificate["node_count"]
@@ -13311,14 +13351,34 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtEqRefutationOutcome::Closed(_, _) => {
-                    let refutation = self.lean_native_abox_unsat_refutation_json()?;
+                LeanHtEqRefutationOutcome::Closed(tree, _) => {
+                    let closed = self.lean_equality_closed_run_certificate_json(
+                        node_budget,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        ontology.clone(),
+                        state.equality_wire_state(node_budget),
+                        tree,
+                    )?;
+                    let refutation =
+                        self.lean_native_abox_unsat_refutation_from_equality(closed)?;
                     let refutation: serde_json::Value =
                         serde_json::from_str(&refutation).map_err(|error| error.to_string())?;
-                    return Ok((false, serde_json::to_string(&serde_json::json!({
+                    let terminal = serde_json::json!({
                         "version": 1,
                         "evidence": { "unsat": { "refutation": refutation } },
-                    })).map_err(|error| error.to_string())?));
+                    });
+                    if !self.lean_rooted_ordinary_production_run_passes(
+                        &frontier_history,
+                        terminal.clone(),
+                    )? {
+                        return Err(
+                            "Lean rejected the closed native ABox production run".to_string(),
+                        );
+                    }
+                    return Ok((false, serde_json::to_string(&terminal)
+                        .map_err(|error| error.to_string())?));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
                     let mut rejected_assignments = HashSet::new();
@@ -13344,7 +13404,14 @@ impl Ht {
                             Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
                             None => true,
                         };
-                        if passes {
+                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
+                            .map_err(|error| error.to_string())?;
+                        if passes
+                            && self.lean_rooted_ordinary_production_run_passes(
+                                &frontier_history,
+                                terminal,
+                            )?
+                        {
                             return Ok((true, candidate));
                         }
                         let inserted = rejected_assignments.insert(folds);
@@ -24928,26 +24995,75 @@ mod tests {
             wire["evidence"]["sat"]["certificate"]["seed"]["roots"],
             serde_json::json!([1])
         );
+
+        let mut inconsistent = Ht::new_certified(vec![Clause::new(
+            vec![con(false, B, X)],
+            Vec::new(),
+        )]);
+        inconsistent.set_nominals(vec![A]);
+        inconsistent.set_native_abox(
+            vec![(vec![A], vec![B])],
+            Vec::new(),
+            Vec::new(),
+        );
+        let (unsat, unsat_document) = inconsistent
+            .lean_global_decision_certificate_json()
+            .expect("native ABox contradiction has a joint checked refutation");
+        assert!(!unsat);
+        let unsat_wire: serde_json::Value =
+            serde_json::from_str(&unsat_document).unwrap();
+        assert!(unsat_wire["evidence"]["unsat"]["refutation"]["tree"]
+            .is_object());
+
         if let Some(checker) =
             std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER")
         {
-            let path = std::env::temp_dir().join(format!(
-                "km-ht-native-abox-decision-{}-{}.json",
-                std::process::id(),
-                std::thread::current().name().unwrap_or("test")
-            ));
-            std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
-                .arg(&path)
-                .output()
-                .expect("run native ABox decision checker");
-            let _ = std::fs::remove_file(path);
-            assert!(
-                accepted.status.success(),
-                "Lean must accept the joint native ABox SAT decision: {}",
-                String::from_utf8_lossy(&accepted.stderr)
-            );
+            for (kind, document) in [("sat", document), ("unsat", unsat_document)] {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-native-abox-decision-{kind}-{}-{}.json",
+                    std::process::id(),
+                    std::thread::current().name().unwrap_or("test")
+                ));
+                std::fs::write(&path, document).unwrap();
+                let accepted = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .output()
+                    .expect("run native ABox decision checker");
+                let _ = std::fs::remove_file(path);
+                assert!(
+                    accepted.status.success(),
+                    "Lean must accept the joint native ABox {kind} decision: {}",
+                    String::from_utf8_lossy(&accepted.stderr)
+                );
+            }
         }
+    }
+
+    #[test]
+    fn rooted_ordinary_run_rejects_a_terminal_from_another_abox() {
+        if std::env::var_os(
+            "KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+        )
+        .is_none()
+        {
+            return;
+        }
+        let mut reasoner = Ht::new_certified(Vec::new());
+        reasoner.set_nominals(vec![A]);
+        reasoner.set_native_abox(vec![(vec![A], vec![B])], Vec::new(), Vec::new());
+        let (_, terminal) = reasoner
+            .lean_native_abox_decision_certificate_json()
+            .expect("one-individual native ABox terminal");
+        let terminal = serde_json::from_str(&terminal).unwrap();
+
+        reasoner.set_native_abox(
+            vec![(vec![A], vec![B]), (vec![A], Vec::new())],
+            Vec::new(),
+            Vec::new(),
+        );
+        assert!(!reasoner
+            .lean_rooted_ordinary_production_run_passes(&[], terminal)
+            .expect("run rooted ordinary checker on mismatched ABox"));
     }
 
     #[test]

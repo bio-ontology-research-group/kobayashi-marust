@@ -65,6 +65,12 @@
   model-theoretic validity of the accepted terminal. KM composes native-ABox
   UNSAT evidence from the exact closing tree returned by the traced search,
   avoiding a second search whose result could diverge from the recorded run.
+- Bind joint native-ABox non-cardinality SAT and UNSAT terminals to their
+  complete ordinary retry histories. Lean checks the fixed root count,
+  ontology, finite signature, derived terminal budget, and model-theoretic
+  validity. KM now composes the UNSAT publication from the exact equality
+  state and closing tree returned by that run instead of starting another
+  refutation search.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search
