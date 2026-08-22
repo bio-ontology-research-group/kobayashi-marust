@@ -2450,6 +2450,14 @@ struct LeanHtRegularCertificate {
     residual: Vec<LeanHtClause>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtRegularCoverObstruction<'a> {
+    version: usize,
+    certificate: &'a LeanHtRegularCertificate,
+    clause: usize,
+    assignment: &'a [Node],
+}
+
 impl LeanHtRegularCertificate {
     fn cover_holds(&self, atom: &LeanHtAtom, assignment: &[Node]) -> bool {
         match atom {
@@ -24943,10 +24951,10 @@ mod tests {
         let non_simple_certificate = non_simple
             .lean_regular_blocked_open_certificate(&nonlocal_leaf)
             .expect("role-closure residuals use exact cover checking");
-        assert_eq!(
-            non_simple_certificate.first_cover_obstruction(),
-            Some((0, vec![0, 1]))
-        );
+        let obstruction = non_simple_certificate
+            .first_cover_obstruction()
+            .expect("the role-closure residual has a cover obstruction");
+        assert_eq!(obstruction, (0, vec![0, 1]));
         let non_simple_document = serde_json::to_string(&non_simple_certificate).unwrap();
         let non_simple_wire: serde_json::Value =
             serde_json::from_str(&non_simple_document).unwrap();
@@ -24974,7 +24982,7 @@ mod tests {
 
             let obstructed_path = target.join("km-ht-general-guarded-rejected.json");
             std::fs::write(&obstructed_path, non_simple_document).unwrap();
-            let obstructed_result = std::process::Command::new(checker)
+            let obstructed_result = std::process::Command::new(&checker)
                 .arg(&obstructed_path)
                 .output()
                 .expect("run the regular checker on a cover-visible obstruction");
@@ -24983,6 +24991,60 @@ mod tests {
                 "Lean must reject a cover-visible body whose head is absent",
             );
             let _ = std::fs::remove_file(obstructed_path);
+
+            let mut obstruction_checker = std::path::PathBuf::from(&checker);
+            obstruction_checker.set_file_name("ht-cover-obstruction-check");
+            let witness_path = target.join("km-ht-cover-obstruction-accepted.json");
+            let witness = LeanHtRegularCoverObstruction {
+                version: 1,
+                certificate: &non_simple_certificate,
+                clause: obstruction.0,
+                assignment: &obstruction.1,
+            };
+            std::fs::write(&witness_path, serde_json::to_vec(&witness).unwrap()).unwrap();
+            let witness_result = std::process::Command::new(&obstruction_checker)
+                .arg(&witness_path)
+                .output()
+                .expect("run the native Lean cover-obstruction checker");
+            assert!(
+                witness_result.status.success(),
+                "Lean must accept Rust's exact cover obstruction: {}",
+                String::from_utf8_lossy(&witness_result.stderr),
+            );
+
+            let forged_assignment = vec![0, 0];
+            let forged = LeanHtRegularCoverObstruction {
+                version: 1,
+                certificate: &non_simple_certificate,
+                clause: obstruction.0,
+                assignment: &forged_assignment,
+            };
+            std::fs::write(&witness_path, serde_json::to_vec(&forged).unwrap()).unwrap();
+            let forged_result = std::process::Command::new(&obstruction_checker)
+                .arg(&witness_path)
+                .output()
+                .expect("run the cover-obstruction checker on a forged assignment");
+            assert!(
+                !forged_result.status.success(),
+                "Lean must reject a grounding that is not a cover obstruction",
+            );
+
+            let out_of_range = LeanHtRegularCoverObstruction {
+                version: 1,
+                certificate: &non_simple_certificate,
+                clause: non_simple_certificate.residual.len(),
+                assignment: &obstruction.1,
+            };
+            std::fs::write(&witness_path, serde_json::to_vec(&out_of_range).unwrap()).unwrap();
+            let bounds_result = std::process::Command::new(obstruction_checker)
+                .arg(&witness_path)
+                .output()
+                .expect("run the cover-obstruction checker on an invalid clause index");
+            assert!(
+                !bounds_result.status.success(),
+                "Lean must reject a residual clause index outside the certificate",
+            );
+            let _ = std::fs::remove_file(witness_path);
         }
     }
 

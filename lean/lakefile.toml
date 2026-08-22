@@ -45,6 +45,10 @@ name = "ht-regular-cert-check"
 root = "HTRegularCertCheck"
 
 [[lean_exe]]
+name = "ht-cover-obstruction-check"
+root = "HTCoverObstructionCheck"
+
+[[lean_exe]]
 name = "ht-regular-cardinality-cert-check"
 root = "HTRegularCardinalityCertCheck"
 
