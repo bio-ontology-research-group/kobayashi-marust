@@ -605,9 +605,14 @@ remains available in other assignments. Lean proves that constructor-guarded
 fresh-assignment learning cannot continue forever. The production interface
 also requires each rejected assignment to be a member of the Cartesian product
 generated from that attempt's current source-major blocker options; it cannot
-invent an unrelated fresh assignment. Lean constructs one settled checked
+invent an unrelated fresh assignment. Lean implements the same first-fresh
+selection used by Rust and proves that selection reports `none` exactly when
+every generated assignment has been rejected. The production capstones now
+take ordinary executable functions for option reconstruction, candidate
+checking, and the post-exhaustion continuation; callers no longer supply a
+dependent producer as an assumption. Lean constructs one settled checked
 outcome for every budget and composes those outcomes with address frontier
-doubling and source-model equivalence. The same generated-assignment capstone
+doubling and source-model equivalence. The same executable-assignment capstone
 covers regular, equality, cardinality, native-ABox, and combined
 native-ABox-cardinality global and taxonomy routes.
 

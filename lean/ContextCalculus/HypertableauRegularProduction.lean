@@ -725,6 +725,181 @@ theorem CartesianFoldAssignmentProducer.eventually_done
       producer.toGuarded.toFoldAssignmentProducer.run round = .done result :=
   producer.toGuarded.eventually_done
 
+/-! ## Executable Cartesian producer
+
+Rust selects the first source-major Cartesian assignment absent from its
+rejected set.  These definitions expose that exact computation, rather than
+requiring callers to manufacture a proof-indexed producer directly. -/
+
+def firstFreshFoldAssignment [DecidableEq Node]
+    (rejected : Finset (FoldAssignment Node)) :
+    List (FoldAssignment Node) → Option (FoldAssignment Node)
+  | [] => none
+  | assignment :: assignments =>
+      if assignment ∈ rejected then
+        firstFreshFoldAssignment rejected assignments
+      else
+        some assignment
+
+theorem firstFreshFoldAssignment_eq_some_mem
+    [DecidableEq Node]
+    {rejected : Finset (FoldAssignment Node)}
+    {assignments : List (FoldAssignment Node)}
+    {assignment : FoldAssignment Node}
+    (hselect : firstFreshFoldAssignment rejected assignments = some assignment) :
+    assignment ∈ assignments := by
+  induction assignments with
+  | nil => simp [firstFreshFoldAssignment] at hselect
+  | cons candidate assignments ih =>
+      by_cases hrejected : candidate ∈ rejected
+      · simp only [firstFreshFoldAssignment, if_pos hrejected] at hselect
+        exact List.mem_cons_of_mem candidate (ih hselect)
+      · simp only [firstFreshFoldAssignment, if_neg hrejected,
+          Option.some.injEq] at hselect
+        subst assignment
+        exact List.mem_cons_self
+
+theorem firstFreshFoldAssignment_eq_some_fresh
+    [DecidableEq Node]
+    {rejected : Finset (FoldAssignment Node)}
+    {assignments : List (FoldAssignment Node)}
+    {assignment : FoldAssignment Node}
+    (hselect : firstFreshFoldAssignment rejected assignments = some assignment) :
+    assignment ∉ rejected := by
+  induction assignments with
+  | nil => simp [firstFreshFoldAssignment] at hselect
+  | cons candidate assignments ih =>
+      by_cases hrejected : candidate ∈ rejected
+      · simp only [firstFreshFoldAssignment, if_pos hrejected] at hselect
+        exact ih hselect
+      · simp only [firstFreshFoldAssignment, if_neg hrejected,
+          Option.some.injEq] at hselect
+        rwa [← hselect]
+
+theorem firstFreshFoldAssignment_eq_none_iff
+    [DecidableEq Node]
+    (rejected : Finset (FoldAssignment Node))
+    (assignments : List (FoldAssignment Node)) :
+    firstFreshFoldAssignment rejected assignments = none ↔
+      ∀ assignment ∈ assignments, assignment ∈ rejected := by
+  induction assignments with
+  | nil => simp [firstFreshFoldAssignment]
+  | cons candidate assignments ih =>
+      by_cases hrejected : candidate ∈ rejected
+      · simp only [firstFreshFoldAssignment, if_pos hrejected, ih,
+          List.mem_cons, forall_eq_or_imp]
+        constructor
+        · intro hall
+          exact ⟨hrejected, hall⟩
+        · intro hall
+          exact hall.2
+      · simp [firstFreshFoldAssignment, hrejected]
+
+/-- Construct the proof-indexed producer from KM's executable control shape.
+The checker either accepts the selected candidate and returns a result or
+rejects exactly that candidate.  Exhaustion invokes the fold-free/forced-
+expansion continuation. -/
+def CartesianFoldAssignmentProducer.ofRuntime
+    [DecidableEq Node]
+    (options : Finset (FoldAssignment Node) → List (Node × List Node))
+    (optionNonempty : ∀ rejected option,
+      option ∈ options rejected → option.2 ≠ [])
+    (check : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Result ⊕ Unit)
+    (onExhausted : Finset (FoldAssignment Node) → Result) :
+    CartesianFoldAssignmentProducer Node Result where
+  options := options
+  optionNonempty := optionNonempty
+  attempt rejected :=
+    match hselect : firstFreshFoldAssignment rejected
+        (enumerateFoldAssignments (options rejected)) with
+    | none => CartesianFoldAssignmentAttempt.done (onExhausted rejected)
+    | some assignment =>
+        match check rejected assignment with
+        | .inl result => CartesianFoldAssignmentAttempt.done result
+        | .inr _ => CartesianFoldAssignmentAttempt.rejected assignment
+            (firstFreshFoldAssignment_eq_some_mem hselect)
+            (firstFreshFoldAssignment_eq_some_fresh hselect)
+
+/-- Data supplied by KM's fixed-budget retry loop. Unlike the dependent
+producer interface, these are ordinary executable functions: blocker-option
+reconstruction, candidate checking, and the continuation used after exact
+Cartesian exhaustion. -/
+structure CartesianFoldAssignmentRuntime (Node Result : Type)
+    [DecidableEq Node] where
+  options : Finset (FoldAssignment Node) → List (Node × List Node)
+  optionNonempty : ∀ rejected option,
+    option ∈ options rejected → option.2 ≠ []
+  check : Finset (FoldAssignment Node) → FoldAssignment Node → Result ⊕ Unit
+  onExhausted : Finset (FoldAssignment Node) → Result
+
+def CartesianFoldAssignmentRuntime.toProducer
+    [DecidableEq Node]
+    (runtime : CartesianFoldAssignmentRuntime Node Result) :
+    CartesianFoldAssignmentProducer Node Result :=
+  CartesianFoldAssignmentProducer.ofRuntime runtime.options
+    runtime.optionNonempty runtime.check runtime.onExhausted
+
+theorem CartesianFoldAssignmentRuntime.eventually_done
+    [Fintype Node] [DecidableEq Node]
+    (runtime : CartesianFoldAssignmentRuntime Node Result) :
+    ∃ round result,
+      runtime.toProducer.toGuarded.toFoldAssignmentProducer.run round =
+        .done result :=
+  runtime.toProducer.eventually_done
+
+theorem CartesianFoldAssignmentProducer.ofRuntime_exhausted
+    [DecidableEq Node]
+    (options : Finset (FoldAssignment Node) → List (Node × List Node))
+    (optionNonempty : ∀ rejected option,
+      option ∈ options rejected → option.2 ≠ [])
+    (check : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Result ⊕ Unit)
+    (onExhausted : Finset (FoldAssignment Node) → Result)
+    {rejected : Finset (FoldAssignment Node)}
+    (hselect : firstFreshFoldAssignment rejected
+      (enumerateFoldAssignments (options rejected)) = none) :
+    (CartesianFoldAssignmentProducer.ofRuntime options optionNonempty check
+      onExhausted).attempt rejected = .done (onExhausted rejected) := by
+  change (match hselected : firstFreshFoldAssignment rejected
+      (enumerateFoldAssignments (options rejected)) with
+    | none => .done (onExhausted rejected)
+    | some assignment =>
+        match check rejected assignment with
+        | .inl result => .done result
+        | .inr _ => .rejected assignment
+            (firstFreshFoldAssignment_eq_some_mem hselected)
+            (firstFreshFoldAssignment_eq_some_fresh hselected)) =
+      CartesianFoldAssignmentAttempt.done (onExhausted rejected)
+  split
+  · rfl
+  · rename_i assignment hsome
+    rw [hselect] at hsome
+    contradiction
+
+theorem CartesianFoldAssignmentProducer.ofRuntime_exhaustion_complete
+    [DecidableEq Node]
+    (options : Finset (FoldAssignment Node) → List (Node × List Node))
+    (optionNonempty : ∀ rejected option,
+      option ∈ options rejected → option.2 ≠ [])
+    (check : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Result ⊕ Unit)
+    (onExhausted : Finset (FoldAssignment Node) → Result)
+    {rejected : Finset (FoldAssignment Node)}
+    (hselect : firstFreshFoldAssignment rejected
+      (enumerateFoldAssignments (options rejected)) = none) :
+    (CartesianFoldAssignmentProducer.ofRuntime options optionNonempty check
+        onExhausted).attempt rejected = .done (onExhausted rejected) ∧
+      ∀ assignment ∈ enumerateFoldAssignments (options rejected),
+        assignment ∈ rejected := by
+  constructor
+  · exact CartesianFoldAssignmentProducer.ofRuntime_exhausted options
+      optionNonempty check onExhausted hselect
+  · intro assignment hgenerated
+    exact (firstFreshFoldAssignment_eq_none_iff rejected
+      (enumerateFoldAssignments (options rejected))).mp hselect
+      assignment hgenerated
+
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
 because the serializer no longer mutates the completion graph. -/
@@ -1006,5 +1181,11 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms sourceExpansionControlled_of_assignment_exhaustion
 #print axioms CartesianFoldAssignmentProducer.rejection_generated
 #print axioms CartesianFoldAssignmentProducer.eventually_done
+#print axioms firstFreshFoldAssignment_eq_some_mem
+#print axioms firstFreshFoldAssignment_eq_some_fresh
+#print axioms firstFreshFoldAssignment_eq_none_iff
+#print axioms CartesianFoldAssignmentProducer.ofRuntime_exhausted
+#print axioms CartesianFoldAssignmentProducer.ofRuntime_exhaustion_complete
+#print axioms CartesianFoldAssignmentRuntime.eventually_done
 
 end ContextCalculus.Hypertableau

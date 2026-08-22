@@ -82,6 +82,13 @@
   All four global-decision families and all four complete-taxonomy families use
   this generated-assignment interface, while retaining the finite-settlement
   and source-level decision theorems.
+- Replace the remaining proof-supplied Cartesian producer at the production
+  capstones with an executable runtime interface. Lean now computes the first
+  generated assignment absent from the rejected set, proves that a selected
+  assignment is generated and fresh, proves that `none` means exact product
+  exhaustion, and invokes the forced-expansion continuation only in that case.
+  Global and taxonomy routes consume these ordinary option, checker, and
+  exhaustion functions directly.
 
 ### Unify total production HT global decisions
 
