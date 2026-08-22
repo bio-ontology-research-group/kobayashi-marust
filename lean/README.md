@@ -646,6 +646,13 @@ An optional checked-candidate adapter now makes acceptance definitionally
 conclusive, and a filtered-option theorem derives the fresh outer pair required
 for expansion from a nonempty source-major blocker table.
 
+The same module constructs a canonical finite certificate by enumerating the
+exact labels, edges, and obligations of a decidable finite state. Lean proves
+that decoding this certificate recovers the original state. Consequently, a
+concrete blocked terminal with no production unwitnessed source yields an
+accepted finite SAT certificate directly; this endpoint no longer relies on a
+separate serializer-completeness premise.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion

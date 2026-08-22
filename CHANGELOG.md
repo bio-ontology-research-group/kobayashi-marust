@@ -4,6 +4,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Construct the canonical finite SAT certificate directly from any decidable
+  finite completion state and prove that decoding the certificate recovers
+  exactly that state. If the concrete equality-free production terminal has no
+  unwitnessed source, Lean derives witness completeness and checker acceptance
+  without assuming that an external serializer preserved the state.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise
