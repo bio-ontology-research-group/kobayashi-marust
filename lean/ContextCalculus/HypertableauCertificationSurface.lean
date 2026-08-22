@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauProductionGlobalPublication
 import ContextCalculus.HypertableauProductionTaxonomyPublication
+import ContextCalculus.HypertableauCardinalityTaxonomyRunMatrixWire
 
 /-!
 # Current production hypertableau certification surface
@@ -38,6 +39,16 @@ theorem certifiedHTCardinalityTaxonomyPublication
       (EntailsSubWithCardinality ontology definitions)) :=
   route.publishesExactly
 
+theorem certifiedHTCardinalityTaxonomyRunMatrixPublication
+    (wire : WireCardinalityTaxonomyRunMatrix) (hcheck : wire.check = true) :
+    ∃ decoded : DecodedCardinalityTaxonomyRunMatrix,
+      wire.decode = .ok decoded ∧
+        ∃ certificate : CompleteCardinalityTaxonomyCertificate
+          decoded.terminal.ontology decoded.terminal.definitions
+          decoded.terminal.named,
+          certificate = decoded.terminal.semantic :=
+  wire.check_sound hcheck
+
 theorem certifiedHTNativeABoxTaxonomyPublication
     (route : CertifiedHTFoldAssignmentNativeABoxProductionTaxonomyRoute
       conceptCount roleCount variableCount abox ontology named) :
@@ -57,6 +68,7 @@ theorem certifiedHTNativeABoxCardinalityTaxonomyPublication
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
+#print axioms certifiedHTCardinalityTaxonomyRunMatrixPublication
 #print axioms certifiedHTNativeABoxTaxonomyPublication
 #print axioms certifiedHTNativeABoxCardinalityTaxonomyPublication
 

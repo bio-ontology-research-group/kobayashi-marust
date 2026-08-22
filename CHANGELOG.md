@@ -95,6 +95,14 @@
   Lean from the complete rooted ordinary runs, with matrix shape, exact query
   coordinates, shared ABox/ontology problem, and every production history
   checked together before publication.
+- Bind every ontology-only cardinality taxonomy cell to the exact production
+  run that decided it. KM retains every state-bearing retry frontier and now
+  serializes the actual closing state, refutation tree, and depth instead of
+  rerunning closed queries. Lean checks SAT and UNSAT terminals, the derived
+  budget, query literals, ontology, definitions, finite signature, and final
+  frontier identity. A run-derived matrix checker then verifies complete
+  concept and ordered-pair coverage, exact coordinates, one shared problem,
+  and every full run before exposing the complete taxonomy semantics.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search

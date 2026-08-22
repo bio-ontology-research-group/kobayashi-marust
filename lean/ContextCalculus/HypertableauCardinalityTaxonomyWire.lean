@@ -380,7 +380,7 @@ private def decodeAnchoredCardinalitySubsumption
     else throw "anchored cardinality subsumption model has different definitions"
   else throw "anchored cardinality subsumption model has a different ontology"
 
-private def decodeCardinalityConcept
+def decodeCardinalityConcept
     (payload : WireCardinalityQueryPayload)
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))
@@ -427,7 +427,7 @@ private def decodeCardinalityConcept
     | _ => throw "expected cardinality concept-status evidence"
   else throw "cardinality concept evidence was rejected"
 
-private def decodeCardinalitySubsumption
+def decodeCardinalitySubsumption
     (payload : WireCardinalityQueryPayload)
     (ontology : List (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount)))

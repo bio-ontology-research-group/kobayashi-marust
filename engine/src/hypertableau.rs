@@ -2673,9 +2673,7 @@ impl LeanHtRegularCertificate {
     /// whose complete cover body is true and whose complete head is false.
     fn first_cover_obstruction(&self) -> Option<(usize, Vec<Node>)> {
         for (clause_index, clause) in self.residual.iter().enumerate() {
-            for assignment in
-                LeanRefutationAssignments::new(self.variable_count, self.node_count)
-            {
+            for assignment in LeanRefutationAssignments::new(self.variable_count, self.node_count) {
                 if clause
                     .body
                     .iter()
@@ -2794,6 +2792,17 @@ enum LeanHtTaxonomyQuery {
 }
 
 impl LeanHtTaxonomyQuery {
+    fn wire_json(self) -> serde_json::Value {
+        match self {
+            Self::Concept(concept) => serde_json::json!({
+                "concept": { "concept": concept as usize },
+            }),
+            Self::Subsumption(sub, sup) => serde_json::json!({
+                "subsumption": { "sub": sub as usize, "sup": sup as usize },
+            }),
+        }
+    }
+
     fn initial_labels(self) -> Vec<(Node, CLit)> {
         match self {
             Self::Concept(concept) => vec![(0, CLit::pos(concept))],
@@ -2813,6 +2822,22 @@ impl LeanHtTaxonomyQuery {
                 root: 0,
                 sub: sub as usize,
                 sup: sup as usize,
+            },
+        }
+    }
+
+    fn equality_closed_evidence(self) -> LeanHtEqEvidence {
+        match self {
+            Self::Concept(concept) => LeanHtEqEvidence::UnsatisfiableConcept {
+                root: 0,
+                concept: concept as usize,
+                tree: LeanHtEqRefutationTree::Clash,
+            },
+            Self::Subsumption(sub, sup) => LeanHtEqEvidence::Subsumption {
+                root: 0,
+                sub: sub as usize,
+                sup: sup as usize,
+                tree: LeanHtEqRefutationTree::Clash,
             },
         }
     }
@@ -3381,9 +3406,7 @@ impl LeanHtRefutationState {
         state.cardinality_parent.resize(state.active_nodes, None);
         state.cardinality_step.resize(state.active_nodes, None);
 
-        for (&root, (proxies, assertions)) in
-            roots.iter().zip(&native_abox.individuals)
-        {
+        for (&root, (proxies, assertions)) in roots.iter().zip(&native_abox.individuals) {
             for &concept in proxies.iter().chain(assertions) {
                 let fact = (root, CLit::pos(concept));
                 if state.labels.insert(fact) {
@@ -3397,16 +3420,13 @@ impl LeanHtRefutationState {
             }
         }
         for &(left, right) in &native_abox.different {
-            let (&left, &right) = roots
-                .get(left)
-                .zip(roots.get(right))
-                .ok_or_else(|| "native ABox different-individual index is out of range".to_string())?;
+            let (&left, &right) = roots.get(left).zip(roots.get(right)).ok_or_else(|| {
+                "native ABox different-individual index is out of range".to_string()
+            })?;
             if left == right {
                 return Err("native ABox marks one individual different from itself".to_string());
             }
-            if !state.apart.contains(&(left, right))
-                && !state.apart.contains(&(right, left))
-            {
+            if !state.apart.contains(&(left, right)) && !state.apart.contains(&(right, left)) {
                 state.apart.push((left, right));
             }
         }
@@ -3716,18 +3736,24 @@ impl LeanHtRefutationState {
                     })
             }) && self.obligations.iter().all(|&(role, filler, source)| {
                 !self.equivalent(source, a)
-                    || self.obligations.iter().any(|&(candidate, candidate_filler, other)| {
-                        candidate == role
-                            && candidate_filler == filler
-                            && self.equivalent(other, b)
-                    })
+                    || self
+                        .obligations
+                        .iter()
+                        .any(|&(candidate, candidate_filler, other)| {
+                            candidate == role
+                                && candidate_filler == filler
+                                && self.equivalent(other, b)
+                        })
             }) && self.obligations.iter().all(|&(role, filler, source)| {
                 !self.equivalent(source, b)
-                    || self.obligations.iter().any(|&(candidate, candidate_filler, other)| {
-                        candidate == role
-                            && candidate_filler == filler
-                            && self.equivalent(other, a)
-                    })
+                    || self
+                        .obligations
+                        .iter()
+                        .any(|&(candidate, candidate_filler, other)| {
+                            candidate == role
+                                && candidate_filler == filler
+                                && self.equivalent(other, a)
+                        })
             })
         };
         if !closed_local_facts_equal(left, right) {
@@ -3830,7 +3856,9 @@ impl LeanHtRefutationState {
             pairs.sort_unstable();
             pairs
         };
-        let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
+        let folds = state
+            .next_fold_assignment(&HashSet::new())
+            .unwrap_or_default();
         state.with_fold_assignment(folds)
     }
 
@@ -3854,7 +3882,9 @@ impl LeanHtRefutationState {
             pairs.sort_unstable();
             pairs
         };
-        let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
+        let folds = state
+            .next_fold_assignment(&HashSet::new())
+            .unwrap_or_default();
         state.with_fold_assignment(folds)
     }
 
@@ -9952,14 +9982,9 @@ impl Ht {
     /// publication checker or the test-only checker is configured.  Both SAT
     /// and UNSAT cells cross this boundary; a refutation is not privileged over
     /// a countermodel merely because the search closed.
-    fn lean_native_abox_taxonomy_candidate_passes(
-        &self,
-        payload: &str,
-    ) -> Result<bool, String> {
+    fn lean_native_abox_taxonomy_candidate_passes(&self, payload: &str) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
-            });
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER"));
         match checker {
             Some(checker) => self.lean_candidate_passes_with(payload, &checker),
             None => Ok(true),
@@ -9970,14 +9995,10 @@ impl Ht {
         &self,
         payload: &str,
     ) -> Result<bool, String> {
-        let checker = std::env::var_os(
-            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os(
-                "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
-            )
-        });
+        let checker = std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER")
+            });
         match checker {
             Some(checker) => self.lean_candidate_passes_with(payload, &checker),
             None => Ok(true),
@@ -10281,10 +10302,12 @@ impl Ht {
         let expanded_minimums: Vec<_> = frontier
             .expanded_minimums
             .iter()
-            .map(|&(definition, source)| serde_json::json!({
-                "definition": definition,
-                "source": source,
-            }))
+            .map(|&(definition, source)| {
+                serde_json::json!({
+                    "definition": definition,
+                    "source": source,
+                })
+            })
             .collect();
         serde_json::to_string(&serde_json::json!({
             "version": 1,
@@ -10339,16 +10362,13 @@ impl Ht {
             return Ok(false);
         }
         let checker = std::env::var_os("KM_HT_LEAN_DOUBLING_TRACE_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER")
-            })
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER"))
             .ok_or_else(|| {
                 "ordinary HT iterative deepening requires KM_HT_LEAN_DOUBLING_TRACE_CHECKER"
                     .to_string()
             })?;
         let document = self.lean_address_refinement_json(frontier)?;
-        let document =
-            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        let document = serde_json::from_str(&document).map_err(|error| error.to_string())?;
         frontiers.push(document);
         let result = (|| -> Result<bool, String> {
             let history = serde_json::to_string(&serde_json::json!({
@@ -10381,16 +10401,10 @@ impl Ht {
         let rooted = frontier.root_count > 1;
         let checker = if rooted {
             std::env::var_os("KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER")
-                .or_else(|| {
-                    std::env::var_os(
-                        "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
-                    )
-                })
+                .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER"))
         } else {
             std::env::var_os("KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER")
-                .or_else(|| {
-                    std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER")
-                })
+                .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER"))
         };
         let Some(checker) = checker else {
             return Ok(true);
@@ -10412,10 +10426,7 @@ impl Ht {
         expected_node_count: usize,
         frontiers: &mut Vec<serde_json::Value>,
     ) -> Result<bool, String> {
-        if !self.lean_cardinality_address_frontier_passes(
-            frontier,
-            expected_node_count,
-        )? {
+        if !self.lean_cardinality_address_frontier_passes(frontier, expected_node_count)? {
             return Ok(false);
         }
         let rooted = frontier.root_count > 1;
@@ -10447,8 +10458,7 @@ impl Ht {
         } else {
             self.lean_cardinality_address_frontier_json(frontier)?
         };
-        let document =
-            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        let document = serde_json::from_str(&document).map_err(|error| error.to_string())?;
         frontiers.push(document);
         let result = (|| -> Result<bool, String> {
             let history = if rooted {
@@ -10467,8 +10477,7 @@ impl Ht {
                     "frontiers": frontiers,
                 })
             };
-            let history =
-                serde_json::to_string(&history).map_err(|error| error.to_string())?;
+            let history = serde_json::to_string(&history).map_err(|error| error.to_string())?;
             self.lean_candidate_passes_with(&history, &checker)
         })();
         if !matches!(&result, Ok(true)) {
@@ -10585,12 +10594,7 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtRefutationOutcome {
-        self.lean_refutation_avoiding_folds(
-            state,
-            variable_count,
-            node_budget,
-            &HashSet::new(),
-        )
+        self.lean_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::new())
     }
 
     fn lean_refutation_avoiding_folds(
@@ -10916,15 +10920,12 @@ impl Ht {
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
     ) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
-            })
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER"))
             .ok_or_else(|| {
                 "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
                     .to_string()
             })?;
-        let document =
-            self.lean_production_blocking_document_json(leaf, rejected_assignments)?;
+        let document = self.lean_production_blocking_document_json(leaf, rejected_assignments)?;
         self.lean_candidate_passes_with(&document, &checker)
     }
 
@@ -10937,34 +10938,22 @@ impl Ht {
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
         rounds: &mut Vec<serde_json::Value>,
     ) -> Result<bool, String> {
-        let round = self.lean_production_blocking_document_json(
-            leaf,
-            rejected_assignments,
-        )?;
-        let blocking_checker = std::env::var_os(
-            "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
-        })
-        .ok_or_else(|| {
-            "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
-                .to_string()
-        })?;
+        let round = self.lean_production_blocking_document_json(leaf, rejected_assignments)?;
+        let blocking_checker = std::env::var_os("KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER"))
+            .ok_or_else(|| {
+                "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
+                    .to_string()
+            })?;
         if !self.lean_candidate_passes_with(&round, &blocking_checker)? {
             return Ok(false);
         }
         let round = serde_json::from_str(&round).map_err(|error| error.to_string())?;
-        let trace_checker = std::env::var_os(
-            "KM_HT_LEAN_PRODUCTION_TRACE_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_TRACE_CHECKER")
-        })
-        .ok_or_else(|| {
-            "exhausted production folds require KM_HT_LEAN_PRODUCTION_TRACE_CHECKER"
-                .to_string()
-        })?;
+        let trace_checker = std::env::var_os("KM_HT_LEAN_PRODUCTION_TRACE_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_TRACE_CHECKER"))
+            .ok_or_else(|| {
+                "exhausted production folds require KM_HT_LEAN_PRODUCTION_TRACE_CHECKER".to_string()
+            })?;
         rounds.push(round);
         let result = (|| -> Result<bool, String> {
             let history = serde_json::to_string(&serde_json::json!({
@@ -10991,9 +10980,7 @@ impl Ht {
         terminal: serde_json::Value,
     ) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
-            })
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
                 "ordinary HT SAT publication requires KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER"
                     .to_string()
@@ -11010,10 +10997,13 @@ impl Ht {
             "finite" | "regular" | "equality" => {
                 object.insert(terminal_kind.to_string(), terminal);
             }
-            _ => return Err(format!("unsupported ordinary HT terminal kind {terminal_kind}")),
+            _ => {
+                return Err(format!(
+                    "unsupported ordinary HT terminal kind {terminal_kind}"
+                ))
+            }
         }
-        let document =
-            serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        let document = serde_json::to_string(&document).map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
     }
 
@@ -11063,9 +11053,7 @@ impl Ht {
         terminal: serde_json::Value,
     ) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER")
-            .or_else(|| {
-                std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER")
-            })
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
                 "cardinality HT publication requires KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"
                     .to_string()
@@ -11132,17 +11120,12 @@ impl Ht {
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
     ) -> Result<bool, String> {
-        let checker =
-            std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
-                .or_else(|| {
-                    std::env::var_os(
-                        "KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
-                    )
-                })
-                .ok_or_else(|| {
-                    "native ABox publication requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
-                        .to_string()
-                })?;
+        let checker = std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"))
+            .ok_or_else(|| {
+                "native ABox publication requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
+                    .to_string()
+            })?;
         let document = serde_json::to_string(&serde_json::json!({
             "version": 1,
             "start_budget": 0,
@@ -11254,8 +11237,7 @@ impl Ht {
         if self.lean_candidate_passes_with(&document, &checker)? {
             Ok(document)
         } else {
-            Err("Lean rejected the native ABox cardinality taxonomy production run"
-                .to_string())
+            Err("Lean rejected the native ABox cardinality taxonomy production run".to_string())
         }
     }
 
@@ -11287,6 +11269,109 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    fn lean_cardinality_taxonomy_query_payload(
+        &self,
+        document: &str,
+    ) -> Result<serde_json::Value, String> {
+        let full: serde_json::Value =
+            serde_json::from_str(document).map_err(|error| error.to_string())?;
+        let inner = full
+            .get("certificate")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                "cardinality taxonomy terminal has no equality certificate".to_string()
+            })?;
+        Ok(serde_json::json!({
+            "node_count": inner.get("node_count").cloned().ok_or("missing node_count")?,
+            "state": inner.get("state").cloned().ok_or("missing equality state")?,
+            "evidence": inner.get("evidence").cloned().ok_or("missing evidence")?,
+            "refutation_depth": full.get("refutation_depth").cloned().unwrap_or_else(|| serde_json::json!(0)),
+            "refutation": full.get("refutation").cloned().unwrap_or(serde_json::Value::Null),
+            "distinct_refutation_depth": full.get("distinct_refutation_depth").cloned().unwrap_or_else(|| serde_json::json!(0)),
+            "distinct_refutation": full.get("distinct_refutation").cloned().unwrap_or(serde_json::Value::Null),
+            "anchored": full.get("anchored").cloned().unwrap_or(serde_json::Value::Null),
+        }))
+    }
+
+    fn lean_cardinality_taxonomy_production_run_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+        frontiers: &[serde_json::Value],
+        terminal_document: &str,
+    ) -> Result<String, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "cardinality taxonomy publication requires KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+                .to_string()
+        })?;
+        let full: serde_json::Value =
+            serde_json::from_str(terminal_document).map_err(|error| error.to_string())?;
+        let certificate = full
+            .get("certificate")
+            .ok_or_else(|| "cardinality taxonomy terminal has no certificate".to_string())?;
+        let max_width = self
+            .card_defs
+            .values()
+            .filter(|definition| definition.kind == CardKind::Min)
+            .map(|definition| definition.n as usize)
+            .max()
+            .unwrap_or(0);
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "max_width": max_width,
+            "concept_count": certificate["concept_count"],
+            "role_count": certificate["role_count"],
+            "variable_count": certificate["variable_count"],
+            "ontology": certificate["ontology"],
+            "definitions": full["definitions"],
+            "query": query.wire_json(),
+            "frontiers": frontiers,
+            "terminal": self.lean_cardinality_taxonomy_query_payload(terminal_document)?,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(document)
+        } else {
+            Err("Lean rejected the cardinality taxonomy production run".to_string())
+        }
+    }
+
+    fn lean_cardinality_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "cardinality taxonomy publication requires KM_HT_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER"
+                .to_string()
+        })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -11297,18 +11382,12 @@ impl Ht {
         regular: &str,
         frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
-        let checker = std::env::var_os(
-            "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os(
-                "KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
-            )
-        })
-        .ok_or_else(|| {
-            "regular SAT publication requires KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"
-                .to_string()
-        })?;
+        let checker = std::env::var_os("KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"))
+            .ok_or_else(|| {
+                "regular SAT publication requires KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"
+                    .to_string()
+            })?;
         let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
         let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
         let regular = serde_json::from_str(regular).map_err(|error| error.to_string())?;
@@ -11326,13 +11405,8 @@ impl Ht {
         if !self.lean_candidate_passes_with(&document, &checker)? {
             return Ok(false);
         }
-        let terminal =
-            serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(
-            frontier_history,
-            "regular",
-            terminal,
-        )
+        let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(frontier_history, "regular", terminal)
     }
 
     /// Prove that one finite SAT certificate is exactly the materialization of
@@ -11344,18 +11418,12 @@ impl Ht {
         finite: &str,
         frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
-        let checker = std::env::var_os(
-            "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os(
-                "KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
-            )
-        })
-        .ok_or_else(|| {
-            "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
-                .to_string()
-        })?;
+        let checker = std::env::var_os("KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"))
+            .ok_or_else(|| {
+                "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+                    .to_string()
+            })?;
         let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
         let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
         let finite = serde_json::from_str(finite).map_err(|error| error.to_string())?;
@@ -11373,13 +11441,8 @@ impl Ht {
         if !self.lean_candidate_passes_with(&document, &checker)? {
             return Ok(false);
         }
-        let terminal =
-            serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(
-            frontier_history,
-            "finite",
-            terminal,
-        )
+        let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(frontier_history, "finite", terminal)
     }
 
     /// Equality-aware counterpart of the production blocker table. Lean
@@ -11396,7 +11459,9 @@ impl Ht {
     ) -> Result<String, String> {
         let node_count = state.representatives.len();
         if state.witness_parent.len() != node_count {
-            return Err("equality production blocker parent table has the wrong length".to_string());
+            return Err(
+                "equality production blocker parent table has the wrong length".to_string(),
+            );
         }
         let (mut variable_count, mut concept_count, mut role_count, ontology) =
             self.lean_decision_signature();
@@ -11555,18 +11620,12 @@ impl Ht {
         assignment: &[(Node, Node)],
         frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
-        let checker = std::env::var_os(
-            "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .or_else(|| {
-            std::env::var_os(
-                "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
-            )
-        })
-        .ok_or_else(|| {
-            "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
-                .to_string()
-        })?;
+        let checker = std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER")
+            .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"))
+            .ok_or_else(|| {
+                "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
+                    .to_string()
+            })?;
         let table = self.lean_equality_production_blocking_document_json(
             state,
             &HashSet::new(),
@@ -11589,13 +11648,8 @@ impl Ht {
         if !self.lean_candidate_passes_with(&document, &checker)? {
             return Ok(false);
         }
-        let terminal =
-            serde_json::from_str(&document).map_err(|error| error.to_string())?;
-        self.lean_ordinary_production_run_passes(
-            frontier_history,
-            "equality",
-            terminal,
-        )
+        let terminal = serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(frontier_history, "equality", terminal)
     }
 
     /// Check one exhausted equality-aware blocking round and append it to the
@@ -12311,8 +12365,8 @@ impl Ht {
                         variable_count,
                         tree,
                     )?;
-                    let terminal: serde_json::Value = serde_json::from_str(&finite)
-                        .map_err(|error| error.to_string())?;
+                    let terminal: serde_json::Value =
+                        serde_json::from_str(&finite).map_err(|error| error.to_string())?;
                     if !self.lean_ordinary_unsat_production_run_passes(
                         &frontier_history,
                         "ordinary",
@@ -12356,8 +12410,7 @@ impl Ht {
                                 &regular,
                                 &frontier_history,
                             )? {
-                                let envelope =
-                                    Self::lean_regular_decision_envelope(regular, true)?;
+                                let envelope = Self::lean_regular_decision_envelope(regular, true)?;
                                 let candidate = self.finalize_lean_certificate(envelope)?;
                                 if self.lean_decision_candidate_passes(&candidate)? {
                                     return Ok((true, candidate));
@@ -12416,12 +12469,7 @@ impl Ht {
         variable_count: usize,
         node_budget: usize,
     ) -> LeanHtEqRefutationOutcome {
-        self.lean_eq_refutation_avoiding_folds(
-            state,
-            variable_count,
-            node_budget,
-            &HashSet::new(),
-        )
+        self.lean_eq_refutation_avoiding_folds(state, variable_count, node_budget, &HashSet::new())
     }
 
     fn lean_eq_refutation_avoiding_folds(
@@ -12575,9 +12623,7 @@ impl Ht {
                 }
             };
         }
-        LeanHtEqRefutationOutcome::Open(
-            state.equality_blocked_open_state_avoiding(forbidden_folds),
-        )
+        LeanHtEqRefutationOutcome::Open(state.equality_blocked_open_state_avoiding(forbidden_folds))
     }
 
     fn pad_distinct_cardinality_tree(
@@ -13055,8 +13101,7 @@ impl Ht {
     ) -> Result<String, String> {
         if !native_abox_refutation && !self.native_abox.different.is_empty() {
             return Err(
-                "equality HT refutation certificates do not encode native apart facts"
-                    .to_string(),
+                "equality HT refutation certificates do not encode native apart facts".to_string(),
             );
         }
         let mut variable_count = 0usize;
@@ -13169,7 +13214,9 @@ impl Ht {
             return Err("native ABox refutation requires at least one individual".to_string());
         }
         if !self.card_defs.is_empty() {
-            return Err("native ABox equality refutation does not yet carry cardinality".to_string());
+            return Err(
+                "native ABox equality refutation does not yet carry cardinality".to_string(),
+            );
         }
         let raw = self.lean_eq_refutation_certificate_json_impl(
             &[],
@@ -13209,10 +13256,12 @@ impl Ht {
             .native_abox
             .individuals
             .iter()
-            .map(|(proxies, assertions)| serde_json::json!({
-                "proxies": proxies,
-                "assertions": assertions,
-            }))
+            .map(|(proxies, assertions)| {
+                serde_json::json!({
+                    "proxies": proxies,
+                    "assertions": assertions,
+                })
+            })
             .collect();
         let nominals: Vec<usize> = self
             .native_abox
@@ -13220,15 +13269,24 @@ impl Ht {
             .iter()
             .flat_map(|(proxies, _)| proxies.iter().map(|&concept| concept as usize))
             .collect();
-        let different: Vec<_> = self.native_abox.different.iter().map(|&(left, right)| {
-            serde_json::json!([left, right])
-        }).collect();
-        let role_assertions: Vec<_> = self.native_abox.role_assertions.iter().map(
-            |&(role, source, target)| serde_json::json!([role, source, target]),
-        ).collect();
-        let apart: Vec<_> = self.native_abox.different.iter().map(|&(left, right)| {
-            serde_json::json!({ "left": left + 1, "right": right + 1 })
-        }).collect();
+        let different: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!([left, right]))
+            .collect();
+        let role_assertions: Vec<_> = self
+            .native_abox
+            .role_assertions
+            .iter()
+            .map(|&(role, source, target)| serde_json::json!([role, source, target]))
+            .collect();
+        let apart: Vec<_> = self
+            .native_abox
+            .different
+            .iter()
+            .map(|&(left, right)| serde_json::json!({ "left": left + 1, "right": right + 1 }))
+            .collect();
         let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
         serde_json::to_string(&serde_json::json!({
             "initial": {
@@ -13263,18 +13321,19 @@ impl Ht {
     /// initial-state boundary.
     pub fn lean_native_abox_cardinality_unsat_refutation_json(&self) -> Result<String, String> {
         if self.native_abox.individuals.is_empty() {
-            return Err("native ABox cardinality refutation requires at least one individual"
-                .to_string());
+            return Err(
+                "native ABox cardinality refutation requires at least one individual".to_string(),
+            );
         }
         if self.card_defs.is_empty() {
-            return Err("native ABox cardinality refutation requires a cardinality definition"
-                .to_string());
+            return Err(
+                "native ABox cardinality refutation requires a cardinality definition".to_string(),
+            );
         }
-        let raw = self.lean_cardinality_refutation_certificate_json(&[], |_| {
-            LeanHtEqEvidence::Unsat {
+        let raw =
+            self.lean_cardinality_refutation_certificate_json(&[], |_| LeanHtEqEvidence::Unsat {
                 tree: LeanHtEqRefutationTree::Clash,
-            }
-        })?;
+            })?;
         self.lean_native_abox_cardinality_unsat_refutation_from_cardinality(raw)
     }
 
@@ -13287,10 +13346,9 @@ impl Ht {
     ) -> Result<String, String> {
         let certificate: serde_json::Value =
             serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-        let base = certificate
-            .get("certificate")
-            .ok_or_else(|| "native ABox cardinality refutation lacks its base certificate"
-                .to_string())?;
+        let base = certificate.get("certificate").ok_or_else(|| {
+            "native ABox cardinality refutation lacks its base certificate".to_string()
+        })?;
         let tree = certificate
             .get("distinct_refutation")
             .filter(|tree| !tree.is_null())
@@ -13312,10 +13370,12 @@ impl Ht {
             .native_abox
             .individuals
             .iter()
-            .map(|(proxies, assertions)| serde_json::json!({
-                "proxies": proxies,
-                "assertions": assertions,
-            }))
+            .map(|(proxies, assertions)| {
+                serde_json::json!({
+                    "proxies": proxies,
+                    "assertions": assertions,
+                })
+            })
             .collect();
         let nominals: Vec<usize> = self
             .native_abox
@@ -13339,10 +13399,12 @@ impl Ht {
             .native_abox
             .different
             .iter()
-            .map(|&(left, right)| serde_json::json!({
-                "left": left + 1,
-                "right": right + 1,
-            }))
+            .map(|&(left, right)| {
+                serde_json::json!({
+                    "left": left + 1,
+                    "right": right + 1,
+                })
+            })
             .collect();
         let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
         serde_json::to_string(&serde_json::json!({
@@ -13390,10 +13452,12 @@ impl Ht {
             .native_abox
             .individuals
             .iter()
-            .map(|(proxies, assertions)| serde_json::json!({
-                "proxies": proxies,
-                "assertions": assertions,
-            }))
+            .map(|(proxies, assertions)| {
+                serde_json::json!({
+                    "proxies": proxies,
+                    "assertions": assertions,
+                })
+            })
             .collect();
         let nominals: Vec<usize> = self
             .native_abox
@@ -13417,10 +13481,12 @@ impl Ht {
             .native_abox
             .different
             .iter()
-            .map(|&(left, right)| serde_json::json!({
-                "left": left + 1,
-                "right": right + 1,
-            }))
+            .map(|&(left, right)| {
+                serde_json::json!({
+                    "left": left + 1,
+                    "right": right + 1,
+                })
+            })
             .collect();
         let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
         serde_json::to_string(&serde_json::json!({
@@ -13452,9 +13518,7 @@ impl Ht {
     /// with KM's exact native named-individual ABox. Both terminal branches use
     /// the dedicated joint wire; an ontology-only certificate is never used to
     /// justify a search seeded by ABox facts.
-    pub fn lean_native_abox_decision_certificate_json(
-        &self,
-    ) -> Result<(bool, String), String> {
+    pub fn lean_native_abox_decision_certificate_json(&self) -> Result<(bool, String), String> {
         if self.native_abox.individuals.is_empty() {
             return Err("native ABox decision requires at least one individual".to_string());
         }
@@ -13507,11 +13571,13 @@ impl Ht {
                         terminal.clone(),
                     )? {
                         return Err(
-                            "Lean rejected the closed native ABox production run".to_string(),
+                            "Lean rejected the closed native ABox production run".to_string()
                         );
                     }
-                    return Ok((false, serde_json::to_string(&terminal)
-                        .map_err(|error| error.to_string())?));
+                    return Ok((
+                        false,
+                        serde_json::to_string(&terminal).map_err(|error| error.to_string())?,
+                    ));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
                     let mut rejected_assignments = HashSet::new();
@@ -13531,14 +13597,15 @@ impl Ht {
                             "evidence": { "sat": { "certificate": { "seed": seed } } },
                         }))
                         .map_err(|error| error.to_string())?;
-                        let passes = match std::env::var_os(
-                            "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
-                        ) {
-                            Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
-                            None => true,
-                        };
-                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
-                            .map_err(|error| error.to_string())?;
+                        let passes =
+                            match std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER") {
+                                Some(checker) => {
+                                    self.lean_candidate_passes_with(&candidate, &checker)?
+                                }
+                                None => true,
+                            };
+                        let terminal: serde_json::Value =
+                            serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
                         if passes
                             && self.lean_rooted_ordinary_production_run_passes(
                                 &frontier_history,
@@ -13559,7 +13626,10 @@ impl Ht {
                         true,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the native ABox equality production blocker table".to_string());
+                        return Err(
+                            "Lean rejected the native ABox equality production blocker table"
+                                .to_string(),
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -13569,8 +13639,7 @@ impl Ht {
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
-                        "ontology reached the configured native ABox decision node cap"
-                            .to_string(),
+                        "ontology reached the configured native ABox decision node cap".to_string(),
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
@@ -13676,6 +13745,9 @@ impl Ht {
                         state.equality_wire_state(node_budget),
                         tree,
                         depth,
+                        LeanHtEqEvidence::Unsat {
+                            tree: LeanHtEqRefutationTree::Clash,
+                        },
                     )?;
                     let refutation = self
                         .lean_native_abox_cardinality_unsat_refutation_from_cardinality(closed)?;
@@ -13722,14 +13794,15 @@ impl Ht {
                             } } },
                         }))
                         .map_err(|error| error.to_string())?;
-                        let passes = match std::env::var_os(
-                            "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
-                        ) {
-                            Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
-                            None => true,
-                        };
-                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
-                            .map_err(|error| error.to_string())?;
+                        let passes =
+                            match std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER") {
+                                Some(checker) => {
+                                    self.lean_candidate_passes_with(&candidate, &checker)?
+                                }
+                                None => true,
+                            };
+                        let terminal: serde_json::Value =
+                            serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
                         if passes
                             && self.lean_rooted_cardinality_production_run_passes(
                                 &cardinality_frontier_history,
@@ -13739,8 +13812,10 @@ impl Ht {
                             return Ok((true, candidate));
                         }
                         let inserted = rejected_assignments.insert(folds);
-                        assert!(inserted,
-                            "native ABox cardinality fold assignment search must progress");
+                        assert!(
+                            inserted,
+                            "native ABox cardinality fold assignment search must progress"
+                        );
                     }
 
                     if !self.lean_equality_production_blocking_history_passes(
@@ -13751,7 +13826,10 @@ impl Ht {
                         true,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the native ABox cardinality production blocker table".to_string());
+                        return Err(
+                            "Lean rejected the native ABox cardinality production blocker table"
+                                .to_string(),
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -13958,6 +14036,7 @@ impl Ht {
         root_state: LeanHtEqState,
         tree: LeanHtDistinctCardinalityRefutationTree,
         depth: usize,
+        evidence: LeanHtEqEvidence,
     ) -> Result<String, String> {
         let (_, concept_count, role_count, ontology) = self.lean_decision_signature();
         let mut definitions: Vec<(C, CardDef)> = self
@@ -14004,9 +14083,7 @@ impl Ht {
                 variable_count,
                 ontology,
                 state: root_state,
-                evidence: LeanHtEqEvidence::Unsat {
-                    tree: LeanHtEqRefutationTree::Clash,
-                },
+                evidence,
             },
             definitions: wire_definitions,
             exact_maximums,
@@ -14251,15 +14328,15 @@ impl Ht {
                         variable_count,
                         tree,
                     )?;
-                    let terminal: serde_json::Value = serde_json::from_str(&raw)
-                        .map_err(|error| error.to_string())?;
+                    let terminal: serde_json::Value =
+                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
                     if !self.lean_ordinary_unsat_production_run_passes(
                         &frontier_history,
                         "ordinary",
                         terminal,
                     )? {
                         return Err(
-                            "Lean rejected the equality-free UNSAT production run".to_string(),
+                            "Lean rejected the equality-free UNSAT production run".to_string()
                         );
                     }
                     return Ok((false, self.finalize_lean_certificate(raw)?));
@@ -14289,9 +14366,7 @@ impl Ht {
                         node_budget,
                         &mut frontier_history,
                     )? {
-                        return Err(
-                            "Lean rejected the equality-free decision frontier".to_string(),
-                        );
+                        return Err("Lean rejected the equality-free decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality-free decision node budget overflowed usize".to_string()
@@ -14392,15 +14467,15 @@ impl Ht {
                         state.equality_wire_state(node_budget),
                         tree,
                     )?;
-                    let terminal: serde_json::Value = serde_json::from_str(&raw)
-                        .map_err(|error| error.to_string())?;
+                    let terminal: serde_json::Value =
+                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
                     if !self.lean_ordinary_unsat_production_run_passes(
                         &frontier_history,
                         "equality",
                         terminal,
                     )? {
                         return Err(
-                            "Lean rejected the equality-aware UNSAT production run".to_string(),
+                            "Lean rejected the equality-aware UNSAT production run".to_string()
                         );
                     }
                     return Ok((false, self.finalize_lean_certificate(raw)?));
@@ -14414,7 +14489,10 @@ impl Ht {
                             &frontier_history,
                         )? {
                             let inserted = rejected_assignments.insert(folds);
-                            assert!(inserted, "equality terminal assignment search must progress");
+                            assert!(
+                                inserted,
+                                "equality terminal assignment search must progress"
+                            );
                             continue;
                         }
                         let candidate_state = state.with_fold_assignment(folds.clone());
@@ -14455,7 +14533,9 @@ impl Ht {
                         false,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the equality production blocker table".to_string());
+                        return Err(
+                            "Lean rejected the equality production blocker table".to_string()
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -14522,15 +14602,17 @@ impl Ht {
                         state.equality_wire_state(node_budget),
                         tree,
                         depth,
+                        LeanHtEqEvidence::Unsat {
+                            tree: LeanHtEqRefutationTree::Clash,
+                        },
                     )?;
-                    let terminal =
-                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+                    let terminal = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
                     if !self.lean_cardinality_production_run_passes(
                         &cardinality_frontier_history,
                         terminal,
                     )? {
                         return Err(
-                            "Lean rejected the closed cardinality production run".to_string(),
+                            "Lean rejected the closed cardinality production run".to_string()
                         );
                     }
                     return Ok((false, self.finalize_lean_certificate(raw)?));
@@ -14575,7 +14657,9 @@ impl Ht {
                         false,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the cardinality production blocker table".to_string());
+                        return Err(
+                            "Lean rejected the cardinality production blocker table".to_string()
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -14635,6 +14719,142 @@ impl Ht {
         }
     }
 
+    fn lean_cardinality_taxonomy_query_decision_and_run_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String, String), String> {
+        let initial_labels = query.initial_labels();
+        let (variable_count, mut concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        for &(_, literal) in &initial_labels {
+            concept_count = concept_count.max(literal.c as usize + 1);
+        }
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
+        let mut frontier_history = Vec::new();
+        loop {
+            let mut state = LeanHtRefutationState::root(&initial_labels);
+            match self.lean_distinct_cardinality_refutation_avoiding_folds(
+                &mut state,
+                &definitions,
+                variable_count,
+                node_budget,
+                &forbidden_folds,
+            ) {
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                    let raw = self.lean_cardinality_closed_run_certificate_json(
+                        node_budget,
+                        variable_count,
+                        state.equality_wire_state(node_budget),
+                        tree,
+                        depth,
+                        query.equality_closed_evidence(),
+                    )?;
+                    if !self.lean_taxonomy_candidate_passes(&raw)? {
+                        return Err(
+                            "Lean rejected the exact cardinality taxonomy refutation".to_string()
+                        );
+                    }
+                    let run = self.lean_cardinality_taxonomy_production_run_json(
+                        query,
+                        &frontier_history,
+                        &raw,
+                    )?;
+                    return Ok((false, raw, run));
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = open.with_fold_assignment(folds.clone());
+                        let node_count = candidate_state.representatives.len();
+                        let anchored = self
+                            .lean_anchored_cardinality_open_certificate_json(&candidate_state)
+                            .ok();
+                        let equality = serde_json::to_string(&LeanHtEqCertificate {
+                            version: 2,
+                            node_count,
+                            concept_count,
+                            role_count,
+                            variable_count,
+                            ontology: ontology.clone(),
+                            state: candidate_state,
+                            evidence: query.equality_open_evidence(),
+                        })
+                        .map_err(|error| error.to_string())?;
+                        let wrapped = self.wrap_cardinality_lean_certificate(equality)?;
+                        let mut document: serde_json::Value =
+                            serde_json::from_str(&wrapped).map_err(|error| error.to_string())?;
+                        if let Some(anchored) = anchored {
+                            document["anchored"] = anchored;
+                        }
+                        let candidate =
+                            serde_json::to_string(&document).map_err(|error| error.to_string())?;
+                        if self.lean_taxonomy_candidate_passes(&candidate)? {
+                            let run = self.lean_cardinality_taxonomy_production_run_json(
+                                query,
+                                &frontier_history,
+                                &candidate,
+                            )?;
+                            return Ok((true, candidate, run));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(
+                            inserted,
+                            "cardinality taxonomy assignment search must progress"
+                        );
+                    }
+                    if !self.lean_equality_production_blocking_history_passes(
+                        &open,
+                        &rejected_assignments,
+                        true,
+                        true,
+                        false,
+                        &mut production_history,
+                    )? {
+                        return Err(
+                            "Lean rejected the cardinality taxonomy production blocker table"
+                                .to_string(),
+                        );
+                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &open.fold_options,
+                        "cardinality taxonomy",
+                    )?;
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
+                    return Err(
+                        "taxonomy query reached the configured cardinality node cap".to_string()
+                    );
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
+                    if !self.lean_cardinality_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
+                        return Err("Lean rejected the cardinality taxonomy frontier".to_string());
+                    }
+                    node_budget = node_budget.checked_mul(2).ok_or_else(|| {
+                        "cardinality taxonomy node budget overflowed usize".to_string()
+                    })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
+                }
+                LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
+                    return Err(error);
+                }
+            }
+        }
+    }
+
     /// Decide one taxonomy cell with the same total certification search used
     /// for global consistency. The returned document is deliberately the raw
     /// normalized-ontology evidence consumed by the complete taxonomy wrapper.
@@ -14648,6 +14868,11 @@ impl Ht {
             } else {
                 self.lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(query)
             };
+        }
+        if !self.card_defs.is_empty() {
+            let (answer, terminal, _) =
+                self.lean_cardinality_taxonomy_query_decision_and_run_json(query)?;
+            return Ok((answer, terminal));
         }
         let initial_labels = query.initial_labels();
         let closed_document = || match query {
@@ -14665,106 +14890,6 @@ impl Ht {
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut frontier_history = Vec::new();
-        let mut cardinality_frontier_history = Vec::new();
-
-        if !self.card_defs.is_empty() {
-            let mut definitions: Vec<(C, CardDef)> = self
-                .card_defs
-                .iter()
-                .map(|(&marker, &definition)| (marker, definition))
-                .collect();
-            definitions.sort_unstable_by_key(|&(marker, _)| marker);
-            let mut forbidden_folds = HashSet::new();
-            let mut production_history = Vec::new();
-            loop {
-                let mut state = LeanHtRefutationState::root(&initial_labels);
-                match self.lean_distinct_cardinality_refutation_avoiding_folds(
-                    &mut state,
-                    &definitions,
-                    variable_count,
-                    node_budget,
-                    &forbidden_folds,
-                ) {
-                    LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
-                        return Ok((false, closed_document()?));
-                    }
-                    LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
-                        let mut rejected_assignments = HashSet::new();
-                        while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
-                            let candidate_state = state.with_fold_assignment(folds.clone());
-                            let node_count = candidate_state.representatives.len();
-                            let anchored = self
-                                .lean_anchored_cardinality_open_certificate_json(&candidate_state)
-                                .ok();
-                            let equality = serde_json::to_string(&LeanHtEqCertificate {
-                                version: 2,
-                                node_count,
-                                concept_count,
-                                role_count,
-                                variable_count,
-                                ontology: ontology.clone(),
-                                state: candidate_state,
-                                evidence: query.equality_open_evidence(),
-                            })
-                            .map_err(|error| error.to_string())?;
-                            let wrapped = self.wrap_cardinality_lean_certificate(equality)?;
-                            let mut document: serde_json::Value = serde_json::from_str(&wrapped)
-                                .map_err(|error| error.to_string())?;
-                            if let Some(anchored) = anchored {
-                                document["anchored"] = anchored;
-                            }
-                            let candidate = serde_json::to_string(&document)
-                                .map_err(|error| error.to_string())?;
-                            if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                return Ok((true, candidate));
-                            }
-                            let inserted = rejected_assignments.insert(folds);
-                            assert!(inserted,
-                                "cardinality taxonomy assignment search must progress");
-                        }
-
-                        if !self.lean_equality_production_blocking_history_passes(
-                            &state,
-                            &rejected_assignments,
-                            true,
-                            true,
-                            false,
-                            &mut production_history,
-                        )? {
-                            return Err("Lean rejected the cardinality taxonomy production blocker table".to_string());
-                        }
-                        LeanHtRefutationState::learn_exhausted_fold_options(
-                            &mut forbidden_folds,
-                            &state.fold_options,
-                            "cardinality taxonomy",
-                        )?;
-                    }
-                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
-                        return Err("taxonomy query reached the configured cardinality node cap"
-                            .to_string());
-                    }
-                    LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                        if !self.lean_cardinality_frontier_history_passes(
-                            &frontier,
-                            node_budget,
-                            &mut cardinality_frontier_history,
-                        )? {
-                            return Err(
-                                "Lean rejected the cardinality taxonomy frontier".to_string(),
-                            );
-                        }
-                        node_budget = node_budget.checked_mul(2).ok_or_else(|| {
-                            "cardinality taxonomy node budget overflowed usize".to_string()
-                        })?;
-                        forbidden_folds.clear();
-                        production_history.clear();
-                    }
-                    LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
-                        return Err(error);
-                    }
-                }
-            }
-        }
 
         let has_equality = self.clauses.iter().any(|record| {
             record
@@ -14795,8 +14920,9 @@ impl Ht {
                             if let Ok(anchored) =
                                 self.lean_anchored_equality_open_certificate_json(&candidate_state)
                             {
-                                let anchored: serde_json::Value = serde_json::from_str(&anchored)
-                                    .map_err(|error| error.to_string())?;
+                                let anchored: serde_json::Value =
+                                    serde_json::from_str(&anchored)
+                                        .map_err(|error| error.to_string())?;
                                 let candidate = serde_json::to_string(&serde_json::json!({
                                     "version": 8,
                                     "concept_count": concept_count,
@@ -14827,7 +14953,10 @@ impl Ht {
                                 return Ok((true, candidate));
                             }
                             let inserted = rejected_assignments.insert(folds);
-                            assert!(inserted, "equality taxonomy assignment search must progress");
+                            assert!(
+                                inserted,
+                                "equality taxonomy assignment search must progress"
+                            );
                         }
 
                         if !self.lean_equality_production_blocking_history_passes(
@@ -14838,7 +14967,10 @@ impl Ht {
                             false,
                             &mut production_history,
                         )? {
-                            return Err("Lean rejected the equality taxonomy production blocker table".to_string());
+                            return Err(
+                                "Lean rejected the equality taxonomy production blocker table"
+                                    .to_string(),
+                            );
                         }
                         LeanHtRefutationState::learn_exhausted_fold_options(
                             &mut forbidden_folds,
@@ -14929,8 +15061,10 @@ impl Ht {
                             }
                         }
                         let inserted = rejected_assignments.insert(folds);
-                        assert!(inserted,
-                            "equality-free taxonomy assignment search must progress");
+                        assert!(
+                            inserted,
+                            "equality-free taxonomy assignment search must progress"
+                        );
                     }
 
                     if !self.lean_production_blocking_history_passes(
@@ -14938,7 +15072,10 @@ impl Ht {
                         &rejected_assignments,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the equality-free taxonomy production history".to_string());
+                        return Err(
+                            "Lean rejected the equality-free taxonomy production history"
+                                .to_string(),
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -14957,9 +15094,7 @@ impl Ht {
                         node_budget,
                         &mut frontier_history,
                     )? {
-                        return Err(
-                            "Lean rejected the equality-free taxonomy frontier".to_string(),
-                        );
+                        return Err("Lean rejected the equality-free taxonomy frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality-free taxonomy node budget overflowed usize".to_string()
@@ -15065,8 +15200,7 @@ impl Ht {
             ) {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                     let root_state = state.equality_wire_state(node_budget);
-                    let tree = serde_json::to_value(tree)
-                        .map_err(|error| error.to_string())?;
+                    let tree = serde_json::to_value(tree).map_err(|error| error.to_string())?;
                     let seed = self.lean_native_abox_seed_json(
                         root_state,
                         variable_count,
@@ -15087,16 +15221,14 @@ impl Ht {
                         } },
                     }))
                     .map_err(|error| error.to_string())?;
-                    if !self
-                        .lean_native_abox_cardinality_taxonomy_candidate_passes(&document)?
-                    {
+                    if !self.lean_native_abox_cardinality_taxonomy_candidate_passes(&document)? {
                         return Err(
                             "Lean rejected the native ABox cardinality taxonomy refutation"
                                 .to_string(),
                         );
                     }
-                    let terminal: serde_json::Value = serde_json::from_str(&document)
-                        .map_err(|error| error.to_string())?;
+                    let terminal: serde_json::Value =
+                        serde_json::from_str(&document).map_err(|error| error.to_string())?;
                     let run = self.lean_rooted_cardinality_taxonomy_production_run_json(
                         &cardinality_frontier_history,
                         terminal,
@@ -15129,19 +15261,20 @@ impl Ht {
                         .map_err(|error| error.to_string())?;
                         let passes = self
                             .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?;
-                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
-                            .map_err(|error| error.to_string())?;
+                        let terminal: serde_json::Value =
+                            serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
                         if passes {
-                            let run = self
-                                .lean_rooted_cardinality_taxonomy_production_run_json(
-                                    &cardinality_frontier_history,
-                                    terminal,
-                                )?;
+                            let run = self.lean_rooted_cardinality_taxonomy_production_run_json(
+                                &cardinality_frontier_history,
+                                terminal,
+                            )?;
                             return Ok((true, candidate, run));
                         }
                         let inserted = rejected_assignments.insert(folds);
-                        assert!(inserted,
-                            "native ABox cardinality taxonomy assignment search must progress");
+                        assert!(
+                            inserted,
+                            "native ABox cardinality taxonomy assignment search must progress"
+                        );
                     }
 
                     if !self.lean_equality_production_blocking_history_passes(
@@ -15249,17 +15382,18 @@ impl Ht {
                 &forbidden_folds,
             ) {
                 LeanHtEqRefutationOutcome::Closed(tree, _) => {
-                    let tree = serde_json::to_value(tree)
-                        .map_err(|error| error.to_string())?;
+                    let tree = serde_json::to_value(tree).map_err(|error| error.to_string())?;
                     let root_state = state.equality_wire_state(node_budget);
                     let individuals: Vec<_> = self
                         .native_abox
                         .individuals
                         .iter()
-                        .map(|(proxies, assertions)| serde_json::json!({
-                            "proxies": proxies,
-                            "assertions": assertions,
-                        }))
+                        .map(|(proxies, assertions)| {
+                            serde_json::json!({
+                                "proxies": proxies,
+                                "assertions": assertions,
+                            })
+                        })
                         .collect();
                     let nominals: Vec<usize> = self
                         .native_abox
@@ -15277,21 +15411,20 @@ impl Ht {
                         .native_abox
                         .role_assertions
                         .iter()
-                        .map(|&(role, source, target)| {
-                            serde_json::json!([role, source, target])
-                        })
+                        .map(|&(role, source, target)| serde_json::json!([role, source, target]))
                         .collect();
                     let apart: Vec<_> = self
                         .native_abox
                         .different
                         .iter()
-                        .map(|&(left, right)| serde_json::json!({
-                            "left": left + 1,
-                            "right": right + 1,
-                        }))
+                        .map(|&(left, right)| {
+                            serde_json::json!({
+                                "left": left + 1,
+                                "right": right + 1,
+                            })
+                        })
                         .collect();
-                    let roots: Vec<usize> =
-                        (1..=self.native_abox.individuals.len()).collect();
+                    let roots: Vec<usize> = (1..=self.native_abox.individuals.len()).collect();
                     let initial = serde_json::json!({
                         "abox": {
                             "complete": true,
@@ -15323,12 +15456,10 @@ impl Ht {
                     }))
                     .map_err(|error| error.to_string())?;
                     if !self.lean_native_abox_taxonomy_candidate_passes(&document)? {
-                        return Err(
-                            "Lean rejected the native ABox taxonomy refutation".to_string(),
-                        );
+                        return Err("Lean rejected the native ABox taxonomy refutation".to_string());
                     }
-                    let terminal: serde_json::Value = serde_json::from_str(&document)
-                        .map_err(|error| error.to_string())?;
+                    let terminal: serde_json::Value =
+                        serde_json::from_str(&document).map_err(|error| error.to_string())?;
                     let run = self.lean_rooted_ordinary_taxonomy_production_run_json(
                         &frontier_history,
                         terminal,
@@ -15354,10 +15485,9 @@ impl Ht {
                             "evidence": { "sat": { "certificate": { "seed": seed } } },
                         }))
                         .map_err(|error| error.to_string())?;
-                        let passes =
-                            self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
-                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
-                            .map_err(|error| error.to_string())?;
+                        let passes = self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
+                        let terminal: serde_json::Value =
+                            serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
                         if passes {
                             let run = self.lean_rooted_ordinary_taxonomy_production_run_json(
                                 &frontier_history,
@@ -15366,7 +15496,10 @@ impl Ht {
                             return Ok((true, candidate, run));
                         }
                         let inserted = rejected_assignments.insert(folds);
-                        assert!(inserted, "native ABox taxonomy assignment search must progress");
+                        assert!(
+                            inserted,
+                            "native ABox taxonomy assignment search must progress"
+                        );
                     }
 
                     if !self.lean_equality_production_blocking_history_passes(
@@ -15377,7 +15510,10 @@ impl Ht {
                         true,
                         &mut production_history,
                     )? {
-                        return Err("Lean rejected the native ABox taxonomy production blocker table".to_string());
+                        return Err(
+                            "Lean rejected the native ABox taxonomy production blocker table"
+                                .to_string(),
+                        );
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -15386,9 +15522,7 @@ impl Ht {
                     )?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
-                    return Err(
-                        "native ABox taxonomy reached the configured node cap".to_string(),
-                    );
+                    return Err("native ABox taxonomy reached the configured node cap".to_string());
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
                     if !self.lean_address_frontier_history_passes(
@@ -16026,10 +16160,7 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
-    fn lean_native_abox_taxonomy_certificate_json(
-        &self,
-        named: &[C],
-    ) -> Result<String, String> {
+    fn lean_native_abox_taxonomy_certificate_json(&self, named: &[C]) -> Result<String, String> {
         let mut concepts = Vec::with_capacity(named.len());
         let mut subsumptions = Vec::with_capacity(named.len());
         let mut ordinary_concept_runs = Vec::with_capacity(named.len());
@@ -16109,20 +16240,15 @@ impl Ht {
         .map_err(|error| error.to_string())?;
         let checker = if self.card_defs.is_empty() {
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
-                .or_else(|| {
-                    std::env::var_os(
-                        "KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER",
-                    )
-                })
+                .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER"))
         } else {
-            std::env::var_os(
-                "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+            std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER").or_else(
+                || {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+                    )
+                },
             )
-            .or_else(|| {
-                std::env::var_os(
-                    "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
-                )
-            })
         };
         if let Some(checker) = checker {
             if !self.lean_candidate_passes_with(&payload, &checker)? {
@@ -16148,9 +16274,7 @@ impl Ht {
                 ordinary_subsumption_runs,
             )?
         {
-            return Err(
-                "Lean rejected the complete native ABox taxonomy run matrix".to_string(),
-            );
+            return Err("Lean rejected the complete native ABox taxonomy run matrix".to_string());
         }
         Ok(payload)
     }
@@ -16161,6 +16285,8 @@ impl Ht {
     ) -> Result<String, String> {
         let mut concepts = Vec::with_capacity(named.len());
         let mut subsumptions = Vec::with_capacity(named.len());
+        let mut concept_runs = Vec::with_capacity(named.len());
+        let mut subsumption_runs = Vec::with_capacity(named.len());
         let mut shared: Option<serde_json::Value> = None;
         let mut concept_count = 0u64;
 
@@ -16212,21 +16338,32 @@ impl Ht {
         };
 
         for &concept in named {
-            let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
+            let (_, document, run) = self.lean_cardinality_taxonomy_query_decision_and_run_json(
                 LeanHtTaxonomyQuery::Concept(concept),
             )?;
             concepts.push(query_payload(document)?);
+            concept_runs.push(
+                serde_json::from_str::<serde_json::Value>(&run)
+                    .map_err(|error| error.to_string())?,
+            );
         }
 
         for &sub in named {
             let mut row = Vec::with_capacity(named.len());
+            let mut run_row = Vec::with_capacity(named.len());
             for &sup in named {
-                let (_, document) = self.lean_taxonomy_query_decision_certificate_json(
-                    LeanHtTaxonomyQuery::Subsumption(sub, sup),
-                )?;
+                let (_, document, run) = self
+                    .lean_cardinality_taxonomy_query_decision_and_run_json(
+                        LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                    )?;
                 row.push(query_payload(document)?);
+                run_row.push(
+                    serde_json::from_str::<serde_json::Value>(&run)
+                        .map_err(|error| error.to_string())?,
+                );
             }
             subsumptions.push(row);
+            subsumption_runs.push(run_row);
         }
 
         let shared = shared.ok_or_else(|| "HT cardinality taxonomy has no evidence".to_string())?;
@@ -16250,6 +16387,13 @@ impl Ht {
             "subsumptions": subsumptions,
         }))
         .map_err(|error| error.to_string())?;
+        if !self.lean_cardinality_taxonomy_run_matrix_passes(
+            named,
+            concept_runs,
+            subsumption_runs,
+        )? {
+            return Err("Lean rejected the complete cardinality taxonomy run matrix".to_string());
+        }
         self.wrap_normalized_cardinality_taxonomy_certificate(payload)
     }
 
@@ -25104,10 +25248,7 @@ mod tests {
         const RIGHT: C = 21;
         const ASSERTED: C = 22;
         let native = NativeAboxState {
-            individuals: vec![
-                (vec![LEFT], vec![ASSERTED]),
-                (vec![RIGHT], Vec::new()),
-            ],
+            individuals: vec![(vec![LEFT], vec![ASSERTED]), (vec![RIGHT], Vec::new())],
             different: vec![(0, 1)],
             role_assertions: vec![(R0, 0, 1)],
         };
@@ -25138,10 +25279,8 @@ mod tests {
 
     #[test]
     fn equality_certificate_fails_closed_until_native_apart_is_in_its_wire() {
-        let mut reasoner = Ht::new_certified(vec![Clause::new(
-            Vec::new(),
-            vec![Atom::Eq { s: X, t: 1 }],
-        )]);
+        let mut reasoner =
+            Ht::new_certified(vec![Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: 1 }])]);
         reasoner.set_native_abox(
             vec![(vec![A], Vec::new()), (vec![B], Vec::new())],
             vec![(0, 1)],
@@ -25156,10 +25295,7 @@ mod tests {
     #[test]
     fn native_abox_unsat_refutation_uses_joint_lean_boundary() {
         const RIGHT: C = 2;
-        let mut reasoner = Ht::new_certified(vec![Clause::new(
-            vec![con(false, B, X)],
-            Vec::new(),
-        )]);
+        let mut reasoner = Ht::new_certified(vec![Clause::new(vec![con(false, B, X)], Vec::new())]);
         reasoner.set_nominals(vec![A]);
         reasoner.set_native_abox(
             vec![(vec![A], vec![B]), (vec![RIGHT], Vec::new())],
@@ -25208,28 +25344,18 @@ mod tests {
             serde_json::json!([1])
         );
 
-        let mut inconsistent = Ht::new_certified(vec![Clause::new(
-            vec![con(false, B, X)],
-            Vec::new(),
-        )]);
+        let mut inconsistent =
+            Ht::new_certified(vec![Clause::new(vec![con(false, B, X)], Vec::new())]);
         inconsistent.set_nominals(vec![A]);
-        inconsistent.set_native_abox(
-            vec![(vec![A], vec![B])],
-            Vec::new(),
-            Vec::new(),
-        );
+        inconsistent.set_native_abox(vec![(vec![A], vec![B])], Vec::new(), Vec::new());
         let (unsat, unsat_document) = inconsistent
             .lean_global_decision_certificate_json()
             .expect("native ABox contradiction has a joint checked refutation");
         assert!(!unsat);
-        let unsat_wire: serde_json::Value =
-            serde_json::from_str(&unsat_document).unwrap();
-        assert!(unsat_wire["evidence"]["unsat"]["refutation"]["tree"]
-            .is_object());
+        let unsat_wire: serde_json::Value = serde_json::from_str(&unsat_document).unwrap();
+        assert!(unsat_wire["evidence"]["unsat"]["refutation"]["tree"].is_object());
 
-        if let Some(checker) =
-            std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER")
-        {
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER") {
             for (kind, document) in [("sat", document), ("unsat", unsat_document)] {
                 let path = std::env::temp_dir().join(format!(
                     "km-ht-native-abox-decision-{kind}-{}-{}.json",
@@ -25253,11 +25379,7 @@ mod tests {
 
     #[test]
     fn rooted_ordinary_run_rejects_a_terminal_from_another_abox() {
-        if std::env::var_os(
-            "KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
-        )
-        .is_none()
-        {
+        if std::env::var_os("KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER").is_none() {
             return;
         }
         let mut reasoner = Ht::new_certified(Vec::new());
@@ -25314,17 +25436,17 @@ mod tests {
             assert_eq!(seed["roots"], serde_json::json!([1]));
             let labels = &seed["state"]["base"]["labels"];
             assert!(
-                labels.as_array().is_some_and(|labels| labels.iter().any(|label| {
-                    label["node"] == 1 && label["literal"]["concept"] == ASSERTED
-                })),
+                labels
+                    .as_array()
+                    .is_some_and(|labels| labels.iter().any(|label| {
+                        label["node"] == 1 && label["literal"]["concept"] == ASSERTED
+                    })),
                 "the query certificate must retain the native ABox assertion"
             );
             documents.push(document);
         }
 
-        let Some(checker) =
-            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER")
-        else {
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER") else {
             return;
         };
         let path = std::env::temp_dir().join(format!(
@@ -25333,13 +25455,10 @@ mod tests {
         ));
         let mut tampered: serde_json::Value =
             serde_json::from_str(&documents[0]).expect("taxonomy document is JSON");
-        let labels = tampered["evidence"]["sat"]["certificate"]["seed"]["state"]["base"]
-            ["labels"]
+        let labels = tampered["evidence"]["sat"]["certificate"]["seed"]["state"]["base"]["labels"]
             .as_array_mut()
             .expect("SAT seed labels");
-        labels.retain(|label| {
-            !(label["node"] == 1 && label["literal"]["concept"] == ASSERTED)
-        });
+        labels.retain(|label| !(label["node"] == 1 && label["literal"]["concept"] == ASSERTED));
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
         let output = std::process::Command::new(checker)
             .arg(&path)
@@ -25360,11 +25479,7 @@ mod tests {
             vec![con(false, B, X)],
         )]);
         reasoner.set_nominals(vec![NOMINAL]);
-        reasoner.set_native_abox(
-            vec![(vec![NOMINAL], vec![A])],
-            Vec::new(),
-            Vec::new(),
-        );
+        reasoner.set_native_abox(vec![(vec![NOMINAL], vec![A])], Vec::new(), Vec::new());
         let document = reasoner
             .lean_taxonomy_certificate_json(&[A, B])
             .expect("complete native ABox taxonomy must be checker ready");
@@ -25377,8 +25492,7 @@ mod tests {
             .iter()
             .all(|row| row.as_array().is_some_and(|row| row.len() == 2)));
 
-        let Some(checker) =
-            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
         else {
             return;
         };
@@ -25439,14 +25553,19 @@ mod tests {
                     .flat_map(|row| row.as_array().unwrap()),
             )
             .collect::<Vec<_>>();
-        assert!(cells.iter().any(|cell| cell["evidence"].get("sat").is_some()));
+        assert!(cells
+            .iter()
+            .any(|cell| cell["evidence"].get("sat").is_some()));
         assert!(cells
             .iter()
             .any(|cell| cell["evidence"].get("unsat").is_some()));
         for cell in cells {
             let evidence = &cell["evidence"];
             let (seed, definitions) = if let Some(sat) = evidence.get("sat") {
-                (&sat["certificate"]["seed"], &sat["certificate"]["definitions"])
+                (
+                    &sat["certificate"]["seed"],
+                    &sat["certificate"]["definitions"],
+                )
             } else {
                 let unsat = evidence.get("unsat").unwrap();
                 (&unsat["initial"], &unsat["definitions"])
@@ -25455,13 +25574,13 @@ mod tests {
             assert_eq!(definitions.as_array().unwrap().len(), 1);
         }
 
-        let Some(checker) = std::env::var_os(
-            "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
-        ) else {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER")
+        else {
             return;
         };
-        wire["concepts"][0]["evidence"]["sat"]["certificate"]["definitions"][0]
-            ["bound"] = serde_json::json!(2);
+        wire["concepts"][0]["evidence"]["sat"]["certificate"]["definitions"][0]["bound"] =
+            serde_json::json!(2);
         let path = std::env::temp_dir().join(format!(
             "km-ht-native-abox-cardinality-taxonomy-tamper-{}.json",
             std::process::id()
@@ -25571,11 +25690,7 @@ mod tests {
         };
         let mut satisfiable = Ht::new_certified(Vec::new());
         satisfiable.set_nominals(vec![SUBJECT]);
-        satisfiable.set_native_abox(
-            vec![(vec![SUBJECT], vec![MARKER])],
-            Vec::new(),
-            Vec::new(),
-        );
+        satisfiable.set_native_abox(vec![(vec![SUBJECT], vec![MARKER])], Vec::new(), Vec::new());
         satisfiable.set_card_defs(HashMap::from([(MARKER, definition)]));
         let (sat, sat_document) = satisfiable
             .lean_global_decision_certificate_json()
@@ -25592,20 +25707,14 @@ mod tests {
 
         let mut inconsistent = Ht::new_certified(vec![Clause::new(Vec::new(), Vec::new())]);
         inconsistent.set_nominals(vec![SUBJECT]);
-        inconsistent.set_native_abox(
-            vec![(vec![SUBJECT], vec![MARKER])],
-            Vec::new(),
-            Vec::new(),
-        );
+        inconsistent.set_native_abox(vec![(vec![SUBJECT], vec![MARKER])], Vec::new(), Vec::new());
         inconsistent.set_card_defs(HashMap::from([(MARKER, definition)]));
         let (sat, unsat_document) = inconsistent
             .lean_global_decision_certificate_json()
             .expect("native ABox contradiction has a joint cardinality refutation");
         assert!(!sat);
 
-        if let Some(checker) =
-            std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER")
-        {
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER") {
             for (kind, document) in [("sat", sat_document), ("unsat", unsat_document)] {
                 let path = std::env::temp_dir().join(format!(
                     "km-ht-native-abox-cardinality-decision-{kind}-{}-{}.json",
@@ -26107,12 +26216,10 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert!(rows.iter().all(|row| row.as_array().unwrap().len() == 2));
         assert!(wire["concepts"][0]["regular"].is_object());
-        assert!(wire["subsumptions"][0][0]["plain"]["payload"]["evidence"]
-            ["subsumption"]
-            .is_object());
-        assert!(wire["subsumptions"][0][1]["regular"]["evidence"]
-            ["non_subsumption"]
-            .is_object());
+        assert!(
+            wire["subsumptions"][0][0]["plain"]["payload"]["evidence"]["subsumption"].is_object()
+        );
+        assert!(wire["subsumptions"][0][1]["regular"]["evidence"]["non_subsumption"].is_object());
         assert!(t.lean_taxonomy_certificate_json(&[A, A]).is_err());
     }
 
@@ -26490,11 +26597,7 @@ mod tests {
             .iter()
             .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 2));
 
-        if std::env::var_os(
-            "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .is_some()
-        {
+        if std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER").is_some() {
             let assignment = open
                 .next_fold_assignment(&HashSet::new())
                 .expect("cyclic terminal exposes a Cartesian fold assignment");
@@ -26538,8 +26641,7 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
 
-            let mut forged_rejections: serde_json::Value =
-                serde_json::from_str(&document).unwrap();
+            let mut forged_rejections: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged_rejections["validate_rejections"] = serde_json::json!(true);
             std::fs::write(&path, serde_json::to_vec(&forged_rejections).unwrap()).unwrap();
             let rejected_document = std::process::Command::new(&checker)
@@ -26551,8 +26653,7 @@ mod tests {
                 "Lean must not authorize expansion when a rejected assignment is a valid model",
             );
 
-            let mut missing_blocker: serde_json::Value =
-                serde_json::from_str(&document).unwrap();
+            let mut missing_blocker: serde_json::Value = serde_json::from_str(&document).unwrap();
             missing_blocker["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&missing_blocker).unwrap()).unwrap();
             let rejected_document = std::process::Command::new(&checker)
@@ -26633,12 +26734,11 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let output = std::process::Command::new(
-                std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap(),
-            )
-            .arg(&path)
-            .output()
-            .expect("run main native HT checker on forged normalization");
+            let output =
+                std::process::Command::new(std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap())
+                    .arg(&path)
+                    .output()
+                    .expect("run main native HT checker on forged normalization");
             let _ = std::fs::remove_file(path);
             assert!(
                 !output.status.success(),
@@ -26663,16 +26763,12 @@ mod tests {
         };
         let mut reasoner = Ht::new_certified(vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
-            Clause::new(
-                vec![role(R0, X, 1), role(R0, 1, X)],
-                Vec::new(),
-            ),
+            Clause::new(vec![role(R0, X, 1), role(R0, 1, X)], Vec::new()),
             Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
         ]);
         reasoner.block_mode = 6;
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
-        let LeanHtEqRefutationOutcome::Open(open) =
-            reasoner.lean_eq_refutation(&mut state, 2, 4)
+        let LeanHtEqRefutationOutcome::Open(open) = reasoner.lean_eq_refutation(&mut state, 2, 4)
         else {
             panic!("the role-cycle obstruction must expose finite blocker assignments");
         };
@@ -26682,13 +26778,7 @@ mod tests {
         }
         assert!(!rejected.is_empty());
         let document = reasoner
-            .lean_equality_production_blocking_document_json(
-                &open,
-                &rejected,
-                false,
-                true,
-                false,
-            )
+            .lean_equality_production_blocking_document_json(&open, &rejected, false, true, false)
             .expect("serialize rejection-validated quotient blocker evidence");
         let path = std::env::temp_dir().join(format!(
             "km-ht-equality-production-rejection-provenance-{}-{}.json",
@@ -26779,19 +26869,12 @@ mod tests {
         ];
         let mut reasoner = Ht::new_certified(clauses);
         reasoner.set_nominals(vec![NOMINAL]);
-        reasoner.set_native_abox(
-            vec![(vec![NOMINAL], Vec::new())],
-            Vec::new(),
-            Vec::new(),
-        );
+        reasoner.set_native_abox(vec![(vec![NOMINAL], Vec::new())], Vec::new(), Vec::new());
         reasoner.block_mode = 6;
-        let (mut state, _) = LeanHtRefutationState::rooted_native_abox(
-            &[(0, lit(false, A))],
-            &reasoner.native_abox,
-        )
-        .expect("valid native ABox production seed");
-        let LeanHtEqRefutationOutcome::Open(open) =
-            reasoner.lean_eq_refutation(&mut state, 3, 6)
+        let (mut state, _) =
+            LeanHtRefutationState::rooted_native_abox(&[(0, lit(false, A))], &reasoner.native_abox)
+                .expect("valid native ABox production seed");
+        let LeanHtEqRefutationOutcome::Open(open) = reasoner.lean_eq_refutation(&mut state, 3, 6)
         else {
             panic!("the native ABox role-cycle obstruction must expose blocker assignments");
         };
@@ -26801,13 +26884,7 @@ mod tests {
         }
         assert!(!rejected.is_empty());
         let document = reasoner
-            .lean_equality_production_blocking_document_json(
-                &open,
-                &rejected,
-                false,
-                true,
-                true,
-            )
+            .lean_equality_production_blocking_document_json(&open, &rejected, false, true, true)
             .expect("serialize joint native ABox rejection provenance");
         let mut wire: serde_json::Value = serde_json::from_str(&document).unwrap();
         assert!(wire["native_seed"].is_object());
@@ -26991,12 +27068,7 @@ mod tests {
 
     #[test]
     fn equality_free_frontier_uses_the_exact_capped_signature_cardinality() {
-        for (concepts, roles, exact) in [
-            (0, 0, 2),
-            (1, 0, 20),
-            (1, 1, 1040),
-            (2, 1, 262_400),
-        ] {
+        for (concepts, roles, exact) in [(0, 0, 2), (1, 0, 20), (1, 1, 1040), (2, 1, 262_400)] {
             assert!(Ht::role_blocking_signature_card_reaches(
                 concepts, roles, exact
             ));
@@ -27018,9 +27090,7 @@ mod tests {
             edges: Vec::new(),
             obligations: Vec::new(),
         };
-        assert!(reasoner
-            .lean_address_frontier_passes(&ordinary, 2)
-            .is_err());
+        assert!(reasoner.lean_address_frontier_passes(&ordinary, 2).is_err());
 
         let cardinality = LeanHtCardinalityAddressFrontier {
             node_count: 1,
@@ -27068,12 +27138,9 @@ mod tests {
 
     #[test]
     fn cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds() {
-        if std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER")
-            .is_none()
-            || std::env::var_os(
-                "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
-            )
-            .is_none()
+        if std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER").is_none()
+            || std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER")
+                .is_none()
         {
             return;
         }
@@ -27081,10 +27148,8 @@ mod tests {
             vec![con(false, A, X)],
             vec![exists(R0, false, A, X)],
         )]);
-        let path = |depth: usize| vec![LeanHtCardinalityAddressStep::Ordinary(
-            R0,
-            CLit::pos(A),
-        ); depth];
+        let path =
+            |depth: usize| vec![LeanHtCardinalityAddressStep::Ordinary(R0, CLit::pos(A),); depth];
         let single = LeanHtCardinalityAddressFrontier {
             node_count: 8,
             root_count: 1,
@@ -27118,10 +27183,8 @@ mod tests {
                 .expect("serialize the successor cardinality frontier"),
         )
         .unwrap();
-        let trace_checker = std::env::var_os(
-            "KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
-        )
-        .unwrap();
+        let trace_checker =
+            std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER").unwrap();
         let trace = serde_json::to_string(&serde_json::json!({
             "version": 1,
             "start_budget": 0,
@@ -27159,18 +27222,10 @@ mod tests {
         };
         let mut rooted_history = Vec::new();
         assert!(reasoner
-            .lean_cardinality_frontier_history_passes(
-                &rooted,
-                8,
-                &mut rooted_history,
-            )
+            .lean_cardinality_frontier_history_passes(&rooted, 8, &mut rooted_history,)
             .expect("check the initial rooted cardinality frontier"));
         assert!(!reasoner
-            .lean_cardinality_frontier_history_passes(
-                &rooted,
-                8,
-                &mut rooted_history,
-            )
+            .lean_cardinality_frontier_history_passes(&rooted, 8, &mut rooted_history,)
             .expect("reject the stale rooted cardinality frontier"));
         assert_eq!(rooted_history.len(), 1);
     }
@@ -27196,8 +27251,7 @@ mod tests {
         let document = reasoner
             .lean_rooted_cardinality_address_frontier_json(&frontier)
             .expect("serialize all native roots");
-        let Some(checker) =
-            std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER")
+        let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER")
         else {
             return;
         };
@@ -27225,7 +27279,10 @@ mod tests {
             .status()
             .expect("run checker on duplicate rooted address");
         let _ = std::fs::remove_file(path);
-        assert!(!rejected.success(), "Lean must reject duplicate root/path pairs");
+        assert!(
+            !rejected.success(),
+            "Lean must reject duplicate root/path pairs"
+        );
     }
 
     #[test]
@@ -27268,8 +27325,7 @@ mod tests {
             );
 
             let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
-            duplicate["frontier"]["addresses"][1] =
-                duplicate["frontier"]["addresses"][0].clone();
+            duplicate["frontier"]["addresses"][1] = duplicate["frontier"]["addresses"][0].clone();
             std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
             let rejected = std::process::Command::new(&frontier_checker)
                 .arg(&path)
@@ -27304,11 +27360,9 @@ mod tests {
         assert_eq!(leaf.obligations.len(), 3);
 
         let options = vec![(7, vec![5, 3]), (9, vec![6, 4])];
-        let first = LeanHtRefutationState::next_fold_assignment_from_options(
-            &options,
-            &HashSet::new(),
-        )
-        .expect("the finite blocker product is nonempty");
+        let first =
+            LeanHtRefutationState::next_fold_assignment_from_options(&options, &HashSet::new())
+                .expect("the finite blocker product is nonempty");
         assert_eq!(first, vec![(7, 5), (9, 6)]);
         let rejected_assignments = HashSet::from([first]);
         let second = LeanHtRefutationState::next_fold_assignment_from_options(
@@ -27323,27 +27377,20 @@ mod tests {
         );
         let mut all_rejected = rejected_assignments;
         all_rejected.insert(second);
-        let third = LeanHtRefutationState::next_fold_assignment_from_options(
-            &options,
-            &all_rejected,
-        )
-        .expect("the third Cartesian assignment remains available");
+        let third =
+            LeanHtRefutationState::next_fold_assignment_from_options(&options, &all_rejected)
+                .expect("the third Cartesian assignment remains available");
         assert_eq!(third, vec![(7, 3), (9, 6)]);
         all_rejected.insert(third);
-        let fourth = LeanHtRefutationState::next_fold_assignment_from_options(
-            &options,
-            &all_rejected,
-        )
-        .expect("the fourth Cartesian assignment remains available");
+        let fourth =
+            LeanHtRefutationState::next_fold_assignment_from_options(&options, &all_rejected)
+                .expect("the fourth Cartesian assignment remains available");
         assert_eq!(fourth, vec![(7, 3), (9, 4)]);
         all_rejected.insert(fourth);
         assert_eq!(all_rejected.len(), 4);
         assert!(
-            LeanHtRefutationState::next_fold_assignment_from_options(
-                &options,
-                &all_rejected,
-            )
-            .is_none(),
+            LeanHtRefutationState::next_fold_assignment_from_options(&options, &all_rejected,)
+                .is_none(),
             "the blocker product must report exhaustion after every unique assignment",
         );
         let mut forbidden_pairs = HashSet::new();
@@ -27374,15 +27421,13 @@ mod tests {
         );
         let rejected_folds: HashSet<(Node, Node)> = leaf.folds.iter().copied().collect();
         let mut retry_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
-        match cyclic.lean_refutation_avoiding_folds(
-            &mut retry_state,
-            1,
-            4,
-            &rejected_folds,
-        ) {
+        match cyclic.lean_refutation_avoiding_folds(&mut retry_state, 1, 4, &rejected_folds) {
             LeanHtRefutationOutcome::Open(retry) => {
                 assert!(
-                    retry.folds.iter().all(|fold| !rejected_folds.contains(fold)),
+                    retry
+                        .folds
+                        .iter()
+                        .all(|fold| !rejected_folds.contains(fold)),
                     "a rejected blocker fold must not be submitted again",
                 );
                 assert!(
@@ -27413,12 +27458,8 @@ mod tests {
                 .any(|edge| { edge["role"] == R0 && edge["source"] == 0 && edge["target"] == 2 }),
             "bidirectional fold materialization must copy incoming blocker edges"
         );
-        if std::env::var_os(
-            "KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .is_some()
-            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
-                .is_some()
+        if std::env::var_os("KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER").is_some()
+            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER").is_some()
         {
             assert!(
                 cyclic
@@ -27450,12 +27491,7 @@ mod tests {
                 .collect();
             let mut frontier_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
             let LeanHtRefutationOutcome::Frontier(frontier) =
-                cyclic.lean_refutation_avoiding_folds(
-                    &mut frontier_state,
-                    1,
-                    8,
-                    &forbidden,
-                )
+                cyclic.lean_refutation_avoiding_folds(&mut frontier_state, 1, 8, &forbidden)
             else {
                 panic!("the unblocked cyclic run must reach its eight-node frontier");
             };
@@ -27504,21 +27540,12 @@ mod tests {
                 .any(|edge| edge["source"] == 2 && edge["target"] == 2),
             "the redirected endpoint cover must expose the blocker's witness"
         );
-        if std::env::var_os(
-            "KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
-        )
-        .is_some()
-            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
-                .is_some()
+        if std::env::var_os("KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER").is_some()
+            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER").is_some()
         {
             assert!(
                 cyclic
-                    .lean_regular_production_terminal_passes(
-                        &leaf,
-                        &leaf.folds,
-                        &regular_raw,
-                        &[],
-                    )
+                    .lean_regular_production_terminal_passes(&leaf, &leaf.folds, &regular_raw, &[],)
                     .expect("run the regular production terminal checker"),
                 "Lean must accept the exact regular terminal and redirect",
             );
@@ -27536,14 +27563,9 @@ mod tests {
                 "Lean must reject a redirect detached from the selected assignment",
             );
         }
-        if let Some(checker) =
-            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
-        {
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER") {
             let document = cyclic
-                .lean_production_blocking_document_json(
-                    &leaf,
-                    &HashSet::from([leaf.folds.clone()]),
-                )
+                .lean_production_blocking_document_json(&leaf, &HashSet::from([leaf.folds.clone()]))
                 .expect("serialize the exact production blocker table");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-production-blocking-{}-{}.json",
@@ -27674,9 +27696,7 @@ mod tests {
             forged["edges"]
                 .as_array_mut()
                 .expect("blocked SAT candidate has an edge array")
-                .retain(|edge| !(edge["role"] == R0
-                    && edge["source"] == 2
-                    && edge["target"] == 2));
+                .retain(|edge| !(edge["role"] == R0 && edge["source"] == 2 && edge["target"] == 2));
             let forged = cyclic
                 .finalize_lean_certificate(serde_json::to_string(&forged).unwrap())
                 .expect("wrap the forged blocked candidate");
@@ -27857,9 +27877,10 @@ mod tests {
         let non_simple_wire: serde_json::Value =
             serde_json::from_str(&non_simple_document).unwrap();
         assert_eq!(non_simple_wire["residual"].as_array().unwrap().len(), 1);
-        assert!(non_simple_wire["cover"].as_array().unwrap().contains(
-            &serde_json::json!({"role": 1, "source": 0, "target": 1})
-        ));
+        assert!(non_simple_wire["cover"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!({"role": 1, "source": 0, "target": 1})));
         let endpoint_evidence = non_simple_certificate
             .endpoint_role_evidence(1, 0, 1)
             .expect("the generated role-closure edge has finite provenance");
@@ -28270,9 +28291,7 @@ mod tests {
 
     #[test]
     fn ordinary_unsat_production_run_rejects_a_sat_terminal() {
-        if std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER")
-            .is_none()
-        {
+        if std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER").is_none() {
             return;
         }
         let reasoner = Ht::new_certified(Vec::new());
@@ -28390,12 +28409,7 @@ mod tests {
         );
         let rejected: HashSet<_> = equality_open.folds.iter().copied().collect();
         let mut equality_retry = LeanHtRefutationState::root(&[]);
-        match equality.lean_eq_refutation_avoiding_folds(
-            &mut equality_retry,
-            1,
-            4,
-            &rejected,
-        ) {
+        match equality.lean_eq_refutation_avoiding_folds(&mut equality_retry, 1, 4, &rejected) {
             LeanHtEqRefutationOutcome::Open(retry) => {
                 assert!(retry.folds.iter().all(|fold| !rejected.contains(fold)));
                 assert!(retry.representatives.len() > equality_open.representatives.len());
@@ -28425,12 +28439,7 @@ mod tests {
         let definitions = vec![(B, cardinality.card_defs[&B])];
         let mut cardinality_state = LeanHtRefutationState::root(&[]);
         let LeanHtDistinctCardinalityRefutationOutcome::Open(cardinality_open) = cardinality
-            .lean_distinct_cardinality_refutation(
-                &mut cardinality_state,
-                &definitions,
-                1,
-                4,
-            )
+            .lean_distinct_cardinality_refutation(&mut cardinality_state, &definitions, 1, 4)
         else {
             panic!("the cardinality-aware cyclic branch must expose a blocker fold");
         };
@@ -28685,9 +28694,9 @@ mod tests {
         assert!(
             plain_payload["concepts"]
                 .as_array()
-                .is_some_and(|cells| cells.iter().any(|cell| {
-                    cell.get("plain").is_some() || cell.get("regular").is_some()
-                })),
+                .is_some_and(|cells| cells
+                    .iter()
+                    .any(|cell| { cell.get("plain").is_some() || cell.get("regular").is_some() })),
             "equality-free taxonomy cells must publish checked finite or regular countermodels"
         );
         let mixed_wire: serde_json::Value =
@@ -28705,13 +28714,12 @@ mod tests {
         );
         let cardinality_wire: serde_json::Value =
             serde_json::from_str(&documents[2]).expect("cardinality taxonomy is JSON");
-        let cardinality_payload = if cardinality_wire["version"] == 6
-            || cardinality_wire["version"] == 7
-        {
-            &cardinality_wire["certificate"]
-        } else {
-            &cardinality_wire
-        };
+        let cardinality_payload =
+            if cardinality_wire["version"] == 6 || cardinality_wire["version"] == 7 {
+                &cardinality_wire["certificate"]
+            } else {
+                &cardinality_wire
+            };
         assert!(
             cardinality_payload["concepts"]
                 .as_array()
@@ -28757,6 +28765,56 @@ mod tests {
             rejected,
             "Lean must reject a taxonomy with one missing cell"
         );
+    }
+
+    #[test]
+    fn cardinality_taxonomy_run_matrix_binds_every_query_coordinate() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER")
+        else {
+            return;
+        };
+        let mut tableau = ht(Vec::new());
+        tableau.set_card_defs_raw(&[(D, true, 0, R0, A, false)]);
+        let (_, _, concept_run) = tableau
+            .lean_cardinality_taxonomy_query_decision_and_run_json(LeanHtTaxonomyQuery::Concept(A))
+            .expect("produce a checked cardinality concept run");
+        let (_, _, subsumption_run) = tableau
+            .lean_cardinality_taxonomy_query_decision_and_run_json(
+                LeanHtTaxonomyQuery::Subsumption(A, A),
+            )
+            .expect("produce a checked cardinality subsumption run");
+        let mut matrix = serde_json::json!({
+            "version": 1,
+            "named": [A as usize],
+            "concept_runs": [serde_json::from_str::<serde_json::Value>(&concept_run).unwrap()],
+            "subsumption_runs": [[serde_json::from_str::<serde_json::Value>(&subsumption_run).unwrap()]],
+        });
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-cardinality-taxonomy-run-matrix-{}.json",
+            std::process::id()
+        ));
+        let run_checker = |document: &serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(document).unwrap())
+                .expect("write cardinality taxonomy run matrix");
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run cardinality taxonomy matrix checker")
+                .success()
+        };
+        assert!(
+            run_checker(&matrix),
+            "Lean must accept the exact run matrix"
+        );
+        matrix["subsumption_runs"][0][0]["query"] = LeanHtTaxonomyQuery::Concept(A).wire_json();
+        assert!(
+            !run_checker(&matrix),
+            "Lean must reject a run retained under the wrong matrix coordinate"
+        );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
