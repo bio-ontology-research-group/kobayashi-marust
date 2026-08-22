@@ -233,6 +233,130 @@ theorem checked_native_abox_doubling_execution_decides_source
           certificate tree hontology hinitial hcheck)
   | frontier => simp [NativeABoxProductionConclusive] at hconclusive
 
+/-! ### Runtime-constructed source decisions
+
+These theorems close the gap between a concrete nested runtime and the traced
+publication theorems above. The caller supplies a checked classification of
+each computed budget and a proof that one finite budget is conclusive; Lean
+constructs every intervening fold-learning and doubling step itself. -/
+
+theorem checked_regular_runtime_through_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (RegularProductionConclusive fixed.1) ⊕
+        PLift (RegularProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1))
+    (fuel : Nat)
+    (terminal :
+      let fixed := (runtime fuel).execute ∅
+      RegularProductionConclusive fixed.1) :
+    ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      target, outcome.SourceSemantics source := by
+  let run := CartesianFoldDoublingExecution.executeThrough runtime
+    (RegularProductionFrontier conceptCount roleCount variableCount target)
+    RegularProductionConclusive classify 0 fuel (by
+      rw [Nat.zero_add]
+      exact terminal)
+  exact ⟨run.1, checked_regular_doubling_execution_decides_source equivalent
+    runtime run.2⟩
+
+theorem checked_equality_runtime_through_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (EqualityProductionConclusive fixed.1) ⊕
+        PLift (EqualityProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1))
+    (fuel : Nat)
+    (terminal :
+      let fixed := (runtime fuel).execute ∅
+      EqualityProductionConclusive fixed.1) :
+    ∃ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount target, outcome.SourceSemantics source := by
+  let run := CartesianFoldDoublingExecution.executeThrough runtime
+    (EqualityProductionFrontier conceptCount roleCount variableCount target)
+    EqualityProductionConclusive classify 0 fuel (by
+      rw [Nat.zero_add]
+      exact terminal)
+  exact ⟨run.1, checked_equality_doubling_execution_decides_source equivalent
+    runtime run.2⟩
+
+theorem checked_cardinality_runtime_through_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (CardinalityProductionConclusive fixed.1) ⊕
+        PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
+          target definitions maxWidth budget fixed.1))
+    (fuel : Nat)
+    (terminal :
+      let fixed := (runtime fuel).execute ∅
+      CardinalityProductionConclusive fixed.1) :
+    ∃ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions, outcome.SourceSemantics source := by
+  let run := CartesianFoldDoublingExecution.executeThrough runtime
+    (CardinalityProductionFrontier conceptCount roleCount variableCount target
+      definitions maxWidth) CardinalityProductionConclusive classify 0 fuel
+      (by
+        rw [Nat.zero_add]
+        exact terminal)
+  exact ⟨run.1, checked_cardinality_doubling_execution_decides_source
+    equivalent maxWidth runtime run.2⟩
+
+theorem checked_native_abox_runtime_through_decides_source
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (NativeABoxProductionConclusive fixed.1) ⊕
+        PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
+          variableCount abox target definitions maxWidth budget fixed.1))
+    (fuel : Nat)
+    (terminal :
+      let fixed := (runtime fuel).execute ∅
+      NativeABoxProductionConclusive fixed.1) :
+    ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions,
+        outcome.SourceSemantics source := by
+  let run := CartesianFoldDoublingExecution.executeThrough runtime
+    (NativeABoxProductionFrontier Individual conceptCount roleCount variableCount
+      abox target definitions maxWidth) NativeABoxProductionConclusive classify
+      0 fuel (by
+        rw [Nat.zero_add]
+        exact terminal)
+  exact ⟨run.1, checked_native_abox_doubling_execution_decides_source
+    equivalent maxWidth runtime run.2⟩
+
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
 the selected family, including native ABox and cardinality data where present.
@@ -483,5 +607,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_equality_doubling_execution_decides_source
 #print axioms checked_cardinality_doubling_execution_decides_source
 #print axioms checked_native_abox_doubling_execution_decides_source
+#print axioms checked_regular_runtime_through_decides_source
+#print axioms checked_equality_runtime_through_decides_source
+#print axioms checked_cardinality_runtime_through_decides_source
+#print axioms checked_native_abox_runtime_through_decides_source
 
 end ContextCalculus.Hypertableau

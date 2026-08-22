@@ -26,6 +26,9 @@
   conclusive checked outcome. Source-level publication theorems now consume
   such traces directly for regular, equality, cardinality, and native-ABox
   cardinality runs, independently of the abstract total-producer interface.
+  Runtime-level publication wrappers now construct these traces themselves
+  for all four production families through a proved conclusive budget and
+  return the corresponding source semantics.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem

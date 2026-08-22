@@ -97,9 +97,10 @@ are exactly Rust's branches: accept the first fresh assignment, reject that
 exact assignment and continue after inserting it, or invoke the exhaustion
 continuation only after `firstFreshFoldAssignment` returns `none`.
 
-Unlike `eventually_done`, this trace contains no selected witness and uses no
-classical choice.  It is therefore suitable as the semantic target of the
-wire decoder for a concrete KM execution.
+Unlike `eventually_done`, this trace contains no externally supplied or
+classically selected retry witness. It is therefore suitable as the semantic
+target of the wire decoder for a concrete KM execution. The executable
+constructor remains noncomputable because it enumerates finite classical data.
 -/
 
 inductive CartesianFoldAssignmentExecution
