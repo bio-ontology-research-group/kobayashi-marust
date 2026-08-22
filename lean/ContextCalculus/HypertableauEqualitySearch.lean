@@ -43,6 +43,16 @@ inductive CheckedEqualityDecisionOutcome
       (hroles : document.role_count = roleCount)
       (hcheck : document.check = true)
 
+def CheckedEqualityDecisionOutcome.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedEqualityDecisionOutcome conceptCount roleCount variableCount ontology :=
+  let document := WireAddressFrontier.ofAddress address
+  .frontier document rfl rfl
+    (document.checkScheduled_check budget
+      (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl))
+
 /-- One equality-aware Rust control attempt, with every accepted checker result,
 the exact iterative-deepening schedule, and fresh fold rejection represented in
 the branch type. -/
@@ -79,6 +89,16 @@ inductive CheckedEqualityControlAttempt
       (folds : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
       (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+def CheckedEqualityControlAttempt.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedEqualityControlAttempt conceptCount roleCount variableCount ontology
+      budget forbidden :=
+  let document := WireAddressFrontier.ofAddress address
+  .frontier document rfl rfl
+    (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl)
 
 def CheckedEqualityControlAttempt.toGuarded
     {forbidden : Finset
@@ -428,6 +448,7 @@ theorem checked_equality_control_producer_decides_source
 
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
+#print axioms CheckedEqualityDecisionOutcome.frontier_of_address
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
 #print axioms checked_equality_doubling_decides
 #print axioms CheckedEqualityDecisionOutcome.source_semantics_of_equivalent
@@ -436,6 +457,7 @@ theorem checked_equality_control_producer_decides_source
 #print axioms checked_equality_fresh_fold_producer_decides_source
 #print axioms checked_equality_fold_assignment_producer_decides_source
 #print axioms CheckedEqualityControlAttempt.frontier_scheduled
+#print axioms CheckedEqualityControlAttempt.frontier_of_address
 #print axioms CheckedEqualityControlProducer.frontier_scheduled
 #print axioms checked_equality_scheduled_guarded_fold_producer_decides_source
 #print axioms checked_equality_control_producer_decides_source

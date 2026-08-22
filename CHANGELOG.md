@@ -48,6 +48,10 @@
   proves decode/encode identity, constructs the canonical scheduled document,
   and derives both cardinality outcome and control-attempt frontiers from an
   injective tagged address map without a producer-supplied checker result.
+- Construct equality-aware outcome and control frontiers from injective
+  ordinary witness-address maps using the same canonical checked serializer;
+  equality search no longer needs an independently asserted frontier-check
+  result at this construction boundary.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine
