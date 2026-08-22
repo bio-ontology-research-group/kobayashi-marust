@@ -125,6 +125,44 @@ def CheckedRegularRoundOutcome.regularSat_of_cover_saturated_runtime_terminal
       hstate hterminal hwitnessRefines hredirectRefines hauthorized hguarded
       hheads hcoverClosed hcoverSaturated)
 
+/-- Construct the conclusive regular-SAT outcome for the final retry with no
+blocker folds.  This is the concrete endpoint of KM's two-level fold search:
+once every blocked source has no selected fold, fold-table totality forces all
+sources to be unblocked, so the runtime terminal already contains ordinary
+witnesses for every existential obligation.  The regular checker therefore
+cannot reject this candidate under the serializer's role-cover invariants. -/
+def CheckedRegularRoundOutcome.regularSat_of_fold_free_runtime_terminal
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hontology : certificate.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hfoldTotal : State.BlockedFoldTotal blocked fold)
+    (hfoldFree : ∀ source blocker, ¬ fold source blocker)
+    (hredirect : certificate.redirect = id)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hshape : ∀ clause ∈ certificate.residual, clause.SingleDirectRoleBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hdirect : ∀ clause ∈ certificate.residual,
+      certificate.state.DirectCoverForBody certificate.redirect
+        certificate.coverRelation clause)
+    (hcoverClosed : certificate.CoverClosed) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  .regularSat certificate hontology hnonempty
+    (certificate.check_of_fold_free_runtime_terminal runtime blocked fold hstate
+      hterminal hfoldTotal hfoldFree hredirect hauthorized hguarded hshape
+      hheads hdirect hcoverClosed)
+
 /-- Complete checked result of one Rust equality-free control attempt. Every
 accepted serializer branch stores the proof returned by its Lean checker;
 frontiers additionally store the executable schedule check. Rejection stores

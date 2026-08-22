@@ -4,6 +4,10 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Lift the proved fold-free regular-checker completeness result into the actual
+  checked equality-free round outcome. Under the concrete blocked-terminal and
+  role-cover serializer invariants, KM's final empty-fold retry is necessarily
+  a conclusive regular-SAT result instead of an unexplained no-growth failure.
 - Replace the unified production-global proof boundary with a constructor-
   guarded complete-assignment route for regular, equality, cardinality, and
   native-ABox cardinality search. The capstone proves that every such route

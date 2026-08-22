@@ -614,8 +614,11 @@ dependent producer as an assumption. Lean constructs one settled checked
 inner outcome for every outer forbidden-pair state. Exact assignment
 exhaustion may rerun saturation only when the continuation exhibits at least
 one newly forbidden pair; finite strict growth proves that these reruns also
-terminate. A fold-free retry that cannot add a pair is therefore outside the
-certified completeness interface rather than an assumed result. Lean composes
+terminate. For the final fold-free retry, Lean now constructs the conclusive
+regular-SAT round outcome directly from the blocked runtime terminal and the
+serializer's role-cover invariants. Fold-table totality forces every source to
+be unblocked, so ordinary runtime witnesses make the regular checker accept;
+this endpoint is proved rather than assumed. Lean composes
 the settled two-level outcomes with address frontier doubling and source-model
 equivalence. The same executable-assignment and expansion capstone covers
 regular, equality, cardinality, native-ABox, and combined
