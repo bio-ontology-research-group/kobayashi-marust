@@ -2458,7 +2458,189 @@ struct LeanHtRegularCoverObstruction<'a> {
     assignment: &'a [Node],
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LeanHtEndpointRoleEvidence {
+    Direct {
+        role: usize,
+        source: Node,
+        target: Node,
+    },
+    Sub {
+        premise: usize,
+        conclusion: usize,
+        source: Node,
+        target: Node,
+        child: Box<LeanHtEndpointRoleEvidence>,
+    },
+    Inverse {
+        premise: usize,
+        conclusion: usize,
+        source: Node,
+        target: Node,
+        child: Box<LeanHtEndpointRoleEvidence>,
+    },
+    Chain {
+        first: usize,
+        second: usize,
+        conclusion: usize,
+        source: Node,
+        middle: Node,
+        target: Node,
+        left: Box<LeanHtEndpointRoleEvidence>,
+        right: Box<LeanHtEndpointRoleEvidence>,
+    },
+    Refl {
+        role: usize,
+        source: Node,
+    },
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtEndpointRoleEvidenceDocument<'a> {
+    version: usize,
+    certificate: &'a LeanHtRegularCertificate,
+    evidence: &'a LeanHtEndpointRoleEvidence,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtRegularCoverRefinement<'a> {
+    version: usize,
+    certificate: &'a LeanHtRegularCertificate,
+    clause: usize,
+    assignment: &'a [Node],
+    evidence: &'a LeanHtEndpointRoleEvidence,
+}
+
 impl LeanHtRegularCertificate {
+    fn endpoint_role_evidence(
+        &self,
+        role: usize,
+        source: Node,
+        target: Node,
+    ) -> Option<LeanHtEndpointRoleEvidence> {
+        fn derive(
+            certificate: &LeanHtRegularCertificate,
+            edge: (usize, Node, Node),
+            active: &mut HashSet<(usize, Node, Node)>,
+            depth: usize,
+        ) -> Option<LeanHtEndpointRoleEvidence> {
+            if depth == 0 || !active.insert(edge) {
+                return None;
+            }
+            let (role, source, target) = edge;
+            let result = if certificate.edges.iter().any(|raw| {
+                raw.role == role
+                    && raw.source == certificate.redirect[source]
+                    && raw.target == target
+            }) {
+                Some(LeanHtEndpointRoleEvidence::Direct {
+                    role,
+                    source,
+                    target,
+                })
+            } else if source == target && certificate.reflexive_roles.contains(&role) {
+                Some(LeanHtEndpointRoleEvidence::Refl { role, source })
+            } else {
+                let mut found = None;
+                for rule in &certificate.sub_roles {
+                    if rule.conclusion != role {
+                        continue;
+                    }
+                    if let Some(child) = derive(
+                        certificate,
+                        (rule.premise, source, target),
+                        active,
+                        depth - 1,
+                    ) {
+                        found = Some(LeanHtEndpointRoleEvidence::Sub {
+                            premise: rule.premise,
+                            conclusion: role,
+                            source,
+                            target,
+                            child: Box::new(child),
+                        });
+                        break;
+                    }
+                }
+                if found.is_none() {
+                    for rule in &certificate.inverse_roles {
+                        if rule.conclusion != role {
+                            continue;
+                        }
+                        if let Some(child) = derive(
+                            certificate,
+                            (rule.premise, target, source),
+                            active,
+                            depth - 1,
+                        ) {
+                            found = Some(LeanHtEndpointRoleEvidence::Inverse {
+                                premise: rule.premise,
+                                conclusion: role,
+                                source,
+                                target,
+                                child: Box::new(child),
+                            });
+                            break;
+                        }
+                    }
+                }
+                if found.is_none() {
+                    'chains: for rule in &certificate.chains {
+                        if rule.conclusion != role {
+                            continue;
+                        }
+                        for middle in 0..certificate.node_count {
+                            let Some(left) = derive(
+                                certificate,
+                                (rule.first, source, middle),
+                                active,
+                                depth - 1,
+                            ) else {
+                                continue;
+                            };
+                            if let Some(right) = derive(
+                                certificate,
+                                (rule.second, middle, target),
+                                active,
+                                depth - 1,
+                            ) {
+                                found = Some(LeanHtEndpointRoleEvidence::Chain {
+                                    first: rule.first,
+                                    second: rule.second,
+                                    conclusion: role,
+                                    source,
+                                    middle,
+                                    target,
+                                    left: Box::new(left),
+                                    right: Box::new(right),
+                                });
+                                break 'chains;
+                            }
+                        }
+                    }
+                }
+                found
+            };
+            active.remove(&edge);
+            result
+        }
+
+        if !self
+            .cover
+            .iter()
+            .any(|edge| edge.role == role && edge.source == source && edge.target == target)
+        {
+            return None;
+        }
+        derive(
+            self,
+            (role, source, target),
+            &mut HashSet::new(),
+            self.cover.len().saturating_add(1),
+        )
+    }
+
     fn cover_holds(&self, atom: &LeanHtAtom, assignment: &[Node]) -> bool {
         match atom {
             LeanHtAtom::Concept { literal, node } => self.labels.iter().any(|fact| {
@@ -24962,6 +25144,9 @@ mod tests {
         assert!(non_simple_wire["cover"].as_array().unwrap().contains(
             &serde_json::json!({"role": 1, "source": 0, "target": 1})
         ));
+        let endpoint_evidence = non_simple_certificate
+            .endpoint_role_evidence(1, 0, 1)
+            .expect("the generated role-closure edge has finite provenance");
 
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
             let target = std::env::var_os("CARGO_TARGET_DIR")
@@ -25045,6 +25230,83 @@ mod tests {
                 "Lean must reject a residual clause index outside the certificate",
             );
             let _ = std::fs::remove_file(witness_path);
+
+            let mut endpoint_checker = std::path::PathBuf::from(&checker);
+            endpoint_checker.set_file_name("ht-endpoint-role-evidence-check");
+            let endpoint_path = target.join("km-ht-endpoint-role-evidence.json");
+            let endpoint_document = LeanHtEndpointRoleEvidenceDocument {
+                version: 1,
+                certificate: &non_simple_certificate,
+                evidence: &endpoint_evidence,
+            };
+            std::fs::write(
+                &endpoint_path,
+                serde_json::to_vec(&endpoint_document).unwrap(),
+            )
+            .unwrap();
+            let endpoint_result = std::process::Command::new(endpoint_checker)
+                .arg(&endpoint_path)
+                .output()
+                .expect("run the endpoint-role evidence checker");
+            assert!(
+                endpoint_result.status.success(),
+                "Lean must accept Rust's endpoint-role derivation: {}",
+                String::from_utf8_lossy(&endpoint_result.stderr),
+            );
+            let _ = std::fs::remove_file(endpoint_path);
+
+            let mut refinement_checker = std::path::PathBuf::from(&checker);
+            refinement_checker.set_file_name("ht-cover-refinement-check");
+            let refinement_path = target.join("km-ht-cover-refinement.json");
+            let refinement_document = LeanHtRegularCoverRefinement {
+                version: 1,
+                certificate: &non_simple_certificate,
+                clause: obstruction.0,
+                assignment: &obstruction.1,
+                evidence: &endpoint_evidence,
+            };
+            std::fs::write(
+                &refinement_path,
+                serde_json::to_vec(&refinement_document).unwrap(),
+            )
+            .unwrap();
+            let refinement_result = std::process::Command::new(refinement_checker)
+                .arg(&refinement_path)
+                .output()
+                .expect("run the combined cover-refinement checker");
+            assert!(
+                refinement_result.status.success(),
+                "Lean must accept the matched obstruction and edge provenance: {}",
+                String::from_utf8_lossy(&refinement_result.stderr),
+            );
+            let forged_endpoint_evidence = LeanHtEndpointRoleEvidence::Direct {
+                role: 1,
+                source: 0,
+                target: 1,
+            };
+            let forged_refinement = LeanHtRegularCoverRefinement {
+                version: 1,
+                certificate: &non_simple_certificate,
+                clause: obstruction.0,
+                assignment: &obstruction.1,
+                evidence: &forged_endpoint_evidence,
+            };
+            std::fs::write(
+                &refinement_path,
+                serde_json::to_vec(&forged_refinement).unwrap(),
+            )
+            .unwrap();
+            let mut refinement_checker = std::path::PathBuf::from(&checker);
+            refinement_checker.set_file_name("ht-cover-refinement-check");
+            let forged_refinement_result = std::process::Command::new(refinement_checker)
+                .arg(&refinement_path)
+                .output()
+                .expect("run the combined checker on forged direct provenance");
+            assert!(
+                !forged_refinement_result.status.success(),
+                "Lean must reject a subrole edge falsely reported as raw direct data",
+            );
+            let _ = std::fs::remove_file(refinement_path);
         }
     }
 

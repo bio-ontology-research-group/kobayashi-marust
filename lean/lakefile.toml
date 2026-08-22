@@ -49,6 +49,14 @@ name = "ht-cover-obstruction-check"
 root = "HTCoverObstructionCheck"
 
 [[lean_exe]]
+name = "ht-endpoint-role-evidence-check"
+root = "HTEndpointRoleEvidenceCheck"
+
+[[lean_exe]]
+name = "ht-cover-refinement-check"
+root = "HTCoverRefinementCheck"
+
+[[lean_exe]]
 name = "ht-regular-cardinality-cert-check"
 root = "HTRegularCardinalityCertCheck"
 
