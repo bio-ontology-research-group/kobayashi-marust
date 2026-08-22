@@ -63,6 +63,39 @@ structure Saturation (S N : Finset (PClause Atom)) : Prop where
   closed : ∀ c1 c2 a, c1 ∈ N → c2 ∈ N → a ∈ c1.pos → a ∈ c2.neg → resolvent c1 c2 a ∈ N
   sound : ∀ c ∈ N, Derivable S c
 
+/-- A valuation is a model of every clause in a finite clause set. -/
+def Models (S : Finset (PClause Atom)) (I : Atom → Prop) : Prop :=
+  ∀ c ∈ S, c.sat I
+
+/-- A sound saturation that retains its input preserves the complete model
+    class, not only refutability.  Inclusion gives the right-to-left direction;
+    derivability soundness gives the left-to-right direction for every produced
+    clause.  Closure is not needed for preservation itself, but is what later
+    turns the retained, sound set into a complete saturation. -/
+theorem saturation_models_iff {S N : Finset (PClause Atom)}
+    (hsat : Saturation S N) (I : Atom → Prop) :
+    Models N I ↔ Models S I := by
+  constructor
+  · intro hN c hc
+    exact hN c (hsat.incl hc)
+  · intro hS c hc
+    exact derivable_sound I S hS (hsat.sound c hc)
+
+/-- Consequently a checked saturation preserves every semantic consequence,
+    including each positive and negative cell of a published taxonomy. -/
+theorem saturation_entails_iff {S N : Finset (PClause Atom)}
+    (hsat : Saturation S N) (target : PClause Atom) :
+    (∀ I, Models S I → target.sat I) ↔
+      (∀ I, Models N I → target.sat I) := by
+  constructor
+  · intro h I hN
+    exact h I ((saturation_models_iff hsat I).mp hN)
+  · intro h I hS
+    exact h I ((saturation_models_iff hsat I).mpr hS)
+
+#print axioms saturation_models_iff
+#print axioms saturation_entails_iff
+
 /-- Everything resolution-derivable from `S` is already in a saturation of `S`. -/
 theorem mem_of_derivable {S N : Finset (PClause Atom)} (hsat : Saturation S N)
     {c : PClause Atom} (h : Derivable S c) : c ∈ N := by

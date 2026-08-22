@@ -43,15 +43,14 @@
                               coverage is free.
 
   Scope note: this is the ALCHIQ **type-level** argument, now hypothesis-free.  The
-  single thing left between it and the running Rust binary is *not* coverage but the
+  principal thing left between it and the running Rust binary is *not* coverage but the
   **representation refinement**: the engine manipulates disjunctive context *clauses*
   rather than enumerated types, and that its clause saturation computes the same
   `goodFS` is the disjunctive-saturation completeness — a substantial theorem that is
-  **not** claimed here.  That clause engine's soundness is hypothesis-free and
-  re-established every run by the certificate checker
-  (`CheckerTerm.certifies_subsumptionT`); its completeness is validated empirically
-  against HermiT (byte-identical verdicts, and identical to the exhaustive trivial
-  strategy).
+  **not** claimed here. Generated examples can establish individual positive
+  verdicts with `CheckerTerm.certifies_subsumptionT`, but the production CB
+  worker does not yet invoke a mandatory checker. Neither generated examples nor
+  empirical oracle agreement establishes the production publication boundary.
 -/
 import ContextCalculus.CompletenessContext
 
@@ -293,8 +292,9 @@ This pins the entire remaining operational gap to that single, named property
 Succ/Hyper generate every reachable good core).  Everything else — that
 elimination never discards a good type, that it converges in `≤ |U|` rounds, that
 the fixpoint it reaches is *exactly* the good types, and that the reported
-subsumptions then decide `A ⊑ B` — is machine-checked here.  Soundness needs no
-such hypothesis (it is the per-run certificate checker's job, `CheckerTerm`). -/
+subsumptions then decide `A ⊑ B` — is machine-checked here. Soundness needs no
+such hypothesis at the abstract level. A production correspondence theorem and
+mandatory wire checker are still required. -/
 
 theorem iter_succ_subset (U : Finset (Finset CName)) (m : ℕ) :
     (step O)^[m + 1] U ⊆ (step O)^[m] U := by
@@ -413,10 +413,10 @@ theorem coverage_of_seeds {U : Finset (Finset CName)}
     What remains between this theorem and the running Rust binary is *only* the
     representation refinement: the engine manipulates disjunctive context clauses
     rather than enumerated types, and that the clause saturation computes the same
-    `goodFS` is the disjunctive-saturation completeness.  Soundness of that clause
-    engine is re-established on every run by the certificate checker
-    (`CheckerTerm.certifies_subsumptionT`, hypothesis-free), and completeness is
-    validated empirically against HermiT on the benchmarks. -/
+    `goodFS` is the disjunctive-saturation completeness.
+    `CheckerTerm.certifies_subsumptionT` proves soundness for any accepted
+    generated derivation, but no mandatory production CB checker is wired yet.
+    Empirical benchmark agreement is regression evidence, not a proof. -/
 theorem engine_complete (A B : CName) :
     (∀ t ∈ saturate O, A ∈ t → B ∈ t)
       ↔ (∀ (D : Type) (I : Interp D CName Role), models I O → ∀ x, I.c A x → I.c B x) :=

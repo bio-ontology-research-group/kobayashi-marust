@@ -9,9 +9,12 @@
 //! sound and complete (the trivial one is Simančík et al.); the per-`f` variant
 //! avoids piling every existential's successor into one context, which is what
 //! blows up under disjunction (≈45× on a distinct-skolem disjunctive stress
-//! test).  Soundness is re-checked per run by the Lean certificate checker;
-//! completeness is validated against the HermiT oracle and scaffolded in
-//! `lean/ContextCalculus/CompletenessStrategy.lean`.  The flag-gated nominal
+//! test). Lean proves the abstract rule soundness, and generated validation
+//! examples are accepted by the term-certificate checker. The production CB
+//! worker does not yet have a mandatory checker boundary; that work is tracked
+//! in `docs/CB-CERTIFICATION.md`. Abstract type-level completeness is developed
+//! in `lean/ContextCalculus/CompletenessStrategy.lean`, but its representation
+//! refinement to this context-clause implementation remains open. The flag-gated nominal
 //! extension implements Join, r-Succ, r-Pred, and Nom; its soundness lemmas and
 //! finite covering bound live in `lean/ContextCalculus/Nominals.lean`.
 

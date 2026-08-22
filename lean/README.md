@@ -867,9 +867,10 @@ The full resolution closure is finite (ground atoms are finite) and is what the
 engine's **complete (trivial-strategy)** configuration computes, so the model is
 non-vacuous and faithful.
 
-### Validating the actual reasoner — `Checker.lean`, `CheckerFO.lean`, `CheckerTerm.lean` + `../../validation/`
-The files above formalize the *calculus*; these validate the *actual Rust binary*,
-per run, with Lean-verified certificate checkers:
+### Generated CB validation — `Checker.lean`, `CheckerFO.lean`, `CheckerTerm.lean` + `Validation/`
+The files above formalize the *calculus*. These checkers validate generated
+derivations for selected Rust outputs; they are not yet a mandatory production
+CB publication boundary:
 
 - `Checker.lean` (propositional) — `checkCert_sound`, `certifies_subsumption`,
   `certifies_unsat`: a resolution certificate over the genuine premises certifies
@@ -898,7 +899,7 @@ saturation** — ground resolution over matching-driven instance generation
 disjunctive case-splitting *and* nested successors **together** (not just Horn).
 It emits the `Validation` library where each verdict is a theorem proved
 `by decide` — kernel-checked, `#print axioms` = `[propext, Quot.sound]` only.
-A green `lake build Validation` certifies the actual reasoner's verdicts:
+A green `lake build Validation` certifies the generated example verdicts:
 disjunctive subsumption, disjointness `⊥`, a hierarchy, `∃R`/value restriction,
 a number-restriction clash, **paramodulation into a literal**, **disjunction over
 a successor** (`disjsucc`: `A ⊑ ∃R.(B⊔C), ∃R.B ⊑ D, ∃R.C ⊑ D ⊢ A ⊑ D`, which only
@@ -911,11 +912,12 @@ subsumptions of `kinship.ofn` (incl. the nominal `Queen ≡ {Elizabeth}`, and th
 
 ## What is NOT claimed
 
-The mathematical core is fully mechanized: the Herbrand construction (soundness
+Substantial mathematical components are mechanized: the Herbrand construction (soundness
 `congruenceModel_models`, completeness `herbrand_complete_ground`), blocking
 termination (`reachable_finite`), the saturation/ground-resolution agreement
-(`saturation_refutes_iff_unsat`), and a verified checker that validates the actual
-reasoner's verdicts per run (`checkCert_sound`).  The remaining boundary:
+(`saturation_refutes_iff_unsat`), and a verified checker for supplied derivations
+(`checkCert_sound`). The production CB correspondence and mandatory publication
+boundary remain open:
 
 1. **Checker coverage.**  The per-run validation certifies verdicts by resolution
    (Core / Hyper / Pred / Elim), **Succ** (existentials / value restrictions),
@@ -965,15 +967,14 @@ reasoner's verdicts per run (`checkCert_sound`).  The remaining boundary:
    reason coverage is free: a good type is consistent, and the engine seeds a root
    for every named concept.
 
-   The **one** thing left between this and the running Rust binary is therefore
-   *not* coverage but the **representation refinement**: the engine manipulates
+   The principal mathematical gap between this and the running Rust binary is
+   the **representation refinement**: the engine manipulates
    disjunctive context *clauses*, not enumerated types, and that its clause
    saturation computes the same `goodFS` is the disjunctive-saturation
-   completeness.  Soundness of that clause engine is hypothesis-free and
-   re-established on every run by the certificate checker
-   (`CheckerTerm.certifies_subsumptionT`); its completeness is validated
-   empirically against HermiT (byte-identical verdicts on every benchmark, and
-   identical to the exhaustive trivial strategy).  Mechanising the clause-level
+   completeness. `CheckerTerm.certifies_subsumptionT` establishes soundness for
+   any accepted generated derivation, but the production worker does not yet
+   invoke it mandatorily. Empirical comparisons are regression evidence.
+   Mechanising the clause-level
    disjunctive-saturation completeness is the remaining (genuinely substantial)
    theorem; it is **not** claimed here.
 
