@@ -65,6 +65,14 @@ name = "ht-doubling-trace-check"
 root = "HTDoublingTraceCheck"
 
 [[lean_exe]]
+name = "ht-cardinality-doubling-trace-check"
+root = "HTCardinalityDoublingTraceCheck"
+
+[[lean_exe]]
+name = "ht-rooted-cardinality-doubling-trace-check"
+root = "HTRootedCardinalityDoublingTraceCheck"
+
+[[lean_exe]]
 name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 

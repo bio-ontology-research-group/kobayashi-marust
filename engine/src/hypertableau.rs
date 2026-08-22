@@ -10349,6 +10349,80 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Validate the complete cardinality iterative-deepening history. Native
+    /// ABoxes use the rooted wire so the fixed root count participates in
+    /// every scheduled round.
+    fn lean_cardinality_frontier_history_passes(
+        &self,
+        frontier: &LeanHtCardinalityAddressFrontier,
+        expected_node_count: usize,
+        frontiers: &mut Vec<serde_json::Value>,
+    ) -> Result<bool, String> {
+        if !self.lean_cardinality_address_frontier_passes(
+            frontier,
+            expected_node_count,
+        )? {
+            return Ok(false);
+        }
+        let rooted = frontier.root_count > 1;
+        let checker = if rooted {
+            std::env::var_os("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+                    )
+                })
+        } else {
+            std::env::var_os("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
+                    )
+                })
+        }
+        .ok_or_else(|| {
+            if rooted {
+                "rooted cardinality HT iterative deepening requires KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER"
+            } else {
+                "cardinality HT iterative deepening requires KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER"
+            }
+            .to_string()
+        })?;
+        let document = if rooted {
+            self.lean_rooted_cardinality_address_frontier_json(frontier)?
+        } else {
+            self.lean_cardinality_address_frontier_json(frontier)?
+        };
+        let document =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        frontiers.push(document);
+        let result = (|| -> Result<bool, String> {
+            let history = if rooted {
+                serde_json::json!({
+                    "version": 1,
+                    "start_budget": 0,
+                    "root_count": frontier.root_count,
+                    "max_width": frontier.max_width,
+                    "frontiers": frontiers,
+                })
+            } else {
+                serde_json::json!({
+                    "version": 1,
+                    "start_budget": 0,
+                    "max_width": frontier.max_width,
+                    "frontiers": frontiers,
+                })
+            };
+            let history =
+                serde_json::to_string(&history).map_err(|error| error.to_string())?;
+            self.lean_candidate_passes_with(&history, &checker)
+        })();
+        if !matches!(&result, Ok(true)) {
+            frontiers.pop();
+        }
+        result
+    }
+
     fn capped_pow2_reaches(exponent: usize, cap: usize) -> usize {
         if cap <= 1 {
             return cap;
@@ -13128,6 +13202,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut cardinality_frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -13210,9 +13285,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(
+                    if !self.lean_cardinality_frontier_history_passes(
                         &frontier,
                         node_budget,
+                        &mut cardinality_frontier_history,
                     )? {
                         return Err(
                             "Lean rejected the native ABox cardinality decision frontier"
@@ -13330,6 +13406,7 @@ impl Ht {
             })
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut cardinality_frontier_history = Vec::new();
         let (tree, depth, root_state) = loop {
             let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_distinct_cardinality_refutation(
@@ -13351,9 +13428,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(
+                    if !self.lean_cardinality_frontier_history_passes(
                         &frontier,
                         node_budget,
+                        &mut cardinality_frontier_history,
                     )? {
                         return Err("Lean rejected the cardinality refutation frontier".to_string());
                     }
@@ -13784,6 +13862,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut cardinality_frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -13843,9 +13922,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(
+                    if !self.lean_cardinality_frontier_history_passes(
                         &frontier,
                         node_budget,
+                        &mut cardinality_frontier_history,
                     )? {
                         return Err("Lean rejected the cardinality decision frontier".to_string());
                     }
@@ -13918,6 +13998,7 @@ impl Ht {
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut frontier_history = Vec::new();
+        let mut cardinality_frontier_history = Vec::new();
 
         if !self.card_defs.is_empty() {
             let mut definitions: Vec<(C, CardDef)> = self
@@ -13996,9 +14077,10 @@ impl Ht {
                             .to_string());
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                        if !self.lean_cardinality_address_frontier_passes(
+                        if !self.lean_cardinality_frontier_history_passes(
                             &frontier,
                             node_budget,
+                            &mut cardinality_frontier_history,
                         )? {
                             return Err(
                                 "Lean rejected the cardinality taxonomy frontier".to_string(),
@@ -14302,6 +14384,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut cardinality_frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -14415,9 +14498,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(
+                    if !self.lean_cardinality_frontier_history_passes(
                         &frontier,
                         node_budget,
+                        &mut cardinality_frontier_history,
                     )? {
                         return Err(
                             "Lean rejected the native ABox cardinality taxonomy frontier"
@@ -26180,6 +26264,69 @@ mod tests {
             .lean_address_frontier_history_passes(&frontier, 8, &mut history)
             .expect("reject a stale frontier at the successor schedule position"));
         assert_eq!(history.len(), 1, "a rejected frontier must be rolled back");
+    }
+
+    #[test]
+    fn cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds() {
+        if std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER")
+            .is_none()
+            || std::env::var_os(
+                "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            )
+            .is_none()
+        {
+            return;
+        }
+        let reasoner = Ht::new_certified(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![exists(R0, false, A, X)],
+        )]);
+        let path = |depth: usize| vec![LeanHtCardinalityAddressStep::Ordinary(
+            R0,
+            CLit::pos(A),
+        ); depth];
+        let single = LeanHtCardinalityAddressFrontier {
+            node_count: 8,
+            root_count: 1,
+            definition_count: 1,
+            max_width: 1,
+            addresses: (0..8).map(|depth| (0, path(depth))).collect(),
+        };
+        let mut history = Vec::new();
+        assert!(reasoner
+            .lean_cardinality_frontier_history_passes(&single, 8, &mut history)
+            .expect("check the initial cardinality frontier"));
+        assert!(!reasoner
+            .lean_cardinality_frontier_history_passes(&single, 8, &mut history)
+            .expect("reject the stale cardinality frontier"));
+        assert_eq!(history.len(), 1);
+
+        let rooted = LeanHtCardinalityAddressFrontier {
+            node_count: 8,
+            root_count: 2,
+            definition_count: 1,
+            max_width: 1,
+            addresses: std::iter::once((0, Vec::new()))
+                .chain(std::iter::once((1, Vec::new())))
+                .chain((1..7).map(|depth| (0, path(depth))))
+                .collect(),
+        };
+        let mut rooted_history = Vec::new();
+        assert!(reasoner
+            .lean_cardinality_frontier_history_passes(
+                &rooted,
+                8,
+                &mut rooted_history,
+            )
+            .expect("check the initial rooted cardinality frontier"));
+        assert!(!reasoner
+            .lean_cardinality_frontier_history_passes(
+                &rooted,
+                8,
+                &mut rooted_history,
+            )
+            .expect("reject the stale rooted cardinality frontier"));
+        assert_eq!(rooted_history.len(), 1);
     }
 
     #[test]

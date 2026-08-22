@@ -6252,6 +6252,8 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
     "KM_HT_LEAN_FRONTIER_CHECKER",
     "KM_HT_LEAN_DOUBLING_TRACE_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
+    "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
@@ -6461,6 +6463,28 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if std::env::var_os("KM_HT_LEAN_DOUBLING_TRACE_CHECKER").is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_DOUBLING_TRACE_CHECKER for complete ordinary frontier histories"
+                        .to_string(),
+                );
+            }
+            if !inp.card_defs.is_empty()
+                && native_individuals.is_empty()
+                && std::env::var_os("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER")
+                    .is_none()
+            {
+                return Err(
+                    "cardinality HT Lean certification requires KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER"
+                        .to_string(),
+                );
+            }
+            if !inp.card_defs.is_empty()
+                && !native_individuals.is_empty()
+                && std::env::var_os(
+                    "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
+                )
+                .is_none()
+            {
+                return Err(
+                    "native-ABox cardinality HT Lean certification requires KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER"
                         .to_string(),
                 );
             }
@@ -7142,6 +7166,8 @@ mod tests {
             "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
             "KM_HT_LEAN_FRONTIER_CHECKER",
             "KM_HT_LEAN_DOUBLING_TRACE_CHECKER",
+            "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
+            "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",

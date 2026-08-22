@@ -28,6 +28,14 @@
   round is stale, skipped, reordered, or belongs to another problem. A real
   eight-node frontier passes at round zero and is rejected if replayed at the
   successor position.
+- Add parallel cross-budget traces for single-root cardinality and multi-root
+  native-ABox cardinality searches. Their Lean checkers enforce the exact
+  doubling schedule while fixing concept, role, cardinality-definition,
+  maximum-width, and, for native ABoxes, root-count dimensions. All five
+  production cardinality loops retain and check the complete history; certified
+  execution fails closed if the appropriate trace checker is unavailable.
+  Cross-language regressions accept genuine initial single- and multi-root
+  frontiers and reject either frontier when replayed at the next round.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and
