@@ -221,6 +221,10 @@ name = "ht-source-bound-native-abox-cardinality-taxonomy-check"
 root = "HTSourceBoundNativeABoxCardinalityTaxonomyCheck"
 
 [[lean_exe]]
+name = "ht-executable-publication-check"
+root = "HTExecutablePublicationCheck"
+
+[[lean_exe]]
 name = "ht-native-abox-taxonomy-run-matrix-check"
 root = "HTNativeABoxTaxonomyRunMatrixCheck"
 

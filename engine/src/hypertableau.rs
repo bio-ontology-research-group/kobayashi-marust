@@ -9991,6 +9991,28 @@ impl Ht {
         Ok(status?.success())
     }
 
+    fn lean_executable_publication_passes(
+        &self,
+        route: &str,
+        document: &str,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
+            })
+            .ok_or_else(|| {
+                "certified HT publication requires KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER"
+                    .to_string()
+            })?;
+        let document: serde_json::Value =
+            serde_json::from_str(document).map_err(|error| error.to_string())?;
+        let payload = serde_json::to_string(&serde_json::json!({
+            route: { "document": document },
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&payload, &checker)
+    }
+
     /// Check one raw taxonomy-cell candidate through the same source-aware
     /// checker used at publication. The complete taxonomy wire stores cells
     /// without their repeated normalization envelope, so iterative deepening
@@ -11255,7 +11277,10 @@ impl Ht {
             "production": production,
         }))
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        self.lean_executable_publication_passes("ordinary", &document)
     }
 
     /// Bind one first-class cardinality SAT/UNSAT terminal to the full
@@ -11356,7 +11381,10 @@ impl Ht {
             "run": run,
         }))
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        self.lean_executable_publication_passes("cardinality", &document)
     }
 
     /// Bind one joint native-ABox cardinality terminal to the complete rooted
@@ -11778,7 +11806,10 @@ impl Ht {
             },
         }))
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        self.lean_executable_publication_passes("cardinality", &document)
     }
 
     fn lean_ordinary_taxonomy_query_payload(document: &str) -> Result<serde_json::Value, String> {
@@ -11997,7 +12028,10 @@ impl Ht {
             },
         }))
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        self.lean_executable_publication_passes("ordinary", &document)
     }
 
     /// Prove that one regular SAT certificate belongs to the exact blocked

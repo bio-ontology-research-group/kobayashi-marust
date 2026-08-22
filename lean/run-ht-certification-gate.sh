@@ -78,6 +78,7 @@ checkers=(
     ht-source-bound-native-abox-cardinality-global-check
     ht-source-bound-native-abox-taxonomy-check
     ht-source-bound-native-abox-cardinality-taxonomy-check
+    ht-executable-publication-check
     ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
@@ -148,6 +149,8 @@ surface_theorems=(
     certifiedHTSourceBoundNativeABoxCardinalityGlobalPublication
     certifiedHTSourceBoundNativeABoxTaxonomyPublication
     certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
+    certifiedHTExecutableGlobalPublication
+    certifiedHTExecutableTaxonomyPublication
 )
 for theorem in "${surface_theorems[@]}"; do
     grep -q "HypertableauCertificationSurface.*$theorem\|'ContextCalculus.Hypertableau.$theorem'" \
@@ -237,6 +240,8 @@ done
     export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-taxonomy-check"
     export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-taxonomy-check"
     export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-taxonomy-check"
+    export KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER="$bin_root/ht-executable-publication-check"
+    export KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER="$bin_root/ht-executable-publication-check"
     export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"

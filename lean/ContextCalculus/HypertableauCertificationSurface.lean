@@ -3,6 +3,7 @@ import ContextCalculus.HypertableauProductionTaxonomyPublication
 import ContextCalculus.HypertableauCardinalityTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauOrdinaryTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauSourceBoundNativeABoxWire
+import ContextCalculus.HypertableauExecutablePublicationWire
 
 /-!
 # Current production hypertableau certification surface
@@ -100,6 +101,20 @@ theorem certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
       wire.payloadBoundB = true :=
   wire.check_sound hcheck
 
+/-- Executable global HT route selection.  The route tag is decoded from the
+publication document, and every branch is source-bound to its retained run. -/
+theorem certifiedHTExecutableGlobalPublication
+    (wire : WireExecutableHTGlobalPublication) (hcheck : wire.check = true) :
+    wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
+/-- Executable complete-taxonomy HT route selection.  No abstract production
+route or computed-outcome classifier is supplied as a theorem argument. -/
+theorem certifiedHTExecutableTaxonomyPublication
+    (wire : WireExecutableHTTaxonomyPublication) (hcheck : wire.check = true) :
+    wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
@@ -111,5 +126,7 @@ theorem certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
 #print axioms certifiedHTSourceBoundNativeABoxCardinalityGlobalPublication
 #print axioms certifiedHTSourceBoundNativeABoxTaxonomyPublication
 #print axioms certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
+#print axioms certifiedHTExecutableGlobalPublication
+#print axioms certifiedHTExecutableTaxonomyPublication
 
 end ContextCalculus.Hypertableau

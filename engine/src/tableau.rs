@@ -6107,6 +6107,18 @@ fn source_bound_native_abox_document(
         .map_err(|error| format!("cannot encode source-bound native ABox document: {error}"))
 }
 
+fn executable_ht_publication_document(
+    route: &str,
+    source_bound: &[u8],
+) -> Result<Vec<u8>, String> {
+    let document: serde_json::Value = serde_json::from_slice(source_bound)
+        .map_err(|error| format!("invalid source-bound HT publication: {error}"))?;
+    serde_json::to_vec(&serde_json::json!({
+        route: { "document": document },
+    }))
+    .map_err(|error| format!("cannot encode executable HT publication: {error}"))
+}
+
 /// Bind the global source decision and complete source taxonomy to one shared
 /// source projection and one shared native ABox.  The existing decision,
 /// matrix, source-decision, and source-taxonomy checks remain independent
@@ -6537,6 +6549,9 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             )
             .map(std::path::PathBuf::from)
         };
+        let lean_executable_publication_checker =
+            std::env::var_os("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
+                .map(std::path::PathBuf::from);
         let lean_native_abox_taxonomy_matrix_checker = if inp.card_defs.is_empty() {
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
                 .map(std::path::PathBuf::from)
@@ -6782,6 +6797,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
+            if lean_executable_publication_checker.is_none() {
+                return Err(
+                    "HT certification requires KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER"
+                        .to_string(),
+                );
+            }
             if !native_abox_active && lean_cert_checker.is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_CERT_CHECKER".to_string(),
@@ -7018,6 +7039,21 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         checker,
                         "source-bound-native-abox-global",
                     )?;
+                    let route = if inp.card_defs.is_empty() {
+                        "nativeABox"
+                    } else {
+                        "nativeABoxCardinality"
+                    };
+                    let publication =
+                        executable_ht_publication_document(route, &source_bound)?;
+                    let checker = lean_executable_publication_checker
+                        .as_deref()
+                        .ok_or_else(|| "missing executable HT publication checker".to_string())?;
+                    run_ht_projection_checker(
+                        &publication,
+                        checker,
+                        "executable-native-abox-global-publication",
+                    )?;
                 }
                 if let Some((taxonomy_certificate, native_taxonomy_runs)) = taxonomy_certificate {
                     let taxonomy_value: serde_json::Value =
@@ -7098,6 +7134,23 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             &source_bound,
                             checker,
                             "source-bound-native-abox-taxonomy",
+                        )?;
+                        let route = if inp.card_defs.is_empty() {
+                            "nativeABox"
+                        } else {
+                            "nativeABoxCardinality"
+                        };
+                        let publication =
+                            executable_ht_publication_document(route, &source_bound)?;
+                        let checker = lean_executable_publication_checker
+                            .as_deref()
+                            .ok_or_else(|| {
+                                "missing executable HT publication checker".to_string()
+                            })?;
+                        run_ht_projection_checker(
+                            &publication,
+                            checker,
+                            "executable-native-abox-taxonomy-publication",
                         )?;
                         let joint_checker = lean_native_abox_joint_source_classification_checker
                             .as_deref()

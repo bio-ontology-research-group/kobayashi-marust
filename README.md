@@ -149,11 +149,14 @@ whose source projection and evidence are accepted by the Lean-derived checker
 contracts. It does not verify the Rust compiler, operating system, process
 supervision, or arbitrary unchecked Rust execution.
 
-The current public capstones still receive the per-budget runtime and its
-computed-outcome classification through `CertifiedHT…Route` fields. Complete
-HT certification additionally requires constructing those fields from the
-production input and executable checker path. The HT milestone will not be
-released until that final correspondence is part of the public surface.
+The public surface now includes executable global and complete-taxonomy
+dispatchers. Their route tag is decoded from the publication document, and
+each ordinary, cardinality, native-ABox, or native-ABox-cardinality branch
+checks source semantics, the retained production run, and exact result binding
+as one object. The older `CertifiedHT…Route` theorems remain internal totality
+lemmas rather than the executable publication boundary. The HT milestone will
+be released only after the final entrypoint and bypass inventory confirms that
+every certified production publication crosses this dispatcher.
 
 ### Certification roadmap
 

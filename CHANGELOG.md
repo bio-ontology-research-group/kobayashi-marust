@@ -19,6 +19,15 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Replace the fragmented abstract HT publication boundary with one executable,
+  tagged Lean dispatcher for global decisions and complete taxonomies. Its four
+  branches are ordinary, cardinality, native ABox, and native-ABox cardinality;
+  each branch reruns the matching source normalization, retained production
+  run or run matrix, and exact payload-binding checker. Production Rust now
+  requires this dispatcher after its branch-specific checker and fails closed
+  if it is absent. The public certification surface no longer needs an
+  abstract production route or computed-outcome classifier to validate an
+  executable publication.
 - Bind native-ABox global and taxonomy publications to the exact retained
   production runs that generated them. Four executable Lean checkers cover
   ordinary and cardinality global decisions and complete taxonomy matrices.
