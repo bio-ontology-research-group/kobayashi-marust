@@ -138,7 +138,7 @@ finite model. Accepted UNSAT and taxonomy results carry checked recursive
 evidence.
 
 The gate builds the complete Lean development and the explicit capstone,
-audits its axiom report for `sorryAx`, checks that its inventory matches all 29
+audits its axiom report for `sorryAx`, checks that its inventory matches all 32
 HT checker executables declared in `lakefile.toml`, builds and runs those
 checkers, and executes the Rust-to-Lean integration tests. The exported
 capstones currently report only Lean's standard `propext`, `Classical.choice`,

@@ -67,6 +67,21 @@ def DecodedEqProductionBlockingTable.checkedEqualityTerminalCandidate
   have heq := decoded.assignmentCandidateValidB_eq_foldCheck assignment hmode
   simpa using heq ▸ hcheck
 
+/-- Acceptance of the executable terminal wire constructs the exact typed
+terminal candidate consumed by production search. -/
+def WireEqProductionTerminal.checkedEqualityTerminalCandidate
+    (wire : WireEqProductionTerminal)
+    (decoded : DecodedEqProductionTerminal)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true) :
+    CheckedEqualityTerminalCandidate decoded.table.nodeCount
+      decoded.table.conceptCount decoded.table.roleCount
+      decoded.table.variableCount decoded.table.table.base.base.ontology
+      decoded.table.table.base.state :=
+  let checked := wire.check_sound decoded hdecode hcheck
+  decoded.table.checkedEqualityTerminalCandidate decoded.assignment checked.1
+    checked.2.2.2
+
 /-- The common semantic result of a certified production-global route. -/
 inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
   | sat (proof : semantics)

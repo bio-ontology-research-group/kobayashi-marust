@@ -55,6 +55,22 @@
   table and a checker-accepted Cartesian assignment. The constructor reuses the
   decoded table's exact base certificate, making both terminal-state and
   ontology provenance definitional rather than producer assertions.
+- Add a dedicated equality-production terminal wire and native Lean checker.
+  It carries the exact blocked-state table and accepted Cartesian assignment,
+  reconstructs the table's computed options, requires the assignment to belong
+  to that product, and rechecks the materialized equality fold. A separately
+  checked final SAT state is no longer sufficient terminal provenance.
+- Connect acceptance of that executable terminal wire directly to the exact
+  `CheckedEqualityTerminalCandidate` consumed by production search. The bridge
+  carries the decoded dimensions, ontology, base state, accepted assignment,
+  and fold-check result without an additional producer premise.
+- Require Rust equality-SAT publication to pass the new terminal-provenance
+  checker before consulting the existing materialized-model checker. Missing
+  checker configuration or a terminal document whose assignment is not in the
+  reconstructed Cartesian product now fails closed.
+- Exercise both sides of the Rust boundary: a genuine cyclic equality terminal
+  passes the native checker, while an out-of-range forged assignment is
+  rejected before SAT publication.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

@@ -89,6 +89,18 @@ structure DecodedEqProductionBlockingTable where
   nativeContext : Option (FiniteProductionNativeABoxContext
     nodeCount conceptCount roleCount) := none
 
+/-- A production SAT terminal carries both the exact blocked-state table and
+the Cartesian fold assignment accepted for that state. -/
+structure WireEqProductionTerminal where
+  version : Nat
+  table : WireEqProductionBlockingTable
+  assignment : List WireNodePair
+deriving FromJson, ToJson, Repr
+
+structure DecodedEqProductionTerminal where
+  table : DecodedEqProductionBlockingTable
+  assignment : FoldAssignment (Fin table.nodeCount)
+
 def WireProductionNativeABoxContext.decode
     (wire : WireProductionNativeABoxContext)
     (nodeCount conceptCount roleCount : Nat) :
@@ -810,6 +822,58 @@ def WireEqProductionBlockingTable.decode
       }
   | _ => throw "equality production blocker base is not a SAT-state payload"
 
+def WireEqProductionTerminal.decode
+    (wire : WireEqProductionTerminal) :
+    Except String DecodedEqProductionTerminal := do
+  unless wire.version == 1 do
+    throw s!"unsupported equality production terminal version {wire.version}"
+  let decoded ← wire.table.decode
+  let pairs ← wire.assignment.mapM fun pair => do
+    return (← checkedFin "terminal fold source" decoded.nodeCount pair.source,
+      ← checkedFin "terminal fold blocker" decoded.nodeCount pair.target)
+  return ⟨decoded, pairs.toFinset⟩
+
+/-- Check exact terminal provenance independently of the final materialized
+SAT document.  The table must reconstruct its computed blocker options, the
+assignment must be one member of that Cartesian product, and materializing the
+assignment must pass the equality fold checker. -/
+def WireEqProductionTerminal.check
+    (wire : WireEqProductionTerminal) : Except String Bool := do
+  let decoded ← wire.decode
+  return decoded.table.table.allBlockableSources == false &&
+    decoded.table.table.computableCheck &&
+    decide (decoded.assignment ∈
+      enumerateFoldAssignments decoded.table.table.options) &&
+    decoded.table.assignmentCandidateValidB decoded.assignment
+
+theorem WireEqProductionTerminal.check_sound
+    (wire : WireEqProductionTerminal)
+    (decoded : DecodedEqProductionTerminal)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true) :
+    decoded.table.table.allBlockableSources = false ∧
+      decoded.table.table.computableCheck = true ∧
+      decoded.assignment ∈
+        enumerateFoldAssignments decoded.table.table.options ∧
+      decoded.table.assignmentCandidateValidB decoded.assignment = true := by
+  have hbool :
+      ((decoded.table.table.allBlockableSources == false) &&
+        decoded.table.table.computableCheck &&
+        decide (decoded.assignment ∈
+          enumerateFoldAssignments decoded.table.table.options) &&
+        decoded.table.assignmentCandidateValidB decoded.assignment) = true := by
+    simpa [WireEqProductionTerminal.check, hdecode] using hcheck
+  have checks :
+      (decoded.table.table.allBlockableSources == false) = true ∧
+      decoded.table.table.computableCheck = true ∧
+      decide (decoded.assignment ∈
+        enumerateFoldAssignments decoded.table.table.options) = true ∧
+      decoded.table.assignmentCandidateValidB decoded.assignment = true := by
+    simp only [Bool.and_eq_true] at hbool
+    exact ⟨hbool.1.1.1, hbool.1.1.2, hbool.1.2, hbool.2⟩
+  exact ⟨beq_iff_eq.mp checks.1, checks.2.1,
+    of_decide_eq_true checks.2.2.1, checks.2.2.2⟩
+
 def WireEqProductionBlockingTable.check
     (wire : WireEqProductionBlockingTable) : Except String Bool := do
   let decoded ← wire.decode
@@ -933,6 +997,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_strict
 #print axioms DecodedEqProductionBlockingTable.assignmentCandidateValidB_eq_foldCheck
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound
+#print axioms WireEqProductionTerminal.check_sound
 #print axioms DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB_sound
 #print axioms WireEqProductionBlockingTable.checked_sourceExpansionControlled
 #print axioms WireEqProductionBlockingTable.checked_rejectedCandidate_invalid

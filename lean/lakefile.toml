@@ -45,6 +45,10 @@ name = "ht-equality-production-trace-check"
 root = "HTEqualityProductionTraceCheck"
 
 [[lean_exe]]
+name = "ht-equality-production-terminal-check"
+root = "HTEqualityProductionTerminalCheck"
+
+[[lean_exe]]
 name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 

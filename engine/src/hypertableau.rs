@@ -2956,6 +2956,13 @@ struct LeanHtEqProductionBlockingDocument {
     native_seed: Option<serde_json::Value>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtEqProductionTerminalDocument {
+    version: usize,
+    table: serde_json::Value,
+    assignment: Vec<LeanHtProductionBlockingPair>,
+}
+
 impl LeanHtBlockedOpenLeaf {
     fn next_fold_assignment(
         &self,
@@ -10899,6 +10906,49 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Check that a published equality SAT candidate comes from one exact
+    /// blocked production state and one assignment in that state's computed
+    /// Cartesian blocker product. The ordinary SAT checker still validates the
+    /// materialized model; this checker validates its search provenance.
+    fn lean_equality_production_terminal_passes(
+        &self,
+        state: &LeanHtEqState,
+        assignment: &[(Node, Node)],
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
+                .to_string()
+        })?;
+        let table = self.lean_equality_production_blocking_document_json(
+            state,
+            &HashSet::new(),
+            false,
+            false,
+            false,
+        )?;
+        let table: serde_json::Value =
+            serde_json::from_str(&table).map_err(|error| error.to_string())?;
+        let assignment = assignment
+            .iter()
+            .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
+            .collect();
+        let document = serde_json::to_string(&LeanHtEqProductionTerminalDocument {
+            version: 1,
+            table,
+            assignment,
+        })
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Check one exhausted equality-aware blocking round and append it to the
     /// complete fixed-budget execution history.  The history checker enforces
     /// the outer-loop invariant that the first forbidden set is empty and each
@@ -13416,6 +13466,11 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
                     while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
+                        if !self.lean_equality_production_terminal_passes(&state, &folds)? {
+                            let inserted = rejected_assignments.insert(folds);
+                            assert!(inserted, "equality terminal assignment search must progress");
+                            continue;
+                        }
                         let candidate_state = state.with_fold_assignment(folds.clone());
                         let node_count = candidate_state.representatives.len();
                         let raw = serde_json::to_string(&LeanHtEqCertificate {
@@ -25294,6 +25349,25 @@ mod tests {
             .edges
             .iter()
             .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 2));
+
+        if std::env::var_os(
+            "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .is_some()
+        {
+            let assignment = open
+                .next_fold_assignment(&HashSet::new())
+                .expect("cyclic terminal exposes a Cartesian fold assignment");
+            assert!(cyclic
+                .lean_equality_production_terminal_passes(&open, &assignment)
+                .expect("run terminal provenance checker"));
+            assert!(!cyclic
+                .lean_equality_production_terminal_passes(
+                    &open,
+                    &[(open.representatives.len(), open.representatives.len())],
+                )
+                .expect("reject out-of-range terminal provenance"));
+        }
 
         if let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
