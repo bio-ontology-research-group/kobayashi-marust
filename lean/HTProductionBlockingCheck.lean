@@ -15,7 +15,7 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
         IO.println "HT production blocking table accepted"
         return (0 : UInt32)
     | .ok false =>
-        IO.eprintln "HT production blocking table rejected: incomplete or invalid options"
+        IO.eprintln "HT production blocking table rejected: invalid options or assignment exhaustion"
         return (1 : UInt32)
     | .error error =>
         IO.eprintln s!"HT production blocking table rejected: {error}"

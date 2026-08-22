@@ -679,8 +679,10 @@ earlier, rebuilds bounded ancestor chains, and compares the complete emitted
 option table with Lean's reconstruction. Rust retains `witness_parent`, the
 outer forbidden-pair set, and `fold_options` in equality-free blocked leaves;
 the regular decision route cannot learn an exhausted option union until this
-checker accepts. Checker acceptance proves exact option and expansion-pair
-equality.
+checker accepts. Wire version 2 also carries every rejected Cartesian fold
+assignment. Acceptance proves all options nonempty, complete assignment
+exhaustion, exact option and expansion-pair equality, and expansion control for
+each blocked source.
 
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.

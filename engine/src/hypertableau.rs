@@ -2916,6 +2916,7 @@ struct LeanHtProductionBlockingDocument {
     parents: Vec<usize>,
     forbidden: Vec<LeanHtProductionBlockingPair>,
     options: Vec<LeanHtProductionBlockingOption>,
+    rejected: Vec<Vec<LeanHtProductionBlockingPair>>,
 }
 
 impl LeanHtBlockedOpenLeaf {
@@ -10473,6 +10474,7 @@ impl Ht {
     fn lean_production_blocking_document_json(
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
     ) -> Result<String, String> {
         if leaf.witness_parent.len() != leaf.node_count {
             return Err("production blocker parent table has the wrong length".to_string());
@@ -10499,12 +10501,24 @@ impl Ht {
                 blockers: blockers.clone(),
             })
             .collect();
+        let mut rejected_assignments: Vec<_> = rejected_assignments.iter().cloned().collect();
+        rejected_assignments.sort_unstable();
+        let rejected = rejected_assignments
+            .into_iter()
+            .map(|assignment| {
+                assignment
+                    .into_iter()
+                    .map(|(source, target)| LeanHtProductionBlockingPair { source, target })
+                    .collect()
+            })
+            .collect();
         serde_json::to_string(&LeanHtProductionBlockingDocument {
-            version: 1,
+            version: 2,
             base,
             parents,
             forbidden,
             options,
+            rejected,
         })
         .map_err(|error| error.to_string())
     }
@@ -10512,6 +10526,7 @@ impl Ht {
     fn lean_production_blocking_passes(
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
     ) -> Result<bool, String> {
         let checker = std::env::var_os("KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER")
             .or_else(|| {
@@ -10521,7 +10536,8 @@ impl Ht {
                 "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
                     .to_string()
             })?;
-        let document = self.lean_production_blocking_document_json(leaf)?;
+        let document =
+            self.lean_production_blocking_document_json(leaf, rejected_assignments)?;
         self.lean_candidate_passes_with(&document, &checker)
     }
 
@@ -11201,7 +11217,10 @@ impl Ht {
                     // blocked source on the next search attempt. This is a
                     // control refinement, not a claim that a constituent pair
                     // is invalid in another assignment.
-                    if !self.lean_production_blocking_passes(&leaf)? {
+                    if !self.lean_production_blocking_passes(
+                        &leaf,
+                        &rejected_assignments,
+                    )? {
                         return Err(
                             "Lean rejected the exhausted production blocker table".to_string(),
                         );
@@ -25210,7 +25229,10 @@ mod tests {
             std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
         {
             let document = cyclic
-                .lean_production_blocking_document_json(&leaf)
+                .lean_production_blocking_document_json(
+                    &leaf,
+                    &HashSet::from([leaf.folds.clone()]),
+                )
                 .expect("serialize the exact production blocker table");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-production-blocking-{}-{}.json",
@@ -25230,14 +25252,26 @@ mod tests {
             let mut forged: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_string(&forged).unwrap()).unwrap();
-            let rejected = std::process::Command::new(checker)
+            let rejected = std::process::Command::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker on forged options");
-            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(&path);
             assert!(
                 !rejected.status.success(),
                 "Lean must reject an incomplete production blocker table",
+            );
+            let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
+            unexhausted["rejected"] = serde_json::json!([]);
+            std::fs::write(&path, serde_json::to_string(&unexhausted).unwrap()).unwrap();
+            let rejected = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run the native production blocker checker on missing rejections");
+            let _ = std::fs::remove_file(&path);
+            assert!(
+                !rejected.status.success(),
+                "Lean must reject a non-exhausted production blocker table",
             );
         }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {

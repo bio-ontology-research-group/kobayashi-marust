@@ -34,6 +34,12 @@
   acceptance before the regular decision route learns an exhausted option
   union. Cross-language tests accept the genuine table and reject a table with
   a blocker removed.
+- Extend the production-blocking wire with every checker-rejected Cartesian
+  fold assignment. Version 2 now accepts an expansion transition only when all
+  exact options are nonempty and every assignment generated from them occurs
+  in the rejected set. Lean derives `SourceExpansionControlled` for every
+  emitted source, so forced witness expansion is justified by complete
+  assignment rejection rather than by Rust loop control alone.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise

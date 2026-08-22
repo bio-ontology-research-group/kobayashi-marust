@@ -32,6 +32,7 @@ structure WireProductionBlockingTable where
   parents : List Nat
   forbidden : List WireNodePair
   options : List WireFoldOption
+  rejected : List (List WireNodePair)
 deriving FromJson, ToJson, Repr
 
 structure DecodedProductionBlockingTable where
@@ -41,6 +42,7 @@ structure DecodedProductionBlockingTable where
   variableCount : Nat
   table : FiniteProductionBlockingTable
     nodeCount conceptCount roleCount variableCount
+  rejected : Finset (FoldAssignment (Fin nodeCount))
 
 /-! ## Executable finite signatures -/
 
@@ -283,6 +285,28 @@ theorem FiniteProductionBlockingTable.computableCheck_eq_true_iff
       | some predecessor => simpa using hearlier node predecessor hparent,
       hoptions⟩
 
+def DecodedProductionBlockingTable.assignmentsExhausted
+    (decoded : DecodedProductionBlockingTable) : Bool :=
+  (enumerateFoldAssignments decoded.table.options).all fun assignment =>
+    decide (assignment ∈ decoded.rejected)
+
+theorem DecodedProductionBlockingTable.assignmentsExhausted_eq_true_iff
+    (decoded : DecodedProductionBlockingTable) :
+    decoded.assignmentsExhausted = true ↔
+      ∀ assignment ∈ enumerateFoldAssignments decoded.table.options,
+        assignment ∈ decoded.rejected := by
+  simp [DecodedProductionBlockingTable.assignmentsExhausted]
+
+def DecodedProductionBlockingTable.optionsNonempty
+    (decoded : DecodedProductionBlockingTable) : Bool :=
+  decoded.table.options.all fun option => !option.2.isEmpty
+
+theorem DecodedProductionBlockingTable.optionsNonempty_eq_true_iff
+    (decoded : DecodedProductionBlockingTable) :
+    decoded.optionsNonempty = true ↔
+      ∀ option ∈ decoded.table.options, option.2 ≠ [] := by
+  simp [DecodedProductionBlockingTable.optionsNonempty]
+
 def decodeProductionParent (nodeCount : Nat) (value : Nat) :
     Except String (Option (Fin nodeCount)) :=
   if value = nodeCount then
@@ -301,7 +325,7 @@ def decodeProductionParents (nodeCount : Nat) (values : List Nat) :
 def WireProductionBlockingTable.decode
     (wire : WireProductionBlockingTable) :
     Except String DecodedProductionBlockingTable := do
-  if wire.version != 1 then
+  if wire.version != 2 then
     throw s!"unsupported production blocker table version {wire.version}"
   let decodedBase ← wire.base.decodeBase
   let parent ← decodeProductionParents decodedBase.nodeCount wire.parents
@@ -313,6 +337,11 @@ def WireProductionBlockingTable.decode
     let blockers ← option.blockers.mapM
       (checkedFin "option blocker" decodedBase.nodeCount)
     return (source, blockers)
+  let rejected ← wire.rejected.mapM fun assignment => do
+    let pairs ← assignment.mapM fun pair => do
+      return (← checkedFin "rejected source" decodedBase.nodeCount pair.source,
+        ← checkedFin "rejected blocker" decodedBase.nodeCount pair.target)
+    return pairs.toFinset
   return {
     nodeCount := decodedBase.nodeCount
     conceptCount := decodedBase.conceptCount
@@ -324,11 +353,14 @@ def WireProductionBlockingTable.decode
       forbidden := forbidden.toFinset
       options := options
     }
+    rejected := rejected.toFinset
   }
 
 def WireProductionBlockingTable.check
     (wire : WireProductionBlockingTable) : Except String Bool := do
-  return (← wire.decode).table.computableCheck
+  let decoded ← wire.decode
+  return decoded.table.computableCheck && decoded.assignmentsExhausted &&
+    decoded.optionsNonempty
 
 theorem WireProductionBlockingTable.check_sound
     (wire : WireProductionBlockingTable)
@@ -336,12 +368,40 @@ theorem WireProductionBlockingTable.check_sound
     (hdecode : wire.decode = .ok decoded)
     (hcheck : wire.check = .ok true) :
     decoded.table.ParentEarlier ∧
-      decoded.table.options = decoded.table.expectedOptions := by
+      decoded.table.options = decoded.table.expectedOptions ∧
+      (∀ assignment ∈ enumerateFoldAssignments decoded.table.options,
+        assignment ∈ decoded.rejected) ∧
+      (∀ option ∈ decoded.table.options, option.2 ≠ []) := by
   simp only [WireProductionBlockingTable.check, hdecode] at hcheck
-  exact decoded.table.computableCheck_eq_true_iff.mp (by simpa using hcheck)
+  have hbool : (decoded.table.computableCheck &&
+      decoded.assignmentsExhausted && decoded.optionsNonempty) = true := by
+    simpa using hcheck
+  have checks : decoded.table.computableCheck = true ∧
+      decoded.assignmentsExhausted = true ∧
+      decoded.optionsNonempty = true := by
+    simpa only [Bool.and_eq_true, and_assoc] using hbool
+  exact ⟨(decoded.table.computableCheck_eq_true_iff.mp checks.1).1,
+    (decoded.table.computableCheck_eq_true_iff.mp checks.1).2,
+    decoded.assignmentsExhausted_eq_true_iff.mp checks.2.1,
+    decoded.optionsNonempty_eq_true_iff.mp checks.2.2⟩
+
+theorem WireProductionBlockingTable.checked_sourceExpansionControlled
+    (wire : WireProductionBlockingTable)
+    (decoded : DecodedProductionBlockingTable)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true)
+    {source blockers}
+    (hoption : (source, blockers) ∈ decoded.table.options) :
+    SourceExpansionControlled decoded.rejected source blockers := by
+  have checked := wire.check_sound decoded hdecode hcheck
+  exact sourceExpansionControlled_of_assignment_exhaustion checked.2.2.2
+    decoded.rejected checked.2.2.1 hoption
 
 #print axioms WireProductionBlockingTable.check_sound
 #print axioms FiniteProductionBlockingTable.computableExpectedOptions_eq
 #print axioms FiniteProductionBlockingTable.computableCheck_eq_true_iff
+#print axioms DecodedProductionBlockingTable.assignmentsExhausted_eq_true_iff
+#print axioms DecodedProductionBlockingTable.optionsNonempty_eq_true_iff
+#print axioms WireProductionBlockingTable.checked_sourceExpansionControlled
 
 end ContextCalculus.Hypertableau
