@@ -483,6 +483,42 @@ theorem FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
   exact ⟨hauthorized, hguarded, hheads, hclash, hwitness, hcoverClosed,
     hcoverDischarges⟩
 
+/-- Exact cover-aware producer boundary. A runtime search that has exhausted
+residual obstructions in the redirected endpoint cover may publish a regular
+model without imposing a syntactic restriction on residual bodies. This is
+the semantic target for the cover-aware Rust terminal selector. -/
+theorem FiniteRegularCertificate.check_of_cover_saturated_runtime_terminal
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hwitnessRefines : runtime.BlockedWitnessRefines blocked fold)
+    (hredirectRefines : State.BlockedRedirectRefines blocked fold
+      certificate.redirect)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverSaturated : ∀ clause ∈ certificate.residual,
+      certificate.state.CoverDischarges certificate.coverRelation clause) :
+    certificate.check = true := by
+  have hclash : certificate.state.ClashFree := by
+    rw [hstate]
+    exact hterminal.clashFree
+  have hwitness : certificate.state.RedirectWitnessComplete
+      certificate.redirect := by
+    rw [hstate]
+    exact runtime.blockedRedirectWitnessComplete certificate.residual blocked
+      fold certificate.redirect hterminal hwitnessRefines hredirectRefines
+  exact certificate.check_complete
+    ⟨hauthorized, hguarded, hheads, hclash, hwitness, hcoverClosed,
+      hcoverSaturated⟩
+
 /-- General redirected-cover producer theorem. Redirecting both endpoints of
 every cover edge back into the raw saturated graph removes the single-edge and
 simple-role restrictions from residual bodies. -/
@@ -617,6 +653,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 
 #print axioms FiniteRegularCertificate.check_of_blocked_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_local_blocked_runtime_terminal
+#print axioms FiniteRegularCertificate.check_of_cover_saturated_runtime_terminal
 #print axioms State.coverDischarges_of_redirectCoverFacts
 #print axioms FiniteRegularCertificate.check_of_redirect_cover_runtime_terminal
 #print axioms FiniteRegularCertificate.check_of_simple_local_blocked_runtime_terminal

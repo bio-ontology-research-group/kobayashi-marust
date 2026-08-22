@@ -10075,7 +10075,6 @@ impl Ht {
         let mut role_count = 0usize;
         let mut role_clauses = Vec::new();
         let mut residual = Vec::new();
-        let mut residual_body_roles = Vec::new();
         let mut sub_roles = Vec::new();
         let mut inverse_roles = Vec::new();
         let mut chains = Vec::new();
@@ -10211,26 +10210,6 @@ impl Ht {
             }) {
                 return Err("regular HT residual clause has an unguarded body atom".to_string());
             }
-            let mut body_role = None;
-            for atom in &clause.body {
-                match atom {
-                    Atom::Concept { .. } => {}
-                    Atom::Role { r, s, t } if s != t && body_role.is_none() => {
-                        body_role = Some(*r);
-                    }
-                    Atom::Role { .. } => {
-                        return Err(
-                            "regular HT residual body is not single-edge local".to_string(),
-                        );
-                    }
-                    Atom::Eq { .. } => {
-                        return Err(
-                            "regular HT residual body contains equality".to_string(),
-                        );
-                    }
-                    Atom::Exists { .. } => unreachable!("unguarded body was rejected above"),
-                }
-            }
             let nominal_guard = |variable: Var| {
                 clause.body.iter().any(|atom| {
                     matches!(atom, Atom::Concept { lit, t }
@@ -10249,7 +10228,6 @@ impl Ht {
                 body: clause.body.iter().map(Self::lean_wire_atom).collect(),
                 head: clause.head.iter().map(Self::lean_wire_atom).collect(),
             });
-            residual_body_roles.push(body_role);
         }
 
         sub_roles.sort_unstable_by_key(|rule| (rule.premise, rule.conclusion));
@@ -10326,32 +10304,12 @@ impl Ht {
             }
         }
 
-        // The local regular-model theorem needs only the exact operational
-        // condition below, not the stronger syntactic requirement that every
-        // residual body role be simple.  A role-chain conclusion is safe when
-        // its complete endpoint cover is already represented at each
-        // redirected raw source.  Conversely, a fold that creates a genuinely
-        // new body-role edge must not be certified by this producer.
-        for role in residual_body_roles.into_iter().flatten() {
-            let role = role as usize;
-            let direct = cover.iter().all(|&(candidate, source, target)| {
-                candidate != role
-                    || regular_edges.contains(&(role as R, redirect[source], target))
-            });
-            if !direct {
-                return Err(
-                    "regular HT redirected cover creates a non-local residual body edge"
-                        .to_string(),
-                );
-            }
-        }
-
-        // Redirected endpoint closure intentionally contains edges whose source
-        // is a blocked node while the raw graph stores the corresponding edge
-        // at its blocker. Do not require literal cover containment in the raw
-        // graph. The independent Lean checker evaluates every residual clause
-        // against this exact cover; a newly activated body rejects the model
-        // candidate and iterative deepening resumes.
+        // Redirected endpoint closure intentionally contains edges absent from
+        // the raw completion graph. The independent Lean checker exhaustively
+        // evaluates every guarded residual grounding against this exact cover.
+        // This supports arbitrary multi-role and equality bodies: a newly
+        // activated undischarged body rejects the candidate, while a
+        // cover-saturated candidate is accepted by the general producer proof.
 
         let mut labels = leaf
             .labels
@@ -24882,7 +24840,7 @@ mod tests {
     }
 
     #[test]
-    fn regular_certificate_rejects_residuals_outside_the_proved_local_shape() {
+    fn regular_certificate_serializes_general_guarded_residual_bodies() {
         let empty_leaf = LeanHtBlockedOpenLeaf {
             node_count: 1,
             labels: Vec::new(),
@@ -24897,10 +24855,11 @@ mod tests {
             ],
             vec![con(false, A, 0)],
         )]);
-        assert!(joined
+        let joined_document = joined
             .lean_regular_blocked_open_certificate_json(&empty_leaf)
-            .unwrap_err()
-            .contains("not single-edge local"));
+            .expect("multi-role guarded residuals use exact cover checking");
+        let joined_wire: serde_json::Value = serde_json::from_str(&joined_document).unwrap();
+        assert_eq!(joined_wire["residual"].as_array().unwrap().len(), 1);
 
         let non_simple = Ht::new_certified(vec![
             Clause::new(
@@ -24919,10 +24878,45 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
         };
-        assert!(non_simple
+        let non_simple_document = non_simple
             .lean_regular_blocked_open_certificate_json(&nonlocal_leaf)
-            .unwrap_err()
-            .contains("non-local residual body edge"));
+            .expect("role-closure residuals use exact cover checking");
+        let non_simple_wire: serde_json::Value =
+            serde_json::from_str(&non_simple_document).unwrap();
+        assert_eq!(non_simple_wire["residual"].as_array().unwrap().len(), 1);
+        assert!(non_simple_wire["cover"].as_array().unwrap().contains(
+            &serde_json::json!({"role": 1, "source": 0, "target": 1})
+        ));
+
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
+            let target = std::env::var_os("CARGO_TARGET_DIR")
+                .map(std::path::PathBuf::from)
+                .expect("checker-backed tests keep temporary evidence in CARGO_TARGET_DIR");
+            let joined_path = target.join("km-ht-general-guarded-accepted.json");
+            std::fs::write(&joined_path, joined_document).unwrap();
+            let joined_result = std::process::Command::new(&checker)
+                .arg(&joined_path)
+                .output()
+                .expect("run the regular checker on a dormant joined body");
+            assert!(
+                joined_result.status.success(),
+                "Lean must accept a cover-saturated multi-role residual: {}",
+                String::from_utf8_lossy(&joined_result.stderr),
+            );
+            let _ = std::fs::remove_file(joined_path);
+
+            let obstructed_path = target.join("km-ht-general-guarded-rejected.json");
+            std::fs::write(&obstructed_path, non_simple_document).unwrap();
+            let obstructed_result = std::process::Command::new(checker)
+                .arg(&obstructed_path)
+                .output()
+                .expect("run the regular checker on a cover-visible obstruction");
+            assert!(
+                !obstructed_result.status.success(),
+                "Lean must reject a cover-visible body whose head is absent",
+            );
+            let _ = std::fs::remove_file(obstructed_path);
+        }
     }
 
     #[test]

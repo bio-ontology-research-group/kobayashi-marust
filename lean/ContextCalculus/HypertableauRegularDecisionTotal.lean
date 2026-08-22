@@ -92,6 +92,39 @@ def CheckedRegularRoundOutcome.regularSat_of_blocked_runtime_terminal
       hterminal hwitnessRefines hredirectRefines hauthorized hguarded hshape
       hheads hlocal hdirect hcoverClosed)
 
+/-- Construct a conclusive regular-SAT outcome from the exact cover-aware
+terminal condition. Unlike the local producer constructor, this accepts any
+guarded residual body once runtime cover saturation has been established. -/
+def CheckedRegularRoundOutcome.regularSat_of_cover_saturated_runtime_terminal
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {nodeCount : Nat}
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (runtime : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (blocked : Fin nodeCount → Bool)
+    (fold : Fin nodeCount → Fin nodeCount → Prop)
+    (hontology : certificate.ontology = ontology)
+    (hnonempty : 0 < nodeCount)
+    (hstate : certificate.state = runtime)
+    (hterminal : runtime.BlockedRuntimeTerminal certificate.residual blocked)
+    (hwitnessRefines : runtime.BlockedWitnessRefines blocked fold)
+    (hredirectRefines : State.BlockedRedirectRefines blocked fold
+      certificate.redirect)
+    (hauthorized : ∀ rule ∈ certificate.roleClauses,
+      rule.Authorized certificate.rules)
+    (hguarded : ∀ clause ∈ certificate.residual, clause.GuardedBody)
+    (hheads : ∀ clause ∈ certificate.residual, ∀ atom ∈ clause.head,
+      PathLiftableHead atom)
+    (hcoverClosed : certificate.CoverClosed)
+    (hcoverSaturated : ∀ clause ∈ certificate.residual,
+      certificate.state.CoverDischarges certificate.coverRelation clause) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology :=
+  .regularSat certificate hontology hnonempty
+    (certificate.check_of_cover_saturated_runtime_terminal runtime blocked fold
+      hstate hterminal hwitnessRefines hredirectRefines hauthorized hguarded
+      hheads hcoverClosed hcoverSaturated)
+
 /-- Complete checked result of one Rust equality-free control attempt. Every
 accepted serializer branch stores the proof returned by its Lean checker;
 frontiers additionally store the executable schedule check. Rejection stores
