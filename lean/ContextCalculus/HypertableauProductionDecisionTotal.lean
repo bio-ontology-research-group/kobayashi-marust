@@ -27,23 +27,17 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
-        (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
-      (hnodes : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hcheck) →
-        document.node_count = 8 * 2 ^ budget) :
+      (producer : ∀ budget,
+        CheckedRegularControlProducer conceptCount roleCount variableCount
+          target budget) :
       CertifiedHTProductionGlobalRoute (HasNonemptyModel source)
   | equality
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
-        (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
-      (hnodes : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hcheck) →
-          document.node_count = 8 * 2 ^ budget) :
+      (producer : ∀ budget,
+        CheckedEqualityControlProducer conceptCount roleCount variableCount
+          target budget) :
       CertifiedHTProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
       {source target : List
@@ -52,17 +46,9 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
-        (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
-          target definitions))
-      (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-          document.node_count = 8 * 2 ^ budget)
-      (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-          document.max_width = maxWidth) :
+      (producer : ∀ budget,
+        CheckedCardinalityControlProducer conceptCount roleCount variableCount
+          target definitions budget maxWidth) :
       CertifiedHTProductionGlobalRoute
         (CardinalityHasNonemptyModel source definitions)
   | nativeABox
@@ -74,17 +60,9 @@ inductive CertifiedHTProductionGlobalRoute : (semantics : Prop) → Type 2 where
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (producer : ∀ budget, FreshFoldProducer (Fin (8 * 2 ^ budget))
-        (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
-          variableCount abox target definitions))
-      (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-          document.node_count = 8 * 2 ^ budget)
-      (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-          document.max_width = maxWidth) :
+      (producer : ∀ budget,
+        CheckedNativeABoxCardinalityControlProducer Individual conceptCount
+          roleCount variableCount abox target definitions budget maxWidth) :
       CertifiedHTProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -97,9 +75,9 @@ theorem CertifiedHTProductionGlobalRoute.decides
     (route : CertifiedHTProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent producer hnodes =>
+  | regular equivalent producer =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_regular_fresh_fold_producer_decides_source equivalent producer hnodes
+        checked_regular_control_producer_decides_source equivalent producer
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -109,9 +87,9 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent producer hnodes =>
+  | equality equivalent producer =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_equality_fresh_fold_producer_decides_source equivalent producer hnodes
+        checked_equality_control_producer_decides_source equivalent producer
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -119,10 +97,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth producer hnodes hwidth =>
+  | cardinality equivalent maxWidth producer =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_cardinality_fresh_fold_producer_decides_source equivalent
-          maxWidth producer hnodes hwidth
+        checked_cardinality_control_producer_decides_source equivalent
+          maxWidth producer
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -130,10 +108,10 @@ theorem CertifiedHTProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth producer hnodes hwidth =>
+  | nativeABox equivalent maxWidth producer =>
       obtain ⟨_, _, outcome, _, hsemantics⟩ :=
-        checked_native_abox_cardinality_fresh_fold_producer_decides_source
-          equivalent maxWidth producer hnodes hwidth
+        checked_native_abox_cardinality_control_producer_decides_source
+          equivalent maxWidth producer
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>

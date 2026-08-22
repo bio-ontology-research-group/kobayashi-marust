@@ -43,6 +43,122 @@ inductive CheckedEqualityDecisionOutcome
       (hroles : document.role_count = roleCount)
       (hcheck : document.check = true)
 
+/-- One equality-aware Rust control attempt, with every accepted checker result,
+the exact iterative-deepening schedule, and fresh fold rejection represented in
+the branch type. -/
+inductive CheckedEqualityControlAttempt
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))) : Type where
+  | sat
+      {nodeCount : Nat}
+      (certificate : FiniteEqCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkEqSat = true)
+  | closed
+      {nodeCount : Nat}
+      (certificate : FiniteEqCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (tree : FiniteEqRefutationTree
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hempty : certificate.EmptyRoot)
+      (hcheck : tree.checkClosed certificate = true)
+  | frontier
+      (document : WireAddressFrontier)
+      (hconcepts : document.concept_count = conceptCount)
+      (hroles : document.role_count = roleCount)
+      (hscheduled : document.checkScheduled budget = true)
+  | rejected
+      (folds : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+def CheckedEqualityControlAttempt.toGuarded
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedEqualityControlAttempt conceptCount roleCount variableCount
+      ontology budget forbidden) :
+    GuardedFoldAttempt (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount ontology)
+      forbidden :=
+  match attempt with
+  | .sat certificate hontology hnonempty hcheck =>
+      .done (.sat certificate hontology hnonempty hcheck)
+  | .closed certificate tree hontology hnonempty hempty hcheck =>
+      .done (.closed certificate tree hontology hnonempty hempty hcheck)
+  | .frontier document hconcepts hroles hscheduled =>
+      .done (.frontier document hconcepts hroles
+        (document.checkScheduled_check budget hscheduled))
+  | .rejected folds fresh => .rejected folds fresh
+
+theorem CheckedEqualityControlAttempt.frontier_scheduled
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedEqualityControlAttempt conceptCount roleCount variableCount
+      ontology budget forbidden)
+    {document : WireAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hcheck : document.check = true}
+    (herase : attempt.toGuarded.erase = .done
+      (.frontier document hconcepts hroles hcheck)) :
+    document.checkScheduled budget = true := by
+  cases attempt with
+  | sat certificate hontology hnonempty hcertificate =>
+      simp [CheckedEqualityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | closed certificate tree hontology hnonempty hempty hcertificate =>
+      simp [CheckedEqualityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | frontier frontier frontierConcepts frontierRoles hscheduled =>
+      simp only [CheckedEqualityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+      cases herase
+      exact hscheduled
+  | rejected folds fresh =>
+      simp [CheckedEqualityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+
+structure CheckedEqualityControlProducer
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat) where
+  attempt : ∀ forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+    CheckedEqualityControlAttempt conceptCount roleCount variableCount ontology
+      budget forbidden
+
+def CheckedEqualityControlProducer.toGuarded
+    (producer : CheckedEqualityControlProducer conceptCount roleCount variableCount
+      ontology budget) :
+    GuardedFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount ontology) where
+  attempt forbidden := (producer.attempt forbidden).toGuarded
+
+theorem CheckedEqualityControlProducer.frontier_scheduled
+    (producer : CheckedEqualityControlProducer conceptCount roleCount variableCount
+      ontology budget)
+    {retry : Nat} {document : WireAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hcheck : document.check = true}
+    (hrun : producer.toGuarded.toFreshFoldProducer.run retry = .done
+      (.frontier document hconcepts hroles hcheck)) :
+    document.checkScheduled budget = true := by
+  apply CheckedEqualityControlAttempt.frontier_scheduled
+    (producer.attempt
+      (producer.toGuarded.toFreshFoldProducer.forbidden retry))
+  simpa [GuardedFoldProducer.toFreshFoldProducer, FreshFoldProducer.run,
+    CheckedEqualityControlProducer.toGuarded] using hrun
+
 def CheckedEqualityDecisionOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -247,6 +363,42 @@ theorem checked_equality_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
 
+theorem checked_equality_scheduled_guarded_fold_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, GuardedFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (hscheduled : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).toFreshFoldProducer.run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.checkScheduled budget = true) :
+    ∃ budget retry outcome,
+      (producer budget).toFreshFoldProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_equality_fresh_fold_producer_decides_source equivalent
+    (fun budget => (producer budget).toFreshFoldProducer)
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact document.checkScheduled_node_count budget
+    (hscheduled budget retry document hconcepts hroles hcheck hrun)
+
+/-- Equality-aware production totality with all retry and scheduling facts
+internal to the checked control producer. -/
+theorem checked_equality_control_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget,
+      CheckedEqualityControlProducer conceptCount roleCount variableCount
+        target budget) :
+    ∃ budget retry outcome,
+      (producer budget).toGuarded.toFreshFoldProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_equality_scheduled_guarded_fold_producer_decides_source equivalent
+    (fun budget => (producer budget).toGuarded)
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact (producer budget).frontier_scheduled hrun
+
 #print axioms CheckedEqualityDecisionOutcome.sat_semantics
 #print axioms CheckedEqualityDecisionOutcome.closed_semantics
 #print axioms CheckedEqualityDecisionOutcome.conclusive_semantics
@@ -255,5 +407,9 @@ theorem checked_equality_fresh_fold_producer_decides_source
 #print axioms checked_equality_doubling_decides_source
 #print axioms checked_equality_fold_learning_doubling_decides_source
 #print axioms checked_equality_fresh_fold_producer_decides_source
+#print axioms CheckedEqualityControlAttempt.frontier_scheduled
+#print axioms CheckedEqualityControlProducer.frontier_scheduled
+#print axioms checked_equality_scheduled_guarded_fold_producer_decides_source
+#print axioms checked_equality_control_producer_decides_source
 
 end ContextCalculus.Hypertableau

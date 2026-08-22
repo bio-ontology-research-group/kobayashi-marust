@@ -102,6 +102,39 @@ def WireCardinalityAddressFrontier.decode
 def WireCardinalityAddressFrontier.check
     (document : WireCardinalityAddressFrontier) : Bool := document.decode.isOk
 
+/-- Check the serialized cardinality frontier together with both dimensions
+that vary in the production termination argument. -/
+def WireCardinalityAddressFrontier.checkScheduled
+    (document : WireCardinalityAddressFrontier)
+    (budget maxWidth : Nat) : Bool :=
+  document.check &&
+    decide (document.node_count = 8 * 2 ^ budget) &&
+    decide (document.max_width = maxWidth)
+
+theorem WireCardinalityAddressFrontier.checkScheduled_check
+    (document : WireCardinalityAddressFrontier) (budget maxWidth : Nat)
+    (hcheck : document.checkScheduled budget maxWidth = true) :
+    document.check = true := by
+  simp only [WireCardinalityAddressFrontier.checkScheduled, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.1.1
+
+theorem WireCardinalityAddressFrontier.checkScheduled_node_count
+    (document : WireCardinalityAddressFrontier) (budget maxWidth : Nat)
+    (hcheck : document.checkScheduled budget maxWidth = true) :
+    document.node_count = 8 * 2 ^ budget := by
+  simp only [WireCardinalityAddressFrontier.checkScheduled, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.1.2
+
+theorem WireCardinalityAddressFrontier.checkScheduled_max_width
+    (document : WireCardinalityAddressFrontier) (budget maxWidth : Nat)
+    (hcheck : document.checkScheduled budget maxWidth = true) :
+    document.max_width = maxWidth := by
+  simp only [WireCardinalityAddressFrontier.checkScheduled, Bool.and_eq_true,
+    decide_eq_true_eq] at hcheck
+  exact hcheck.2
+
 theorem WireCardinalityAddressFrontier.check_refines
     (document : WireCardinalityAddressFrontier)
     (hcheck : document.check = true) :
@@ -166,6 +199,9 @@ theorem cardinality_doubling_eventually_rejects_checked_frontier
     (hdefinitions round) (hwidth round) address hinjective
 
 #print axioms WireCardinalityAddressFrontier.check_refines
+#print axioms WireCardinalityAddressFrontier.checkScheduled_check
+#print axioms WireCardinalityAddressFrontier.checkScheduled_node_count
+#print axioms WireCardinalityAddressFrontier.checkScheduled_max_width
 #print axioms cardinality_doubling_eventually_rejects_checked_frontier
 
 end ContextCalculus.Hypertableau

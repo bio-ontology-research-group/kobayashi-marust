@@ -50,6 +50,130 @@ inductive CheckedCardinalityDecisionOutcome
       (hdefinitions : document.definition_count = definitions.length)
       (hcheck : document.check = true)
 
+/-- One cardinality-aware production attempt. The scheduled frontier stores
+both changing dimensions used by the termination proof. -/
+inductive CheckedCardinalityControlAttempt
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (budget maxWidth : Nat)
+    (forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))) : Type where
+  | sat
+      {nodeCount : Nat}
+      (certificate : FiniteEqCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (hontology : certificate.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hcheck : certificate.checkEqSatWithCardinality definitions = true)
+  | closed
+      {nodeCount depth : Nat}
+      (certificate : FiniteDistinctEqCertificate
+        nodeCount conceptCount roleCount variableCount)
+      (tree : FiniteDistinctCardinalityRefutationTree
+        nodeCount conceptCount roleCount variableCount depth)
+      (hontology : certificate.base.base.ontology = ontology)
+      (hnonempty : 0 < nodeCount)
+      (hempty : certificate.base.EmptyRoot)
+      (hapart : certificate.apart = [])
+      (hcheck : tree.checkClosed definitions certificate = true)
+  | frontier
+      (document : WireCardinalityAddressFrontier)
+      (hconcepts : document.concept_count = conceptCount)
+      (hroles : document.role_count = roleCount)
+      (hdefinitions : document.definition_count = definitions.length)
+      (hscheduled : document.checkScheduled budget maxWidth = true)
+  | rejected
+      (folds : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+def CheckedCardinalityControlAttempt.toGuarded
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedCardinalityControlAttempt conceptCount roleCount variableCount
+      ontology definitions budget maxWidth forbidden) :
+    GuardedFoldAttempt (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        ontology definitions) forbidden :=
+  match attempt with
+  | .sat certificate hontology hnonempty hcheck =>
+      .done (.sat certificate hontology hnonempty hcheck)
+  | .closed certificate tree hontology hnonempty hempty hapart hcheck =>
+      .done (.closed certificate tree hontology hnonempty hempty hapart hcheck)
+  | .frontier document hconcepts hroles hdefinitions hscheduled =>
+      .done (.frontier document hconcepts hroles hdefinitions
+        (document.checkScheduled_check budget maxWidth hscheduled))
+  | .rejected folds fresh => .rejected folds fresh
+
+theorem CheckedCardinalityControlAttempt.frontier_scheduled
+    {forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))}
+    (attempt : CheckedCardinalityControlAttempt conceptCount roleCount variableCount
+      ontology definitions budget maxWidth forbidden)
+    {document : WireCardinalityAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hdefinitions : document.definition_count = definitions.length}
+    {hcheck : document.check = true}
+    (herase : attempt.toGuarded.erase = .done
+      (.frontier document hconcepts hroles hdefinitions hcheck)) :
+    document.checkScheduled budget maxWidth = true := by
+  cases attempt with
+  | sat certificate hontology hnonempty hcertificate =>
+      simp [CheckedCardinalityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | closed certificate tree hontology hnonempty hempty hapart hcertificate =>
+      simp [CheckedCardinalityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+  | frontier frontier frontierConcepts frontierRoles frontierDefinitions hscheduled =>
+      simp only [CheckedCardinalityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+      cases herase
+      exact hscheduled
+  | rejected folds fresh =>
+      simp [CheckedCardinalityControlAttempt.toGuarded,
+        GuardedFoldAttempt.erase] at herase
+
+structure CheckedCardinalityControlProducer
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (budget maxWidth : Nat) where
+  attempt : ∀ forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+    CheckedCardinalityControlAttempt conceptCount roleCount variableCount
+      ontology definitions budget maxWidth forbidden
+
+def CheckedCardinalityControlProducer.toGuarded
+    (producer : CheckedCardinalityControlProducer conceptCount roleCount
+      variableCount ontology definitions budget maxWidth) :
+    GuardedFoldProducer (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        ontology definitions) where
+  attempt forbidden := (producer.attempt forbidden).toGuarded
+
+theorem CheckedCardinalityControlProducer.frontier_scheduled
+    (producer : CheckedCardinalityControlProducer conceptCount roleCount
+      variableCount ontology definitions budget maxWidth)
+    {retry : Nat} {document : WireCardinalityAddressFrontier}
+    {hconcepts : document.concept_count = conceptCount}
+    {hroles : document.role_count = roleCount}
+    {hdefinitions : document.definition_count = definitions.length}
+    {hcheck : document.check = true}
+    (hrun : producer.toGuarded.toFreshFoldProducer.run retry = .done
+      (.frontier document hconcepts hroles hdefinitions hcheck)) :
+    document.checkScheduled budget maxWidth = true := by
+  apply CheckedCardinalityControlAttempt.frontier_scheduled
+    (producer.attempt
+      (producer.toGuarded.toFreshFoldProducer.forbidden retry))
+  simpa [GuardedFoldProducer.toFreshFoldProducer, FreshFoldProducer.run,
+    CheckedCardinalityControlProducer.toGuarded] using hrun
+
 def CheckedCardinalityDecisionOutcome.Semantics
     {ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -299,6 +423,29 @@ theorem checked_cardinality_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hwidth
 
+/-- Cardinality-aware production totality with fresh retries, node scheduling,
+and maximum-width scheduling all intrinsic to the checked producer. -/
+theorem checked_cardinality_control_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (producer : ∀ budget,
+      CheckedCardinalityControlProducer conceptCount roleCount variableCount
+        target definitions budget maxWidth) :
+    ∃ budget retry outcome,
+      (producer budget).toGuarded.toFreshFoldProducer.run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_cardinality_fresh_fold_producer_decides_source equivalent maxWidth
+    (fun budget => (producer budget).toGuarded.toFreshFoldProducer)
+  · intro budget retry document hconcepts hroles hdefinitions hcheck hrun
+    exact document.checkScheduled_node_count budget maxWidth
+      ((producer budget).frontier_scheduled hrun)
+  · intro budget retry document hconcepts hroles hdefinitions hcheck hrun
+    exact document.checkScheduled_max_width budget maxWidth
+      ((producer budget).frontier_scheduled hrun)
+
 #print axioms CheckedCardinalityDecisionOutcome.sat_semantics
 #print axioms CheckedCardinalityDecisionOutcome.closed_semantics
 #print axioms CheckedCardinalityDecisionOutcome.conclusive_semantics
@@ -307,5 +454,8 @@ theorem checked_cardinality_fresh_fold_producer_decides_source
 #print axioms checked_cardinality_doubling_decides_source
 #print axioms checked_cardinality_fold_learning_doubling_decides_source
 #print axioms checked_cardinality_fresh_fold_producer_decides_source
+#print axioms CheckedCardinalityControlAttempt.frontier_scheduled
+#print axioms CheckedCardinalityControlProducer.frontier_scheduled
+#print axioms checked_cardinality_control_producer_decides_source
 
 end ContextCalculus.Hypertableau
