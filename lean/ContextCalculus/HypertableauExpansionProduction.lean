@@ -22,6 +22,56 @@ inductive GuardedFoldExpansionOutcome (Node Result : Type)
   | expand (pairs : Finset (Node × Node))
       (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
 
+/-- Lift an ordinary optional checked candidate into the expansion runtime.
+Acceptance is definitionally conclusive; rejection carries no semantic result.
+-/
+def checkedFoldCandidate [DecidableEq Node]
+    (candidate : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Option Result)
+    (forbidden : Finset (Node × Node))
+    (rejected : Finset (FoldAssignment Node))
+    (assignment : FoldAssignment Node) :
+    GuardedFoldExpansionOutcome Node Result forbidden ⊕ Unit :=
+  match candidate rejected assignment with
+  | some result => .inl (.done result)
+  | none => .inr ()
+
+theorem checkedFoldCandidate_conclusive [DecidableEq Node]
+    (candidate : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Option Result)
+    (forbidden : Finset (Node × Node))
+    (rejected : Finset (FoldAssignment Node))
+    (assignment : FoldAssignment Node)
+    (outcome : GuardedFoldExpansionOutcome Node Result forbidden)
+    (hcheck : checkedFoldCandidate candidate forbidden rejected assignment =
+      .inl outcome) :
+    ∃ result, outcome = .done result := by
+  cases hcandidate : candidate rejected assignment with
+  | none => simp [checkedFoldCandidate, hcandidate] at hcheck
+  | some result =>
+      have heq : GuardedFoldExpansionOutcome.done result = outcome := by
+        simpa [checkedFoldCandidate, hcandidate] using hcheck
+      exact ⟨result, heq.symm⟩
+
+/-- A nonempty source-major option table whose blocker lists are nonempty and
+already filtered against the current forbidden set exposes a fresh outer pair.
+-/
+theorem foldOptionPairs_has_fresh_of_filtered [DecidableEq Node]
+    {forbidden : Finset (Node × Node)}
+    {options : List (Node × List Node)}
+    (hne : options ≠ [])
+    (hnonempty : ∀ option ∈ options, option.2 ≠ [])
+    (hfiltered : ∀ source blockers,
+      (source, blockers) ∈ options →
+      ∀ blocker ∈ blockers, (source, blocker) ∉ forbidden) :
+    ∃ pair ∈ foldOptionPairs options, pair ∉ forbidden := by
+  obtain ⟨option, hoption⟩ := List.exists_mem_of_ne_nil options hne
+  obtain ⟨blocker, hblocker⟩ := List.exists_mem_of_ne_nil option.2
+    (hnonempty option hoption)
+  refine ⟨(option.1, blocker), ?_, hfiltered option.1 option.2 hoption blocker
+    hblocker⟩
+  exact mem_foldOptionPairs_iff.mpr ⟨option.2, hoption, hblocker⟩
+
 /-- Exact two-level fixed-budget control shape used by KM.  Each outer attempt
 is an executable complete-assignment runtime.  Its accepted candidate can
 finish with `done`; exact assignment exhaustion can request a rerun only by
@@ -119,6 +169,8 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
   runtime.expansionExact forbidden rejected exhausted pairs fresh hexhausted
 
 #print axioms CartesianFoldExpansionRuntime.eventually_done
+#print axioms checkedFoldCandidate_conclusive
+#print axioms foldOptionPairs_has_fresh_of_filtered
 #print axioms CartesianFoldExpansionRuntime.expansion_strict
 #print axioms CartesianFoldExpansionRuntime.accepted_candidate_conclusive
 #print axioms CartesianFoldExpansionRuntime.exhausted_pairs_exact

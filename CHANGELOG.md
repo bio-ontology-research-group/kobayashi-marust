@@ -13,6 +13,10 @@
   with evidence that every assignment generated from the exact current option
   table belongs to the rejected set, eliminating unconstrained behavior on
   impossible exhaustion states.
+- Add executable adapters for the remaining two-level control obligations:
+  optional checker success can produce only a conclusive result, and every
+  nonempty blocker table filtered against the outer blacklist exposes a fresh
+  pair for exact expansion.
 - Remove the single-direct-role-body restriction from the final fold-free
   regular outcome. A generated endpoint cover over a role-closed raw graph and
   identity redirect proves all cover edges raw, so the checker accepts the

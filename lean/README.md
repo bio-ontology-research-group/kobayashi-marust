@@ -642,6 +642,9 @@ to assign semantics to an unverified exhaustion state. For the final fold-free
 candidate, generated endpoint cover plus raw role closure and identity redirect
 prove every cover edge is raw. The regular checker therefore accepts arbitrary
 guarded residual bodies, without the former single-direct-role-body restriction.
+An optional checked-candidate adapter now makes acceptance definitionally
+conclusive, and a filtered-option theorem derives the fresh outer pair required
+for expansion from a nonempty source-major blocker table.
 
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
