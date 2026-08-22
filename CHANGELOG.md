@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+## [0.3.205] – 2026-08-23
+
 ### Consolidate certification documentation
 
 - Replace the incremental proof diary in the project README with the current
@@ -11,11 +13,9 @@
 - Reserve certification releases for complete layers: HT, ELC, CB, routing,
   and the final integrated certification. Intermediate proof steps remain
   ordinary commits instead of separate releases.
-- Record the exact remaining HT boundary: the present publication capstones
-  consume a `CertifiedHT…Route` containing the per-budget runtime and
-  computed-outcome classification. The HT release requires an executable
-  route-construction theorem rather than treating this conditional interface
-  as the finished milestone.
+- Replace the conditional HT publication capstones with an executable tagged
+  dispatcher that checks production input, retained runs, and published output
+  together for every certified HT family.
 
 ### Strengthen the certified HT blocking boundary
 
@@ -28,6 +28,12 @@
   if it is absent. The public certification surface no longer needs an
   abstract production route or computed-outcome classifier to validate an
   executable publication.
+- Audit the production entrypoints and add a four-family rejection regression.
+  Ordinary, cardinality, native-ABox, and native-ABox-cardinality workers now
+  all fail without publishing output when only the executable dispatcher
+  rejects their otherwise accepted evidence. Raw `Ht` certificate constructors
+  remain evidence-building APIs; `tableau_cli` publication is the certified
+  boundary and cannot bypass the dispatcher.
 - Bind native-ABox global and taxonomy publications to the exact retained
   production runs that generated them. Four executable Lean checkers cover
   ordinary and cardinality global decisions and complete taxonomy matrices.

@@ -166,11 +166,12 @@ fn install_direct_projection_fixture(input: &mut serde_json::Value) {
     }
 }
 
-fn run_with_input(
+fn run_with_input_and_executable_checker(
     input: &str,
     global_checker: &str,
     taxonomy_checker: &str,
     output_stem: &str,
+    executable_checker: &str,
 ) -> std::process::Output {
     let mut certified_input: serde_json::Value =
         serde_json::from_str(input).expect("test HT input is JSON");
@@ -205,6 +206,11 @@ fn run_with_input(
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_SOURCE_BOUND_ORDINARY_GLOBAL_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_GLOBAL_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER", executable_checker)
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -231,6 +237,24 @@ fn run_with_input(
     let _ = std::fs::remove_file(global_out);
     let _ = std::fs::remove_file(taxonomy_out);
     output
+}
+
+fn run_with_input(
+    input: &str,
+    global_checker: &str,
+    taxonomy_checker: &str,
+    output_stem: &str,
+) -> std::process::Output {
+    let executable_checker =
+        std::env::var("KM_HT_TEST_LEAN_EXECUTABLE_PUBLICATION_CHECKER")
+            .unwrap_or_else(|_| "/bin/true".to_string());
+    run_with_input_and_executable_checker(
+        input,
+        global_checker,
+        taxonomy_checker,
+        output_stem,
+        &executable_checker,
+    )
 }
 
 fn run(global_checker: &str, taxonomy_checker: &str, output_stem: &str) -> std::process::Output {
@@ -381,6 +405,8 @@ fn run_projection_only_certification() -> std::process::Output {
 fn run_native_abox_taxonomy_certification(
     source_taxonomy_checker: &str,
     joint_checker: Option<&str>,
+    executable_checker: &str,
+    cardinality: bool,
 ) -> std::process::Output {
     let mut input: serde_json::Value = serde_json::from_str(WIRE).unwrap();
     input["nominals"] = serde_json::json!([0]);
@@ -391,6 +417,15 @@ fn run_native_abox_taxonomy_certification(
         "role_assertions": [],
         "negative_role_assertions": []
     });
+    if cardinality {
+        input["number"] = serde_json::json!(true);
+        input["roles"] = serde_json::json!(["r"]);
+        input["card_defs"] = serde_json::json!([{
+            "marker": 0, "min": true, "n": 1, "role": 0,
+            "filler": 1, "exact": false
+        }]);
+        input["cardinality_projection_complete"] = serde_json::json!(true);
+    }
     install_direct_projection_fixture(&mut input);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
@@ -422,12 +457,28 @@ fn run_native_abox_taxonomy_certification(
             "/bin/true",
         )
         .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER",
+            "/bin/true",
+        )
+        .env(
             "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
+            source_taxonomy_checker,
+        )
+        .env(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER",
             source_taxonomy_checker,
         )
         .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER", "/bin/true")
-        .env("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER", "/bin/true")
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
+            "/bin/true",
+        )
+        .env(
+            "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+            "/bin/true",
+        )
+        .env("KM_HT_LEAN_EXECUTABLE_PUBLICATION_CHECKER", executable_checker)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -663,7 +714,8 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
 
 #[test]
 fn native_abox_taxonomy_requires_the_joint_source_classification_checker() {
-    let output = run_native_abox_taxonomy_certification("/bin/true", None);
+    let output =
+        run_native_abox_taxonomy_certification("/bin/true", None, "/bin/true", false);
     assert!(!output.status.success());
     assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
     assert!(
@@ -676,7 +728,12 @@ fn native_abox_taxonomy_requires_the_joint_source_classification_checker() {
 
 #[test]
 fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
-    let rejected = run_native_abox_taxonomy_certification("/bin/true", Some("/bin/false"));
+    let rejected = run_native_abox_taxonomy_certification(
+        "/bin/true",
+        Some("/bin/false"),
+        "/bin/true",
+        false,
+    );
     assert!(!rejected.status.success());
     assert!(
         rejected.stdout.is_empty(),
@@ -689,7 +746,12 @@ fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
         String::from_utf8_lossy(&rejected.stderr),
     );
 
-    let accepted = run_native_abox_taxonomy_certification("/bin/true", Some("/bin/true"));
+    let accepted = run_native_abox_taxonomy_certification(
+        "/bin/true",
+        Some("/bin/true"),
+        "/bin/true",
+        false,
+    );
     assert!(
         accepted.status.success(),
         "{}",
@@ -701,8 +763,48 @@ fn native_abox_taxonomy_is_gated_by_the_joint_checker() {
 }
 
 #[test]
+fn executable_publication_dispatcher_gates_every_production_family() {
+    for (label, input) in [
+        ("ordinary", WIRE),
+        ("cardinality", CARDINALITY_SIDE_WIRE),
+    ] {
+        let output = run_with_input_and_executable_checker(
+            input,
+            "/bin/true",
+            "/bin/true",
+            &format!("rejected-executable-{label}"),
+            "/bin/false",
+        );
+        assert!(!output.status.success(), "{label} bypassed the executable dispatcher");
+        assert!(
+            output.stdout.is_empty(),
+            "{label} published output rejected by the executable dispatcher"
+        );
+    }
+
+    for (label, cardinality) in [("native ABox", false), ("native ABox cardinality", true)] {
+        let output = run_native_abox_taxonomy_certification(
+            "/bin/true",
+            Some("/bin/true"),
+            "/bin/false",
+            cardinality,
+        );
+        assert!(!output.status.success(), "{label} bypassed the executable dispatcher");
+        assert!(
+            output.stdout.is_empty(),
+            "{label} published output rejected by the executable dispatcher"
+        );
+    }
+}
+
+#[test]
 fn joint_checker_does_not_replace_the_source_taxonomy_checker() {
-    let output = run_native_abox_taxonomy_certification("/bin/false", Some("/bin/true"));
+    let output = run_native_abox_taxonomy_certification(
+        "/bin/false",
+        Some("/bin/true"),
+        "/bin/true",
+        false,
+    );
     assert!(!output.status.success());
     assert!(output.stdout.is_empty(), "unchecked taxonomy was published");
     assert!(

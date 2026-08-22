@@ -24,10 +24,10 @@ without access to the expected answer.
   justify a complete result.
 - A Protégé 5.6 plugin, ontology profiling, bounded explanations, and
   incremental reasoning interfaces are included.
-- Lean currently provides a sorry-free, proof-carrying semantic surface for
-  KM's supported hypertableau evidence and production-control structures. The
-  final executable route-construction theorem is still in progress, followed
-  by certification of ELC, CB, and automatic routing.
+- Lean provides a sorry-free soundness and completeness certification for the
+  supported production hypertableau families, including executable route
+  selection, source normalization, retained runs, and exact publication
+  binding. Certification of ELC, CB, and automatic routing remains in progress.
 
 ## Install
 
@@ -154,9 +154,10 @@ dispatchers. Their route tag is decoded from the publication document, and
 each ordinary, cardinality, native-ABox, or native-ABox-cardinality branch
 checks source semantics, the retained production run, and exact result binding
 as one object. The older `CertifiedHT…Route` theorems remain internal totality
-lemmas rather than the executable publication boundary. The HT milestone will
-be released only after the final entrypoint and bypass inventory confirms that
-every certified production publication crosses this dispatcher.
+lemmas rather than the executable publication boundary. Raw `Ht` certificate
+constructors build evidence but do not publish a certified answer. The
+`tableau_cli` certified publication path requires the executable dispatcher;
+the gate checks that rejection suppresses output for all four HT families.
 
 ### Certification roadmap
 
