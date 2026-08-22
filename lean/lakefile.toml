@@ -29,6 +29,10 @@ name = "ht-frontier-check"
 root = "HTFrontierCheck"
 
 [[lean_exe]]
+name = "ht-address-refinement-check"
+root = "HTAddressRefinementCheck"
+
+[[lean_exe]]
 name = "ht-production-blocking-check"
 root = "HTProductionBlockingCheck"
 

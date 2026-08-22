@@ -39,6 +39,7 @@ checkers=(
     ht-cover-refinement-check
     ht-projection-cert-check
     ht-frontier-check
+    ht-address-refinement-check
     ht-production-blocking-check
     ht-equality-production-blocking-check
     ht-equality-production-trace-check
@@ -132,9 +133,9 @@ done
     export CARGO_TARGET_DIR="$target_root"
     export KM_HT_TEST_REGULAR_LEAN_CHECKER="$bin_root/ht-regular-cert-check"
     export KM_HT_TEST_LEAN_PROJECTION_CHECKER="$bin_root/ht-projection-cert-check"
-    export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
+    export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"
     export KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
-    export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
+    export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-equality-production-blocking-check"

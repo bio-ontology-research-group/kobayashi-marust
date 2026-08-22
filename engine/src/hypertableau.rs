@@ -2835,6 +2835,9 @@ impl LeanHtTaxonomyQuery {
 struct LeanHtAddressFrontier {
     node_count: usize,
     addresses: Vec<Vec<(R, CLit)>>,
+    labels: Vec<(Node, CLit)>,
+    edges: Vec<(R, Node, Node)>,
+    obligations: Vec<(R, CLit, Node)>,
 }
 
 #[derive(serde::Serialize)]
@@ -3405,6 +3408,21 @@ impl LeanHtRefutationState {
         Ok(LeanHtAddressFrontier {
             node_count: self.active_nodes,
             addresses,
+            labels: {
+                let mut labels: Vec<_> = self.labels.iter().copied().collect();
+                labels.sort_unstable();
+                labels
+            },
+            edges: {
+                let mut edges: Vec<_> = self.edges.iter().copied().collect();
+                edges.sort_unstable();
+                edges
+            },
+            obligations: {
+                let mut obligations: Vec<_> = self.obligations.iter().copied().collect();
+                obligations.sort_unstable();
+                obligations
+            },
         })
     }
 
@@ -10017,6 +10035,39 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Serialize the exact bounded state together with its reconstructed
+    /// rooted addresses. Lean decodes both under one finite signature and
+    /// checks the semantic address refinement, not only address uniqueness.
+    fn lean_address_refinement_json(
+        &self,
+        frontier: &LeanHtAddressFrontier,
+    ) -> Result<String, String> {
+        let state = self.lean_blocked_open_certificate_json(
+            &LeanHtBlockedOpenLeaf {
+                node_count: frontier.node_count,
+                labels: frontier.labels.clone(),
+                edges: frontier.edges.clone(),
+                obligations: frontier.obligations.clone(),
+                folds: Vec::new(),
+                fold_options: Vec::new(),
+                witness_parent: Vec::new(),
+                forbidden_folds: Vec::new(),
+            },
+            LeanHtEvidence::Sat,
+        )?;
+        let frontier = self.lean_address_frontier_json(frontier)?;
+        let state: serde_json::Value =
+            serde_json::from_str(&state).map_err(|error| error.to_string())?;
+        let frontier: serde_json::Value =
+            serde_json::from_str(&frontier).map_err(|error| error.to_string())?;
+        serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "state": state,
+            "frontier": frontier,
+        }))
+        .map_err(|error| error.to_string())
+    }
+
     fn lean_cardinality_address_frontier_json(
         &self,
         frontier: &LeanHtCardinalityAddressFrontier,
@@ -10099,7 +10150,7 @@ impl Ht {
         let Some(checker) = checker else {
             return Ok(true);
         };
-        let document = self.lean_address_frontier_json(frontier)?;
+        let document = self.lean_address_refinement_json(frontier)?;
         self.lean_candidate_passes_with(&document, &checker)
     }
 
@@ -25641,6 +25692,9 @@ mod tests {
         let ordinary = LeanHtAddressFrontier {
             node_count: 1,
             addresses: vec![Vec::new()],
+            labels: Vec::new(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
         };
         assert!(reasoner
             .lean_address_frontier_passes(&ordinary, 2)
@@ -25676,15 +25730,15 @@ mod tests {
         );
         if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
             let mut frontier_checker = std::path::PathBuf::from(checker);
-            frontier_checker.set_file_name("ht-frontier-check");
+            frontier_checker.set_file_name("ht-address-refinement-check");
             let path = std::env::temp_dir().join(format!(
                 "km-ht-address-frontier-{}-{}.json",
                 std::process::id(),
                 std::thread::current().name().unwrap_or("test")
             ));
             let document = cyclic
-                .lean_address_frontier_json(&frontier)
-                .expect("serialize the cyclic rooted-address frontier");
+                .lean_address_refinement_json(&frontier)
+                .expect("serialize the cyclic state/address refinement");
             std::fs::write(&path, &document).unwrap();
             let accepted = std::process::Command::new(&frontier_checker)
                 .arg(&path)
@@ -25697,17 +25751,30 @@ mod tests {
             );
 
             let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
-            duplicate["addresses"][1] = duplicate["addresses"][0].clone();
+            duplicate["frontier"]["addresses"][1] =
+                duplicate["frontier"]["addresses"][0].clone();
             std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-            let rejected = std::process::Command::new(frontier_checker)
+            let rejected = std::process::Command::new(&frontier_checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean checker on a duplicate frontier");
-            let _ = std::fs::remove_file(path);
             assert!(
                 !rejected.success(),
                 "Lean must reject duplicate rooted frontier addresses"
             );
+
+            let mut missing_edge: serde_json::Value = serde_json::from_str(&document).unwrap();
+            missing_edge["state"]["edges"] = serde_json::json!([]);
+            std::fs::write(&path, serde_json::to_vec(&missing_edge).unwrap()).unwrap();
+            let rejected = std::process::Command::new(&frontier_checker)
+                .arg(&path)
+                .status()
+                .expect("run the native Lean checker on a mismatched frontier state");
+            assert!(
+                !rejected.success(),
+                "Lean must reject an occupied witness address without its role edge"
+            );
+            let _ = std::fs::remove_file(path);
         }
         let mut state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
         let LeanHtRefutationOutcome::Open(leaf) = cyclic.lean_refutation(&mut state, 1, 4) else {

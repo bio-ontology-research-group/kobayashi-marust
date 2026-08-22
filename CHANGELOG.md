@@ -36,6 +36,13 @@
   existential slot against the exact edge and filler facts. Regular production
   settlement now consumes this Boolean check instead of trusting a semantic
   `RootedAddressRefines` premise.
+- Add the combined state/address wire format and dedicated
+  `ht-address-refinement-check` executable. Rust now snapshots each ordinary
+  frontier's labels, edges, obligations, and rooted addresses and sends the
+  combined untrusted document to Lean. The HT gate uses this checker in place
+  of the address-only checker. Cross-language tests confirm acceptance of a
+  valid cyclic frontier and rejection of duplicate addresses and of a state
+  missing the role edge required by an occupied witness address.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine
