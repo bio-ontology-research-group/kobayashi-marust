@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "concept_count": 2,
+  "role_count": 0,
+  "function_count": 0,
+  "individual_count": 0,
+  "ontology": [{
+    "body": [{"predicate": {"predicate": {"concept": {
+      "concept": 0, "term": {"var": {"index": 0}}
+    }}}}],
+    "head": [{"predicate": {"predicate": {"concept": {
+      "concept": 1, "term": {"var": {"index": 0}}
+    }}}}]
+  }],
+  "core_concept": 0,
+  "verdict": {"subsumption": {"superconcept": 1}},
+  "trace": [
+    {
+      "clause": {
+        "body": [{"predicate": {"predicate": {"concept": {
+          "concept": 0, "term": {"var": {"index": 0}}
+        }}}}],
+        "head": [{"predicate": {"predicate": {"concept": {
+          "concept": 1, "term": {"var": {"index": 0}}
+        }}}}]
+      },
+      "justification": {"premise": {"index": 0, "substitution": []}}
+    },
+    {
+      "clause": {
+        "body": [],
+        "head": [{"predicate": {"predicate": {"concept": {
+          "concept": 0, "term": {"var": {"index": 0}}
+        }}}}]
+      },
+      "justification": "core"
+    },
+    {
+      "clause": {
+        "body": [],
+        "head": [{"predicate": {"predicate": {"concept": {
+          "concept": 1, "term": {"var": {"index": 0}}
+        }}}}]
+      },
+      "justification": {"resolve": {
+        "positive": 1,
+        "negative": 0,
+        "literal": {"predicate": {"predicate": {"concept": {
+          "concept": 0, "term": {"var": {"index": 0}}
+        }}}}
+      }}
+    }
+  ]
+}

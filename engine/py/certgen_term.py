@@ -45,7 +45,8 @@ MAX_PROP_STEPS = 60000
 MAX_CLAUSES = 50000   # cap for the disjunctive fallback (bounded, may give up)
 
 # ---------------------------------------------------------------------------
-# Term-tree interner.  Terms: ('V', int) variable/constant; ('A', fn, arg).
+# Term-tree interner. Terms: ('V', int) variable; ('K', id) named constant;
+# ('A', fn, arg) successor application.
 # Atoms: ('c', cid, t) | ('r', rid, s, t) | ('e', s, t).
 # Clauses: (frozenset(body), frozenset(head)).
 # ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ class Interner:
         self.role = {}
         self.fn = {}
         self.neg = {}
+        self.const = {}
         self.varcodes = {0}   # ids that are universally-quantifiable variables
 
     def cc(self, n): return self.concept.setdefault(n, len(self.concept) + 1)
@@ -75,11 +77,12 @@ class Interner:
             if f not in self.fn:
                 self.fn[f] = len(self.fn) + 1
             return ("A", self.fn[f], self.tc(t["arg"]))   # recurse: nested terms
-        # individual / constant: a fixed *non-variable* negative id
+        # Individual / auxiliary constant: a fixed term interpreted independently
+        # of the universally quantified variable assignment.
         key = ("k", json.dumps(t, sort_keys=True))
-        if key not in self.neg:
-            self.neg[key] = -(1000 + len(self.neg))
-        return ("V", self.neg[key])
+        if key not in self.const:
+            self.const[key] = len(self.const) + 1
+        return ("K", self.const[key])
 
     def atom(self, a):
         if a["kind"] == "concept":
@@ -100,7 +103,7 @@ def canon(body, head):
 # ---------------------------------------------------------------------------
 
 def depth(t):
-    return 0 if t[0] == "V" else 1 + depth(t[2])
+    return 0 if t[0] in ("V", "K") else 1 + depth(t[2])
 
 
 def maximal_head(head):
@@ -123,6 +126,8 @@ def maximal_head(head):
 def subst_term(t, s):
     if t[0] == "V":
         return s.get(t[1], t)
+    if t[0] == "K":
+        return t
     return ("A", t[1], subst_term(t[2], s))
 
 
@@ -144,6 +149,8 @@ def match_term(pat, gr, sub, varcodes):
                 return sub if sub[pat[1]] == gr else None
             s = dict(sub); s[pat[1]] = gr; return s
         return sub if pat == gr else None       # a constant: must be equal
+    if pat[0] == "K":
+        return sub if pat == gr else None
     if gr[0] != "A" or gr[1] != pat[1]:
         return None
     return match_term(pat[2], gr[2], sub, varcodes)
@@ -287,6 +294,8 @@ def term_ground(t, varcodes):
     """Ground = no neighbour variable; the root ('V',0) and constants are ground."""
     if t[0] == "V":
         return t[1] == 0 or t[1] not in varcodes
+    if t[0] == "K":
+        return True
     return term_ground(t[2], varcodes)
 
 
@@ -522,6 +531,8 @@ def derive_full(prem_list, core, target, varcodes):
 def emit_t(t):
     if t[0] == "V":
         return f"(FTerm.var ({t[1]}))"
+    if t[0] == "K":
+        return f"(FTerm.const {t[1]})"
     return f"(FTerm.app {t[1]} {emit_t(t[2])})"
 
 

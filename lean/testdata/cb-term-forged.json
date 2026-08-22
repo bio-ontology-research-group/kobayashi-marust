@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "concept_count": 2,
+  "role_count": 0,
+  "function_count": 0,
+  "individual_count": 0,
+  "ontology": [{"body": [], "head": []}],
+  "core_concept": 0,
+  "verdict": {"subsumption": {"superconcept": 1}},
+  "trace": [{
+    "clause": {
+      "body": [],
+      "head": [{"predicate": {"predicate": {"concept": {
+        "concept": 1, "term": {"var": {"index": 0}}
+      }}}}]
+    },
+    "justification": {"premise": {"index": 0, "substitution": []}}
+  }]
+}

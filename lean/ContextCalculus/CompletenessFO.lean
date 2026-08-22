@@ -52,6 +52,7 @@ open ContextCalculus ContextCalculus.CheckerTerm
 def herbrandT (I : FLit → Prop) : TModel FTerm where
   conc := fun i d => I (FLit.P (FPred.concept i d))
   rol := fun i s t => I (FLit.P (FPred.role i s t))
+  const := FTerm.const
   fn := fun f t => FTerm.app f t
 
 /-- The canonical assignment: every variable to itself (the generic element `x`
@@ -64,6 +65,7 @@ theorem evalT_rho0 (I : FLit → Prop) (t : FTerm) :
     (herbrandT I).evalT rho0 t = t := by
   induction t with
   | var i => rfl
+  | const i => rfl
   | app f t ih => exact congrArg ((herbrandT I).fn f) ih
 
 /-- A concept/role literal evaluates, under the canonical assignment, to its

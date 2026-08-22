@@ -21,6 +21,7 @@ import ContextCalculus.Termination
 import ContextCalculus.Equivalence
 import ContextCalculus.CBSaturationCertificate
 import ContextCalculus.CBSaturationWire
+import ContextCalculus.CBTermDerivationWire
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm

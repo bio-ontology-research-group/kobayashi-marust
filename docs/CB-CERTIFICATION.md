@@ -26,6 +26,16 @@ claim that the layer is already complete.
   closure, then constructs `Equiv.Saturation`. Accepted certificates therefore
   preserve every model and consequence of the checked input. Its executable
   examples reject both a missing resolvent and a forged derivation.
+- `CBTermDerivationWire` makes the nested-term source derivation theorem an
+  executable, bounds-checked JSON boundary. An accepted positive subsumption or
+  unsatisfiability verdict follows from the complete normalized clause list in
+  that document through checked instantiation, resolution, or paramodulation.
+  This establishes per-verdict soundness, but not completeness of omitted
+  taxonomy cells.
+- The term semantics now distinguish universally assigned variables from named
+  individual constants. Constants have a fixed model interpretation and cannot
+  be changed by substitutions. The certificate generator emits this corrected
+  representation instead of encoding individuals as negative variable ids.
 
 ## Not yet established
 

@@ -11,8 +11,9 @@
   `kinship` subsumptions).  Those stayed validated only empirically.
 
   This file removes that limitation by replacing the integer term code with a
-  genuine **term algebra** `FTerm` (`var i` for variables / neighbours, `app f t`
-  for a unary successor function applied to a term).  Nested successors are
+  genuine **term algebra** `FTerm` (`var i` for variables and neighbours,
+  `const i` for named individuals, and `app f t` for a unary successor function
+  applied to a term). Nested successors are
   first-class, so the certificate can instantiate clauses at `f(g(x))` and the
   verified checker certifies the verdict by kernel.
 
@@ -35,11 +36,14 @@ open ContextCalculus
 
 /-! ### Term algebra, atoms, literals -/
 
-/-- A first-order term over unary successor functions.  `var i` is a variable or
-    neighbour (the engine's `x = 0`, `y = -1`, `z_i = -(i+1)`, individuals
-    negative); `app f t` is the unary successor function `f` applied to `t`. -/
+/-- A first-order term over constants and unary successor functions. `var i` is
+    a variable or neighbour (the engine's `x = 0`, `y = -1`, and
+    `z_i = -(i+1)`), `const i` is a named individual whose interpretation does
+    not depend on the variable assignment, and `app f t` applies a successor
+    function to a term. -/
 inductive FTerm where
   | var : Int → FTerm
+  | const : Nat → FTerm
   | app : Nat → FTerm → FTerm
 deriving DecidableEq, Repr
 
@@ -61,11 +65,12 @@ abbrev FCL := Clause FLit
 
 /-! ### Semantics -/
 
-/-- A first-order model: concept / role interpretations and an interpretation of
-    each unary successor symbol. -/
+/-- A first-order model with concept, role, individual-constant, and unary
+    successor interpretations. -/
 structure TModel (D : Type) where
   conc : Nat → D → Prop
   rol : Nat → D → D → Prop
+  const : Nat → D
   fn : Nat → D → D
 
 variable {D : Type}
@@ -75,6 +80,7 @@ variable {D : Type}
     `fn f (fn g (ρ 0))`. -/
 def TModel.evalT (M : TModel D) (ρ : Int → D) : FTerm → D
   | .var i => ρ i
+  | .const i => M.const i
   | .app f t => M.fn f (M.evalT ρ t)
 
 /-- Interpret a literal (equality = real equality). -/
@@ -98,6 +104,7 @@ def substVar (σ : List (Int × FTerm)) (i : Int) : FTerm :=
 /-- Apply a substitution to a term (recursively, through successors). -/
 def substT (σ : List (Int × FTerm)) : FTerm → FTerm
   | .var i => substVar σ i
+  | .const i => .const i
   | .app f t => .app f (substT σ t)
 
 def substL (σ : List (Int × FTerm)) : FLit → FLit
@@ -116,6 +123,7 @@ theorem evalT_substT (M : TModel D) (ρ : Int → D) (σ : List (Int × FTerm)) 
     M.evalT ρ (substT σ t) = M.evalT (fun i => M.evalT ρ (substVar σ i)) t := by
   induction t with
   | var i => rfl
+  | const i => rfl
   | app f t ih => simp only [substT, TModel.evalT, ih]
 
 theorem evalL_substL (M : TModel D) (ρ : Int → D) (σ : List (Int × FTerm)) (l : FLit) :
@@ -165,6 +173,7 @@ theorem inst_valid (M : TModel D) {p : FCL} (hp : valid M p) (σ : List (Int × 
 /-- Rewrite every occurrence of subterm `s` to `t` inside a term. -/
 def rwT (s t : FTerm) : FTerm → FTerm
   | .var i => if FTerm.var i = s then t else .var i
+  | .const i => if FTerm.const i = s then t else .const i
   | .app f a => if FTerm.app f a = s then t else .app f (rwT s t a)
 
 /-- Subterm rewriting preserves value when `s` and `t` evaluate equally. -/
@@ -175,6 +184,11 @@ theorem evalT_rwT (M : TModel D) (ρ : Int → D) (s t : FTerm)
   | var i =>
     simp only [rwT]
     by_cases h : (FTerm.var i) = s
+    · rw [if_pos h, h]; exact heq.symm
+    · rw [if_neg h]
+  | const i =>
+    simp only [rwT]
+    by_cases h : (FTerm.const i) = s
     · rw [if_pos h, h]; exact heq.symm
     · rw [if_neg h]
   | app f a ih =>
