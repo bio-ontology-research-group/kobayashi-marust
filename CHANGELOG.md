@@ -19,6 +19,12 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Tighten the final hypertableau global-decision boundary so every route now
+  consumes its concrete finite-search family and derives the runtime in Lean.
+  Regular and equality-aware family records join the cardinality and
+  native-ABox families. An arbitrary evidence-shaped runtime can no longer be
+  passed directly to the global route theorem; remaining producer obligations
+  are visible as route-specific construction fields.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

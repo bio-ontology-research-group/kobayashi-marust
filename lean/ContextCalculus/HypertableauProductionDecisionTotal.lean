@@ -222,6 +222,61 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
     (finiteProductionRoundBudgetConstructionSettlement ontology parent ancestors
       hheads root hrootEmpty frontierAddress) candidate foldFree
 
+/-- All data needed to construct KM's regular finite search at every doubling
+budget. The global route derives its runtime from this family. -/
+structure ConstructedRegularFiniteSearchFamily
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) where
+  parent : ∀ budget,
+    Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) →
+      Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget))
+  ancestors : ∀ budget,
+    Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) →
+      Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
+  branchable : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom
+  frontierAddress : ∀ budget
+    (forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount))),
+    SearchDescends
+      (runtimeNextBlockedFacts ontology
+        (productionBlockedFacts (parent budget) (ancestors budget) forbidden))
+      ∅ leaf →
+    (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+      ((stateOfGuardedFacts leaf).productionBlocked (parent budget leaf)
+        (ancestors budget leaf) forbidden) →
+    ∃ address : Fin (8 * 2 ^ budget) →
+        WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+      (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true
+  candidate : ∀ budget (_forbidden : Finset
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
+    Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+      FoldAssignment (Fin (8 * 2 ^ budget)) →
+        Option (ConstructedRegularBudgetResult conceptCount roleCount
+          variableCount ontology budget)
+  foldFree : ∀ budget forbidden
+    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+      (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology forbidden),
+    leaf.unwitnessedSources = [] →
+      ConstructedRegularBudgetResult conceptCount roleCount variableCount
+        ontology budget
+
+noncomputable def ConstructedRegularFiniteSearchFamily.runtime
+    (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
+      variableCount ontology)
+    (budget : Nat) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+        ontology budget) :=
+  CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch ontology
+    (family.parent budget) (family.ancestors budget) family.branchable ∅ rfl
+    (family.frontierAddress budget) (family.candidate budget)
+    (family.foldFree budget)
+
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
 theorem checked_regular_doubling_execution_decides_source
@@ -426,6 +481,47 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearc
   CartesianFoldExpansionRuntime.done
     (finiteEqualityRoundBudgetConstruction root hontology hempty parent
       ancestors terminalFold frontierAddress)
+
+/-- All data needed to construct KM's equality-aware finite search at every
+doubling budget. The global route derives its runtime from this family. -/
+structure ConstructedEqualityFiniteSearchFamily
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) where
+  root : ∀ budget, FiniteEqCertificate (8 * 2 ^ budget) conceptCount
+    roleCount variableCount
+  ontology_eq : ∀ budget, (root budget).base.ontology = ontology
+  empty : ∀ budget, (root budget).EmptyRoot
+  parent : ∀ budget,
+    EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount) →
+      Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget))
+  ancestors : ∀ budget,
+    EqState (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount) →
+      Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
+  terminalFold : ∀ budget state,
+    EqRuntimeTerminal ontology (parent budget) (ancestors budget) state →
+      HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology
+  frontierAddress : ∀ budget leaf,
+    SearchDescends
+      (eqRuntimeNextClashFirst ontology (parent budget) (ancestors budget))
+      (root budget).state leaf →
+    EqRuntimeNodeFrontier ontology leaf (parent budget leaf)
+      (ancestors budget leaf) →
+    ∃ address : Fin (8 * 2 ^ budget) →
+        WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+      Function.Injective address
+
+noncomputable def ConstructedEqualityFiniteSearchFamily.runtime
+    (family : ConstructedEqualityFiniteSearchFamily conceptCount roleCount
+      variableCount ontology)
+    (budget : Nat) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+        ontology budget) :=
+  CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearch
+    (family.root budget) (family.ontology_eq budget) (family.empty budget)
+    (family.parent budget) (family.ancestors budget)
+    (family.terminalFold budget) (family.frontierAddress budget)
 
 theorem checked_equality_doubling_execution_decides_source
     {source target : List
@@ -1979,19 +2075,15 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, CartesianFoldExpansionRuntime
-        (Fin (8 * 2 ^ budget))
-        (ConstructedRegularBudgetResult conceptCount roleCount variableCount
-          target budget)) :
+      (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
+        variableCount target) :
       CertifiedHTAssignmentProductionGlobalRoute (HasNonemptyModel source)
   | equality
       {source target : List
         (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
-      (producer : ∀ budget, CartesianFoldExpansionRuntime
-        (Fin (8 * 2 ^ budget))
-        (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
-          target budget)) :
+      (family : ConstructedEqualityFiniteSearchFamily conceptCount roleCount
+        variableCount target) :
       CertifiedHTAssignmentProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
       {source target : List
@@ -2000,10 +2092,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (CardinalityDef (Fin conceptCount) (Fin roleCount))}
       (equivalent : ModelEquivalent source target)
       (maxWidth : Nat)
-      (producer : ∀ budget, CartesianFoldExpansionRuntime
-        (Fin (8 * 2 ^ budget))
-        (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
-          target definitions maxWidth budget)) :
+      (family : ConstructedCardinalityFiniteSearchFamily conceptCount roleCount
+        variableCount target definitions maxWidth) :
       CertifiedHTAssignmentProductionGlobalRoute
         (CardinalityHasNonemptyModel source definitions)
   | nativeABox
@@ -2016,10 +2106,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (equivalent : ModelEquivalent source target)
       (rootCount : Nat)
       (maxWidth : Nat)
-      (producer : ∀ budget, CartesianFoldExpansionRuntime
-        (Fin (8 * 2 ^ budget))
-        (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
-          variableCount abox target definitions rootCount maxWidth budget)) :
+      (family : ConstructedNativeABoxFiniteSearchFamily Individual conceptCount
+        roleCount variableCount abox target definitions rootCount maxWidth) :
       CertifiedHTAssignmentProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -2028,9 +2116,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
     (route : CertifiedHTAssignmentProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent producer =>
+  | regular equivalent family =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_constructed_regular_runtime_decides_source equivalent producer
+        checked_constructed_regular_runtime_decides_source equivalent family.runtime
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -2040,9 +2128,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent producer =>
+  | equality equivalent family =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_constructed_equality_runtime_decides_source equivalent producer
+        checked_constructed_equality_runtime_decides_source equivalent family.runtime
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -2050,10 +2138,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth producer =>
+  | cardinality equivalent maxWidth family =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_constructed_cardinality_runtime_decides_source equivalent
-          maxWidth producer
+          maxWidth family.runtime
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -2061,10 +2149,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent rootCount maxWidth producer =>
+  | nativeABox equivalent rootCount maxWidth family =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_constructed_native_abox_runtime_decides_source equivalent
-          rootCount maxWidth producer
+          rootCount maxWidth family.runtime
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>
