@@ -266,6 +266,62 @@ theorem checked_regular_runtime_through_decides_source
   exact ⟨run.1, checked_regular_doubling_execution_decides_source equivalent
     runtime run.2⟩
 
+/-- Checked address-frontier impossibility supplies a conclusive budget for
+the concrete regular runtime. No retry index or terminal trace is selected by
+the caller. -/
+theorem checked_regular_runtime_eventually_conclusive
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (RegularProductionConclusive fixed.1) ⊕
+        PLift (RegularProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1)) :
+    ∃ budget,
+      let fixed := (runtime budget).execute ∅
+      RegularProductionConclusive fixed.1 := by
+  classical
+  by_contra hnone
+  push Not at hnone
+  have hfrontier : ∀ budget,
+      RegularProductionFrontier conceptCount roleCount variableCount target
+        budget ((runtime budget).execute ∅).1 := by
+    intro budget
+    rcases classify budget with hconclusive | hfrontier
+    · exact False.elim (hnone budget hconclusive.down)
+    · exact hfrontier.down
+  choose document hconcepts hroles hcheck heq hscheduled using hfrontier
+  obtain ⟨budget, hrejected⟩ :=
+    mode6_doubling_eventually_rejects_checked_frontier document conceptCount
+      roleCount
+      (fun budget => (document budget).checkScheduled_node_count budget
+        (hscheduled budget)) hconcepts hroles
+  exact hrejected ((document budget).checkScheduled_check budget
+    (hscheduled budget))
+
+/-- The concrete regular production runtime decides source satisfiability.
+Both finite learning loops, frontier doubling, and the terminal budget are
+constructed or derived in Lean. -/
+theorem checked_regular_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (RegularProductionConclusive fixed.1) ⊕
+        PLift (RegularProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1)) :
+    ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      target, outcome.SourceSemantics source := by
+  obtain ⟨budget, hterminal⟩ :=
+    checked_regular_runtime_eventually_conclusive runtime classify
+  exact checked_regular_runtime_through_decides_source equivalent runtime
+    classify budget hterminal
+
 theorem checked_equality_runtime_through_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -291,6 +347,56 @@ theorem checked_equality_runtime_through_decides_source
       exact terminal)
   exact ⟨run.1, checked_equality_doubling_execution_decides_source equivalent
     runtime run.2⟩
+
+theorem checked_equality_runtime_eventually_conclusive
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (EqualityProductionConclusive fixed.1) ⊕
+        PLift (EqualityProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1)) :
+    ∃ budget,
+      let fixed := (runtime budget).execute ∅
+      EqualityProductionConclusive fixed.1 := by
+  classical
+  by_contra hnone
+  push Not at hnone
+  have hfrontier : ∀ budget,
+      EqualityProductionFrontier conceptCount roleCount variableCount target
+        budget ((runtime budget).execute ∅).1 := by
+    intro budget
+    rcases classify budget with hconclusive | hfrontier
+    · exact False.elim (hnone budget hconclusive.down)
+    · exact hfrontier.down
+  choose document hconcepts hroles hcheck heq hscheduled using hfrontier
+  obtain ⟨budget, hrejected⟩ :=
+    mode6_doubling_eventually_rejects_checked_frontier document conceptCount
+      roleCount
+      (fun budget => (document budget).checkScheduled_node_count budget
+        (hscheduled budget)) hconcepts hroles
+  exact hrejected ((document budget).checkScheduled_check budget
+    (hscheduled budget))
+
+theorem checked_equality_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (EqualityProductionConclusive fixed.1) ⊕
+        PLift (EqualityProductionFrontier conceptCount roleCount variableCount
+          target budget fixed.1)) :
+    ∃ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount target, outcome.SourceSemantics source := by
+  obtain ⟨budget, hterminal⟩ :=
+    checked_equality_runtime_eventually_conclusive runtime classify
+  exact checked_equality_runtime_through_decides_source equivalent runtime
+    classify budget hterminal
 
 theorem checked_cardinality_runtime_through_decides_source
     {source target : List
@@ -322,6 +428,67 @@ theorem checked_cardinality_runtime_through_decides_source
         exact terminal)
   exact ⟨run.1, checked_cardinality_doubling_execution_decides_source
     equivalent maxWidth runtime run.2⟩
+
+theorem checked_cardinality_runtime_eventually_conclusive
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (CardinalityProductionConclusive fixed.1) ⊕
+        PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
+          target definitions maxWidth budget fixed.1)) :
+    ∃ budget,
+      let fixed := (runtime budget).execute ∅
+      CardinalityProductionConclusive fixed.1 := by
+  classical
+  by_contra hnone
+  push Not at hnone
+  have hfrontier : ∀ budget,
+      CardinalityProductionFrontier conceptCount roleCount variableCount target
+        definitions maxWidth budget ((runtime budget).execute ∅).1 := by
+    intro budget
+    rcases classify budget with hconclusive | hfrontier
+    · exact False.elim (hnone budget hconclusive.down)
+    · exact hfrontier.down
+  choose document hconcepts hroles hdefinitions hcheck heq hscheduled using
+    hfrontier
+  obtain ⟨budget, hrejected⟩ :=
+    cardinality_doubling_eventually_rejects_checked_frontier document
+      conceptCount roleCount definitions.length maxWidth
+      (fun budget => (document budget).checkScheduled_node_count budget maxWidth
+        (hscheduled budget)) hconcepts hroles hdefinitions
+      (fun budget => (document budget).checkScheduled_max_width budget maxWidth
+        (hscheduled budget))
+  exact hrejected ((document budget).checkScheduled_check budget maxWidth
+    (hscheduled budget))
+
+theorem checked_cardinality_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (CardinalityProductionConclusive fixed.1) ⊕
+        PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
+          target definitions maxWidth budget fixed.1)) :
+    ∃ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions, outcome.SourceSemantics source := by
+  obtain ⟨budget, hterminal⟩ :=
+    checked_cardinality_runtime_eventually_conclusive maxWidth runtime classify
+  exact checked_cardinality_runtime_through_decides_source equivalent maxWidth
+    runtime classify budget hterminal
 
 theorem checked_native_abox_runtime_through_decides_source
     {Individual : Type}
@@ -356,6 +523,72 @@ theorem checked_native_abox_runtime_through_decides_source
         exact terminal)
   exact ⟨run.1, checked_native_abox_doubling_execution_decides_source
     equivalent maxWidth runtime run.2⟩
+
+theorem checked_native_abox_runtime_eventually_conclusive
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (NativeABoxProductionConclusive fixed.1) ⊕
+        PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
+          variableCount abox target definitions maxWidth budget fixed.1)) :
+    ∃ budget,
+      let fixed := (runtime budget).execute ∅
+      NativeABoxProductionConclusive fixed.1 := by
+  classical
+  by_contra hnone
+  push Not at hnone
+  have hfrontier : ∀ budget,
+      NativeABoxProductionFrontier Individual conceptCount roleCount variableCount
+        abox target definitions maxWidth budget ((runtime budget).execute ∅).1 := by
+    intro budget
+    rcases classify budget with hconclusive | hfrontier
+    · exact False.elim (hnone budget hconclusive.down)
+    · exact hfrontier.down
+  choose document hconcepts hroles hdefinitions hcheck heq hscheduled using
+    hfrontier
+  obtain ⟨budget, hrejected⟩ :=
+    cardinality_doubling_eventually_rejects_checked_frontier document
+      conceptCount roleCount definitions.length maxWidth
+      (fun budget => (document budget).checkScheduled_node_count budget maxWidth
+        (hscheduled budget)) hconcepts hroles hdefinitions
+      (fun budget => (document budget).checkScheduled_max_width budget maxWidth
+        (hscheduled budget))
+  exact hrejected ((document budget).checkScheduled_check budget maxWidth
+    (hscheduled budget))
+
+theorem checked_native_abox_runtime_decides_source
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (NativeABoxProductionConclusive fixed.1) ⊕
+        PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
+          variableCount abox target definitions maxWidth budget fixed.1)) :
+    ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions,
+        outcome.SourceSemantics source := by
+  obtain ⟨budget, hterminal⟩ :=
+    checked_native_abox_runtime_eventually_conclusive maxWidth runtime classify
+  exact checked_native_abox_runtime_through_decides_source equivalent maxWidth
+    runtime classify budget hterminal
 
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
@@ -611,5 +844,13 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_equality_runtime_through_decides_source
 #print axioms checked_cardinality_runtime_through_decides_source
 #print axioms checked_native_abox_runtime_through_decides_source
+#print axioms checked_regular_runtime_eventually_conclusive
+#print axioms checked_regular_runtime_decides_source
+#print axioms checked_equality_runtime_eventually_conclusive
+#print axioms checked_equality_runtime_decides_source
+#print axioms checked_cardinality_runtime_eventually_conclusive
+#print axioms checked_cardinality_runtime_decides_source
+#print axioms checked_native_abox_runtime_eventually_conclusive
+#print axioms checked_native_abox_runtime_decides_source
 
 end ContextCalculus.Hypertableau

@@ -29,6 +29,11 @@
   Runtime-level publication wrappers now construct these traces themselves
   for all four production families through a proved conclusive budget and
   return the corresponding source semantics.
+- Derive the conclusive budget internally for every production family. If all
+  concrete runs were frontiers, their checked address injections would
+  contradict the finite doubling bound. The regular, equality, cardinality,
+  and native-ABox runtime theorems therefore require neither a caller-selected
+  retry trace nor a caller-supplied terminal budget.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem
