@@ -788,7 +788,7 @@ noncomputable def finiteProductionSearchSettlement
     (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
     (root : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
       (Fin roleCount)))
-    (closed : ∀ forbidden : Finset (Fin nodeCount × Fin nodeCount),
+    (closed : ∀ _forbidden : Finset (Fin nodeCount × Fin nodeCount),
       Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) → Result)
     (frontier : ∀
       (forbidden : Finset (Fin nodeCount × Fin nodeCount))
@@ -832,8 +832,9 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
     (settle : ∀ forbidden : Finset (Node × Node),
       Result ⊕ ProductionBlockedLeafAt Node Concept Role Variable ontology
         forbidden)
-    (candidate : ∀ _forbidden : Finset (Node × Node),
-      Finset (FoldAssignment Node) → FoldAssignment Node → Option Result)
+    (candidate : ∀ (forbidden : Finset (Node × Node)),
+      ProductionBlockedLeafAt Node Concept Role Variable ontology forbidden →
+        Finset (FoldAssignment Node) → FoldAssignment Node → Option Result)
     (foldFree : ∀ forbidden
       (leaf : ProductionBlockedLeafAt Node Concept Role Variable ontology
         forbidden), leaf.unwitnessedSources = [] → Result) :
@@ -843,7 +844,7 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
     match settle forbidden with
     | .inl result => settledEarlyInner forbidden result
     | .inr leaf =>
-        settledBlockedInner ontology forbidden leaf (candidate forbidden)
+        settledBlockedInner ontology forbidden leaf (candidate forbidden leaf)
           (foldFree forbidden leaf)
   exact {
     inner := inner
@@ -855,10 +856,10 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
             simpa [inner, hsettle, settledEarlyInner] using hcheck
           exact ⟨result, heq.symm⟩
       | inr leaf =>
-          have hcheck' : checkedFoldCandidate (candidate forbidden) forbidden
+          have hcheck' : checkedFoldCandidate (candidate forbidden leaf) forbidden
               rejected assignment = .inl outcome := by
             simpa [inner, hsettle, settledBlockedInner] using hcheck
-          exact checkedFoldCandidate_conclusive (candidate forbidden) forbidden
+          exact checkedFoldCandidate_conclusive (candidate forbidden leaf) forbidden
             rejected assignment outcome hcheck'
     expansionExact := by
       intro forbidden rejected exhausted pairs fresh hexpand
@@ -869,7 +870,7 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
             (by simpa [inner, hsettle] using hexpand))
       | inr leaf =>
           have hexact := settledBlockedInner_expansionExact ontology forbidden leaf
-            (candidate forbidden) (foldFree forbidden leaf) rejected
+            (candidate forbidden leaf) (foldFree forbidden leaf) rejected
             (by simpa [inner, hsettle] using exhausted) pairs fresh
             (by simpa [inner, hsettle] using hexpand)
           simpa [inner, hsettle] using hexact }
@@ -887,7 +888,7 @@ noncomputable def CartesianFoldExpansionRuntime.ofFiniteProductionSearch
     (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
     (root : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
       (Fin roleCount)))
-    (closed : ∀ forbidden : Finset (Fin nodeCount × Fin nodeCount),
+    (closed : ∀ _forbidden : Finset (Fin nodeCount × Fin nodeCount),
       Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) → Result)
     (frontier : ∀
       (forbidden : Finset (Fin nodeCount × Fin nodeCount))
@@ -899,9 +900,11 @@ noncomputable def CartesianFoldExpansionRuntime.ofFiniteProductionSearch
       (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
         ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
           (ancestors leaf) forbidden) → Result)
-    (candidate : ∀ _forbidden : Finset (Fin nodeCount × Fin nodeCount),
-      Finset (FoldAssignment (Fin nodeCount)) → FoldAssignment (Fin nodeCount) →
-        Option Result)
+    (candidate : ∀ (forbidden : Finset (Fin nodeCount × Fin nodeCount)),
+      ProductionBlockedLeafAt (Fin nodeCount) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden →
+        Finset (FoldAssignment (Fin nodeCount)) →
+          FoldAssignment (Fin nodeCount) → Option Result)
     (foldFree : ∀ forbidden
       (leaf : ProductionBlockedLeafAt (Fin nodeCount) (Fin conceptCount)
         (Fin roleCount) (Fin variableCount) ontology forbidden),

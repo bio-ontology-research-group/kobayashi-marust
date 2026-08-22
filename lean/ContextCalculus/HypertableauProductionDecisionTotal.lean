@@ -152,6 +152,46 @@ noncomputable def ProductionBlockedLeafAt.regularFoldFreeResult
   exact ⟨outcome, .conclusive (by
     simp [outcome, RegularProductionConclusive])⟩
 
+/-- Check one simultaneous blocker assignment as an ordinary finite model.
+The blocked leaf and assignment determine the complete certificate; rejection
+is explicit and cannot produce a semantic result. -/
+noncomputable def ProductionBlockedLeafAt.checkedFiniteFoldCandidate
+    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+      (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
+      forbidden)
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) :
+    Option (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+      ontology budget) := by
+  letI := leaf.decision
+  let certificate : FiniteFoldCertificate (8 * 2 ^ budget) conceptCount
+      roleCount variableCount := {
+    base := FiniteSatCertificate.ofState ontology leaf.state
+    folds := assignment.toList
+  }
+  by_cases hcheck : certificate.check = true
+  ·
+    let outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+        ontology := .finiteSat certificate.materialize rfl (by positivity)
+          (by simpa [FiniteFoldCertificate.check] using hcheck)
+    exact some ⟨outcome, .conclusive (by
+      simp [outcome, RegularProductionConclusive])⟩
+  · exact none
+
+/-- KM first tries the completely reconstructed finite fold. Only when that
+checker rejects does it consult the regular-unravelling fallback producer. -/
+noncomputable def ProductionBlockedLeafAt.checkedRegularCandidate
+    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+      (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
+      forbidden)
+    (regularFallback : Option (ConstructedRegularBudgetResult conceptCount
+      roleCount variableCount ontology budget))
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) :
+    Option (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+      ontology budget) :=
+  match leaf.checkedFiniteFoldCandidate assignment with
+  | some result => some result
+  | none => regularFallback
+
 /-- Every early result of the concrete exhaustive regular search carries the
 exact typed construction evidence required by the global decision route.  The
 other arm is a genuine blocked leaf and is intentionally left to the finite
@@ -228,18 +268,23 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
       ∃ address : Fin (8 * 2 ^ budget) →
           WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
         (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
-    (candidate : ∀ _forbidden : Finset
-        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
-      Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-        FoldAssignment (Fin (8 * 2 ^ budget)) →
-          Option (ConstructedRegularBudgetResult conceptCount roleCount
-            variableCount ontology budget)) :
+    (regularFallback : ∀ (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
+      ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden →
+        Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+          FoldAssignment (Fin (8 * 2 ^ budget)) →
+            Option (ConstructedRegularBudgetResult conceptCount roleCount
+              variableCount ontology budget)) :
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
   CartesianFoldExpansionRuntime.ofSettledProductionSearch ontology
     (finiteProductionRoundBudgetConstructionSettlement ontology parent ancestors
-      hheads root hrootEmpty frontierAddress) candidate
+      hheads root hrootEmpty frontierAddress)
+    (fun forbidden leaf rejected assignment =>
+      leaf.checkedRegularCandidate
+        (regularFallback forbidden leaf rejected assignment) assignment)
     (fun _forbidden leaf hempty =>
       ProductionBlockedLeafAt.regularFoldFreeResult leaf hguarded hempty)
 
@@ -274,12 +319,14 @@ structure ConstructedRegularFiniteSearchFamily
     ∃ address : Fin (8 * 2 ^ budget) →
         WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
       (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true
-  candidate : ∀ budget (_forbidden : Finset
+  regularFallback : ∀ budget (forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
-    Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-      FoldAssignment (Fin (8 * 2 ^ budget)) →
-        Option (ConstructedRegularBudgetResult conceptCount roleCount
-          variableCount ontology budget)
+    ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount) (Fin variableCount) ontology forbidden →
+      Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+        FoldAssignment (Fin (8 * 2 ^ budget)) →
+          Option (ConstructedRegularBudgetResult conceptCount roleCount
+            variableCount ontology budget)
 
 noncomputable def ConstructedRegularFiniteSearchFamily.runtime
     (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
@@ -291,7 +338,7 @@ noncomputable def ConstructedRegularFiniteSearchFamily.runtime
   CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch ontology
     (family.parent budget) (family.ancestors budget) family.branchable
     family.guarded ∅ rfl (family.frontierAddress budget)
-    (family.candidate budget)
+    (family.regularFallback budget)
 
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
@@ -1379,19 +1426,21 @@ theorem checked_regular_finite_search_decides_source
       ∃ address : Fin (8 * 2 ^ budget) →
           WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
         (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
-    (candidate : ∀ budget (_forbidden : Finset
+    (regularFallback : ∀ budget (forbidden : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
-      Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-        FoldAssignment (Fin (8 * 2 ^ budget)) →
-          Option (ConstructedRegularBudgetResult conceptCount roleCount
-            variableCount target budget)) :
+      ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) target forbidden →
+        Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+          FoldAssignment (Fin (8 * 2 ^ budget)) →
+            Option (ConstructedRegularBudgetResult conceptCount roleCount
+              variableCount target budget)) :
     ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
       target, outcome.SourceSemantics source := by
   apply checked_constructed_regular_runtime_decides_source equivalent
   intro budget
   exact CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch target
     (parent budget) (ancestors budget) hheads hguarded ∅ rfl
-    (frontierAddress budget) (candidate budget)
+    (frontierAddress budget) (regularFallback budget)
 
 theorem checked_equality_runtime_through_decides_source
     {source target : List

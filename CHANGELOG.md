@@ -29,6 +29,11 @@
   terminal has no unwitnessed sources, Lean reconstructs its exact finite
   state, proves the production SAT checker accepts it, and constructs the
   conclusive finite-model result itself.
+- Construct and check the ordinary finite-model candidate for every regular
+  blocker assignment inside Lean. The generic settled-search runtime now
+  preserves the exact blocked leaf in its candidate interface. Only the
+  regular-unravelling fallback remains a producer obligation after the finite
+  fold checker rejects, matching KM's actual finite-first execution order.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative
