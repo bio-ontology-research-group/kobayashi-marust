@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Prove completeness of the quotient-closed cardinality refutation checker:
+  every finite production closure, including equality-apart clashes, maximum
+  merge branches, and minimum witness expansion, now constructs an accepted
+  checked tree. Build evidence-carrying fixed-budget and cross-budget
+  cardinality runtimes directly from the production control search.
 - Connect the well-founded equality-aware finite search to evidence-carrying
   production results. Root closure constructs a canonical checked equality
   refutation, blocked terminals materialize only independently accepted folds,

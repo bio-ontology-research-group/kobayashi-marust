@@ -2,6 +2,8 @@ import ContextCalculus.HypertableauDecisionTotal
 import ContextCalculus.HypertableauNativeABoxSearch
 import ContextCalculus.HypertableauExpansionProduction
 import ContextCalculus.HypertableauEqualityBlockedSearch
+import ContextCalculus.HypertableauCardinalityProductionSearch
+import ContextCalculus.HypertableauCardinalityClosedCompleteness
 
 /-!
 # Total production hypertableau global decision
@@ -557,6 +559,158 @@ def CardinalityBudgetOutcomeConstruction.classify
   | .frontier address injective produced => by
       subst outcome
       exact classifyCardinalityAddressFrontier address injective
+
+/-- Execute one fixed-budget cardinality production search and construct its
+checked result.  Closure is serialized through the quotient-closed checker
+completeness theorem. Every non-closed stop supplies either an independently
+accepted finite cardinality model or the injective address map for the exact
+scheduled frontier. -/
+noncomputable def finiteCardinalityRoundBudgetConstruction
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth : Nat)
+    (rootCertificate : FiniteDistinctEqCertificate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount)
+    (hontology : rootCertificate.base.base.ontology = ontology)
+    (hempty : rootCertificate.base.EmptyRoot)
+    (hapart : rootCertificate.apart = [])
+    (root : CardinalityRuntimeConfig (Fin conceptCount) (Fin roleCount)
+      definitions (8 * 2 ^ budget))
+    (hrootState : root.state = rootCertificate.state)
+    (parent : Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (stopResult : ∀ leaf,
+      CardinalityProductionDescends ontology definitions parent ancestors
+        root leaf →
+      (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
+      PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
+          ontology definitions) ⊕
+        { address : Fin (8 * 2 ^ budget) →
+            RootedRoleBlockedAddress (Fin 1)
+              (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+                definitions.length maxWidth)
+              (Fin conceptCount) (Fin roleCount) //
+          Function.Injective address }) :
+    ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+      ontology definitions maxWidth budget := by
+  classical
+  exact Classical.choice (show Nonempty
+      (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+        ontology definitions maxWidth budget) from by
+    rcases cardinalityControl_search_total ontology definitions
+        (8 * 2 ^ budget) parent ancestors root with
+      hrefutes | ⟨leaf, hdescends, hstop⟩
+    · let certificate := rootCertificate.canonicalizeEqualityClosure
+      have hcertificateState : certificate.state = root.state := by
+        simpa [certificate] using hrootState.symm
+      obtain ⟨depth, tree, htree⟩ := hrefutes.exists_checkClosed_tree
+        certificate (by simpa [certificate] using hontology) hcertificateState
+        rootCertificate.canonicalizeEqualityClosure_valid
+      have hempty' : certificate.base.EmptyRoot := by
+        simpa [certificate, FiniteDistinctEqCertificate.canonicalizeEqualityClosure,
+          FiniteEqCertificate.canonicalizeEqualityClosure,
+          FiniteEqCertificate.EmptyRoot] using hempty
+      have hapart' : certificate.apart = [] := by
+        simpa [certificate, FiniteDistinctEqCertificate.canonicalizeEqualityClosure]
+          using hapart
+      let outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+          variableCount ontology definitions :=
+        .closed certificate tree (by simpa [certificate] using hontology)
+          (by positivity) hempty' hapart' htree
+      exact ⟨⟨outcome, .conclusive (by
+        simp [outcome, CardinalityProductionConclusive])⟩⟩
+    · rcases stopResult leaf hdescends hstop with hmodel | haddress
+      · obtain ⟨certificate, hpositive, hmodelOntology, hcheck⟩ := hmodel.down
+        let outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+            variableCount ontology definitions :=
+          .sat certificate hmodelOntology hpositive hcheck
+        exact ⟨⟨outcome, .conclusive (by
+          simp [outcome, CardinalityProductionConclusive])⟩⟩
+      · rcases haddress with ⟨address, hinjective⟩
+        exact ⟨⟨CheckedCardinalityDecisionOutcome.frontier_of_address
+          address hinjective, .frontier address hinjective rfl⟩⟩)
+
+noncomputable def
+    CartesianFoldExpansionRuntime.ofConstructedCardinalityFiniteSearch
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth : Nat)
+    (rootCertificate : FiniteDistinctEqCertificate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount)
+    (hontology : rootCertificate.base.base.ontology = ontology)
+    (hempty : rootCertificate.base.EmptyRoot)
+    (hapart : rootCertificate.apart = [])
+    (root : CardinalityRuntimeConfig (Fin conceptCount) (Fin roleCount)
+      definitions (8 * 2 ^ budget))
+    (hrootState : root.state = rootCertificate.state)
+    (parent : Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (stopResult : ∀ leaf,
+      CardinalityProductionDescends ontology definitions parent ancestors
+        root leaf →
+      (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
+      PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
+          ontology definitions) ⊕
+        { address : Fin (8 * 2 ^ budget) →
+            RootedRoleBlockedAddress (Fin 1)
+              (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+                definitions.length maxWidth)
+              (Fin conceptCount) (Fin roleCount) //
+          Function.Injective address }) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+        ontology definitions maxWidth budget) :=
+  CartesianFoldExpansionRuntime.done
+    (finiteCardinalityRoundBudgetConstruction definitions maxWidth
+      rootCertificate hontology hempty hapart root hrootState parent ancestors
+      stopResult)
+
+/-- Concrete cross-budget inputs for cardinality production search. -/
+structure ConstructedCardinalityFiniteSearchFamily
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth : Nat) where
+  certificate : ∀ budget, FiniteDistinctEqCertificate (8 * 2 ^ budget)
+    conceptCount roleCount variableCount
+  ontology_eq : ∀ budget, (certificate budget).base.base.ontology = ontology
+  empty : ∀ budget, (certificate budget).base.EmptyRoot
+  apart_empty : ∀ budget, (certificate budget).apart = []
+  root : ∀ budget, CardinalityRuntimeConfig (Fin conceptCount)
+    (Fin roleCount) definitions (8 * 2 ^ budget)
+  root_state : ∀ budget, (root budget).state = (certificate budget).state
+  parent : ∀ budget,
+    Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget))
+  ancestors : ∀ budget,
+    Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
+  stopResult : ∀ budget leaf,
+    CardinalityProductionDescends ontology definitions (parent budget)
+      (ancestors budget) (root budget) leaf →
+    (cardinalityControl ontology definitions leaf (parent budget)
+      (ancestors budget)).IsStop →
+    PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
+        ontology definitions) ⊕
+      { address : Fin (8 * 2 ^ budget) →
+          RootedRoleBlockedAddress (Fin 1)
+            (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+              definitions.length maxWidth)
+            (Fin conceptCount) (Fin roleCount) //
+        Function.Injective address }
+
+noncomputable def ConstructedCardinalityFiniteSearchFamily.runtime
+    (family : ConstructedCardinalityFiniteSearchFamily conceptCount roleCount
+      variableCount ontology definitions maxWidth)
+    (budget : Nat) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+        ontology definitions maxWidth budget) :=
+  CartesianFoldExpansionRuntime.ofConstructedCardinalityFiniteSearch definitions
+    maxWidth (family.certificate budget) (family.ontology_eq budget)
+    (family.empty budget) (family.apart_empty budget) (family.root budget)
+    (family.root_state budget) (family.parent budget) (family.ancestors budget)
+    (family.stopResult budget)
 
 theorem checked_cardinality_doubling_execution_decides_source
     {source target : List
@@ -1315,6 +1469,20 @@ theorem checked_constructed_cardinality_runtime_decides_source
       (hrejected ((document budget).checkScheduled_check budget maxWidth
         (hscheduled budget)))
 
+theorem checked_cardinality_finite_search_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (family : ConstructedCardinalityFiniteSearchFamily conceptCount roleCount
+      variableCount target definitions maxWidth) :
+    ∃ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions, outcome.SourceSemantics source :=
+  checked_constructed_cardinality_runtime_decides_source equivalent maxWidth
+    family.runtime
+
 theorem checked_native_abox_runtime_through_decides_source
     {Individual : Type}
     {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
@@ -1758,8 +1926,12 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_cardinality_runtime_eventually_conclusive
 #print axioms checked_cardinality_runtime_decides_source
 #print axioms CardinalityBudgetOutcomeConstruction.classify
+#print axioms finiteCardinalityRoundBudgetConstruction
+#print axioms CartesianFoldExpansionRuntime.ofConstructedCardinalityFiniteSearch
+#print axioms ConstructedCardinalityFiniteSearchFamily.runtime
 #print axioms checked_cardinality_runtime_decides_source_of_construction
 #print axioms checked_constructed_cardinality_runtime_decides_source
+#print axioms checked_cardinality_finite_search_decides_source
 #print axioms checked_native_abox_runtime_eventually_conclusive
 #print axioms checked_native_abox_runtime_decides_source
 #print axioms NativeABoxBudgetOutcomeConstruction.classify
