@@ -170,6 +170,55 @@ noncomputable def finiteProductionRoundBudgetConstructionSettlement
       .inl ⟨constructed.outcome, constructed.toBudgetConstruction⟩
   | .inr blocked => .inr blocked
 
+/-- Build KM's complete fixed-budget regular runtime from exhaustive finite
+search while preserving construction evidence through both blocker-learning
+layers.  The early-search settlement, every accepted simultaneous fold
+assignment, and the fold-free terminal all return the same dependent result
+type consumed by the certified global route. -/
+noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+      (Fin roleCount)))
+    (hrootEmpty : root = ∅)
+    (frontierAddress : ∀
+      (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
+    (candidate : ∀ _forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
+      Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+        FoldAssignment (Fin (8 * 2 ^ budget)) →
+          Option (ConstructedRegularBudgetResult conceptCount roleCount
+            variableCount ontology budget))
+    (foldFree : ∀ forbidden
+      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+        (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
+        forbidden), leaf.unwitnessedSources = [] →
+          ConstructedRegularBudgetResult conceptCount roleCount variableCount
+            ontology budget) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+        ontology budget) :=
+  CartesianFoldExpansionRuntime.ofSettledProductionSearch ontology
+    (finiteProductionRoundBudgetConstructionSettlement ontology parent ancestors
+      hheads root hrootEmpty frontierAddress) candidate foldFree
+
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
 theorem checked_regular_doubling_execution_decides_source
@@ -778,6 +827,58 @@ theorem checked_constructed_regular_runtime_decides_source
     exact False.elim
       (hrejected ((document budget).checkScheduled_check budget
         (hscheduled budget)))
+
+/-- End-to-end regular decision built from the concrete exhaustive search data
+at every doubling budget.  The theorem constructs both finite learning loops
+and their evidence-carrying accepted results before deriving the source-level
+decision. -/
+theorem checked_regular_finite_search_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (parent : ∀ budget,
+      Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount)) →
+        Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : ∀ budget,
+      Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount)) →
+        Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (hheads : ∀ clause ∈ target, ∀ atom ∈ clause.head, Branchable atom)
+    (frontierAddress : ∀ budget
+      (forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+      (leaf : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts target
+          (productionBlockedFacts (parent budget) (ancestors budget) forbidden))
+        ∅ leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier target
+        ((stateOfGuardedFacts leaf).productionBlocked (parent budget leaf)
+          (ancestors budget leaf) forbidden) →
+      ∃ address : Fin (8 * 2 ^ budget) →
+          WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount),
+        (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
+    (candidate : ∀ budget (_forbidden : Finset
+        (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
+      Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
+        FoldAssignment (Fin (8 * 2 ^ budget)) →
+          Option (ConstructedRegularBudgetResult conceptCount roleCount
+            variableCount target budget))
+    (foldFree : ∀ budget forbidden
+      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+        (Fin conceptCount) (Fin roleCount) (Fin variableCount) target forbidden),
+      leaf.unwitnessedSources = [] →
+        ConstructedRegularBudgetResult conceptCount roleCount variableCount
+          target budget) :
+    ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      target, outcome.SourceSemantics source := by
+  apply checked_constructed_regular_runtime_decides_source equivalent
+  intro budget
+  exact CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch target
+    (parent budget) (ancestors budget) hheads ∅ rfl
+    (frontierAddress budget) (candidate budget) (foldFree budget)
 
 theorem checked_equality_runtime_through_decides_source
     {source target : List
@@ -1517,8 +1618,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms RegularBudgetOutcomeConstruction.classify
 #print axioms ConstructedRegularRoundOutcome.toBudgetConstruction
 #print axioms finiteProductionRoundBudgetConstructionSettlement
+#print axioms CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
 #print axioms checked_regular_runtime_decides_source_of_construction
 #print axioms checked_constructed_regular_runtime_decides_source
+#print axioms checked_regular_finite_search_decides_source
 #print axioms checked_equality_runtime_eventually_conclusive
 #print axioms checked_equality_runtime_decides_source
 #print axioms EqualityBudgetOutcomeConstruction.classify

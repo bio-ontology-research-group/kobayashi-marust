@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Construct the complete regular fixed-budget runtime from exhaustive finite
+  search and carry dependent construction evidence through accepted fold
+  assignments and fold-free exhaustion. The cross-budget capstone now builds
+  these nested runtimes from concrete search data instead of assuming an
+  abstract runtime family.
 - Make the accepted result type of every assignment-production runtime carry
   its checked outcome together with regular, equality, cardinality, or native
   ABox construction evidence. The current global route no longer accepts a
