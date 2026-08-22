@@ -11017,6 +11017,39 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind one first-class cardinality SAT/UNSAT terminal to the full
+    /// state-bearing frontier history from the same production decision.
+    fn lean_cardinality_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER")
+            })
+            .ok_or_else(|| {
+                "cardinality HT publication requires KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"
+                    .to_string()
+            })?;
+        let max_width = self
+            .card_defs
+            .values()
+            .filter(|definition| definition.kind == CardKind::Min)
+            .map(|definition| definition.n as usize)
+            .max()
+            .unwrap_or(0);
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "max_width": max_width,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -13589,6 +13622,78 @@ impl Ht {
         .map_err(|error| error.to_string())?)
     }
 
+    /// Serialize the exact closing tree and root state returned by a
+    /// cardinality production decision. This must not start a second search:
+    /// the terminal evidence belongs to the traced run only when these are the
+    /// objects that ended that run.
+    fn lean_cardinality_closed_run_certificate_json(
+        &self,
+        node_budget: usize,
+        root_state: LeanHtEqState,
+        tree: LeanHtDistinctCardinalityRefutationTree,
+        depth: usize,
+    ) -> Result<String, String> {
+        let (variable_count, concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        let mut definitions: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .map(|(&marker, &definition)| (marker, definition))
+            .collect();
+        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let wire_definitions: Vec<_> = definitions
+            .iter()
+            .map(|&(marker, definition)| LeanHtCardinalityDef {
+                marker: marker as usize,
+                minimum: definition.kind == CardKind::Min,
+                bound: definition.n as usize,
+                role: definition.role as usize,
+                filler: definition.filler.c as usize,
+            })
+            .collect();
+        let exact_maximums = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Max
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
+            })
+            .collect();
+        let exact_definitions = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (marker, definition))| {
+                (definition.kind == CardKind::Min
+                    && self.cert_exact_cardinality_markers.contains(marker))
+                .then_some(index)
+            })
+            .collect();
+        serde_json::to_string(&LeanHtCardinalityCertificate {
+            version: 2,
+            certificate: LeanHtEqCertificate {
+                version: 2,
+                node_count: node_budget,
+                concept_count,
+                role_count,
+                variable_count,
+                ontology,
+                state: root_state,
+                evidence: LeanHtEqEvidence::Unsat {
+                    tree: LeanHtEqRefutationTree::Clash,
+                },
+            },
+            definitions: wire_definitions,
+            exact_maximums,
+            exact_definitions,
+            refutation_depth: 0,
+            refutation: None,
+            distinct_refutation_depth: depth,
+            distinct_refutation: Some(tree),
+        })
+        .map_err(|error| error.to_string())
+    }
+
     /// Construct an exhaustive empty-root refutation for the exact normalized
     /// ontology. Concept, role, and existential heads are monotone finite facts.
     /// Unwitnessed existential obligations may allocate a fresh finite node; the
@@ -13999,8 +14104,24 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
-                    return Ok((false, self.lean_unsat_certificate_json()?));
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                    let raw = self.lean_cardinality_closed_run_certificate_json(
+                        node_budget,
+                        state.equality_wire_state(node_budget),
+                        tree,
+                        depth,
+                    )?;
+                    let terminal =
+                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+                    if !self.lean_cardinality_production_run_passes(
+                        &cardinality_frontier_history,
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the closed cardinality production run".to_string(),
+                        );
+                    }
+                    return Ok((false, self.finalize_lean_certificate(raw)?));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
@@ -14019,8 +14140,15 @@ impl Ht {
                         })
                         .map_err(|error| error.to_string())?;
                         let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
+                        let terminal = serde_json::from_str(&cardinality)
+                            .map_err(|error| error.to_string())?;
                         let candidate = self.finalize_lean_certificate(cardinality)?;
-                        if self.lean_decision_candidate_passes(&candidate)? {
+                        if self.lean_decision_candidate_passes(&candidate)?
+                            && self.lean_cardinality_production_run_passes(
+                                &cardinality_frontier_history,
+                                terminal,
+                            )?
+                        {
                             return Ok((true, candidate));
                         }
                         let inserted = rejected_assignments.insert(folds);

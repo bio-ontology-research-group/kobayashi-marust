@@ -6255,6 +6255,7 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
     "KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER",
+    "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
@@ -6470,6 +6471,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if std::env::var_os("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER").is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER to bind ordinary SAT terminals to their complete runs"
+                        .to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER to bind cardinality terminals to their complete runs"
                         .to_string(),
                 );
             }
@@ -7176,6 +7183,7 @@ mod tests {
             "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
             "KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",

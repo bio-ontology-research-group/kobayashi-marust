@@ -52,6 +52,13 @@
   full logical problem to remain identical across retries. Production emits
   the new evidence directly; regressions accept a genuine two-budget history
   and reject a successor whose ontology was replaced.
+- Bind first-class single-root cardinality SAT and UNSAT terminals to their
+  full state-bearing retry histories. The executable Lean run checker validates
+  the production-global terminal, derives its budget cap from the retry count,
+  matches the ontology, definitions, and complete finite signature to the last
+  frontier, and derives the terminal's model-theoretic semantics. KM now emits
+  the exact closing tree and root state returned by the traced UNSAT search;
+  it no longer launches a second cardinality search to construct that terminal.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and
