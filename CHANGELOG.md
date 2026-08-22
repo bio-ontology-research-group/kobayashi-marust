@@ -20,6 +20,12 @@
   descended blocked terminal, or a node frontier. Fold-free terminals carry
   their accepted exact finite certificate immediately; only nonempty blocked
   terminals proceed to Cartesian fold learning.
+- Define the executable finite production-blocking table that the Rust blocked
+  leaf must expose. Its checker validates that every predecessor is strictly
+  earlier, reconstructs each bounded ancestor chain, and recomputes the exact
+  source-major blocker options from the finite state and forbidden-pair set.
+  Acceptance proves both predecessor-forest order and complete option-table
+  equality, including equality of the pair union used for outer expansion.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise

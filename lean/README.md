@@ -669,6 +669,15 @@ descends to a blocked terminal/frontier. The refined leaf theorem attaches the
 accepted finite certificate to a fold-free terminal and sends only a terminal
 with a nonempty blocked-source table to blocker-assignment learning.
 
+The production route also defines `FiniteProductionBlockingTable`, the checked
+target for the Rust blocked-leaf control metadata. It carries the exact finite
+state, predecessor map, forbidden pairs, and emitted blocker options. Its
+executable checker requires every predecessor to be strictly earlier, rebuilds
+ancestor chains with the finite node bound, and compares the complete emitted
+option table with Lean's reconstruction. Checker acceptance proves exact
+option and expansion-pair equality. The remaining wire task is to retain and
+decode Rust's `witness_parent` and `fold_options` into this table.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion

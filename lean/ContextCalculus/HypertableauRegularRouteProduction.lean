@@ -91,6 +91,35 @@ theorem State.productionBlocked_eq_true_iff
       ∃ blocker, state.productionFold parent ancestors forbidden source blocker := by
   simp [State.productionBlocked]
 
+/-! ## Executable finite production blocking table -/
+
+def ancestorChain (parent : Node → Option Node) : Nat → Node → List Node
+  | 0, _ => []
+  | fuel + 1, node =>
+      match parent node with
+      | none => []
+      | some predecessor => predecessor :: ancestorChain parent fuel predecessor
+
+structure FiniteProductionBlockingTable
+    (nodeCount conceptCount roleCount variableCount : Nat) where
+  base : FiniteSatCertificate nodeCount conceptCount roleCount variableCount
+  parent : Fin nodeCount → Option (Fin nodeCount)
+  forbidden : Finset (Fin nodeCount × Fin nodeCount)
+  options : List (Fin nodeCount × List (Fin nodeCount))
+
+instance FiniteSatCertificate.decidableState
+    (certificate : FiniteSatCertificate nodeCount conceptCount roleCount variableCount) :
+    DecidableState certificate.state where
+  label := fun node literal => by
+    change Decidable ((node, literal) ∈ certificate.labels)
+    infer_instance
+  edge := fun role source target => by
+    change Decidable ((role, source, target) ∈ certificate.edges)
+    infer_instance
+  obligation := fun role filler node => by
+    change Decidable ((role, filler, node) ∈ certificate.obligations)
+    infer_instance
+
 /-! ## Concrete recursive production search -/
 
 noncomputable def productionBlockedFacts
@@ -182,6 +211,97 @@ theorem State.mem_productionUnwitnessedSources_iff
           ¬(state.edge role source witness ∧ state.label witness filler) := by
   classical
   simp [State.productionUnwitnessedSources]
+
+noncomputable def FiniteProductionBlockingTable.expectedOptions
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    List (Fin nodeCount × List (Fin nodeCount)) :=
+  foldOptionsUsing
+    (table.base.state.productionFold table.parent
+      (ancestorChain table.parent nodeCount) table.forbidden)
+    (Classical.decRel
+      (table.base.state.productionFold table.parent
+        (ancestorChain table.parent nodeCount) table.forbidden))
+    table.base.state.productionUnwitnessedSources
+
+/-- Executable exactness check for the fold-option table emitted by
+production. It does not establish that the parent map came from recursive
+search; that separate transition invariant is the next refinement layer. -/
+noncomputable def FiniteProductionBlockingTable.checkOptions
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    Bool := by
+  classical
+  exact decide (table.options = table.expectedOptions)
+
+theorem FiniteProductionBlockingTable.checkOptions_eq_true_iff
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    table.checkOptions = true ↔ table.options = table.expectedOptions := by
+  classical
+  simp [FiniteProductionBlockingTable.checkOptions]
+
+theorem FiniteProductionBlockingTable.checked_option_exact
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount)
+    (hcheck : table.checkOptions = true) :
+    table.options = table.expectedOptions :=
+  table.checkOptions_eq_true_iff.mp hcheck
+
+theorem FiniteProductionBlockingTable.checked_pairs_exact
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount)
+    (hcheck : table.checkOptions = true) :
+    foldOptionPairs table.options = foldOptionPairs table.expectedOptions := by
+  rw [table.checked_option_exact hcheck]
+
+def FiniteProductionBlockingTable.ParentEarlier
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    Prop :=
+  ∀ node predecessor, table.parent node = some predecessor → predecessor.val < node.val
+
+noncomputable def FiniteProductionBlockingTable.parentEarlierB
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    Bool :=
+  (Finset.univ.toList : List (Fin nodeCount)).all fun node =>
+    match table.parent node with
+    | none => true
+    | some predecessor => decide (predecessor.val < node.val)
+
+theorem FiniteProductionBlockingTable.parentEarlierB_eq_true_iff
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    table.parentEarlierB = true ↔ table.ParentEarlier := by
+  classical
+  simp only [FiniteProductionBlockingTable.parentEarlierB, List.all_eq_true,
+    Finset.mem_toList, Finset.mem_univ, true_implies]
+  constructor
+  · intro hall node predecessor hparent
+    have hnode := hall node
+    rw [hparent] at hnode
+    simpa using hnode
+  · intro hearlier node
+    cases hparent : table.parent node with
+    | none => simp
+    | some predecessor =>
+        simpa using hearlier node predecessor hparent
+
+/-- Combined production-control check. Earlier-parent validation makes the
+fuel-bounded ancestor reconstruction faithful to Rust's predecessor forest;
+option equality then checks the entire source-major blocker table. -/
+noncomputable def FiniteProductionBlockingTable.check
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    Bool :=
+  table.parentEarlierB && table.checkOptions
+
+theorem FiniteProductionBlockingTable.check_eq_true_iff
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
+    table.check = true ↔ table.ParentEarlier ∧
+      table.options = table.expectedOptions := by
+  classical
+  simp [FiniteProductionBlockingTable.check,
+    FiniteProductionBlockingTable.parentEarlierB_eq_true_iff,
+    FiniteProductionBlockingTable.checkOptions_eq_true_iff]
+
+theorem FiniteProductionBlockingTable.check_sound
+    (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount)
+    (hcheck : table.check = true) :
+    table.ParentEarlier ∧ table.options = table.expectedOptions :=
+  table.check_eq_true_iff.mp hcheck
 
 theorem State.productionUnwitnessedSources_eq_nil_iff
     [Fintype Node] [DecidableEq Node]
@@ -486,6 +606,12 @@ noncomputable def CartesianFoldExpansionRuntime.ofProductionTerminals
       · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm }
 
 #print axioms State.productionBlocked_eq_true_iff
+#print axioms FiniteProductionBlockingTable.checkOptions_eq_true_iff
+#print axioms FiniteProductionBlockingTable.checked_option_exact
+#print axioms FiniteProductionBlockingTable.checked_pairs_exact
+#print axioms FiniteProductionBlockingTable.parentEarlierB_eq_true_iff
+#print axioms FiniteProductionBlockingTable.check_eq_true_iff
+#print axioms FiniteProductionBlockingTable.check_sound
 #print axioms finite_productionBlocked_terminal_or_frontier
 #print axioms FiniteSatCertificate.ofState_state
 #print axioms State.productionBlocked_foldTotal
