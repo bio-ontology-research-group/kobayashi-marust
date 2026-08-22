@@ -34,6 +34,12 @@
   contradict the finite doubling bound. The regular, equality, cardinality,
   and native-ABox runtime theorems therefore require neither a caller-selected
   retry trace nor a caller-supplied terminal budget.
+- Lift the concrete nested executor to production taxonomy cells. Lean now
+  derives a conclusive budget for each positive or negative concept and
+  subsumption query, constructs its full assignment, blocker-learning, and
+  doubling trace, and eliminates the checked terminal into the cell decision.
+  All four complete-assignment taxonomy route families now use this concrete
+  interface: regular, cardinality, native ABox, and native-ABox cardinality.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem
