@@ -85,6 +85,10 @@ name = "ht-ordinary-production-run-check"
 root = "HTOrdinaryProductionRunCheck"
 
 [[lean_exe]]
+name = "ht-ordinary-unsat-production-run-check"
+root = "HTOrdinaryUnsatProductionRunCheck"
+
+[[lean_exe]]
 name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 

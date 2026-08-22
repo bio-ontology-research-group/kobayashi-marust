@@ -197,6 +197,7 @@ fn run_with_input(
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
@@ -243,6 +244,7 @@ fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::proc
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
@@ -286,6 +288,7 @@ fn run_certification_bypass_probe(
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         // A branch that bypasses certification would incorrectly succeed.
@@ -338,6 +341,7 @@ fn run_projection_only_certification() -> std::process::Output {
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
@@ -380,6 +384,7 @@ fn run_native_abox_taxonomy_certification(
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER", "/bin/true")
@@ -451,6 +456,7 @@ fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Out
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
@@ -490,6 +496,7 @@ fn run_rejected_cyclic_fold_probe() -> std::process::Output {
         .env("KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         // This probe isolates finite progress under a fixed cap. Production
@@ -588,6 +595,7 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER",
         "KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",

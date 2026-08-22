@@ -13,6 +13,7 @@ import ContextCalculus.HypertableauDoublingTraceWire
 import ContextCalculus.HypertableauCardinalityDoublingTraceWire
 import ContextCalculus.HypertableauCardinalityProductionRunWire
 import ContextCalculus.HypertableauRootedCardinalityProductionRunWire
+import ContextCalculus.HypertableauOrdinaryUnsatProductionRunWire
 import ContextCalculus.HypertableauOrdinaryProductionRunWire
 
 /-!

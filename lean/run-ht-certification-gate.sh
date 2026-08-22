@@ -44,6 +44,7 @@ checkers=(
     ht-cardinality-doubling-trace-check
     ht-rooted-cardinality-doubling-trace-check
     ht-ordinary-production-run-check
+    ht-ordinary-unsat-production-run-check
     ht-cardinality-production-run-check
     ht-rooted-cardinality-production-run-check
     ht-production-blocking-check
@@ -156,6 +157,8 @@ done
     export KM_HT_TEST_LEAN_ROOTED_CARDINALITY_DOUBLING_TRACE_CHECKER="$bin_root/ht-rooted-cardinality-doubling-trace-check"
     export KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-production-run-check"
     export KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-production-run-check"
+    export KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-unsat-production-run-check"
+    export KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER="$bin_root/ht-ordinary-unsat-production-run-check"
     export KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-cardinality-production-run-check"
     export KM_HT_TEST_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-cardinality-production-run-check"
     export KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-production-run-check"
@@ -183,6 +186,10 @@ done
     export KM_HT_TEST_LEAN_JOINT_NATIVE_ABOX_CLASSIFICATION_CHECKER="$bin_root/ht-joint-native-abox-classification-cert-check"
 
     cargo test --release equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle -- --nocapture
+    cargo test --release regular_decision_envelope_carries_finite_unsat_and_lean_checks_it -- --nocapture
+    cargo test --release equality_free_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
+    cargo test --release ordinary_unsat_production_run_rejects_a_sat_terminal -- --nocapture
+    cargo test --release equality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
     cargo test --release equality_production_blocking_checks_rejection_provenance -- --nocapture
     cargo test --release native_abox_production_blocking_checks_joint_rejection_provenance -- --nocapture
     cargo test --release equality_and_cardinality_folds_copy_incoming_blocker_edges -- --nocapture

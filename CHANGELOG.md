@@ -65,6 +65,12 @@
   model-theoretic validity of the accepted terminal. KM composes native-ABox
   UNSAT evidence from the exact closing tree returned by the traced search,
   avoiding a second search whose result could diverge from the recorded run.
+- Bind equality-free, regular equality-free, and equality-aware global UNSAT
+  terminals to their complete ordinary retry histories. Lean separately checks
+  the UNSAT evidence tag, the complete semantic certificate, the derived search
+  budget, and problem identity across the final frontier. KM now serializes the
+  exact closing tree and equality root state returned by each production run;
+  these paths no longer rerun refutation search before publication.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and

@@ -11017,6 +11017,44 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind the exact ordinary or equality-aware closing tree to every
+    /// iterative-deepening frontier that preceded it in the same run.
+    fn lean_ordinary_unsat_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal_kind: &str,
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker =
+            std::env::var_os("KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER",
+                    )
+                })
+                .ok_or_else(|| {
+                    "ordinary HT UNSAT publication requires KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER"
+                        .to_string()
+                })?;
+        let terminal = match terminal_kind {
+            "ordinary" => serde_json::json!({ "ordinary": { "certificate": terminal } }),
+            "equality" => serde_json::json!({ "equality": { "certificate": terminal } }),
+            _ => {
+                return Err(format!(
+                    "unsupported ordinary HT UNSAT terminal kind {terminal_kind}"
+                ))
+            }
+        };
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Bind one first-class cardinality SAT/UNSAT terminal to the full
     /// state-bearing frontier history from the same production decision.
     fn lean_cardinality_production_run_passes(
@@ -12105,8 +12143,24 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtRefutationOutcome::Closed(_, _) => {
-                    let finite = self.lean_unsat_certificate_json_raw()?;
+                LeanHtRefutationOutcome::Closed(tree, node_count) => {
+                    let finite = self.lean_ordinary_closed_run_certificate_json(
+                        node_count,
+                        variable_count,
+                        tree,
+                    )?;
+                    let terminal: serde_json::Value = serde_json::from_str(&finite)
+                        .map_err(|error| error.to_string())?;
+                    if !self.lean_ordinary_unsat_production_run_passes(
+                        &frontier_history,
+                        "ordinary",
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the regular equality-free UNSAT production run"
+                                .to_string(),
+                        );
+                    }
                     let envelope = Self::lean_regular_decision_envelope(finite, false)?;
                     return Ok((false, self.finalize_lean_certificate(envelope)?));
                 }
@@ -13898,6 +13952,56 @@ impl Ht {
         self.lean_refutation_certificate_json(&[], |tree| LeanHtEvidence::Unsat { tree })
     }
 
+    /// Serialize the exact equality-free closure returned by production
+    /// search. This does not rerun search, so the terminal belongs to the
+    /// recorded iterative-deepening history.
+    fn lean_ordinary_closed_run_certificate_json(
+        &self,
+        node_count: usize,
+        variable_count: usize,
+        tree: LeanHtRefutationTree,
+    ) -> Result<String, String> {
+        let (_, concept_count, role_count, ontology) = self.lean_decision_signature();
+        serde_json::to_string(&LeanHtCertificate {
+            version: 1,
+            node_count,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            labels: Vec::new(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
+            evidence: LeanHtEvidence::Unsat { tree },
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    /// Equality-aware counterpart using the exact root state and closing tree
+    /// returned by the traced production run.
+    fn lean_equality_closed_run_certificate_json(
+        &self,
+        node_budget: usize,
+        variable_count: usize,
+        concept_count: usize,
+        role_count: usize,
+        ontology: Vec<LeanHtClause>,
+        root_state: LeanHtEqState,
+        tree: LeanHtEqRefutationTree,
+    ) -> Result<String, String> {
+        serde_json::to_string(&LeanHtEqCertificate {
+            version: 2,
+            node_count: node_budget,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology,
+            state: root_state,
+            evidence: LeanHtEqEvidence::Unsat { tree },
+        })
+        .map_err(|error| error.to_string())
+    }
+
     pub fn lean_unsat_certificate_json(&self) -> Result<String, String> {
         self.finalize_lean_certificate(self.lean_unsat_certificate_json_raw()?)
     }
@@ -13941,8 +14045,24 @@ impl Ht {
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
-                LeanHtRefutationOutcome::Closed(_, _) => {
-                    return Ok((false, self.lean_unsat_certificate_json()?));
+                LeanHtRefutationOutcome::Closed(tree, node_count) => {
+                    let raw = self.lean_ordinary_closed_run_certificate_json(
+                        node_count,
+                        variable_count,
+                        tree,
+                    )?;
+                    let terminal: serde_json::Value = serde_json::from_str(&raw)
+                        .map_err(|error| error.to_string())?;
+                    if !self.lean_ordinary_unsat_production_run_passes(
+                        &frontier_history,
+                        "ordinary",
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the equality-free UNSAT production run".to_string(),
+                        );
+                    }
+                    return Ok((false, self.finalize_lean_certificate(raw)?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
                     let raw =
@@ -14062,8 +14182,28 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtEqRefutationOutcome::Closed(_, _) => {
-                    return Ok((false, self.lean_unsat_certificate_json()?));
+                LeanHtEqRefutationOutcome::Closed(tree, _) => {
+                    let raw = self.lean_equality_closed_run_certificate_json(
+                        node_budget,
+                        variable_count,
+                        concept_count,
+                        role_count,
+                        ontology.clone(),
+                        state.equality_wire_state(node_budget),
+                        tree,
+                    )?;
+                    let terminal: serde_json::Value = serde_json::from_str(&raw)
+                        .map_err(|error| error.to_string())?;
+                    if !self.lean_ordinary_unsat_production_run_passes(
+                        &frontier_history,
+                        "equality",
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the equality-aware UNSAT production run".to_string(),
+                        );
+                    }
+                    return Ok((false, self.finalize_lean_certificate(raw)?));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
@@ -27798,6 +27938,32 @@ mod tests {
                 .unwrap_err()
                 .contains("overflowed")
         );
+    }
+
+    #[test]
+    fn ordinary_unsat_production_run_rejects_a_sat_terminal() {
+        if std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER")
+            .is_none()
+        {
+            return;
+        }
+        let reasoner = Ht::new_certified(Vec::new());
+        let terminal = serde_json::to_value(LeanHtCertificate {
+            version: 1,
+            node_count: 1,
+            concept_count: 0,
+            role_count: 0,
+            variable_count: 0,
+            ontology: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            obligations: Vec::new(),
+            evidence: LeanHtEvidence::Sat,
+        })
+        .unwrap();
+        assert!(!reasoner
+            .lean_ordinary_unsat_production_run_passes(&[], "ordinary", terminal)
+            .expect("run the ordinary UNSAT production checker"));
     }
 
     #[test]
