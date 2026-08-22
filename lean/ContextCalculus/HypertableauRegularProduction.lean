@@ -620,6 +620,38 @@ def rejectedAssignmentPairs [DecidableEq Node]
     (rejected : Finset (FoldAssignment Node)) : FoldAssignment Node :=
   rejected.biUnion id
 
+/-- The exact pair set learned by Rust after exhausting the complete product
+for one blocker-option list. -/
+def foldOptionPairs [DecidableEq Node]
+    (options : List (Node × List Node)) : FoldAssignment Node :=
+  match options with
+  | [] => ∅
+  | option :: rest =>
+      option.2.toFinset.image (fun blocker => (option.1, blocker)) ∪
+        foldOptionPairs rest
+
+theorem mem_foldOptionPairs_iff
+    [DecidableEq Node]
+    {options : List (Node × List Node)} {source blocker : Node} :
+    (source, blocker) ∈ foldOptionPairs options ↔
+      ∃ blockers, (source, blockers) ∈ options ∧ blocker ∈ blockers := by
+  induction options with
+  | nil => simp [foldOptionPairs]
+  | cons option options ih =>
+      rcases option with ⟨firstSource, firstBlockers⟩
+      simp only [foldOptionPairs, Finset.mem_union, Finset.mem_image,
+        List.mem_cons, Prod.mk.injEq, List.mem_toFinset, ih]
+      constructor
+      · rintro (⟨candidate, hcandidate, heq⟩ |
+          ⟨blockers, hoption, hblocker⟩)
+        · rcases heq with ⟨rfl, rfl⟩
+          exact ⟨firstBlockers, Or.inl ⟨rfl, rfl⟩, hcandidate⟩
+        · exact ⟨blockers, Or.inr hoption, hblocker⟩
+      · rintro ⟨blockers, hoption | hoption, hblocker⟩
+        · rcases hoption with ⟨rfl, rfl⟩
+          exact Or.inl ⟨blocker, hblocker, ⟨rfl, rfl⟩⟩
+        · exact Or.inr ⟨blockers, hoption, hblocker⟩
+
 theorem pair_mem_rejectedAssignmentPairs
     [DecidableEq Node]
     {rejected : Finset (FoldAssignment Node)} {pair : Node × Node} :
@@ -832,6 +864,69 @@ structure CartesianFoldAssignmentRuntime (Node Result : Type)
     option ∈ options rejected → option.2 ≠ []
   check : Finset (FoldAssignment Node) → FoldAssignment Node → Result ⊕ Unit
   onExhausted : Finset (FoldAssignment Node) → Result
+
+/-! ### Runtime options derived from a total fold table -/
+
+noncomputable def foldBlockers [Fintype Node] [DecidableEq Node]
+    (fold : Node → Node → Prop) [DecidableRel fold] (source : Node) : List Node :=
+  (Finset.univ.filter (fold source)).toList
+
+theorem mem_foldBlockers_iff
+    [Fintype Node] [DecidableEq Node]
+    (fold : Node → Node → Prop) [DecidableRel fold]
+    (source blocker : Node) :
+    blocker ∈ foldBlockers fold source ↔ fold source blocker := by
+  simp [foldBlockers]
+
+noncomputable def foldOptions [Fintype Node] [DecidableEq Node]
+    (fold : Node → Node → Prop) [DecidableRel fold]
+    (sources : List Node) : List (Node × List Node) :=
+  sources.map fun source => (source, foldBlockers fold source)
+
+theorem foldOptions_option_nonempty
+    [Fintype Node] [DecidableEq Node]
+    (blocked : Node → Bool)
+    (fold : Node → Node → Prop) [DecidableRel fold]
+    (hfoldTotal : State.BlockedFoldTotal blocked fold)
+    (sources : List Node)
+    (hsources : ∀ source ∈ sources, blocked source = true)
+    (option : Node × List Node)
+    (hoption : option ∈ foldOptions fold sources) :
+    option.2 ≠ [] := by
+  rcases List.mem_map.mp hoption with ⟨source, hsource, rfl⟩
+  obtain ⟨blocker, hfold⟩ := hfoldTotal source (hsources source hsource)
+  intro hempty
+  have hmem : blocker ∈ foldBlockers fold source :=
+    (mem_foldBlockers_iff fold source blocker).mpr hfold
+  change foldBlockers fold source = [] at hempty
+  rw [hempty] at hmem
+  simp at hmem
+
+/-- Build the executable inner producer from the blocked sources and total
+fold relation exposed by a concrete runtime terminal. -/
+noncomputable def CartesianFoldAssignmentRuntime.ofFoldTable
+    [Fintype Node] [DecidableEq Node]
+    (blocked : Finset (FoldAssignment Node) → Node → Bool)
+    (fold : Finset (FoldAssignment Node) → Node → Node → Prop)
+    (foldDecidable : ∀ rejected, DecidableRel (fold rejected))
+    (hfoldTotal : ∀ rejected,
+      State.BlockedFoldTotal (blocked rejected) (fold rejected))
+    (sources : Finset (FoldAssignment Node) → List Node)
+    (hsources : ∀ rejected source, source ∈ sources rejected →
+      blocked rejected source = true)
+    (check : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Result ⊕ Unit)
+    (onExhausted : Finset (FoldAssignment Node) → Result) :
+    CartesianFoldAssignmentRuntime Node Result where
+  options rejected :=
+    letI := foldDecidable rejected
+    foldOptions (fold rejected) (sources rejected)
+  optionNonempty rejected option hoption := by
+    letI := foldDecidable rejected
+    exact foldOptions_option_nonempty (blocked rejected) (fold rejected)
+      (hfoldTotal rejected) (sources rejected) (hsources rejected) option hoption
+  check := check
+  onExhausted := onExhausted
 
 def CartesianFoldAssignmentRuntime.toProducer
     [DecidableEq Node]
@@ -1179,6 +1274,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms pair_mem_enumerateFoldAssignments
 #print axioms pair_mem_rejected_of_assignment_exhaustion
 #print axioms sourceExpansionControlled_of_assignment_exhaustion
+#print axioms mem_foldOptionPairs_iff
 #print axioms CartesianFoldAssignmentProducer.rejection_generated
 #print axioms CartesianFoldAssignmentProducer.eventually_done
 #print axioms firstFreshFoldAssignment_eq_some_mem
@@ -1187,5 +1283,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms CartesianFoldAssignmentProducer.ofRuntime_exhausted
 #print axioms CartesianFoldAssignmentProducer.ofRuntime_exhaustion_complete
 #print axioms CartesianFoldAssignmentRuntime.eventually_done
+#print axioms mem_foldBlockers_iff
+#print axioms foldOptions_option_nonempty
 
 end ContextCalculus.Hypertableau

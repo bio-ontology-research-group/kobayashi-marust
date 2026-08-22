@@ -627,6 +627,12 @@ loops. It checks that every listed source has a blocker and that inserting the
 exposed pair set strictly enlarges the global forbidden set. Tests cover normal
 growth, repeated-product rejection, and an empty blocker family.
 
+The corresponding Lean runtime derives each option list from a finite total
+fold relation, proving nonemptiness rather than accepting it from the producer.
+Candidate acceptance is restricted to conclusive checked outcomes. Expansion
+is restricted to the exact pair union of the exhausted option list, closing
+the possibility that a producer could justify progress with unrelated pairs.
+
 `HypertableauProductionGlobalPublication.lean` and
 `HypertableauProductionTaxonomyPublication.lean` close the current semantic
 publication endpoints. The global Boolean is true exactly for source

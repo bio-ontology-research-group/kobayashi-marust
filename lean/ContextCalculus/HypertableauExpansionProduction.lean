@@ -31,6 +31,12 @@ structure CartesianFoldExpansionRuntime (Node Result : Type)
   inner : ∀ forbidden : Finset (Node × Node),
     CartesianFoldAssignmentRuntime Node
       (GuardedFoldExpansionOutcome Node Result forbidden)
+  checkConclusive : ∀ forbidden rejected assignment outcome,
+    (inner forbidden).check rejected assignment = .inl outcome →
+      ∃ result, outcome = .done result
+  expansionExact : ∀ forbidden rejected pairs fresh,
+    (inner forbidden).onExhausted rejected = .expand pairs fresh →
+      pairs = foldOptionPairs ((inner forbidden).options rejected)
 
 /-- Select the terminating outcome of the finite inner Cartesian loop.  The
 selected retry remains an implementation detail; its existence is supplied by
@@ -86,7 +92,33 @@ theorem CartesianFoldExpansionRuntime.expansion_strict
       exact Finset.mem_union_right forbidden hpairs
     exact hfresh this⟩
 
+theorem CartesianFoldExpansionRuntime.accepted_candidate_conclusive
+    [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result)
+    {forbidden : Finset (Node × Node)}
+    {rejected : Finset (FoldAssignment Node)}
+    {assignment : FoldAssignment Node}
+    {outcome : GuardedFoldExpansionOutcome Node Result forbidden}
+    (hcheck : (runtime.inner forbidden).check rejected assignment =
+      .inl outcome) :
+    ∃ result, outcome = .done result :=
+  runtime.checkConclusive forbidden rejected assignment outcome hcheck
+
+theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
+    [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result)
+    {forbidden : Finset (Node × Node)}
+    {rejected : Finset (FoldAssignment Node)}
+    {pairs : Finset (Node × Node)}
+    {fresh : ∃ pair ∈ pairs, pair ∉ forbidden}
+    (hexhausted : (runtime.inner forbidden).onExhausted rejected =
+      .expand pairs fresh) :
+    pairs = foldOptionPairs ((runtime.inner forbidden).options rejected) :=
+  runtime.expansionExact forbidden rejected pairs fresh hexhausted
+
 #print axioms CartesianFoldExpansionRuntime.eventually_done
 #print axioms CartesianFoldExpansionRuntime.expansion_strict
+#print axioms CartesianFoldExpansionRuntime.accepted_candidate_conclusive
+#print axioms CartesianFoldExpansionRuntime.exhausted_pairs_exact
 
 end ContextCalculus.Hypertableau

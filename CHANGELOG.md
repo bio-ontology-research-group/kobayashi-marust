@@ -109,6 +109,12 @@
   set, and verifies strict growth before rerunning saturation. Repeating an
   exhausted product or reporting a blocked source without a blocker now fails
   at the common certification boundary instead of drifting by route.
+- Derive nonempty blocker lists from a finite total fold relation instead of a
+  free production assertion. Lean enumerates exactly the blockers related to
+  each blocked source and proves every resulting option is nonempty. The outer
+  runtime is also strengthened so accepted candidates can only be conclusive
+  results, while an expansion can arise only after assignment exhaustion and
+  must equal the complete pair union of that exhausted option list.
 
 ### Unify total production HT global decisions
 
