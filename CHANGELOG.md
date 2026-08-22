@@ -36,6 +36,14 @@
   execution fails closed if the appropriate trace checker is unavailable.
   Cross-language regressions accept genuine initial single- and multi-root
   frontiers and reject either frontier when replayed at the next round.
+- Bind ordinary finite, regular, and equality SAT terminals to their full
+  preceding frontier trace in one executable Lean run checker. Lean requires
+  exactly one terminal variant, reruns its full provenance checker, derives the
+  terminal cap as `8 * 2^(start + frontier count)`, checks that the terminal
+  state fits that cap, and matches its ontology and finite signature to the
+  final frontier. Production SAT publication now requires this combined check.
+  A real finite terminal is accepted with its genuine preceding frontier and
+  rejected when that frontier's ontology is replaced.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and

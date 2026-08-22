@@ -10926,6 +10926,43 @@ impl Ht {
         result
     }
 
+    /// Bind one checked ordinary production terminal to the complete sequence
+    /// of frontier rounds that preceded it. Lean derives the terminal search
+    /// cap from the trace length, checks that the terminal state fits that cap,
+    /// and matches its ontology and finite signature to the final frontier.
+    fn lean_ordinary_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal_kind: &str,
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
+            })
+            .ok_or_else(|| {
+                "ordinary HT SAT publication requires KM_HT_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER"
+                    .to_string()
+            })?;
+        let mut document = serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "frontiers": frontiers,
+        });
+        let object = document
+            .as_object_mut()
+            .expect("ordinary production run document is an object");
+        match terminal_kind {
+            "finite" | "regular" | "equality" => {
+                object.insert(terminal_kind.to_string(), terminal);
+            }
+            _ => return Err(format!("unsupported ordinary HT terminal kind {terminal_kind}")),
+        }
+        let document =
+            serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -10934,6 +10971,7 @@ impl Ht {
         leaf: &LeanHtBlockedOpenLeaf,
         assignment: &[(Node, Node)],
         regular: &str,
+        frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
@@ -10961,7 +10999,16 @@ impl Ht {
             assignment,
         })
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        let terminal =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(
+            frontier_history,
+            "regular",
+            terminal,
+        )
     }
 
     /// Prove that one finite SAT certificate is exactly the materialization of
@@ -10971,6 +11018,7 @@ impl Ht {
         leaf: &LeanHtBlockedOpenLeaf,
         assignment: &[(Node, Node)],
         finite: &str,
+        frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
@@ -10998,7 +11046,16 @@ impl Ht {
             assignment,
         })
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        let terminal =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(
+            frontier_history,
+            "finite",
+            terminal,
+        )
     }
 
     /// Equality-aware counterpart of the production blocker table. Lean
@@ -11172,6 +11229,7 @@ impl Ht {
         &self,
         state: &LeanHtEqState,
         assignment: &[(Node, Node)],
+        frontier_history: &[serde_json::Value],
     ) -> Result<bool, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER",
@@ -11204,7 +11262,16 @@ impl Ht {
             assignment,
         })
         .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        if !self.lean_candidate_passes_with(&document, &checker)? {
+            return Ok(false);
+        }
+        let terminal =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        self.lean_ordinary_production_run_passes(
+            frontier_history,
+            "equality",
+            terminal,
+        )
     }
 
     /// Check one exhausted equality-aware blocking round and append it to the
@@ -11932,6 +11999,7 @@ impl Ht {
                             &leaf,
                             &folds,
                             &finite,
+                            &frontier_history,
                         )? {
                             let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
                             let finite_candidate = self.finalize_lean_certificate(finite)?;
@@ -11946,6 +12014,7 @@ impl Ht {
                                 &leaf,
                                 &folds,
                                 &regular,
+                                &frontier_history,
                             )? {
                                 let envelope =
                                     Self::lean_regular_decision_envelope(regular, true)?;
@@ -13769,7 +13838,11 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Open(state) => {
                     let mut rejected_assignments = HashSet::new();
                     while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
-                        if !self.lean_equality_production_terminal_passes(&state, &folds)? {
+                        if !self.lean_equality_production_terminal_passes(
+                            &state,
+                            &folds,
+                            &frontier_history,
+                        )? {
                             let inserted = rejected_assignments.insert(folds);
                             assert!(inserted, "equality terminal assignment search must progress");
                             continue;
@@ -14229,6 +14302,7 @@ impl Ht {
                             &leaf,
                             &folds,
                             &finite,
+                            &frontier_history,
                         )? {
                             if self.lean_taxonomy_candidate_passes(&finite)? {
                                 return Ok((true, finite));
@@ -14241,6 +14315,7 @@ impl Ht {
                                 &leaf,
                                 &folds,
                                 &regular,
+                                &frontier_history,
                             )? {
                                 let regular: serde_json::Value = serde_json::from_str(&regular)
                                     .map_err(|error| error.to_string())?;
@@ -25702,12 +25777,13 @@ mod tests {
                 .next_fold_assignment(&HashSet::new())
                 .expect("cyclic terminal exposes a Cartesian fold assignment");
             assert!(cyclic
-                .lean_equality_production_terminal_passes(&open, &assignment)
+                .lean_equality_production_terminal_passes(&open, &assignment, &[])
                 .expect("run terminal provenance checker"));
             assert!(!cyclic
                 .lean_equality_production_terminal_passes(
                     &open,
                     &[(open.representatives.len(), open.representatives.len())],
+                    &[],
                 )
                 .expect("reject out-of-range terminal provenance"));
         }
@@ -26571,6 +26647,8 @@ mod tests {
             "KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER",
         )
         .is_some()
+            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
+                .is_some()
         {
             assert!(
                 cyclic
@@ -26578,6 +26656,7 @@ mod tests {
                         &leaf,
                         &leaf.folds,
                         &raw_certificate,
+                        &[],
                     )
                     .expect("run the finite production terminal checker"),
                 "Lean must accept the exact finite fold materialization",
@@ -26590,10 +26669,48 @@ mod tests {
                         &leaf,
                         &leaf.folds,
                         &serde_json::to_string(&forged).unwrap(),
+                        &[],
                     )
                     .expect("run the finite terminal checker on forged edges"),
                 "Lean must reject finite evidence detached from materialization",
             );
+
+            let forbidden: HashSet<_> = (0..8)
+                .flat_map(|source| (0..8).map(move |target| (source, target)))
+                .collect();
+            let mut frontier_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
+            let LeanHtRefutationOutcome::Frontier(frontier) =
+                cyclic.lean_refutation_avoiding_folds(
+                    &mut frontier_state,
+                    1,
+                    8,
+                    &forbidden,
+                )
+            else {
+                panic!("the unblocked cyclic run must reach its eight-node frontier");
+            };
+            let frontier = cyclic
+                .lean_address_refinement_json(&frontier)
+                .expect("serialize the preceding production frontier");
+            let frontier: serde_json::Value = serde_json::from_str(&frontier).unwrap();
+            assert!(cyclic
+                .lean_finite_production_terminal_passes(
+                    &leaf,
+                    &leaf.folds,
+                    &raw_certificate,
+                    std::slice::from_ref(&frontier),
+                )
+                .expect("bind the finite terminal to its preceding frontier"));
+            let mut forged_frontier = frontier;
+            forged_frontier["state"]["ontology"] = serde_json::json!([]);
+            assert!(!cyclic
+                .lean_finite_production_terminal_passes(
+                    &leaf,
+                    &leaf.folds,
+                    &raw_certificate,
+                    &[forged_frontier],
+                )
+                .expect("reject a terminal detached from the frontier problem"));
         }
         let regular_raw = cyclic
             .lean_regular_blocked_open_certificate_json(&leaf)
@@ -26621,6 +26738,8 @@ mod tests {
             "KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
         )
         .is_some()
+            && std::env::var_os("KM_HT_TEST_LEAN_ORDINARY_PRODUCTION_RUN_CHECKER")
+                .is_some()
         {
             assert!(
                 cyclic
@@ -26628,6 +26747,7 @@ mod tests {
                         &leaf,
                         &leaf.folds,
                         &regular_raw,
+                        &[],
                     )
                     .expect("run the regular production terminal checker"),
                 "Lean must accept the exact regular terminal and redirect",
@@ -26640,6 +26760,7 @@ mod tests {
                         &leaf,
                         &leaf.folds,
                         &serde_json::to_string(&forged).unwrap(),
+                        &[],
                     )
                     .expect("run the regular terminal checker on a forged redirect"),
                 "Lean must reject a redirect detached from the selected assignment",
