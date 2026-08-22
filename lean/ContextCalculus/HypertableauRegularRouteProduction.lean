@@ -214,14 +214,16 @@ theorem State.mem_productionUnwitnessedSources_iff
 
 noncomputable def FiniteProductionBlockingTable.expectedOptions
     (table : FiniteProductionBlockingTable nodeCount conceptCount roleCount variableCount) :
-    List (Fin nodeCount × List (Fin nodeCount)) :=
-  foldOptionsUsing
-    (table.base.state.productionFold table.parent
-      (ancestorChain table.parent nodeCount) table.forbidden)
-    (Classical.decRel
-      (table.base.state.productionFold table.parent
-        (ancestorChain table.parent nodeCount) table.forbidden))
-    table.base.state.productionUnwitnessedSources
+    List (Fin nodeCount × List (Fin nodeCount)) := by
+  classical
+  exact (List.finRange nodeCount).filter (fun source => decide
+      (∃ role filler, table.base.state.obligation role filler source ∧
+        ∀ witness, ¬(table.base.state.edge role source witness ∧
+          table.base.state.label witness filler)))
+    |>.map fun source =>
+      (source, (ancestorChain table.parent nodeCount source).filter fun blocker => decide
+        (table.base.state.productionFold table.parent
+          (ancestorChain table.parent nodeCount) table.forbidden source blocker))
 
 /-- Executable exactness check for the fold-option table emitted by
 production. It does not establish that the parent map came from recursive

@@ -671,12 +671,16 @@ with a nonempty blocked-source table to blocker-assignment learning.
 
 The production route also defines `FiniteProductionBlockingTable`, the checked
 target for the Rust blocked-leaf control metadata. It carries the exact finite
-state, predecessor map, forbidden pairs, and emitted blocker options. Its
-executable checker requires every predecessor to be strictly earlier, rebuilds
-ancestor chains with the finite node bound, and compares the complete emitted
-option table with Lean's reconstruction. Checker acceptance proves exact
-option and expansion-pair equality. The remaining wire task is to retain and
-decode Rust's `witness_parent` and `fold_options` into this table.
+state, predecessor map, forbidden pairs, and emitted blocker options. The
+explicit finite implementation is proved equal to the mathematical blocking
+signature and option reconstruction. The native
+`ht-production-blocking-check` requires every predecessor to be strictly
+earlier, rebuilds bounded ancestor chains, and compares the complete emitted
+option table with Lean's reconstruction. Rust retains `witness_parent`, the
+outer forbidden-pair set, and `fold_options` in equality-free blocked leaves;
+the regular decision route cannot learn an exhausted option union until this
+checker accepts. Checker acceptance proves exact option and expansion-pair
+equality.
 
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.

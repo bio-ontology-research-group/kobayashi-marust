@@ -30,6 +30,7 @@ checkers=(
     ht-cover-refinement-check
     ht-projection-cert-check
     ht-frontier-check
+    ht-production-blocking-check
     ht-cardinality-frontier-check
     ht-native-abox-taxonomy-matrix-cert-check
     ht-native-abox-cardinality-taxonomy-cert-check
@@ -62,6 +63,8 @@ done
     export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
     export KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
     export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
+    export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
+    export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-matrix-cert-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-cert-check"

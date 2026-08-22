@@ -2893,6 +2893,29 @@ struct LeanHtBlockedOpenLeaf {
     obligations: Vec<(R, CLit, Node)>,
     folds: Vec<(Node, Node)>,
     fold_options: Vec<(Node, Vec<Node>)>,
+    witness_parent: Vec<Option<Node>>,
+    forbidden_folds: Vec<(Node, Node)>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtProductionBlockingPair {
+    source: usize,
+    target: usize,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtProductionBlockingOption {
+    source: usize,
+    blockers: Vec<usize>,
+}
+
+#[derive(serde::Serialize)]
+struct LeanHtProductionBlockingDocument {
+    version: usize,
+    base: serde_json::Value,
+    parents: Vec<usize>,
+    forbidden: Vec<LeanHtProductionBlockingPair>,
+    options: Vec<LeanHtProductionBlockingOption>,
 }
 
 impl LeanHtBlockedOpenLeaf {
@@ -3773,6 +3796,12 @@ impl LeanHtRefutationState {
             obligations,
             folds,
             fold_options,
+            witness_parent: self.witness_parent[..self.active_nodes].to_vec(),
+            forbidden_folds: {
+                let mut pairs: Vec<_> = forbidden_folds.iter().copied().collect();
+                pairs.sort_unstable();
+                pairs
+            },
         }
     }
 
@@ -10439,6 +10468,63 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    /// Emit the exact predecessor forest and complete source-major blocker
+    /// table consumed by Lean before an exhausted fold table may be learned.
+    fn lean_production_blocking_document_json(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+    ) -> Result<String, String> {
+        if leaf.witness_parent.len() != leaf.node_count {
+            return Err("production blocker parent table has the wrong length".to_string());
+        }
+        let mut raw_leaf = leaf.clone();
+        raw_leaf.folds.clear();
+        let base = self.lean_blocked_open_certificate_json(&raw_leaf, LeanHtEvidence::Sat)?;
+        let base = serde_json::from_str(&base).map_err(|error| error.to_string())?;
+        let parents = leaf
+            .witness_parent
+            .iter()
+            .map(|parent| parent.unwrap_or(leaf.node_count))
+            .collect();
+        let forbidden = leaf
+            .forbidden_folds
+            .iter()
+            .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
+            .collect();
+        let options = leaf
+            .fold_options
+            .iter()
+            .map(|(source, blockers)| LeanHtProductionBlockingOption {
+                source: *source,
+                blockers: blockers.clone(),
+            })
+            .collect();
+        serde_json::to_string(&LeanHtProductionBlockingDocument {
+            version: 1,
+            base,
+            parents,
+            forbidden,
+            options,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn lean_production_blocking_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os("KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
+            })
+            .ok_or_else(|| {
+                "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
+                    .to_string()
+            })?;
+        let document = self.lean_production_blocking_document_json(leaf)?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Serialize a blocked equality-free branch through the regular-unravelling
     /// trust boundary. Unlike `lean_blocked_open_certificate_json`, this keeps
     /// the raw completion edges, records the blocker redirect explicitly, and
@@ -10864,6 +10950,8 @@ impl Ht {
             obligations,
             folds,
             fold_options: Vec::new(),
+            witness_parent: Vec::new(),
+            forbidden_folds: Vec::new(),
         };
         let regular: serde_json::Value =
             serde_json::from_str(&self.lean_regular_blocked_open_certificate_json(&leaf)?)
@@ -11113,6 +11201,11 @@ impl Ht {
                     // blocked source on the next search attempt. This is a
                     // control refinement, not a claim that a constituent pair
                     // is invalid in another assignment.
+                    if !self.lean_production_blocking_passes(&leaf)? {
+                        return Err(
+                            "Lean rejected the exhausted production blocker table".to_string(),
+                        );
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &leaf.fold_options,
@@ -25113,6 +25206,40 @@ mod tests {
                 .any(|edge| edge["source"] == 2 && edge["target"] == 2),
             "the redirected endpoint cover must expose the blocker's witness"
         );
+        if let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
+        {
+            let document = cyclic
+                .lean_production_blocking_document_json(&leaf)
+                .expect("serialize the exact production blocker table");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-production-blocking-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run the native production blocker checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the exact blocker table: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+            let mut forged: serde_json::Value = serde_json::from_str(&document).unwrap();
+            forged["options"][0]["blockers"] = serde_json::json!([]);
+            std::fs::write(&path, serde_json::to_string(&forged).unwrap()).unwrap();
+            let rejected = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the native production blocker checker on forged options");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                !rejected.status.success(),
+                "Lean must reject an incomplete production blocker table",
+            );
+        }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(
                 "km-ht-regular-blocked-open-cert-{}-{}.json",
@@ -25231,6 +25358,8 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
             fold_options: Vec::new(),
+            witness_parent: vec![None; 3],
+            forbidden_folds: Vec::new(),
         };
         let unsaturated_document = reasoner
             .lean_regular_blocked_open_certificate_json(&unsaturated)
@@ -25257,6 +25386,8 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
             fold_options: Vec::new(),
+            witness_parent: vec![None; 3],
+            forbidden_folds: Vec::new(),
         };
         let document = reasoner
             .lean_regular_blocked_open_certificate_json(&leaf)
@@ -25313,6 +25444,8 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
             fold_options: Vec::new(),
+            witness_parent: vec![None],
+            forbidden_folds: Vec::new(),
         };
         let joined = Ht::new_certified(vec![Clause::new(
             vec![
@@ -25346,6 +25479,8 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
             fold_options: Vec::new(),
+            witness_parent: vec![None; 2],
+            forbidden_folds: Vec::new(),
         };
         let non_simple_certificate = non_simple
             .lean_regular_blocked_open_certificate(&nonlocal_leaf)
@@ -25376,6 +25511,8 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
             fold_options: Vec::new(),
+            witness_parent: vec![None],
+            forbidden_folds: Vec::new(),
         };
         assert!(
             aliased_role_clause

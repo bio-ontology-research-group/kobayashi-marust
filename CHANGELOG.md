@@ -26,6 +26,14 @@
   source-major blocker options from the finite state and forbidden-pair set.
   Acceptance proves both predecessor-forest order and complete option-table
   equality, including equality of the pair union used for outer expansion.
+- Prove an explicitly computable implementation of the production-blocking
+  reconstruction equivalent to the mathematical finite-set specification.
+  The native `ht-production-blocking-check` decodes Rust's exact state,
+  predecessor forest, forbidden pairs, and complete option table. Rust now
+  retains that provenance in equality-free blocked leaves and requires checker
+  acceptance before the regular decision route learns an exhausted option
+  union. Cross-language tests accept the genuine table and reject a table with
+  a blocker removed.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise
