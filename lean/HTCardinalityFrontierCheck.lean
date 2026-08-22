@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauCardinalityFrontierWire
+import ContextCalculus.HypertableauCardinalityFrontierStateWire
 
 open Lean
 open ContextCalculus.Hypertableau
@@ -8,7 +8,7 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
     let input ← IO.FS.readFile path
     let result : Except String Bool := do
       let json ← Json.parse input
-      let document : WireCardinalityAddressFrontier ← fromJson? json
+      let document : WireCardinalityAddressRefinementDocument ← fromJson? json
       return document.check
     match result with
     | .ok true =>

@@ -1,4 +1,4 @@
-import ContextCalculus.HypertableauRootedCardinalityFrontierWire
+import ContextCalculus.HypertableauCardinalityFrontierStateWire
 
 /-!
 # Cardinality frontier-doubling execution histories
@@ -17,25 +17,18 @@ structure WireCardinalityDoublingTrace where
   version : Nat
   start_budget : Nat
   max_width : Nat
-  frontiers : List WireCardinalityAddressFrontier
+  frontiers : List WireCardinalityAddressRefinementDocument
 deriving FromJson, ToJson, Repr
 
-def WireCardinalityAddressFrontier.sameProblem
-    (left right : WireCardinalityAddressFrontier) : Bool :=
-  left.concept_count == right.concept_count &&
-    left.role_count == right.role_count &&
-    left.definition_count == right.definition_count &&
-    left.max_width == right.max_width
-
 def WireCardinalityDoublingTrace.scheduledFrom :
-    Nat → Nat → List WireCardinalityAddressFrontier → Bool
+    Nat → Nat → List WireCardinalityAddressRefinementDocument → Bool
   | _, _, [] => true
   | budget, maxWidth, current :: rest =>
       current.checkScheduled budget maxWidth &&
         scheduledFrom (budget + 1) maxWidth rest
 
 def WireCardinalityDoublingTrace.sameProblemThroughout :
-    List WireCardinalityAddressFrontier → Bool
+    List WireCardinalityAddressRefinementDocument → Bool
   | [] | [_] => true
   | current :: next :: rest =>
       current.sameProblem next && sameProblemThroughout (next :: rest)
@@ -48,15 +41,15 @@ def WireCardinalityDoublingTrace.check
     WireCardinalityDoublingTrace.sameProblemThroughout wire.frontiers
 
 inductive WireCardinalityDoublingTrace.ValidFrom :
-    Nat → Nat → List WireCardinalityAddressFrontier → Prop where
+    Nat → Nat → List WireCardinalityAddressRefinementDocument → Prop where
   | nil (budget maxWidth : Nat) :
       WireCardinalityDoublingTrace.ValidFrom budget maxWidth []
-  | last (budget maxWidth : Nat) (current : WireCardinalityAddressFrontier)
+  | last (budget maxWidth : Nat) (current : WireCardinalityAddressRefinementDocument)
       (scheduled : current.checkScheduled budget maxWidth = true) :
       WireCardinalityDoublingTrace.ValidFrom budget maxWidth [current]
   | step (budget maxWidth : Nat)
-      (current next : WireCardinalityAddressFrontier)
-      (rest : List WireCardinalityAddressFrontier)
+      (current next : WireCardinalityAddressRefinementDocument)
+      (rest : List WireCardinalityAddressRefinementDocument)
       (scheduled : current.checkScheduled budget maxWidth = true)
       (sameProblem : current.sameProblem next = true)
       (tail : WireCardinalityDoublingTrace.ValidFrom (budget + 1)
@@ -66,8 +59,8 @@ inductive WireCardinalityDoublingTrace.ValidFrom :
 
 theorem WireCardinalityDoublingTrace.scheduledFrom_tail
     {budget maxWidth : Nat}
-    {current next : WireCardinalityAddressFrontier}
-    {rest : List WireCardinalityAddressFrontier}
+    {current next : WireCardinalityAddressRefinementDocument}
+    {rest : List WireCardinalityAddressRefinementDocument}
     (hcheck : WireCardinalityDoublingTrace.scheduledFrom budget maxWidth
       (current :: next :: rest) = true) :
     current.checkScheduled budget maxWidth = true ∧
@@ -76,8 +69,8 @@ theorem WireCardinalityDoublingTrace.scheduledFrom_tail
   simpa [WireCardinalityDoublingTrace.scheduledFrom] using hcheck
 
 theorem WireCardinalityDoublingTrace.sameProblemThroughout_tail
-    {current next : WireCardinalityAddressFrontier}
-    {rest : List WireCardinalityAddressFrontier}
+    {current next : WireCardinalityAddressRefinementDocument}
+    {rest : List WireCardinalityAddressRefinementDocument}
     (hcheck : WireCardinalityDoublingTrace.sameProblemThroughout
       (current :: next :: rest) = true) :
     current.sameProblem next = true ∧
@@ -86,7 +79,7 @@ theorem WireCardinalityDoublingTrace.sameProblemThroughout_tail
   simpa [WireCardinalityDoublingTrace.sameProblemThroughout] using hcheck
 
 theorem WireCardinalityDoublingTrace.validFrom_of_checks
-    (budget maxWidth : Nat) (frontiers : List WireCardinalityAddressFrontier)
+    (budget maxWidth : Nat) (frontiers : List WireCardinalityAddressRefinementDocument)
     (hscheduled : WireCardinalityDoublingTrace.scheduledFrom budget maxWidth
       frontiers = true)
     (hsame : WireCardinalityDoublingTrace.sameProblemThroughout frontiers = true) :
@@ -117,26 +110,18 @@ structure WireRootedCardinalityDoublingTrace where
   start_budget : Nat
   root_count : Nat
   max_width : Nat
-  frontiers : List WireRootedCardinalityAddressFrontier
+  frontiers : List WireRootedCardinalityAddressRefinementDocument
 deriving FromJson, ToJson, Repr
 
-def WireRootedCardinalityAddressFrontier.sameProblem
-    (left right : WireRootedCardinalityAddressFrontier) : Bool :=
-  left.root_count == right.root_count &&
-    left.concept_count == right.concept_count &&
-    left.role_count == right.role_count &&
-    left.definition_count == right.definition_count &&
-    left.max_width == right.max_width
-
 def WireRootedCardinalityDoublingTrace.scheduledFrom :
-    Nat → Nat → Nat → List WireRootedCardinalityAddressFrontier → Bool
+    Nat → Nat → Nat → List WireRootedCardinalityAddressRefinementDocument → Bool
   | _, _, _, [] => true
   | budget, rootCount, maxWidth, current :: rest =>
       current.checkScheduled budget rootCount maxWidth &&
         scheduledFrom (budget + 1) rootCount maxWidth rest
 
 def WireRootedCardinalityDoublingTrace.sameProblemThroughout :
-    List WireRootedCardinalityAddressFrontier → Bool
+    List WireRootedCardinalityAddressRefinementDocument → Bool
   | [] | [_] => true
   | current :: next :: rest =>
       current.sameProblem next && sameProblemThroughout (next :: rest)
@@ -149,16 +134,16 @@ def WireRootedCardinalityDoublingTrace.check
     WireRootedCardinalityDoublingTrace.sameProblemThroughout wire.frontiers
 
 inductive WireRootedCardinalityDoublingTrace.ValidFrom :
-    Nat → Nat → Nat → List WireRootedCardinalityAddressFrontier → Prop where
+    Nat → Nat → Nat → List WireRootedCardinalityAddressRefinementDocument → Prop where
   | nil (budget rootCount maxWidth : Nat) :
       WireRootedCardinalityDoublingTrace.ValidFrom budget rootCount maxWidth []
   | last (budget rootCount maxWidth : Nat)
-      (current : WireRootedCardinalityAddressFrontier)
+      (current : WireRootedCardinalityAddressRefinementDocument)
       (scheduled : current.checkScheduled budget rootCount maxWidth = true) :
       WireRootedCardinalityDoublingTrace.ValidFrom budget rootCount maxWidth [current]
   | step (budget rootCount maxWidth : Nat)
-      (current next : WireRootedCardinalityAddressFrontier)
-      (rest : List WireRootedCardinalityAddressFrontier)
+      (current next : WireRootedCardinalityAddressRefinementDocument)
+      (rest : List WireRootedCardinalityAddressRefinementDocument)
       (scheduled : current.checkScheduled budget rootCount maxWidth = true)
       (sameProblem : current.sameProblem next = true)
       (tail : WireRootedCardinalityDoublingTrace.ValidFrom (budget + 1)
@@ -168,8 +153,8 @@ inductive WireRootedCardinalityDoublingTrace.ValidFrom :
 
 theorem WireRootedCardinalityDoublingTrace.scheduledFrom_tail
     {budget rootCount maxWidth : Nat}
-    {current next : WireRootedCardinalityAddressFrontier}
-    {rest : List WireRootedCardinalityAddressFrontier}
+    {current next : WireRootedCardinalityAddressRefinementDocument}
+    {rest : List WireRootedCardinalityAddressRefinementDocument}
     (hcheck : WireRootedCardinalityDoublingTrace.scheduledFrom budget rootCount
       maxWidth (current :: next :: rest) = true) :
     current.checkScheduled budget rootCount maxWidth = true ∧
@@ -178,8 +163,8 @@ theorem WireRootedCardinalityDoublingTrace.scheduledFrom_tail
   simpa [WireRootedCardinalityDoublingTrace.scheduledFrom] using hcheck
 
 theorem WireRootedCardinalityDoublingTrace.sameProblemThroughout_tail
-    {current next : WireRootedCardinalityAddressFrontier}
-    {rest : List WireRootedCardinalityAddressFrontier}
+    {current next : WireRootedCardinalityAddressRefinementDocument}
+    {rest : List WireRootedCardinalityAddressRefinementDocument}
     (hcheck : WireRootedCardinalityDoublingTrace.sameProblemThroughout
       (current :: next :: rest) = true) :
     current.sameProblem next = true ∧
@@ -189,7 +174,7 @@ theorem WireRootedCardinalityDoublingTrace.sameProblemThroughout_tail
 
 theorem WireRootedCardinalityDoublingTrace.validFrom_of_checks
     (budget rootCount maxWidth : Nat)
-    (frontiers : List WireRootedCardinalityAddressFrontier)
+    (frontiers : List WireRootedCardinalityAddressRefinementDocument)
     (hscheduled : WireRootedCardinalityDoublingTrace.scheduledFrom budget
       rootCount maxWidth frontiers = true)
     (hsame : WireRootedCardinalityDoublingTrace.sameProblemThroughout frontiers = true) :

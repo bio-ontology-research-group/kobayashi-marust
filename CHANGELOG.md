@@ -44,6 +44,14 @@
   final frontier. Production SAT publication now requires this combined check.
   A real finite terminal is accepted with its genuine preceding frontier and
   rejected when that frontier's ontology is replaced.
+- Strengthen every single-root and native-ABox cardinality frontier from an
+  unscoped address map to a state-bound refinement document. The Lean decoder
+  now checks the exact bounded distinct-equality state, active-node frontier,
+  expanded minimum sites, ontology, cardinality definitions, and variable
+  signature together with address injectivity. Doubling traces require this
+  full logical problem to remain identical across retries. Production emits
+  the new evidence directly; regressions accept a genuine two-budget history
+  and reject a successor whose ontology was replaced.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and

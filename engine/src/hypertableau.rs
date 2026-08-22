@@ -2876,6 +2876,8 @@ struct LeanHtCardinalityAddressFrontier {
     definition_count: usize,
     max_width: usize,
     addresses: Vec<(usize, Vec<LeanHtCardinalityAddressStep>)>,
+    state: LeanHtDistinctEqState,
+    expanded_minimums: Vec<(usize, Node)>,
 }
 
 #[derive(serde::Serialize)]
@@ -3066,13 +3068,13 @@ struct LeanHtAnchoredEqCertificate {
     nominal_roots: Vec<Option<usize>>,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtApart {
     left: usize,
     right: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtDistinctEqState {
     base: LeanHtEqState,
     apart: Vec<LeanHtApart>,
@@ -3526,6 +3528,12 @@ impl LeanHtRefutationState {
             definition_count,
             max_width,
             addresses,
+            state: self.distinct_wire_state(self.active_nodes),
+            expanded_minimums: {
+                let mut minimums: Vec<_> = self.minimums.iter().copied().collect();
+                minimums.sort_unstable();
+                minimums
+            },
         })
     }
 
@@ -10167,7 +10175,7 @@ impl Ht {
                     .collect()
             })
             .collect();
-        serde_json::to_string(&LeanHtCardinalityFrontierDocument {
+        let address = serde_json::to_value(LeanHtCardinalityFrontierDocument {
             version: 1,
             node_count: frontier.node_count,
             concept_count,
@@ -10176,7 +10184,8 @@ impl Ht {
             max_width: frontier.max_width,
             addresses,
         })
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        self.lean_cardinality_refinement_envelope(frontier, address)
     }
 
     fn lean_rooted_cardinality_address_frontier_json(
@@ -10234,7 +10243,7 @@ impl Ht {
                 .collect();
             addresses.push(LeanHtRootedCardinalityFrontierAddress { root: *root, steps });
         }
-        serde_json::to_string(&LeanHtRootedCardinalityFrontierDocument {
+        let address = serde_json::to_value(LeanHtRootedCardinalityFrontierDocument {
             version: 1,
             node_count: frontier.node_count,
             root_count: frontier.root_count,
@@ -10244,6 +10253,51 @@ impl Ht {
             max_width: frontier.max_width,
             addresses,
         })
+        .map_err(|error| error.to_string())?;
+        self.lean_cardinality_refinement_envelope(frontier, address)
+    }
+
+    /// Bind an injective cardinality address map to the exact full bounded
+    /// runtime state and logical problem that produced it. Numeric dimensions
+    /// alone cannot prevent a frontier from another ontology being replayed.
+    fn lean_cardinality_refinement_envelope(
+        &self,
+        frontier: &LeanHtCardinalityAddressFrontier,
+        address: serde_json::Value,
+    ) -> Result<String, String> {
+        let (variable_count, _, _, ontology) = self.lean_decision_signature();
+        let mut definitions: Vec<_> = self.card_defs.iter().collect();
+        definitions.sort_unstable_by_key(|(marker, _)| **marker);
+        let definitions: Vec<_> = definitions
+            .into_iter()
+            .map(|(&marker, definition)| LeanHtCardinalityDef {
+                marker: marker as usize,
+                minimum: definition.kind == CardKind::Min,
+                bound: definition.n as usize,
+                role: definition.role as usize,
+                filler: definition.filler.c as usize,
+            })
+            .collect();
+        let expanded_minimums: Vec<_> = frontier
+            .expanded_minimums
+            .iter()
+            .map(|&(definition, source)| serde_json::json!({
+                "definition": definition,
+                "source": source,
+            }))
+            .collect();
+        serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "variable_count": variable_count,
+            "ontology": ontology,
+            "definitions": definitions,
+            "runtime": {
+                "state": &frontier.state,
+                "active_nodes": frontier.node_count,
+                "expanded_minimums": expanded_minimums,
+            },
+            "frontier": address,
+        }))
         .map_err(|error| error.to_string())
     }
 
@@ -26306,6 +26360,8 @@ mod tests {
             definition_count: 0,
             max_width: 0,
             addresses: vec![(0, Vec::new())],
+            state: LeanHtRefutationState::root(&[]).distinct_wire_state(1),
+            expanded_minimums: Vec::new(),
         };
         assert!(reasoner
             .lean_cardinality_address_frontier_passes(&cardinality, 2)
@@ -26364,9 +26420,11 @@ mod tests {
         let single = LeanHtCardinalityAddressFrontier {
             node_count: 8,
             root_count: 1,
-            definition_count: 1,
-            max_width: 1,
+            definition_count: 0,
+            max_width: 0,
             addresses: (0..8).map(|depth| (0, path(depth))).collect(),
+            state: LeanHtRefutationState::root(&[]).distinct_wire_state(8),
+            expanded_minimums: Vec::new(),
         };
         let mut history = Vec::new();
         assert!(reasoner
@@ -26377,15 +26435,59 @@ mod tests {
             .expect("reject the stale cardinality frontier"));
         assert_eq!(history.len(), 1);
 
+        let successor = LeanHtCardinalityAddressFrontier {
+            node_count: 16,
+            root_count: 1,
+            definition_count: 0,
+            max_width: 0,
+            addresses: (0..16).map(|depth| (0, path(depth))).collect(),
+            state: LeanHtRefutationState::root(&[]).distinct_wire_state(16),
+            expanded_minimums: Vec::new(),
+        };
+        let successor: serde_json::Value = serde_json::from_str(
+            &reasoner
+                .lean_cardinality_address_frontier_json(&successor)
+                .expect("serialize the successor cardinality frontier"),
+        )
+        .unwrap();
+        let trace_checker = std::env::var_os(
+            "KM_HT_TEST_LEAN_CARDINALITY_DOUBLING_TRACE_CHECKER",
+        )
+        .unwrap();
+        let trace = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "max_width": 0,
+            "frontiers": [history[0].clone(), successor.clone()],
+        }))
+        .unwrap();
+        assert!(reasoner
+            .lean_candidate_passes_with(&trace, &trace_checker)
+            .expect("check a genuine two-budget cardinality history"));
+        let mut forged_successor = successor;
+        forged_successor["ontology"] = serde_json::json!([]);
+        let forged_trace = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "max_width": 0,
+            "frontiers": [history[0].clone(), forged_successor],
+        }))
+        .unwrap();
+        assert!(!reasoner
+            .lean_candidate_passes_with(&forged_trace, &trace_checker)
+            .expect("reject a successor frontier from another ontology"));
+
         let rooted = LeanHtCardinalityAddressFrontier {
             node_count: 8,
             root_count: 2,
-            definition_count: 1,
-            max_width: 1,
+            definition_count: 0,
+            max_width: 0,
             addresses: std::iter::once((0, Vec::new()))
                 .chain(std::iter::once((1, Vec::new())))
                 .chain((1..7).map(|depth| (0, path(depth))))
                 .collect(),
+            state: LeanHtRefutationState::root(&[]).distinct_wire_state(8),
+            expanded_minimums: Vec::new(),
         };
         let mut rooted_history = Vec::new();
         assert!(reasoner
