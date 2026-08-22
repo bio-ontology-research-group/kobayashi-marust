@@ -2885,12 +2885,23 @@ struct LeanHtCardinalityFrontierDocument {
     addresses: Vec<Vec<LeanHtCardinalityFrontierStep>>,
 }
 
+#[derive(Clone)]
 struct LeanHtBlockedOpenLeaf {
     node_count: usize,
     labels: Vec<(Node, CLit)>,
     edges: Vec<(R, Node, Node)>,
     obligations: Vec<(R, CLit, Node)>,
     folds: Vec<(Node, Node)>,
+    fold_options: Vec<(Node, Vec<Node>)>,
+}
+
+impl LeanHtBlockedOpenLeaf {
+    fn next_fold_assignment(
+        &self,
+        rejected: &HashSet<Vec<(Node, Node)>>,
+    ) -> Option<Vec<(Node, Node)>> {
+        LeanHtRefutationState::next_fold_assignment_from_options(&self.fold_options, rejected)
+    }
 }
 
 #[derive(Clone, Copy, serde::Serialize)]
@@ -3434,6 +3445,71 @@ impl LeanHtRefutationState {
         None
     }
 
+    fn pairwise_blocker_ancestors(&self, node: Node) -> Vec<Node> {
+        let mut blockers = Vec::new();
+        let mut ancestor = self.witness_parent.get(node).copied().flatten();
+        while let Some(candidate) = ancestor {
+            if self.same_pairwise_signature(candidate, node) {
+                blockers.push(candidate);
+            }
+            ancestor = self.witness_parent.get(candidate).copied().flatten();
+        }
+        blockers
+    }
+
+    /// Enumerate one complete simultaneous blocker assignment that has not
+    /// previously been rejected. Rejection is attached to the whole sorted
+    /// assignment: a constituent fold remains available in other combinations.
+    fn next_pairwise_fold_assignment(
+        &self,
+        rejected: &HashSet<Vec<(Node, Node)>>,
+    ) -> Option<Vec<(Node, Node)>> {
+        let mut blocked_sources: Vec<Node> = self
+            .obligations
+            .iter()
+            .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
+            .map(|&(_, _, source)| source)
+            .collect();
+        blocked_sources.sort_unstable();
+        blocked_sources.dedup();
+        let options: Vec<(Node, Vec<Node>)> = blocked_sources
+            .into_iter()
+            .map(|source| (source, self.pairwise_blocker_ancestors(source)))
+            .collect();
+        if options.iter().any(|(_, blockers)| blockers.is_empty()) {
+            return None;
+        }
+
+        Self::next_fold_assignment_from_options(&options, rejected)
+    }
+
+    fn next_fold_assignment_from_options(
+        options: &[(Node, Vec<Node>)],
+        rejected: &HashSet<Vec<(Node, Node)>>,
+    ) -> Option<Vec<(Node, Node)>> {
+        fn choose(
+            options: &[(Node, Vec<Node>)],
+            index: usize,
+            current: &mut Vec<(Node, Node)>,
+            rejected: &HashSet<Vec<(Node, Node)>>,
+        ) -> Option<Vec<(Node, Node)>> {
+            if index == options.len() {
+                return (!rejected.contains(current)).then(|| current.clone());
+            }
+            let (source, blockers) = &options[index];
+            for &blocker in blockers {
+                current.push((*source, blocker));
+                if let Some(assignment) = choose(options, index + 1, current, rejected) {
+                    return Some(assignment);
+                }
+                current.pop();
+            }
+            None
+        }
+
+        choose(options, 0, &mut Vec::with_capacity(options.len()), rejected)
+    }
+
     fn pairwise_blocked_by_ancestor(&self, node: Node) -> bool {
         self.pairwise_blocker_ancestor(node).is_some()
     }
@@ -3619,17 +3695,27 @@ impl LeanHtRefutationState {
         &self,
         forbidden_folds: &HashSet<(Node, Node)>,
     ) -> LeanHtBlockedOpenLeaf {
-        let mut folds: Vec<(Node, Node)> = self
+        let mut blocked_sources: Vec<Node> = self
             .obligations
             .iter()
             .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
-            .filter_map(|&(_, _, source)| {
-                self.pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
-                    .map(|blocker| (source, blocker))
+            .map(|&(_, _, source)| source)
+            .collect();
+        blocked_sources.sort_unstable();
+        blocked_sources.dedup();
+        let fold_options: Vec<(Node, Vec<Node>)> = blocked_sources
+            .into_iter()
+            .map(|source| {
+                let blockers = self
+                    .pairwise_blocker_ancestors(source)
+                    .into_iter()
+                    .filter(|&blocker| !forbidden_folds.contains(&(source, blocker)))
+                    .collect();
+                (source, blockers)
             })
             .collect();
-        folds.sort_unstable();
-        folds.dedup();
+        let folds = Self::next_fold_assignment_from_options(&fold_options, &HashSet::new())
+            .unwrap_or_default();
         let mut labels: Vec<_> = self.labels.iter().copied().collect();
         labels.sort_unstable();
         let mut edges: Vec<_> = self.edges.iter().copied().collect();
@@ -3642,6 +3728,7 @@ impl LeanHtRefutationState {
             edges,
             obligations,
             folds,
+            fold_options,
         }
     }
 
@@ -10729,6 +10816,7 @@ impl Ht {
             edges,
             obligations,
             folds,
+            fold_options: Vec::new(),
         };
         let regular: serde_json::Value =
             serde_json::from_str(&self.lean_regular_blocked_open_certificate_json(&leaf)?)
@@ -10947,40 +11035,44 @@ impl Ht {
                     return Ok((false, self.finalize_lean_certificate(envelope)?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    let finite = self.lean_blocked_open_certificate_json(
-                        &leaf,
-                        LeanHtEvidence::Sat,
-                    )?;
-                    let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
-                    let finite_candidate = self.finalize_lean_certificate(finite)?;
-                    if self.lean_decision_candidate_passes(&finite_candidate)? {
-                        return Ok((true, finite_candidate));
-                    }
-                    let regular = match self.lean_regular_blocked_open_certificate_json(&leaf) {
-                        Ok(regular) => regular,
-                        Err(error) => {
-                            let mut learned = false;
-                            for &fold in &leaf.folds {
-                                learned |= forbidden_folds.insert(fold);
-                            }
-                            if !learned {
-                                return Err(format!(
-                                    "regular decision candidate has no fresh fold: {error}"
-                                ));
-                            }
-                            continue;
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = leaf.next_fold_assignment(&rejected_assignments) {
+                        let mut candidate_leaf = leaf.clone();
+                        candidate_leaf.folds = folds.clone();
+                        let finite = self.lean_blocked_open_certificate_json(
+                            &candidate_leaf,
+                            LeanHtEvidence::Sat,
+                        )?;
+                        let finite = Self::lean_finite_sat_regular_decision_envelope(finite)?;
+                        let finite_candidate = self.finalize_lean_certificate(finite)?;
+                        if self.lean_decision_candidate_passes(&finite_candidate)? {
+                            return Ok((true, finite_candidate));
                         }
-                    };
-                    let envelope = Self::lean_regular_decision_envelope(regular, true)?;
-                    let candidate = self.finalize_lean_certificate(envelope)?;
-                    if self.lean_decision_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
+                        if let Ok(regular) =
+                            self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
+                        {
+                            let envelope = Self::lean_regular_decision_envelope(regular, true)?;
+                            let candidate = self.finalize_lean_certificate(envelope)?;
+                            if self.lean_decision_candidate_passes(&candidate)? {
+                                return Ok((true, candidate));
+                            }
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted, "fold assignment enumeration must make progress");
                     }
-                    let mut learned = false;
-                    for fold in leaf.folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    // Every simultaneous assignment for this saturated state
+                    // has now been checked and rejected. Expand each currently
+                    // blocked source on the next search attempt. This is a
+                    // control refinement, not a claim that a constituent pair
+                    // is invalid in another assignment.
+                    let mut expanded_source = false;
+                    for (source, blockers) in &leaf.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free regular decision candidate".to_string(),
                         );
@@ -24843,6 +24935,25 @@ mod tests {
         assert_eq!(leaf.labels.len(), 3);
         assert_eq!(leaf.edges.len(), 2);
         assert_eq!(leaf.obligations.len(), 3);
+
+        let options = vec![(7, vec![5, 3]), (9, vec![6, 4])];
+        let first = LeanHtRefutationState::next_fold_assignment_from_options(
+            &options,
+            &HashSet::new(),
+        )
+        .expect("the finite blocker product is nonempty");
+        assert_eq!(first, vec![(7, 5), (9, 6)]);
+        let rejected_assignments = HashSet::from([first]);
+        let second = LeanHtRefutationState::next_fold_assignment_from_options(
+            &options,
+            &rejected_assignments,
+        )
+        .expect("rejecting one assignment must retain the other combinations");
+        assert_eq!(second, vec![(7, 5), (9, 4)]);
+        assert!(
+            second.contains(&(7, 5)),
+            "a fold from a rejected assignment must remain reusable elsewhere",
+        );
         let rejected_folds: HashSet<(Node, Node)> = leaf.folds.iter().copied().collect();
         let mut retry_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
         match cyclic.lean_refutation_avoiding_folds(
@@ -25023,6 +25134,7 @@ mod tests {
             edges: vec![(R0, 0, 1), (R0, 1, 2)],
             obligations: Vec::new(),
             folds: Vec::new(),
+            fold_options: Vec::new(),
         };
         let unsaturated_document = reasoner
             .lean_regular_blocked_open_certificate_json(&unsaturated)
@@ -25048,6 +25160,7 @@ mod tests {
             ],
             obligations: Vec::new(),
             folds: Vec::new(),
+            fold_options: Vec::new(),
         };
         let document = reasoner
             .lean_regular_blocked_open_certificate_json(&leaf)
@@ -25103,6 +25216,7 @@ mod tests {
             edges: Vec::new(),
             obligations: Vec::new(),
             folds: Vec::new(),
+            fold_options: Vec::new(),
         };
         let joined = Ht::new_certified(vec![Clause::new(
             vec![
@@ -25135,6 +25249,7 @@ mod tests {
             edges: vec![(R0, 0, 1)],
             obligations: Vec::new(),
             folds: Vec::new(),
+            fold_options: Vec::new(),
         };
         let non_simple_certificate = non_simple
             .lean_regular_blocked_open_certificate(&nonlocal_leaf)
@@ -25164,6 +25279,7 @@ mod tests {
             edges: vec![(R0, 0, 0)],
             obligations: Vec::new(),
             folds: Vec::new(),
+            fold_options: Vec::new(),
         };
         assert!(
             aliased_role_clause

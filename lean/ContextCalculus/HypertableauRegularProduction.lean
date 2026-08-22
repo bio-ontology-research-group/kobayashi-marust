@@ -393,6 +393,96 @@ theorem FreshFoldProducer.eventually_done
   exact fold_learning_eventually_done producer.run producer.forbidden
     (fun _ _ hrun => producer.rejected_step hrun)
 
+/-! ## Complete-fold-assignment refinement
+
+Rejecting a redirected cover refutes the complete simultaneous fold assignment
+used to construct that cover.  It does not refute any constituent fold in
+isolation.  The following control model therefore learns exact assignments,
+while permitting every pair to occur in a different assignment. -/
+
+abbrev FoldAssignment (Node : Type) := Finset (Node × Node)
+
+inductive FoldAssignmentOutcome (Node Result : Type) where
+  | done (result : Result)
+  | rejected (assignment : FoldAssignment Node)
+
+/-- Fixed-budget production indexed by exact rejected assignments.  A retry
+may reject only an assignment that has not already been rejected. -/
+structure FoldAssignmentProducer (Node Result : Type)
+    [DecidableEq Node] where
+  attempt : Finset (FoldAssignment Node) → FoldAssignmentOutcome Node Result
+  rejectionFresh : ∀ rejected assignment,
+    attempt rejected = .rejected assignment → assignment ∉ rejected
+
+def FoldAssignmentProducer.rejected
+    [DecidableEq Node]
+    (producer : FoldAssignmentProducer Node Result) :
+    Nat → Finset (FoldAssignment Node)
+  | 0 => ∅
+  | round + 1 =>
+      let current := producer.rejected round
+      match producer.attempt current with
+      | .done _ => current
+      | .rejected assignment => insert assignment current
+
+def FoldAssignmentProducer.run
+    [DecidableEq Node]
+    (producer : FoldAssignmentProducer Node Result) (round : Nat) :
+    FoldAssignmentOutcome Node Result :=
+  producer.attempt (producer.rejected round)
+
+theorem FoldAssignmentProducer.rejected_step
+    [DecidableEq Node]
+    (producer : FoldAssignmentProducer Node Result)
+    {round : Nat} {assignment : FoldAssignment Node}
+    (hrun : producer.run round = .rejected assignment) :
+    producer.rejected (round + 1) =
+        insert assignment (producer.rejected round) ∧
+      assignment ∉ producer.rejected round := by
+  have hattempt : producer.attempt (producer.rejected round) =
+      .rejected assignment := hrun
+  constructor
+  · simp only [FoldAssignmentProducer.rejected]
+    rw [hattempt]
+  · exact producer.rejectionFresh _ _ hattempt
+
+/-- Exact-assignment learning terminates at a fixed finite node budget.  Its
+finite search space is the powerset of finite blocker pairs, rather than the
+pair set itself. -/
+theorem FoldAssignmentProducer.eventually_done
+    [Fintype Node] [DecidableEq Node]
+    (producer : FoldAssignmentProducer Node Result) :
+    ∃ round result, producer.run round = .done result := by
+  by_contra hdone
+  have hrejected : ∀ round, ∃ assignment,
+      producer.run round = .rejected assignment := by
+    intro round
+    cases houtcome : producer.run round with
+    | done result => exact False.elim (hdone ⟨round, result, houtcome⟩)
+    | rejected assignment => exact ⟨assignment, rfl⟩
+  choose assignment hruns using hrejected
+  have hstrict : ∀ round,
+      producer.rejected round ⊂ producer.rejected (round + 1) := by
+    intro round
+    have hstep := producer.rejected_step (hruns round)
+    rw [hstep.1]
+    exact Finset.ssubset_insert hstep.2
+  have hcard : ∀ round,
+      (producer.rejected 0).card + round ≤ (producer.rejected round).card := by
+    intro round
+    induction round with
+    | zero => simp
+    | succ round ih =>
+        have hlt := Finset.card_lt_card (hstrict round)
+        omega
+  have huniv := Finset.card_le_card
+    (show producer.rejected
+        (Fintype.card (FoldAssignment Node) + 1) ⊆ Finset.univ by
+      exact Finset.subset_univ _)
+  have hbound := hcard (Fintype.card (FoldAssignment Node) + 1)
+  simp only [Finset.card_univ] at huniv
+  omega
+
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
 because the serializer no longer mutates the completion graph. -/
@@ -665,5 +755,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms FreshFoldProducer.not_rejected_empty
 #print axioms FreshFoldProducer.eventually_done
 #print axioms GuardedFoldProducer.rejected_has_fresh
+#print axioms FoldAssignmentProducer.rejected_step
+#print axioms FoldAssignmentProducer.eventually_done
 
 end ContextCalculus.Hypertableau
