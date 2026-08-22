@@ -44,6 +44,7 @@ checkers=(
 (
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
+    LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauCertificationSurface
     # The default Lake facets build the libraries, not every native checker.
     # Build the exact executables consumed below so an old binary can never
     # make a cross-language certification test pass or fail spuriously.

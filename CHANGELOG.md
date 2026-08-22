@@ -40,6 +40,11 @@
   doubling trace, and eliminates the checked terminal into the cell decision.
   All four complete-assignment taxonomy route families now use this concrete
   interface: regular, cardinality, native ABox, and native-ABox cardinality.
+- Route current global publication through the same concrete executor and add
+  `HypertableauCertificationSurface` as the explicit production theorem
+  surface. Its axiom audit covers exact global publication and all four exact
+  taxonomy publication families; legacy producer lemmas are not exported as
+  certification endpoints. The HT gate builds this surface explicitly.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem
