@@ -692,6 +692,9 @@ blocker table. Equality mode selects the unwitnessed sources; cardinality mode
 considers every blockable source and retains exactly the nonempty option rows.
 The checker also requires every Cartesian assignment to occur in the rejected
 set. Its capstone derives `SourceExpansionControlled` for every emitted option.
+For every nonempty accepted table it also derives a blocker pair outside the
+prior forbidden set, so unioning the exact emitted pair set is a strict outer
+learning step.
 The native `ht-equality-production-blocking-check` guards equality,
 cardinality, native-ABox, and taxonomy learning transitions in Rust.
 

@@ -387,6 +387,42 @@ theorem DecodedEqProductionBlockingTable.optionsNonempty_eq_true_iff
       ∀ option ∈ decoded.table.options, option.2 ≠ [] := by
   simp [DecodedEqProductionBlockingTable.optionsNonempty]
 
+theorem FiniteEqProductionBlockingTable.expectedOptions_filtered
+    (table : FiniteEqProductionBlockingTable
+      nodeCount conceptCount roleCount variableCount)
+    {source blockers blocker}
+    (hoption : (source, blockers) ∈ table.expectedOptions)
+    (hblocker : blocker ∈ blockers) :
+    (source, blocker) ∉ table.forbidden := by
+  classical
+  unfold FiniteEqProductionBlockingTable.expectedOptions at hoption
+  dsimp only at hoption
+  split at hoption
+  · replace hoption := (List.mem_filter.mp hoption).1
+    rcases List.mem_map.mp hoption with ⟨candidate, _, heq⟩
+    cases heq
+    have hfold : table.quotientFold source blocker := by
+      exact of_decide_eq_true (List.mem_filter.mp hblocker).2
+    exact hfold.2.2
+  · rcases List.mem_map.mp hoption with ⟨candidate, _, heq⟩
+    cases heq
+    have hfold : table.quotientFold source blocker := by
+      exact of_decide_eq_true (List.mem_filter.mp hblocker).2
+    exact hfold.2.2
+
+theorem DecodedEqProductionBlockingTable.checked_foldOptionPairs_has_fresh
+    (decoded : DecodedEqProductionBlockingTable)
+    (hoptions : decoded.table.options = decoded.table.expectedOptions)
+    (hnonempty : decoded.table.options ≠ [])
+    (hrows : ∀ option ∈ decoded.table.options, option.2 ≠ []) :
+    ∃ pair ∈ foldOptionPairs decoded.table.options,
+      pair ∉ decoded.table.forbidden := by
+  apply foldOptionPairs_has_fresh_of_filtered hnonempty hrows
+  intro source blockers hoption blocker hblocker
+  apply decoded.table.expectedOptions_filtered
+  · simpa [hoptions] using hoption
+  · exact hblocker
+
 /-! ## Bounded decoder and semantic capstone -/
 
 def WireEqProductionBlockingTable.decode
@@ -469,9 +505,39 @@ theorem WireEqProductionBlockingTable.checked_sourceExpansionControlled
   exact sourceExpansionControlled_of_assignment_exhaustion checked.2.2.2.2
     decoded.rejected checked.2.2.2.1 hoption
 
+theorem WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
+    (wire : WireEqProductionBlockingTable)
+    (decoded : DecodedEqProductionBlockingTable)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true)
+    (hnonempty : decoded.table.options ≠ []) :
+    ∃ pair ∈ foldOptionPairs decoded.table.options,
+      pair ∉ decoded.table.forbidden := by
+  have checked := wire.check_sound decoded hdecode hcheck
+  exact decoded.checked_foldOptionPairs_has_fresh checked.2.2.1 hnonempty
+    checked.2.2.2.2
+
+theorem WireEqProductionBlockingTable.checked_expansion_strict
+    (wire : WireEqProductionBlockingTable)
+    (decoded : DecodedEqProductionBlockingTable)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true)
+    (hnonempty : decoded.table.options ≠ []) :
+    decoded.table.forbidden ⊂ decoded.table.forbidden ∪
+      foldOptionPairs decoded.table.options := by
+  rcases wire.checked_expansion_has_fresh_pair decoded hdecode hcheck hnonempty with
+    ⟨pair, hpairs, hfresh⟩
+  exact Finset.ssubset_iff_subset_ne.mpr ⟨Finset.subset_union_left, by
+    intro heq
+    apply hfresh
+    rw [heq]
+    exact Finset.mem_union_right decoded.table.forbidden hpairs⟩
+
 #print axioms FiniteEqCertificate.computableQuotientRoleBlockingSignature_eq
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound
 #print axioms WireEqProductionBlockingTable.checked_sourceExpansionControlled
+#print axioms WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
+#print axioms WireEqProductionBlockingTable.checked_expansion_strict
 
 end ContextCalculus.Hypertableau

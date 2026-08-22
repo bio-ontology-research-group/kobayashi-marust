@@ -48,6 +48,8 @@
   KM may learn any blocker-pair union. All ten production learning loops are
   now checker-guarded. Equality and cardinality cross-language tests accept
   genuine runtime evidence and reject incomplete options or exhaustion.
+  Accepted nonempty tables expose a pair absent from the prior forbidden set,
+  proving that KM's exact pair-union update strictly grows the outer state.
 - Preserve inactive bounded-domain nodes as roots when serializing equality
   predecessor forests. This removes a bound-versus-active-prefix panic exposed
   by the production checker and makes the finite-domain convention explicit.
