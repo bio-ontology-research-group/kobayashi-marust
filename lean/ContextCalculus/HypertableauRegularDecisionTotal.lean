@@ -3,6 +3,7 @@ import ContextCalculus.HypertableauFrontierWire
 import ContextCalculus.HypertableauEqualityFreeDecision
 import ContextCalculus.HypertableauRegularProduction
 import ContextCalculus.HypertableauNormalizedWire
+import ContextCalculus.HypertableauRegularRouteProduction
 
 /-!
 # Total checked regular equality-free HT decision
@@ -50,6 +51,26 @@ inductive CheckedRegularRoundOutcome
       (hconcepts : document.concept_count = conceptCount)
       (hroles : document.role_count = roleCount)
       (hcheck : document.check = true)
+
+/-- Construct KM's exact checked regular-UNSAT outcome directly from the
+semantic refutation returned by exhaustive finite search at the empty global
+root. The finite certificate, recursive tree, empty-root proof, and Boolean
+checker acceptance are all derived in Lean. -/
+noncomputable def CheckedRegularRoundOutcome.finiteUnsat_of_empty_root_refutes
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hnonempty : 0 < nodeCount)
+    (hrefutes : Refutes (Fin nodeCount) ontology
+      (stateOfGuardedFacts
+        (∅ : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+          (Fin roleCount))))) :
+    CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology := by
+  exact Classical.choice (show Nonempty
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount ontology)
+      from by
+    obtain ⟨certificate, tree, hontology, hnodes, hempty, hcheck⟩ :=
+      hrefutes.exists_checked_empty_root_certificate ontology hnonempty
+    exact ⟨.finiteUnsat certificate tree hontology hnodes hempty hcheck⟩)
 
 /-- Construct the conclusive SAT outcome directly from the concrete blocked
 runtime terminal and serializer refinement data. The certificate check is a
@@ -682,6 +703,7 @@ theorem checked_regular_control_producer_decides_source
 #print axioms CheckedRegularRoundOutcome.regularSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteSat_semantics
 #print axioms CheckedRegularRoundOutcome.finiteUnsat_semantics
+#print axioms CheckedRegularRoundOutcome.finiteUnsat_of_empty_root_refutes
 #print axioms CheckedRegularRoundOutcome.conclusive_semantics
 #print axioms checked_regular_doubling_decides
 #print axioms checked_regular_fold_learning_doubling_decides

@@ -1,5 +1,6 @@
 import ContextCalculus.HypertableauExpansionProduction
 import ContextCalculus.HypertableauRoleBlocking
+import ContextCalculus.HypertableauRefutationCertificate
 
 /-!
 # Concrete equality-free blocker options for production HT
@@ -50,6 +51,45 @@ theorem FiniteSatCertificate.ofState_state
   · simp [FiniteSatCertificate.ofState, FiniteSatCertificate.state]
   · simp [FiniteSatCertificate.ofState, FiniteSatCertificate.state]
   · simp [FiniteSatCertificate.ofState, FiniteSatCertificate.state]
+
+/-- Serializing the empty production root yields the exact empty-root shape
+required by the global UNSAT checker. -/
+theorem FiniteSatCertificate.ofState_emptyRoot
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
+    (FiniteSatCertificate.ofState ontology
+      (stateOfGuardedFacts
+        (∅ : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+          (Fin roleCount))))).EmptyRoot := by
+  classical
+  simp [FiniteSatCertificate.EmptyRoot, FiniteSatCertificate.ofState,
+    stateOfGuardedFacts]
+
+/-- Every semantic finite refutation from KM's empty global root constructs
+the exact certificate and accepted recursive tree consumed by the production
+regular-UNSAT outcome. No serializer or checker-success premise remains. -/
+theorem Refutes.exists_checked_empty_root_certificate
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (hnonempty : 0 < nodeCount)
+    (hrefutes : Refutes (Fin nodeCount) ontology
+      (stateOfGuardedFacts
+        (∅ : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+          (Fin roleCount))))) :
+    ∃ (certificate : FiniteSatCertificate
+          nodeCount conceptCount roleCount variableCount)
+      (tree : FiniteRefutationTree
+          nodeCount conceptCount roleCount variableCount),
+      certificate.ontology = ontology ∧ 0 < nodeCount ∧
+        certificate.EmptyRoot ∧ tree.check certificate = true := by
+  let certificate := FiniteSatCertificate.ofState ontology
+    (stateOfGuardedFacts
+      (∅ : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount))))
+  obtain ⟨tree, hcheck⟩ := hrefutes.exists_checked_tree certificate rfl
+    (FiniteSatCertificate.ofState_state ontology _)
+  exact ⟨certificate, tree, rfl, hnonempty,
+    FiniteSatCertificate.ofState_emptyRoot ontology, hcheck⟩
 
 noncomputable def State.productionFold
     [Fintype Concept] [DecidableEq Concept]
@@ -880,6 +920,8 @@ noncomputable def CartesianFoldExpansionRuntime.ofFiniteProductionSearch
 #print axioms FiniteProductionBlockingTable.check_sound
 #print axioms finite_productionBlocked_terminal_or_frontier
 #print axioms FiniteSatCertificate.ofState_state
+#print axioms FiniteSatCertificate.ofState_emptyRoot
+#print axioms Refutes.exists_checked_empty_root_certificate
 #print axioms State.productionBlocked_foldTotal
 #print axioms State.productionFold_not_forbidden
 #print axioms State.mem_productionUnwitnessedSources_iff

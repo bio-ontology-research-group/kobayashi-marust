@@ -30,6 +30,10 @@
   leaf, and a checked node frontier, packages the exact blocked state and
   predecessor provenance, and feeds it directly into both finite learning
   layers. Callers no longer provide a universal family of blocked terminals.
+- Construct the production regular-UNSAT outcome from a semantic refutation at
+  the empty global root. Lean serializes the exact root state, proves its lists
+  empty, recursively constructs an accepted finite refutation tree, and
+  returns KM's checked outcome without serializer or checker-success premises.
 - Define a concrete, proof-indexed execution trace for KM's nested
   fixed-budget blocking loop. The trace records first-fresh simultaneous
   assignment selection, exact candidate acceptance or rejection, insertion of
