@@ -10058,6 +10058,37 @@ impl Ht {
         };
         let payload: serde_json::Value =
             serde_json::from_str(&payload).map_err(|error| error.to_string())?;
+        let variable_count = payload["variable_count"]
+            .as_u64()
+            .ok_or_else(|| "HT taxonomy payload has no numeric variable_count".to_string())?
+            as usize;
+        let target_ontology = payload["ontology"]
+            .as_array()
+            .ok_or_else(|| "HT taxonomy payload has no ontology array".to_string())?;
+        let mut normalization = serde_json::to_value(normalization)
+            .map_err(|error| error.to_string())?;
+        let records = normalization
+            .as_array_mut()
+            .ok_or_else(|| "HT taxonomy normalization is not an array".to_string())?;
+        // RBox restoration can append checked role-chain/transitivity clauses
+        // after body-equality normalization was recorded.  Their source and
+        // target DL clauses are identical at this layer; append explicit
+        // identity records so the source-normalization proof covers the exact
+        // run ontology.  The separate RBox projection certificate remains
+        // responsible for relating these clauses to the raw OWL role axioms.
+        if records.len() > target_ontology.len() {
+            return Err("HT taxonomy normalization exceeds its target ontology".to_string());
+        }
+        let representatives: Vec<_> = (0..variable_count).collect();
+        let representative_paths: Vec<Vec<_>> =
+            (0..variable_count).map(|variable| vec![variable]).collect();
+        for clause in &target_ontology[records.len()..] {
+            records.push(serde_json::json!({
+                "source": clause,
+                "representatives": representatives,
+                "representative_paths": representative_paths,
+            }));
+        }
         let payload_version = payload["version"]
             .as_u64()
             .ok_or_else(|| "HT taxonomy payload has no numeric version".to_string())?;
@@ -11540,6 +11571,82 @@ impl Ht {
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concept_runs": concept_runs,
             "subsumption_runs": subsumption_runs,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
+    /// Require the source-normalization proof and the run-derived taxonomy to
+    /// name the exact same target certificate.  Checking these documents
+    /// separately would permit an unrelated valid normalized taxonomy to be
+    /// paired with a valid production run matrix.
+    fn lean_source_bound_ordinary_taxonomy_passes(
+        &self,
+        source: &str,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "ordinary taxonomy publication requires KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER"
+                .to_string()
+        })?;
+        let source: serde_json::Value =
+            serde_json::from_str(source).map_err(|error| error.to_string())?;
+        // No normalization records means source and target are definitionally
+        // identical.  The public API historically returns the raw v1/v2
+        // target in this case; make that identity proof explicit inside the
+        // source-bound publication document.
+        let identity_normalization = |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+            let variable_count = target["variable_count"]
+                .as_u64()
+                .ok_or_else(|| "identity-normalized taxonomy has no variable_count".to_string())?
+                as usize;
+            let ontology = target["ontology"]
+                .as_array()
+                .ok_or_else(|| "identity-normalized taxonomy has no ontology".to_string())?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            Ok(ontology
+                .iter()
+                .map(|clause| serde_json::json!({
+                    "source": clause,
+                    "representatives": representatives,
+                    "representative_paths": representative_paths,
+                }))
+                .collect())
+        };
+        let source = match source.get("version").and_then(serde_json::Value::as_u64) {
+            Some(1) => serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": { "plain": { "certificate": source } },
+            }),
+            Some(2) => serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": { "mixed": { "certificate": source } },
+            }),
+            _ => source,
+        };
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "source": source,
+            "runs": {
+                "version": 1,
+                "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+                "concept_runs": concept_runs,
+                "subsumption_runs": subsumption_runs,
+            },
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -16887,28 +16994,13 @@ impl Ht {
                 widen_regular(cell);
             }
         }
-        let (version, concepts, subsumptions) = if has_equality {
-            (2, mixed_concepts, mixed_subsumptions)
-        } else {
-            let concepts = legacy_concepts
-                .into_iter()
-                .map(|payload| {
-                    payload.ok_or_else(|| "missing version-1 concept payload".to_string())
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let subsumptions = legacy_subsumptions
-                .into_iter()
-                .map(|row| {
-                    row.into_iter()
-                        .map(|payload| {
-                            payload
-                                .ok_or_else(|| "missing version-1 subsumption payload".to_string())
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            (1, concepts, subsumptions)
-        };
+        // Certified publication uses the same mixed representation derived by
+        // `WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` for every fragment.
+        // Retaining a second legacy rendering here would require trusting an
+        // unproved conversion between the published target and the run-derived
+        // target.
+        let (version, concepts, subsumptions) =
+            (2, mixed_concepts, mixed_subsumptions);
         let payload = serde_json::to_string(&serde_json::json!({
             "version": version,
             "concept_count": concept_count,
@@ -16920,10 +17012,25 @@ impl Ht {
             "subsumptions": subsumptions,
         }))
         .map_err(|error| error.to_string())?;
-        if !self.lean_ordinary_taxonomy_run_matrix_passes(named, concept_runs, subsumption_runs)? {
+        if !self.lean_ordinary_taxonomy_run_matrix_passes(
+            named,
+            concept_runs.clone(),
+            subsumption_runs.clone(),
+        )? {
             return Err("Lean rejected the complete ordinary taxonomy run matrix".to_string());
         }
-        self.wrap_normalized_lean_taxonomy_certificate(payload)
+        let normalized = self.wrap_normalized_lean_taxonomy_certificate(payload)?;
+        if !self.lean_source_bound_ordinary_taxonomy_passes(
+            &normalized,
+            named,
+            concept_runs,
+            subsumption_runs,
+        )? {
+            return Err(
+                "Lean rejected the source-bound ordinary taxonomy production bundle".to_string(),
+            );
+        }
+        Ok(normalized)
     }
 
     /// Recompute the tableau trigger indexes (`concept_triggers`,
@@ -29208,6 +29315,105 @@ mod tests {
         assert!(
             !run_checker(&matrix),
             "Lean must reject an ordinary run retained under the wrong matrix coordinate"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target() {
+        let Some(checker) = std::env::var_os(
+            "KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
+        ) else {
+            return;
+        };
+        let tableau = ht(Vec::new());
+        let named = [A, B];
+        let concept_count = B as usize + 1;
+        let concept_runs: Vec<_> = named
+            .iter()
+            .map(|&concept| {
+                let (_, _, run) = tableau
+                    .lean_taxonomy_query_decision_and_run_json(
+                        LeanHtTaxonomyQuery::Concept(concept),
+                        concept_count,
+                    )
+                    .expect("produce a checked ordinary concept run");
+                serde_json::from_str::<serde_json::Value>(&run).unwrap()
+            })
+            .collect();
+        let subsumption_runs: Vec<Vec<_>> = named
+            .iter()
+            .map(|&sub| {
+                named
+                    .iter()
+                    .map(|&sup| {
+                        let (_, _, run) = tableau
+                            .lean_taxonomy_query_decision_and_run_json(
+                                LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                                concept_count,
+                            )
+                            .expect("produce a checked ordinary subsumption run");
+                        serde_json::from_str::<serde_json::Value>(&run).unwrap()
+                    })
+                    .collect()
+            })
+            .collect();
+        let first = &concept_runs[0];
+        let target = serde_json::json!({
+            "version": 2,
+            "concept_count": first["concept_count"],
+            "role_count": first["role_count"],
+            "variable_count": first["variable_count"],
+            "ontology": first["ontology"],
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concepts": concept_runs.iter().map(|run| run["terminal"].clone()).collect::<Vec<_>>(),
+            "subsumptions": subsumption_runs.iter().map(|row| {
+                row.iter().map(|run| run["terminal"].clone()).collect::<Vec<_>>()
+            }).collect::<Vec<_>>(),
+        });
+        let runs = serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
+        });
+        let source = serde_json::json!({
+            "version": 3,
+            "normalization": [],
+            "payload": { "mixed": { "certificate": target } },
+        });
+        let mut bundle = serde_json::json!({
+            "version": 1,
+            "source": source,
+            "runs": runs,
+        });
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-source-bound-ordinary-taxonomy-{}.json",
+            std::process::id()
+        ));
+        let run_checker = |document: &serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run source-bound ordinary taxonomy checker")
+                .success()
+        };
+        assert!(run_checker(&bundle), "exact source/run bundle must pass");
+
+        let certificate = &mut bundle["source"]["payload"]["mixed"]["certificate"];
+        certificate["named"] = serde_json::json!([A as usize]);
+        certificate["concepts"].as_array_mut().unwrap().truncate(1);
+        certificate["subsumptions"].as_array_mut().unwrap().truncate(1);
+        certificate["subsumptions"][0]
+            .as_array_mut()
+            .unwrap()
+            .truncate(1);
+        assert!(
+            !run_checker(&bundle),
+            "a separately valid source target must not substitute for the run-derived matrix"
         );
         let _ = std::fs::remove_file(path);
     }

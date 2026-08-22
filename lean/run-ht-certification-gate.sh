@@ -70,6 +70,7 @@ checkers=(
     ht-native-abox-cardinality-taxonomy-run-matrix-check
     ht-cardinality-taxonomy-run-matrix-check
     ht-ordinary-taxonomy-run-matrix-check
+    ht-source-bound-ordinary-taxonomy-check
     ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
@@ -209,6 +210,8 @@ done
     export KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-cardinality-taxonomy-run-matrix-check"
     export KM_HT_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_ORDINARY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-ordinary-taxonomy-run-matrix-check"
+    export KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"
@@ -228,6 +231,7 @@ done
     cargo test --release cardinality_decision_emits_sat_or_unsat_checker_ready_evidence -- --nocapture
     cargo test --release cardinality_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
     cargo test --release ordinary_taxonomy_run_matrix_binds_every_query_coordinate -- --nocapture
+    cargo test --release source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target -- --nocapture
     cargo test --release native_abox_global_decision_uses_joint_sat_wire -- --nocapture
     cargo test --release rooted_ordinary_run_rejects_a_terminal_from_another_abox -- --nocapture
     KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \
