@@ -667,6 +667,64 @@ theorem sourceExpansionControlled_of_assignment_exhaustion
   exact pair_mem_rejected_of_assignment_exhaustion hall rejected hexhausted
     hoption hblocker
 
+/-- One production attempt indexed by the blocker options reconstructed for
+the current rerun. A rejection must be both fresh and an element of that exact
+Cartesian product. -/
+inductive CartesianFoldAssignmentAttempt (Node Result : Type)
+    [DecidableEq Node]
+    (options : List (Node × List Node))
+    (rejected : Finset (FoldAssignment Node)) where
+  | done (result : Result)
+  | rejected (assignment : FoldAssignment Node)
+      (generated : assignment ∈ enumerateFoldAssignments options)
+      (fresh : assignment ∉ rejected)
+
+def CartesianFoldAssignmentAttempt.toGuarded
+    [DecidableEq Node]
+    {options : List (Node × List Node)}
+    {rejected : Finset (FoldAssignment Node)}
+    (attempt : CartesianFoldAssignmentAttempt Node Result options rejected) :
+    GuardedFoldAssignmentAttempt Node Result rejected :=
+  match attempt with
+  | .done result => .done result
+  | .rejected assignment _ fresh => .rejected assignment fresh
+
+/-- Production control with blocker options allowed to change after every
+rejected candidate and ensuing rerun, exactly as in Rust. -/
+structure CartesianFoldAssignmentProducer (Node Result : Type)
+    [DecidableEq Node] where
+  options : Finset (FoldAssignment Node) → List (Node × List Node)
+  optionNonempty : ∀ rejected option,
+    option ∈ options rejected → option.2 ≠ []
+  attempt : ∀ rejected : Finset (FoldAssignment Node),
+    CartesianFoldAssignmentAttempt Node Result (options rejected) rejected
+
+def CartesianFoldAssignmentProducer.toGuarded
+    [DecidableEq Node]
+    (producer : CartesianFoldAssignmentProducer Node Result) :
+    GuardedFoldAssignmentProducer Node Result where
+  attempt rejected := (producer.attempt rejected).toGuarded
+
+theorem CartesianFoldAssignmentProducer.rejection_generated
+    [DecidableEq Node]
+    (producer : CartesianFoldAssignmentProducer Node Result)
+    {rejected : Finset (FoldAssignment Node)}
+    {assignment : FoldAssignment Node}
+    {generated : assignment ∈
+      enumerateFoldAssignments (producer.options rejected)}
+    {fresh : assignment ∉ rejected}
+    (_hattempt : producer.attempt rejected =
+      .rejected assignment generated fresh) :
+    assignment ∈ enumerateFoldAssignments (producer.options rejected) :=
+  generated
+
+theorem CartesianFoldAssignmentProducer.eventually_done
+    [Fintype Node] [DecidableEq Node]
+    (producer : CartesianFoldAssignmentProducer Node Result) :
+    ∃ round result,
+      producer.toGuarded.toFoldAssignmentProducer.run round = .done result :=
+  producer.toGuarded.eventually_done
+
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
 because the serializer no longer mutates the completion graph. -/
@@ -946,5 +1004,7 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms pair_mem_enumerateFoldAssignments
 #print axioms pair_mem_rejected_of_assignment_exhaustion
 #print axioms sourceExpansionControlled_of_assignment_exhaustion
+#print axioms CartesianFoldAssignmentProducer.rejection_generated
+#print axioms CartesianFoldAssignmentProducer.eventually_done
 
 end ContextCalculus.Hypertableau

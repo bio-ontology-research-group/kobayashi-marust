@@ -76,6 +76,12 @@
   the retry recursion, derives strict growth and finite fixed-budget settlement,
   and proves complete taxonomy capstones for regular, equality, cardinality,
   native-ABox, and combined native-ABox-cardinality production routes.
+- Strengthen that producer boundary so freshness alone is insufficient. Every
+  rejected assignment now carries proof that it came from the source-major
+  Cartesian product of the blocker options exposed by the current attempt.
+  All four global-decision families and all four complete-taxonomy families use
+  this generated-assignment interface, while retaining the finite-settlement
+  and source-level decision theorems.
 
 ### Unify total production HT global decisions
 

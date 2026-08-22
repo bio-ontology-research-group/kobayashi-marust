@@ -602,11 +602,14 @@ structure rather than an unmodelled retry. Rust enumerates the Cartesian
 product of blocker choices and rejects only the complete simultaneous
 assignment checked on that attempt. A constituent `(blocked, blocker)` pair
 remains available in other assignments. Lean proves that constructor-guarded
-fresh-assignment learning cannot continue forever, constructs one settled
-checked outcome for every budget, and composes those outcomes with address
-frontier doubling and source-model equivalence. The same assignment-indexed
-capstone covers regular, equality, cardinality, native-ABox, and combined
-native-ABox-cardinality taxonomy routes.
+fresh-assignment learning cannot continue forever. The production interface
+also requires each rejected assignment to be a member of the Cartesian product
+generated from that attempt's current source-major blocker options; it cannot
+invent an unrelated fresh assignment. Lean constructs one settled checked
+outcome for every budget and composes those outcomes with address frontier
+doubling and source-model equivalence. The same generated-assignment capstone
+covers regular, equality, cardinality, native-ABox, and combined
+native-ABox-cardinality global and taxonomy routes.
 
 `HypertableauRegularDecisionWire.lean` supplies a checked sum envelope at the
 exact normalized-ontology layer. Its decoder accepts only a regular SAT
