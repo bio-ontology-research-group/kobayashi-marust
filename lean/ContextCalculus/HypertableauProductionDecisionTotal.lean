@@ -51,6 +51,22 @@ def CheckedEqualityTerminalCandidate.hasCheckedFoldModel
     HasCheckedEqFoldModel (nodeCount := nodeCount) ontology :=
   ⟨candidate.certificate, candidate.ontology_eq, candidate.check⟩
 
+/-- Construct equality terminal evidence from the exact decoded production
+state and one checker-accepted Cartesian assignment.  The fold certificate
+reuses `decoded.table.base`, so its state and ontology provenance are
+definitionally exact rather than supplied by the producer. -/
+def DecodedEqProductionBlockingTable.checkedEqualityTerminalCandidate
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount))
+    (hmode : decoded.table.allBlockableSources = false)
+    (hcheck : decoded.assignmentCandidateValidB assignment = true) :
+    CheckedEqualityTerminalCandidate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount
+      decoded.table.base.base.ontology decoded.table.base.state := by
+  refine ⟨decoded.assignmentFoldCertificate assignment, rfl, rfl, ?_⟩
+  have heq := decoded.assignmentCandidateValidB_eq_foldCheck assignment hmode
+  simpa using heq ▸ hcheck
+
 /-- The common semantic result of a certified production-global route. -/
 inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
   | sat (proof : semantics)

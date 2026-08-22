@@ -51,6 +51,10 @@
   terminal state being classified, in addition to exact ontology identity and
   checker acceptance; an unrelated checked model can no longer discharge the
   finite-search terminal field.
+- Construct that terminal evidence directly from a decoded equality production
+  table and a checker-accepted Cartesian assignment. The constructor reuses the
+  decoded table's exact base certificate, making both terminal-state and
+  ontology provenance definitional rather than producer assertions.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative
