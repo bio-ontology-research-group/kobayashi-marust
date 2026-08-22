@@ -96,6 +96,13 @@
   proves that the outer loop also terminates. All global and taxonomy HT
   capstones now require this two-level runtime, so a fold-free retry that adds
   no pair can no longer satisfy the completeness interface.
+- Close exact publication for the current two-level routes. Lean now turns the
+  global proof-carrying SAT/UNSAT verdict into one Boolean proved true exactly
+  for source satisfiability and false exactly for source unsatisfiability. The
+  four current taxonomy families likewise publish every concept and ordered
+  subsumption cell with both positive and negative exactness, including
+  cardinality and native-ABox semantics. These capstones are part of the
+  default `ContextCalculus` build rather than detached declarations.
 
 ### Unify total production HT global decisions
 

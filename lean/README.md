@@ -621,6 +621,14 @@ equivalence. The same executable-assignment and expansion capstone covers
 regular, equality, cardinality, native-ABox, and combined
 native-ABox-cardinality global and taxonomy routes.
 
+`HypertableauProductionGlobalPublication.lean` and
+`HypertableauProductionTaxonomyPublication.lean` close the current semantic
+publication endpoints. The global Boolean is true exactly for source
+satisfiability and false exactly for its negation. Every named concept and
+every ordered named-concept pair in each two-level taxonomy route similarly
+has an exact Boolean, so negative cells require proved countermodels and cannot
+be inferred from missing positive output.
+
 `HypertableauRegularDecisionWire.lean` supplies a checked sum envelope at the
 exact normalized-ontology layer. Its decoder accepts only a regular SAT
 certificate or a finite document whose evidence constructor is global UNSAT.
