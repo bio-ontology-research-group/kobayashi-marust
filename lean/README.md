@@ -197,17 +197,21 @@ context set, materialized Rust subsumption and edge stores, ID-level output,
 finite symbol table, named output, and inconsistency flag.
 It decodes residual source clauses, local variable/function origins, compiled
 atoms, and canonical witness pins, then independently checks the exact formal
-compilation relation. The production worker does not yet publish residual
-answers through this certificate.
+compilation relation. Pure and residual-certified production answers use the
+same source-bound publication certificate.
 `active_subsumption_exact` proves the active materialization semantically
 exact. `public_subsumption_sound` and
 `public_named_subsumption_sound` prove publication soundness; their
 `complete_of_satisfiable` counterparts prove completeness for reportable
 subsumptions of satisfiable subjects. `public_inconsistent_exact` proves the
-published flag equivalent to semantic unsatisfiability. The Rust worker invokes this executable when
-`KM_ELC_LEAN_CERT_CHECKER` is set and declines without output if generation,
-serialization, process execution, or verification fails. On acceptance it
-publishes the checked named relation directly.
+published flag equivalent to semantic unsatisfiability. The Rust worker invokes
+this executable when `KM_ELC_LEAN_CERT_CHECKER` is set.
+`KM_ELC_LEAN_REQUIRED=1` makes the boundary mandatory and declines without
+output if configuration, generation, serialization, process execution, or
+verification fails. On acceptance it publishes the checked named relation
+directly. The complete capstone is `ELCompletionPublication.lean`, and
+`run-elc-certification-gate.sh` audits its axioms and the cross-language
+fail-closed path.
 
 ### Hypertableau certificate checkers — `ContextCalculus/HypertableauWire.lean`
 

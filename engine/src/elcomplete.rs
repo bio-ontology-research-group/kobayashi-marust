@@ -4962,6 +4962,17 @@ pub fn positive_abox_classify(
     meta: &crate::json_io::NominalAboxMeta,
 ) -> Option<PositiveAboxResult> {
     let debug = std::env::var_os("KM_ELC_DEBUG").is_some();
+    // This helper rewrites the retained ABox into fresh completion concepts.
+    // The source-bound ELC publication theorem currently covers the resulting
+    // clause stream, not the preceding identity/ABox rewrite.  A caller asking
+    // for the Lean-certified publication boundary must therefore decline here
+    // and use a separately source-certified ABox route.
+    if std::env::var_os("KM_ELC_LEAN_REQUIRED").is_some() {
+        if debug {
+            eprintln!("KM_EL_ABOX defer: source ABox rewrite is outside the ELC Lean boundary");
+        }
+        return None;
+    }
     if !meta.complete || !meta.unsupported.is_empty() || !meta.negative_role_assertions.is_empty() {
         if debug {
             eprintln!(
@@ -5671,7 +5682,13 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
     let lean_cert_path = std::env::var_os("KM_ELC_LEAN_CERT_OUT").map(std::path::PathBuf::from);
     let lean_cert_checker =
         std::env::var_os("KM_ELC_LEAN_CERT_CHECKER").map(std::path::PathBuf::from);
-    let lean_cert_requested = lean_cert_path.is_some() || lean_cert_checker.is_some();
+    let lean_cert_required = std::env::var_os("KM_ELC_LEAN_REQUIRED").is_some();
+    if lean_cert_required && lean_cert_checker.is_none() {
+        eprintln!("KM_ELC_LEAN_CERT fail closed: missing required publication checker");
+        return None;
+    }
+    let lean_cert_requested =
+        lean_cert_required || lean_cert_path.is_some() || lean_cert_checker.is_some();
     let mut unresolved: Vec<String> = Vec::new();
     // Residual-shrinking inverse-bridge rewrites are not yet part of the Lean
     // source theorem. A checker-backed run must retain the exact input stream;
@@ -6267,6 +6284,14 @@ mod tests {
         let mut omitted_source = certificate.clone();
         omitted_source.source_ontology.clear();
         assert!(!run_checker(&omitted_source), "source omission must fail closed");
+
+        let mut duplicate_symbol = certificate.clone();
+        let b = interner.id("B").expect("B is interned");
+        duplicate_symbol.symbols[b as usize] = duplicate_symbol.symbols[a as usize].clone();
+        assert!(
+            !run_checker(&duplicate_symbol),
+            "duplicate public symbol names must fail closed"
+        );
 
         let mut old_version = certificate.clone();
         old_version.version = 4;

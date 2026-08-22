@@ -24,10 +24,10 @@ without access to the expected answer.
   justify a complete result.
 - A Protégé 5.6 plugin, ontology profiling, bounded explanations, and
   incremental reasoning interfaces are included.
-- Lean provides a sorry-free soundness and completeness certification for the
-  supported production hypertableau families, including executable route
-  selection, source normalization, retained runs, and exact publication
-  binding. Certification of ELC, CB, and automatic routing remains in progress.
+- Lean provides sorry-free soundness and completeness certification for the
+  supported production hypertableau families and the source-bound ELC
+  publication path. Certification of CB and automatic routing remains in
+  progress.
 
 ## Install
 
@@ -117,6 +117,12 @@ Run the production HT certification gate from the repository root:
 ./lean/run-ht-certification-gate.sh
 ```
 
+Run the production ELC certification gate with:
+
+```sh
+./lean/run-elc-certification-gate.sh
+```
+
 ### Current certified HT boundary
 
 `ContextCalculus.HypertableauCertificationSurface` exports the current
@@ -159,19 +165,38 @@ constructors build evidence but do not publish a certified answer. The
 `tableau_cli` certified publication path requires the executable dispatcher;
 the gate checks that rejection suppresses output for all four HT families.
 
+### Current certified ELC boundary
+
+`ContextCalculus.ELCompletion.DecodedCertificate.checkV5_publication_semantics`
+is the public ELC capstone. A successful executable check proves source-level
+inconsistency and complete taxonomy publication for both pure EL inputs and
+inputs partitioned into direct clauses, canonical witnesses, and finitely
+checked residual clauses. It checks NF1–NF7 closure, reflexive roles, backward
+bottom propagation, the complete optimized Rust state, source normalization,
+the finite symbol table, and exact ID-level and named output.
+
+Set `KM_ELC_LEAN_REQUIRED=1` and point `KM_ELC_LEAN_CERT_CHECKER` at the built
+`elc-cert-check` executable to use this fail-closed boundary. Missing,
+malformed, or rejected evidence produces no ELC result. The positive-ABox
+rewrite and incremental reasoning API are outside this ELC publication
+boundary; certified mode declines the former, while native-ABox publication is
+covered by the separately certified HT layer.
+
+The ELC capstone has no admitted theorem. Its axiom report contains only
+Lean's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
+
 ### Certification roadmap
 
 Certification releases are made only for complete layers:
 
-1. complete production HT certification;
-2. complete ELC soundness and completeness certification;
+1. complete production HT certification (v0.3.205);
+2. complete ELC soundness and completeness certification (v0.3.206);
 3. complete CB soundness and completeness certification;
 4. complete automatic-routing soundness and completeness certification; and
 5. an integrated cross-layer audit followed by v1.0.0.
 
-ELC, CB, and routing are not claimed complete until their respective public
-capstones, executable correspondence, axiom audits, and integration gates all
-pass.
+CB and routing are not claimed complete until their respective public capstones,
+executable correspondence, axiom audits, and integration gates all pass.
 
 ## Repository layout
 

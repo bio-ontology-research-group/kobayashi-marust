@@ -345,6 +345,7 @@ structure DecodedCertificate (n : Nat) where
   rust_facts : List (Fact (Fin n) (Fin n))
   public_subsumptions : List (Fin n × Fin n)
   symbols : Fin n → String
+  symbols_injective : Function.Injective symbols
   public_named_subsumptions : List (String × String)
   public_inconsistent : Bool
 
@@ -365,7 +366,8 @@ def WireCertificate.decode (doc : WireCertificate) :
   let bottom ← checkedFin doc.symbol_count doc.bottom
   if hne : top ≠ bottom then
     if hsymbols : doc.symbols.length = doc.symbol_count then
-      if horiginCount : doc.concept_origins.length = doc.symbol_count then
+      if hsymbolsNodup : doc.symbols.Nodup then
+       if horiginCount : doc.concept_origins.length = doc.symbol_count then
         let origins ← (List.finRange doc.symbol_count).mapM fun id =>
           (doc.concept_origins.get ⟨id.val, by rw [horiginCount]; exact id.isLt⟩).decode
             doc.symbol_count id
@@ -399,6 +401,17 @@ def WireCertificate.decode (doc : WireCertificate) :
             public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
               return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
             symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
+            symbols_injective := by
+              intro left right heq
+              let leftIndex : Fin doc.symbols.length :=
+                ⟨left.val, by simpa [hsymbols] using left.isLt⟩
+              let rightIndex : Fin doc.symbols.length :=
+                ⟨right.val, by simpa [hsymbols] using right.isLt⟩
+              have hindex : leftIndex = rightIndex :=
+                hsymbolsNodup.get_inj_iff.mp heq
+              have hval : left.val = right.val := by
+                exact congrArg (fun index : Fin doc.symbols.length => index.val) hindex
+              exact Fin.ext hval
             public_named_subsumptions :=
               doc.public_named_subsumptions.map fun fact => (fact.sub, fact.sup)
             public_inconsistent := doc.public_inconsistent
@@ -407,8 +420,10 @@ def WireCertificate.decode (doc : WireCertificate) :
             throw "concept-origin table is not injective"
         else
           throw s!"decoded concept-origin table has length {origins.length}, expected {doc.symbol_count}"
+       else
+         throw s!"concept-origin table has length {doc.concept_origins.length}, expected {doc.symbol_count}"
       else
-        throw s!"concept-origin table has length {doc.concept_origins.length}, expected {doc.symbol_count}"
+        throw "symbol table contains duplicate names"
     else
       throw s!"symbol table has length {doc.symbols.length}, expected {doc.symbol_count}"
   else
@@ -809,10 +824,7 @@ def DecodedCertificate.checkNormalization {n : Nat} (doc : DecodedCertificate n)
 
 def DecodedCertificate.checkNormalizationV5 {n : Nat}
     (doc : DecodedCertificate n) : Bool :=
-  if doc.witness_records.isEmpty && doc.residual_compilations.isEmpty then
-    doc.checkNormalization
-  else
-    doc.checkPartitionedNormalization
+  doc.checkPartitionedNormalization
 
 /-! ## Finite residual truth check -/
 
@@ -1499,8 +1511,6 @@ theorem DecodedCertificate.checkV5_finiteResiduals {n : Nat}
 
 theorem DecodedCertificate.checkV5_sourceResidual_holds {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
     (hconsistent : ¬doc.materialization.sub doc.top doc.bottom) :
     doc.sourceResidualTheory.holds
       (materializedCanon (fun concept => concept ∈ doc.active_concepts)
@@ -1514,10 +1524,7 @@ theorem DecodedCertificate.checkV5_sourceResidual_holds {n : Nat}
   have hpartition := hcheck.1.1.1.1.1.2
   have hnormal := hcheck.1.1.1.1.2
   have hpartitionedNormalization : doc.checkPartitionedNormalization = true := by
-    simp only [DecodedCertificate.checkNormalizationV5] at hnormal
-    split at hnormal
-    · contradiction
-    · exact hnormal
+    simpa only [DecodedCertificate.checkNormalizationV5] using hnormal
   have hfinite := hcheck.1.1.2
   have hsignature := hcheck.1.2
   let closed := checkClosedTrace_closed (doc.checkFiniteResiduals_closed hfinite)
@@ -1578,8 +1585,6 @@ theorem DecodedCertificate.checkV5_sourceResidual_holds {n : Nat}
 
 theorem DecodedCertificate.checkV5_entailsSubWithResidual_exact {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
     (a b : Fin n) (hactive : a ∈ doc.active_concepts) :
     EntailsSubWithResidual doc.ontology doc.sourceResidualTheory a b ↔
       doc.materialization.sub a doc.bottom ∨ doc.materialization.sub a b := by
@@ -1596,7 +1601,7 @@ theorem DecodedCertificate.checkV5_entailsSubWithResidual_exact {n : Nat}
   by_cases hconsistent : ¬doc.materialization.sub doc.top doc.bottom
   · exact entailsSubWithResidual_iff_finiteMaterialized closed hsound
       (fun concept => concept ∈ doc.active_concepts) hsig doc.sourceResidualTheory
-      (doc.checkV5_sourceResidual_holds hcheckV5 hpartitionedMode hconsistent)
+      (doc.checkV5_sourceResidual_holds hcheckV5 hconsistent)
       a b hactive
   · have htopBottom : doc.materialization.sub doc.top doc.bottom :=
       Classical.not_not.mp hconsistent
@@ -1619,9 +1624,7 @@ theorem DecodedCertificate.checkV5_entailsSubWithResidual_exact {n : Nat}
       exact bottom_sound_withResidual (hsound.subSound haBottom)
 
 theorem DecodedCertificate.checkV5_unsatisfiableWithResidual_exact {n : Nat}
-    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty)) :
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true) :
     UnsatisfiableWithResidual doc.ontology doc.sourceResidualTheory ↔
       doc.materialization.sub doc.top doc.bottom := by
   have hcheckV5 := hcheck
@@ -1637,7 +1640,7 @@ theorem DecodedCertificate.checkV5_unsatisfiableWithResidual_exact {n : Nat}
   by_cases hconsistent : ¬doc.materialization.sub doc.top doc.bottom
   · exact unsatisfiableWithResidual_iff_finiteMaterialized closed hsound
       (fun concept => concept ∈ doc.active_concepts) hsig doc.sourceResidualTheory
-      (doc.checkV5_sourceResidual_holds hcheckV5 hpartitionedMode hconsistent)
+      (doc.checkV5_sourceResidual_holds hcheckV5 hconsistent)
   · have htopBottom : doc.materialization.sub doc.top doc.bottom :=
       Classical.not_not.mp hconsistent
     constructor
@@ -1808,8 +1811,6 @@ theorem DecodedCertificate.public_subsumption_exact {n : Nat}
 
 theorem DecodedCertificate.public_subsumption_complete_source_of_satisfiable
     {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
     {a b : Fin n} (hactive : a ∈ doc.active_concepts)
     (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
     (hba : b ≠ a) (hbTop : b ≠ doc.top)
@@ -1821,7 +1822,7 @@ theorem DecodedCertificate.public_subsumption_complete_source_of_satisfiable
   have hcheckV5 := hcheck
   simp only [DecodedCertificate.checkV5, Bool.and_eq_true] at hcheck
   have hcore := hcheck.2
-  have hexact := doc.checkV5_entailsSubWithResidual_exact hcheckV5 hpartitionedMode
+  have hexact := doc.checkV5_entailsSubWithResidual_exact hcheckV5
   have hmat := (hexact a b hactive).mp hentails
   have hcoreEntails : EntailsSub (top := doc.top) (bottom := doc.bottom)
       doc.ontology a b := (doc.check_exact hcore).1 a b |>.mpr hmat
@@ -1840,8 +1841,6 @@ eligible active source: one bottom row for an unsatisfiable source, otherwise
 all and only its semantic superclasses. -/
 theorem DecodedCertificate.public_subsumption_source_exact
     {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
     {a b : Fin n} (hactive : a ∈ doc.active_concepts)
     (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
     (hba : b ≠ a) (hbTop : b ≠ doc.top)
@@ -1858,13 +1857,13 @@ theorem DecodedCertificate.public_subsumption_source_exact
   · intro hentails
     rcases hcase with rfl | hsatisfiable
     · have hmat := (doc.checkV5_entailsSubWithResidual_exact hcheckV5
-          hpartitionedMode a doc.bottom hactive).mp hentails
+          a doc.bottom hactive).mp hentails
       have hcoreEntails : EntailsSub (top := doc.top) (bottom := doc.bottom)
           doc.ontology a doc.bottom := (doc.check_exact hcore).1 a doc.bottom |>.mpr hmat
       exact (doc.public_subsumption_exact hcore hactive haTop haBottom hba hbTop
         (Or.inl rfl)).2 hcoreEntails
     · exact doc.public_subsumption_complete_source_of_satisfiable hcheckV5
-        hpartitionedMode hactive haTop haBottom hba hbTop hsatisfiable hentails
+        hactive haTop haBottom hba hbTop hsatisfiable hentails
 
 theorem DecodedCertificate.namedSub_iff_expected {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) {sub sup : String} :
@@ -1906,8 +1905,6 @@ theorem DecodedCertificate.public_named_subsumption_complete_of_satisfiable {n :
 
 theorem DecodedCertificate.public_named_subsumption_complete_source_of_satisfiable
     {n : Nat} (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty))
     {a b : Fin n} (hactive : a ∈ doc.active_concepts)
     (haTop : a ≠ doc.top) (haBottom : a ≠ doc.bottom)
     (hba : b ≠ a) (hbTop : b ≠ doc.top)
@@ -1922,7 +1919,7 @@ theorem DecodedCertificate.public_named_subsumption_complete_source_of_satisfiab
   simp only [DecodedCertificate.expectedNamedOutput, List.mem_map]
   exact ⟨(a, b), doc.public_subsumption_complete_source_of_satisfiable
     (by simpa only [DecodedCertificate.checkV5, Bool.and_eq_true] using hcheck)
-    hpartitionedMode hactive haTop haBottom hba hbTop hsatisfiable hentails, rfl⟩
+    hactive haTop haBottom hba hbTop hsatisfiable hentails, rfl⟩
 
 theorem DecodedCertificate.top_active {n : Nat}
     (doc : DecodedCertificate n) (hcheck : doc.check = true) :
@@ -1967,9 +1964,7 @@ theorem DecodedCertificate.public_inconsistent_exact {n : Nat}
     rw [hnamed.2, hdecide]
 
 theorem DecodedCertificate.public_inconsistent_source_exact {n : Nat}
-    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true)
-    (hpartitionedMode :
-      ¬(doc.witness_records.isEmpty && doc.residual_compilations.isEmpty)) :
+    (doc : DecodedCertificate n) (hcheck : doc.checkV5 = true) :
     doc.public_inconsistent = true ↔
       UnsatisfiableWithResidual doc.ontology doc.sourceResidualTheory := by
   have hcheckV5 := hcheck
@@ -1982,7 +1977,7 @@ theorem DecodedCertificate.public_inconsistent_source_exact {n : Nat}
     (by
       simp only [DecodedCertificate.check, Bool.and_eq_true] at hcore
       exact checkedTrace_soundState hcore.1.1.1.1)]
-  exact (doc.checkV5_unsatisfiableWithResidual_exact hcheckV5 hpartitionedMode).symm
+  exact (doc.checkV5_unsatisfiableWithResidual_exact hcheckV5).symm
 
 #print axioms DecodedCertificate.checkV5_sourceResidual_holds
 #print axioms DecodedCertificate.checkV5_entailsSubWithResidual_exact

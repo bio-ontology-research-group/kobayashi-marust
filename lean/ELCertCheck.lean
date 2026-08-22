@@ -1,4 +1,4 @@
-import ContextCalculus.ELCompletionWire
+import ContextCalculus.ELCompletionPublication
 
 open Lean
 open ContextCalculus.ELCompletion

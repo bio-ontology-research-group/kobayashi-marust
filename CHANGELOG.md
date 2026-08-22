@@ -2,6 +2,29 @@
 
 ## [unreleased]
 
+## [0.3.206] – 2026-08-23
+
+### Complete the production ELC certification layer
+
+- Add one source-level ELC publication capstone covering inconsistency,
+  ID-level taxonomy, and named taxonomy soundness and completeness. The same
+  theorem now covers pure EL and direct/witness/residual-partitioned inputs.
+- Use the partitioned source-normalization checker uniformly, treating pure EL
+  as the empty-witness, empty-residual case. This removes the former artificial
+  hypothesis that excluded pure production runs from the source-level theorem.
+- Require duplicate-free public symbol tables at the executable decoder and
+  reject forged name aliasing before publication.
+- Add `KM_ELC_LEAN_REQUIRED=1` as an explicit fail-closed production boundary.
+  Missing or rejecting checkers suppress all ELC output; accepted output is
+  materialized directly from the checked named relation.
+- Decline the positive-ABox rewrite under the ELC Lean boundary because its
+  preceding identity rewrite is not part of the ELC source theorem. Native-ABox
+  publication remains covered by the certified HT layer.
+- Add a dedicated ELC release gate. It builds the full Lean development and
+  native checker, rejects `sorryAx`, audits the capstone axioms, runs pure and
+  residual certificate tampering tests, and exercises missing, rejecting, and
+  accepting production checkers.
+
 ## [0.3.205] – 2026-08-23
 
 ### Consolidate certification documentation
