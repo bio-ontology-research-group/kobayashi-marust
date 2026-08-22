@@ -74,6 +74,12 @@
   typed construction witness. Each frontier witness identifies the exact
   canonical rooted-address outcome that was produced; Lean derives the
   doubling classifier and source decision from that construction evidence.
+- Apply the same typed outcome-construction boundary to regular, equality, and
+  cardinality production routes. Every frontier arm now identifies the exact
+  canonical outcome generated from its injective ordinary or tagged address
+  map. The four assignment-production route families derive their scheduled
+  frontier predicates and runtime decisions in Lean instead of storing an
+  abstract conclusive/frontier classifier supplied by the caller.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine

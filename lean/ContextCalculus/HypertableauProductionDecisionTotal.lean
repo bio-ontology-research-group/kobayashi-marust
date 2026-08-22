@@ -44,6 +44,63 @@ def RegularProductionConclusive
       conceptCount roleCount variableCount ontology) : Prop :=
   match outcome with | .frontier .. => False | _ => True
 
+theorem regularProductionFrontier_of_address
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    RegularProductionFrontier conceptCount roleCount variableCount ontology
+      budget (CheckedRegularRoundOutcome.frontier_of_address address hinjective) := by
+  let document := WireAddressFrontier.ofAddress address
+  refine ⟨document, rfl, rfl,
+    document.checkScheduled_check budget
+      (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl), ?_, ?_⟩
+  · rfl
+  · exact WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl
+
+def classifyRegularAddressFrontier
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    PLift (RegularProductionConclusive
+      (CheckedRegularRoundOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) ⊕
+    PLift (RegularProductionFrontier conceptCount roleCount variableCount
+      ontology budget (CheckedRegularRoundOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) :=
+  .inr ⟨regularProductionFrontier_of_address
+    (variableCount := variableCount) (ontology := ontology) address hinjective⟩
+
+inductive RegularBudgetOutcomeConstruction
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      ontology) : Type where
+  | conclusive (proof : RegularProductionConclusive outcome)
+  | frontier
+      (address : Fin (8 * 2 ^ budget) →
+        WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+      (injective : Function.Injective address)
+      (produced : outcome =
+        CheckedRegularRoundOutcome.frontier_of_address address injective)
+
+def RegularBudgetOutcomeConstruction.classify
+    (construction : RegularBudgetOutcomeConstruction conceptCount roleCount
+      variableCount ontology budget outcome) :
+    PLift (RegularProductionConclusive outcome) ⊕
+      PLift (RegularProductionFrontier conceptCount roleCount variableCount
+        ontology budget outcome) :=
+  match construction with
+  | .conclusive proof => .inl ⟨proof⟩
+  | .frontier address injective produced => by
+      subst outcome
+      exact classifyRegularAddressFrontier address injective
+
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
 theorem checked_regular_doubling_execution_decides_source
@@ -94,6 +151,63 @@ def EqualityProductionConclusive
       conceptCount roleCount variableCount ontology) : Prop :=
   match outcome with | .frontier .. => False | _ => True
 
+theorem equalityProductionFrontier_of_address
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    EqualityProductionFrontier conceptCount roleCount variableCount ontology
+      budget (CheckedEqualityDecisionOutcome.frontier_of_address address hinjective) := by
+  let document := WireAddressFrontier.ofAddress address
+  refine ⟨document, rfl, rfl,
+    document.checkScheduled_check budget
+      (WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl), ?_, ?_⟩
+  · rfl
+  · exact WireAddressFrontier.ofAddress_checkScheduled address hinjective rfl
+
+def classifyEqualityAddressFrontier
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) →
+      WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    PLift (EqualityProductionConclusive
+      (CheckedEqualityDecisionOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) ⊕
+    PLift (EqualityProductionFrontier conceptCount roleCount variableCount
+      ontology budget (CheckedEqualityDecisionOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) :=
+  .inr ⟨equalityProductionFrontier_of_address
+    (variableCount := variableCount) (ontology := ontology) address hinjective⟩
+
+inductive EqualityBudgetOutcomeConstruction
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount ontology) : Type where
+  | conclusive (proof : EqualityProductionConclusive outcome)
+  | frontier
+      (address : Fin (8 * 2 ^ budget) →
+        WitnessAddress (Fin 1) (Fin conceptCount) (Fin roleCount))
+      (injective : Function.Injective address)
+      (produced : outcome =
+        CheckedEqualityDecisionOutcome.frontier_of_address address injective)
+
+def EqualityBudgetOutcomeConstruction.classify
+    (construction : EqualityBudgetOutcomeConstruction conceptCount roleCount
+      variableCount ontology budget outcome) :
+    PLift (EqualityProductionConclusive outcome) ⊕
+      PLift (EqualityProductionFrontier conceptCount roleCount variableCount
+        ontology budget outcome) :=
+  match construction with
+  | .conclusive proof => .inl ⟨proof⟩
+  | .frontier address injective produced => by
+      subst outcome
+      exact classifyEqualityAddressFrontier address injective
+
 theorem checked_equality_doubling_execution_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -141,6 +255,79 @@ def CardinalityProductionConclusive
     (outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
       variableCount ontology definitions) : Prop :=
   match outcome with | .frontier .. => False | _ => True
+
+theorem cardinalityProductionFrontier_of_address
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CardinalityProductionFrontier conceptCount roleCount variableCount ontology
+      definitions maxWidth budget
+      (CheckedCardinalityDecisionOutcome.frontier_of_address address hinjective) := by
+  let document := WireCardinalityAddressFrontier.ofAddress address
+  refine ⟨document, rfl, rfl, rfl,
+    document.checkScheduled_check budget maxWidth
+      (WireCardinalityAddressFrontier.ofAddress_checkScheduled
+        address hinjective rfl), ?_, ?_⟩
+  · rfl
+  · exact WireCardinalityAddressFrontier.ofAddress_checkScheduled
+      address hinjective rfl
+
+def classifyCardinalityAddressFrontier
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    PLift (CardinalityProductionConclusive
+      (CheckedCardinalityDecisionOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) ⊕
+    PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
+      ontology definitions maxWidth budget
+      (CheckedCardinalityDecisionOutcome.frontier_of_address
+        (variableCount := variableCount) (ontology := ontology) address hinjective)) :=
+  .inr ⟨cardinalityProductionFrontier_of_address
+    (variableCount := variableCount) (ontology := ontology) address hinjective⟩
+
+inductive CardinalityBudgetOutcomeConstruction
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth budget : Nat)
+    (outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount ontology definitions) : Type where
+  | conclusive (proof : CardinalityProductionConclusive outcome)
+  | frontier
+      (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin 1)
+        (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+          definitions.length maxWidth)
+        (Fin conceptCount) (Fin roleCount))
+      (injective : Function.Injective address)
+      (produced : outcome =
+        CheckedCardinalityDecisionOutcome.frontier_of_address address injective)
+
+def CardinalityBudgetOutcomeConstruction.classify
+    (construction : CardinalityBudgetOutcomeConstruction conceptCount roleCount
+      variableCount ontology definitions maxWidth budget outcome) :
+    PLift (CardinalityProductionConclusive outcome) ⊕
+      PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
+        ontology definitions maxWidth budget outcome) :=
+  match construction with
+  | .conclusive proof => .inl ⟨proof⟩
+  | .frontier address injective produced => by
+      subst outcome
+      exact classifyCardinalityAddressFrontier address injective
 
 theorem checked_cardinality_doubling_execution_decides_source
     {source target : List
@@ -414,6 +601,23 @@ theorem checked_regular_runtime_decides_source
   exact checked_regular_runtime_through_decides_source equivalent runtime
     classify budget hterminal
 
+theorem checked_regular_runtime_decides_source_of_construction
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (construct : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
+        target budget fixed.1) :
+    ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      target, outcome.SourceSemantics source := by
+  apply checked_regular_runtime_decides_source equivalent runtime
+  intro budget
+  exact (construct budget).classify
+
 theorem checked_equality_runtime_through_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -489,6 +693,23 @@ theorem checked_equality_runtime_decides_source
     checked_equality_runtime_eventually_conclusive runtime classify
   exact checked_equality_runtime_through_decides_source equivalent runtime
     classify budget hterminal
+
+theorem checked_equality_runtime_decides_source_of_construction
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (construct : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      EqualityBudgetOutcomeConstruction conceptCount roleCount variableCount
+        target budget fixed.1) :
+    ∃ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount target, outcome.SourceSemantics source := by
+  apply checked_equality_runtime_decides_source equivalent runtime
+  intro budget
+  exact (construct budget).classify
 
 theorem checked_cardinality_runtime_through_decides_source
     {source target : List
@@ -581,6 +802,27 @@ theorem checked_cardinality_runtime_decides_source
     checked_cardinality_runtime_eventually_conclusive maxWidth runtime classify
   exact checked_cardinality_runtime_through_decides_source equivalent maxWidth
     runtime classify budget hterminal
+
+theorem checked_cardinality_runtime_decides_source_of_construction
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    (construct : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      CardinalityBudgetOutcomeConstruction conceptCount roleCount variableCount
+        target definitions maxWidth budget fixed.1) :
+    ∃ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions, outcome.SourceSemantics source := by
+  apply checked_cardinality_runtime_decides_source equivalent maxWidth runtime
+  intro budget
+  exact (construct budget).classify
 
 theorem checked_native_abox_runtime_through_decides_source
     {Individual : Type}
@@ -838,11 +1080,10 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
-      (classify : ∀ budget,
+      (construct : ∀ budget,
         let fixed := (producer budget).execute ∅
-        PLift (RegularProductionConclusive fixed.1) ⊕
-          PLift (RegularProductionFrontier conceptCount roleCount variableCount
-            target budget fixed.1)) :
+        RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
+          target budget fixed.1) :
       CertifiedHTAssignmentProductionGlobalRoute (HasNonemptyModel source)
   | equality
       {source target : List
@@ -851,11 +1092,10 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
-      (classify : ∀ budget,
+      (construct : ∀ budget,
         let fixed := (producer budget).execute ∅
-        PLift (EqualityProductionConclusive fixed.1) ⊕
-          PLift (EqualityProductionFrontier conceptCount roleCount variableCount
-            target budget fixed.1)) :
+        EqualityBudgetOutcomeConstruction conceptCount roleCount variableCount
+          target budget fixed.1) :
       CertifiedHTAssignmentProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
       {source target : List
@@ -868,11 +1108,10 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (Fin (8 * 2 ^ budget))
         (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
           target definitions))
-      (classify : ∀ budget,
+      (construct : ∀ budget,
         let fixed := (producer budget).execute ∅
-        PLift (CardinalityProductionConclusive fixed.1) ⊕
-          PLift (CardinalityProductionFrontier conceptCount roleCount variableCount
-            target definitions maxWidth budget fixed.1)) :
+        CardinalityBudgetOutcomeConstruction conceptCount roleCount variableCount
+          target definitions maxWidth budget fixed.1) :
       CertifiedHTAssignmentProductionGlobalRoute
         (CardinalityHasNonemptyModel source definitions)
   | nativeABox
@@ -901,9 +1140,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
     (route : CertifiedHTAssignmentProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent producer classify =>
+  | regular equivalent producer construct =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_regular_runtime_decides_source equivalent producer classify
+        checked_regular_runtime_decides_source_of_construction equivalent
+          producer construct
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -913,9 +1153,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent producer classify =>
+  | equality equivalent producer construct =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_equality_runtime_decides_source equivalent producer classify
+        checked_equality_runtime_decides_source_of_construction equivalent
+          producer construct
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -923,10 +1164,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth producer classify =>
+  | cardinality equivalent maxWidth producer construct =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_cardinality_runtime_decides_source equivalent maxWidth producer
-          classify
+        checked_cardinality_runtime_decides_source_of_construction equivalent
+          maxWidth producer construct
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -961,10 +1202,16 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_native_abox_runtime_through_decides_source
 #print axioms checked_regular_runtime_eventually_conclusive
 #print axioms checked_regular_runtime_decides_source
+#print axioms RegularBudgetOutcomeConstruction.classify
+#print axioms checked_regular_runtime_decides_source_of_construction
 #print axioms checked_equality_runtime_eventually_conclusive
 #print axioms checked_equality_runtime_decides_source
+#print axioms EqualityBudgetOutcomeConstruction.classify
+#print axioms checked_equality_runtime_decides_source_of_construction
 #print axioms checked_cardinality_runtime_eventually_conclusive
 #print axioms checked_cardinality_runtime_decides_source
+#print axioms CardinalityBudgetOutcomeConstruction.classify
+#print axioms checked_cardinality_runtime_decides_source_of_construction
 #print axioms checked_native_abox_runtime_eventually_conclusive
 #print axioms checked_native_abox_runtime_decides_source
 #print axioms NativeABoxBudgetOutcomeConstruction.classify
