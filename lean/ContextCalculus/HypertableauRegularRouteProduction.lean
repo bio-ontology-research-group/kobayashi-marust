@@ -734,6 +734,52 @@ private theorem settledBlockedInner_expansionExact
   · simp at hexpand
   · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm
 
+/-- Compute the outer settlement directly from the exhaustive finite
+blocker-aware search.  The caller translates a semantic refutation or a
+checked node frontier into the fixed-budget result type; a blocked-open leaf is
+packaged with its exact state and blocking provenance for fold learning. -/
+noncomputable def finiteProductionSearchSettlement
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → List (Fin nodeCount))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)))
+    (closed : ∀ forbidden : Finset (Fin nodeCount × Fin nodeCount),
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) → Result)
+    (frontier : ∀
+      (forbidden : Finset (Fin nodeCount × Fin nodeCount))
+      (leaf : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) → Result) :
+    ∀ forbidden : Finset (Fin nodeCount × Fin nodeCount),
+      Result ⊕ ProductionBlockedLeafAt (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount) (Fin variableCount) ontology forbidden := by
+  classical
+  intro forbidden
+  exact Classical.choice (show Nonempty
+      (Result ⊕ ProductionBlockedLeafAt (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount) (Fin variableCount) ontology forbidden) from by
+    rcases finite_productionBlocked_terminal_or_frontier ontology parent ancestors
+        forbidden hheads root with hrefutes | ⟨leaf, hdescends, hsettled⟩
+    · exact ⟨.inl (closed forbidden hrefutes)⟩
+    · rcases hsettled with hterminal | hfrontier
+      · exact ⟨.inr {
+          state := stateOfGuardedFacts leaf
+          decision := inferInstance
+          parent := parent leaf
+          ancestors := ancestors leaf
+          terminal := hterminal }⟩
+      · exact ⟨.inl (frontier forbidden leaf hdescends hfrontier)⟩)
+
 /-- Construct the complete two-level learning runtime from a concrete search
 settlement at every outer forbidden-pair set.  A refutation or checked frontier
 is returned by the `done` arm immediately.  Only an actual blocked terminal is
@@ -788,6 +834,43 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
             (by simpa [inner, hsettle] using hexpand)
           simpa [inner, hsettle] using hexact }
 
+/-- End-to-end fixed-budget constructor from exhaustive finite search through
+both finite blocker-learning layers.  No caller-supplied settlement or
+universal blocked-terminal family remains. -/
+noncomputable def CartesianFoldExpansionRuntime.ofFiniteProductionSearch
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (parent : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → Option (Fin nodeCount))
+    (ancestors : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) → Fin nodeCount → List (Fin nodeCount))
+    (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (root : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)))
+    (closed : ∀ forbidden : Finset (Fin nodeCount × Fin nodeCount),
+      Refutes (Fin nodeCount) ontology (stateOfGuardedFacts root) → Result)
+    (frontier : ∀
+      (forbidden : Finset (Fin nodeCount × Fin nodeCount))
+      (leaf : Finset (GuardedFact (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount))),
+      SearchDescends
+        (runtimeNextBlockedFacts ontology
+          (productionBlockedFacts parent ancestors forbidden)) root leaf →
+      (stateOfGuardedFacts leaf).BlockedRuntimeFrontier ontology
+        ((stateOfGuardedFacts leaf).productionBlocked (parent leaf)
+          (ancestors leaf) forbidden) → Result)
+    (candidate : ∀ _forbidden : Finset (Fin nodeCount × Fin nodeCount),
+      Finset (FoldAssignment (Fin nodeCount)) → FoldAssignment (Fin nodeCount) →
+        Option Result)
+    (foldFree : ∀ forbidden
+      (leaf : ProductionBlockedLeafAt (Fin nodeCount) (Fin conceptCount)
+        (Fin roleCount) (Fin variableCount) ontology forbidden),
+      leaf.unwitnessedSources = [] → Result) :
+    CartesianFoldExpansionRuntime (Fin nodeCount) Result :=
+  CartesianFoldExpansionRuntime.ofSettledProductionSearch ontology
+    (finiteProductionSearchSettlement ontology parent ancestors hheads root
+      closed frontier) candidate foldFree
+
 #print axioms State.productionBlocked_eq_true_iff
 #print axioms FiniteProductionBlockingTable.checkOptions_eq_true_iff
 #print axioms FiniteProductionBlockingTable.checked_option_exact
@@ -809,5 +892,7 @@ noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
 #print axioms State.productionFoldOptionPairs_has_fresh
 #print axioms CartesianFoldExpansionRuntime.ofProductionTerminals
 #print axioms CartesianFoldExpansionRuntime.ofSettledProductionSearch
+#print axioms finiteProductionSearchSettlement
+#print axioms CartesianFoldExpansionRuntime.ofFiniteProductionSearch
 
 end ContextCalculus.Hypertableau

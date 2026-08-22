@@ -25,6 +25,11 @@
   blocked-open leaf enters simultaneous fold-assignment enumeration. The
   resulting runtime still proves accepted candidates conclusive and permits
   outer forbidden-pair growth only after exact assignment exhaustion.
+- Construct that settlement from the exhaustive finite blocker-aware search
+  itself. Lean now chooses among a semantic refutation, a typed blocked-open
+  leaf, and a checked node frontier, packages the exact blocked state and
+  predecessor provenance, and feeds it directly into both finite learning
+  layers. Callers no longer provide a universal family of blocked terminals.
 - Define a concrete, proof-indexed execution trace for KM's nested
   fixed-budget blocking loop. The trace records first-fresh simultaneous
   assignment selection, exact candidate acceptance or rejection, insertion of
