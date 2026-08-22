@@ -73,6 +73,10 @@ name = "ht-cardinality-production-run-check"
 root = "HTCardinalityProductionRunCheck"
 
 [[lean_exe]]
+name = "ht-rooted-cardinality-production-run-check"
+root = "HTRootedCardinalityProductionRunCheck"
+
+[[lean_exe]]
 name = "ht-rooted-cardinality-doubling-trace-check"
 root = "HTRootedCardinalityDoublingTraceCheck"
 

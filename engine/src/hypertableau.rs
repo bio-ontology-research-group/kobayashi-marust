@@ -11050,6 +11050,43 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind one joint native-ABox cardinality terminal to the complete rooted
+    /// state-bearing retry history from the same production run.
+    fn lean_rooted_cardinality_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker =
+            std::env::var_os("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER")
+                .or_else(|| {
+                    std::env::var_os(
+                        "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
+                    )
+                })
+                .ok_or_else(|| {
+                    "native ABox cardinality publication requires KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER"
+                        .to_string()
+                })?;
+        let max_width = self
+            .card_defs
+            .values()
+            .filter(|definition| definition.kind == CardKind::Min)
+            .map(|definition| definition.n as usize)
+            .max()
+            .unwrap_or(0);
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "root_count": self.native_abox.individuals.len() + 1,
+            "max_width": max_width,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -13011,6 +13048,16 @@ impl Ht {
                 tree: LeanHtEqRefutationTree::Clash,
             }
         })?;
+        self.lean_native_abox_cardinality_unsat_refutation_from_cardinality(raw)
+    }
+
+    /// Compose an already-produced cardinality closure with the exact native
+    /// ABox seed. Callers that have just completed production search use this
+    /// path so composition cannot trigger an unrelated second search.
+    fn lean_native_abox_cardinality_unsat_refutation_from_cardinality(
+        &self,
+        raw: String,
+    ) -> Result<String, String> {
         let certificate: serde_json::Value =
             serde_json::from_str(&raw).map_err(|error| error.to_string())?;
         let base = certificate
@@ -13368,17 +13415,34 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
-                    let refutation = self.lean_native_abox_cardinality_unsat_refutation_json()?;
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
+                    let closed = self.lean_cardinality_closed_run_certificate_json(
+                        node_budget,
+                        variable_count,
+                        state.equality_wire_state(node_budget),
+                        tree,
+                        depth,
+                    )?;
+                    let refutation = self
+                        .lean_native_abox_cardinality_unsat_refutation_from_cardinality(closed)?;
                     let refutation: serde_json::Value =
                         serde_json::from_str(&refutation).map_err(|error| error.to_string())?;
+                    let terminal = serde_json::json!({
+                        "version": 1,
+                        "evidence": { "unsat": { "refutation": refutation } },
+                    });
+                    if !self.lean_rooted_cardinality_production_run_passes(
+                        &cardinality_frontier_history,
+                        terminal.clone(),
+                    )? {
+                        return Err(
+                            "Lean rejected the closed native ABox cardinality production run"
+                                .to_string(),
+                        );
+                    }
                     return Ok((
                         false,
-                        serde_json::to_string(&serde_json::json!({
-                            "version": 1,
-                            "evidence": { "unsat": { "refutation": refutation } },
-                        }))
-                        .map_err(|error| error.to_string())?,
+                        serde_json::to_string(&terminal).map_err(|error| error.to_string())?,
                     ));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
@@ -13410,7 +13474,14 @@ impl Ht {
                             Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
                             None => true,
                         };
-                        if passes {
+                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
+                            .map_err(|error| error.to_string())?;
+                        if passes
+                            && self.lean_rooted_cardinality_production_run_passes(
+                                &cardinality_frontier_history,
+                                terminal,
+                            )?
+                        {
                             return Ok((true, candidate));
                         }
                         let inserted = rejected_assignments.insert(folds);
@@ -13629,12 +13700,12 @@ impl Ht {
     fn lean_cardinality_closed_run_certificate_json(
         &self,
         node_budget: usize,
+        variable_count: usize,
         root_state: LeanHtEqState,
         tree: LeanHtDistinctCardinalityRefutationTree,
         depth: usize,
     ) -> Result<String, String> {
-        let (variable_count, concept_count, role_count, ontology) =
-            self.lean_decision_signature();
+        let (_, concept_count, role_count, ontology) = self.lean_decision_signature();
         let mut definitions: Vec<(C, CardDef)> = self
             .card_defs
             .iter()
@@ -14107,6 +14178,7 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                     let raw = self.lean_cardinality_closed_run_certificate_json(
                         node_budget,
+                        variable_count,
                         state.equality_wire_state(node_budget),
                         tree,
                         depth,
