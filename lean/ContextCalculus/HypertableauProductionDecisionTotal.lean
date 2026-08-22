@@ -249,24 +249,28 @@ checker. -/
 structure CheckedRegularFallbackCandidate
     (nodeCount conceptCount roleCount variableCount : Nat)
     (ontology : List
-      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) where
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount)) where
   certificate : FiniteRegularCertificate nodeCount conceptCount roleCount
     variableCount
+  state_eq : certificate.state = state
   ontology_eq : certificate.ontology = ontology
   check : certificate.check = true
 
 def CheckedRegularFallbackCandidate.ofDecoded
     (decoded : DecodedRegularCertificateAt conceptCount roleCount variableCount)
     (hnodes : decoded.nodeCount = 8 * 2 ^ budget)
+    (state : State (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount))
+    (hstate : HEq decoded.certificate.state state)
     (hontology : decoded.certificate.ontology = ontology)
     (hcheck : decoded.certificate.check = true) :
     CheckedRegularFallbackCandidate (8 * 2 ^ budget) conceptCount roleCount
-      variableCount ontology := by
+      variableCount ontology state := by
   cases decoded with
   | mk nodeCount positive certificate =>
       dsimp at hnodes
       subst nodeCount
-      exact ⟨certificate, hontology, hcheck⟩
+      exact ⟨certificate, eq_of_heq hstate, hontology, hcheck⟩
 
 /-- Decode and recheck an untrusted regular fallback at the exact finite-search
 schedule. Vocabulary, node budget, ontology, and semantic checker acceptance
@@ -275,14 +279,19 @@ def CheckedRegularFallbackCandidate.decodeWire
     (wire : WireRegularCertificate)
     (conceptCount roleCount variableCount budget : Nat)
     (ontology : List
-      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (state : State (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount))
+    (stateMatches : ∀ decoded : DecodedRegularCertificateAt conceptCount
+      roleCount variableCount, decoded.nodeCount = 8 * 2 ^ budget →
+      HEq decoded.certificate.state state) :
     Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology) := do
+      conceptCount roleCount variableCount ontology state) := do
   let decoded ← wire.decodeAt conceptCount roleCount variableCount
   if hnodes : decoded.nodeCount = 8 * 2 ^ budget then
     if hontology : decoded.certificate.ontology = ontology then
       if hcheck : decoded.certificate.check = true then
-        return .ofDecoded decoded hnodes hontology hcheck
+        return .ofDecoded decoded hnodes state (stateMatches decoded hnodes)
+          hontology hcheck
       else
         throw "regular fallback certificate failed its semantic checker"
     else
@@ -292,7 +301,7 @@ def CheckedRegularFallbackCandidate.decodeWire
 
 def CheckedRegularFallbackCandidate.toBudgetResult
     (candidate : CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology) :
+      conceptCount roleCount variableCount ontology state) :
     ConstructedRegularBudgetResult conceptCount roleCount variableCount
       ontology budget :=
   let outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
@@ -308,7 +317,8 @@ noncomputable def ProductionBlockedLeafAt.checkedRegularCandidate
       (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
       forbidden)
     (regularFallback : Option (CheckedRegularFallbackCandidate
-      (8 * 2 ^ budget) conceptCount roleCount variableCount ontology))
+      (8 * 2 ^ budget) conceptCount roleCount variableCount ontology
+      leaf.state))
     (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) :
     Option (ConstructedRegularBudgetResult conceptCount roleCount variableCount
       ontology budget) :=
@@ -394,12 +404,12 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
         (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
     (regularFallback : ∀ (forbidden : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
-      ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
-          (Fin roleCount) (Fin variableCount) ontology forbidden →
+      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) ontology forbidden) →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
           FoldAssignment (Fin (8 * 2 ^ budget)) →
             Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-              conceptCount roleCount variableCount ontology)) :
+              conceptCount roleCount variableCount ontology leaf.state)) :
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
@@ -445,12 +455,12 @@ structure ConstructedRegularFiniteSearchFamily
       (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true
   regularFallback : ∀ budget (forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
-    ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
-        (Fin roleCount) (Fin variableCount) ontology forbidden →
+    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+        (Fin roleCount) (Fin variableCount) ontology forbidden) →
       Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
         FoldAssignment (Fin (8 * 2 ^ budget)) →
           Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-            conceptCount roleCount variableCount ontology)
+            conceptCount roleCount variableCount ontology leaf.state)
 
 noncomputable def ConstructedRegularFiniteSearchFamily.runtime
     (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
@@ -1665,12 +1675,12 @@ theorem checked_regular_finite_search_decides_source
         (stateOfGuardedFacts leaf).checkRootedAddressRefines address = true)
     (regularFallback : ∀ budget (forbidden : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget))),
-      ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
-          (Fin roleCount) (Fin variableCount) target forbidden →
+      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
+          (Fin roleCount) (Fin variableCount) target forbidden) →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
           FoldAssignment (Fin (8 * 2 ^ budget)) →
             Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-              conceptCount roleCount variableCount target)) :
+              conceptCount roleCount variableCount target leaf.state)) :
     ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
       target, outcome.SourceSemantics source := by
   apply checked_constructed_regular_runtime_decides_source equivalent

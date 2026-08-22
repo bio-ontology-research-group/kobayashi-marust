@@ -83,6 +83,11 @@
   runtime fields. The decoded finite certificate is also the certificate used
   by `toConfig`, so equality with the reached logical state is definitional;
   producers retain only the independent semantic and ABox checker obligations.
+- Tie regular-unravelling fallback certificates to the exact blocked leaf.
+  The candidate now carries equality between its finite regular state and the
+  leaf state, and every regular fallback callback is dependently indexed by
+  that leaf. A regular model checked for another completion can no longer be
+  reused at this terminal.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative
