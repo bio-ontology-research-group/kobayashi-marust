@@ -4,6 +4,13 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Define a concrete, proof-indexed execution trace for KM's nested
+  fixed-budget blocking loop. The trace records first-fresh simultaneous
+  assignment selection, exact candidate acceptance or rejection, insertion of
+  each rejected assignment, checked Cartesian exhaustion, and strict outer
+  forbidden-pair expansion. This is the wire-decoder target that will replace
+  the abstract terminating-producer premise at the production publication
+  boundary; it uses no classically selected retry witness.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no

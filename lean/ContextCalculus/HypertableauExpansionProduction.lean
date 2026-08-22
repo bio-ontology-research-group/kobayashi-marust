@@ -88,6 +88,94 @@ structure CartesianFoldExpansionRuntime (Node Result : Type)
     (inner forbidden).onExhausted rejected exhausted = .expand pairs fresh →
       pairs = foldOptionPairs ((inner forbidden).options rejected)
 
+/-! ### Concrete execution traces
+
+The totality theorem above the production boundary used to retain only the
+function which *could* perform the finite retry loop.  The following indexed
+trace records the loop which was actually performed.  Its three constructors
+are exactly Rust's branches: accept the first fresh assignment, reject that
+exact assignment and continue after inserting it, or invoke the exhaustion
+continuation only after `firstFreshFoldAssignment` returns `none`.
+
+Unlike `eventually_done`, this trace contains no selected witness and uses no
+classical choice.  It is therefore suitable as the semantic target of the
+wire decoder for a concrete KM execution.
+-/
+
+inductive CartesianFoldAssignmentExecution
+    [DecidableEq Node]
+    (runtime : CartesianFoldAssignmentRuntime Node Result) :
+    Finset (FoldAssignment Node) → Result → Type where
+  | accepted
+      (rejected : Finset (FoldAssignment Node))
+      (assignment : FoldAssignment Node)
+      (result : Result)
+      (selected : firstFreshFoldAssignment rejected
+        (enumerateFoldAssignments (runtime.options rejected)) = some assignment)
+      (checked : runtime.check rejected assignment = .inl result) :
+      CartesianFoldAssignmentExecution runtime rejected result
+  | rejected
+      (rejected : Finset (FoldAssignment Node))
+      (assignment : FoldAssignment Node)
+      (result : Result)
+      (selected : firstFreshFoldAssignment rejected
+        (enumerateFoldAssignments (runtime.options rejected)) = some assignment)
+      (checked : runtime.check rejected assignment = .inr ())
+      (next : CartesianFoldAssignmentExecution runtime
+        (insert assignment rejected) result) :
+      CartesianFoldAssignmentExecution runtime rejected result
+  | exhausted
+      (rejected : Finset (FoldAssignment Node))
+      (selected : firstFreshFoldAssignment rejected
+        (enumerateFoldAssignments (runtime.options rejected)) = none) :
+      CartesianFoldAssignmentExecution runtime rejected
+        (runtime.onExhausted rejected
+          ((firstFreshFoldAssignment_eq_none_iff rejected
+            (enumerateFoldAssignments (runtime.options rejected))).mp selected))
+
+def CartesianFoldAssignmentExecution.steps
+    [DecidableEq Node]
+    {runtime : CartesianFoldAssignmentRuntime Node Result}
+    {rejected : Finset (FoldAssignment Node)} {result : Result} :
+    CartesianFoldAssignmentExecution runtime rejected result → Nat
+  | .accepted .. => 0
+  | .rejected _ _ _ _ _ next => next.steps + 1
+  | .exhausted .. => 0
+
+/-- The exact nested fixed-budget trace.  Every outer expansion is justified
+by complete inner assignment execution and carries the constructor-level fresh
+pair proof required by `GuardedFoldExpansionOutcome.expand`. -/
+inductive CartesianFoldExpansionExecution
+    [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result) :
+    Finset (Node × Node) → Result → Type where
+  | done
+      (forbidden : Finset (Node × Node))
+      (result : Result)
+      (inner : CartesianFoldAssignmentExecution (runtime.inner forbidden) ∅
+        (.done result)) :
+      CartesianFoldExpansionExecution runtime forbidden result
+  | expand
+      (forbidden pairs : Finset (Node × Node))
+      (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
+      (result : Result)
+      (inner : CartesianFoldAssignmentExecution (runtime.inner forbidden) ∅
+        (.expand pairs fresh))
+      (next : CartesianFoldExpansionExecution runtime
+        (forbidden ∪ pairs) result) :
+      CartesianFoldExpansionExecution runtime forbidden result
+
+theorem CartesianFoldExpansionExecution.inner_settles
+    [DecidableEq Node]
+    {runtime : CartesianFoldExpansionRuntime Node Result}
+    {forbidden : Finset (Node × Node)} {result : Result}
+    (trace : CartesianFoldExpansionExecution runtime forbidden result) :
+    Nonempty (Σ outcome,
+      CartesianFoldAssignmentExecution (runtime.inner forbidden) ∅ outcome) := by
+  cases trace with
+  | done _ _ inner => exact ⟨⟨_, inner⟩⟩
+  | expand _ _ _ _ inner _ => exact ⟨⟨_, inner⟩⟩
+
 /-- Select the terminating outcome of the finite inner Cartesian loop.  The
 selected retry remains an implementation detail; its existence is supplied by
 the executable first-fresh assignment theorem. -/
@@ -174,5 +262,6 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldExpansionRuntime.expansion_strict
 #print axioms CartesianFoldExpansionRuntime.accepted_candidate_conclusive
 #print axioms CartesianFoldExpansionRuntime.exhausted_pairs_exact
+#print axioms CartesianFoldExpansionExecution.inner_settles
 
 end ContextCalculus.Hypertableau
