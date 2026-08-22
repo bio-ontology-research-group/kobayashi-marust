@@ -38,6 +38,10 @@
   `FiniteRegularCertificate` for the exact ontology. The fallback can no
   longer return an unrelated refutation, frontier, or detached result; Lean
   constructs the sole permitted `regularSat` outcome from the checked package.
+- Connect regular fallback evidence to the untrusted JSON boundary. The new
+  typed decoder fixes the concept, role, and variable vocabulary, enforces the
+  current doubling node budget and exact ontology, reruns the regular semantic
+  checker, and returns the capstone fallback package only after all checks pass.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

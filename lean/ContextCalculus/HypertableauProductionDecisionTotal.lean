@@ -189,6 +189,41 @@ structure CheckedRegularFallbackCandidate
   ontology_eq : certificate.ontology = ontology
   check : certificate.check = true
 
+def CheckedRegularFallbackCandidate.ofDecoded
+    (decoded : DecodedRegularCertificateAt conceptCount roleCount variableCount)
+    (hnodes : decoded.nodeCount = 8 * 2 ^ budget)
+    (hontology : decoded.certificate.ontology = ontology)
+    (hcheck : decoded.certificate.check = true) :
+    CheckedRegularFallbackCandidate (8 * 2 ^ budget) conceptCount roleCount
+      variableCount ontology := by
+  cases decoded with
+  | mk nodeCount positive certificate =>
+      dsimp at hnodes
+      subst nodeCount
+      exact ⟨certificate, hontology, hcheck⟩
+
+/-- Decode and recheck an untrusted regular fallback at the exact finite-search
+schedule. Vocabulary, node budget, ontology, and semantic checker acceptance
+are all enforced before typed evidence is returned. -/
+def CheckedRegularFallbackCandidate.decodeWire
+    (wire : WireRegularCertificate)
+    (conceptCount roleCount variableCount budget : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) :
+    Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount ontology) := do
+  let decoded ← wire.decodeAt conceptCount roleCount variableCount
+  if hnodes : decoded.nodeCount = 8 * 2 ^ budget then
+    if hontology : decoded.certificate.ontology = ontology then
+      if hcheck : decoded.certificate.check = true then
+        return .ofDecoded decoded hnodes hontology hcheck
+      else
+        throw "regular fallback certificate failed its semantic checker"
+    else
+      throw "regular fallback certificate ontology differs from the search ontology"
+  else
+    throw "regular fallback certificate node count differs from the search budget"
+
 def CheckedRegularFallbackCandidate.toBudgetResult
     (candidate : CheckedRegularFallbackCandidate (8 * 2 ^ budget)
       conceptCount roleCount variableCount ontology) :
