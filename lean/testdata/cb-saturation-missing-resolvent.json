@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "atom_count": 2,
+  "premises": [
+    {"neg": [], "pos": [0]},
+    {"neg": [0], "pos": [1]}
+  ],
+  "trace": [
+    {
+      "clause": {"neg": [], "pos": [0]},
+      "justification": {"premise": {"index": 0}}
+    },
+    {
+      "clause": {"neg": [0], "pos": [1]},
+      "justification": {"premise": {"index": 1}}
+    }
+  ]
+}

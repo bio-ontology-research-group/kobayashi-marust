@@ -21,6 +21,11 @@ claim that the layer is already complete.
   saturation preserves the complete model class. This is stronger than merely
   agreeing on the empty clause and is the semantic bridge needed by an exact
   taxonomy publication theorem.
+- `CBSaturationCertificate` provides an executable finite ground checker. It
+  validates an acyclic resolution trace, exact input retention, and terminal
+  closure, then constructs `Equiv.Saturation`. Accepted certificates therefore
+  preserve every model and consequence of the checked input. Its executable
+  examples reject both a missing resolvent and a forged derivation.
 
 ## Not yet established
 

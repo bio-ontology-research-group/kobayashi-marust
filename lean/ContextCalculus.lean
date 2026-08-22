@@ -19,6 +19,8 @@ import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
 import ContextCalculus.Termination
 import ContextCalculus.Equivalence
+import ContextCalculus.CBSaturationCertificate
+import ContextCalculus.CBSaturationWire
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm

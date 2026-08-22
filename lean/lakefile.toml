@@ -17,6 +17,10 @@ name = "elc-cert-check"
 root = "ELCertCheck"
 
 [[lean_exe]]
+name = "cb-cert-check"
+root = "CBCertCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
