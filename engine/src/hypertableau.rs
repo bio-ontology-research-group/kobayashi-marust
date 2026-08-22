@@ -11186,11 +11186,11 @@ impl Ht {
 
     /// Bind one native-ABox cardinality taxonomy verdict to the complete
     /// rooted cardinality frontier history traversed for that query.
-    fn lean_rooted_cardinality_taxonomy_production_run_passes(
+    fn lean_rooted_cardinality_taxonomy_production_run_json(
         &self,
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
-    ) -> Result<bool, String> {
+    ) -> Result<String, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
         )
@@ -11217,6 +11217,39 @@ impl Ht {
             "max_width": max_width,
             "frontiers": frontiers,
             "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(document)
+        } else {
+            Err("Lean rejected the native ABox cardinality taxonomy production run"
+                .to_string())
+        }
+    }
+
+    fn lean_native_abox_cardinality_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "native ABox cardinality taxonomy publication requires KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER"
+                .to_string()
+        })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -14912,10 +14945,10 @@ impl Ht {
     /// Both branches target the dedicated Lean wire: an open branch supplies
     /// a finite model of the ontology, definitions, ABox, and query; a closed
     /// branch supplies the exact joint seed and its exhaustive refutation.
-    fn lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(
+    fn lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(
         &self,
         query: LeanHtTaxonomyQuery,
-    ) -> Result<(bool, String), String> {
+    ) -> Result<(bool, String, String), String> {
         if self.native_abox.individuals.is_empty() {
             return Err(
                 "native ABox cardinality taxonomy requires at least one individual".to_string(),
@@ -15032,16 +15065,11 @@ impl Ht {
                     }
                     let terminal: serde_json::Value = serde_json::from_str(&document)
                         .map_err(|error| error.to_string())?;
-                    if !self.lean_rooted_cardinality_taxonomy_production_run_passes(
+                    let run = self.lean_rooted_cardinality_taxonomy_production_run_json(
                         &cardinality_frontier_history,
                         terminal,
-                    )? {
-                        return Err(
-                            "Lean rejected the closed native ABox cardinality taxonomy production run"
-                                .to_string(),
-                        );
-                    }
-                    return Ok((false, document));
+                    )?;
+                    return Ok((false, document, run));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
                     let mut rejected_assignments = HashSet::new();
@@ -15071,13 +15099,13 @@ impl Ht {
                             .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?;
                         let terminal: serde_json::Value = serde_json::from_str(&candidate)
                             .map_err(|error| error.to_string())?;
-                        if passes
-                            && self.lean_rooted_cardinality_taxonomy_production_run_passes(
-                                &cardinality_frontier_history,
-                                terminal,
-                            )?
-                        {
-                            return Ok((true, candidate));
+                        if passes {
+                            let run = self
+                                .lean_rooted_cardinality_taxonomy_production_run_json(
+                                    &cardinality_frontier_history,
+                                    terminal,
+                                )?;
+                            return Ok((true, candidate, run));
                         }
                         let inserted = rejected_assignments.insert(folds);
                         assert!(inserted,
@@ -15126,6 +15154,15 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
+    }
+
+    fn lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String), String> {
+        let (answer, terminal, _) =
+            self.lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(query)?;
+        Ok((answer, terminal))
     }
 
     /// Decide one taxonomy cell in the same finite state as the complete
@@ -15960,16 +15997,25 @@ impl Ht {
     ) -> Result<String, String> {
         let mut concepts = Vec::with_capacity(named.len());
         let mut subsumptions = Vec::with_capacity(named.len());
+        let mut cardinality_concept_runs = Vec::with_capacity(named.len());
+        let mut cardinality_subsumption_runs = Vec::with_capacity(named.len());
         for &concept in named {
-            let (_, document) = if self.card_defs.is_empty() {
+            let document = if self.card_defs.is_empty() {
                 self.lean_native_abox_taxonomy_query_decision_certificate_json(
                     LeanHtTaxonomyQuery::Concept(concept),
-                )
+                )?
+                .1
             } else {
-                self.lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(
-                    LeanHtTaxonomyQuery::Concept(concept),
-                )
-            }?;
+                let (_, terminal, run) = self
+                    .lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(
+                        LeanHtTaxonomyQuery::Concept(concept),
+                    )?;
+                cardinality_concept_runs.push(
+                    serde_json::from_str::<serde_json::Value>(&run)
+                        .map_err(|error| error.to_string())?,
+                );
+                terminal
+            };
             concepts.push(
                 serde_json::from_str::<serde_json::Value>(&document)
                     .map_err(|error| error.to_string())?,
@@ -15977,22 +16023,33 @@ impl Ht {
         }
         for &sub in named {
             let mut row = Vec::with_capacity(named.len());
+            let mut run_row = Vec::with_capacity(named.len());
             for &sup in named {
-                let (_, document) = if self.card_defs.is_empty() {
+                let document = if self.card_defs.is_empty() {
                     self.lean_native_abox_taxonomy_query_decision_certificate_json(
                         LeanHtTaxonomyQuery::Subsumption(sub, sup),
-                    )
+                    )?
+                    .1
                 } else {
-                    self.lean_native_abox_cardinality_taxonomy_query_decision_certificate_json(
-                        LeanHtTaxonomyQuery::Subsumption(sub, sup),
-                    )
-                }?;
+                    let (_, terminal, run) = self
+                        .lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(
+                            LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                        )?;
+                    run_row.push(
+                        serde_json::from_str::<serde_json::Value>(&run)
+                            .map_err(|error| error.to_string())?,
+                    );
+                    terminal
+                };
                 row.push(
                     serde_json::from_str::<serde_json::Value>(&document)
                         .map_err(|error| error.to_string())?,
                 );
             }
             subsumptions.push(row);
+            if !self.card_defs.is_empty() {
+                cardinality_subsumption_runs.push(run_row);
+            }
         }
         let payload = serde_json::to_string(&serde_json::json!({
             "version": 1,
@@ -16022,6 +16079,18 @@ impl Ht {
             if !self.lean_candidate_passes_with(&payload, &checker)? {
                 return Err("Lean rejected the complete native ABox taxonomy".to_string());
             }
+        }
+        if !self.card_defs.is_empty()
+            && !self.lean_native_abox_cardinality_taxonomy_run_matrix_passes(
+                named,
+                cardinality_concept_runs,
+                cardinality_subsumption_runs,
+            )?
+        {
+            return Err(
+                "Lean rejected the complete native ABox cardinality taxonomy run matrix"
+                    .to_string(),
+            );
         }
         Ok(payload)
     }

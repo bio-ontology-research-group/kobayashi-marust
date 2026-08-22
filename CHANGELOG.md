@@ -84,6 +84,12 @@
   width, derived terminal budget, and model-theoretic validity. KM now
   publishes the exact equality state, closing tree, and depth returned by the
   deciding taxonomy run instead of launching a second refutation search.
+- Compose all native-ABox cardinality taxonomy runs into one executable Lean
+  run-matrix artifact. Lean derives the terminal taxonomy matrix from those
+  runs, checks its complete concept and ordered-pair shape, exact query
+  coordinates, shared ABox/ontology/cardinality problem, and every full run,
+  then exposes the matrix semantics. Certified publication fails closed if
+  this combined checker is absent or rejects the run-derived matrix.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search
