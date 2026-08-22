@@ -10741,6 +10741,72 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Check one exhausted equality-aware blocking round and append it to the
+    /// complete fixed-budget execution history.  The history checker enforces
+    /// the outer-loop invariant that the first forbidden set is empty and each
+    /// later forbidden set is exactly the preceding set union its exposed
+    /// blocker pairs.
+    fn lean_equality_production_blocking_history_passes(
+        &self,
+        state: &LeanHtEqState,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
+        all_blockable_sources: bool,
+        validate_rejections: bool,
+        validate_native_rejections: bool,
+        rounds: &mut Vec<serde_json::Value>,
+    ) -> Result<bool, String> {
+        let round = self.lean_equality_production_blocking_document_json(
+            state,
+            rejected_assignments,
+            all_blockable_sources,
+            validate_rejections,
+            validate_native_rejections,
+        )?;
+        let blocking_checker = std::env::var_os(
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "exhausted equality-aware production folds require KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER"
+                .to_string()
+        })?;
+        if !self.lean_candidate_passes_with(&round, &blocking_checker)? {
+            return Ok(false);
+        }
+
+        let round: serde_json::Value =
+            serde_json::from_str(&round).map_err(|error| error.to_string())?;
+        let history_checker = std::env::var_os(
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "exhausted equality-aware production folds require KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER"
+                .to_string()
+        })?;
+        rounds.push(round);
+        let result = (|| -> Result<bool, String> {
+            let history = serde_json::to_string(&serde_json::json!({
+                "version": 1,
+                "rounds": rounds,
+            }))
+            .map_err(|error| error.to_string())?;
+            self.lean_candidate_passes_with(&history, &history_checker)
+        })();
+        if !matches!(&result, Ok(true)) {
+            rounds.pop();
+        }
+        result
+    }
+
     /// Serialize a blocked equality-free branch through the regular-unravelling
     /// trust boundary. Unlike `lean_blocked_open_certificate_json`, this keeps
     /// the raw completion edges, records the blocker redirect explicitly, and
@@ -12487,6 +12553,7 @@ impl Ht {
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -12535,12 +12602,13 @@ impl Ht {
                         assert!(inserted, "native ABox fold assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &open,
                         &rejected_assignments,
                         false,
                         true,
                         true,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the native ABox equality production blocker table".to_string());
                     }
@@ -12563,6 +12631,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "native ABox decision node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -12635,6 +12705,7 @@ impl Ht {
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -12694,12 +12765,13 @@ impl Ht {
                             "native ABox cardinality fold assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &open,
                         &rejected_assignments,
                         true,
                         true,
                         true,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the native ABox cardinality production blocker table".to_string());
                     }
@@ -12728,6 +12800,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "native ABox cardinality decision node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -13169,6 +13243,7 @@ impl Ht {
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -13213,12 +13288,13 @@ impl Ht {
                         assert!(inserted, "equality fold assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &state,
                         &rejected_assignments,
                         false,
                         true,
                         false,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the equality production blocker table".to_string());
                     }
@@ -13240,6 +13316,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality decision node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -13263,6 +13341,7 @@ impl Ht {
         definitions.sort_unstable_by_key(|&(marker, _)| marker);
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -13300,12 +13379,13 @@ impl Ht {
                         assert!(inserted, "cardinality fold assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &state,
                         &rejected_assignments,
                         true,
                         true,
                         false,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the cardinality production blocker table".to_string());
                     }
@@ -13330,6 +13410,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "cardinality decision node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -13402,6 +13484,7 @@ impl Ht {
                 .collect();
             definitions.sort_unstable_by_key(|&(marker, _)| marker);
             let mut forbidden_folds = HashSet::new();
+            let mut production_history = Vec::new();
             loop {
                 let mut state = LeanHtRefutationState::root(&initial_labels);
                 match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -13449,12 +13532,13 @@ impl Ht {
                                 "cardinality taxonomy assignment search must progress");
                         }
 
-                        if !self.lean_equality_production_blocking_passes(
+                        if !self.lean_equality_production_blocking_history_passes(
                             &state,
                             &rejected_assignments,
                             true,
                             true,
                             false,
+                            &mut production_history,
                         )? {
                             return Err("Lean rejected the cardinality taxonomy production blocker table".to_string());
                         }
@@ -13480,6 +13564,8 @@ impl Ht {
                         node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                             "cardinality taxonomy node budget overflowed usize".to_string()
                         })?;
+                        forbidden_folds.clear();
+                        production_history.clear();
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => {
                         return Err(error);
@@ -13498,6 +13584,7 @@ impl Ht {
         });
         if has_equality {
             let mut forbidden_folds = HashSet::new();
+            let mut production_history = Vec::new();
             loop {
                 let mut state = LeanHtRefutationState::root(&initial_labels);
                 match self.lean_eq_refutation_avoiding_folds(
@@ -13551,12 +13638,13 @@ impl Ht {
                             assert!(inserted, "equality taxonomy assignment search must progress");
                         }
 
-                        if !self.lean_equality_production_blocking_passes(
+                        if !self.lean_equality_production_blocking_history_passes(
                             &state,
                             &rejected_assignments,
                             false,
                             true,
                             false,
+                            &mut production_history,
                         )? {
                             return Err("Lean rejected the equality taxonomy production blocker table".to_string());
                         }
@@ -13578,6 +13666,8 @@ impl Ht {
                         node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                             "equality taxonomy node budget overflowed usize".to_string()
                         })?;
+                        forbidden_folds.clear();
+                        production_history.clear();
                     }
                     LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
                 }
@@ -13744,6 +13834,7 @@ impl Ht {
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
@@ -13834,12 +13925,13 @@ impl Ht {
                             "native ABox cardinality taxonomy assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &open,
                         &rejected_assignments,
                         true,
                         true,
                         true,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the native ABox cardinality taxonomy production blocker table".to_string());
                     }
@@ -13868,6 +13960,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "native ABox cardinality taxonomy node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -13915,6 +14009,7 @@ impl Ht {
         };
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -14040,12 +14135,13 @@ impl Ht {
                         assert!(inserted, "native ABox taxonomy assignment search must progress");
                     }
 
-                    if !self.lean_equality_production_blocking_passes(
+                    if !self.lean_equality_production_blocking_history_passes(
                         &open,
                         &rejected_assignments,
                         false,
                         true,
                         true,
+                        &mut production_history,
                     )? {
                         return Err("Lean rejected the native ABox taxonomy production blocker table".to_string());
                     }
@@ -14067,6 +14163,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "native ABox taxonomy node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -25239,6 +25337,30 @@ mod tests {
         if let Some(trace_checker) =
             std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER")
         {
+            let mut production_history = Vec::new();
+            assert!(reasoner
+                .lean_equality_production_blocking_history_passes(
+                    &open,
+                    &rejected,
+                    false,
+                    true,
+                    false,
+                    &mut production_history,
+                )
+                .expect("check the genuine production history prefix"));
+            assert_eq!(production_history.len(), 1);
+            assert!(!reasoner
+                .lean_equality_production_blocking_history_passes(
+                    &open,
+                    &rejected,
+                    false,
+                    true,
+                    false,
+                    &mut production_history,
+                )
+                .expect("reject a stale production history extension"));
+            assert_eq!(production_history.len(), 1);
+
             let round: serde_json::Value = serde_json::from_str(&document).unwrap();
             let trace = serde_json::json!({"version": 1, "rounds": [round]});
             std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();

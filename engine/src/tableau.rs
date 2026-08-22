@@ -6254,6 +6254,7 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
     "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+    "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
 ];
 
 fn ht_lean_certification_requested() -> bool {
@@ -6460,6 +6461,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             if std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER").is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER for exhausted equality-aware blocker assignments"
+                        .to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER for complete equality-aware blocker-learning histories"
                         .to_string(),
                 );
             }
@@ -7092,6 +7099,7 @@ mod tests {
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
             "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER",
         ] {
             assert!(
                 HT_LEAN_CERTIFICATION_ENV.contains(&required),

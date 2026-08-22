@@ -26,7 +26,10 @@
   metadata across reruns, and accepts each transition only when the next
   forbidden set equals the prior set union the exhausted option-pair set. A
   cross-language test accepts genuine evidence and rejects a duplicated stale
-  rerun that learned nothing.
+  rerun that learned nothing. Equality, cardinality, native-ABox, and taxonomy
+  production searches now retain and check the complete history after every
+  learned expansion. A checked node-budget increase resets both the forbidden
+  set and its fixed-universe history before search resumes at the larger bound.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no

@@ -69,6 +69,7 @@ done
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-equality-production-blocking-check"
     export KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-equality-production-blocking-check"
+    export KM_HT_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER="$bin_root/ht-equality-production-trace-check"
     export KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_TRACE_CHECKER="$bin_root/ht-equality-production-trace-check"
     export KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-matrix-cert-check"
