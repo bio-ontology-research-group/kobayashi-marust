@@ -85,6 +85,10 @@ name = "ht-rooted-ordinary-taxonomy-production-run-check"
 root = "HTRootedOrdinaryTaxonomyProductionRunCheck"
 
 [[lean_exe]]
+name = "ht-rooted-cardinality-taxonomy-production-run-check"
+root = "HTRootedCardinalityTaxonomyProductionRunCheck"
+
+[[lean_exe]]
 name = "ht-rooted-cardinality-doubling-trace-check"
 root = "HTRootedCardinalityDoublingTraceCheck"
 
@@ -159,6 +163,10 @@ root = "HTNativeABoxTaxonomySourceCertCheck"
 [[lean_exe]]
 name = "ht-native-abox-cardinality-taxonomy-cert-check"
 root = "HTNativeABoxCardinalityTaxonomyCertCheck"
+
+[[lean_exe]]
+name = "ht-native-abox-cardinality-taxonomy-decision-check"
+root = "HTNativeABoxCardinalityTaxonomyDecisionCheck"
 
 [[lean_exe]]
 name = "ht-direct-native-abox-cardinality-taxonomy-cert-check"

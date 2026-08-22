@@ -11184,6 +11184,44 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind one native-ABox cardinality taxonomy verdict to the complete
+    /// rooted cardinality frontier history traversed for that query.
+    fn lean_rooted_cardinality_taxonomy_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "native ABox cardinality taxonomy publication requires KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+                .to_string()
+        })?;
+        let max_width = self
+            .card_defs
+            .values()
+            .filter(|definition| definition.kind == CardKind::Min)
+            .map(|definition| definition.n as usize)
+            .max()
+            .unwrap_or(0);
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "root_count": self.native_abox.individuals.len() + 1,
+            "max_width": max_width,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -14960,23 +14998,10 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtDistinctCardinalityRefutationOutcome::Closed(_, _) => {
+                LeanHtDistinctCardinalityRefutationOutcome::Closed(tree, depth) => {
                     let root_state = state.equality_wire_state(node_budget);
-                    let raw = self.lean_cardinality_refutation_certificate_json(
-                        &initial_labels,
-                        |_| LeanHtEqEvidence::Unsat {
-                            tree: LeanHtEqRefutationTree::Clash,
-                        },
-                    )?;
-                    let certificate: serde_json::Value =
-                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-                    let tree = certificate["distinct_refutation"].clone();
-                    if tree.is_null() {
-                        return Err(
-                            "native ABox cardinality taxonomy refutation omitted its tree"
-                                .to_string(),
-                        );
-                    }
+                    let tree = serde_json::to_value(tree)
+                        .map_err(|error| error.to_string())?;
                     let seed = self.lean_native_abox_seed_json(
                         root_state,
                         variable_count,
@@ -14992,7 +15017,7 @@ impl Ht {
                         "evidence": { "unsat": {
                             "initial": initial,
                             "definitions": wire_definitions,
-                            "depth": certificate["distinct_refutation_depth"],
+                            "depth": depth,
                             "tree": tree,
                         } },
                     }))
@@ -15002,6 +15027,17 @@ impl Ht {
                     {
                         return Err(
                             "Lean rejected the native ABox cardinality taxonomy refutation"
+                                .to_string(),
+                        );
+                    }
+                    let terminal: serde_json::Value = serde_json::from_str(&document)
+                        .map_err(|error| error.to_string())?;
+                    if !self.lean_rooted_cardinality_taxonomy_production_run_passes(
+                        &cardinality_frontier_history,
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the closed native ABox cardinality taxonomy production run"
                                 .to_string(),
                         );
                     }
@@ -15031,8 +15067,15 @@ impl Ht {
                             } } },
                         }))
                         .map_err(|error| error.to_string())?;
-                        if self
-                            .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?
+                        let passes = self
+                            .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?;
+                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
+                            .map_err(|error| error.to_string())?;
+                        if passes
+                            && self.lean_rooted_cardinality_taxonomy_production_run_passes(
+                                &cardinality_frontier_history,
+                                terminal,
+                            )?
                         {
                             return Ok((true, candidate));
                         }

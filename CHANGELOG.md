@@ -77,6 +77,13 @@
   finite signature, terminal budget, and model-theoretic validity. KM now
   publishes the equality state and closing tree returned by the deciding
   taxonomy run instead of rerunning the query search.
+- Bind native-ABox cardinality taxonomy countermodels and refutations to their
+  complete rooted, state-bearing cardinality retry histories. Lean checks the
+  exact query literals against the final frontier together with root count,
+  ontology, cardinality definitions, finite signature, maximum cardinality
+  width, derived terminal budget, and model-theoretic validity. KM now
+  publishes the exact equality state, closing tree, and depth returned by the
+  deciding taxonomy run instead of launching a second refutation search.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search

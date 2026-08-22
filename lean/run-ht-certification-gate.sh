@@ -49,6 +49,7 @@ checkers=(
     ht-rooted-cardinality-production-run-check
     ht-rooted-ordinary-production-run-check
     ht-rooted-ordinary-taxonomy-production-run-check
+    ht-rooted-cardinality-taxonomy-production-run-check
     ht-production-blocking-check
     ht-production-trace-check
     ht-finite-production-terminal-check
@@ -63,6 +64,7 @@ checkers=(
     ht-native-abox-taxonomy-cert-check
     ht-native-abox-taxonomy-matrix-cert-check
     ht-native-abox-cardinality-taxonomy-cert-check
+    ht-native-abox-cardinality-taxonomy-decision-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
     ht-native-abox-taxonomy-source-cert-check
@@ -169,6 +171,8 @@ done
     export KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-ordinary-production-run-check"
     export KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-ordinary-taxonomy-production-run-check"
     export KM_HT_TEST_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-ordinary-taxonomy-production-run-check"
+    export KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-taxonomy-production-run-check"
+    export KM_HT_TEST_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER="$bin_root/ht-rooted-cardinality-taxonomy-production-run-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
@@ -207,6 +211,9 @@ done
     KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \
       KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check" \
       cargo test --release native_abox_taxonomy_cells_use_one_joint_checked_state -- --nocapture
+    KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check" \
+      KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check" \
+      cargo test --release native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident -- --nocapture
     cargo test --release native_abox_cardinality_global_decision_uses_joint_wire -- --nocapture
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
