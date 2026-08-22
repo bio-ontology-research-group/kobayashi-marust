@@ -2920,6 +2920,51 @@ struct LeanHtEqState {
     representative_paths: Vec<Vec<usize>>,
     #[serde(skip_serializing)]
     folds: Vec<(Node, Node)>,
+    #[serde(skip_serializing)]
+    fold_options: Vec<(Node, Vec<Node>)>,
+    #[serde(skip_serializing)]
+    raw_edges: Vec<LeanHtEdge>,
+}
+
+impl LeanHtEqState {
+    fn next_fold_assignment(
+        &self,
+        rejected: &HashSet<Vec<(Node, Node)>>,
+    ) -> Option<Vec<(Node, Node)>> {
+        LeanHtRefutationState::next_fold_assignment_from_options(&self.fold_options, rejected)
+    }
+
+    fn with_fold_assignment(&self, folds: Vec<(Node, Node)>) -> Self {
+        let mut state = self.clone();
+        state.folds = folds.clone();
+        state.edges = state.raw_edges.clone();
+        for (blocked, blocker) in folds {
+            let blocker_rep = state.representatives[blocker];
+            for edge in &state.raw_edges {
+                if state.representatives[edge.source] == blocker_rep {
+                    state.edges.push(LeanHtEdge {
+                        role: edge.role,
+                        source: blocked,
+                        target: edge.target,
+                    });
+                }
+                if state.representatives[edge.target] == blocker_rep {
+                    state.edges.push(LeanHtEdge {
+                        role: edge.role,
+                        source: edge.source,
+                        target: blocked,
+                    });
+                }
+            }
+        }
+        state
+            .edges
+            .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+            .edges
+            .dedup_by_key(|edge| (edge.role, edge.source, edge.target));
+        state
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -3601,48 +3646,44 @@ impl LeanHtRefutationState {
         None
     }
 
+    fn quotient_pairwise_blocker_ancestors(&self, node: Node) -> Vec<Node> {
+        let mut blockers = Vec::new();
+        let mut ancestor = self.witness_parent.get(node).copied().flatten();
+        while let Some(candidate) = ancestor {
+            if self.same_quotient_pairwise_signature(candidate, node) {
+                blockers.push(candidate);
+            }
+            ancestor = self.witness_parent.get(candidate).copied().flatten();
+        }
+        blockers
+    }
+
     fn equality_blocked_open_state_avoiding(
         &self,
         forbidden_folds: &HashSet<(Node, Node)>,
     ) -> LeanHtEqState {
         let mut state = self.equality_wire_state(self.active_nodes);
-        let mut folds: Vec<(Node, Node)> = self
+        let mut blocked_sources: Vec<Node> = self
             .obligations
             .iter()
             .filter(|&&(role, filler, source)| !self.witness_for(role, filler, source))
-            .filter_map(|&(_, _, source)| {
-                self.quotient_pairwise_blocker_ancestor_avoiding(source, forbidden_folds)
-                    .map(|blocker| (source, blocker))
+            .map(|&(_, _, source)| source)
+            .collect();
+        blocked_sources.sort_unstable();
+        blocked_sources.dedup();
+        state.fold_options = blocked_sources
+            .into_iter()
+            .map(|source| {
+                let blockers = self
+                    .quotient_pairwise_blocker_ancestors(source)
+                    .into_iter()
+                    .filter(|&blocker| !forbidden_folds.contains(&(source, blocker)))
+                    .collect();
+                (source, blockers)
             })
             .collect();
-        folds.sort_unstable();
-        folds.dedup();
-        state.folds = folds.clone();
-        for (blocked, blocker) in folds {
-            for &(role, source, target) in &self.edge_order {
-                if self.equivalent(source, blocker) {
-                    state.edges.push(LeanHtEdge {
-                        role: role as usize,
-                        source: blocked,
-                        target,
-                    });
-                }
-                if self.equivalent(target, blocker) {
-                    state.edges.push(LeanHtEdge {
-                        role: role as usize,
-                        source,
-                        target: blocked,
-                    });
-                }
-            }
-        }
-        state
-            .edges
-            .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
-        state
-            .edges
-            .dedup_by_key(|edge| (edge.role, edge.source, edge.target));
-        state
+        let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
+        state.with_fold_assignment(folds)
     }
 
     fn cardinality_blocked_open_state_avoiding(
@@ -3650,41 +3691,18 @@ impl LeanHtRefutationState {
         forbidden_folds: &HashSet<(Node, Node)>,
     ) -> LeanHtEqState {
         let mut state = self.equality_wire_state(self.active_nodes);
-        let mut folds = Vec::new();
-        for blocked in 0..self.active_nodes {
-            let Some(blocker) =
-                self.quotient_pairwise_blocker_ancestor_avoiding(blocked, forbidden_folds)
-            else {
-                continue;
-            };
-            folds.push((blocked, blocker));
-            for &(role, source, target) in &self.edge_order {
-                if self.equivalent(source, blocker) {
-                    state.edges.push(LeanHtEdge {
-                        role: role as usize,
-                        source: blocked,
-                        target,
-                    });
-                }
-                if self.equivalent(target, blocker) {
-                    state.edges.push(LeanHtEdge {
-                        role: role as usize,
-                        source,
-                        target: blocked,
-                    });
-                }
-            }
-        }
-        folds.sort_unstable();
-        folds.dedup();
-        state.folds = folds;
-        state
-            .edges
-            .sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
-        state
-            .edges
-            .dedup_by_key(|edge| (edge.role, edge.source, edge.target));
-        state
+        state.fold_options = (0..self.active_nodes)
+            .filter_map(|blocked| {
+                let blockers: Vec<Node> = self
+                    .quotient_pairwise_blocker_ancestors(blocked)
+                    .into_iter()
+                    .filter(|&blocker| !forbidden_folds.contains(&(blocked, blocker)))
+                    .collect();
+                (!blockers.is_empty()).then_some((blocked, blockers))
+            })
+            .collect();
+        let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
+        state.with_fold_assignment(folds)
     }
 
     fn blocked_open_leaf(&self) -> LeanHtBlockedOpenLeaf {
@@ -3815,6 +3833,15 @@ impl LeanHtRefutationState {
 
     fn equality_wire_state(&self, node_count: usize) -> LeanHtEqState {
         let (representatives, representative_paths) = self.representatives_and_paths(node_count);
+        let edges: Vec<LeanHtEdge> = self
+            .edge_order
+            .iter()
+            .map(|&(role, source, target)| LeanHtEdge {
+                role: role as usize,
+                source,
+                target,
+            })
+            .collect();
         LeanHtEqState {
             labels: self
                 .label_order
@@ -3824,15 +3851,7 @@ impl LeanHtRefutationState {
                     literal: Ht::lean_wire_lit(literal),
                 })
                 .collect(),
-            edges: self
-                .edge_order
-                .iter()
-                .map(|&(role, source, target)| LeanHtEdge {
-                    role: role as usize,
-                    source,
-                    target,
-                })
-                .collect(),
+            edges: edges.clone(),
             obligations: self
                 .obligation_order
                 .iter()
@@ -3851,6 +3870,8 @@ impl LeanHtRefutationState {
             representatives,
             representative_paths,
             folds: Vec::new(),
+            fold_options: Vec::new(),
+            raw_edges: edges,
         }
     }
 
@@ -12152,35 +12173,43 @@ impl Ht {
                     })).map_err(|error| error.to_string())?));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
-                    let folds = open.folds.clone();
-                    let seed = self.lean_native_abox_seed_json(
-                        open,
-                        variable_count,
-                        concept_count,
-                        role_count,
-                        &ontology,
-                    )?;
-                    let seed: serde_json::Value =
-                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
-                    let candidate = serde_json::to_string(&serde_json::json!({
-                        "version": 1,
-                        "evidence": { "sat": { "certificate": { "seed": seed } } },
-                    }))
-                    .map_err(|error| error.to_string())?;
-                    let passes = match std::env::var_os(
-                        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
-                    ) {
-                        Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
-                        None => true,
-                    };
-                    if passes {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = open.with_fold_assignment(folds.clone());
+                        let seed = self.lean_native_abox_seed_json(
+                            candidate_state,
+                            variable_count,
+                            concept_count,
+                            role_count,
+                            &ontology,
+                        )?;
+                        let seed: serde_json::Value =
+                            serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                        let candidate = serde_json::to_string(&serde_json::json!({
+                            "version": 1,
+                            "evidence": { "sat": { "certificate": { "seed": seed } } },
+                        }))
+                        .map_err(|error| error.to_string())?;
+                        let passes = match std::env::var_os(
+                            "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+                        ) {
+                            Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
+                            None => true,
+                        };
+                        if passes {
+                            return Ok((true, candidate));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted, "native ABox fold assignment search must progress");
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &open.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free native ABox equality candidate"
                                 .to_string(),
@@ -12295,40 +12324,49 @@ impl Ht {
                     ));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
-                    let folds = open.folds.clone();
-                    let seed = self.lean_native_abox_seed_json(
-                        open,
-                        variable_count,
-                        concept_count,
-                        role_count,
-                        &ontology,
-                    )?;
-                    let seed: serde_json::Value =
-                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
-                    let candidate = serde_json::to_string(&serde_json::json!({
-                        "version": 1,
-                        "evidence": { "sat": { "certificate": {
-                            "seed": seed,
-                            "definitions": wire_definitions,
-                            "exact_maximums": exact_maximums,
-                            "exact_definitions": exact_definitions,
-                        } } },
-                    }))
-                    .map_err(|error| error.to_string())?;
-                    let passes = match std::env::var_os(
-                        "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
-                    ) {
-                        Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
-                        None => true,
-                    };
-                    if passes {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = open.with_fold_assignment(folds.clone());
+                        let seed = self.lean_native_abox_seed_json(
+                            candidate_state,
+                            variable_count,
+                            concept_count,
+                            role_count,
+                            &ontology,
+                        )?;
+                        let seed: serde_json::Value =
+                            serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                        let candidate = serde_json::to_string(&serde_json::json!({
+                            "version": 1,
+                            "evidence": { "sat": { "certificate": {
+                                "seed": seed,
+                                "definitions": wire_definitions,
+                                "exact_maximums": exact_maximums,
+                                "exact_definitions": exact_definitions,
+                            } } },
+                        }))
+                        .map_err(|error| error.to_string())?;
+                        let passes = match std::env::var_os(
+                            "KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER",
+                        ) {
+                            Some(checker) => self.lean_candidate_passes_with(&candidate, &checker)?,
+                            None => true,
+                        };
+                        if passes {
+                            return Ok((true, candidate));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted,
+                            "native ABox cardinality fold assignment search must progress");
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &open.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free native ABox cardinality candidate"
                                 .to_string(),
@@ -12807,38 +12845,45 @@ impl Ht {
                     return Ok((false, self.lean_unsat_certificate_json()?));
                 }
                 LeanHtEqRefutationOutcome::Open(state) => {
-                    let folds = state.folds.clone();
-                    let anchored_state = state.clone();
-                    let node_count = state.representatives.len();
-                    let raw = serde_json::to_string(&LeanHtEqCertificate {
-                        version: 2,
-                        node_count,
-                        concept_count,
-                        role_count,
-                        variable_count,
-                        ontology: ontology.clone(),
-                        state,
-                        evidence: LeanHtEqEvidence::Sat,
-                    })
-                    .map_err(|error| error.to_string())?;
-                    let candidate = self.finalize_lean_certificate(raw)?;
-                    if self.lean_decision_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = state.with_fold_assignment(folds.clone());
+                        let node_count = candidate_state.representatives.len();
+                        let raw = serde_json::to_string(&LeanHtEqCertificate {
+                            version: 2,
+                            node_count,
+                            concept_count,
+                            role_count,
+                            variable_count,
+                            ontology: ontology.clone(),
+                            state: candidate_state.clone(),
+                            evidence: LeanHtEqEvidence::Sat,
+                        })
+                        .map_err(|error| error.to_string())?;
+                        let candidate = self.finalize_lean_certificate(raw)?;
+                        if self.lean_decision_candidate_passes(&candidate)? {
+                            return Ok((true, candidate));
+                        }
+                        if let Ok(anchored) =
+                            self.lean_anchored_equality_open_certificate_json(&candidate_state)
+                        {
+                            let anchored =
+                                self.wrap_normalized_anchored_equality_certificate(anchored)?;
+                            if self.lean_decision_candidate_passes(&anchored)? {
+                                return Ok((true, anchored));
+                            }
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted, "equality fold assignment search must progress");
                     }
-                    if let Ok(anchored) =
-                        self.lean_anchored_equality_open_certificate_json(&anchored_state)
-                    {
-                        let anchored =
-                            self.wrap_normalized_anchored_equality_certificate(anchored)?;
-                        if self.lean_decision_candidate_passes(&anchored)? {
-                            return Ok((true, anchored));
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &state.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
                         }
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
-                    }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free equality decision candidate".to_string(),
                         );
@@ -12892,29 +12937,37 @@ impl Ht {
                     return Ok((false, self.lean_unsat_certificate_json()?));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
-                    let folds = state.folds.clone();
-                    let node_count = state.representatives.len();
-                    let equality = serde_json::to_string(&LeanHtEqCertificate {
-                        version: 2,
-                        node_count,
-                        concept_count,
-                        role_count,
-                        variable_count,
-                        ontology: ontology.clone(),
-                        state,
-                        evidence: LeanHtEqEvidence::Sat,
-                    })
-                    .map_err(|error| error.to_string())?;
-                    let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
-                    let candidate = self.finalize_lean_certificate(cardinality)?;
-                    if self.lean_decision_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = state.with_fold_assignment(folds.clone());
+                        let node_count = candidate_state.representatives.len();
+                        let equality = serde_json::to_string(&LeanHtEqCertificate {
+                            version: 2,
+                            node_count,
+                            concept_count,
+                            role_count,
+                            variable_count,
+                            ontology: ontology.clone(),
+                            state: candidate_state,
+                            evidence: LeanHtEqEvidence::Sat,
+                        })
+                        .map_err(|error| error.to_string())?;
+                        let cardinality = self.wrap_cardinality_lean_certificate(equality)?;
+                        let candidate = self.finalize_lean_certificate(cardinality)?;
+                        if self.lean_decision_candidate_passes(&candidate)? {
+                            return Ok((true, candidate));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted, "cardinality fold assignment search must progress");
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &state.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free cardinality decision candidate".to_string(),
                         );
@@ -13020,38 +13073,47 @@ impl Ht {
                         return Ok((false, closed_document()?));
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Open(state) => {
-                        let folds = state.folds.clone();
-                        let node_count = state.representatives.len();
-                        let anchored = self
-                            .lean_anchored_cardinality_open_certificate_json(&state)
-                            .ok();
-                        let equality = serde_json::to_string(&LeanHtEqCertificate {
-                            version: 2,
-                            node_count,
-                            concept_count,
-                            role_count,
-                            variable_count,
-                            ontology: ontology.clone(),
-                            state,
-                            evidence: query.equality_open_evidence(),
-                        })
-                        .map_err(|error| error.to_string())?;
-                        let wrapped = self.wrap_cardinality_lean_certificate(equality)?;
-                        let mut document: serde_json::Value = serde_json::from_str(&wrapped)
+                        let mut rejected_assignments = HashSet::new();
+                        while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
+                            let candidate_state = state.with_fold_assignment(folds.clone());
+                            let node_count = candidate_state.representatives.len();
+                            let anchored = self
+                                .lean_anchored_cardinality_open_certificate_json(&candidate_state)
+                                .ok();
+                            let equality = serde_json::to_string(&LeanHtEqCertificate {
+                                version: 2,
+                                node_count,
+                                concept_count,
+                                role_count,
+                                variable_count,
+                                ontology: ontology.clone(),
+                                state: candidate_state,
+                                evidence: query.equality_open_evidence(),
+                            })
                             .map_err(|error| error.to_string())?;
-                        if let Some(anchored) = anchored {
-                            document["anchored"] = anchored;
+                            let wrapped = self.wrap_cardinality_lean_certificate(equality)?;
+                            let mut document: serde_json::Value = serde_json::from_str(&wrapped)
+                                .map_err(|error| error.to_string())?;
+                            if let Some(anchored) = anchored {
+                                document["anchored"] = anchored;
+                            }
+                            let candidate = serde_json::to_string(&document)
+                                .map_err(|error| error.to_string())?;
+                            if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                return Ok((true, candidate));
+                            }
+                            let inserted = rejected_assignments.insert(folds);
+                            assert!(inserted,
+                                "cardinality taxonomy assignment search must progress");
                         }
-                        let candidate = serde_json::to_string(&document)
-                            .map_err(|error| error.to_string())?;
-                        if self.lean_taxonomy_candidate_passes(&candidate)? {
-                            return Ok((true, candidate));
+
+                        let mut expanded_source = false;
+                        for (source, blockers) in &state.fold_options {
+                            for &blocker in blockers {
+                                expanded_source |= forbidden_folds.insert((*source, blocker));
+                            }
                         }
-                        let mut learned = false;
-                        for fold in folds {
-                            learned |= forbidden_folds.insert(fold);
-                        }
-                        if !learned {
+                        if !expanded_source {
                             return Err(
                                 "Lean rejected a fold-free cardinality taxonomy candidate"
                                     .to_string(),
@@ -13104,13 +13166,15 @@ impl Ht {
                         return Ok((false, closed_document()?));
                     }
                     LeanHtEqRefutationOutcome::Open(state) => {
-                        let folds = state.folds.clone();
-                        if let Ok(anchored) =
-                            self.lean_anchored_equality_open_certificate_json(&state)
-                        {
-                            let anchored: serde_json::Value = serde_json::from_str(&anchored)
-                                .map_err(|error| error.to_string())?;
-                            let candidate = serde_json::to_string(&serde_json::json!({
+                        let mut rejected_assignments = HashSet::new();
+                        while let Some(folds) = state.next_fold_assignment(&rejected_assignments) {
+                            let candidate_state = state.with_fold_assignment(folds.clone());
+                            if let Ok(anchored) =
+                                self.lean_anchored_equality_open_certificate_json(&candidate_state)
+                            {
+                                let anchored: serde_json::Value = serde_json::from_str(&anchored)
+                                    .map_err(|error| error.to_string())?;
+                                let candidate = serde_json::to_string(&serde_json::json!({
                                     "version": 8,
                                     "concept_count": concept_count,
                                     "role_count": role_count,
@@ -13120,30 +13184,36 @@ impl Ht {
                                     "evidence": query.equality_open_evidence(),
                                 }))
                                 .map_err(|error| error.to_string())?;
-                            if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                return Ok((true, candidate));
+                                if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                    return Ok((true, candidate));
+                                }
                             }
-                        }
-                        let node_count = state.representatives.len();
-                        let candidate = serde_json::to_string(&LeanHtEqCertificate {
+                            let node_count = candidate_state.representatives.len();
+                            let candidate = serde_json::to_string(&LeanHtEqCertificate {
                                 version: 2,
                                 node_count,
                                 concept_count,
                                 role_count,
                                 variable_count,
                                 ontology: ontology.clone(),
-                                state,
+                                state: candidate_state,
                                 evidence: query.equality_open_evidence(),
                             })
                             .map_err(|error| error.to_string())?;
-                        if self.lean_taxonomy_candidate_passes(&candidate)? {
-                            return Ok((true, candidate));
+                            if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                return Ok((true, candidate));
+                            }
+                            let inserted = rejected_assignments.insert(folds);
+                            assert!(inserted, "equality taxonomy assignment search must progress");
                         }
-                        let mut learned = false;
-                        for fold in folds {
-                            learned |= forbidden_folds.insert(fold);
+
+                        let mut expanded_source = false;
+                        for (source, blockers) in &state.fold_options {
+                            for &blocker in blockers {
+                                expanded_source |= forbidden_folds.insert((*source, blocker));
+                            }
                         }
-                        if !learned {
+                        if !expanded_source {
                             return Err(
                                 "Lean rejected a fold-free equality taxonomy candidate"
                                     .to_string(),
@@ -13181,52 +13251,48 @@ impl Ht {
                     return Ok((false, closed_document()?));
                 }
                 LeanHtRefutationOutcome::Open(leaf) => {
-                    // A materialized blocked leaf is not assumed to be a model:
-                    // submit it to the finite checker first. If it rejects,
-                    // retain the regular-unravelling interpretation and learn
-                    // every rejected blocker pair before retrying this budget.
-                    let finite = self.lean_blocked_open_certificate_json(
-                        &leaf,
-                        query.finite_open_evidence(),
-                    )?;
-                    if self.lean_taxonomy_candidate_passes(&finite)? {
-                        return Ok((true, finite));
-                    }
-                    let regular = match self.lean_regular_blocked_open_certificate_json(&leaf) {
-                        Ok(regular) => regular,
-                        Err(error) => {
-                            let mut learned = false;
-                            for &fold in &leaf.folds {
-                                learned |= forbidden_folds.insert(fold);
-                            }
-                            if !learned {
-                                return Err(format!(
-                                    "regular taxonomy candidate has no fresh fold: {error}"
-                                ));
-                            }
-                            continue;
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = leaf.next_fold_assignment(&rejected_assignments) {
+                        let mut candidate_leaf = leaf.clone();
+                        candidate_leaf.folds = folds.clone();
+                        let finite = self.lean_blocked_open_certificate_json(
+                            &candidate_leaf,
+                            query.finite_open_evidence(),
+                        )?;
+                        if self.lean_taxonomy_candidate_passes(&finite)? {
+                            return Ok((true, finite));
                         }
-                    };
-                    let regular: serde_json::Value =
-                        serde_json::from_str(&regular).map_err(|error| error.to_string())?;
-                    let candidate = serde_json::to_string(&serde_json::json!({
-                        "version": 9,
-                        "concept_count": concept_count,
-                        "role_count": role_count,
-                        "variable_count": variable_count,
-                        "ontology": ontology.clone(),
-                        "certificate": regular,
-                        "evidence": query.equality_open_evidence(),
-                    }))
-                    .map_err(|error| error.to_string())?;
-                    if self.lean_taxonomy_candidate_passes(&candidate)? {
-                        return Ok((true, candidate));
+                        if let Ok(regular) =
+                            self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
+                        {
+                            let regular: serde_json::Value = serde_json::from_str(&regular)
+                                .map_err(|error| error.to_string())?;
+                            let candidate = serde_json::to_string(&serde_json::json!({
+                                "version": 9,
+                                "concept_count": concept_count,
+                                "role_count": role_count,
+                                "variable_count": variable_count,
+                                "ontology": ontology.clone(),
+                                "certificate": regular,
+                                "evidence": query.equality_open_evidence(),
+                            }))
+                            .map_err(|error| error.to_string())?;
+                            if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                return Ok((true, candidate));
+                            }
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted,
+                            "equality-free taxonomy assignment search must progress");
                     }
-                    let mut learned = false;
-                    for &fold in &leaf.folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &leaf.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free taxonomy decision candidate".to_string(),
                         );
@@ -13389,37 +13455,46 @@ impl Ht {
                     return Ok((false, document));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
-                    let folds = open.folds.clone();
-                    let seed = self.lean_native_abox_seed_json(
-                        open,
-                        variable_count,
-                        concept_count,
-                        role_count,
-                        &ontology,
-                    )?;
-                    let seed: serde_json::Value =
-                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
-                    let candidate = serde_json::to_string(&serde_json::json!({
-                        "version": 1,
-                        "query": query_json.clone(),
-                        "evidence": { "sat": { "certificate": {
-                            "seed": seed,
-                            "definitions": wire_definitions,
-                            "exact_maximums": exact_maximums,
-                            "exact_definitions": exact_definitions,
-                        } } },
-                    }))
-                    .map_err(|error| error.to_string())?;
-                    if self
-                        .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?
-                    {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = open.with_fold_assignment(folds.clone());
+                        let seed = self.lean_native_abox_seed_json(
+                            candidate_state,
+                            variable_count,
+                            concept_count,
+                            role_count,
+                            &ontology,
+                        )?;
+                        let seed: serde_json::Value =
+                            serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                        let candidate = serde_json::to_string(&serde_json::json!({
+                            "version": 1,
+                            "query": query_json.clone(),
+                            "evidence": { "sat": { "certificate": {
+                                "seed": seed,
+                                "definitions": wire_definitions,
+                                "exact_maximums": exact_maximums,
+                                "exact_definitions": exact_definitions,
+                            } } },
+                        }))
+                        .map_err(|error| error.to_string())?;
+                        if self
+                            .lean_native_abox_cardinality_taxonomy_candidate_passes(&candidate)?
+                        {
+                            return Ok((true, candidate));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted,
+                            "native ABox cardinality taxonomy assignment search must progress");
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &open.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free native ABox cardinality taxonomy candidate"
                                 .to_string(),
@@ -13590,32 +13665,40 @@ impl Ht {
                     return Ok((false, document));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
-                    let folds = open.folds.clone();
-                    let seed = self.lean_native_abox_seed_json(
-                        open,
-                        variable_count,
-                        concept_count,
-                        role_count,
-                        &ontology,
-                    )?;
-                    let seed: serde_json::Value =
-                        serde_json::from_str(&seed).map_err(|error| error.to_string())?;
-                    let candidate = serde_json::to_string(&serde_json::json!({
-                        "version": 1,
-                        "query": query_json.clone(),
-                        "evidence": { "sat": { "certificate": { "seed": seed } } },
-                    }))
-                    .map_err(|error| error.to_string())?;
-                    let passes =
-                        self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
-                    if passes {
-                        return Ok((true, candidate));
+                    let mut rejected_assignments = HashSet::new();
+                    while let Some(folds) = open.next_fold_assignment(&rejected_assignments) {
+                        let candidate_state = open.with_fold_assignment(folds.clone());
+                        let seed = self.lean_native_abox_seed_json(
+                            candidate_state,
+                            variable_count,
+                            concept_count,
+                            role_count,
+                            &ontology,
+                        )?;
+                        let seed: serde_json::Value =
+                            serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+                        let candidate = serde_json::to_string(&serde_json::json!({
+                            "version": 1,
+                            "query": query_json.clone(),
+                            "evidence": { "sat": { "certificate": { "seed": seed } } },
+                        }))
+                        .map_err(|error| error.to_string())?;
+                        let passes =
+                            self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
+                        if passes {
+                            return Ok((true, candidate));
+                        }
+                        let inserted = rejected_assignments.insert(folds);
+                        assert!(inserted, "native ABox taxonomy assignment search must progress");
                     }
-                    let mut learned = false;
-                    for fold in folds {
-                        learned |= forbidden_folds.insert(fold);
+
+                    let mut expanded_source = false;
+                    for (source, blockers) in &open.fold_options {
+                        for &blocker in blockers {
+                            expanded_source |= forbidden_folds.insert((*source, blocker));
+                        }
                     }
-                    if !learned {
+                    if !expanded_source {
                         return Err(
                             "Lean rejected a fold-free native ABox taxonomy candidate"
                                 .to_string(),
@@ -14107,12 +14190,14 @@ impl Ht {
                 ontology,
                 state: LeanHtEqState {
                     labels,
-                    edges,
+                    edges: edges.clone(),
                     obligations,
                     equalities,
                     representatives,
                     representative_paths,
                     folds: Vec::new(),
+                    fold_options: Vec::new(),
+                    raw_edges: edges,
                 },
                 evidence: equality_evidence,
             })
@@ -25749,6 +25834,22 @@ mod tests {
             panic!("the equality-aware cyclic branch must expose a blocker fold");
         };
         assert_eq!(equality_open.folds, vec![(2, 1)]);
+        let alternative = equality_open.with_fold_assignment(vec![(2, 0)]);
+        assert_eq!(alternative.folds, vec![(2, 0)]);
+        assert!(
+            alternative
+                .edges
+                .iter()
+                .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 1),
+            "an alternative complete assignment must copy the selected blocker's outgoing edge",
+        );
+        assert!(
+            !alternative
+                .edges
+                .iter()
+                .any(|edge| edge.role == R0 as usize && edge.source == 0 && edge.target == 2),
+            "rebuilding an assignment must discard copied edges from the previous assignment",
+        );
         let rejected: HashSet<_> = equality_open.folds.iter().copied().collect();
         let mut equality_retry = LeanHtRefutationState::root(&[]);
         match equality.lean_eq_refutation_avoiding_folds(

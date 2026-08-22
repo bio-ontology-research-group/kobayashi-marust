@@ -423,6 +423,46 @@ theorem checked_cardinality_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes hwidth
 
+theorem checked_cardinality_fold_assignment_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    (hnodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.node_count = 8 * 2 ^ budget)
+    (hwidth : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hdefinitions hcheck) →
+        document.max_width = maxWidth) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      (producer budget).run retry = .done outcome := fun budget =>
+    (producer budget).eventually_done
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  have hsettledWidth : ∀ budget document hconcepts hroles hdefinitions hcheck,
+      settled budget = .frontier document hconcepts hroles hdefinitions hcheck →
+        document.max_width = maxWidth := by
+    intro budget document hconcepts hroles hdefinitions hcheck houtcome
+    exact hwidth budget (retry budget) document hconcepts hroles hdefinitions hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ := checked_cardinality_doubling_decides_source
+    equivalent maxWidth settled hsettledNodes hsettledWidth
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 /-- Cardinality-aware production totality with fresh retries, node scheduling,
 and maximum-width scheduling all intrinsic to the checked producer. -/
 theorem checked_cardinality_control_producer_decides_source
@@ -454,6 +494,7 @@ theorem checked_cardinality_control_producer_decides_source
 #print axioms checked_cardinality_doubling_decides_source
 #print axioms checked_cardinality_fold_learning_doubling_decides_source
 #print axioms checked_cardinality_fresh_fold_producer_decides_source
+#print axioms checked_cardinality_fold_assignment_producer_decides_source
 #print axioms CheckedCardinalityControlAttempt.frontier_scheduled
 #print axioms CheckedCardinalityControlProducer.frontier_scheduled
 #print axioms checked_cardinality_control_producer_decides_source

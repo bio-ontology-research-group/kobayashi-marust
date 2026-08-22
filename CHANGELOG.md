@@ -25,9 +25,11 @@
   satisfy that exact condition. Pairwise blocking does not preserve arbitrary
   joins, so unsafe cases now fail closed instead of relying on an invalid
   generalization.
-- Keep exact rejected-fold learning: at a fixed node budget, each failed fold
-  pair is attempted at most once. Lean composes this finite progress result
-  with budget doubling without assuming that an unchecked fold is sound.
+- Learn exact complete fold assignments: at a fixed node budget, each failed
+  simultaneous blocker assignment is attempted at most once. An individual
+  fold pair remains available in other assignments. Lean composes this finite
+  progress result with budget doubling without assuming that an unchecked fold
+  is sound.
 - Replace the equality-fold proof's role-free-body limitation with an exact
   executable conservativity check. Lean now proves that arbitrary residual
   bodies remain saturated whenever every closed role edge introduced by fold
@@ -38,7 +40,7 @@
   envelope. A saturated blocked leaf is first tested as a finite materialized
   model by the ordinary Lean certificate checker. If that model is invalid,
   KM tries the regular-unravelling certificate; if blocking made that candidate
-  invalid too, KM records the exact fold pairs and retries without them.
+  invalid too, KM records the exact complete fold assignment and retries.
 - Prove the finite-model outcome sound in the regular search semantics and
   carry it through normalized source transport and the unified production
   route. The runtime global-verdict extractor recognizes the new checked SAT
@@ -46,22 +48,24 @@
 - Apply the same finite-first search to equality-free taxonomy cells. Each
   concept or subsumption counterexample is checked as a finite model before KM
   attempts regular unravelling; rejection of either blocked candidate records
-  its exact fold pairs and retries at the same node budget. Complete matrices
+  its exact complete assignment and retries at the same node budget. Complete matrices
   continue to require the source-aware Lean taxonomy publication checker.
 - Preserve exact blocker provenance in equality and cardinality open states,
   including native-ABox and taxonomy searches. If an independent Lean checker
-  rejects a materialized quotient, KM forbids those fold pairs and retries the
-  same budget; a rejected fold-free candidate fails closed instead of blindly
-  repeating the same state at a doubled budget.
+  rejects a materialized quotient, KM rejects that complete assignment and
+  tries the remaining Cartesian blocker assignments at the same budget. Only
+  after exhausting them does it force witness expansion; a rejected fold-free
+  candidate fails closed instead of repeating the same state at a doubled budget.
 - Prove source-level learned-fold-plus-doubling theorems for equality,
   cardinality, and native-ABox searches. The unified production-global route
   now requires this two-level termination argument for every HT family, not
   only for equality-free regular search.
-- Replace arbitrary retry histories in the production theorem with an
-  executable `FreshFoldProducer`: each attempt receives its current forbidden
-  set, and a rejection must expose a genuinely fresh fold. Lean defines the
-  blacklist recursion itself and derives strict growth, finite fixed-budget
-  settlement, and the source-level result for all four global HT families.
+- Replace arbitrary retry histories with a constructor-guarded complete-
+  assignment producer. Each attempt receives the exact rejected assignment
+  set, and a rejection must expose a genuinely fresh assignment. Lean defines
+  the retry recursion, derives strict growth and finite fixed-budget settlement,
+  and proves complete taxonomy capstones for regular, equality, cardinality,
+  native-ABox, and combined native-ABox-cardinality production routes.
 
 ### Unify total production HT global decisions
 

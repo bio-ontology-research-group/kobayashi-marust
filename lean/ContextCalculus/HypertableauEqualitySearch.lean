@@ -363,6 +363,33 @@ theorem checked_equality_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
 
+theorem checked_equality_fold_assignment_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+        document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      (producer budget).run retry = .done outcome := fun budget =>
+    (producer budget).eventually_done
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hcheck,
+      settled budget = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_equality_doubling_decides_source equivalent settled hsettledNodes
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
 theorem checked_equality_scheduled_guarded_fold_producer_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -407,6 +434,7 @@ theorem checked_equality_control_producer_decides_source
 #print axioms checked_equality_doubling_decides_source
 #print axioms checked_equality_fold_learning_doubling_decides_source
 #print axioms checked_equality_fresh_fold_producer_decides_source
+#print axioms checked_equality_fold_assignment_producer_decides_source
 #print axioms CheckedEqualityControlAttempt.frontier_scheduled
 #print axioms CheckedEqualityControlProducer.frontier_scheduled
 #print axioms checked_equality_scheduled_guarded_fold_producer_decides_source

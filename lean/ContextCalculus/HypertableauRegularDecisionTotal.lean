@@ -536,6 +536,53 @@ theorem checked_regular_fresh_fold_producer_decides_source
     (fun budget => (producer budget).forbidden)
     (fun _ _ _ hrun => FreshFoldProducer.rejected_step _ hrun) hnodes
 
+/-- Source-level capstone for the production control actually used by KM:
+checker rejection learns one complete simultaneous fold assignment. -/
+theorem checked_regular_fold_assignment_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (hnodes : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.node_count = 8 * 2 ^ budget) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  have hsettles : ∀ budget, ∃ retry outcome,
+      (producer budget).run retry = .done outcome := fun budget =>
+    (producer budget).eventually_done
+  choose retry settled hsettled using hsettles
+  have hsettledNodes : ∀ budget document hconcepts hroles hcheck,
+      settled budget = .frontier document hconcepts hroles hcheck →
+        document.node_count = 8 * 2 ^ budget := by
+    intro budget document hconcepts hroles hcheck houtcome
+    exact hnodes budget (retry budget) document hconcepts hroles hcheck
+      (by rw [hsettled budget, houtcome])
+  obtain ⟨budget, hsemantics⟩ :=
+    checked_regular_doubling_decides_source equivalent settled hsettledNodes
+  exact ⟨budget, retry budget, settled budget, hsettled budget, hsemantics⟩
+
+theorem checked_regular_scheduled_fold_assignment_producer_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (producer : ∀ budget, FoldAssignmentProducer (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    (hscheduled : ∀ budget retry document hconcepts hroles hcheck,
+      (producer budget).run retry = .done
+        (.frontier document hconcepts hroles hcheck) →
+      document.checkScheduled budget = true) :
+    ∃ budget retry outcome,
+      (producer budget).run retry = .done outcome ∧
+        outcome.SourceSemantics source := by
+  apply checked_regular_fold_assignment_producer_decides_source equivalent producer
+  intro budget retry document hconcepts hroles hcheck hrun
+  exact document.checkScheduled_node_count budget
+    (hscheduled budget retry document hconcepts hroles hcheck hrun)
+
 /-- Wire-scheduled source capstone. Frontier dimensions are recovered from the
 executable serialized schedule check, removing the free node-count equality
 from the equality-free global producer boundary. -/
@@ -605,6 +652,8 @@ theorem checked_regular_control_producer_decides_source
 #print axioms checked_regular_doubling_decides_source
 #print axioms checked_regular_fold_learning_doubling_decides_source
 #print axioms checked_regular_fresh_fold_producer_decides_source
+#print axioms checked_regular_fold_assignment_producer_decides_source
+#print axioms checked_regular_scheduled_fold_assignment_producer_decides_source
 #print axioms checked_regular_scheduled_fresh_fold_producer_decides_source
 #print axioms checked_regular_guarded_fold_producer_decides_source
 #print axioms CheckedRegularControlAttempt.frontier_scheduled

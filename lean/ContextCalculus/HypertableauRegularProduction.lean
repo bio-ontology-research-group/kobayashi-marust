@@ -483,6 +483,56 @@ theorem FoldAssignmentProducer.eventually_done
   simp only [Finset.card_univ] at huniv
   omega
 
+/-- Constructor-guarded form of one complete-assignment attempt.  Production
+code can report rejection only together with evidence that the exact
+simultaneous assignment has not already been rejected. -/
+inductive GuardedFoldAssignmentAttempt (Node Result : Type)
+    [DecidableEq Node] (rejected : Finset (FoldAssignment Node)) where
+  | done (result : Result)
+  | rejected (assignment : FoldAssignment Node)
+      (fresh : assignment ∉ rejected)
+
+def GuardedFoldAssignmentAttempt.erase
+    [DecidableEq Node]
+    {rejected : Finset (FoldAssignment Node)}
+    (attempt : GuardedFoldAssignmentAttempt Node Result rejected) :
+    FoldAssignmentOutcome Node Result :=
+  match attempt with
+  | .done result => .done result
+  | .rejected assignment _ => .rejected assignment
+
+/-- A production assignment producer exposes only guarded attempts.  Erasing
+the guard yields the finite producer consumed by the termination theorem. -/
+structure GuardedFoldAssignmentProducer (Node Result : Type)
+    [DecidableEq Node] where
+  attempt : ∀ rejected : Finset (FoldAssignment Node),
+    GuardedFoldAssignmentAttempt Node Result rejected
+
+def GuardedFoldAssignmentProducer.toFoldAssignmentProducer
+    [DecidableEq Node]
+    (producer : GuardedFoldAssignmentProducer Node Result) :
+    FoldAssignmentProducer Node Result where
+  attempt rejected := (producer.attempt rejected).erase
+  rejectionFresh rejected assignment hattempt := by
+    change (producer.attempt rejected).erase =
+      .rejected assignment at hattempt
+    cases hguarded : producer.attempt rejected with
+    | done result =>
+        rw [hguarded] at hattempt
+        simp [GuardedFoldAssignmentAttempt.erase] at hattempt
+    | rejected candidate fresh =>
+        rw [hguarded] at hattempt
+        simp only [GuardedFoldAssignmentAttempt.erase] at hattempt
+        cases hattempt
+        exact fresh
+
+theorem GuardedFoldAssignmentProducer.eventually_done
+    [Fintype Node] [DecidableEq Node]
+    (producer : GuardedFoldAssignmentProducer Node Result) :
+    ∃ round result,
+      producer.toFoldAssignmentProducer.run round = .done result :=
+  producer.toFoldAssignmentProducer.eventually_done
+
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
 because the serializer no longer mutates the completion graph. -/
@@ -757,5 +807,6 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms GuardedFoldProducer.rejected_has_fresh
 #print axioms FoldAssignmentProducer.rejected_step
 #print axioms FoldAssignmentProducer.eventually_done
+#print axioms GuardedFoldAssignmentProducer.eventually_done
 
 end ContextCalculus.Hypertableau
