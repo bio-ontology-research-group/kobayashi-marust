@@ -32,6 +32,25 @@ theorem DecodedEqProductionBlockingTable.hasCheckedEqFoldModel_of_assignment
   have heq := decoded.assignmentCandidateValidB_eq_foldCheck assignment hmode
   simpa [certificate] using heq ▸ hcheck
 
+/-- Equality terminal evidence is tied to the exact terminal state, not merely
+to another checked model of the same ontology. -/
+structure CheckedEqualityTerminalCandidate
+    (nodeCount conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (state : EqState (Fin nodeCount) (Fin conceptCount) (Fin roleCount)) where
+  certificate : FiniteEqFoldCertificate nodeCount conceptCount roleCount
+    variableCount
+  state_eq : certificate.base.state = state
+  ontology_eq : certificate.base.base.ontology = ontology
+  check : certificate.check = true
+
+def CheckedEqualityTerminalCandidate.hasCheckedFoldModel
+    (candidate : CheckedEqualityTerminalCandidate nodeCount conceptCount
+      roleCount variableCount ontology state) :
+    HasCheckedEqFoldModel (nodeCount := nodeCount) ontology :=
+  ⟨candidate.certificate, candidate.ontology_eq, candidate.check⟩
+
 /-- The common semantic result of a certified production-global route. -/
 inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
   | sat (proof : semantics)
@@ -545,7 +564,8 @@ noncomputable def finiteEqualityRoundBudgetConstruction
       (Fin roleCount) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
     (terminalFold : ∀ state,
       EqRuntimeTerminal ontology parent ancestors state →
-        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology)
+        CheckedEqualityTerminalCandidate (8 * 2 ^ budget) conceptCount
+          roleCount variableCount ontology state)
     (frontierAddress : ∀ leaf,
       SearchDescends (eqRuntimeNextClashFirst ontology parent ancestors)
         root.state leaf →
@@ -576,7 +596,7 @@ noncomputable def finiteEqualityRoundBudgetConstruction
         simp [outcome, EqualityProductionConclusive])⟩⟩
     · rcases hterminal with hblocked | hfrontier
       · obtain ⟨fold, hfoldOntology, hfoldCheck⟩ :=
-          terminalFold leaf hblocked
+          (terminalFold leaf hblocked).hasCheckedFoldModel
         let outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
             variableCount ontology :=
           .sat fold.materialize (by simpa using hfoldOntology) (by positivity)
@@ -603,7 +623,8 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedEqualityFiniteSearc
       (Fin roleCount) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
     (terminalFold : ∀ state,
       EqRuntimeTerminal ontology parent ancestors state →
-        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology)
+        CheckedEqualityTerminalCandidate (8 * 2 ^ budget) conceptCount
+          roleCount variableCount ontology state)
     (frontierAddress : ∀ leaf,
       SearchDescends (eqRuntimeNextClashFirst ontology parent ancestors)
         root.state leaf →
@@ -636,7 +657,8 @@ structure ConstructedEqualityFiniteSearchFamily
       Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
   terminalFold : ∀ budget state,
     EqRuntimeTerminal ontology (parent budget) (ancestors budget) state →
-      HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) ontology
+      CheckedEqualityTerminalCandidate (8 * 2 ^ budget) conceptCount
+        roleCount variableCount ontology state
   frontierAddress : ∀ budget leaf,
     SearchDescends
       (eqRuntimeNextClashFirst ontology (parent budget) (ancestors budget))
@@ -1675,7 +1697,8 @@ theorem checked_equality_finite_search_decides_source
         Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
     (terminalFold : ∀ budget state,
       EqRuntimeTerminal target (parent budget) (ancestors budget) state →
-        HasCheckedEqFoldModel (nodeCount := 8 * 2 ^ budget) target)
+        CheckedEqualityTerminalCandidate (8 * 2 ^ budget) conceptCount
+          roleCount variableCount target state)
     (frontierAddress : ∀ budget leaf,
       SearchDescends
         (eqRuntimeNextClashFirst target (parent budget) (ancestors budget))

@@ -46,6 +46,11 @@
   assignments and prove that equality-only assignment acceptance is exactly
   the fold check used by finite equality terminals. A checker-accepted wire
   assignment now constructs `HasCheckedEqFoldModel` for the decoded ontology.
+- Strengthen equality terminal evidence with exact state provenance. A terminal
+  candidate must now prove that its fold certificate's base state is the
+  terminal state being classified, in addition to exact ontology identity and
+  checker acceptance; an unrelated checked model can no longer discharge the
+  finite-search terminal field.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative
