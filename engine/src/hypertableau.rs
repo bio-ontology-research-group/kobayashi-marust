@@ -10358,7 +10358,7 @@ impl Ht {
                         s: head_source,
                         t: head_target,
                     }],
-                ) if source == head_source && target == head_target => {
+                ) if source == head_source && target == head_target && source != target => {
                     let pair = LeanHtRolePair {
                         premise: *premise as usize,
                         conclusion: *conclusion as usize,
@@ -10382,7 +10382,7 @@ impl Ht {
                         s: head_source,
                         t: head_target,
                     }],
-                ) if source == head_target && target == head_source => {
+                ) if source == head_target && target == head_source && source != target => {
                     let pair = LeanHtRolePair {
                         premise: *premise as usize,
                         conclusion: *conclusion as usize,
@@ -10410,7 +10410,13 @@ impl Ht {
                         s: head_source,
                         t: head_target,
                     }],
-                ) if middle == second_source && source == head_source && target == head_target => {
+                ) if middle == second_source
+                    && source == head_source
+                    && target == head_target
+                    && source != middle
+                    && source != target
+                    && middle != target =>
+                {
                     let chain = LeanHtRoleChain {
                         first: *first as usize,
                         second: *second as usize,
@@ -25147,6 +25153,24 @@ mod tests {
         let endpoint_evidence = non_simple_certificate
             .endpoint_role_evidence(1, 0, 1)
             .expect("the generated role-closure edge has finite provenance");
+
+        let aliased_role_clause = Ht::new_certified(vec![Clause::new(
+            vec![Atom::Role { r: R0, s: 0, t: 0 }],
+            vec![Atom::Role { r: 1, s: 0, t: 0 }],
+        )]);
+        let aliased_leaf = LeanHtBlockedOpenLeaf {
+            node_count: 1,
+            labels: Vec::new(),
+            edges: vec![(R0, 0, 0)],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+        };
+        assert!(
+            aliased_role_clause
+                .lean_regular_blocked_open_certificate(&aliased_leaf)
+                .is_err(),
+            "an aliased loop clause must not become a global subrole rule",
+        );
 
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
             let target = std::env::var_os("CARGO_TARGET_DIR")

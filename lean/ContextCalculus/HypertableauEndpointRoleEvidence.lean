@@ -29,6 +29,122 @@ def State.RoleClosed
       state.edge conclusion source target) ∧
   (∀ role, rules.reflexive role → ∀ source, state.edge role source source)
 
+/-- Every abstract RBox relation stored in `rules` has a normalized clause
+whose variables can be assigned independently. Aliased role atoms do not
+represent global role inclusions and are deliberately excluded. -/
+def NormalizedRoleClauses.Represent
+    (rules : UnravellingRoleRules Role)
+    (clauses : List (NormalizedRoleClause Variable Role)) : Prop :=
+  (∀ premise conclusion, rules.subRole premise conclusion →
+    ∃ source target, source ≠ target ∧
+      .subRole premise conclusion source target ∈ clauses) ∧
+  (∀ premise conclusion, rules.inverseRole premise conclusion →
+    ∃ source target, source ≠ target ∧
+      .inverseRole premise conclusion source target ∈ clauses) ∧
+  (∀ first second conclusion, rules.chain first second conclusion →
+    ∃ source middle target,
+      source ≠ middle ∧ source ≠ target ∧ middle ≠ target ∧
+      .chain first second conclusion source middle target ∈ clauses) ∧
+  (∀ role, rules.reflexive role →
+    ∃ source, .reflexive role source ∈ clauses)
+
+/-- Saturation of independently quantified normalized RBox clauses establishes
+the raw role-closure invariant required by checked cover rejection. -/
+theorem State.roleClosed_of_saturated_normalized
+    [DecidableEq Variable]
+    (state : State Node Concept Role)
+    (rules : UnravellingRoleRules Role)
+    (clauses : List (NormalizedRoleClause Variable Role))
+    (hrepresents : NormalizedRoleClauses.Represent rules clauses)
+    (hsaturated : state.SaturatedFor
+      (clauses.map (NormalizedRoleClause.toClause (Concept := Concept)))) :
+    state.RoleClosed rules := by
+  classical
+  constructor
+  · intro premise conclusion hrule sourceNode targetNode hedge
+    obtain ⟨source, target, hne, hclause⟩ :=
+      hrepresents.1 premise conclusion hrule
+    let assignment := Function.update (fun _ => sourceNode) target targetNode
+    have hsource : assignment source = sourceNode := by
+      simp [assignment, hne]
+    have htarget : assignment target = targetNode := by simp [assignment]
+    have hdischarges := hsaturated
+      ((NormalizedRoleClause.subRole premise conclusion source target).toClause
+        (Concept := Concept))
+      (List.mem_map.mpr ⟨_, hclause, rfl⟩)
+    rcases hdischarges assignment (by
+      intro atom hatom
+      simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+      subst atom
+      simpa [State.holdsAtom, hsource, htarget] using hedge) with
+      ⟨atom, hatom, hhead⟩
+    simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+    subst atom
+    simpa [State.holdsAtom, hsource, htarget] using hhead
+  constructor
+  · intro premise conclusion hrule sourceNode targetNode hedge
+    obtain ⟨source, target, hne, hclause⟩ :=
+      hrepresents.2.1 premise conclusion hrule
+    let assignment := Function.update (fun _ => sourceNode) target targetNode
+    have hsource : assignment source = sourceNode := by
+      simp [assignment, hne]
+    have htarget : assignment target = targetNode := by simp [assignment]
+    have hdischarges := hsaturated
+      ((NormalizedRoleClause.inverseRole premise conclusion source target).toClause
+        (Concept := Concept))
+      (List.mem_map.mpr ⟨_, hclause, rfl⟩)
+    rcases hdischarges assignment (by
+      intro atom hatom
+      simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+      subst atom
+      simpa [State.holdsAtom, hsource, htarget] using hedge) with
+      ⟨atom, hatom, hhead⟩
+    simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+    subst atom
+    simpa [State.holdsAtom, hsource, htarget] using hhead
+  constructor
+  · intro first second conclusion hrule sourceNode middleNode targetNode
+      hleft hright
+    obtain ⟨source, middle, target, hsourceMiddle, hsourceTarget,
+      hmiddleTarget, hclause⟩ :=
+      hrepresents.2.2.1 first second conclusion hrule
+    let assignment := Function.update
+      (Function.update (fun _ => sourceNode) middle middleNode)
+      target targetNode
+    have hsource : assignment source = sourceNode := by
+      simp [assignment, hsourceMiddle, hsourceTarget]
+    have hmiddle : assignment middle = middleNode := by
+      simp [assignment, hmiddleTarget]
+    have htarget : assignment target = targetNode := by simp [assignment]
+    have hdischarges := hsaturated
+      ((NormalizedRoleClause.chain first second conclusion source middle target).toClause
+        (Concept := Concept))
+      (List.mem_map.mpr ⟨_, hclause, rfl⟩)
+    rcases hdischarges assignment (by
+      intro atom hatom
+      simp only [NormalizedRoleClause.toClause, List.mem_cons,
+        List.not_mem_nil, or_false] at hatom
+      rcases hatom with rfl | rfl
+      · simpa [State.holdsAtom, hsource, hmiddle] using hleft
+      · simpa [State.holdsAtom, hmiddle, htarget] using hright) with
+      ⟨atom, hatom, hhead⟩
+    simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+    subst atom
+    simpa [State.holdsAtom, hsource, htarget] using hhead
+  · intro role hrule sourceNode
+    obtain ⟨source, hclause⟩ := hrepresents.2.2.2 role hrule
+    let assignment := fun _ : Variable => sourceNode
+    have hdischarges := hsaturated
+      ((NormalizedRoleClause.reflexive role source).toClause (Concept := Concept))
+      (List.mem_map.mpr ⟨_, hclause, rfl⟩)
+    rcases hdischarges assignment (by
+      intro atom hatom
+      simp [NormalizedRoleClause.toClause] at hatom) with
+      ⟨atom, hatom, hhead⟩
+    simp only [NormalizedRoleClause.toClause, List.mem_singleton] at hatom
+    subst atom
+    simpa [State.holdsAtom, assignment] using hhead
+
 inductive FiniteEndpointRoleEvidence (Node Role : Type) where
   | direct (role : Role) (source target : Node)
   | sub (premise conclusion : Role) (source target : Node)
@@ -196,6 +312,7 @@ theorem FiniteEndpointRoleEvidence.exists_nonidentity_redirect_of_check
 
 #print axioms FiniteEndpointRoleEvidence.check_eq_true_iff
 #print axioms FiniteEndpointRoleEvidence.check_sound
+#print axioms State.roleClosed_of_saturated_normalized
 #print axioms EndpointRole.raw_of_identity_roleClosed
 #print axioms FiniteEndpointRoleEvidence.exists_nonidentity_redirect_of_check
 
