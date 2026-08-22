@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Make the accepted result type of every assignment-production runtime carry
+  its checked outcome together with regular, equality, cardinality, or native
+  ABox construction evidence. The current global route no longer accepts a
+  separate per-budget classifier that could describe a runtime result after
+  the fact; evidence now survives both finite learning loops by construction.
 - Preserve the canonical rooted-address witness across exhaustive regular
   search settlement and translate every early closure or frontier directly
   into `RegularBudgetOutcomeConstruction`. A genuine blocked-open leaf remains

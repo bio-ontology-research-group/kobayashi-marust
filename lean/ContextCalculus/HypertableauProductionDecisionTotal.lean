@@ -89,6 +89,19 @@ inductive RegularBudgetOutcomeConstruction
       (produced : outcome =
         CheckedRegularRoundOutcome.frontier_of_address address injective)
 
+/-- Fixed-budget regular result whose construction evidence is inseparable
+from the checked outcome.  Using this as the finite-learning runtime's result
+type makes every accepted candidate preserve its certification provenance. -/
+abbrev ConstructedRegularBudgetResult
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat) :=
+  Σ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      ontology,
+    RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
+      ontology budget outcome
+
 def RegularBudgetOutcomeConstruction.classify
     (construction : RegularBudgetOutcomeConstruction conceptCount roleCount
       variableCount ontology budget outcome) :
@@ -109,7 +122,7 @@ def ConstructedRegularRoundOutcome.toBudgetConstruction
     RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
       ontology budget constructed.outcome :=
   match constructed with
-  | .conclusive outcome proof => .conclusive proof
+  | .conclusive _ proof => .conclusive proof
   | .frontier address injective => .frontier address injective rfl
 
 /-- Every early result of the concrete exhaustive regular search carries the
@@ -252,6 +265,16 @@ inductive EqualityBudgetOutcomeConstruction
       (produced : outcome =
         CheckedEqualityDecisionOutcome.frontier_of_address address injective)
 
+abbrev ConstructedEqualityBudgetResult
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat) :=
+  Σ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount ontology,
+    EqualityBudgetOutcomeConstruction conceptCount roleCount variableCount
+      ontology budget outcome
+
 def EqualityBudgetOutcomeConstruction.classify
     (construction : EqualityBudgetOutcomeConstruction conceptCount roleCount
       variableCount ontology budget outcome) :
@@ -372,6 +395,18 @@ inductive CardinalityBudgetOutcomeConstruction
       (injective : Function.Injective address)
       (produced : outcome =
         CheckedCardinalityDecisionOutcome.frontier_of_address address injective)
+
+abbrev ConstructedCardinalityBudgetResult
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth budget : Nat) :=
+  Σ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount ontology definitions,
+    CardinalityBudgetOutcomeConstruction conceptCount roleCount variableCount
+      ontology definitions maxWidth budget outcome
 
 def CardinalityBudgetOutcomeConstruction.classify
     (construction : CardinalityBudgetOutcomeConstruction conceptCount roleCount
@@ -519,6 +554,20 @@ inductive NativeABoxBudgetOutcomeConstruction
       (injective : Function.Injective address)
       (produced : outcome =
         CheckedNativeABoxCardinalityOutcome.frontier_of_address address injective)
+
+abbrev ConstructedNativeABoxBudgetResult
+    (Individual : Type)
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (rootCount maxWidth budget : Nat) :=
+  Σ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox ontology definitions,
+    NativeABoxBudgetOutcomeConstruction Individual conceptCount roleCount
+      variableCount abox ontology definitions rootCount maxWidth budget outcome
 
 def NativeABoxBudgetOutcomeConstruction.classify
     (construction : NativeABoxBudgetOutcomeConstruction Individual conceptCount
@@ -674,6 +723,62 @@ theorem checked_regular_runtime_decides_source_of_construction
   intro budget
   exact (construct budget).classify
 
+/-- A regular runtime whose result carries its own construction evidence
+decides the source ontology.  No independent outcome-classification function
+appears at this boundary: the finite inner and outer learning loops can return
+only a result containing the required proof. -/
+theorem checked_constructed_regular_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+        target budget)) :
+    ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      target, outcome.SourceSemantics source := by
+  classical
+  by_cases hterminal : ∃ budget,
+      RegularProductionConclusive ((runtime budget).execute ∅).1.1
+  · obtain ⟨budget, hconclusive⟩ := hterminal
+    let result := ((runtime budget).execute ∅).1
+    have hconclusive' : RegularProductionConclusive result.1 := by
+      simpa [result] using hconclusive
+    have hsemantics : result.1.Semantics := by
+      cases hresult : result.1 with
+      | regularSat certificate hontology hnonempty hcheck =>
+          exact CheckedRegularRoundOutcome.regularSat_semantics certificate
+            hontology hnonempty hcheck
+      | finiteSat certificate hontology hnonempty hcheck =>
+          exact CheckedRegularRoundOutcome.finiteSat_semantics certificate
+            hontology hnonempty hcheck
+      | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
+          exact CheckedRegularRoundOutcome.finiteUnsat_semantics certificate tree
+            hontology hnonempty hempty hcheck
+      | frontier document hconcepts hroles hcheck =>
+          simp [RegularProductionConclusive, hresult] at hconclusive'
+    exact ⟨result.1,
+      CheckedRegularRoundOutcome.source_semantics_of_equivalent result.1
+        equivalent hsemantics⟩
+  · push Not at hterminal
+    have hfrontier : ∀ budget,
+        RegularProductionFrontier conceptCount roleCount variableCount target
+          budget ((runtime budget).execute ∅).1.1 := by
+      intro budget
+      rcases ((runtime budget).execute ∅).1.2.classify with
+        hconclusive | hfrontier
+      · exact False.elim (hterminal budget hconclusive.down)
+      · exact hfrontier.down
+    choose document hconcepts hroles hcheck heq hscheduled using hfrontier
+    obtain ⟨budget, hrejected⟩ :=
+      mode6_doubling_eventually_rejects_checked_frontier document conceptCount
+        roleCount
+        (fun budget => (document budget).checkScheduled_node_count budget
+          (hscheduled budget)) hconcepts hroles
+    exact False.elim
+      (hrejected ((document budget).checkScheduled_check budget
+        (hscheduled budget)))
+
 theorem checked_equality_runtime_through_decides_source
     {source target : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
@@ -766,6 +871,55 @@ theorem checked_equality_runtime_decides_source_of_construction
   apply checked_equality_runtime_decides_source equivalent runtime
   intro budget
   exact (construct budget).classify
+
+theorem checked_constructed_equality_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+        target budget)) :
+    ∃ outcome : CheckedEqualityDecisionOutcome conceptCount roleCount
+      variableCount target, outcome.SourceSemantics source := by
+  classical
+  by_cases hterminal : ∃ budget,
+      EqualityProductionConclusive ((runtime budget).execute ∅).1.1
+  · obtain ⟨budget, hconclusive⟩ := hterminal
+    let result := ((runtime budget).execute ∅).1
+    have hconclusive' : EqualityProductionConclusive result.1 := by
+      simpa [result] using hconclusive
+    have hsemantics : result.1.Semantics := by
+      cases hresult : result.1 with
+      | sat certificate hontology hnonempty hcheck =>
+          exact CheckedEqualityDecisionOutcome.sat_semantics certificate
+            hontology hnonempty hcheck
+      | closed certificate tree hontology hnonempty hempty hcheck =>
+          exact CheckedEqualityDecisionOutcome.closed_semantics certificate tree
+            hontology hnonempty hempty hcheck
+      | frontier document hconcepts hroles hcheck =>
+          simp [EqualityProductionConclusive, hresult] at hconclusive'
+    exact ⟨result.1,
+      CheckedEqualityDecisionOutcome.source_semantics_of_equivalent result.1
+        equivalent hsemantics⟩
+  · push Not at hterminal
+    have hfrontier : ∀ budget,
+        EqualityProductionFrontier conceptCount roleCount variableCount target
+          budget ((runtime budget).execute ∅).1.1 := by
+      intro budget
+      rcases ((runtime budget).execute ∅).1.2.classify with
+        hconclusive | hfrontier
+      · exact False.elim (hterminal budget hconclusive.down)
+      · exact hfrontier.down
+    choose document hconcepts hroles hcheck heq hscheduled using hfrontier
+    obtain ⟨budget, hrejected⟩ :=
+      mode6_doubling_eventually_rejects_checked_frontier document conceptCount
+        roleCount
+        (fun budget => (document budget).checkScheduled_node_count budget
+          (hscheduled budget)) hconcepts hroles
+    exact False.elim
+      (hrejected ((document budget).checkScheduled_check budget
+        (hscheduled budget)))
 
 theorem checked_cardinality_runtime_through_decides_source
     {source target : List
@@ -879,6 +1033,61 @@ theorem checked_cardinality_runtime_decides_source_of_construction
   apply checked_cardinality_runtime_decides_source equivalent maxWidth runtime
   intro budget
   exact (construct budget).classify
+
+theorem checked_constructed_cardinality_runtime_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+        target definitions maxWidth budget)) :
+    ∃ outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions, outcome.SourceSemantics source := by
+  classical
+  by_cases hterminal : ∃ budget,
+      CardinalityProductionConclusive ((runtime budget).execute ∅).1.1
+  · obtain ⟨budget, hconclusive⟩ := hterminal
+    let result := ((runtime budget).execute ∅).1
+    have hconclusive' : CardinalityProductionConclusive result.1 := by
+      simpa [result] using hconclusive
+    have hsemantics : result.1.Semantics := by
+      cases hresult : result.1 with
+      | sat certificate hontology hnonempty hcheck =>
+          exact CheckedCardinalityDecisionOutcome.sat_semantics certificate
+            hontology hnonempty hcheck
+      | closed certificate tree hontology hnonempty hempty hapart hcheck =>
+          exact CheckedCardinalityDecisionOutcome.closed_semantics certificate
+            tree hontology hnonempty hempty hapart hcheck
+      | frontier document hconcepts hroles hdefinitions hcheck =>
+          simp [CardinalityProductionConclusive, hresult] at hconclusive'
+    exact ⟨result.1,
+      CheckedCardinalityDecisionOutcome.source_semantics_of_equivalent result.1
+        equivalent hsemantics⟩
+  · push Not at hterminal
+    have hfrontier : ∀ budget,
+        CardinalityProductionFrontier conceptCount roleCount variableCount target
+          definitions maxWidth budget ((runtime budget).execute ∅).1.1 := by
+      intro budget
+      rcases ((runtime budget).execute ∅).1.2.classify with
+        hconclusive | hfrontier
+      · exact False.elim (hterminal budget hconclusive.down)
+      · exact hfrontier.down
+    choose document hconcepts hroles hdefinitions hcheck heq hscheduled using
+      hfrontier
+    obtain ⟨budget, hrejected⟩ :=
+      cardinality_doubling_eventually_rejects_checked_frontier document
+        conceptCount roleCount definitions.length maxWidth
+        (fun budget => (document budget).checkScheduled_node_count budget maxWidth
+          (hscheduled budget)) hconcepts hroles hdefinitions
+        (fun budget => (document budget).checkScheduled_max_width budget maxWidth
+          (hscheduled budget))
+    exact False.elim
+      (hrejected ((document budget).checkScheduled_check budget maxWidth
+        (hscheduled budget)))
 
 theorem checked_native_abox_runtime_through_decides_source
     {Individual : Type}
@@ -1015,6 +1224,69 @@ theorem checked_native_abox_runtime_decides_source_of_construction
   intro budget
   exact (construct budget).classify
 
+theorem checked_constructed_native_abox_runtime_decides_source
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (rootCount maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+        variableCount abox target definitions rootCount maxWidth budget)) :
+    ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions,
+        outcome.SourceSemantics source := by
+  classical
+  by_cases hterminal : ∃ budget,
+      NativeABoxProductionConclusive ((runtime budget).execute ∅).1.1
+  · obtain ⟨budget, hconclusive⟩ := hterminal
+    let result := ((runtime budget).execute ∅).1
+    have hconclusive' : NativeABoxProductionConclusive result.1 := by
+      simpa [result] using hconclusive
+    have hsemantics : result.1.Semantics := by
+      cases hresult : result.1 with
+      | sat certificate root hontology hnonempty hseeded hcheck hapart
+          hsingletons hnegative =>
+          exact CheckedNativeABoxCardinalityOutcome.sat_semantics certificate
+            root hontology hnonempty hseeded hcheck hapart hsingletons hnegative
+      | closed certificate tree hontology hinitial hcheck =>
+          exact CheckedNativeABoxCardinalityOutcome.closed_semantics certificate
+            tree hontology hinitial hcheck
+      | frontier document hconcepts hroles hdefinitions hcheck =>
+          simp [NativeABoxProductionConclusive, hresult] at hconclusive'
+    exact ⟨result.1,
+      CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent result.1
+        equivalent hsemantics⟩
+  · push Not at hterminal
+    have hfrontier : ∀ budget,
+        NativeABoxProductionFrontier Individual conceptCount roleCount
+          variableCount abox target definitions rootCount maxWidth budget
+          ((runtime budget).execute ∅).1.1 := by
+      intro budget
+      rcases ((runtime budget).execute ∅).1.2.classify with
+        hconclusive | hfrontier
+      · exact False.elim (hterminal budget hconclusive.down)
+      · exact hfrontier.down
+    choose document hconcepts hroles hdefinitions hcheck heq hscheduled using
+      hfrontier
+    obtain ⟨budget, hrejected⟩ :=
+      rooted_cardinality_doubling_eventually_rejects_checked_frontier document
+        rootCount conceptCount roleCount definitions.length maxWidth
+        (fun budget => (document budget).checkScheduled_node_count budget
+          rootCount maxWidth (hscheduled budget))
+        (fun budget => (document budget).checkScheduled_root_count budget
+          rootCount maxWidth (hscheduled budget))
+        hconcepts hroles hdefinitions
+        (fun budget => (document budget).checkScheduled_max_width budget
+          rootCount maxWidth (hscheduled budget))
+    exact False.elim
+      (hrejected ((document budget).checkScheduled_check budget rootCount
+        maxWidth (hscheduled budget)))
+
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
 the selected family, including native ABox and cardinality data where present.
@@ -1135,11 +1407,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (equivalent : ModelEquivalent source target)
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
-        (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
-      (construct : ∀ budget,
-        let fixed := (producer budget).execute ∅
-        RegularBudgetOutcomeConstruction conceptCount roleCount variableCount
-          target budget fixed.1) :
+        (ConstructedRegularBudgetResult conceptCount roleCount variableCount
+          target budget)) :
       CertifiedHTAssignmentProductionGlobalRoute (HasNonemptyModel source)
   | equality
       {source target : List
@@ -1147,11 +1416,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (equivalent : ModelEquivalent source target)
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
-        (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
-      (construct : ∀ budget,
-        let fixed := (producer budget).execute ∅
-        EqualityBudgetOutcomeConstruction conceptCount roleCount variableCount
-          target budget fixed.1) :
+        (ConstructedEqualityBudgetResult conceptCount roleCount variableCount
+          target budget)) :
       CertifiedHTAssignmentProductionGlobalRoute (EqualityHasNonemptyModel source)
   | cardinality
       {source target : List
@@ -1162,12 +1428,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (maxWidth : Nat)
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
-        (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
-          target definitions))
-      (construct : ∀ budget,
-        let fixed := (producer budget).execute ∅
-        CardinalityBudgetOutcomeConstruction conceptCount roleCount variableCount
-          target definitions maxWidth budget fixed.1) :
+        (ConstructedCardinalityBudgetResult conceptCount roleCount variableCount
+          target definitions maxWidth budget)) :
       CertifiedHTAssignmentProductionGlobalRoute
         (CardinalityHasNonemptyModel source definitions)
   | nativeABox
@@ -1182,12 +1444,8 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (maxWidth : Nat)
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
-        (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
-          variableCount abox target definitions))
-      (construct : ∀ budget,
-        let fixed := (producer budget).execute ∅
-        NativeABoxBudgetOutcomeConstruction Individual conceptCount roleCount
-          variableCount abox target definitions rootCount maxWidth budget fixed.1) :
+        (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+          variableCount abox target definitions rootCount maxWidth budget)) :
       CertifiedHTAssignmentProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -1196,10 +1454,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
     (route : CertifiedHTAssignmentProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent producer construct =>
+  | regular equivalent producer =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_regular_runtime_decides_source_of_construction equivalent
-          producer construct
+        checked_constructed_regular_runtime_decides_source equivalent producer
       cases outcome with
       | regularSat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -1209,10 +1466,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent producer construct =>
+  | equality equivalent producer =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_equality_runtime_decides_source_of_construction equivalent
-          producer construct
+        checked_constructed_equality_runtime_decides_source equivalent producer
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -1220,10 +1476,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth producer construct =>
+  | cardinality equivalent maxWidth producer =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_cardinality_runtime_decides_source_of_construction equivalent
-          maxWidth producer construct
+        checked_constructed_cardinality_runtime_decides_source equivalent
+          maxWidth producer
       cases outcome with
       | sat certificate hontology hnonempty hcheck =>
           exact ⟨.sat hsemantics⟩
@@ -1231,10 +1487,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent rootCount maxWidth producer construct =>
+  | nativeABox equivalent rootCount maxWidth producer =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_native_abox_runtime_decides_source_of_construction equivalent
-          rootCount maxWidth producer construct
+        checked_constructed_native_abox_runtime_decides_source equivalent
+          rootCount maxWidth producer
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>
@@ -1262,17 +1518,21 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms ConstructedRegularRoundOutcome.toBudgetConstruction
 #print axioms finiteProductionRoundBudgetConstructionSettlement
 #print axioms checked_regular_runtime_decides_source_of_construction
+#print axioms checked_constructed_regular_runtime_decides_source
 #print axioms checked_equality_runtime_eventually_conclusive
 #print axioms checked_equality_runtime_decides_source
 #print axioms EqualityBudgetOutcomeConstruction.classify
 #print axioms checked_equality_runtime_decides_source_of_construction
+#print axioms checked_constructed_equality_runtime_decides_source
 #print axioms checked_cardinality_runtime_eventually_conclusive
 #print axioms checked_cardinality_runtime_decides_source
 #print axioms CardinalityBudgetOutcomeConstruction.classify
 #print axioms checked_cardinality_runtime_decides_source_of_construction
+#print axioms checked_constructed_cardinality_runtime_decides_source
 #print axioms checked_native_abox_runtime_eventually_conclusive
 #print axioms checked_native_abox_runtime_decides_source
 #print axioms NativeABoxBudgetOutcomeConstruction.classify
 #print axioms checked_native_abox_runtime_decides_source_of_construction
+#print axioms checked_constructed_native_abox_runtime_decides_source
 
 end ContextCalculus.Hypertableau
