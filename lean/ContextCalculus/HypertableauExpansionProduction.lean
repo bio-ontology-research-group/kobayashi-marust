@@ -142,6 +142,39 @@ def CartesianFoldAssignmentExecution.steps
   | .rejected _ _ _ _ _ next => next.steps + 1
   | .exhausted .. => 0
 
+/-- Execute KM's first-fresh assignment loop and retain its exact indexed
+history.  Termination is by the number of finite assignments not yet rejected;
+the recursive branch inserts the selector's proved-fresh assignment. -/
+noncomputable def CartesianFoldAssignmentRuntime.execute
+    [Fintype Node] [DecidableEq Node]
+    (runtime : CartesianFoldAssignmentRuntime Node Result)
+    (rejected : Finset (FoldAssignment Node)) :
+    Σ result, CartesianFoldAssignmentExecution runtime rejected result := by
+  classical
+  match hselected : firstFreshFoldAssignment rejected
+      (enumerateFoldAssignments (runtime.options rejected)) with
+  | none =>
+      exact ⟨_, .exhausted rejected hselected⟩
+  | some assignment =>
+      match hchecked : runtime.check rejected assignment with
+      | .inl result =>
+          exact ⟨result, .accepted rejected assignment result hselected hchecked⟩
+      | .inr _ =>
+          let next := runtime.execute (insert assignment rejected)
+          exact ⟨next.1, .rejected rejected assignment next.1 hselected hchecked
+            next.2⟩
+termination_by Fintype.card (FoldAssignment Node) - rejected.card
+decreasing_by
+  have hfresh := firstFreshFoldAssignment_eq_some_fresh hselected
+  have hbound : (insert assignment rejected).card ≤
+      Fintype.card (FoldAssignment Node) := by
+    simpa only [Finset.card_univ] using
+      Finset.card_le_card (show insert assignment rejected ⊆ Finset.univ from
+        Finset.subset_univ _)
+  rw [Finset.card_insert_of_notMem hfresh]
+  rw [Finset.card_insert_of_notMem hfresh] at hbound
+  omega
+
 /-- The exact nested fixed-budget trace.  Every outer expansion is justified
 by complete inner assignment execution and carries the constructor-level fresh
 pair proof required by `GuardedFoldExpansionOutcome.expand`. -/
@@ -155,6 +188,7 @@ inductive CartesianFoldExpansionExecution
       (inner : CartesianFoldAssignmentExecution (runtime.inner forbidden) ∅
         (.done result)) :
       CartesianFoldExpansionExecution runtime forbidden result
+
   | expand
       (forbidden pairs : Finset (Node × Node))
       (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
@@ -164,6 +198,37 @@ inductive CartesianFoldExpansionExecution
       (next : CartesianFoldExpansionExecution runtime
         (forbidden ∪ pairs) result) :
       CartesianFoldExpansionExecution runtime forbidden result
+
+/-- Execute both finite blocker-learning layers and retain the complete
+indexed history.  Every recursive outer step comes from an actually exhausted
+inner execution and strictly enlarges the forbidden-pair set. -/
+noncomputable def CartesianFoldExpansionRuntime.execute
+    [Fintype Node] [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result)
+    (forbidden : Finset (Node × Node)) :
+    Σ result, CartesianFoldExpansionExecution runtime forbidden result := by
+  classical
+  let inner := (runtime.inner forbidden).execute ∅
+  rcases inner with ⟨outcome, innerTrace⟩
+  cases outcome with
+  | done result =>
+      exact ⟨result, .done forbidden result innerTrace⟩
+  | expand pairs fresh =>
+      let next := runtime.execute (forbidden ∪ pairs)
+      exact ⟨next.1, .expand forbidden pairs fresh next.1 innerTrace next.2⟩
+termination_by Fintype.card (Node × Node) - forbidden.card
+decreasing_by
+  rcases fresh with ⟨pair, hpairs, hfresh⟩
+  have hstrict : forbidden ⊂ forbidden ∪ pairs :=
+    Finset.ssubset_iff_subset_ne.mpr ⟨Finset.subset_union_left, by
+      intro heq
+      exact hfresh (heq ▸ Finset.mem_union_right forbidden hpairs)⟩
+  have hgrowth := Finset.card_lt_card hstrict
+  have hbound : (forbidden ∪ pairs).card ≤ Fintype.card (Node × Node) := by
+    simpa only [Finset.card_univ] using
+      Finset.card_le_card (show forbidden ∪ pairs ⊆ Finset.univ from
+        Finset.subset_univ _)
+  omega
 
 /-- An outer expansion recorded by a concrete trace cannot have come from an
 accepted candidate.  It is necessarily the exhaustion continuation, and the
@@ -289,22 +354,63 @@ theorem CartesianFoldDoublingExecution.conclusive
   | done _ _ _ hconclusive => exact hconclusive
   | deepen _ _ _ _ _ _ ih => exact ih
 
-/-- Select the terminating outcome of the finite inner Cartesian loop.  The
-selected retry remains an implementation detail; its existence is supplied by
-the executable first-fresh assignment theorem. -/
+/-- Execute concrete fixed-budget searches through a known conclusive budget.
+At every earlier budget the checked classifier must identify the computed
+outcome as either conclusive or an admissible frontier.  The resulting object
+is the exact doubling trace consumed by source-level publication. -/
+noncomputable def CartesianFoldDoublingExecution.executeThrough
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget)) Result)
+    (Frontier : Nat → Result → Prop)
+    (Conclusive : Result → Prop)
+    (classify : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      PLift (Conclusive fixed.1) ⊕ PLift (Frontier budget fixed.1))
+    (budget fuel : Nat)
+    (terminal :
+      let fixed := (runtime (budget + fuel)).execute ∅
+      Conclusive fixed.1) :
+    Σ result, CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+      budget result := by
+  let fixed := (runtime budget).execute ∅
+  rcases classify budget with hconclusive | hfrontier
+  · rcases hconclusive with ⟨hconclusive⟩
+    exact ⟨fixed.1, .done budget fixed.1 fixed.2 (by simpa [fixed] using hconclusive)⟩
+  · cases fuel with
+    | zero =>
+        exact ⟨fixed.1, .done budget fixed.1 fixed.2
+          (by simpa [fixed] using terminal)⟩
+    | succ fuel =>
+        have terminal' :
+            let final := (runtime (budget + 1 + fuel)).execute ∅
+            Conclusive final.1 := by
+          have hbudget : budget + Nat.succ fuel = budget + 1 + fuel := by
+            rw [Nat.succ_eq_add_one, Nat.add_comm fuel 1, Nat.add_assoc]
+          rw [← hbudget]
+          exact terminal
+        let next := CartesianFoldDoublingExecution.executeThrough runtime
+          Frontier Conclusive classify (budget + 1) fuel terminal'
+        rcases hfrontier with ⟨hfrontier⟩
+        exact ⟨next.1, .deepen budget fixed.1 next.1 fixed.2
+          (by simpa [fixed] using hfrontier) next.2⟩
+
+/-- The terminating outcome computed by the concrete nested execution. -/
 noncomputable def CartesianFoldExpansionRuntime.settled
     [Fintype Node] [DecidableEq Node]
     (runtime : CartesianFoldExpansionRuntime Node Result)
     (forbidden : Finset (Node × Node)) :
-    GuardedFoldExpansionOutcome Node Result forbidden := by
-  let witness : Nonempty { selected :
-      Nat × GuardedFoldExpansionOutcome Node Result forbidden //
-    (runtime.inner forbidden).toProducer.toGuarded.toFoldAssignmentProducer.run
-        selected.1 = .done selected.2 } := by
-    rcases (runtime.inner forbidden).eventually_done with
-      ⟨retry, outcome, hrun⟩
-    exact ⟨⟨(retry, outcome), hrun⟩⟩
-  exact (Classical.choice witness).1.2
+    GuardedFoldExpansionOutcome Node Result forbidden :=
+  ((runtime.inner forbidden).execute ∅).1
+
+/-- The computed settled outcome retains its complete inner and outer
+execution history. -/
+noncomputable def CartesianFoldExpansionRuntime.settledExecution
+    [Fintype Node] [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result)
+    (forbidden : Finset (Node × Node)) :
+    CartesianFoldAssignmentExecution (runtime.inner forbidden) ∅
+      (runtime.settled forbidden) :=
+  ((runtime.inner forbidden).execute ∅).2
 
 /-- Erase the nested executable assignment loop into the already proved
 strict-growth producer for forbidden pairs. -/
@@ -379,5 +485,9 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldAssignmentExecution.expand_exact
 #print axioms CartesianFoldExpansionExecution.head_expansion_exact
 #print axioms CartesianFoldDoublingExecution.conclusive
+#print axioms CartesianFoldAssignmentRuntime.execute
+#print axioms CartesianFoldExpansionRuntime.execute
+#print axioms CartesianFoldExpansionRuntime.settledExecution
+#print axioms CartesianFoldDoublingExecution.executeThrough
 
 end ContextCalculus.Hypertableau

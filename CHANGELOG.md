@@ -14,6 +14,12 @@
   that an expansion in this trace cannot originate from an accepted candidate:
   it necessarily follows complete Cartesian exhaustion and learns exactly the
   option-pair union exposed by that terminal state.
+- Replace the selected fixed-budget settlement witness with terminating
+  executable constructors for both finite learning layers. The inner
+  constructor decreases the number of untried simultaneous assignments; the
+  outer constructor decreases the number of unlearned blocker pairs. Add a
+  bounded frontier executor that recursively constructs the exact checked
+  doubling trace through any established conclusive budget.
 - Extend the concrete trace through the checked frontier-doubling schedule.
   Its node universe is indexed by `Fin (8 * 2^budget)`, so every frontier step
   advances exactly one schedule index and a complete trace can end only in a
