@@ -25039,6 +25039,31 @@ mod tests {
             second.contains(&(7, 5)),
             "a fold from a rejected assignment must remain reusable elsewhere",
         );
+        let mut all_rejected = rejected_assignments;
+        all_rejected.insert(second);
+        let third = LeanHtRefutationState::next_fold_assignment_from_options(
+            &options,
+            &all_rejected,
+        )
+        .expect("the third Cartesian assignment remains available");
+        assert_eq!(third, vec![(7, 3), (9, 6)]);
+        all_rejected.insert(third);
+        let fourth = LeanHtRefutationState::next_fold_assignment_from_options(
+            &options,
+            &all_rejected,
+        )
+        .expect("the fourth Cartesian assignment remains available");
+        assert_eq!(fourth, vec![(7, 3), (9, 4)]);
+        all_rejected.insert(fourth);
+        assert_eq!(all_rejected.len(), 4);
+        assert!(
+            LeanHtRefutationState::next_fold_assignment_from_options(
+                &options,
+                &all_rejected,
+            )
+            .is_none(),
+            "the blocker product must report exhaustion after every unique assignment",
+        );
         let rejected_folds: HashSet<(Node, Node)> = leaf.folds.iter().copied().collect();
         let mut retry_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
         match cyclic.lean_refutation_avoiding_folds(

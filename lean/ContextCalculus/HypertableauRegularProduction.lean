@@ -533,6 +533,140 @@ theorem GuardedFoldAssignmentProducer.eventually_done
       producer.toFoldAssignmentProducer.run round = .done result :=
   producer.toFoldAssignmentProducer.eventually_done
 
+/-! ## Cartesian assignment exhaustion and forced expansion -/
+
+/-- The exact source-major Cartesian blocker enumeration used by Rust.  Each
+result chooses one blocker for every listed blocked source. -/
+def enumerateFoldAssignments [DecidableEq Node] :
+    List (Node × List Node) → List (FoldAssignment Node)
+  | [] => [∅]
+  | (source, blockers) :: rest =>
+      blockers.flatMap fun blocker =>
+        (enumerateFoldAssignments rest).map
+          (fun assignment => insert (source, blocker) assignment)
+
+theorem enumerateFoldAssignments_nonempty
+    [DecidableEq Node]
+    {options : List (Node × List Node)}
+    (hall : ∀ option ∈ options, option.2 ≠ []) :
+    enumerateFoldAssignments options ≠ [] := by
+  induction options with
+  | nil => simp [enumerateFoldAssignments]
+  | cons option rest ih =>
+      rcases option with ⟨source, blockers⟩
+      have hblockers : blockers ≠ [] := hall (source, blockers) (by simp)
+      have hrest : ∀ option ∈ rest, option.2 ≠ [] := by
+        intro option hoption
+        exact hall option (by simp [hoption])
+      cases hblockersList : blockers with
+      | nil => exact (hblockers hblockersList).elim
+      | cons blocker more =>
+          have hassignments := ih hrest
+          cases htail : enumerateFoldAssignments rest with
+          | nil => exact (hassignments htail).elim
+          | cons assignment assignments =>
+              simp [enumerateFoldAssignments, htail]
+
+/-- Every candidate pair occurs in at least one complete Cartesian assignment,
+provided every other blocked source also has a blocker choice. -/
+theorem pair_mem_enumerateFoldAssignments
+    [DecidableEq Node]
+    {options : List (Node × List Node)}
+    (hall : ∀ option ∈ options, option.2 ≠ [])
+    {source blocker blockers}
+    (hoption : (source, blockers) ∈ options)
+    (hblocker : blocker ∈ blockers) :
+    ∃ assignment ∈ enumerateFoldAssignments options,
+      (source, blocker) ∈ assignment := by
+  induction options with
+  | nil => simp at hoption
+  | cons option rest ih =>
+      rcases option with ⟨firstSource, firstBlockers⟩
+      simp only [List.mem_cons] at hoption
+      rcases hoption with hfirst | hrest
+      · cases hfirst
+        have htail : ∀ option ∈ rest, option.2 ≠ [] := by
+          intro option hoption
+          exact hall option (by simp [hoption])
+        have hnonempty := enumerateFoldAssignments_nonempty htail
+        cases hassignments : enumerateFoldAssignments rest with
+        | nil => exact (hnonempty hassignments).elim
+        | cons assignment assignments =>
+            refine ⟨insert (source, blocker) assignment, ?_, Finset.mem_insert_self ..⟩
+            simp only [enumerateFoldAssignments, List.mem_flatMap, List.mem_map]
+            refine ⟨blocker, hblocker, assignment, ?_, rfl⟩
+            rw [hassignments]
+            simp
+      · have hfirstNonempty : firstBlockers ≠ [] :=
+          hall (firstSource, firstBlockers) (by simp)
+        have htail : ∀ option ∈ rest, option.2 ≠ [] := by
+          intro option hoption
+          exact hall option (by simp [hoption])
+        cases hfirstBlockers : firstBlockers with
+        | nil => exact (hfirstNonempty hfirstBlockers).elim
+        | cons firstBlocker more =>
+            rcases ih htail hrest with
+              ⟨assignment, hassignment, hpair⟩
+            refine ⟨insert (firstSource, firstBlocker) assignment, ?_, ?_⟩
+            · simp only [enumerateFoldAssignments, List.mem_flatMap, List.mem_map]
+              refine ⟨firstBlocker, ?_, assignment, hassignment, rfl⟩
+              simp
+            · exact Finset.mem_insert_of_mem hpair
+
+/-- Pair-level expansion control is the union of already rejected complete
+assignments.  Membership records provenance in one exact rejected assignment;
+it does not assert that the pair is independently invalid. -/
+def rejectedAssignmentPairs [DecidableEq Node]
+    (rejected : Finset (FoldAssignment Node)) : FoldAssignment Node :=
+  rejected.biUnion id
+
+theorem pair_mem_rejectedAssignmentPairs
+    [DecidableEq Node]
+    {rejected : Finset (FoldAssignment Node)} {pair : Node × Node} :
+    pair ∈ rejectedAssignmentPairs rejected ↔
+      ∃ assignment ∈ rejected, pair ∈ assignment := by
+  simp [rejectedAssignmentPairs]
+
+/-- Once every complete Cartesian assignment has been checker-rejected, every
+available source/blocker pair is present in expansion control.  This is the
+formal justification for Rust forcing those sources to expand only after the
+local assignment product has been exhausted. -/
+theorem pair_mem_rejected_of_assignment_exhaustion
+    [DecidableEq Node]
+    {options : List (Node × List Node)}
+    (hall : ∀ option ∈ options, option.2 ≠ [])
+    (rejected : Finset (FoldAssignment Node))
+    (hexhausted : ∀ assignment ∈ enumerateFoldAssignments options,
+      assignment ∈ rejected)
+    {source blocker blockers}
+    (hoption : (source, blockers) ∈ options)
+    (hblocker : blocker ∈ blockers) :
+    (source, blocker) ∈ rejectedAssignmentPairs rejected := by
+  rcases pair_mem_enumerateFoldAssignments hall hoption hblocker with
+    ⟨assignment, hassignment, hpair⟩
+  exact pair_mem_rejectedAssignmentPairs.mpr
+    ⟨assignment, hexhausted assignment hassignment, hpair⟩
+
+def SourceExpansionControlled [DecidableEq Node]
+    (rejected : Finset (FoldAssignment Node))
+    (source : Node) (blockers : List Node) : Prop :=
+  ∀ blocker ∈ blockers,
+    (source, blocker) ∈ rejectedAssignmentPairs rejected
+
+theorem sourceExpansionControlled_of_assignment_exhaustion
+    [DecidableEq Node]
+    {options : List (Node × List Node)}
+    (hall : ∀ option ∈ options, option.2 ≠ [])
+    (rejected : Finset (FoldAssignment Node))
+    (hexhausted : ∀ assignment ∈ enumerateFoldAssignments options,
+      assignment ∈ rejected)
+    {source blockers}
+    (hoption : (source, blockers) ∈ options) :
+    SourceExpansionControlled rejected source blockers := by
+  intro blocker hblocker
+  exact pair_mem_rejected_of_assignment_exhaustion hall rejected hexhausted
+    hoption hblocker
+
 /-- A blocker-aware runtime terminal and checked fold metadata supply every
 regular-model invariant. In particular, saturation transfers by state equality
 because the serializer no longer mutates the completion graph. -/
@@ -808,5 +942,9 @@ theorem FiniteRegularCertificate.check_of_fold_free_runtime_terminal
 #print axioms FoldAssignmentProducer.rejected_step
 #print axioms FoldAssignmentProducer.eventually_done
 #print axioms GuardedFoldAssignmentProducer.eventually_done
+#print axioms enumerateFoldAssignments_nonempty
+#print axioms pair_mem_enumerateFoldAssignments
+#print axioms pair_mem_rejected_of_assignment_exhaustion
+#print axioms sourceExpansionControlled_of_assignment_exhaustion
 
 end ContextCalculus.Hypertableau

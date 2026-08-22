@@ -9,6 +9,11 @@
   native-ABox cardinality search. The capstone proves that every such route
   returns a source-level SAT or UNSAT theorem after finite assignment retries
   and checked frontier growth.
+- Formalize Rust's source-major Cartesian blocker enumerator. Lean proves that
+  exhausting every complete assignment places every available source/blocker
+  pair in expansion control, while retaining assignment provenance and never
+  treating a constituent pair as independently invalid. This justifies forced
+  witness expansion only after the local blocker product is exhausted.
 - Include pending existential obligations in ordinary and equality-quotient
   pairwise blocking signatures. Matching concept labels alone can fold nodes
   whose witness requirements differ, so KM now compares local obligations at
