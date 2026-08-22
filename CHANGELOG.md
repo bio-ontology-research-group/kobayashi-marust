@@ -71,6 +71,14 @@
 - Exercise both sides of the Rust boundary: a genuine cyclic equality terminal
   passes the native checker, while an out-of-range forged assignment is
   rejected before SAT publication.
+- Tie ontology-only cardinality SAT terminals to the exact reached search leaf.
+  `stopResult` can no longer return an arbitrary checked model of the same
+  ontology; its certificate state must equal the leaf's equality state before
+  it can be converted to the existing semantic model witness.
+- Apply exact-leaf provenance to native-ABox cardinality SAT terminals as well.
+  The candidate retains the named-root map, seed, separated-apart, proxy
+  singleton, negative-role, ontology, and cardinality checks, and additionally
+  proves that its distinct equality state is the reached production leaf.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

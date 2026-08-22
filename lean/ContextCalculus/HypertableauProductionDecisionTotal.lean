@@ -845,6 +845,31 @@ def CardinalityBudgetOutcomeConstruction.classify
       subst outcome
       exact classifyCardinalityAddressFrontier address injective
 
+/-- Positive cardinality terminal evidence is tied to the exact reached leaf.
+The model certificate cannot be substituted by an unrelated checked model of
+the same ontology. -/
+structure CheckedCardinalityTerminalCandidate
+    (nodeCount conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (state : DistinctEqState (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) where
+  certificate : FiniteEqCertificate nodeCount conceptCount roleCount
+    variableCount
+  state_eq : certificate.state = state.base
+  positive : 0 < nodeCount
+  ontology_eq : certificate.base.ontology = ontology
+  check : certificate.checkEqSatWithCardinality definitions = true
+
+def CheckedCardinalityTerminalCandidate.hasCheckedModel
+    (candidate : CheckedCardinalityTerminalCandidate nodeCount conceptCount
+      roleCount variableCount ontology definitions state) :
+    HasCheckedCardinalityModel (nodeCount := nodeCount) ontology definitions :=
+  ⟨candidate.certificate, candidate.positive, candidate.ontology_eq,
+    candidate.check⟩
+
 /-- Execute one fixed-budget cardinality production search and construct its
 checked result.  Closure is serialized through the quotient-closed checker
 completeness theorem. Every non-closed stop supplies either an independently
@@ -868,8 +893,8 @@ noncomputable def finiteCardinalityRoundBudgetConstruction
       CardinalityProductionDescends ontology definitions parent ancestors
         root leaf →
       (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
-      PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
-          ontology definitions) ⊕
+      CheckedCardinalityTerminalCandidate (8 * 2 ^ budget) conceptCount
+          roleCount variableCount ontology definitions leaf.state ⊕
         { address : Fin (8 * 2 ^ budget) →
             RootedRoleBlockedAddress (Fin 1)
               (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
@@ -905,7 +930,8 @@ noncomputable def finiteCardinalityRoundBudgetConstruction
       exact ⟨⟨outcome, .conclusive (by
         simp [outcome, CardinalityProductionConclusive])⟩⟩
     · rcases stopResult leaf hdescends hstop with hmodel | haddress
-      · obtain ⟨certificate, hpositive, hmodelOntology, hcheck⟩ := hmodel.down
+      · obtain ⟨certificate, hpositive, hmodelOntology, hcheck⟩ :=
+          hmodel.hasCheckedModel
         let outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
             variableCount ontology definitions :=
           .sat certificate hmodelOntology hpositive hcheck
@@ -934,8 +960,8 @@ noncomputable def
       CardinalityProductionDescends ontology definitions parent ancestors
         root leaf →
       (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
-      PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
-          ontology definitions) ⊕
+      CheckedCardinalityTerminalCandidate (8 * 2 ^ budget) conceptCount
+          roleCount variableCount ontology definitions leaf.state ⊕
         { address : Fin (8 * 2 ^ budget) →
             RootedRoleBlockedAddress (Fin 1)
               (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
@@ -975,8 +1001,8 @@ structure ConstructedCardinalityFiniteSearchFamily
       (ancestors budget) (root budget) leaf →
     (cardinalityControl ontology definitions leaf (parent budget)
       (ancestors budget)).IsStop →
-    PLift (HasCheckedCardinalityModel (nodeCount := 8 * 2 ^ budget)
-        ontology definitions) ⊕
+    CheckedCardinalityTerminalCandidate (8 * 2 ^ budget) conceptCount
+        roleCount variableCount ontology definitions leaf.state ⊕
       { address : Fin (8 * 2 ^ budget) →
           RootedRoleBlockedAddress (Fin 1)
             (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
@@ -1183,6 +1209,44 @@ def HasCheckedNativeABoxCardinalityModel
         (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
           (root individual))
 
+/-- Native-ABox cardinality SAT evidence is tied to the exact reached search
+leaf while retaining every independent ABox model-checking obligation. -/
+structure CheckedNativeABoxCardinalityTerminalCandidate
+    (Individual : Type)
+    (conceptCount roleCount variableCount nodeCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (state : DistinctEqState (Fin nodeCount) (Fin conceptCount)
+      (Fin roleCount)) where
+  certificate : FiniteDistinctEqCertificate nodeCount conceptCount roleCount
+    variableCount
+  root : Individual → Fin nodeCount
+  state_eq : certificate.state = state
+  ontology_eq : certificate.base.base.ontology = ontology
+  positive : 0 < nodeCount
+  seeded : abox.SeededIn certificate.state root
+  check : certificate.base.checkEqSatWithCardinality definitions = true
+  apart : certificate.apartSeparatedB = true
+  singletons : abox.ProxySingletons certificate.base.state.quotientCanonical
+    (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+      (root individual))
+  negative : abox.NegativeRoles certificate.base.state.quotientCanonical
+    (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+      (root individual))
+
+def CheckedNativeABoxCardinalityTerminalCandidate.hasCheckedModel
+    (candidate : CheckedNativeABoxCardinalityTerminalCandidate Individual
+      conceptCount roleCount variableCount nodeCount abox ontology definitions
+      state) :
+    HasCheckedNativeABoxCardinalityModel Individual conceptCount roleCount
+      variableCount nodeCount abox ontology definitions :=
+  ⟨candidate.certificate, candidate.root, candidate.ontology_eq,
+    candidate.positive, candidate.seeded, candidate.check, candidate.apart,
+    candidate.singletons, candidate.negative⟩
+
 /-- Construct one native-ABox cardinality result from the certified
 cardinality production search started at the exact named-individual state. -/
 noncomputable def finiteNativeABoxRoundBudgetConstruction
@@ -1200,8 +1264,9 @@ noncomputable def finiteNativeABoxRoundBudgetConstruction
       CardinalityProductionDescends ontology definitions parent ancestors
         root leaf →
       (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
-      PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
-          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+      CheckedNativeABoxCardinalityTerminalCandidate Individual conceptCount
+          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions
+          leaf.state ⊕
         { address : Fin (8 * 2 ^ budget) →
             RootedRoleBlockedAddress (Fin rootCount)
               (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
@@ -1232,7 +1297,7 @@ noncomputable def finiteNativeABoxRoundBudgetConstruction
       exact ⟨⟨outcome, .conclusive (by
         simp [outcome, NativeABoxProductionConclusive])⟩⟩
     · rcases stopResult leaf hdescends hstop with hmodel | haddress
-      · rcases hmodel.down with
+      · rcases hmodel.hasCheckedModel with
           ⟨certificate, namedRoot, hmodelOntology, hpositive, hseeded,
             hcheck, hapart, hsingletons, hnegative⟩
         let outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
@@ -1261,8 +1326,9 @@ noncomputable def
       CardinalityProductionDescends ontology definitions parent ancestors
         root leaf →
       (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
-      PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
-          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+      CheckedNativeABoxCardinalityTerminalCandidate Individual conceptCount
+          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions
+          leaf.state ⊕
         { address : Fin (8 * 2 ^ budget) →
             RootedRoleBlockedAddress (Fin rootCount)
               (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
@@ -1301,8 +1367,9 @@ structure ConstructedNativeABoxFiniteSearchFamily
       (ancestors budget) (root budget) leaf →
     (cardinalityControl ontology definitions leaf (parent budget)
       (ancestors budget)).IsStop →
-    PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
-        roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+    CheckedNativeABoxCardinalityTerminalCandidate Individual conceptCount
+        roleCount variableCount (8 * 2 ^ budget) abox ontology definitions
+        leaf.state ⊕
       { address : Fin (8 * 2 ^ budget) →
           RootedRoleBlockedAddress (Fin rootCount)
             (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
