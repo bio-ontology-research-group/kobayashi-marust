@@ -70,6 +70,32 @@ def WireEqProductionExecutionTrace.check
           decide (first.forbiddenNat = ∅) &&
           WireEqProductionExecutionTrace.transitionsValid wire.rounds
 
+/-- Typed reconstruction of every outer blocker-learning transition in a
+production history. The expected forbidden set is indexed in the relation, so
+the first round starts empty and each successor starts from exactly the union
+learned by its predecessor. -/
+inductive WireEqProductionExecutionTrace.ValidFrom :
+    Finset (Nat × Nat) → List WireEqProductionBlockingTable → Prop where
+  | last
+      (expected : Finset (Nat × Nat))
+      (round : WireEqProductionBlockingTable)
+      (accepted : round.check = .ok true)
+      (forbidden : round.forbiddenNat = expected) :
+      WireEqProductionExecutionTrace.ValidFrom expected [round]
+  | step
+      (expected : Finset (Nat × Nat))
+      (current next : WireEqProductionBlockingTable)
+      (rest : List WireEqProductionBlockingTable)
+      (accepted : current.check = .ok true)
+      (forbidden : current.forbiddenNat = expected)
+      (sameProblem : current.sameProblem next = true)
+      (nextForbidden : next.forbiddenNat =
+        current.forbiddenNat ∪ current.optionPairsNat)
+      (tail : WireEqProductionExecutionTrace.ValidFrom next.forbiddenNat
+        (next :: rest)) :
+      WireEqProductionExecutionTrace.ValidFrom expected
+        (current :: next :: rest)
+
 theorem WireEqProductionBlockingTable.accepted_eq_true_iff
     (wire : WireEqProductionBlockingTable) :
     wire.accepted = true ↔ wire.check = .ok true := by
@@ -115,6 +141,63 @@ theorem WireEqProductionExecutionTrace.transitionsValid_head
     Bool.and_eq_true] at hvalid
   exact ⟨hvalid.1.1, hvalid.1.2, hvalid.2⟩
 
+theorem WireEqProductionExecutionTrace.validFrom_of_checks
+    (rounds : List WireEqProductionBlockingTable)
+    (expected : Finset (Nat × Nat))
+    (hnonempty : rounds ≠ [])
+    (hall : rounds.all WireEqProductionBlockingTable.accepted = true)
+    (htransitions : WireEqProductionExecutionTrace.transitionsValid rounds = true)
+    (hfirst : ∃ first rest, rounds = first :: rest ∧
+      first.forbiddenNat = expected) :
+    WireEqProductionExecutionTrace.ValidFrom expected rounds := by
+  induction rounds generalizing expected with
+  | nil => exact False.elim (hnonempty rfl)
+  | cons current rest ih =>
+      rcases hfirst with ⟨first, suffix, hrounds, hforbidden⟩
+      cases hrounds
+      cases rest with
+      | nil =>
+          apply WireEqProductionExecutionTrace.ValidFrom.last
+          · exact current.accepted_eq_true_iff.mp (by simpa using hall)
+          · exact hforbidden
+      | cons next tail =>
+          have htransition :=
+            WireEqProductionExecutionTrace.transitionsValid_head htransitions
+          apply WireEqProductionExecutionTrace.ValidFrom.step
+          · exact current.accepted_eq_true_iff.mp
+              ((List.all_eq_true.mp hall) current (by simp))
+          · exact hforbidden
+          · exact htransition.1
+          · exact beq_iff_eq.mp htransition.2.1
+          · have hallTail :
+                (next :: tail).all WireEqProductionBlockingTable.accepted =
+                  true := by
+              simp only [List.all_cons, Bool.and_eq_true] at hall ⊢
+              exact hall.2
+            exact ih next.forbiddenNat (by simp) hallTail htransition.2.2
+              ⟨next, tail, rfl, rfl⟩
+
+/-- Acceptance of the executable history checker reconstructs the complete
+typed outer execution from the empty forbidden set, not merely its first
+transition. -/
+theorem WireEqProductionExecutionTrace.check_validFrom_empty
+    (wire : WireEqProductionExecutionTrace)
+    (hcheck : wire.check = true) :
+    WireEqProductionExecutionTrace.ValidFrom ∅ wire.rounds := by
+  unfold WireEqProductionExecutionTrace.check at hcheck
+  split at hcheck
+  · simp at hcheck
+  · rename_i first rest heq
+    simp only [Bool.and_eq_true] at hcheck
+    have hnonempty : wire.rounds ≠ [] := by
+      rw [heq]
+      simp
+    have hfirst : ∃ first rest, wire.rounds = first :: rest ∧
+        first.forbiddenNat = ∅ :=
+      ⟨first, rest, heq, of_decide_eq_true hcheck.2.1.2⟩
+    exact WireEqProductionExecutionTrace.validFrom_of_checks wire.rounds ∅
+      hnonempty hcheck.2.1.1 hcheck.2.2 hfirst
+
 /-- Every adjacent checked rerun starts from exactly the pair-set union learned
 by its predecessor and retains the same source problem metadata. -/
 theorem WireEqProductionExecutionTrace.check_first_transition
@@ -135,5 +218,7 @@ theorem WireEqProductionExecutionTrace.check_first_transition
 #print axioms WireEqProductionExecutionTrace.check_all_rounds
 #print axioms WireEqProductionExecutionTrace.check_starts_empty
 #print axioms WireEqProductionExecutionTrace.check_first_transition
+#print axioms WireEqProductionExecutionTrace.validFrom_of_checks
+#print axioms WireEqProductionExecutionTrace.check_validFrom_empty
 
 end ContextCalculus.Hypertableau

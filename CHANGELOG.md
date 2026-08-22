@@ -44,6 +44,10 @@
   production searches now retain and check the complete history after every
   learned expansion. A checked node-budget increase resets both the forbidden
   set and its fixed-universe history before search resumes at the larger bound.
+  Lean now reconstructs an inductive certificate for the complete accepted
+  history, indexed by its expected forbidden set. This proves every rerun, not
+  only the first one, starts from exactly the predecessor's forbidden set union
+  its checked exhausted option pairs, beginning from the empty set.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no
