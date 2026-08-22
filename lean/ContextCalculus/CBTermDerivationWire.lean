@@ -182,8 +182,10 @@ def DecodedDocument.check (document : DecodedDocument) : Bool :=
   checkCertT document.ontology document.coreConcept document.trace
     document.verdict.target
 
-def WireDocument.check (document : WireDocument) : Except String Bool := do
-  return (← document.decode).check
+def WireDocument.check (document : WireDocument) : Except String Bool :=
+  match document.decode with
+  | .error message => .error message
+  | .ok decoded => .ok decoded.check
 
 def Verdict.Semantics (ontology : List FCL) (core : Nat) : Verdict → Prop
   | .subsumption superconcept =>
@@ -209,6 +211,21 @@ theorem DecodedDocument.check_sound (document : DecodedDocument)
       exact certifies_unsatT document.ontology document.coreConcept
         document.trace (by simpa [DecodedDocument.check, Verdict.target,
           hverdict] using hcheck) model hontology element
+
+/-- Acceptance at the JSON boundary yields a decoded document and the semantic
+verdict proved by that exact document. No caller may supply decoded fields as
+theorem premises. -/
+theorem WireDocument.check_sound (document : WireDocument)
+    (hcheck : document.check = .ok true) :
+    ∃ decoded : DecodedDocument,
+      document.decode = .ok decoded ∧
+        decoded.verdict.Semantics decoded.ontology decoded.coreConcept := by
+  cases hdecode : document.decode with
+  | error message =>
+      simp [WireDocument.check, hdecode] at hcheck
+  | ok decoded =>
+      refine ⟨decoded, rfl, decoded.check_sound ?_⟩
+      simpa [WireDocument.check, hdecode] using hcheck
 
 private def x : WireTerm := .var 0
 private def concept (id : Nat) : WireLiteral := .predicate (.concept id x)
@@ -240,5 +257,6 @@ private def forgedExample : WireDocument :=
 example : acceptedResult forgedExample.check = false := by native_decide
 
 #print axioms DecodedDocument.check_sound
+#print axioms WireDocument.check_sound
 
 end ContextCalculus.CBTermWire

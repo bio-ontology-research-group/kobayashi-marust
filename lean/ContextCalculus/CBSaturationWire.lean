@@ -72,8 +72,10 @@ def WireCertificate.decode (document : WireCertificate) : Except String DecodedC
     return DecodedCertificate.mk document.atom_count
       { premises := premises, trace := trace }
 
-def WireCertificate.check (document : WireCertificate) : Except String Bool := do
-  return (← document.decode).certificate.check
+def WireCertificate.check (document : WireCertificate) : Except String Bool :=
+  match document.decode with
+  | .error message => .error message
+  | .ok decoded => .ok decoded.certificate.check
 
 theorem DecodedCertificate.check_saturation (document : DecodedCertificate)
     (hcheck : document.certificate.check = true) :
@@ -87,6 +89,21 @@ theorem DecodedCertificate.check_models_iff (document : DecodedCertificate)
     Equiv.Models document.certificate.terminal interpretation ↔
       Equiv.Models document.certificate.premises.toFinset interpretation :=
   document.certificate.check_models_iff hcheck interpretation
+
+/-- Acceptance at the JSON boundary produces the exact decoded abstract
+saturation. This is the theorem consumed by the executable checker boundary. -/
+theorem WireCertificate.check_sound (document : WireCertificate)
+    (hcheck : document.check = .ok true) :
+    ∃ decoded : DecodedCertificate,
+      document.decode = .ok decoded ∧
+        Equiv.Saturation decoded.certificate.premises.toFinset
+          decoded.certificate.terminal := by
+  cases hdecode : document.decode with
+  | error message =>
+      simp [WireCertificate.check, hdecode] at hcheck
+  | ok decoded =>
+      refine ⟨decoded, rfl, decoded.check_saturation ?_⟩
+      simpa [WireCertificate.check, hdecode] using hcheck
 
 private def acceptedWireExample : WireCertificate where
   version := 1
@@ -115,5 +132,6 @@ example : exceptIsError duplicateWireExample.check = true := by native_decide
 
 #print axioms DecodedCertificate.check_saturation
 #print axioms DecodedCertificate.check_models_iff
+#print axioms WireCertificate.check_sound
 
 end ContextCalculus.CBCert
