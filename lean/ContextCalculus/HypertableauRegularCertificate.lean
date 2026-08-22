@@ -324,6 +324,65 @@ theorem FiniteRegularCertificate.coverHoldsAtomB_eq_true
     FiniteRegularCertificate.state, FiniteRegularCertificate.coverRelation,
     State.CoverHoldsAtom]
 
+/-- A finite grounding whose body is visible in the redirected role cover but
+whose head has no true disjunct. This is the semantic witness returned by a
+cover-aware terminal selector. -/
+def State.CoverObstruction
+    (state : State Node Concept Role) (cover : Role → Node → Node → Prop)
+    (clause : Clause Variable Concept Role) (assignment : Variable → Node) : Prop :=
+  (∀ atom ∈ clause.body, state.CoverHoldsAtom cover assignment atom) ∧
+  ∀ atom ∈ clause.head, ¬state.CoverHoldsAtom cover assignment atom
+
+/-- Executable test for one candidate cover obstruction. -/
+def FiniteRegularCertificate.coverObstructionB
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (assignment : Fin variableCount → Fin nodeCount) : Bool :=
+  clause.body.all (certificate.coverHoldsAtomB assignment) &&
+    !(clause.head.any (certificate.coverHoldsAtomB assignment))
+
+theorem FiniteRegularCertificate.coverObstructionB_eq_true_iff
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (clause : Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))
+    (assignment : Fin variableCount → Fin nodeCount) :
+    certificate.coverObstructionB clause assignment = true ↔
+      certificate.state.CoverObstruction certificate.coverRelation
+        clause assignment := by
+  simp only [FiniteRegularCertificate.coverObstructionB, Bool.and_eq_true,
+    List.all_eq_true, State.CoverObstruction]
+  constructor
+  · rintro ⟨hbody, hhead⟩
+    constructor
+    · intro atom hatom
+      exact (certificate.coverHoldsAtomB_eq_true assignment atom).mp
+        (hbody atom hatom)
+    · intro atom hatom hholds
+      have hanyFalse :
+          clause.head.any (certificate.coverHoldsAtomB assignment) = false := by
+        generalize hany : clause.head.any
+          (certificate.coverHoldsAtomB assignment) = value at hhead
+        cases value with
+        | false => rfl
+        | true => simp at hhead
+      have hatomFalse := (List.any_eq_false.mp hanyFalse) atom hatom
+      have htrue := (certificate.coverHoldsAtomB_eq_true assignment atom).mpr
+        hholds
+      exact hatomFalse htrue
+  · rintro ⟨hbody, hhead⟩
+    constructor
+    · intro atom hatom
+      exact (certificate.coverHoldsAtomB_eq_true assignment atom).mpr
+        (hbody atom hatom)
+    · have hanyFalse :
+          clause.head.any (certificate.coverHoldsAtomB assignment) = false := by
+        rw [List.any_eq_false]
+        intro atom hatom htrue
+        exact hhead atom hatom
+          ((certificate.coverHoldsAtomB_eq_true assignment atom).mp htrue)
+      simp [hanyFalse]
+
 theorem FiniteRegularCertificate.coverSaturatedB_eq_true_iff
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount) :
@@ -369,6 +428,41 @@ theorem FiniteRegularCertificate.coverSaturatedB_eq_true_iff
           (certificate.coverHoldsAtomB_eq_true assignment atom).mpr hholds⟩
       simp [hbodyB, hheadB]
     · simp [hbodyB]
+
+/-- Failure of the executable terminal test exposes an exact finite
+clause-grounding obstruction. Conversely, every such obstruction forces the
+test to reject. This is the selector contract mirrored by Rust. -/
+theorem FiniteRegularCertificate.coverSaturatedB_eq_false_iff
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.coverSaturatedB = false ↔
+      ∃ clause ∈ certificate.residual,
+        ∃ assignment : Fin variableCount → Fin nodeCount,
+          certificate.state.CoverObstruction certificate.coverRelation
+            clause assignment := by
+  constructor
+  · intro hfalse
+    by_contra hnone
+    push Not at hnone
+    have hdischarges : ∀ clause ∈ certificate.residual,
+        certificate.state.CoverDischarges certificate.coverRelation clause := by
+      intro clause hclause assignment hbody
+      by_contra hhead
+      push Not at hhead
+      exact hnone clause hclause assignment ⟨hbody, hhead⟩
+    have htrue := certificate.coverSaturatedB_eq_true_iff.mpr hdischarges
+    rw [hfalse] at htrue
+    contradiction
+  · rintro ⟨clause, hclause, assignment, hbody, hhead⟩
+    generalize hvalue : certificate.coverSaturatedB = value
+    cases value with
+    | false => rfl
+    | true =>
+        exfalso
+        have hdischarges := certificate.coverSaturatedB_eq_true_iff.mp hvalue
+        rcases hdischarges clause hclause assignment hbody with
+          ⟨atom, hatom, hholds⟩
+        exact hhead atom hatom hholds
 
 theorem FiniteRegularCertificate.coverClosedB_sound
     (certificate : FiniteRegularCertificate
@@ -705,6 +799,8 @@ example : missingDirectCover.check = false := by native_decide
 #print axioms FiniteRegularCertificate.coverClosedB_sound
 #print axioms FiniteRegularCertificate.coverClosedB_complete
 #print axioms FiniteRegularCertificate.coverSaturatedB_eq_true_iff
+#print axioms FiniteRegularCertificate.coverObstructionB_eq_true_iff
+#print axioms FiniteRegularCertificate.coverSaturatedB_eq_false_iff
 #print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
 #print axioms FiniteRegularCertificate.check_complete

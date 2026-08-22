@@ -2430,7 +2430,7 @@ enum LeanHtNormalizedRoleClause {
     },
 }
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct LeanHtRegularCertificate {
     version: usize,
     node_count: usize,
@@ -2448,6 +2448,59 @@ struct LeanHtRegularCertificate {
     reflexive_roles: Vec<usize>,
     role_clauses: Vec<LeanHtNormalizedRoleClause>,
     residual: Vec<LeanHtClause>,
+}
+
+impl LeanHtRegularCertificate {
+    fn cover_holds(&self, atom: &LeanHtAtom, assignment: &[Node]) -> bool {
+        match atom {
+            LeanHtAtom::Concept { literal, node } => self.labels.iter().any(|fact| {
+                fact.node == assignment[*node]
+                    && fact.literal.concept == literal.concept
+                    && fact.literal.neg == literal.neg
+            }),
+            LeanHtAtom::Role {
+                role,
+                source,
+                target,
+            } => self.cover.iter().any(|edge| {
+                edge.role == *role
+                    && edge.source == assignment[*source]
+                    && edge.target == assignment[*target]
+            }),
+            LeanHtAtom::Exists_ { role, filler, node } => {
+                self.obligations.iter().any(|obligation| {
+                    obligation.role == *role
+                        && obligation.node == assignment[*node]
+                        && obligation.filler.concept == filler.concept
+                        && obligation.filler.neg == filler.neg
+                })
+            }
+            LeanHtAtom::Eq { left, right } => assignment[*left] == assignment[*right],
+        }
+    }
+
+    /// Mirror Lean's `coverObstructionB`: return the first residual grounding
+    /// whose complete cover body is true and whose complete head is false.
+    fn first_cover_obstruction(&self) -> Option<(usize, Vec<Node>)> {
+        for (clause_index, clause) in self.residual.iter().enumerate() {
+            for assignment in
+                LeanRefutationAssignments::new(self.variable_count, self.node_count)
+            {
+                if clause
+                    .body
+                    .iter()
+                    .all(|atom| self.cover_holds(atom, &assignment))
+                    && !clause
+                        .head
+                        .iter()
+                        .any(|atom| self.cover_holds(atom, &assignment))
+                {
+                    return Some((clause_index, assignment));
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -10066,10 +10119,10 @@ impl Ht {
     /// trust boundary. Unlike `lean_blocked_open_certificate_json`, this keeps
     /// the raw completion edges, records the blocker redirect explicitly, and
     /// computes the least finite endpoint-role cover used by Lean.
-    fn lean_regular_blocked_open_certificate_json(
+    fn lean_regular_blocked_open_certificate(
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
-    ) -> Result<String, String> {
+    ) -> Result<LeanHtRegularCertificate, String> {
         let mut variable_count = self.lean_source_variable_count();
         let mut concept_count = 0usize;
         let mut role_count = 0usize;
@@ -10359,7 +10412,7 @@ impl Ht {
             .collect::<Vec<_>>();
         cover.sort_unstable_by_key(|edge| (edge.role, edge.source, edge.target));
 
-        serde_json::to_string(&LeanHtRegularCertificate {
+        Ok(LeanHtRegularCertificate {
             version: 1,
             node_count: leaf.node_count,
             concept_count,
@@ -10377,7 +10430,14 @@ impl Ht {
             role_clauses,
             residual,
         })
-        .map_err(|error| error.to_string())
+    }
+
+    fn lean_regular_blocked_open_certificate_json(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+    ) -> Result<String, String> {
+        serde_json::to_string(&self.lean_regular_blocked_open_certificate(leaf)?)
+            .map_err(|error| error.to_string())
     }
 
     /// Build the equality-backed anchored SAT certificate consumed by
@@ -24855,9 +24915,11 @@ mod tests {
             ],
             vec![con(false, A, 0)],
         )]);
-        let joined_document = joined
-            .lean_regular_blocked_open_certificate_json(&empty_leaf)
+        let joined_certificate = joined
+            .lean_regular_blocked_open_certificate(&empty_leaf)
             .expect("multi-role guarded residuals use exact cover checking");
+        assert_eq!(joined_certificate.first_cover_obstruction(), None);
+        let joined_document = serde_json::to_string(&joined_certificate).unwrap();
         let joined_wire: serde_json::Value = serde_json::from_str(&joined_document).unwrap();
         assert_eq!(joined_wire["residual"].as_array().unwrap().len(), 1);
 
@@ -24878,9 +24940,14 @@ mod tests {
             obligations: Vec::new(),
             folds: Vec::new(),
         };
-        let non_simple_document = non_simple
-            .lean_regular_blocked_open_certificate_json(&nonlocal_leaf)
+        let non_simple_certificate = non_simple
+            .lean_regular_blocked_open_certificate(&nonlocal_leaf)
             .expect("role-closure residuals use exact cover checking");
+        assert_eq!(
+            non_simple_certificate.first_cover_obstruction(),
+            Some((0, vec![0, 1]))
+        );
+        let non_simple_document = serde_json::to_string(&non_simple_certificate).unwrap();
         let non_simple_wire: serde_json::Value =
             serde_json::from_str(&non_simple_document).unwrap();
         assert_eq!(non_simple_wire["residual"].as_array().unwrap().len(), 1);
