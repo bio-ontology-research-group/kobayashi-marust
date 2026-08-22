@@ -383,6 +383,55 @@ theorem FiniteRegularCertificate.coverObstructionB_eq_true_iff
           ((certificate.coverHoldsAtomB_eq_true assignment atom).mp htrue)
       simp [hanyFalse]
 
+/-- An obstruction against an ordinarily saturated state must use at least one
+body fact introduced by the role cover. Otherwise the ordinary terminal rule
+would provide a path-liftable head that is also true in the cover. -/
+theorem State.CoverObstruction.exposes_cover_only_body_atom
+    (state : State Node Concept Role) (cover : Role → Node → Node → Prop)
+    (clause : Clause Variable Concept Role) (assignment : Variable → Node)
+    (hobstruction : state.CoverObstruction cover clause assignment)
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : state.Discharges clause) :
+    ∃ atom ∈ clause.body,
+      state.CoverHoldsAtom cover assignment atom ∧
+        ¬state.holdsAtom assignment atom := by
+  by_contra hnone
+  push Not at hnone
+  have hordinaryBody : ∀ atom ∈ clause.body,
+      state.holdsAtom assignment atom := by
+    intro atom hatom
+    by_contra hfalse
+    exact hfalse (hnone atom hatom (hobstruction.1 atom hatom))
+  rcases hdischarges assignment hordinaryBody with ⟨atom, hatom, hholds⟩
+  apply hobstruction.2 atom hatom
+  cases atom with
+  | concept => exact hholds
+  | role => exact (hheads _ hatom).elim
+  | exists_ => exact hholds
+  | eq => exact (hheads _ hatom).elim
+
+/-- More specifically, only a role atom can differ between ordinary and
+cover truth. Thus every obstruction identifies a concrete cover edge absent
+from the raw saturated completion graph. -/
+theorem State.CoverObstruction.exposes_cover_only_role_edge
+    (state : State Node Concept Role) (cover : Role → Node → Node → Prop)
+    (clause : Clause Variable Concept Role) (assignment : Variable → Node)
+    (hobstruction : state.CoverObstruction cover clause assignment)
+    (hheads : ∀ atom ∈ clause.head, PathLiftableHead atom)
+    (hdischarges : state.Discharges clause) :
+    ∃ role source target,
+      Atom.role role source target ∈ clause.body ∧
+      cover role (assignment source) (assignment target) ∧
+      ¬state.edge role (assignment source) (assignment target) := by
+  rcases State.CoverObstruction.exposes_cover_only_body_atom
+      state cover clause assignment hobstruction hheads hdischarges with
+    ⟨atom, hatom, hcover, hraw⟩
+  cases atom with
+  | concept => exact (hraw hcover).elim
+  | role role source target => exact ⟨role, source, target, hatom, hcover, hraw⟩
+  | exists_ => exact (hraw hcover).elim
+  | eq => exact (hraw hcover).elim
+
 theorem FiniteRegularCertificate.coverSaturatedB_eq_true_iff
     (certificate : FiniteRegularCertificate
       nodeCount conceptCount roleCount variableCount) :
@@ -801,6 +850,8 @@ example : missingDirectCover.check = false := by native_decide
 #print axioms FiniteRegularCertificate.coverSaturatedB_eq_true_iff
 #print axioms FiniteRegularCertificate.coverObstructionB_eq_true_iff
 #print axioms FiniteRegularCertificate.coverSaturatedB_eq_false_iff
+#print axioms State.CoverObstruction.exposes_cover_only_body_atom
+#print axioms State.CoverObstruction.exposes_cover_only_role_edge
 #print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
 #print axioms FiniteRegularCertificate.check_complete
