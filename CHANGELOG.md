@@ -19,6 +19,11 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Construct native-ABox cardinality search from the certified cardinality core
+  while retaining exact named-individual initialization. Positive results now
+  carry seeded roots, separated inequalities, singleton proxies, and negative
+  roles; closure reuses the quotient-closed tree completeness theorem; and
+  every remaining stop carries a root-tagged frontier address.
 - Prove completeness of the quotient-closed cardinality refutation checker:
   every finite production closure, including equality-apart clashes, maximum
   merge branches, and minimum witness expansion, now constructs an accepted

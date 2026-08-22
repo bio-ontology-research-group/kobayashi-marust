@@ -874,6 +874,169 @@ def NativeABoxBudgetOutcomeConstruction.classify
       subst outcome
       exact classifyNativeABoxAddressFrontier address injective
 
+/-- Exact independently checked evidence required for a positive native-ABox
+cardinality result. -/
+def HasCheckedNativeABoxCardinalityModel
+    (Individual : Type)
+    (conceptCount roleCount variableCount nodeCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))) : Prop :=
+  ∃ certificate : FiniteDistinctEqCertificate nodeCount conceptCount roleCount
+      variableCount,
+    ∃ root : Individual → Fin nodeCount,
+      certificate.base.base.ontology = ontology ∧ 0 < nodeCount ∧
+      abox.SeededIn certificate.state root ∧
+      certificate.base.checkEqSatWithCardinality definitions = true ∧
+      certificate.apartSeparatedB = true ∧
+      abox.ProxySingletons certificate.base.state.quotientCanonical
+        (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+          (root individual)) ∧
+      abox.NegativeRoles certificate.base.state.quotientCanonical
+        (fun individual ↦ Quotient.mk certificate.base.state.nodeSetoid
+          (root individual))
+
+/-- Construct one native-ABox cardinality result from the certified
+cardinality production search started at the exact named-individual state. -/
+noncomputable def finiteNativeABoxRoundBudgetConstruction
+    (rootCount maxWidth : Nat)
+    (rootCertificate : FiniteDistinctEqCertificate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount)
+    (hontology : rootCertificate.base.base.ontology = ontology)
+    (hinitial : abox.InitializesDistinctState rootCertificate.state)
+    (root : CardinalityRuntimeConfig (Fin conceptCount) (Fin roleCount)
+      definitions (8 * 2 ^ budget))
+    (hrootState : root.state = rootCertificate.state)
+    (parent : Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (stopResult : ∀ leaf,
+      CardinalityProductionDescends ontology definitions parent ancestors
+        root leaf →
+      (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
+      PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
+          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+        { address : Fin (8 * 2 ^ budget) →
+            RootedRoleBlockedAddress (Fin rootCount)
+              (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+                definitions.length maxWidth)
+              (Fin conceptCount) (Fin roleCount) //
+          Function.Injective address }) :
+    ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+      variableCount abox ontology definitions rootCount maxWidth budget := by
+  classical
+  exact Classical.choice (show Nonempty
+      (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+        variableCount abox ontology definitions rootCount maxWidth budget) from by
+    rcases cardinalityControl_search_total ontology definitions
+        (8 * 2 ^ budget) parent ancestors root with
+      hrefutes | ⟨leaf, hdescends, hstop⟩
+    · let certificate := rootCertificate.canonicalizeEqualityClosure
+      have hcertificateState : certificate.state = root.state := by
+        simpa [certificate] using hrootState.symm
+      obtain ⟨depth, tree, htree⟩ := hrefutes.exists_checkClosed_tree
+        certificate (by simpa [certificate] using hontology) hcertificateState
+        rootCertificate.canonicalizeEqualityClosure_valid
+      have hinitial' : abox.InitializesDistinctState certificate.state := by
+        simpa [certificate] using hinitial
+      let outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+          roleCount variableCount abox ontology definitions :=
+        .closed certificate tree (by simpa [certificate] using hontology)
+          hinitial' htree
+      exact ⟨⟨outcome, .conclusive (by
+        simp [outcome, NativeABoxProductionConclusive])⟩⟩
+    · rcases stopResult leaf hdescends hstop with hmodel | haddress
+      · rcases hmodel.down with
+          ⟨certificate, namedRoot, hmodelOntology, hpositive, hseeded,
+            hcheck, hapart, hsingletons, hnegative⟩
+        let outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+            roleCount variableCount abox ontology definitions :=
+          .sat certificate namedRoot hmodelOntology hpositive hseeded hcheck
+            hapart hsingletons hnegative
+        exact ⟨⟨outcome, .conclusive (by
+          simp [outcome, NativeABoxProductionConclusive])⟩⟩
+      · rcases haddress with ⟨address, hinjective⟩
+        exact ⟨⟨CheckedNativeABoxCardinalityOutcome.frontier_of_address
+          address hinjective, .frontier address hinjective rfl⟩⟩)
+
+noncomputable def
+    CartesianFoldExpansionRuntime.ofConstructedNativeABoxFiniteSearch
+    (rootCount maxWidth : Nat)
+    (rootCertificate : FiniteDistinctEqCertificate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount)
+    (hontology : rootCertificate.base.base.ontology = ontology)
+    (hinitial : abox.InitializesDistinctState rootCertificate.state)
+    (root : CardinalityRuntimeConfig (Fin conceptCount) (Fin roleCount)
+      definitions (8 * 2 ^ budget))
+    (hrootState : root.state = rootCertificate.state)
+    (parent : Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget)))
+    (ancestors : Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
+    (stopResult : ∀ leaf,
+      CardinalityProductionDescends ontology definitions parent ancestors
+        root leaf →
+      (cardinalityControl ontology definitions leaf parent ancestors).IsStop →
+      PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
+          roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+        { address : Fin (8 * 2 ^ budget) →
+            RootedRoleBlockedAddress (Fin rootCount)
+              (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+                definitions.length maxWidth)
+              (Fin conceptCount) (Fin roleCount) //
+          Function.Injective address }) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+        variableCount abox ontology definitions rootCount maxWidth budget) :=
+  CartesianFoldExpansionRuntime.done
+    (finiteNativeABoxRoundBudgetConstruction rootCount maxWidth rootCertificate
+      hontology hinitial root hrootState parent ancestors stopResult)
+
+structure ConstructedNativeABoxFiniteSearchFamily
+    (Individual : Type)
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (rootCount maxWidth : Nat) where
+  certificate : ∀ budget, FiniteDistinctEqCertificate (8 * 2 ^ budget)
+    conceptCount roleCount variableCount
+  ontology_eq : ∀ budget, (certificate budget).base.base.ontology = ontology
+  initial : ∀ budget, abox.InitializesDistinctState (certificate budget).state
+  root : ∀ budget, CardinalityRuntimeConfig (Fin conceptCount)
+    (Fin roleCount) definitions (8 * 2 ^ budget)
+  root_state : ∀ budget, (root budget).state = (certificate budget).state
+  parent : ∀ budget,
+    Fin (8 * 2 ^ budget) → Option (Fin (8 * 2 ^ budget))
+  ancestors : ∀ budget,
+    Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
+  stopResult : ∀ budget leaf,
+    CardinalityProductionDescends ontology definitions (parent budget)
+      (ancestors budget) (root budget) leaf →
+    (cardinalityControl ontology definitions leaf (parent budget)
+      (ancestors budget)).IsStop →
+    PLift (HasCheckedNativeABoxCardinalityModel Individual conceptCount
+        roleCount variableCount (8 * 2 ^ budget) abox ontology definitions) ⊕
+      { address : Fin (8 * 2 ^ budget) →
+          RootedRoleBlockedAddress (Fin rootCount)
+            (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+              definitions.length maxWidth)
+            (Fin conceptCount) (Fin roleCount) //
+        Function.Injective address }
+
+noncomputable def ConstructedNativeABoxFiniteSearchFamily.runtime
+    (family : ConstructedNativeABoxFiniteSearchFamily Individual conceptCount
+      roleCount variableCount abox ontology definitions rootCount maxWidth)
+    (budget : Nat) :
+    CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
+      (ConstructedNativeABoxBudgetResult Individual conceptCount roleCount
+        variableCount abox ontology definitions rootCount maxWidth budget) :=
+  CartesianFoldExpansionRuntime.ofConstructedNativeABoxFiniteSearch rootCount
+    maxWidth (family.certificate budget) (family.ontology_eq budget)
+    (family.initial budget) (family.root budget) (family.root_state budget)
+    (family.parent budget) (family.ancestors budget) (family.stopResult budget)
+
 theorem checked_native_abox_doubling_execution_decides_source
     {Individual : Type}
     {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
@@ -1681,6 +1844,23 @@ theorem checked_constructed_native_abox_runtime_decides_source
       (hrejected ((document budget).checkScheduled_check budget rootCount
         maxWidth (hscheduled budget)))
 
+theorem checked_native_abox_finite_search_decides_source
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (rootCount maxWidth : Nat)
+    (family : ConstructedNativeABoxFiniteSearchFamily Individual conceptCount
+      roleCount variableCount abox target definitions rootCount maxWidth) :
+    ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions,
+        outcome.SourceSemantics source :=
+  checked_constructed_native_abox_runtime_decides_source equivalent rootCount
+    maxWidth family.runtime
+
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
 the selected family, including native ABox and cardinality data where present.
@@ -1935,7 +2115,11 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_native_abox_runtime_eventually_conclusive
 #print axioms checked_native_abox_runtime_decides_source
 #print axioms NativeABoxBudgetOutcomeConstruction.classify
+#print axioms finiteNativeABoxRoundBudgetConstruction
+#print axioms CartesianFoldExpansionRuntime.ofConstructedNativeABoxFiniteSearch
+#print axioms ConstructedNativeABoxFiniteSearchFamily.runtime
 #print axioms checked_native_abox_runtime_decides_source_of_construction
 #print axioms checked_constructed_native_abox_runtime_decides_source
+#print axioms checked_native_abox_finite_search_decides_source
 
 end ContextCalculus.Hypertableau
