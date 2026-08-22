@@ -9642,7 +9642,14 @@ impl Ht {
     fn lean_address_frontier_passes(
         &self,
         frontier: &LeanHtAddressFrontier,
+        expected_node_count: usize,
     ) -> Result<bool, String> {
+        if frontier.node_count != expected_node_count {
+            return Err(format!(
+                "HT frontier has {} nodes at search budget {expected_node_count}",
+                frontier.node_count
+            ));
+        }
         let checker = std::env::var_os("KM_HT_LEAN_FRONTIER_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_FRONTIER_CHECKER"));
         let Some(checker) = checker else {
@@ -9657,7 +9664,14 @@ impl Ht {
     fn lean_cardinality_address_frontier_passes(
         &self,
         frontier: &LeanHtCardinalityAddressFrontier,
+        expected_node_count: usize,
     ) -> Result<bool, String> {
+        if frontier.node_count != expected_node_count {
+            return Err(format!(
+                "HT cardinality frontier has {} nodes at search budget {expected_node_count}",
+                frontier.node_count
+            ));
+        }
         let checker = std::env::var_os("KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER")
             .or_else(|| {
                 std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_FRONTIER_CHECKER")
@@ -10764,7 +10778,7 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the regular decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -11498,7 +11512,7 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the equality refutation frontier".to_string());
                     }
                 }
@@ -11874,7 +11888,7 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the native ABox decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -12022,7 +12036,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(&frontier)? {
+                    if !self.lean_cardinality_address_frontier_passes(
+                        &frontier,
+                        node_budget,
+                    )? {
                         return Err(
                             "Lean rejected the native ABox cardinality decision frontier"
                                 .to_string(),
@@ -12158,7 +12175,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(&frontier)? {
+                    if !self.lean_cardinality_address_frontier_passes(
+                        &frontier,
+                        node_budget,
+                    )? {
                         return Err("Lean rejected the cardinality refutation frontier".to_string());
                     }
                 }
@@ -12267,7 +12287,7 @@ impl Ht {
                     return Err("ontology reached the configured refutation node cap".to_string());
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the refutation frontier".to_string());
                     }
                 }
@@ -12385,7 +12405,7 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err(
                             "Lean rejected the equality-free decision frontier".to_string(),
                         );
@@ -12524,7 +12544,7 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the equality decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -12600,7 +12620,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(&frontier)? {
+                    if !self.lean_cardinality_address_frontier_passes(
+                        &frontier,
+                        node_budget,
+                    )? {
                         return Err("Lean rejected the cardinality decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -12734,7 +12757,10 @@ impl Ht {
                             .to_string());
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                        if !self.lean_cardinality_address_frontier_passes(&frontier)? {
+                        if !self.lean_cardinality_address_frontier_passes(
+                            &frontier,
+                            node_budget,
+                        )? {
                             return Err(
                                 "Lean rejected the cardinality taxonomy frontier".to_string(),
                             );
@@ -12824,7 +12850,7 @@ impl Ht {
                         );
                     }
                     LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                        if !self.lean_address_frontier_passes(&frontier)? {
+                        if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                             return Err("Lean rejected the equality taxonomy frontier".to_string());
                         }
                         node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -12906,7 +12932,7 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err(
                             "Lean rejected the equality-free taxonomy frontier".to_string(),
                         );
@@ -13101,7 +13127,10 @@ impl Ht {
                     );
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_cardinality_address_frontier_passes(&frontier)? {
+                    if !self.lean_cardinality_address_frontier_passes(
+                        &frontier,
+                        node_budget,
+                    )? {
                         return Err(
                             "Lean rejected the native ABox cardinality taxonomy frontier"
                                 .to_string(),
@@ -13293,7 +13322,7 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier)? {
+                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
                         return Err("Lean rejected the native ABox taxonomy frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -24515,6 +24544,28 @@ mod tests {
                 exact + 1
             ));
         }
+    }
+
+    #[test]
+    fn certification_frontiers_reject_a_mismatched_search_budget() {
+        let reasoner = ht(Vec::new());
+        let ordinary = LeanHtAddressFrontier {
+            node_count: 1,
+            addresses: vec![Vec::new()],
+        };
+        assert!(reasoner
+            .lean_address_frontier_passes(&ordinary, 2)
+            .is_err());
+
+        let cardinality = LeanHtCardinalityAddressFrontier {
+            node_count: 1,
+            definition_count: 0,
+            max_width: 0,
+            addresses: vec![Vec::new()],
+        };
+        assert!(reasoner
+            .lean_cardinality_address_frontier_passes(&cardinality, 2)
+            .is_err());
     }
 
     #[test]
