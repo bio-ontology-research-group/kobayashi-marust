@@ -710,10 +710,6 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
-      (scheduled : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hcheck) →
-        document.checkScheduled budget = true)
       (classify : ∀ budget,
         let fixed := (producer budget).execute ∅
         PLift (RegularProductionConclusive fixed.1) ⊕
@@ -727,10 +723,6 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
       (producer : ∀ budget, CartesianFoldExpansionRuntime
         (Fin (8 * 2 ^ budget))
         (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
-      (nodes : ∀ budget retry document hconcepts hroles hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hcheck) →
-        document.node_count = 8 * 2 ^ budget)
       (classify : ∀ budget,
         let fixed := (producer budget).execute ∅
         PLift (EqualityProductionConclusive fixed.1) ⊕
@@ -748,14 +740,6 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (Fin (8 * 2 ^ budget))
         (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
           target definitions))
-      (nodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-        document.node_count = 8 * 2 ^ budget)
-      (width : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-        document.max_width = maxWidth)
       (classify : ∀ budget,
         let fixed := (producer budget).execute ∅
         PLift (CardinalityProductionConclusive fixed.1) ⊕
@@ -776,14 +760,6 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (Fin (8 * 2 ^ budget))
         (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
           variableCount abox target definitions))
-      (nodes : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-        document.node_count = 8 * 2 ^ budget)
-      (width : ∀ budget retry document hconcepts hroles hdefinitions hcheck,
-        (producer budget).toGuardedFoldProducer.toFreshFoldProducer.run retry = .done
-          (.frontier document hconcepts hroles hdefinitions hcheck) →
-        document.max_width = maxWidth)
       (classify : ∀ budget,
         let fixed := (producer budget).execute ∅
         PLift (NativeABoxProductionConclusive fixed.1) ⊕
@@ -797,7 +773,7 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
     (route : CertifiedHTAssignmentProductionGlobalRoute semantics) :
     Nonempty (CertifiedHTGlobalVerdict semantics) := by
   cases route with
-  | regular equivalent producer scheduled classify =>
+  | regular equivalent producer classify =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_regular_runtime_decides_source equivalent producer classify
       cases outcome with
@@ -809,7 +785,7 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedRegularRoundOutcome.SourceSemantics] at hsemantics
-  | equality equivalent producer nodes classify =>
+  | equality equivalent producer classify =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_equality_runtime_decides_source equivalent producer classify
       cases outcome with
@@ -819,7 +795,7 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hcheck =>
           simp only [CheckedEqualityDecisionOutcome.SourceSemantics] at hsemantics
-  | cardinality equivalent maxWidth producer nodes width classify =>
+  | cardinality equivalent maxWidth producer classify =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_cardinality_runtime_decides_source equivalent maxWidth producer
           classify
@@ -830,7 +806,7 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent maxWidth producer nodes width classify =>
+  | nativeABox equivalent maxWidth producer classify =>
       obtain ⟨outcome, hsemantics⟩ :=
         checked_native_abox_runtime_decides_source equivalent maxWidth producer
           classify

@@ -45,6 +45,11 @@
   surface. Its axiom audit covers exact global publication and all four exact
   taxonomy publication families; legacy producer lemmas are not exported as
   certification endpoints. The HT gate builds this surface explicitly.
+- Remove the superseded retry-index scheduling and dimension fields from every
+  current global and taxonomy route type. The certification surface now
+  requires only source equivalence where applicable, the concrete nested
+  runtime, and a checked classification of each outcome computed by that
+  runtime. Legacy producer theorems remain outside the exported surface.
 - Add the executable equality-aware production-history wire and native checker.
   It rechecks every embedded equality/cardinality/native-ABox blocker document,
   requires an empty initial forbidden set, preserves exact source-problem

@@ -826,10 +826,6 @@ structure CertifiedHTFoldAssignmentProductionTaxonomyRoute
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (UnsatisfiableConcept ontology concept))
-  conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-        .done (.frontier document hconcepts hroles hcheck) →
-      document.checkScheduled budget = true
   conceptClassify : ∀ concept hnamed budget,
     let fixed := (conceptProducer concept hnamed budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -839,11 +835,6 @@ structure CertifiedHTFoldAssignmentProductionTaxonomyRoute
     ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (EntailsSub ontology sub sup))
-  subsumptionScheduled :
-    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-          .done (.frontier document hconcepts hroles hcheck) →
-        document.checkScheduled budget = true
   subsumptionClassify : ∀ sub hsub sup hsup budget,
     let fixed := (subsumptionProducer sub hsub sup hsup budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -878,10 +869,6 @@ structure CertifiedHTFoldAssignmentCardinalityProductionTaxonomyRoute
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (UnsatisfiableConceptWithCardinality ontology definitions concept))
-  conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-        .done (.frontier document hconcepts hroles hcheck) →
-      document.checkScheduled budget = true
   conceptClassify : ∀ concept hnamed budget,
     let fixed := (conceptProducer concept hnamed budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -892,11 +879,6 @@ structure CertifiedHTFoldAssignmentCardinalityProductionTaxonomyRoute
     ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (EntailsSubWithCardinality ontology definitions sub sup))
-  subsumptionScheduled :
-    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-          .done (.frontier document hconcepts hroles hcheck) →
-        document.checkScheduled budget = true
   subsumptionClassify : ∀ sub hsub sup hsup budget,
     let fixed := (subsumptionProducer sub hsub sup hsup budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -932,10 +914,6 @@ structure CertifiedHTFoldAssignmentNativeABoxProductionTaxonomyRoute
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.UnsatisfiableConceptWith ontology concept))
-  conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-        .done (.frontier document hconcepts hroles hcheck) →
-      document.checkScheduled budget = true
   conceptClassify : ∀ concept hnamed budget,
     let fixed := (conceptProducer concept hnamed budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -945,11 +923,6 @@ structure CertifiedHTFoldAssignmentNativeABoxProductionTaxonomyRoute
     ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.EntailsSubWith ontology sub sup))
-  subsumptionScheduled :
-    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-          .done (.frontier document hconcepts hroles hcheck) →
-        document.checkScheduled budget = true
   subsumptionClassify : ∀ sub hsub sup hsup budget,
     let fixed := (subsumptionProducer sub hsub sup hsup budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -987,10 +960,6 @@ structure CertifiedHTFoldAssignmentNativeABoxCardinalityProductionTaxonomyRoute
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.UnsatisfiableConceptWithCardinality ontology definitions concept))
-  conceptScheduled : ∀ concept hnamed budget retry document hconcepts hroles hcheck,
-    (conceptProducer concept hnamed budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-        .done (.frontier document hconcepts hroles hcheck) →
-      document.checkScheduled budget = true
   conceptClassify : ∀ concept hnamed budget,
     let fixed := (conceptProducer concept hnamed budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
@@ -1001,11 +970,6 @@ structure CertifiedHTFoldAssignmentNativeABoxCardinalityProductionTaxonomyRoute
     ∀ budget, CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (CheckedTaxonomyRoundOutcome conceptCount roleCount
         (abox.EntailsSubWithCardinality ontology definitions sub sup))
-  subsumptionScheduled :
-    ∀ sub hsub sup hsup budget retry document hconcepts hroles hcheck,
-      (subsumptionProducer sub hsub sup hsup budget).toGuardedFoldProducer.toFreshFoldProducer.run retry =
-          .done (.frontier document hconcepts hroles hcheck) →
-        document.checkScheduled budget = true
   subsumptionClassify : ∀ sub hsub sup hsup budget,
     let fixed := (subsumptionProducer sub hsub sup hsup budget).execute ∅
     PLift (TaxonomyProductionConclusive fixed.1) ⊕
