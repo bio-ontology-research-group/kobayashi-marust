@@ -165,6 +165,42 @@ inductive CartesianFoldExpansionExecution
         (forbidden ∪ pairs) result) :
       CartesianFoldExpansionExecution runtime forbidden result
 
+/-- An outer expansion recorded by a concrete trace cannot have come from an
+accepted candidate.  It is necessarily the exhaustion continuation, and the
+learned pair set is exactly the union of the options exposed by that terminal
+state. -/
+theorem CartesianFoldAssignmentExecution.expand_exact
+    [DecidableEq Node]
+    (runtime : CartesianFoldExpansionRuntime Node Result)
+    (forbidden pairs : Finset (Node × Node))
+    (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
+    (initial : Finset (FoldAssignment Node))
+    {outcome : GuardedFoldExpansionOutcome Node Result forbidden}
+    (trace : CartesianFoldAssignmentExecution (runtime.inner forbidden) initial
+      outcome)
+    (houtcome : outcome = .expand pairs fresh) :
+    ∃ rejected, ∃ exhausted : ∀ assignment ∈ enumerateFoldAssignments
+          ((runtime.inner forbidden).options rejected), assignment ∈ rejected,
+      (runtime.inner forbidden).onExhausted rejected exhausted =
+          .expand pairs fresh ∧
+        pairs = foldOptionPairs ((runtime.inner forbidden).options rejected) := by
+  induction trace with
+  | accepted rejected assignment outcome selected checked =>
+      subst outcome
+      obtain ⟨result, hdone⟩ :=
+        runtime.checkConclusive forbidden rejected assignment
+          (.expand pairs fresh) checked
+      cases hdone
+  | rejected rejected assignment outcome selected checked next ih =>
+      exact ih houtcome
+  | exhausted rejected selected =>
+      let exhausted :=
+        (firstFreshFoldAssignment_eq_none_iff rejected
+          (enumerateFoldAssignments
+            ((runtime.inner forbidden).options rejected))).mp selected
+      refine ⟨rejected, exhausted, houtcome, ?_⟩
+      exact runtime.expansionExact forbidden rejected exhausted pairs fresh houtcome
+
 theorem CartesianFoldExpansionExecution.inner_settles
     [DecidableEq Node]
     {runtime : CartesianFoldExpansionRuntime Node Result}
@@ -175,6 +211,24 @@ theorem CartesianFoldExpansionExecution.inner_settles
   cases trace with
   | done _ _ inner => exact ⟨⟨_, inner⟩⟩
   | expand _ _ _ _ inner _ => exact ⟨⟨_, inner⟩⟩
+
+/-- Every expansion step in a concrete outer trace is backed by an exhausted
+Cartesian product whose exact option-pair union is learned. -/
+theorem CartesianFoldExpansionExecution.head_expansion_exact
+    [DecidableEq Node]
+    {runtime : CartesianFoldExpansionRuntime Node Result}
+    {forbidden pairs : Finset (Node × Node)}
+    {fresh : ∃ pair ∈ pairs, pair ∉ forbidden}
+    {result : Result}
+    (trace : CartesianFoldExpansionExecution runtime forbidden result)
+    (hhead : ∃ inner next, trace = .expand forbidden pairs fresh result inner next) :
+    ∃ rejected, ∃ _exhausted : ∀ assignment ∈ enumerateFoldAssignments
+          ((runtime.inner forbidden).options rejected), assignment ∈ rejected,
+      pairs = foldOptionPairs ((runtime.inner forbidden).options rejected) := by
+  rcases hhead with ⟨inner, next, rfl⟩
+  obtain ⟨rejected, exhausted, _, hexact⟩ :=
+    inner.expand_exact runtime forbidden pairs fresh ∅ rfl
+  exact ⟨rejected, exhausted, hexact⟩
 
 /-- Select the terminating outcome of the finite inner Cartesian loop.  The
 selected retry remains an implementation detail; its existence is supplied by
@@ -263,5 +317,7 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldExpansionRuntime.accepted_candidate_conclusive
 #print axioms CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldExpansionExecution.inner_settles
+#print axioms CartesianFoldAssignmentExecution.expand_exact
+#print axioms CartesianFoldExpansionExecution.head_expansion_exact
 
 end ContextCalculus.Hypertableau

@@ -10,7 +10,10 @@
   each rejected assignment, checked Cartesian exhaustion, and strict outer
   forbidden-pair expansion. This is the wire-decoder target that will replace
   the abstract terminating-producer premise at the production publication
-  boundary; it uses no classically selected retry witness.
+  boundary; it uses no classically selected retry witness. Lean also proves
+  that an expansion in this trace cannot originate from an accepted candidate:
+  it necessarily follows complete Cartesian exhaustion and learns exactly the
+  option-pair union exposed by that terminal state.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no
