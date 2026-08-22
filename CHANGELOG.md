@@ -19,6 +19,15 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Add an executable cross-budget ordinary-frontier trace. Lean checks every
+  combined state/address document at its exact `8 * 2^budget` schedule and
+  proves that all rounds retain one ontology and finite vocabulary. Production
+  Rust now preserves and checks this history across every ordinary global,
+  refutation, taxonomy, equality-aware, and native-ABox iterative-deepening
+  loop. Certified execution requires the trace checker and fails closed if a
+  round is stale, skipped, reordered, or belongs to another problem. A real
+  eight-node frontier passes at round zero and is rejected if replayed at the
+  successor position.
 - Add a native equality-free production-history checker parallel to the
   equality-aware checker. It proves that every exhausted Cartesian assignment
   round is accepted, the first rerun starts with an empty forbidden set, and

@@ -10270,6 +10270,47 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Validate an ordinary frontier and the complete sequence of ordinary
+    /// frontiers traversed by this iterative-deepening run. Certified mode
+    /// starts at eight nodes, so frontier `i` must have exactly `8 * 2^i`
+    /// nodes. The Lean trace checker also fixes the ontology and vocabulary
+    /// across every rerun.
+    fn lean_address_frontier_history_passes(
+        &self,
+        frontier: &LeanHtAddressFrontier,
+        expected_node_count: usize,
+        frontiers: &mut Vec<serde_json::Value>,
+    ) -> Result<bool, String> {
+        if !self.lean_address_frontier_passes(frontier, expected_node_count)? {
+            return Ok(false);
+        }
+        let checker = std::env::var_os("KM_HT_LEAN_DOUBLING_TRACE_CHECKER")
+            .or_else(|| {
+                std::env::var_os("KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER")
+            })
+            .ok_or_else(|| {
+                "ordinary HT iterative deepening requires KM_HT_LEAN_DOUBLING_TRACE_CHECKER"
+                    .to_string()
+            })?;
+        let document = self.lean_address_refinement_json(frontier)?;
+        let document =
+            serde_json::from_str(&document).map_err(|error| error.to_string())?;
+        frontiers.push(document);
+        let result = (|| -> Result<bool, String> {
+            let history = serde_json::to_string(&serde_json::json!({
+                "version": 1,
+                "start_budget": 0,
+                "frontiers": frontiers,
+            }))
+            .map_err(|error| error.to_string())?;
+            self.lean_candidate_passes_with(&history, &checker)
+        })();
+        if !matches!(&result, Ok(true)) {
+            frontiers.pop();
+        }
+        result
+    }
+
     /// Cardinality frontiers carry minimum-sibling slots in addition to
     /// ordinary witness addresses and therefore use their dedicated checker.
     fn lean_cardinality_address_frontier_passes(
@@ -11790,6 +11831,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation_avoiding_folds(
@@ -11867,7 +11909,11 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the regular decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -12588,6 +12634,7 @@ impl Ht {
             })
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut frontier_history = Vec::new();
         let (tree, root_state) = loop {
             let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_eq_refutation(&mut state, variable_count, node_budget) {
@@ -12603,7 +12650,11 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the equality refutation frontier".to_string());
                     }
                 }
@@ -12920,6 +12971,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -12991,7 +13043,11 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the native ABox decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -13396,6 +13452,7 @@ impl Ht {
             })
             .collect();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut frontier_history = Vec::new();
         let (tree, node_count) = loop {
             let (mut state, _) = self.lean_initial_refutation_state(initial_labels)?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
@@ -13407,7 +13464,11 @@ impl Ht {
                     return Err("ontology reached the configured refutation node cap".to_string());
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the refutation frontier".to_string());
                     }
                 }
@@ -13499,6 +13560,7 @@ impl Ht {
                 .unwrap_or(0),
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation(&mut state, variable_count, node_budget) {
@@ -13525,7 +13587,11 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err(
                             "Lean rejected the equality-free decision frontier".to_string(),
                         );
@@ -13610,6 +13676,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -13681,7 +13748,11 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the equality decision frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -13846,6 +13917,7 @@ impl Ht {
             concept_count = concept_count.max(literal.c as usize + 1);
         }
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
+        let mut frontier_history = Vec::new();
 
         if !self.card_defs.is_empty() {
             let mut definitions: Vec<(C, CardDef)> = self
@@ -14031,7 +14103,11 @@ impl Ht {
                         );
                     }
                     LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                        if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                        if !self.lean_address_frontier_history_passes(
+                            &frontier,
+                            node_budget,
+                            &mut frontier_history,
+                        )? {
                             return Err("Lean rejected the equality taxonomy frontier".to_string());
                         }
                         node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -14125,7 +14201,11 @@ impl Ht {
                     );
                 }
                 LeanHtRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err(
                             "Lean rejected the equality-free taxonomy frontier".to_string(),
                         );
@@ -14397,6 +14477,7 @@ impl Ht {
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
+        let mut frontier_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
             match self.lean_eq_refutation_avoiding_folds(
@@ -14544,7 +14625,11 @@ impl Ht {
                     );
                 }
                 LeanHtEqRefutationOutcome::Frontier(frontier) => {
-                    if !self.lean_address_frontier_passes(&frontier, node_budget)? {
+                    if !self.lean_address_frontier_history_passes(
+                        &frontier,
+                        node_budget,
+                        &mut frontier_history,
+                    )? {
                         return Err("Lean rejected the native ABox taxonomy frontier".to_string());
                     }
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
@@ -26065,6 +26150,36 @@ mod tests {
         assert!(reasoner
             .lean_cardinality_address_frontier_passes(&cardinality, 2)
             .is_err());
+    }
+
+    #[test]
+    fn doubling_history_accepts_the_first_frontier_and_rejects_a_stale_rerun() {
+        if std::env::var_os("KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER").is_none() {
+            return;
+        }
+        let mut reasoner = Ht::new_certified(vec![
+            Clause::new(Vec::new(), vec![con(false, A, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+        ]);
+        reasoner.block_mode = 6;
+        let mut state = LeanHtRefutationState::root(&[]);
+        let forbidden: HashSet<_> = (0..8)
+            .flat_map(|source| (0..8).map(move |target| (source, target)))
+            .collect();
+        let LeanHtRefutationOutcome::Frontier(frontier) =
+            reasoner.lean_refutation_avoiding_folds(&mut state, 1, 8, &forbidden)
+        else {
+            panic!("the unblocked cyclic witness search must reach its eight-node frontier");
+        };
+        let mut history = Vec::new();
+        assert!(reasoner
+            .lean_address_frontier_history_passes(&frontier, 8, &mut history)
+            .expect("check the genuine initial doubling frontier"));
+        assert_eq!(history.len(), 1);
+        assert!(!reasoner
+            .lean_address_frontier_history_passes(&frontier, 8, &mut history)
+            .expect("reject a stale frontier at the successor schedule position"));
+        assert_eq!(history.len(), 1, "a rejected frontier must be rolled back");
     }
 
     #[test]

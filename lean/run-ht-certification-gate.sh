@@ -40,6 +40,7 @@ checkers=(
     ht-projection-cert-check
     ht-frontier-check
     ht-address-refinement-check
+    ht-doubling-trace-check
     ht-production-blocking-check
     ht-production-trace-check
     ht-finite-production-terminal-check
@@ -142,6 +143,8 @@ done
     export KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
     export KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-rooted-cardinality-frontier-check"
     export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"
+    export KM_HT_LEAN_DOUBLING_TRACE_CHECKER="$bin_root/ht-doubling-trace-check"
+    export KM_HT_TEST_LEAN_DOUBLING_TRACE_CHECKER="$bin_root/ht-doubling-trace-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
