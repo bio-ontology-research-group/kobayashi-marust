@@ -607,6 +607,187 @@ noncomputable def CartesianFoldExpansionRuntime.ofProductionTerminals
       · simp at hexpand
       · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm }
 
+/-! ## Settled production search
+
+The production search can close a branch or expose a node frontier before it
+reaches a blocked open leaf.  Such an outcome is already conclusive for the
+fixed outer forbidden-pair set and must not be forced through a fabricated
+blocking table.  The package below records only the genuinely blocked case.
+-/
+
+/-- Re-index a blocked leaf from the empty forbidden set to the concrete outer
+set at which it was produced.  Keeping that set in the package prevents a
+terminal from being reused at a different learning state. -/
+structure ProductionBlockedLeafAt
+    (Node Concept Role Variable : Type)
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (forbidden : Finset (Node × Node)) where
+  state : State Node Concept Role
+  decision : DecidableState state
+  parent : Node → Option Node
+  ancestors : Node → List Node
+  terminal : state.BlockedRuntimeTerminal ontology
+    (state.productionBlocked parent ancestors forbidden)
+
+noncomputable def ProductionBlockedLeafAt.unwitnessedSources
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (leaf : ProductionBlockedLeafAt Node Concept Role Variable ontology
+      forbidden) : List Node := by
+  letI := leaf.decision
+  exact leaf.state.productionUnwitnessedSources
+
+private def settledEarlyInner
+    [DecidableEq Node]
+    (forbidden : Finset (Node × Node)) (result : Result) :
+    CartesianFoldAssignmentRuntime Node
+      (GuardedFoldExpansionOutcome Node Result forbidden) where
+  options := fun _ => []
+  optionNonempty := by simp
+  check := fun _ _ => .inl (.done result)
+  onExhausted := fun _ _ => .done result
+
+private noncomputable def settledBlockedInner
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (forbidden : Finset (Node × Node))
+    (leaf : ProductionBlockedLeafAt Node Concept Role Variable ontology
+      forbidden)
+    (candidate : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Option Result)
+    (foldFree : leaf.unwitnessedSources = [] → Result) :
+    CartesianFoldAssignmentRuntime Node
+      (GuardedFoldExpansionOutcome Node Result forbidden) := by
+  classical
+  letI := leaf.decision
+  let options := foldOptionsUsing
+    (leaf.state.productionFold leaf.parent leaf.ancestors forbidden)
+    (Classical.decRel
+      (leaf.state.productionFold leaf.parent leaf.ancestors forbidden))
+    leaf.state.productionUnwitnessedSources
+  let exhaustedOutcome := fun
+      (_rejected : Finset (FoldAssignment Node))
+      (_exhausted : ∀ assignment ∈ enumerateFoldAssignments options,
+        assignment ∈ _rejected) =>
+    if hempty : leaf.state.productionUnwitnessedSources = [] then
+      GuardedFoldExpansionOutcome.done (foldFree (by
+        simpa [ProductionBlockedLeafAt.unwitnessedSources] using hempty))
+    else
+      GuardedFoldExpansionOutcome.expand
+        (foldOptionPairs options)
+        (leaf.state.productionFoldOptionPairs_has_fresh ontology
+          leaf.parent leaf.ancestors forbidden leaf.terminal hempty)
+  exact CartesianFoldAssignmentRuntime.ofProductionTerminal
+    leaf.state ontology leaf.parent leaf.ancestors forbidden leaf.terminal
+    (fun rejected assignment =>
+      checkedFoldCandidate candidate forbidden rejected assignment)
+    exhaustedOutcome
+
+private theorem settledEarlyInner_no_expand
+    [DecidableEq Node]
+    (forbidden : Finset (Node × Node)) (result : Result)
+    (rejected : Finset (FoldAssignment Node))
+    (exhausted : ∀ assignment ∈ enumerateFoldAssignments
+      ((settledEarlyInner forbidden result).options rejected),
+      assignment ∈ rejected)
+    (pairs : Finset (Node × Node))
+    (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
+    (hexpand : (settledEarlyInner forbidden result).onExhausted rejected
+      exhausted = GuardedFoldExpansionOutcome.expand pairs fresh) : False := by
+  simp [settledEarlyInner] at hexpand
+
+private theorem settledBlockedInner_expansionExact
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (forbidden : Finset (Node × Node))
+    (leaf : ProductionBlockedLeafAt Node Concept Role Variable ontology
+      forbidden)
+    (candidate : Finset (FoldAssignment Node) → FoldAssignment Node →
+      Option Result)
+    (foldFree : leaf.unwitnessedSources = [] → Result)
+    (rejected : Finset (FoldAssignment Node))
+    (exhausted : ∀ assignment ∈ enumerateFoldAssignments
+      ((settledBlockedInner ontology forbidden leaf candidate foldFree).options
+        rejected), assignment ∈ rejected)
+    (pairs : Finset (Node × Node))
+    (fresh : ∃ pair ∈ pairs, pair ∉ forbidden)
+    (hexpand : (settledBlockedInner ontology forbidden leaf candidate foldFree).onExhausted
+        rejected exhausted =
+      GuardedFoldExpansionOutcome.expand pairs fresh) :
+    pairs = foldOptionPairs
+      ((settledBlockedInner ontology forbidden leaf candidate foldFree).options
+        rejected) := by
+  classical
+  letI := leaf.decision
+  dsimp [settledBlockedInner,
+    CartesianFoldAssignmentRuntime.ofProductionTerminal,
+    CartesianFoldAssignmentRuntime.ofFoldTable] at hexpand ⊢
+  split at hexpand
+  · simp at hexpand
+  · exact (GuardedFoldExpansionOutcome.expand.inj hexpand).symm
+
+/-- Construct the complete two-level learning runtime from a concrete search
+settlement at every outer forbidden-pair set.  A refutation or checked frontier
+is returned by the `done` arm immediately.  Only an actual blocked terminal is
+enumerated for simultaneous fold assignments. -/
+noncomputable def CartesianFoldExpansionRuntime.ofSettledProductionSearch
+    [Fintype Node] [DecidableEq Node]
+    [Fintype Concept] [DecidableEq Concept]
+    [Fintype Role] [DecidableEq Role]
+    (ontology : List (Clause Variable Concept Role))
+    (settle : ∀ forbidden : Finset (Node × Node),
+      Result ⊕ ProductionBlockedLeafAt Node Concept Role Variable ontology
+        forbidden)
+    (candidate : ∀ _forbidden : Finset (Node × Node),
+      Finset (FoldAssignment Node) → FoldAssignment Node → Option Result)
+    (foldFree : ∀ forbidden
+      (leaf : ProductionBlockedLeafAt Node Concept Role Variable ontology
+        forbidden), leaf.unwitnessedSources = [] → Result) :
+    CartesianFoldExpansionRuntime Node Result := by
+  classical
+  let inner (forbidden : Finset (Node × Node)) :=
+    match settle forbidden with
+    | .inl result => settledEarlyInner forbidden result
+    | .inr leaf =>
+        settledBlockedInner ontology forbidden leaf (candidate forbidden)
+          (foldFree forbidden leaf)
+  exact {
+    inner := inner
+    checkConclusive := by
+      intro forbidden rejected assignment outcome hcheck
+      cases hsettle : settle forbidden with
+      | inl result =>
+          have heq : GuardedFoldExpansionOutcome.done result = outcome := by
+            simpa [inner, hsettle, settledEarlyInner] using hcheck
+          exact ⟨result, heq.symm⟩
+      | inr leaf =>
+          have hcheck' : checkedFoldCandidate (candidate forbidden) forbidden
+              rejected assignment = .inl outcome := by
+            simpa [inner, hsettle, settledBlockedInner] using hcheck
+          exact checkedFoldCandidate_conclusive (candidate forbidden) forbidden
+            rejected assignment outcome hcheck'
+    expansionExact := by
+      intro forbidden rejected exhausted pairs fresh hexpand
+      cases hsettle : settle forbidden with
+      | inl result =>
+          exact False.elim (settledEarlyInner_no_expand forbidden result
+            rejected (by simpa [inner, hsettle] using exhausted) pairs fresh
+            (by simpa [inner, hsettle] using hexpand))
+      | inr leaf =>
+          have hexact := settledBlockedInner_expansionExact ontology forbidden leaf
+            (candidate forbidden) (foldFree forbidden leaf) rejected
+            (by simpa [inner, hsettle] using exhausted) pairs fresh
+            (by simpa [inner, hsettle] using hexpand)
+          simpa [inner, hsettle] using hexact }
+
 #print axioms State.productionBlocked_eq_true_iff
 #print axioms FiniteProductionBlockingTable.checkOptions_eq_true_iff
 #print axioms FiniteProductionBlockingTable.checked_option_exact
@@ -627,5 +808,6 @@ noncomputable def CartesianFoldExpansionRuntime.ofProductionTerminals
 #print axioms State.productionFoldOptions_filtered
 #print axioms State.productionFoldOptionPairs_has_fresh
 #print axioms CartesianFoldExpansionRuntime.ofProductionTerminals
+#print axioms CartesianFoldExpansionRuntime.ofSettledProductionSearch
 
 end ContextCalculus.Hypertableau

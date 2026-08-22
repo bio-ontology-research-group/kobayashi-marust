@@ -19,6 +19,12 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Add the concrete settled-search constructor missing between finite HT search
+  and the two-level blocker runtime. A fixed-budget refutation or checked node
+  frontier now terminates that outer attempt immediately; only a genuine
+  blocked-open leaf enters simultaneous fold-assignment enumeration. The
+  resulting runtime still proves accepted candidates conclusive and permits
+  outer forbidden-pair growth only after exact assignment exhaustion.
 - Define a concrete, proof-indexed execution trace for KM's nested
   fixed-budget blocking loop. The trace records first-fresh simultaneous
   assignment selection, exact candidate acceptance or rejection, insertion of
