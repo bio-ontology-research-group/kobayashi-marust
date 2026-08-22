@@ -2919,6 +2919,17 @@ struct LeanHtProductionBlockingDocument {
     rejected: Vec<Vec<LeanHtProductionBlockingPair>>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtEqProductionBlockingDocument {
+    version: usize,
+    base: LeanHtEqCertificate,
+    parents: Vec<usize>,
+    forbidden: Vec<LeanHtProductionBlockingPair>,
+    options: Vec<LeanHtProductionBlockingOption>,
+    rejected: Vec<Vec<LeanHtProductionBlockingPair>>,
+    all_blockable_sources: bool,
+}
+
 impl LeanHtBlockedOpenLeaf {
     fn next_fold_assignment(
         &self,
@@ -2948,6 +2959,10 @@ struct LeanHtEqState {
     fold_options: Vec<(Node, Vec<Node>)>,
     #[serde(skip_serializing)]
     raw_edges: Vec<LeanHtEdge>,
+    #[serde(skip_serializing)]
+    witness_parent: Vec<Option<Node>>,
+    #[serde(skip_serializing)]
+    forbidden_folds: Vec<(Node, Node)>,
 }
 
 impl LeanHtEqState {
@@ -3732,6 +3747,11 @@ impl LeanHtRefutationState {
                 (source, blockers)
             })
             .collect();
+        state.forbidden_folds = {
+            let mut pairs: Vec<_> = forbidden_folds.iter().copied().collect();
+            pairs.sort_unstable();
+            pairs
+        };
         let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
         state.with_fold_assignment(folds)
     }
@@ -3751,6 +3771,11 @@ impl LeanHtRefutationState {
                 (!blockers.is_empty()).then_some((blocked, blockers))
             })
             .collect();
+        state.forbidden_folds = {
+            let mut pairs: Vec<_> = forbidden_folds.iter().copied().collect();
+            pairs.sort_unstable();
+            pairs
+        };
         let folds = state.next_fold_assignment(&HashSet::new()).unwrap_or_default();
         state.with_fold_assignment(folds)
     }
@@ -3889,6 +3914,9 @@ impl LeanHtRefutationState {
 
     fn equality_wire_state(&self, node_count: usize) -> LeanHtEqState {
         let (representatives, representative_paths) = self.representatives_and_paths(node_count);
+        let mut witness_parent = self.witness_parent.clone();
+        witness_parent.resize(node_count, None);
+        witness_parent.truncate(node_count);
         let edges: Vec<LeanHtEdge> = self
             .edge_order
             .iter()
@@ -3928,6 +3956,11 @@ impl LeanHtRefutationState {
             folds: Vec::new(),
             fold_options: Vec::new(),
             raw_edges: edges,
+            // Equality certificates may expose the whole bounded domain, even
+            // when the completion used fewer active nodes.  The unused nodes
+            // are roots in the predecessor forest.
+            witness_parent,
+            forbidden_folds: Vec::new(),
         }
     }
 
@@ -10541,6 +10574,101 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Equality-aware counterpart of the production blocker table. Lean
+    /// validates the supplied equivalence closure, reconstructs every
+    /// quotient pairwise signature, and checks complete assignment exhaustion
+    /// before the shared outer learning transition may run.
+    fn lean_equality_production_blocking_document_json(
+        &self,
+        state: &LeanHtEqState,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
+        all_blockable_sources: bool,
+    ) -> Result<String, String> {
+        let node_count = state.representatives.len();
+        if state.witness_parent.len() != node_count {
+            return Err("equality production blocker parent table has the wrong length".to_string());
+        }
+        let (variable_count, concept_count, role_count, ontology) =
+            self.lean_decision_signature();
+        let mut base_state = state.clone();
+        base_state.edges = base_state.raw_edges.clone();
+        base_state.folds.clear();
+        let parents = state
+            .witness_parent
+            .iter()
+            .map(|parent| parent.unwrap_or(node_count))
+            .collect();
+        let forbidden = state
+            .forbidden_folds
+            .iter()
+            .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
+            .collect();
+        let options = state
+            .fold_options
+            .iter()
+            .map(|(source, blockers)| LeanHtProductionBlockingOption {
+                source: *source,
+                blockers: blockers.clone(),
+            })
+            .collect();
+        let mut rejected_assignments: Vec<_> = rejected_assignments.iter().cloned().collect();
+        rejected_assignments.sort_unstable();
+        let rejected = rejected_assignments
+            .into_iter()
+            .map(|assignment| {
+                assignment
+                    .into_iter()
+                    .map(|(source, target)| LeanHtProductionBlockingPair { source, target })
+                    .collect()
+            })
+            .collect();
+        serde_json::to_string(&LeanHtEqProductionBlockingDocument {
+            version: 1,
+            base: LeanHtEqCertificate {
+                version: 2,
+                node_count,
+                concept_count,
+                role_count,
+                variable_count,
+                ontology,
+                state: base_state,
+                evidence: LeanHtEqEvidence::Sat,
+            },
+            parents,
+            forbidden,
+            options,
+            rejected,
+            all_blockable_sources,
+        })
+        .map_err(|error| error.to_string())
+    }
+
+    fn lean_equality_production_blocking_passes(
+        &self,
+        state: &LeanHtEqState,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
+        all_blockable_sources: bool,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "exhausted equality-aware production folds require KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER"
+                .to_string()
+        })?;
+        let document = self.lean_equality_production_blocking_document_json(
+            state,
+            rejected_assignments,
+            all_blockable_sources,
+        )?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Serialize a blocked equality-free branch through the regular-unravelling
     /// trust boundary. Unlike `lean_blocked_open_certificate_json`, this keeps
     /// the raw completion edges, records the blocker redirect explicitly, and
@@ -12335,6 +12463,13 @@ impl Ht {
                         assert!(inserted, "native ABox fold assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &open,
+                        &rejected_assignments,
+                        false,
+                    )? {
+                        return Err("Lean rejected the native ABox equality production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &open.fold_options,
@@ -12485,6 +12620,13 @@ impl Ht {
                             "native ABox cardinality fold assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &open,
+                        &rejected_assignments,
+                        true,
+                    )? {
+                        return Err("Lean rejected the native ABox cardinality production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &open.fold_options,
@@ -12995,6 +13137,13 @@ impl Ht {
                         assert!(inserted, "equality fold assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &state,
+                        &rejected_assignments,
+                        false,
+                    )? {
+                        return Err("Lean rejected the equality production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &state.fold_options,
@@ -13073,6 +13222,13 @@ impl Ht {
                         assert!(inserted, "cardinality fold assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &state,
+                        &rejected_assignments,
+                        true,
+                    )? {
+                        return Err("Lean rejected the cardinality production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &state.fold_options,
@@ -13213,6 +13369,13 @@ impl Ht {
                                 "cardinality taxonomy assignment search must progress");
                         }
 
+                        if !self.lean_equality_production_blocking_passes(
+                            &state,
+                            &rejected_assignments,
+                            true,
+                        )? {
+                            return Err("Lean rejected the cardinality taxonomy production blocker table".to_string());
+                        }
                         LeanHtRefutationState::learn_exhausted_fold_options(
                             &mut forbidden_folds,
                             &state.fold_options,
@@ -13306,6 +13469,13 @@ impl Ht {
                             assert!(inserted, "equality taxonomy assignment search must progress");
                         }
 
+                        if !self.lean_equality_production_blocking_passes(
+                            &state,
+                            &rejected_assignments,
+                            false,
+                        )? {
+                            return Err("Lean rejected the equality taxonomy production blocker table".to_string());
+                        }
                         LeanHtRefutationState::learn_exhausted_fold_options(
                             &mut forbidden_folds,
                             &state.fold_options,
@@ -13378,6 +13548,12 @@ impl Ht {
                             "equality-free taxonomy assignment search must progress");
                     }
 
+                    if !self.lean_production_blocking_passes(
+                        &leaf,
+                        &rejected_assignments,
+                    )? {
+                        return Err("Lean rejected the equality-free taxonomy production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &leaf.fold_options,
@@ -13574,6 +13750,13 @@ impl Ht {
                             "native ABox cardinality taxonomy assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &open,
+                        &rejected_assignments,
+                        true,
+                    )? {
+                        return Err("Lean rejected the native ABox cardinality taxonomy production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &open.fold_options,
@@ -13771,6 +13954,13 @@ impl Ht {
                         assert!(inserted, "native ABox taxonomy assignment search must progress");
                     }
 
+                    if !self.lean_equality_production_blocking_passes(
+                        &open,
+                        &rejected_assignments,
+                        false,
+                    )? {
+                        return Err("Lean rejected the native ABox taxonomy production blocker table".to_string());
+                    }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
                         &open.fold_options,
@@ -14270,6 +14460,8 @@ impl Ht {
                     folds: Vec::new(),
                     fold_options: Vec::new(),
                     raw_edges: edges,
+                    witness_parent: Vec::new(),
+                    forbidden_folds: Vec::new(),
                 },
                 evidence: equality_evidence,
             })
@@ -24759,6 +24951,53 @@ mod tests {
             .iter()
             .any(|edge| edge.role == R0 as usize && edge.source == 2 && edge.target == 2));
 
+        if let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
+        {
+            let mut rejected = HashSet::new();
+            while let Some(assignment) = open.next_fold_assignment(&rejected) {
+                assert!(rejected.insert(assignment));
+            }
+            let document = cyclic
+                .lean_equality_production_blocking_document_json(&open, &rejected, false)
+                .expect("serialize exact quotient blocker control evidence");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-equality-production-blocking-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let accepted = std::process::Command::new(&checker)
+                .arg(&path)
+                .output()
+                .expect("run quotient production blocker checker");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept exact quotient blocker evidence: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+
+            let mut missing_blocker: serde_json::Value =
+                serde_json::from_str(&document).unwrap();
+            missing_blocker["options"][0]["blockers"] = serde_json::json!([]);
+            std::fs::write(&path, serde_json::to_vec(&missing_blocker).unwrap()).unwrap();
+            let rejected_document = std::process::Command::new(&checker)
+                .arg(&path)
+                .status()
+                .expect("run checker on missing quotient blocker");
+            assert!(!rejected_document.success());
+
+            let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
+            unexhausted["rejected"] = serde_json::json!([]);
+            std::fs::write(&path, serde_json::to_vec(&unexhausted).unwrap()).unwrap();
+            let rejected_document = std::process::Command::new(&checker)
+                .arg(&path)
+                .status()
+                .expect("run checker on incomplete quotient assignment exhaustion");
+            let _ = std::fs::remove_file(&path);
+            assert!(!rejected_document.success());
+        }
+
         let anchored = cyclic
             .lean_anchored_equality_open_certificate_json(&open)
             .expect("serialize the equality-backed anchored regular model");
@@ -26079,6 +26318,37 @@ mod tests {
             panic!("the cardinality-aware cyclic branch must expose a blocker fold");
         };
         assert_eq!(cardinality_open.folds, vec![(2, 1)]);
+        if let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
+        {
+            let mut exhausted = HashSet::new();
+            while let Some(assignment) = cardinality_open.next_fold_assignment(&exhausted) {
+                assert!(exhausted.insert(assignment));
+            }
+            let document = cardinality
+                .lean_equality_production_blocking_document_json(
+                    &cardinality_open,
+                    &exhausted,
+                    true,
+                )
+                .expect("serialize exact cardinality blocker control evidence");
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-cardinality-production-blocking-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run cardinality production blocker checker");
+            let _ = std::fs::remove_file(path);
+            assert!(
+                accepted.status.success(),
+                "Lean must accept exact cardinality blocker evidence: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
+        }
         let rejected: HashSet<_> = cardinality_open.folds.iter().copied().collect();
         let mut cardinality_retry = LeanHtRefutationState::root(&[]);
         match cardinality.lean_distinct_cardinality_refutation_avoiding_folds(

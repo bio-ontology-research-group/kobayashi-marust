@@ -33,6 +33,10 @@ name = "ht-production-blocking-check"
 root = "HTProductionBlockingCheck"
 
 [[lean_exe]]
+name = "ht-equality-production-blocking-check"
+root = "HTEqualityProductionBlockingCheck"
+
+[[lean_exe]]
 name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 

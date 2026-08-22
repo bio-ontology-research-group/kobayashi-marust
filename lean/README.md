@@ -684,6 +684,17 @@ assignment. Acceptance proves all options nonempty, complete assignment
 exhaustion, exact option and expansion-pair equality, and expansion control for
 each blocked source.
 
+`HypertableauEqualityProductionBlockingWire.lean` provides the corresponding
+production boundary for equality-aware and cardinality-aware search. It checks
+the equality closure and predecessor forest, computes quotient-closed local
+concept, obligation, edge, and role-signature data, and reconstructs the exact
+blocker table. Equality mode selects the unwitnessed sources; cardinality mode
+considers every blockable source and retains exactly the nonempty option rows.
+The checker also requires every Cartesian assignment to occur in the rejected
+set. Its capstone derives `SourceExpansionControlled` for every emitted option.
+The native `ht-equality-production-blocking-check` guards equality,
+cardinality, native-ABox, and taxonomy learning transitions in Rust.
+
 The corresponding Lean runtime derives each option list from a finite total
 fold relation, proving nonemptiness rather than accepting it from the producer.
 Candidate acceptance is restricted to conclusive checked outcomes. Expansion
@@ -705,9 +716,12 @@ The executable checker validates the selected branch, and `check_sound` proves
 either a nonempty regular model or absence of every nonempty model. The native
 `ht-regular-decision-cert-check` accepts checked-in SAT and UNSAT documents.
 Rust emits both envelope branches from one exhaustive decision search, and
-cross-language tests pass each through Lean. The remaining publication bridge
-is composition with the already proved source normalization and preprocessing
-wire, not selection between SAT and UNSAT.
+cross-language tests pass each through Lean.
+`HypertableauNormalizedWire.lean` transports the regular branch through the
+checked source-normalization semantics, and
+`HypertableauRegularDecisionTotal.lean` composes that transport with the source
+decision capstone. The regular source-publication bridge is therefore already
+part of the checked route.
 
 ### ELC residual canonical-model contract — `ContextCalculus/ELResidualCertificate.lean`
 

@@ -6252,6 +6252,8 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
     "KM_HT_LEAN_FRONTIER_CHECKER",
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
+    "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+    "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
 ];
 
 fn ht_lean_certification_requested() -> bool {
@@ -6448,6 +6450,18 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 return Err(format!(
                     "HT Lean certification requires {frontier_checker} for every inconclusive search round"
                 ));
+            }
+            if std::env::var_os("KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER for exhausted equality-free blocker assignments"
+                        .to_string(),
+                );
+            }
+            if std::env::var_os("KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER").is_none() {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER for exhausted equality-aware blocker assignments"
+                        .to_string(),
+                );
             }
             check_certified_ht_input_coverage(&inp, native_abox_active)?;
             if lean_projection_checker.is_none() {
@@ -7076,6 +7090,8 @@ mod tests {
             "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
             "KM_HT_LEAN_FRONTIER_CHECKER",
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
+            "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+            "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
         ] {
             assert!(
                 HT_LEAN_CERTIFICATION_ENV.contains(&required),

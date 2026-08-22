@@ -40,6 +40,17 @@
   in the rejected set. Lean derives `SourceExpansionControlled` for every
   emitted source, so forced witness expansion is justified by complete
   assignment rejection rather than by Rust loop control alone.
+- Add the quotient-aware production-blocking wire used by equality,
+  cardinality, native-ABox, and taxonomy search. Lean validates equality
+  closure, reconstructs quotient-closed labels, obligations, edges, and full
+  pairwise role signatures, recomputes the exact candidate table in each
+  blocking mode, and checks complete Cartesian assignment exhaustion before
+  KM may learn any blocker-pair union. All ten production learning loops are
+  now checker-guarded. Equality and cardinality cross-language tests accept
+  genuine runtime evidence and reject incomplete options or exhaustion.
+- Preserve inactive bounded-domain nodes as roots when serializing equality
+  predecessor forests. This removes a bound-versus-active-prefix panic exposed
+  by the production checker and makes the finite-domain convention explicit.
 - Reconstruct equality-free production blocker options from the concrete Lean
   state, parent relation, ancestor lists, and outer forbidden-pair set. Every
   listed source is proved unwitnessed, every option is a matching full pairwise
