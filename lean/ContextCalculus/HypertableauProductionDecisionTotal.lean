@@ -19,6 +19,220 @@ inductive CertifiedHTGlobalVerdict (semantics : Prop) : Type where
   | sat (proof : semantics)
   | unsat (proof : ¬semantics)
 
+/-! ## Concrete execution publication
+
+These predicates specialize the generic nested execution trace to each
+production outcome family. A frontier step must carry the exact checked
+doubling schedule; the terminal predicate excludes frontiers. -/
+
+def RegularProductionFrontier
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (outcome : CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount ontology) : Prop :=
+  ∃ document hconcepts hroles hcheck,
+    outcome = .frontier document hconcepts hroles hcheck ∧
+      document.checkScheduled budget = true
+
+def RegularProductionConclusive
+    {conceptCount roleCount variableCount : Nat}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount ontology) : Prop :=
+  match outcome with | .frontier .. => False | _ => True
+
+/-- A concrete, fully traced regular execution publishes a source-level
+decision without invoking the abstract producer-totality interface. -/
+theorem checked_regular_doubling_execution_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedRegularRoundOutcome conceptCount roleCount variableCount target))
+    {outcome : CheckedRegularRoundOutcome
+      conceptCount roleCount variableCount target}
+    (trace : CartesianFoldDoublingExecution _ runtime
+      (RegularProductionFrontier conceptCount roleCount variableCount target)
+      RegularProductionConclusive 0 outcome) :
+    outcome.SourceSemantics source := by
+  have hconclusive := trace.conclusive
+  cases outcome with
+  | regularSat certificate hontology hnonempty hcheck =>
+      exact CheckedRegularRoundOutcome.source_semantics_of_equivalent _ equivalent
+        (CheckedRegularRoundOutcome.regularSat_semantics certificate hontology
+          hnonempty hcheck)
+  | finiteSat certificate hontology hnonempty hcheck =>
+      exact CheckedRegularRoundOutcome.source_semantics_of_equivalent _ equivalent
+        (CheckedRegularRoundOutcome.finiteSat_semantics certificate hontology
+          hnonempty hcheck)
+  | finiteUnsat certificate tree hontology hnonempty hempty hcheck =>
+      exact CheckedRegularRoundOutcome.source_semantics_of_equivalent _ equivalent
+        (CheckedRegularRoundOutcome.finiteUnsat_semantics certificate tree
+          hontology hnonempty hempty hcheck)
+  | frontier => simp [RegularProductionConclusive] at hconclusive
+
+def EqualityProductionFrontier
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (budget : Nat)
+    (outcome : CheckedEqualityDecisionOutcome
+      conceptCount roleCount variableCount ontology) : Prop :=
+  ∃ document hconcepts hroles hcheck,
+    outcome = .frontier document hconcepts hroles hcheck ∧
+      document.checkScheduled budget = true
+
+def EqualityProductionConclusive
+    {conceptCount roleCount variableCount : Nat}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedEqualityDecisionOutcome
+      conceptCount roleCount variableCount ontology) : Prop :=
+  match outcome with | .frontier .. => False | _ => True
+
+theorem checked_equality_doubling_execution_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedEqualityDecisionOutcome conceptCount roleCount variableCount target))
+    {outcome : CheckedEqualityDecisionOutcome
+      conceptCount roleCount variableCount target}
+    (trace : CartesianFoldDoublingExecution _ runtime
+      (EqualityProductionFrontier conceptCount roleCount variableCount target)
+      EqualityProductionConclusive 0 outcome) :
+    outcome.SourceSemantics source := by
+  have hconclusive := trace.conclusive
+  cases outcome with
+  | sat certificate hontology hnonempty hcheck =>
+      exact CheckedEqualityDecisionOutcome.source_semantics_of_equivalent _ equivalent
+        (CheckedEqualityDecisionOutcome.sat_semantics certificate hontology
+          hnonempty hcheck)
+  | closed certificate tree hontology hnonempty hempty hcheck =>
+      exact CheckedEqualityDecisionOutcome.source_semantics_of_equivalent _ equivalent
+        (CheckedEqualityDecisionOutcome.closed_semantics certificate tree
+          hontology hnonempty hempty hcheck)
+  | frontier => simp [EqualityProductionConclusive] at hconclusive
+
+def CardinalityProductionFrontier
+    (conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth budget : Nat)
+    (outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount ontology definitions) : Prop :=
+  ∃ document hconcepts hroles hdefinitions hcheck,
+    outcome = .frontier document hconcepts hroles hdefinitions hcheck ∧
+      document.checkScheduled budget maxWidth = true
+
+def CardinalityProductionConclusive
+    {conceptCount roleCount variableCount : Nat}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount ontology definitions) : Prop :=
+  match outcome with | .frontier .. => False | _ => True
+
+theorem checked_cardinality_doubling_execution_decides_source
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+        target definitions))
+    {outcome : CheckedCardinalityDecisionOutcome conceptCount roleCount
+      variableCount target definitions}
+    (trace : CartesianFoldDoublingExecution _ runtime
+      (CardinalityProductionFrontier conceptCount roleCount variableCount target
+        definitions maxWidth)
+      CardinalityProductionConclusive 0 outcome) :
+    outcome.SourceSemantics source := by
+  have hconclusive := trace.conclusive
+  cases outcome with
+  | sat certificate hontology hnonempty hcheck =>
+      exact CheckedCardinalityDecisionOutcome.source_semantics_of_equivalent _
+        equivalent (CheckedCardinalityDecisionOutcome.sat_semantics certificate
+          hontology hnonempty hcheck)
+  | closed certificate tree hontology hnonempty hempty hapart hcheck =>
+      exact CheckedCardinalityDecisionOutcome.source_semantics_of_equivalent _
+        equivalent (CheckedCardinalityDecisionOutcome.closed_semantics certificate
+          tree hontology hnonempty hempty hapart hcheck)
+  | frontier => simp [CardinalityProductionConclusive] at hconclusive
+
+def NativeABoxProductionFrontier
+    (Individual : Type)
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (maxWidth budget : Nat)
+    (outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox ontology definitions) : Prop :=
+  ∃ document hconcepts hroles hdefinitions hcheck,
+    outcome = .frontier document hconcepts hroles hdefinitions hcheck ∧
+      document.checkScheduled budget maxWidth = true
+
+def NativeABoxProductionConclusive
+    {Individual : Type}
+    {conceptCount roleCount variableCount : Nat}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox ontology definitions) : Prop :=
+  match outcome with | .frontier .. => False | _ => True
+
+theorem checked_native_abox_doubling_execution_decides_source
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    {outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions}
+    (trace : CartesianFoldDoublingExecution _ runtime
+      (NativeABoxProductionFrontier Individual conceptCount roleCount
+        variableCount abox target definitions maxWidth)
+      NativeABoxProductionConclusive 0 outcome) :
+    outcome.SourceSemantics source := by
+  have hconclusive := trace.conclusive
+  cases outcome with
+  | sat certificate root hontology hnonempty hseeded hcheck hapart
+      hsingletons hnegative =>
+      exact CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent _
+        equivalent (CheckedNativeABoxCardinalityOutcome.sat_semantics
+          certificate root hontology hnonempty hseeded hcheck hapart
+          hsingletons hnegative)
+  | closed certificate tree hontology hinitial hcheck =>
+      exact CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent _
+        equivalent (CheckedNativeABoxCardinalityOutcome.closed_semantics
+          certificate tree hontology hinitial hcheck)
+  | frontier => simp [NativeABoxProductionConclusive] at hconclusive
+
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
 the selected family, including native ABox and cardinality data where present.
@@ -265,5 +479,9 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 
 #print axioms CertifiedHTProductionGlobalRoute.decides
 #print axioms CertifiedHTAssignmentProductionGlobalRoute.decides
+#print axioms checked_regular_doubling_execution_decides_source
+#print axioms checked_equality_doubling_execution_decides_source
+#print axioms checked_cardinality_doubling_execution_decides_source
+#print axioms checked_native_abox_doubling_execution_decides_source
 
 end ContextCalculus.Hypertableau

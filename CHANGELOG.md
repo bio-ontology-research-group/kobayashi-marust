@@ -14,6 +14,12 @@
   that an expansion in this trace cannot originate from an accepted candidate:
   it necessarily follows complete Cartesian exhaustion and learns exactly the
   option-pair union exposed by that terminal state.
+- Extend the concrete trace through the checked frontier-doubling schedule.
+  Its node universe is indexed by `Fin (8 * 2^budget)`, so every frontier step
+  advances exactly one schedule index and a complete trace can end only in a
+  conclusive checked outcome. Source-level publication theorems now consume
+  such traces directly for regular, equality, cardinality, and native-ABox
+  cardinality runs, independently of the abstract total-producer interface.
 - Construct the canonical finite SAT certificate directly from any decidable
   finite completion state and prove that decoding the certificate recovers
   exactly that state. If the concrete equality-free production terminal has no

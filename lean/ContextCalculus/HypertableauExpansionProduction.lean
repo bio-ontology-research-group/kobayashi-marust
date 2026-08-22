@@ -230,6 +230,65 @@ theorem CartesianFoldExpansionExecution.head_expansion_exact
     inner.expand_exact runtime forbidden pairs fresh ∅ rfl
   exact ⟨rejected, exhausted, hexact⟩
 
+/-! ### Concrete frontier-doubling traces
+
+The production decision loop has one further layer above fixed-budget fold
+learning.  A checked frontier advances from `budget` to `budget + 1`; any
+conclusive checked outcome ends the run.  Keeping the node type indexed by the
+budget makes the `8 * 2^budget` schedule part of the trace type rather than an
+untrusted integer supplied by the producer.
+-/
+
+inductive CartesianFoldDoublingExecution
+    (Result : Type)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget)) Result)
+    (Frontier : Nat → Result → Prop)
+    (Conclusive : Result → Prop) : Nat → Result → Type where
+  | done
+      (budget : Nat)
+      (outcome : Result)
+      (fixed : CartesianFoldExpansionExecution (runtime budget) ∅ outcome)
+      (conclusive : Conclusive outcome) :
+      CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+        budget outcome
+  | deepen
+      (budget : Nat)
+      (frontier : Result)
+      (final : Result)
+      (fixed : CartesianFoldExpansionExecution (runtime budget) ∅ frontier)
+      (checkedFrontier : Frontier budget frontier)
+      (next : CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+        (budget + 1) final) :
+      CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+        budget final
+
+def CartesianFoldDoublingExecution.frontierSteps
+    {runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget)) Result}
+    {Frontier : Nat → Result → Prop}
+    {Conclusive : Result → Prop}
+    {budget : Nat} {result : Result} :
+    CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+      budget result → Nat
+  | .done .. => 0
+  | .deepen _ _ _ _ _ next => next.frontierSteps + 1
+
+/-- A complete concrete doubling trace ends in the conclusive predicate
+carried by its terminal checked outcome. -/
+theorem CartesianFoldDoublingExecution.conclusive
+    {runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget)) Result}
+    {Frontier : Nat → Result → Prop}
+    {Conclusive : Result → Prop}
+    {budget : Nat} {result : Result}
+    (trace : CartesianFoldDoublingExecution Result runtime Frontier Conclusive
+      budget result) :
+    Conclusive result := by
+  induction trace with
+  | done _ _ _ hconclusive => exact hconclusive
+  | deepen _ _ _ _ _ _ ih => exact ih
+
 /-- Select the terminating outcome of the finite inner Cartesian loop.  The
 selected retry remains an implementation detail; its existence is supplied by
 the executable first-fresh assignment theorem. -/
@@ -319,5 +378,6 @@ theorem CartesianFoldExpansionRuntime.exhausted_pairs_exact
 #print axioms CartesianFoldExpansionExecution.inner_settles
 #print axioms CartesianFoldAssignmentExecution.expand_exact
 #print axioms CartesianFoldExpansionExecution.head_expansion_exact
+#print axioms CartesianFoldDoublingExecution.conclusive
 
 end ContextCalculus.Hypertableau
