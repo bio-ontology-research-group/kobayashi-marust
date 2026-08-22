@@ -25303,6 +25303,30 @@ mod tests {
                 "Lean must accept the matched obstruction and edge provenance: {}",
                 String::from_utf8_lossy(&refinement_result.stderr),
             );
+            let mut missing_role_clause = non_simple_certificate.clone();
+            missing_role_clause.role_clauses.clear();
+            let incomplete_rbox_refinement = LeanHtRegularCoverRefinement {
+                version: 1,
+                certificate: &missing_role_clause,
+                clause: obstruction.0,
+                assignment: &obstruction.1,
+                evidence: &endpoint_evidence,
+            };
+            std::fs::write(
+                &refinement_path,
+                serde_json::to_vec(&incomplete_rbox_refinement).unwrap(),
+            )
+            .unwrap();
+            let mut refinement_checker = std::path::PathBuf::from(&checker);
+            refinement_checker.set_file_name("ht-cover-refinement-check");
+            let incomplete_rbox_result = std::process::Command::new(refinement_checker)
+                .arg(&refinement_path)
+                .output()
+                .expect("run the combined checker without RBox representation");
+            assert!(
+                !incomplete_rbox_result.status.success(),
+                "Lean must reject an abstract role relation without its normalized clause",
+            );
             let forged_endpoint_evidence = LeanHtEndpointRoleEvidence::Direct {
                 role: 1,
                 source: 0,

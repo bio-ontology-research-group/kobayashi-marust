@@ -48,6 +48,145 @@ def NormalizedRoleClauses.Represent
   (∀ role, rules.reflexive role →
     ∃ source, .reflexive role source ∈ clauses)
 
+def normalizedRepresentsSubB (premise conclusion : Fin roleCount) :
+    NormalizedRoleClause (Fin variableCount) (Fin roleCount) → Bool
+  | .subRole actualPremise actualConclusion source target =>
+      decide (actualPremise = premise) && decide (actualConclusion = conclusion) &&
+      decide (source ≠ target)
+  | _ => false
+
+def normalizedRepresentsInverseB (premise conclusion : Fin roleCount) :
+    NormalizedRoleClause (Fin variableCount) (Fin roleCount) → Bool
+  | .inverseRole actualPremise actualConclusion source target =>
+      decide (actualPremise = premise) && decide (actualConclusion = conclusion) &&
+      decide (source ≠ target)
+  | _ => false
+
+def normalizedRepresentsChainB
+    (first second conclusion : Fin roleCount) :
+    NormalizedRoleClause (Fin variableCount) (Fin roleCount) → Bool
+  | .chain actualFirst actualSecond actualConclusion source middle target =>
+      decide (actualFirst = first) && decide (actualSecond = second) &&
+      decide (actualConclusion = conclusion) && decide (source ≠ middle) &&
+      decide (source ≠ target) && decide (middle ≠ target)
+  | _ => false
+
+def normalizedRepresentsReflexiveB (role : Fin roleCount) :
+    NormalizedRoleClause (Fin variableCount) (Fin roleCount) → Bool
+  | .reflexive actualRole _ => decide (actualRole = role)
+  | _ => false
+
+def FiniteRegularCertificate.roleClausesRepresentB
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  certificate.subRoles.all (fun rule => certificate.roleClauses.any
+      (normalizedRepresentsSubB rule.1 rule.2)) &&
+  certificate.inverseRoles.all (fun rule => certificate.roleClauses.any
+      (normalizedRepresentsInverseB rule.1 rule.2)) &&
+  certificate.chains.all (fun rule => certificate.roleClauses.any
+      (normalizedRepresentsChainB rule.1 rule.2.1 rule.2.2)) &&
+  certificate.reflexiveRoles.all (fun role => certificate.roleClauses.any
+      (normalizedRepresentsReflexiveB role))
+
+theorem normalizedRepresentsSubB_eq_true_iff
+    (premise conclusion : Fin roleCount)
+    (rule : NormalizedRoleClause (Fin variableCount) (Fin roleCount)) :
+    normalizedRepresentsSubB premise conclusion rule = true ↔
+      ∃ source target, source ≠ target ∧
+        rule = .subRole premise conclusion source target := by
+  cases rule <;> simp [normalizedRepresentsSubB, and_assoc, and_comm]
+
+theorem normalizedRepresentsInverseB_eq_true_iff
+    (premise conclusion : Fin roleCount)
+    (rule : NormalizedRoleClause (Fin variableCount) (Fin roleCount)) :
+    normalizedRepresentsInverseB premise conclusion rule = true ↔
+      ∃ source target, source ≠ target ∧
+        rule = .inverseRole premise conclusion source target := by
+  cases rule <;> simp [normalizedRepresentsInverseB, and_assoc, and_comm]
+
+theorem normalizedRepresentsChainB_eq_true_iff
+    (first second conclusion : Fin roleCount)
+    (rule : NormalizedRoleClause (Fin variableCount) (Fin roleCount)) :
+    normalizedRepresentsChainB first second conclusion rule = true ↔
+      ∃ source middle target,
+        source ≠ middle ∧ source ≠ target ∧ middle ≠ target ∧
+        rule = .chain first second conclusion source middle target := by
+  cases rule <;> simp [normalizedRepresentsChainB, and_assoc, and_left_comm, and_comm]
+
+theorem normalizedRepresentsReflexiveB_eq_true_iff
+    (role : Fin roleCount)
+    (rule : NormalizedRoleClause (Fin variableCount) (Fin roleCount)) :
+    normalizedRepresentsReflexiveB role rule = true ↔
+      ∃ source, rule = .reflexive role source := by
+  cases rule <;> simp [normalizedRepresentsReflexiveB]
+
+theorem FiniteRegularCertificate.roleClausesRepresentB_eq_true_iff
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.roleClausesRepresentB = true ↔
+      NormalizedRoleClauses.Represent certificate.rules
+        certificate.roleClauses := by
+  simp only [FiniteRegularCertificate.roleClausesRepresentB, Bool.and_eq_true,
+    List.all_eq_true]
+  constructor
+  · rintro ⟨⟨⟨hsub, hinverse⟩, hchain⟩, hreflexive⟩
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · intro premise conclusion hrule
+      have hany := hsub (premise, conclusion) hrule
+      rw [List.any_eq_true] at hany
+      rcases hany with ⟨rule, hruleMem, hmatches⟩
+      rcases (normalizedRepresentsSubB_eq_true_iff
+        premise conclusion rule).mp hmatches with ⟨source, target, hne, rfl⟩
+      exact ⟨source, target, hne, hruleMem⟩
+    · intro premise conclusion hrule
+      have hany := hinverse (premise, conclusion) hrule
+      rw [List.any_eq_true] at hany
+      rcases hany with ⟨rule, hruleMem, hmatches⟩
+      rcases (normalizedRepresentsInverseB_eq_true_iff
+        premise conclusion rule).mp hmatches with ⟨source, target, hne, rfl⟩
+      exact ⟨source, target, hne, hruleMem⟩
+    · intro first second conclusion hrule
+      have hany := hchain (first, second, conclusion) hrule
+      rw [List.any_eq_true] at hany
+      rcases hany with ⟨rule, hruleMem, hmatches⟩
+      rcases (normalizedRepresentsChainB_eq_true_iff
+        first second conclusion rule).mp hmatches with
+        ⟨source, middle, target, hsm, hst, hmt, rfl⟩
+      exact ⟨source, middle, target, hsm, hst, hmt, hruleMem⟩
+    · intro role hrule
+      have hany := hreflexive role hrule
+      rw [List.any_eq_true] at hany
+      rcases hany with ⟨rule, hruleMem, hmatches⟩
+      rcases (normalizedRepresentsReflexiveB_eq_true_iff role rule).mp hmatches with
+        ⟨source, rfl⟩
+      exact ⟨source, hruleMem⟩
+  · rintro ⟨hsub, hinverse, hchain, hreflexive⟩
+    refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+    · intro rule hrule
+      rcases hsub rule.1 rule.2 hrule with ⟨source, target, hne, hclause⟩
+      rw [List.any_eq_true]
+      exact ⟨.subRole rule.1 rule.2 source target, hclause,
+        (normalizedRepresentsSubB_eq_true_iff _ _ _).mpr
+          ⟨source, target, hne, rfl⟩⟩
+    · intro rule hrule
+      rcases hinverse rule.1 rule.2 hrule with ⟨source, target, hne, hclause⟩
+      rw [List.any_eq_true]
+      exact ⟨.inverseRole rule.1 rule.2 source target, hclause,
+        (normalizedRepresentsInverseB_eq_true_iff _ _ _).mpr
+          ⟨source, target, hne, rfl⟩⟩
+    · intro rule hrule
+      rcases hchain rule.1 rule.2.1 rule.2.2 hrule with
+        ⟨source, middle, target, hsm, hst, hmt, hclause⟩
+      rw [List.any_eq_true]
+      exact ⟨.chain rule.1 rule.2.1 rule.2.2 source middle target, hclause,
+        (normalizedRepresentsChainB_eq_true_iff _ _ _ _).mpr
+          ⟨source, middle, target, hsm, hst, hmt, rfl⟩⟩
+    · intro role hrole
+      rcases hreflexive role hrole with ⟨source, hclause⟩
+      rw [List.any_eq_true]
+      exact ⟨.reflexive role source, hclause,
+        (normalizedRepresentsReflexiveB_eq_true_iff _ _).mpr ⟨source, rfl⟩⟩
+
 /-- Saturation of independently quantified normalized RBox clauses establishes
 the raw role-closure invariant required by checked cover rejection. -/
 theorem State.roleClosed_of_saturated_normalized
@@ -312,6 +451,7 @@ theorem FiniteEndpointRoleEvidence.exists_nonidentity_redirect_of_check
 
 #print axioms FiniteEndpointRoleEvidence.check_eq_true_iff
 #print axioms FiniteEndpointRoleEvidence.check_sound
+#print axioms FiniteRegularCertificate.roleClausesRepresentB_eq_true_iff
 #print axioms State.roleClosed_of_saturated_normalized
 #print axioms EndpointRole.raw_of_identity_roleClosed
 #print axioms FiniteEndpointRoleEvidence.exists_nonidentity_redirect_of_check

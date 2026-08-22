@@ -60,6 +60,7 @@ def DecodedRegularCoverRefinement.check
     (refinement : DecodedRegularCoverRefinement) : Bool :=
   refinement.decoded.certificate.coverObstructionB refinement.clause
       refinement.assignment &&
+    refinement.decoded.certificate.roleClausesRepresentB &&
     refinement.evidence.check refinement.decoded.certificate &&
     decide ((refinement.evidence.role, refinement.evidence.source,
       refinement.evidence.target) ∈ refinement.decoded.certificate.cover) &&
@@ -72,6 +73,8 @@ def DecodedRegularCoverRefinement.Valid
   refinement.decoded.certificate.state.CoverObstruction
       refinement.decoded.certificate.coverRelation refinement.clause
       refinement.assignment ∧
+  NormalizedRoleClauses.Represent refinement.decoded.certificate.rules
+      refinement.decoded.certificate.roleClauses ∧
   EndpointRole refinement.decoded.certificate.state
       refinement.decoded.certificate.redirect
       refinement.decoded.certificate.rules refinement.evidence.role
@@ -101,10 +104,13 @@ theorem DecodedRegularCoverRefinement.check_sound
     (refinement : DecodedRegularCoverRefinement)
     (hcheck : refinement.check = true) : refinement.Valid := by
   simp only [DecodedRegularCoverRefinement.check, Bool.and_eq_true] at hcheck
-  rcases hcheck with ⟨⟨⟨⟨hobstruction, hevidence⟩, hcover⟩, hraw⟩, hbody⟩
+  rcases hcheck with
+    ⟨⟨⟨⟨⟨hobstruction, hrepresents⟩, hevidence⟩, hcover⟩, hraw⟩, hbody⟩
   refine ⟨
     (refinement.decoded.certificate.coverObstructionB_eq_true_iff
       refinement.clause refinement.assignment).mp hobstruction,
+    refinement.decoded.certificate.roleClausesRepresentB_eq_true_iff.mp
+      hrepresents,
     refinement.evidence.check_sound refinement.decoded.certificate hevidence,
     ?_, ?_, ?_⟩
   · simpa [FiniteRegularCertificate.coverRelation] using hcover
@@ -130,11 +136,38 @@ theorem DecodedRegularCoverRefinement.checked_rejection_has_fold
   have hvalid := refinement.check_sound hcheck
   have hcomponents := hcheck
   simp only [DecodedRegularCoverRefinement.check, Bool.and_eq_true] at hcomponents
+  rcases hcomponents with
+    ⟨⟨⟨⟨⟨_, _⟩, hevidence⟩, _⟩, _⟩, _⟩
   exact refinement.evidence.exists_fold_of_cover_only_check
-    refinement.decoded.certificate blocked fold hcomponents.1.1.1.2
-    hclosed hvalid.2.2.2.1 hredirect htotal
+    refinement.decoded.certificate blocked fold hevidence
+    hclosed hvalid.2.2.2.2.1 hredirect htotal
+
+/-- The fully checked rejection boundary needs no externally supplied RBox
+closure invariant. Saturation of the represented normalized clauses derives
+that invariant before exposing the concrete fold. -/
+theorem DecodedRegularCoverRefinement.checked_rejection_has_fold_of_saturated
+    (refinement : DecodedRegularCoverRefinement)
+    (blocked : Fin refinement.decoded.nodeCount → Bool)
+    (fold : Fin refinement.decoded.nodeCount →
+      Fin refinement.decoded.nodeCount → Prop)
+    (hcheck : refinement.check = true)
+    (hsaturated : refinement.decoded.certificate.state.SaturatedFor
+      (refinement.decoded.certificate.roleClauses.map
+        (NormalizedRoleClause.toClause
+          (Concept := Fin refinement.decoded.conceptCount))))
+    (hredirect : State.BlockedRedirectRefines blocked fold
+      refinement.decoded.certificate.redirect)
+    (htotal : State.BlockedFoldTotal blocked fold) :
+    ∃ source blocker, fold source blocker := by
+  have hvalid := refinement.check_sound hcheck
+  have hclosed := State.roleClosed_of_saturated_normalized
+      refinement.decoded.certificate.state refinement.decoded.certificate.rules
+      refinement.decoded.certificate.roleClauses hvalid.2.1 hsaturated
+  exact refinement.checked_rejection_has_fold blocked fold hcheck hclosed
+    hredirect htotal
 
 #print axioms DecodedRegularCoverRefinement.check_sound
 #print axioms DecodedRegularCoverRefinement.checked_rejection_has_fold
+#print axioms DecodedRegularCoverRefinement.checked_rejection_has_fold_of_saturated
 
 end ContextCalculus.Hypertableau

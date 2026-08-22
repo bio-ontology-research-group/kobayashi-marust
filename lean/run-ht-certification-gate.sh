@@ -24,6 +24,10 @@ else
 fi
 
 checkers=(
+    ht-regular-cert-check
+    ht-cover-obstruction-check
+    ht-endpoint-role-evidence-check
+    ht-cover-refinement-check
     ht-projection-cert-check
     ht-frontier-check
     ht-cardinality-frontier-check
@@ -37,6 +41,10 @@ checkers=(
 (
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
+    # The default Lake facets build the libraries, not every native checker.
+    # Build the exact executables consumed below so an old binary can never
+    # make a cross-language certification test pass or fail spuriously.
+    LEAN_NUM_THREADS=4 lake build "${checkers[@]}"
 )
 
 for checker in "${checkers[@]}"; do
@@ -49,6 +57,7 @@ done
 (
     cd "$engine_root"
     export CARGO_TARGET_DIR="$target_root"
+    export KM_HT_TEST_REGULAR_LEAN_CHECKER="$bin_root/ht-regular-cert-check"
     export KM_HT_TEST_LEAN_PROJECTION_CHECKER="$bin_root/ht-projection-cert-check"
     export KM_HT_LEAN_FRONTIER_CHECKER="$bin_root/ht-frontier-check"
     export KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER="$bin_root/ht-cardinality-frontier-check"
@@ -62,5 +71,6 @@ done
 
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture
+    cargo test --release regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
     cargo test --release --test ht_taxonomy_certificate -- --nocapture
 )
