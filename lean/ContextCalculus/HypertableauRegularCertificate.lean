@@ -271,6 +271,17 @@ theorem FiniteRegularCertificate.syntacticallySimpleB_sound
     exact hchain (first, second, role) hrule rfl
   · exact hrefl
 
+/-- Executable terminal test for the cover-aware residual saturation phase.
+This is factored out of the complete certificate checker so the Rust search can
+use the same finite decision boundary before attempting publication. -/
+def FiniteRegularCertificate.coverSaturatedB
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  certificate.residual.all (fun clause =>
+    (allAssignments nodeCount variableCount).all fun assignment =>
+      !(clause.body.all (certificate.coverHoldsAtomB assignment)) ||
+        clause.head.any (certificate.coverHoldsAtomB assignment))
+
 /-- Fully executable decision procedure. Every quantifier is represented by a
 finite list traversal, including variable assignments. -/
 def FiniteRegularCertificate.check
@@ -287,10 +298,7 @@ def FiniteRegularCertificate.check
         certificate.edges) &&
       decide ((witness, obligation.2.1) ∈ certificate.labels)) &&
   certificate.coverClosedB &&
-  certificate.residual.all (fun clause =>
-    (allAssignments nodeCount variableCount).all fun assignment =>
-      !(clause.body.all (certificate.coverHoldsAtomB assignment)) ||
-        clause.head.any (certificate.coverHoldsAtomB assignment))
+  certificate.coverSaturatedB
 
 theorem FiniteRegularCertificate.authorizedB_eq_true
     (certificate : FiniteRegularCertificate
@@ -315,6 +323,52 @@ theorem FiniteRegularCertificate.coverHoldsAtomB_eq_true
   cases atom <;> simp [FiniteRegularCertificate.coverHoldsAtomB,
     FiniteRegularCertificate.state, FiniteRegularCertificate.coverRelation,
     State.CoverHoldsAtom]
+
+theorem FiniteRegularCertificate.coverSaturatedB_eq_true_iff
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    certificate.coverSaturatedB = true ↔
+      ∀ clause ∈ certificate.residual,
+        certificate.state.CoverDischarges certificate.coverRelation clause := by
+  constructor
+  · intro hcheck clause hclause assignment hbody
+    simp only [FiniteRegularCertificate.coverSaturatedB,
+      List.all_eq_true] at hcheck
+    have h := hcheck clause hclause assignment
+      (mem_allAssignments nodeCount variableCount assignment)
+    have hbodyB :
+        clause.body.all (certificate.coverHoldsAtomB assignment) = true := by
+      simp only [List.all_eq_true]
+      intro atom hatom
+      exact (certificate.coverHoldsAtomB_eq_true assignment atom).mpr
+        (hbody atom hatom)
+    have hheadB :
+        clause.head.any (certificate.coverHoldsAtomB assignment) = true := by
+      simpa [hbodyB] using h
+    rw [List.any_eq_true] at hheadB
+    rcases hheadB with ⟨atom, hatom, hholds⟩
+    exact ⟨atom, hatom,
+      (certificate.coverHoldsAtomB_eq_true assignment atom).mp hholds⟩
+  · intro hdischarges
+    simp only [FiniteRegularCertificate.coverSaturatedB, List.all_eq_true]
+    intro clause hclause assignment hassignment
+    by_cases hbodyB :
+        clause.body.all (certificate.coverHoldsAtomB assignment) = true
+    · have hbody : ∀ atom ∈ clause.body,
+          certificate.state.CoverHoldsAtom certificate.coverRelation
+            assignment atom := by
+        intro atom hatom
+        exact (certificate.coverHoldsAtomB_eq_true assignment atom).mp
+          ((List.all_eq_true.mp hbodyB) atom hatom)
+      rcases hdischarges clause hclause assignment hbody with
+        ⟨atom, hatom, hholds⟩
+      have hheadB :
+          clause.head.any (certificate.coverHoldsAtomB assignment) = true := by
+        rw [List.any_eq_true]
+        exact ⟨atom, hatom,
+          (certificate.coverHoldsAtomB_eq_true assignment atom).mpr hholds⟩
+      simp [hbodyB, hheadB]
+    · simp [hbodyB]
 
 theorem FiniteRegularCertificate.coverClosedB_sound
     (certificate : FiniteRegularCertificate
@@ -444,22 +498,7 @@ theorem FiniteRegularCertificate.check_sound
     rcases h with ⟨witness, _, hedge, hlabel⟩
     exact ⟨witness, hedge, hlabel⟩
   · exact certificate.coverClosedB_sound hcover
-  · intro clause hclause assignment hbody
-    have h := hdischarges clause hclause assignment
-      (mem_allAssignments nodeCount variableCount assignment)
-    have hbodyB :
-        clause.body.all (certificate.coverHoldsAtomB assignment) = true := by
-      simp only [List.all_eq_true]
-      intro atom hatom
-      exact (certificate.coverHoldsAtomB_eq_true assignment atom).mpr
-        (hbody atom hatom)
-    have hheadB :
-        clause.head.any (certificate.coverHoldsAtomB assignment) = true := by
-      simpa [hbodyB] using h
-    rw [List.any_eq_true] at hheadB
-    rcases hheadB with ⟨atom, hatom, hholds⟩
-    exact ⟨atom, hatom,
-      (certificate.coverHoldsAtomB_eq_true assignment atom).mp hholds⟩
+  · exact certificate.coverSaturatedB_eq_true_iff.mp hdischarges
 
 /-- The regular-model checker accepts every certificate satisfying its stated
 finite semantic invariant. Together with `check_sound`, this makes rejection
@@ -504,36 +543,7 @@ theorem FiniteRegularCertificate.check_complete
     simp only [Bool.and_eq_true, decide_eq_true_eq]
     simpa [FiniteRegularCertificate.state] using And.intro hedge hlabel
   · exact certificate.coverClosedB_complete hvalid.2.2.2.2.2.1
-  · intro clause hclause assignment _
-    by_cases hbody : ∀ atom ∈ clause.body,
-        certificate.state.CoverHoldsAtom certificate.coverRelation assignment atom
-    · rcases hvalid.2.2.2.2.2.2 clause hclause assignment hbody with
-        ⟨atom, hatom, hholds⟩
-      have hbodyB : clause.body.all
-          (certificate.coverHoldsAtomB assignment) = true := by
-        rw [List.all_eq_true]
-        intro bodyAtom hbodyAtom
-        exact (certificate.coverHoldsAtomB_eq_true assignment bodyAtom).mpr
-          (hbody bodyAtom hbodyAtom)
-      have hheadB : clause.head.any
-          (certificate.coverHoldsAtomB assignment) = true := by
-        rw [List.any_eq_true]
-        exact ⟨atom, hatom,
-          (certificate.coverHoldsAtomB_eq_true assignment atom).mpr hholds⟩
-      simp [hbodyB, hheadB]
-    · have hbodyB : clause.body.all
-          (certificate.coverHoldsAtomB assignment) = false := by
-        generalize hall : clause.body.all
-          (certificate.coverHoldsAtomB assignment) = value
-        cases value with
-        | false => rfl
-        | true =>
-            exfalso
-            apply hbody
-            intro atom hatom
-            exact (certificate.coverHoldsAtomB_eq_true assignment atom).mp
-              ((List.all_eq_true.mp hall) atom hatom)
-      simp [hbodyB]
+  · exact certificate.coverSaturatedB_eq_true_iff.mpr hvalid.2.2.2.2.2.2
 
 /-- End-to-end producer boundary: the finite invariants naturally available
 from exhaustive search and serialization are sufficient for executable checker
@@ -694,6 +704,7 @@ example : missingDirectCover.check = false := by native_decide
 #print axioms FiniteRegularCertificate.valid_of_producer_invariants
 #print axioms FiniteRegularCertificate.coverClosedB_sound
 #print axioms FiniteRegularCertificate.coverClosedB_complete
+#print axioms FiniteRegularCertificate.coverSaturatedB_eq_true_iff
 #print axioms FiniteRegularCertificate.syntacticallySimpleB_sound
 #print axioms FiniteRegularCertificate.check_sound
 #print axioms FiniteRegularCertificate.check_complete
