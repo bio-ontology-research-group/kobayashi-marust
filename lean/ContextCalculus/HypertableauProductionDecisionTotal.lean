@@ -177,20 +177,43 @@ noncomputable def ProductionBlockedLeafAt.checkedFiniteFoldCandidate
       simp [outcome, RegularProductionConclusive])⟩
   · exact none
 
+/-- The only admissible fallback after a finite fold rejects: a regular
+unravelling certificate for the exact ontology that passes its executable
+checker. -/
+structure CheckedRegularFallbackCandidate
+    (nodeCount conceptCount roleCount variableCount : Nat)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))) where
+  certificate : FiniteRegularCertificate nodeCount conceptCount roleCount
+    variableCount
+  ontology_eq : certificate.ontology = ontology
+  check : certificate.check = true
+
+def CheckedRegularFallbackCandidate.toBudgetResult
+    (candidate : CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount ontology) :
+    ConstructedRegularBudgetResult conceptCount roleCount variableCount
+      ontology budget :=
+  let outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      ontology := .regularSat candidate.certificate candidate.ontology_eq
+        (by positivity) candidate.check
+  ⟨outcome, .conclusive (by
+    simp [outcome, RegularProductionConclusive])⟩
+
 /-- KM first tries the completely reconstructed finite fold. Only when that
 checker rejects does it consult the regular-unravelling fallback producer. -/
 noncomputable def ProductionBlockedLeafAt.checkedRegularCandidate
     (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
       (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
       forbidden)
-    (regularFallback : Option (ConstructedRegularBudgetResult conceptCount
-      roleCount variableCount ontology budget))
+    (regularFallback : Option (CheckedRegularFallbackCandidate
+      (8 * 2 ^ budget) conceptCount roleCount variableCount ontology))
     (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) :
     Option (ConstructedRegularBudgetResult conceptCount roleCount variableCount
       ontology budget) :=
   match leaf.checkedFiniteFoldCandidate assignment with
   | some result => some result
-  | none => regularFallback
+  | none => regularFallback.map CheckedRegularFallbackCandidate.toBudgetResult
 
 /-- Every early result of the concrete exhaustive regular search carries the
 exact typed construction evidence required by the global decision route.  The
@@ -274,8 +297,8 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
           (Fin roleCount) (Fin variableCount) ontology forbidden →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
           FoldAssignment (Fin (8 * 2 ^ budget)) →
-            Option (ConstructedRegularBudgetResult conceptCount roleCount
-              variableCount ontology budget)) :
+            Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+              conceptCount roleCount variableCount ontology)) :
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
@@ -325,8 +348,8 @@ structure ConstructedRegularFiniteSearchFamily
         (Fin roleCount) (Fin variableCount) ontology forbidden →
       Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
         FoldAssignment (Fin (8 * 2 ^ budget)) →
-          Option (ConstructedRegularBudgetResult conceptCount roleCount
-            variableCount ontology budget)
+          Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+            conceptCount roleCount variableCount ontology)
 
 noncomputable def ConstructedRegularFiniteSearchFamily.runtime
     (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
@@ -1432,8 +1455,8 @@ theorem checked_regular_finite_search_decides_source
           (Fin roleCount) (Fin variableCount) target forbidden →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
           FoldAssignment (Fin (8 * 2 ^ budget)) →
-            Option (ConstructedRegularBudgetResult conceptCount roleCount
-              variableCount target budget)) :
+            Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+              conceptCount roleCount variableCount target)) :
     ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
       target, outcome.SourceSemantics source := by
   apply checked_constructed_regular_runtime_decides_source equivalent

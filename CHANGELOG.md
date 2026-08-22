@@ -34,6 +34,10 @@
   preserves the exact blocked leaf in its candidate interface. Only the
   regular-unravelling fallback remains a producer obligation after the finite
   fold checker rejects, matching KM's actual finite-first execution order.
+- Restrict that regular fallback to a checker-accepted
+  `FiniteRegularCertificate` for the exact ontology. The fallback can no
+  longer return an unrelated refutation, frontier, or detached result; Lean
+  constructs the sole permitted `regularSat` outcome from the checked package.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative
