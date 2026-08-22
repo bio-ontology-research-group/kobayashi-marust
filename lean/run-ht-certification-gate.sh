@@ -74,6 +74,10 @@ checkers=(
     ht-source-bound-ordinary-global-check
     ht-source-bound-cardinality-global-check
     ht-source-bound-cardinality-taxonomy-check
+    ht-source-bound-native-abox-global-check
+    ht-source-bound-native-abox-cardinality-global-check
+    ht-source-bound-native-abox-taxonomy-check
+    ht-source-bound-native-abox-cardinality-taxonomy-check
     ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
@@ -140,6 +144,10 @@ surface_theorems=(
     certifiedHTOrdinaryTaxonomyRunMatrixPublication
     certifiedHTNativeABoxTaxonomyPublication
     certifiedHTNativeABoxCardinalityTaxonomyPublication
+    certifiedHTSourceBoundNativeABoxGlobalPublication
+    certifiedHTSourceBoundNativeABoxCardinalityGlobalPublication
+    certifiedHTSourceBoundNativeABoxTaxonomyPublication
+    certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
 )
 for theorem in "${surface_theorems[@]}"; do
     grep -q "HypertableauCertificationSurface.*$theorem\|'ContextCalculus.Hypertableau.$theorem'" \
@@ -221,6 +229,14 @@ done
     export KM_HT_TEST_LEAN_SOURCE_BOUND_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-cardinality-taxonomy-check"
     export KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
     export KM_HT_TEST_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-ordinary-taxonomy-check"
+    export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER="$bin_root/ht-source-bound-native-abox-global-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER="$bin_root/ht-source-bound-native-abox-global-check"
+    export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-global-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-global-check"
+    export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-taxonomy-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-taxonomy-check"
+    export KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-taxonomy-check"
+    export KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-source-bound-native-abox-cardinality-taxonomy-check"
     export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"

@@ -2,6 +2,7 @@ import ContextCalculus.HypertableauProductionGlobalPublication
 import ContextCalculus.HypertableauProductionTaxonomyPublication
 import ContextCalculus.HypertableauCardinalityTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauOrdinaryTaxonomyRunMatrixWire
+import ContextCalculus.HypertableauSourceBoundNativeABoxWire
 
 /-!
 # Current production hypertableau certification surface
@@ -74,6 +75,31 @@ theorem certifiedHTNativeABoxCardinalityTaxonomyPublication
       (abox.EntailsSubWithCardinality ontology definitions)) :=
   route.publishesExactly
 
+theorem certifiedHTSourceBoundNativeABoxGlobalPublication
+    (wire : WireSourceBoundNativeABoxGlobal) (hcheck : wire.check = true) :
+    wire.source.SemanticallyValid ∧ wire.run.check = true ∧
+      wire.payloadBoundB = true :=
+  wire.check_sound hcheck
+
+theorem certifiedHTSourceBoundNativeABoxCardinalityGlobalPublication
+    (wire : WireSourceBoundNativeABoxCardinalityGlobal) (hcheck : wire.check = true) :
+    wire.source.SemanticallyValid ∧ wire.run.check = true ∧
+      wire.payloadBoundB = true :=
+  wire.check_sound hcheck
+
+theorem certifiedHTSourceBoundNativeABoxTaxonomyPublication
+    (wire : WireSourceBoundNativeABoxTaxonomy) (hcheck : wire.check = true) :
+    wire.source.SemanticallyValid ∧ wire.runs.check = true ∧
+      wire.payloadBoundB = true :=
+  wire.check_sound hcheck
+
+theorem certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
+    (wire : WireSourceBoundNativeABoxCardinalityTaxonomy)
+    (hcheck : wire.check = true) :
+    wire.source.SemanticallyValid ∧ wire.runs.check = true ∧
+      wire.payloadBoundB = true :=
+  wire.check_sound hcheck
+
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
@@ -81,5 +107,9 @@ theorem certifiedHTNativeABoxCardinalityTaxonomyPublication
 #print axioms certifiedHTOrdinaryTaxonomyRunMatrixPublication
 #print axioms certifiedHTNativeABoxTaxonomyPublication
 #print axioms certifiedHTNativeABoxCardinalityTaxonomyPublication
+#print axioms certifiedHTSourceBoundNativeABoxGlobalPublication
+#print axioms certifiedHTSourceBoundNativeABoxCardinalityGlobalPublication
+#print axioms certifiedHTSourceBoundNativeABoxTaxonomyPublication
+#print axioms certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
 
 end ContextCalculus.Hypertableau

@@ -425,6 +425,8 @@ fn run_native_abox_taxonomy_certification(
             "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER",
             source_taxonomy_checker,
         )
+        .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -638,6 +640,10 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
         "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER",
+        "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
         "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     ] {

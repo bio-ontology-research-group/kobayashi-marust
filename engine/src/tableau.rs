@@ -5999,6 +5999,114 @@ fn native_abox_source_taxonomy_document(
     serde_json::to_vec(&payload)
     .map_err(|error| format!("cannot encode source-composed native ABox taxonomy: {error}"))
 }
+
+fn native_abox_source_constructor(inp: &TInput) -> &'static str {
+    if inp.bundle_projection_source.is_some() {
+        "bundle"
+    } else if inp.mixed_projection_source.is_some() {
+        "mixed"
+    } else {
+        "direct"
+    }
+}
+
+fn source_bound_native_abox_document(
+    inp: &TInput,
+    source_document: &[u8],
+    production_key: &str,
+    mut production: serde_json::Value,
+) -> Result<Vec<u8>, String> {
+    let source: serde_json::Value = serde_json::from_slice(source_document)
+        .map_err(|error| format!("invalid native ABox source document: {error}"))?;
+    if production_key == "run" {
+        let evidence = source
+            .get("evidence")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "native ABox source decision omitted evidence".to_string())?;
+        let target = if let Some(sat) = evidence.get("sat") {
+            let certificate = sat
+                .get("certificate")
+                .and_then(|payload| payload.get("certificate"))
+                .cloned()
+                .ok_or_else(|| "native ABox source SAT decision omitted target".to_string())?;
+            serde_json::json!({
+                "version": source.get("version").cloned().unwrap_or_else(|| serde_json::json!(1)),
+                "evidence": { "sat": { "certificate": certificate } },
+            })
+        } else if let Some(unsat) = evidence.get("unsat") {
+            let refutation = unsat
+                .get("refutation")
+                .and_then(|payload| payload.get("refutation"))
+                .cloned()
+                .ok_or_else(|| "native ABox source UNSAT decision omitted target".to_string())?;
+            serde_json::json!({
+                "version": source.get("version").cloned().unwrap_or_else(|| serde_json::json!(1)),
+                "evidence": { "unsat": { "refutation": refutation } },
+            })
+        } else {
+            return Err("native ABox source decision has no SAT or UNSAT branch".to_string());
+        };
+        production["terminal"] = target;
+    } else if production_key == "runs" {
+        let matrix = source
+            .get("matrix")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "native ABox source taxonomy omitted its target matrix".to_string())?;
+        let concepts = matrix
+            .get("concepts")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "native ABox source taxonomy omitted concept cells".to_string())?;
+        let concept_runs = production
+            .get_mut("concept_runs")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| "native ABox run matrix omitted concept runs".to_string())?;
+        if concept_runs.len() != concepts.len() {
+            return Err("native ABox source taxonomy and run matrix concept lengths differ".to_string());
+        }
+        for (run, terminal) in concept_runs.iter_mut().zip(concepts) {
+            run["terminal"] = terminal.clone();
+        }
+        let subsumptions = matrix
+            .get("subsumptions")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "native ABox source taxonomy omitted subsumption rows".to_string())?;
+        let subsumption_runs = production
+            .get_mut("subsumption_runs")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| "native ABox run matrix omitted subsumption runs".to_string())?;
+        if subsumption_runs.len() != subsumptions.len() {
+            return Err("native ABox source taxonomy and run matrix row counts differ".to_string());
+        }
+        for (run_row, terminal_row) in subsumption_runs.iter_mut().zip(subsumptions) {
+            let run_row = run_row
+                .as_array_mut()
+                .ok_or_else(|| "native ABox run-matrix row is not an array".to_string())?;
+            let terminal_row = terminal_row
+                .as_array()
+                .ok_or_else(|| "native ABox taxonomy row is not an array".to_string())?;
+            if run_row.len() != terminal_row.len() {
+                return Err("native ABox source taxonomy and run matrix row lengths differ".to_string());
+            }
+            for (run, terminal) in run_row.iter_mut().zip(terminal_row) {
+                run["terminal"] = terminal.clone();
+            }
+        }
+    }
+    let mut constructor = serde_json::Map::new();
+    constructor.insert("source".to_string(), source);
+    let mut tagged = serde_json::Map::new();
+    tagged.insert(
+        native_abox_source_constructor(inp).to_string(),
+        serde_json::Value::Object(constructor),
+    );
+    let mut document = serde_json::Map::new();
+    document.insert("version".to_string(), serde_json::json!(1));
+    document.insert("source".to_string(), serde_json::Value::Object(tagged));
+    document.insert(production_key.to_string(), production);
+    serde_json::to_vec(&serde_json::Value::Object(document))
+        .map_err(|error| format!("cannot encode source-bound native ABox document: {error}"))
+}
+
 /// Bind the global source decision and complete source taxonomy to one shared
 /// source projection and one shared native ABox.  The existing decision,
 /// matrix, source-decision, and source-taxonomy checks remain independent
@@ -6420,6 +6528,15 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         let lean_native_abox_source_decision_checker =
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
                 .map(std::path::PathBuf::from);
+        let lean_source_bound_native_abox_global_checker = if inp.card_defs.is_empty() {
+            std::env::var_os("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER")
+                .map(std::path::PathBuf::from)
+        } else {
+            std::env::var_os(
+                "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
+            )
+            .map(std::path::PathBuf::from)
+        };
         let lean_native_abox_taxonomy_matrix_checker = if inp.card_defs.is_empty() {
             std::env::var_os("KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_MATRIX_CHECKER")
                 .map(std::path::PathBuf::from)
@@ -6438,6 +6555,15 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             )
             .map(std::path::PathBuf::from)
         };
+        let lean_source_bound_native_abox_taxonomy_checker = if inp.card_defs.is_empty() {
+            std::env::var_os("KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER")
+                .map(std::path::PathBuf::from)
+        } else {
+            std::env::var_os(
+                "KM_HT_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+            )
+            .map(std::path::PathBuf::from)
+        };
         let lean_native_abox_joint_source_classification_checker = std::env::var_os(
             "KM_HT_LEAN_NATIVE_ABOX_JOINT_SOURCE_CLASSIFICATION_CHECKER",
         )
@@ -6452,6 +6578,8 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             || lean_taxonomy_checker.is_some()
             || lean_native_abox_taxonomy_matrix_checker.is_some()
             || lean_native_abox_taxonomy_source_checker.is_some()
+            || (native_abox_active
+                && lean_source_bound_native_abox_taxonomy_checker.is_some())
             || lean_native_abox_joint_source_classification_checker.is_some();
         if lean_cert_requested {
             if std::env::var_os("KM_HT_GLOBAL").is_none() {
@@ -6648,6 +6776,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         .to_string(),
                 );
             }
+            if native_abox_active && lean_source_bound_native_abox_global_checker.is_none() {
+                return Err(
+                    "native ABox HT certification requires its source-bound global Lean checker"
+                        .to_string(),
+                );
+            }
             if !native_abox_active && lean_cert_checker.is_none() {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_CERT_CHECKER".to_string(),
@@ -6663,6 +6797,12 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                 if lean_native_abox_taxonomy_source_checker.is_none() {
                     return Err(
                         "native ABox HT taxonomy certification requires its source-composition Lean checker"
+                            .to_string(),
+                    );
+                }
+                if lean_source_bound_native_abox_taxonomy_checker.is_none() {
+                    return Err(
+                        "native ABox HT taxonomy certification requires its source-bound taxonomy Lean checker"
                             .to_string(),
                     );
                 }
@@ -6743,16 +6883,22 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                     // The certification-only route obtains its verdict and its
                     // evidence from the same total certificate search. The
                     // optimized tableau is not an oracle at this trust boundary.
-                    let (consistent, certificate) =
-                        ht.lean_global_decision_certificate_json()?;
+                    let (consistent, certificate, native_global_run) =
+                        ht.lean_global_decision_certificate_and_native_run_json()?;
                     let taxonomy = if lean_taxonomy_requested {
-                        Some(ht.lean_taxonomy_certificate_json(&q)?)
+                        if native_abox_active {
+                            let (certificate, run) =
+                                ht.lean_native_abox_taxonomy_certificate_and_run_json(&q)?;
+                            Some((certificate, Some(run)))
+                        } else {
+                            Some((ht.lean_taxonomy_certificate_json(&q)?, None))
+                        }
                     } else {
                         None
                     };
                     return Ok::<_, String>(Some((
                         (consistent, Vec::new(), Vec::new()),
-                        Some((certificate, taxonomy)),
+                        Some((certificate, native_global_run, taxonomy)),
                     )));
                 }
                 let classification = if std::env::var_os("KM_HT_QO").is_some() {
@@ -6786,7 +6932,7 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
         }
         if let Some(((consistent, unsat, subs), lean_certificate)) = res {
             let mut validated_taxonomy = None;
-            if let Some((certificate, taxonomy_certificate)) = lean_certificate {
+            if let Some((certificate, native_global_run, taxonomy_certificate)) = lean_certificate {
                 let certificate_value: serde_json::Value = serde_json::from_str(&certificate)
                     .map_err(|error| format!("KM_HT_LEAN_CERT produced invalid JSON: {error}"))?;
                 let evidence_consistent = certified_ht_global_consistency(&certificate_value)?;
@@ -6853,8 +6999,27 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                         checker,
                         "native-abox-source-decision",
                     )?;
+                    let native_global_run = native_global_run.ok_or_else(|| {
+                        "native ABox HT certification omitted its retained global run".to_string()
+                    })?;
+                    let source_bound = source_bound_native_abox_document(
+                        &inp,
+                        &source_decision,
+                        "run",
+                        native_global_run,
+                    )?;
+                    let checker = lean_source_bound_native_abox_global_checker
+                        .as_deref()
+                        .ok_or_else(|| {
+                            "missing source-bound native ABox global Lean checker".to_string()
+                        })?;
+                    run_ht_projection_checker(
+                        &source_bound,
+                        checker,
+                        "source-bound-native-abox-global",
+                    )?;
                 }
-                if let Some(taxonomy_certificate) = taxonomy_certificate {
+                if let Some((taxonomy_certificate, native_taxonomy_runs)) = taxonomy_certificate {
                     let taxonomy_value: serde_json::Value =
                         serde_json::from_str(&taxonomy_certificate).map_err(|error| {
                             format!("KM_HT_LEAN_TAXONOMY_CERT produced invalid JSON: {error}")
@@ -6913,6 +7078,26 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
                             &source_taxonomy,
                             source_checker,
                             "native-abox-taxonomy-source",
+                        )?;
+                        let native_taxonomy_runs = native_taxonomy_runs.ok_or_else(|| {
+                            "native ABox HT taxonomy certification omitted its retained run matrix"
+                                .to_string()
+                        })?;
+                        let source_bound = source_bound_native_abox_document(
+                            &inp,
+                            &source_taxonomy,
+                            "runs",
+                            native_taxonomy_runs,
+                        )?;
+                        let checker = lean_source_bound_native_abox_taxonomy_checker
+                            .as_deref()
+                            .ok_or_else(|| {
+                                "missing source-bound native ABox taxonomy Lean checker".to_string()
+                            })?;
+                        run_ht_projection_checker(
+                            &source_bound,
+                            checker,
+                            "source-bound-native-abox-taxonomy",
                         )?;
                         let joint_checker = lean_native_abox_joint_source_classification_checker
                             .as_deref()
@@ -7392,12 +7577,63 @@ mod tests {
                     .collect::<Vec<_>>(),
             );
         }
-        let (_, global) = reasoner
-            .lean_global_decision_certificate_json()
+        let (consistent, global, global_run) = reasoner
+            .lean_global_decision_certificate_and_native_run_json()
             .expect("normalized native ABox global decision");
-        let taxonomy = reasoner
-            .lean_taxonomy_certificate_json(queries)
+        let global_run = global_run.expect("native ABox global run");
+        let (taxonomy, taxonomy_runs) = reasoner
+            .lean_native_abox_taxonomy_certificate_and_run_json(queries)
             .expect("normalized native ABox taxonomy matrix");
+        let source_global = native_abox_source_decision_document(
+            &inp,
+            &clauses,
+            &global,
+            consistent,
+        )
+        .expect("compose source native ABox global decision");
+        let source_taxonomy = native_abox_source_taxonomy_document(&inp, &clauses, &taxonomy)
+            .expect("compose source native ABox taxonomy matrix");
+        let (global_checker, taxonomy_checker) = if inp.card_defs.is_empty() {
+            (
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_GLOBAL_CHECKER",
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER",
+            )
+        } else {
+            (
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_GLOBAL_CHECKER",
+                "KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER",
+            )
+        };
+        let global_checker = std::env::var_os(global_checker)
+            .expect("source-bound native ABox global checker");
+        let taxonomy_checker = std::env::var_os(taxonomy_checker)
+            .expect("source-bound native ABox taxonomy checker");
+        let source_bound_global = source_bound_native_abox_document(
+            &inp,
+            &source_global,
+            "run",
+            global_run,
+        )
+        .expect("compose source-bound native ABox global decision");
+        run_ht_projection_checker(
+            &source_bound_global,
+            std::path::Path::new(&global_checker),
+            label,
+        )
+        .expect("source-bound native ABox global checker accepts production evidence");
+        let source_bound_taxonomy = source_bound_native_abox_document(
+            &inp,
+            &source_taxonomy,
+            "runs",
+            taxonomy_runs,
+        )
+        .expect("compose source-bound native ABox taxonomy");
+        run_ht_projection_checker(
+            &source_bound_taxonomy,
+            std::path::Path::new(&taxonomy_checker),
+            label,
+        )
+        .expect("source-bound native ABox taxonomy checker accepts production evidence");
         let document =
             native_abox_joint_source_classification_document(&inp, &clauses, &global, &taxonomy)
                 .expect("compose joint native ABox classification");
@@ -7959,8 +8195,8 @@ mod tests {
             vec![(0, 1)],
             vec![(0, 0, 1)],
         );
-        let normalized = reasoner
-            .lean_taxonomy_certificate_json(&[2])
+        let (normalized, runs) = reasoner
+            .lean_native_abox_taxonomy_certificate_and_run_json(&[2])
             .expect("normalized native ABox taxonomy matrix");
         let source_taxonomy = native_abox_source_taxonomy_document(
             &inp,
@@ -7974,6 +8210,35 @@ mod tests {
             "direct-native-abox-taxonomy-source",
         )
         .expect("direct source native ABox taxonomy passes Lean");
+
+        let source_bound_checker = std::env::var_os(
+            "KM_HT_TEST_LEAN_SOURCE_BOUND_NATIVE_ABOX_TAXONOMY_CHECKER",
+        )
+        .expect("source-bound native ABox taxonomy checker");
+        let source_bound = source_bound_native_abox_document(
+            &inp,
+            &source_taxonomy,
+            "runs",
+            runs,
+        )
+        .expect("compose source-bound native ABox taxonomy");
+        run_ht_projection_checker(
+            &source_bound,
+            std::path::Path::new(&source_bound_checker),
+            "source-bound-direct-native-abox-taxonomy",
+        )
+        .expect("source-bound direct native ABox taxonomy passes Lean");
+
+        let mut detached: serde_json::Value = serde_json::from_slice(&source_bound).unwrap();
+        detached["runs"]["concept_runs"][0]["terminal"]["query"] =
+            serde_json::json!({"concept":{"root":0,"concept":999}});
+        assert!(run_ht_projection_checker(
+            &serde_json::to_vec(&detached).unwrap(),
+            std::path::Path::new(&source_bound_checker),
+            "detached-direct-native-abox-taxonomy",
+        )
+        .unwrap_err()
+        .contains("rejected"));
 
         let mut forged: serde_json::Value =
             serde_json::from_slice(&source_taxonomy).unwrap();

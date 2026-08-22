@@ -19,6 +19,15 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Bind native-ABox global and taxonomy publications to the exact retained
+  production runs that generated them. Four executable Lean checkers cover
+  ordinary and cardinality global decisions and complete taxonomy matrices.
+  Each checker validates direct, mixed, or bundled source semantics, reruns the
+  complete production-run checker, and requires exact equality between the
+  source-derived terminal payload and the retained run or run matrix. KM now
+  retains those runs through publication and fails closed if the corresponding
+  source-bound checker is absent. Cross-language tests cover all six source and
+  cardinality combinations and reject a detached taxonomy terminal.
 - Add an executable cross-budget ordinary-frontier trace. Lean checks every
   combined state/address document at its exact `8 * 2^budget` schedule and
   proves that all rounds retain one ontology and finite vocabulary. Production

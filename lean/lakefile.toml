@@ -205,6 +205,22 @@ name = "ht-source-bound-cardinality-taxonomy-check"
 root = "HTSourceBoundCardinalityTaxonomyCheck"
 
 [[lean_exe]]
+name = "ht-source-bound-native-abox-global-check"
+root = "HTSourceBoundNativeABoxGlobalCheck"
+
+[[lean_exe]]
+name = "ht-source-bound-native-abox-cardinality-global-check"
+root = "HTSourceBoundNativeABoxCardinalityGlobalCheck"
+
+[[lean_exe]]
+name = "ht-source-bound-native-abox-taxonomy-check"
+root = "HTSourceBoundNativeABoxTaxonomyCheck"
+
+[[lean_exe]]
+name = "ht-source-bound-native-abox-cardinality-taxonomy-check"
+root = "HTSourceBoundNativeABoxCardinalityTaxonomyCheck"
+
+[[lean_exe]]
 name = "ht-native-abox-taxonomy-run-matrix-check"
 root = "HTNativeABoxTaxonomyRunMatrixCheck"
 

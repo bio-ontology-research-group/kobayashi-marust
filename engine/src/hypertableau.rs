@@ -11361,11 +11361,11 @@ impl Ht {
 
     /// Bind one joint native-ABox cardinality terminal to the complete rooted
     /// state-bearing retry history from the same production run.
-    fn lean_rooted_cardinality_production_run_passes(
+    fn lean_rooted_cardinality_production_run(
         &self,
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker =
             std::env::var_os("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER")
                 .or_else(|| {
@@ -11384,40 +11384,68 @@ impl Ht {
             .map(|definition| definition.n as usize)
             .max()
             .unwrap_or(0);
-        let document = serde_json::to_string(&serde_json::json!({
+        let document = serde_json::json!({
             "version": 1,
             "start_budget": 0,
             "root_count": self.native_abox.individuals.len() + 1,
             "max_width": max_width,
             "frontiers": frontiers,
             "terminal": terminal,
-        }))
-        .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        });
+        let encoded = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&encoded, &checker)? {
+            Ok(Some(document))
+        } else {
+            Ok(None)
+        }
     }
 
-    /// Bind one joint native-ABox SAT/UNSAT terminal to every ordinary
-    /// state-bearing frontier traversed by the same equality-aware run.
-    fn lean_rooted_ordinary_production_run_passes(
+    fn lean_rooted_cardinality_production_run_passes(
         &self,
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
     ) -> Result<bool, String> {
+        Ok(self
+            .lean_rooted_cardinality_production_run(frontiers, terminal)?
+            .is_some())
+    }
+
+    /// Bind one joint native-ABox SAT/UNSAT terminal to every ordinary
+    /// state-bearing frontier traversed by the same equality-aware run.
+    fn lean_rooted_ordinary_production_run(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER")
             .or_else(|| std::env::var_os("KM_HT_TEST_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"))
             .ok_or_else(|| {
                 "native ABox publication requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
                     .to_string()
             })?;
-        let document = serde_json::to_string(&serde_json::json!({
+        let document = serde_json::json!({
             "version": 1,
             "start_budget": 0,
             "root_count": self.native_abox.individuals.len() + 1,
             "frontiers": frontiers,
             "terminal": terminal,
-        }))
-        .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        });
+        let encoded = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&encoded, &checker)? {
+            Ok(Some(document))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_rooted_ordinary_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_rooted_ordinary_production_run(frontiers, terminal)?
+            .is_some())
     }
 
     /// Bind one joint native-ABox taxonomy verdict to the complete ordinary
@@ -11454,12 +11482,12 @@ impl Ht {
         }
     }
 
-    fn lean_native_abox_taxonomy_run_matrix_passes(
+    fn lean_native_abox_taxonomy_run_matrix(
         &self,
         named: &[C],
         concept_runs: Vec<serde_json::Value>,
         subsumption_runs: Vec<Vec<serde_json::Value>>,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
         )
@@ -11472,14 +11500,29 @@ impl Ht {
             "native ABox taxonomy publication requires KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER"
                 .to_string()
         })?;
-        let document = serde_json::to_string(&serde_json::json!({
+        let document = serde_json::json!({
             "version": 1,
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concept_runs": concept_runs,
             "subsumption_runs": subsumption_runs,
-        }))
-        .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        });
+        let encoded = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&encoded, &checker)? {
+            Ok(Some(document))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_native_abox_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_native_abox_taxonomy_run_matrix(named, concept_runs, subsumption_runs)?
+            .is_some())
     }
 
     /// Bind one native-ABox cardinality taxonomy verdict to the complete
@@ -11524,12 +11567,12 @@ impl Ht {
         }
     }
 
-    fn lean_native_abox_cardinality_taxonomy_run_matrix_passes(
+    fn lean_native_abox_cardinality_taxonomy_run_matrix(
         &self,
         named: &[C],
         concept_runs: Vec<serde_json::Value>,
         subsumption_runs: Vec<Vec<serde_json::Value>>,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<serde_json::Value>, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER",
         )
@@ -11542,14 +11585,33 @@ impl Ht {
             "native ABox cardinality taxonomy publication requires KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER"
                 .to_string()
         })?;
-        let document = serde_json::to_string(&serde_json::json!({
+        let document = serde_json::json!({
             "version": 1,
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concept_runs": concept_runs,
             "subsumption_runs": subsumption_runs,
-        }))
-        .map_err(|error| error.to_string())?;
-        self.lean_candidate_passes_with(&document, &checker)
+        });
+        let encoded = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&encoded, &checker)? {
+            Ok(Some(document))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lean_native_abox_cardinality_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        Ok(self
+            .lean_native_abox_cardinality_taxonomy_run_matrix(
+                named,
+                concept_runs,
+                subsumption_runs,
+            )?
+            .is_some())
     }
 
     fn lean_cardinality_taxonomy_query_payload(
@@ -14157,7 +14219,9 @@ impl Ht {
     /// with KM's exact native named-individual ABox. Both terminal branches use
     /// the dedicated joint wire; an ontology-only certificate is never used to
     /// justify a search seeded by ABox facts.
-    pub fn lean_native_abox_decision_certificate_json(&self) -> Result<(bool, String), String> {
+    pub fn lean_native_abox_decision_certificate_and_run_json(
+        &self,
+    ) -> Result<(bool, String, serde_json::Value), String> {
         if self.native_abox.individuals.is_empty() {
             return Err("native ABox decision requires at least one individual".to_string());
         }
@@ -14205,17 +14269,15 @@ impl Ht {
                         "version": 1,
                         "evidence": { "unsat": { "refutation": refutation } },
                     });
-                    if !self.lean_rooted_ordinary_production_run_passes(
-                        &frontier_history,
-                        terminal.clone(),
-                    )? {
-                        return Err(
+                    let run = self
+                        .lean_rooted_ordinary_production_run(&frontier_history, terminal.clone())?
+                        .ok_or_else(|| {
                             "Lean rejected the closed native ABox production run".to_string()
-                        );
-                    }
+                        })?;
                     return Ok((
                         false,
                         serde_json::to_string(&terminal).map_err(|error| error.to_string())?,
+                        run,
                     ));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
@@ -14245,13 +14307,12 @@ impl Ht {
                             };
                         let terminal: serde_json::Value =
                             serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
-                        if passes
-                            && self.lean_rooted_ordinary_production_run_passes(
-                                &frontier_history,
-                                terminal,
-                            )?
-                        {
-                            return Ok((true, candidate));
+                        if passes {
+                            if let Some(run) = self
+                                .lean_rooted_ordinary_production_run(&frontier_history, terminal)?
+                            {
+                                return Ok((true, candidate, run));
+                            }
                         }
                         let inserted = rejected_assignments.insert(folds);
                         assert!(inserted, "native ABox fold assignment search must progress");
@@ -14300,13 +14361,19 @@ impl Ht {
         }
     }
 
+    pub fn lean_native_abox_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        let (consistent, certificate, _) =
+            self.lean_native_abox_decision_certificate_and_run_json()?;
+        Ok((consistent, certificate))
+    }
+
     /// Total cardinality-aware decision search for one normalized TBox and
     /// the exact native ABox seed.  Open and closed branches are serialized to
     /// one joint wire so that Lean checks the ontology, cardinality definitions,
     /// named individuals, apart facts, and singleton proxies in the same model.
-    pub fn lean_native_abox_cardinality_decision_certificate_json(
+    pub fn lean_native_abox_cardinality_decision_certificate_and_run_json(
         &self,
-    ) -> Result<(bool, String), String> {
+    ) -> Result<(bool, String, serde_json::Value), String> {
         if self.native_abox.individuals.is_empty() {
             return Err(
                 "native ABox cardinality decision requires at least one individual".to_string(),
@@ -14396,18 +14463,19 @@ impl Ht {
                         "version": 1,
                         "evidence": { "unsat": { "refutation": refutation } },
                     });
-                    if !self.lean_rooted_cardinality_production_run_passes(
-                        &cardinality_frontier_history,
-                        terminal.clone(),
-                    )? {
-                        return Err(
+                    let run = self
+                        .lean_rooted_cardinality_production_run(
+                            &cardinality_frontier_history,
+                            terminal.clone(),
+                        )?
+                        .ok_or_else(|| {
                             "Lean rejected the closed native ABox cardinality production run"
-                                .to_string(),
-                        );
-                    }
+                                .to_string()
+                        })?;
                     return Ok((
                         false,
                         serde_json::to_string(&terminal).map_err(|error| error.to_string())?,
+                        run,
                     ));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
@@ -14442,13 +14510,13 @@ impl Ht {
                             };
                         let terminal: serde_json::Value =
                             serde_json::from_str(&candidate).map_err(|error| error.to_string())?;
-                        if passes
-                            && self.lean_rooted_cardinality_production_run_passes(
+                        if passes {
+                            if let Some(run) = self.lean_rooted_cardinality_production_run(
                                 &cardinality_frontier_history,
                                 terminal,
-                            )?
-                        {
-                            return Ok((true, candidate));
+                            )? {
+                                return Ok((true, candidate, run));
+                            }
                         }
                         let inserted = rejected_assignments.insert(folds);
                         assert!(
@@ -14502,6 +14570,14 @@ impl Ht {
                 LeanHtDistinctCardinalityRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
+    }
+
+    pub fn lean_native_abox_cardinality_decision_certificate_json(
+        &self,
+    ) -> Result<(bool, String), String> {
+        let (consistent, certificate, _) =
+            self.lean_native_abox_cardinality_decision_certificate_and_run_json()?;
+        Ok((consistent, certificate))
     }
 
     fn lean_cardinality_refutation_certificate_json(
@@ -15428,15 +15504,22 @@ impl Ht {
     /// This is the certification route's verdict boundary: callers must not
     /// obtain a verdict from the optimized tableau and merely certify it after
     /// the fact.
-    pub fn lean_global_decision_certificate_json(&self) -> Result<(bool, String), String> {
+    pub fn lean_global_decision_certificate_and_native_run_json(
+        &self,
+    ) -> Result<(bool, String, Option<serde_json::Value>), String> {
         if !self.native_abox.individuals.is_empty() {
             if self.card_defs.is_empty() {
-                self.lean_native_abox_decision_certificate_json()
+                let (consistent, certificate, run) =
+                    self.lean_native_abox_decision_certificate_and_run_json()?;
+                Ok((consistent, certificate, Some(run)))
             } else {
-                self.lean_native_abox_cardinality_decision_certificate_json()
+                let (consistent, certificate, run) =
+                    self.lean_native_abox_cardinality_decision_certificate_and_run_json()?;
+                Ok((consistent, certificate, Some(run)))
             }
         } else if !self.card_defs.is_empty() {
-            self.lean_cardinality_decision_certificate_json()
+            let (consistent, certificate) = self.lean_cardinality_decision_certificate_json()?;
+            Ok((consistent, certificate, None))
         } else if self.clauses.iter().any(|record| {
             record
                 .0
@@ -15445,10 +15528,19 @@ impl Ht {
                 .chain(record.0.head.iter())
                 .any(|atom| matches!(atom, Atom::Eq { .. }))
         }) {
-            self.lean_equality_decision_certificate_json()
+            let (consistent, certificate) = self.lean_equality_decision_certificate_json()?;
+            Ok((consistent, certificate, None))
         } else {
-            self.lean_regular_equality_free_decision_certificate_json()
+            let (consistent, certificate) =
+                self.lean_regular_equality_free_decision_certificate_json()?;
+            Ok((consistent, certificate, None))
         }
+    }
+
+    pub fn lean_global_decision_certificate_json(&self) -> Result<(bool, String), String> {
+        let (consistent, certificate, _) =
+            self.lean_global_decision_certificate_and_native_run_json()?;
+        Ok((consistent, certificate))
     }
 
     fn lean_cardinality_taxonomy_query_decision_and_run_json(
@@ -16964,7 +17056,10 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
-    fn lean_native_abox_taxonomy_certificate_json(&self, named: &[C]) -> Result<String, String> {
+    fn lean_native_abox_taxonomy_certificate_and_run_json_unchecked(
+        &self,
+        named: &[C],
+    ) -> Result<(String, serde_json::Value), String> {
         let mut concepts = Vec::with_capacity(named.len());
         let mut subsumptions = Vec::with_capacity(named.len());
         let mut ordinary_concept_runs = Vec::with_capacity(named.len());
@@ -17059,28 +17154,32 @@ impl Ht {
                 return Err("Lean rejected the complete native ABox taxonomy".to_string());
             }
         }
-        if !self.card_defs.is_empty()
-            && !self.lean_native_abox_cardinality_taxonomy_run_matrix_passes(
-                named,
-                cardinality_concept_runs,
-                cardinality_subsumption_runs,
-            )?
-        {
-            return Err(
-                "Lean rejected the complete native ABox cardinality taxonomy run matrix"
-                    .to_string(),
-            );
-        }
-        if self.card_defs.is_empty()
-            && !self.lean_native_abox_taxonomy_run_matrix_passes(
+        let runs = if self.card_defs.is_empty() {
+            self.lean_native_abox_taxonomy_run_matrix(
                 named,
                 ordinary_concept_runs,
                 ordinary_subsumption_runs,
             )?
-        {
-            return Err("Lean rejected the complete native ABox taxonomy run matrix".to_string());
-        }
-        Ok(payload)
+            .ok_or_else(|| {
+                "Lean rejected the complete native ABox taxonomy run matrix".to_string()
+            })?
+        } else {
+            self.lean_native_abox_cardinality_taxonomy_run_matrix(
+                named,
+                cardinality_concept_runs,
+                cardinality_subsumption_runs,
+            )?
+            .ok_or_else(|| {
+                "Lean rejected the complete native ABox cardinality taxonomy run matrix".to_string()
+            })?
+        };
+        Ok((payload, runs))
+    }
+
+    fn lean_native_abox_taxonomy_certificate_json(&self, named: &[C]) -> Result<String, String> {
+        Ok(self
+            .lean_native_abox_taxonomy_certificate_and_run_json_unchecked(named)?
+            .0)
     }
 
     fn lean_cardinality_taxonomy_certificate_json(
@@ -17213,6 +17312,23 @@ impl Ht {
     /// Produce a complete checker-ready named taxonomy. Every concept and every
     /// ordered pair receives either a bounded refutation or a checked finite
     /// countermodel. Failure of any cell rejects the entire matrix.
+    pub fn lean_native_abox_taxonomy_certificate_and_run_json(
+        &self,
+        named: &[C],
+    ) -> Result<(String, serde_json::Value), String> {
+        if self.native_abox.individuals.is_empty() {
+            return Err("native ABox taxonomy requires at least one individual".to_string());
+        }
+        if named.is_empty() {
+            return Err("HT Lean taxonomy certificate requires named concepts".to_string());
+        }
+        let mut unique = HashSet::with_capacity(named.len());
+        if !named.iter().all(|concept| unique.insert(*concept)) {
+            return Err("HT Lean taxonomy certificate requires unique named concepts".to_string());
+        }
+        self.lean_native_abox_taxonomy_certificate_and_run_json_unchecked(named)
+    }
+
     pub fn lean_taxonomy_certificate_json(&mut self, named: &[C]) -> Result<String, String> {
         if named.is_empty() {
             return Err("HT Lean taxonomy certificate requires named concepts".to_string());
