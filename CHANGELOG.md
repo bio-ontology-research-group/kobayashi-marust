@@ -25,6 +25,10 @@
   native-ABox families. An arbitrary evidence-shaped runtime can no longer be
   passed directly to the global route theorem; remaining producer obligations
   are visible as route-specific construction fields.
+- Remove the regular route's caller-supplied fold-free result. When a blocked
+  terminal has no unwitnessed sources, Lean reconstructs its exact finite
+  state, proves the production SAT checker accepts it, and constructs the
+  conclusive finite-model result itself.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

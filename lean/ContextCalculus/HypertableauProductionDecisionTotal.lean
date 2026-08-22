@@ -128,6 +128,30 @@ def ConstructedRegularRoundOutcome.toBudgetConstruction
   | .conclusive _ proof => .conclusive proof
   | .frontier address injective => .frontier address injective rfl
 
+/-- A fold-free blocked terminal is not a producer obligation. Lean rebuilds
+the exact finite state, applies the complete finite-SAT checker, and constructs
+the conclusive production result directly. -/
+noncomputable def ProductionBlockedLeafAt.regularFoldFreeResult
+    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
+      (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
+      forbidden)
+    (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
+    (hempty : leaf.unwitnessedSources = []) :
+    ConstructedRegularBudgetResult conceptCount roleCount variableCount
+      ontology budget := by
+  letI := leaf.decision
+  let certificate := FiniteSatCertificate.ofState ontology leaf.state
+  have hempty' : leaf.state.productionUnwitnessedSources = [] := by
+    simpa [ProductionBlockedLeafAt.unwitnessedSources] using hempty
+  have hcheck : certificate.checkSat = true := by
+    exact FiniteSatCertificate.checkSat_of_empty_production_terminal ontology
+      leaf.state leaf.parent leaf.ancestors forbidden hguarded leaf.terminal
+      hempty'
+  let outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
+      ontology := .finiteSat certificate rfl (by positivity) hcheck
+  exact ⟨outcome, .conclusive (by
+    simp [outcome, RegularProductionConclusive])⟩
+
 /-- Every early result of the concrete exhaustive regular search carries the
 exact typed construction evidence required by the global decision route.  The
 other arm is a genuine blocked leaf and is intentionally left to the finite
@@ -186,6 +210,7 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
     (ancestors : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
       (Fin roleCount)) → Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
     (hheads : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom)
+    (hguarded : ∀ clause ∈ ontology, clause.GuardedBody)
     (root : Finset (GuardedFact (Fin (8 * 2 ^ budget)) (Fin conceptCount)
       (Fin roleCount)))
     (hrootEmpty : root = ∅)
@@ -208,19 +233,15 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
       Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
         FoldAssignment (Fin (8 * 2 ^ budget)) →
           Option (ConstructedRegularBudgetResult conceptCount roleCount
-            variableCount ontology budget))
-    (foldFree : ∀ forbidden
-      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
-        (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
-        forbidden), leaf.unwitnessedSources = [] →
-          ConstructedRegularBudgetResult conceptCount roleCount variableCount
-            ontology budget) :
+            variableCount ontology budget)) :
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
   CartesianFoldExpansionRuntime.ofSettledProductionSearch ontology
     (finiteProductionRoundBudgetConstructionSettlement ontology parent ancestors
-      hheads root hrootEmpty frontierAddress) candidate foldFree
+      hheads root hrootEmpty frontierAddress) candidate
+    (fun _forbidden leaf hempty =>
+      ProductionBlockedLeafAt.regularFoldFreeResult leaf hguarded hempty)
 
 /-- All data needed to construct KM's regular finite search at every doubling
 budget. The global route derives its runtime from this family. -/
@@ -237,6 +258,7 @@ structure ConstructedRegularFiniteSearchFamily
       (Fin roleCount)) →
       Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget))
   branchable : ∀ clause ∈ ontology, ∀ atom ∈ clause.head, Branchable atom
+  guarded : ∀ clause ∈ ontology, clause.GuardedBody
   frontierAddress : ∀ budget
     (forbidden : Finset
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
@@ -258,12 +280,6 @@ structure ConstructedRegularFiniteSearchFamily
       FoldAssignment (Fin (8 * 2 ^ budget)) →
         Option (ConstructedRegularBudgetResult conceptCount roleCount
           variableCount ontology budget)
-  foldFree : ∀ budget forbidden
-    (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
-      (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology forbidden),
-    leaf.unwitnessedSources = [] →
-      ConstructedRegularBudgetResult conceptCount roleCount variableCount
-        ontology budget
 
 noncomputable def ConstructedRegularFiniteSearchFamily.runtime
     (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
@@ -273,9 +289,9 @@ noncomputable def ConstructedRegularFiniteSearchFamily.runtime
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
   CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch ontology
-    (family.parent budget) (family.ancestors budget) family.branchable ∅ rfl
-    (family.frontierAddress budget) (family.candidate budget)
-    (family.foldFree budget)
+    (family.parent budget) (family.ancestors budget) family.branchable
+    family.guarded ∅ rfl (family.frontierAddress budget)
+    (family.candidate budget)
 
 /-- A concrete, fully traced regular execution publishes a source-level
 decision without invoking the abstract producer-totality interface. -/
@@ -1347,6 +1363,7 @@ theorem checked_regular_finite_search_decides_source
         (Fin roleCount)) →
         Fin (8 * 2 ^ budget) → List (Fin (8 * 2 ^ budget)))
     (hheads : ∀ clause ∈ target, ∀ atom ∈ clause.head, Branchable atom)
+    (hguarded : ∀ clause ∈ target, clause.GuardedBody)
     (frontierAddress : ∀ budget
       (forbidden : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
@@ -1367,20 +1384,14 @@ theorem checked_regular_finite_search_decides_source
       Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
         FoldAssignment (Fin (8 * 2 ^ budget)) →
           Option (ConstructedRegularBudgetResult conceptCount roleCount
-            variableCount target budget))
-    (foldFree : ∀ budget forbidden
-      (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
-        (Fin conceptCount) (Fin roleCount) (Fin variableCount) target forbidden),
-      leaf.unwitnessedSources = [] →
-        ConstructedRegularBudgetResult conceptCount roleCount variableCount
-          target budget) :
+            variableCount target budget)) :
     ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
       target, outcome.SourceSemantics source := by
   apply checked_constructed_regular_runtime_decides_source equivalent
   intro budget
   exact CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch target
-    (parent budget) (ancestors budget) hheads ∅ rfl
-    (frontierAddress budget) (candidate budget) (foldFree budget)
+    (parent budget) (ancestors budget) hheads hguarded ∅ rfl
+    (frontierAddress budget) (candidate budget)
 
 theorem checked_equality_runtime_through_decides_source
     {source target : List
