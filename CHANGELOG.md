@@ -65,6 +65,15 @@
   regression accepts three distinct empty-path roots and rejects a duplicated
   root/path pair. This fixes a completeness defect in which any named root
   after node zero was treated as malformed frontier metadata.
+- Construct native-ABox frontier outcomes, scheduled control attempts, and
+  fixed-budget control producers directly from injective root-tagged address
+  maps. The production frontier predicate and its route-classification arm are
+  now derived from those constructors instead of caller-supplied checker
+  propositions.
+- Replace the native-ABox arm's abstract computed-outcome classifier with a
+  typed construction witness. Each frontier witness identifies the exact
+  canonical rooted-address outcome that was produced; Lean derives the
+  doubling classifier and source decision from that construction evidence.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine

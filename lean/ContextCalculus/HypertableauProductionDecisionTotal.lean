@@ -199,6 +199,97 @@ def NativeABoxProductionConclusive
       roleCount variableCount abox ontology definitions) : Prop :=
   match outcome with | .frontier .. => False | _ => True
 
+/-- The canonical multi-root address constructor supplies exactly the checked
+frontier proposition consumed by the concrete doubling executor. -/
+theorem nativeABoxProductionFrontier_of_address
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin rootCount)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    NativeABoxProductionFrontier Individual conceptCount roleCount variableCount
+      abox ontology definitions rootCount maxWidth budget
+      (CheckedNativeABoxCardinalityOutcome.frontier_of_address address hinjective) := by
+  let document := WireRootedCardinalityAddressFrontier.ofAddress address
+  refine ⟨document, rfl, rfl, rfl,
+    document.checkScheduled_check budget rootCount maxWidth
+      (WireRootedCardinalityAddressFrontier.ofAddress_checkScheduled
+        address hinjective rfl), ?_, ?_⟩
+  · rfl
+  · exact WireRootedCardinalityAddressFrontier.ofAddress_checkScheduled
+      address hinjective rfl
+
+/-- Executable route classification for a concrete native-ABox address
+frontier. This removes a caller-supplied classification proof for that arm. -/
+def classifyNativeABoxAddressFrontier
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin rootCount)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    PLift (NativeABoxProductionConclusive
+      (CheckedNativeABoxCardinalityOutcome.frontier_of_address
+        (Individual := Individual) (variableCount := variableCount)
+        (abox := abox) (ontology := ontology) address hinjective)) ⊕
+    PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
+      variableCount abox ontology definitions rootCount maxWidth budget
+      (CheckedNativeABoxCardinalityOutcome.frontier_of_address
+        (Individual := Individual) (variableCount := variableCount)
+        (abox := abox) (ontology := ontology) address hinjective)) :=
+  .inr ⟨nativeABoxProductionFrontier_of_address
+    (Individual := Individual) (variableCount := variableCount)
+    (abox := abox) (ontology := ontology) address hinjective⟩
+
+/-- Typed construction evidence for one computed native-ABox budget outcome.
+The frontier arm stores the concrete address map from which the checked wire
+outcome was constructed, rather than an independently supplied proposition. -/
+inductive NativeABoxBudgetOutcomeConstruction
+    (Individual : Type)
+    (conceptCount roleCount variableCount : Nat)
+    (abox : NativeABox Individual (Fin conceptCount) (Fin roleCount))
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount)))
+    (rootCount maxWidth budget : Nat)
+    (outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox ontology definitions) : Type where
+  | conclusive (proof : NativeABoxProductionConclusive outcome)
+  | frontier
+      (address : Fin (8 * 2 ^ budget) →
+        RootedRoleBlockedAddress (Fin rootCount)
+          (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+            definitions.length maxWidth)
+          (Fin conceptCount) (Fin roleCount))
+      (injective : Function.Injective address)
+      (produced : outcome =
+        CheckedNativeABoxCardinalityOutcome.frontier_of_address address injective)
+
+def NativeABoxBudgetOutcomeConstruction.classify
+    (construction : NativeABoxBudgetOutcomeConstruction Individual conceptCount
+      roleCount variableCount abox ontology definitions rootCount maxWidth budget
+      outcome) :
+    PLift (NativeABoxProductionConclusive outcome) ⊕
+      PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
+        variableCount abox ontology definitions rootCount maxWidth budget outcome) :=
+  match construction with
+  | .conclusive proof => .inl ⟨proof⟩
+  | .frontier address injective produced => by
+      subst outcome
+      exact classifyNativeABoxAddressFrontier address injective
+
 theorem checked_native_abox_doubling_execution_decides_source
     {Individual : Type}
     {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
@@ -598,6 +689,34 @@ theorem checked_native_abox_runtime_decides_source
   exact checked_native_abox_runtime_through_decides_source equivalent rootCount
     maxWidth runtime classify budget hterminal
 
+/-- Native-ABox runtime publication from typed outcome construction. The
+caller supplies concrete construction evidence for each computed result;
+Lean derives the conclusive/frontier classifier used by doubling totality. -/
+theorem checked_native_abox_runtime_decides_source_of_construction
+    {Individual : Type}
+    {abox : NativeABox Individual (Fin conceptCount) (Fin roleCount)}
+    {source target : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount))}
+    {definitions : List
+      (CardinalityDef (Fin conceptCount) (Fin roleCount))}
+    (equivalent : ModelEquivalent source target)
+    (rootCount maxWidth : Nat)
+    (runtime : ∀ budget, CartesianFoldExpansionRuntime
+      (Fin (8 * 2 ^ budget))
+      (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+        variableCount abox target definitions))
+    (construct : ∀ budget,
+      let fixed := (runtime budget).execute ∅
+      NativeABoxBudgetOutcomeConstruction Individual conceptCount roleCount
+        variableCount abox target definitions rootCount maxWidth budget fixed.1) :
+    ∃ outcome : CheckedNativeABoxCardinalityOutcome Individual conceptCount
+      roleCount variableCount abox target definitions,
+        outcome.SourceSemantics source := by
+  apply checked_native_abox_runtime_decides_source equivalent rootCount maxWidth
+    runtime
+  intro budget
+  exact (construct budget).classify
+
 /-- The four total checked global-search families used by the production HT
 certificate producer. The index records the exact source-level semantics of
 the selected family, including native ABox and cardinality data where present.
@@ -770,11 +889,10 @@ inductive CertifiedHTAssignmentProductionGlobalRoute :
         (Fin (8 * 2 ^ budget))
         (CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
           variableCount abox target definitions))
-      (classify : ∀ budget,
+      (construct : ∀ budget,
         let fixed := (producer budget).execute ∅
-        PLift (NativeABoxProductionConclusive fixed.1) ⊕
-          PLift (NativeABoxProductionFrontier Individual conceptCount roleCount
-            variableCount abox target definitions rootCount maxWidth budget fixed.1)) :
+        NativeABoxBudgetOutcomeConstruction Individual conceptCount roleCount
+          variableCount abox target definitions rootCount maxWidth budget fixed.1) :
       CertifiedHTAssignmentProductionGlobalRoute
         (abox.SatisfiableWithCardinality source definitions)
 
@@ -816,10 +934,10 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
           exact ⟨.unsat hsemantics⟩
       | frontier document hconcepts hroles hdefinitions hcheck =>
           simp only [CheckedCardinalityDecisionOutcome.SourceSemantics] at hsemantics
-  | nativeABox equivalent rootCount maxWidth producer classify =>
+  | nativeABox equivalent rootCount maxWidth producer construct =>
       obtain ⟨outcome, hsemantics⟩ :=
-        checked_native_abox_runtime_decides_source equivalent rootCount maxWidth producer
-          classify
+        checked_native_abox_runtime_decides_source_of_construction equivalent
+          rootCount maxWidth producer construct
       cases outcome with
       | sat certificate root hontology hnonempty hseeded hcheck hapart
           hsingletons hnegative =>
@@ -835,6 +953,8 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_equality_doubling_execution_decides_source
 #print axioms checked_cardinality_doubling_execution_decides_source
 #print axioms checked_native_abox_doubling_execution_decides_source
+#print axioms nativeABoxProductionFrontier_of_address
+#print axioms classifyNativeABoxAddressFrontier
 #print axioms checked_regular_runtime_through_decides_source
 #print axioms checked_equality_runtime_through_decides_source
 #print axioms checked_cardinality_runtime_through_decides_source
@@ -847,5 +967,7 @@ theorem CertifiedHTAssignmentProductionGlobalRoute.decides
 #print axioms checked_cardinality_runtime_decides_source
 #print axioms checked_native_abox_runtime_eventually_conclusive
 #print axioms checked_native_abox_runtime_decides_source
+#print axioms NativeABoxBudgetOutcomeConstruction.classify
+#print axioms checked_native_abox_runtime_decides_source_of_construction
 
 end ContextCalculus.Hypertableau

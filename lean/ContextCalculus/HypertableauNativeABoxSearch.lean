@@ -57,6 +57,23 @@ inductive CheckedNativeABoxCardinalityOutcome
       (hdefinitions : document.definition_count = definitions.length)
       (hcheck : document.check = true)
 
+/-- Construct a checked native-ABox cardinality frontier from an injective
+root-tagged address map. Root identity is part of the address, so distinct
+parentless named individuals may all have the empty path. -/
+def CheckedNativeABoxCardinalityOutcome.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin rootCount)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedNativeABoxCardinalityOutcome Individual conceptCount roleCount
+      variableCount abox ontology definitions :=
+  let document := WireRootedCardinalityAddressFrontier.ofAddress address
+  .frontier document rfl rfl rfl
+    (document.checkScheduled_check budget rootCount maxWidth
+      (WireRootedCardinalityAddressFrontier.ofAddress_checkScheduled
+        address hinjective rfl))
+
 /-- One native-ABox cardinality control attempt with checked verdict,
 scheduled frontier, or fresh fold rejection. -/
 inductive CheckedNativeABoxCardinalityControlAttempt
@@ -107,6 +124,21 @@ inductive CheckedNativeABoxCardinalityControlAttempt
       (folds : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
       (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+/-- Construct the scheduled native-ABox frontier control attempt directly
+from the concrete multi-root cardinality address invariant. -/
+def CheckedNativeABoxCardinalityControlAttempt.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin rootCount)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedNativeABoxCardinalityControlAttempt Individual conceptCount roleCount
+      variableCount abox ontology definitions budget rootCount maxWidth forbidden :=
+  let document := WireRootedCardinalityAddressFrontier.ofAddress address
+  .frontier document rfl rfl rfl
+    (WireRootedCardinalityAddressFrontier.ofAddress_checkScheduled
+      address hinjective rfl)
 
 def CheckedNativeABoxCardinalityControlAttempt.toGuarded
     {forbidden : Finset
@@ -171,6 +203,21 @@ structure CheckedNativeABoxCardinalityControlProducer
       (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)),
     CheckedNativeABoxCardinalityControlAttempt Individual conceptCount roleCount
       variableCount abox ontology definitions budget rootCount maxWidth forbidden
+
+/-- Build the fixed-budget producer for a concrete address frontier. The same
+checked frontier is conclusive for every inner forbidden-fold set because node
+exhaustion precedes blocker assignment enumeration. -/
+def CheckedNativeABoxCardinalityControlProducer.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin rootCount)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedNativeABoxCardinalityControlProducer Individual conceptCount roleCount
+      variableCount abox ontology definitions budget rootCount maxWidth where
+  attempt forbidden :=
+    CheckedNativeABoxCardinalityControlAttempt.frontier_of_address
+      (forbidden := forbidden) address hinjective
 
 def CheckedNativeABoxCardinalityControlProducer.toGuarded
     (producer : CheckedNativeABoxCardinalityControlProducer Individual conceptCount
@@ -581,6 +628,9 @@ theorem checked_native_abox_cardinality_control_producer_decides_source
 
 #print axioms CheckedNativeABoxCardinalityOutcome.sat_semantics
 #print axioms CheckedNativeABoxCardinalityOutcome.closed_semantics
+#print axioms CheckedNativeABoxCardinalityOutcome.frontier_of_address
+#print axioms CheckedNativeABoxCardinalityControlAttempt.frontier_of_address
+#print axioms CheckedNativeABoxCardinalityControlProducer.frontier_of_address
 #print axioms CheckedNativeABoxCardinalityOutcome.source_semantics_of_equivalent
 #print axioms checked_native_abox_cardinality_doubling_decides_source
 #print axioms checked_native_abox_cardinality_fold_learning_doubling_decides_source
