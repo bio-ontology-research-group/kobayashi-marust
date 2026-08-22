@@ -2931,6 +2931,7 @@ struct LeanHtEqProductionBlockingDocument {
     validate_rejections: bool,
     definitions: Vec<LeanHtCardinalityDef>,
     exact_definitions: Vec<usize>,
+    native_seed: Option<serde_json::Value>,
 }
 
 impl LeanHtBlockedOpenLeaf {
@@ -10587,13 +10588,25 @@ impl Ht {
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
         all_blockable_sources: bool,
         validate_rejections: bool,
+        validate_native_rejections: bool,
     ) -> Result<String, String> {
         let node_count = state.representatives.len();
         if state.witness_parent.len() != node_count {
             return Err("equality production blocker parent table has the wrong length".to_string());
         }
-        let (variable_count, concept_count, role_count, ontology) =
+        let (mut variable_count, mut concept_count, mut role_count, ontology) =
             self.lean_decision_signature();
+        if validate_native_rejections {
+            variable_count = variable_count.max(2);
+            for (proxies, assertions) in &self.native_abox.individuals {
+                for &concept in proxies.iter().chain(assertions) {
+                    concept_count = concept_count.max(concept as usize + 1);
+                }
+            }
+            for &(role, _, _) in &self.native_abox.role_assertions {
+                role_count = role_count.max(role as usize + 1);
+            }
+        }
         let mut base_state = state.clone();
         base_state.edges = base_state.raw_edges.clone();
         base_state.folds.clear();
@@ -10655,6 +10668,24 @@ impl Ht {
         } else {
             Vec::new()
         };
+        let native_seed = if validate_native_rejections {
+            let seed = self.lean_native_abox_seed_json(
+                base_state.clone(),
+                variable_count,
+                concept_count,
+                role_count,
+                &ontology,
+            )?;
+            let seed: serde_json::Value =
+                serde_json::from_str(&seed).map_err(|error| error.to_string())?;
+            Some(serde_json::json!({
+                "abox": seed["abox"].clone(),
+                "roots": seed["roots"].clone(),
+                "apart": seed["state"]["apart"].clone(),
+            }))
+        } else {
+            None
+        };
         serde_json::to_string(&LeanHtEqProductionBlockingDocument {
             version: 2,
             base: LeanHtEqCertificate {
@@ -10675,6 +10706,7 @@ impl Ht {
             validate_rejections,
             definitions,
             exact_definitions,
+            native_seed,
         })
         .map_err(|error| error.to_string())
     }
@@ -10685,6 +10717,7 @@ impl Ht {
         rejected_assignments: &HashSet<Vec<(Node, Node)>>,
         all_blockable_sources: bool,
         validate_rejections: bool,
+        validate_native_rejections: bool,
     ) -> Result<bool, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER",
@@ -10703,6 +10736,7 @@ impl Ht {
             rejected_assignments,
             all_blockable_sources,
             validate_rejections,
+            validate_native_rejections,
         )?;
         self.lean_candidate_passes_with(&document, &checker)
     }
@@ -12505,7 +12539,8 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         false,
-                        false,
+                        true,
+                        true,
                     )? {
                         return Err("Lean rejected the native ABox equality production blocker table".to_string());
                     }
@@ -12663,7 +12698,8 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         true,
-                        false,
+                        true,
+                        true,
                     )? {
                         return Err("Lean rejected the native ABox cardinality production blocker table".to_string());
                     }
@@ -13182,6 +13218,7 @@ impl Ht {
                         &rejected_assignments,
                         false,
                         true,
+                        false,
                     )? {
                         return Err("Lean rejected the equality production blocker table".to_string());
                     }
@@ -13268,6 +13305,7 @@ impl Ht {
                         &rejected_assignments,
                         true,
                         true,
+                        false,
                     )? {
                         return Err("Lean rejected the cardinality production blocker table".to_string());
                     }
@@ -13416,6 +13454,7 @@ impl Ht {
                             &rejected_assignments,
                             true,
                             true,
+                            false,
                         )? {
                             return Err("Lean rejected the cardinality taxonomy production blocker table".to_string());
                         }
@@ -13517,6 +13556,7 @@ impl Ht {
                             &rejected_assignments,
                             false,
                             true,
+                            false,
                         )? {
                             return Err("Lean rejected the equality taxonomy production blocker table".to_string());
                         }
@@ -13798,7 +13838,8 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         true,
-                        false,
+                        true,
+                        true,
                     )? {
                         return Err("Lean rejected the native ABox cardinality taxonomy production blocker table".to_string());
                     }
@@ -14003,7 +14044,8 @@ impl Ht {
                         &open,
                         &rejected_assignments,
                         false,
-                        false,
+                        true,
+                        true,
                     )? {
                         return Err("Lean rejected the native ABox taxonomy production blocker table".to_string());
                     }
@@ -25006,7 +25048,7 @@ mod tests {
             }
             let document = cyclic
                 .lean_equality_production_blocking_document_json(
-                    &open, &rejected, false, false,
+                    &open, &rejected, false, false, false,
                 )
                 .expect("serialize exact quotient blocker control evidence");
             let path = std::env::temp_dir().join(format!(
@@ -25174,6 +25216,7 @@ mod tests {
                 &rejected,
                 false,
                 true,
+                false,
             )
             .expect("serialize rejection-validated quotient blocker evidence");
         let path = std::env::temp_dir().join(format!(
@@ -25191,6 +25234,82 @@ mod tests {
             accepted.status.success(),
             "Lean must accept complete genuine rejection provenance: {}",
             String::from_utf8_lossy(&accepted.stderr),
+        );
+    }
+
+    #[test]
+    fn native_abox_production_blocking_checks_joint_rejection_provenance() {
+        let Some(checker) =
+            std::env::var_os("KM_HT_TEST_LEAN_EQUALITY_PRODUCTION_BLOCKING_CHECKER")
+        else {
+            return;
+        };
+        const NOMINAL: C = 20;
+        let clauses = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, 1, X)], Vec::new()),
+            Clause::new(Vec::new(), vec![Atom::Eq { s: X, t: X }]),
+        ];
+        let mut reasoner = Ht::new_certified(clauses);
+        reasoner.set_nominals(vec![NOMINAL]);
+        reasoner.set_native_abox(
+            vec![(vec![NOMINAL], Vec::new())],
+            Vec::new(),
+            Vec::new(),
+        );
+        reasoner.block_mode = 6;
+        let (mut state, _) = LeanHtRefutationState::rooted_native_abox(
+            &[(0, lit(false, A))],
+            &reasoner.native_abox,
+        )
+        .expect("valid native ABox production seed");
+        let LeanHtEqRefutationOutcome::Open(open) =
+            reasoner.lean_eq_refutation(&mut state, 3, 6)
+        else {
+            panic!("the native ABox role-cycle obstruction must expose blocker assignments");
+        };
+        let mut rejected = HashSet::new();
+        while let Some(assignment) = open.next_fold_assignment(&rejected) {
+            assert!(rejected.insert(assignment));
+        }
+        assert!(!rejected.is_empty());
+        let document = reasoner
+            .lean_equality_production_blocking_document_json(
+                &open,
+                &rejected,
+                false,
+                true,
+                true,
+            )
+            .expect("serialize joint native ABox rejection provenance");
+        let mut wire: serde_json::Value = serde_json::from_str(&document).unwrap();
+        assert!(wire["native_seed"].is_object());
+        let path = std::env::temp_dir().join(format!(
+            "km-ht-native-abox-production-rejections-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .output()
+            .expect("run production checker on native ABox fold rejections");
+        assert!(
+            accepted.status.success(),
+            "Lean must accept genuine joint native ABox rejections: {}",
+            String::from_utf8_lossy(&accepted.stderr)
+        );
+
+        wire["native_seed"]["roots"] = serde_json::json!([]);
+        std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
+        let forged = std::process::Command::new(checker)
+            .arg(&path)
+            .output()
+            .expect("run production checker on forged native ABox roots");
+        let _ = std::fs::remove_file(path);
+        assert!(
+            !forged.status.success(),
+            "Lean must reject native rejection evidence with a forged root map"
         );
     }
 
@@ -26444,6 +26563,7 @@ mod tests {
                     &cardinality_open,
                     &exhausted,
                     true,
+                    false,
                     false,
                 )
                 .expect("serialize exact cardinality blocker control evidence");

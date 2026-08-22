@@ -51,13 +51,17 @@
   Accepted nonempty tables expose a pair absent from the prior forbidden set,
   proving that KM's exact pair-union update strictly grows the outer state.
 - Validate the provenance of every rejected equality or cardinality blocker
-  assignment on ontology-only production routes. Wire version 2 carries the
+  assignment on ontology-only and native-ABox production routes. Wire version 2 carries the
   exact cardinality definitions and markers needed to reconstruct each folded
-  candidate; Lean replays the finite equality or cardinality model checker and
-  accepts learning only when every serialized rejected assignment really
-  fails. Cross-language tests accept a genuine all-invalid blocker product and
-  reject a forged claim that a valid fold failed. Native-ABox production routes
-  leave this stronger flag disabled until their joint source payload is added.
+  candidate. Native routes additionally carry the exact ABox, individual-root
+  map, and apart relation. Lean replays the equality or cardinality quotient
+  checker together with ABox seeding, distinctness, singleton-proxy, and
+  negative-role checks before accepting outer learning. The semantic capstone
+  constructs one joint ontology/ABox/cardinality model from every accepted
+  native candidate. Cross-language tests accept genuine all-invalid products,
+  reject a forged claim that a valid fold failed, and reject a forged ABox root
+  map. This also fixes production blocker signature sizing for concepts that
+  occur only in the native ABox.
 - Preserve inactive bounded-domain nodes as roots when serializing equality
   predecessor forests. This removes a bound-versus-active-prefix panic exposed
   by the production checker and makes the finite-domain convention explicit.

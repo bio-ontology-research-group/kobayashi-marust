@@ -77,6 +77,7 @@ done
 
     cargo test --release equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle -- --nocapture
     cargo test --release equality_production_blocking_checks_rejection_provenance -- --nocapture
+    cargo test --release native_abox_production_blocking_checks_joint_rejection_provenance -- --nocapture
     cargo test --release equality_and_cardinality_folds_copy_incoming_blocker_edges -- --nocapture
     cargo test --release source_matrix_passes_real_lean_checker -- --nocapture
     cargo test --release certified_input_coverage_matches_the_lean_truth_table -- --nocapture

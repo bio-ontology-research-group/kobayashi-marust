@@ -3,6 +3,7 @@ import ContextCalculus.HypertableauEqualityBlocking
 import ContextCalculus.HypertableauEqualityBlockingCertificate
 import ContextCalculus.HypertableauEqualityWire
 import ContextCalculus.HypertableauCardinalityWire
+import ContextCalculus.HypertableauNativeABoxModelWire
 
 /-!
 # Equality-quotient production-blocking control wire
@@ -17,6 +18,12 @@ learn the union of an exhausted Cartesian assignment family.
 namespace ContextCalculus.Hypertableau
 
 open Lean
+
+structure WireProductionNativeABoxContext where
+  abox : WireNativeABox
+  roots : List Nat
+  apart : List WireApart
+deriving FromJson, ToJson, Repr
 
 structure WireEqProductionBlockingTable where
   version : Nat
@@ -34,6 +41,9 @@ structure WireEqProductionBlockingTable where
   validate_rejections : Bool := false
   definitions : List WireCardinalityDef := []
   exact_definitions : List Nat := []
+  /-- The exact candidate-independent ABox seed used by native-ABox routes.
+  Its equality state must equal `base` before folds are materialized. -/
+  native_seed : Option WireProductionNativeABoxContext := none
 deriving FromJson, ToJson, Repr
 
 structure FiniteEqProductionBlockingTable
@@ -50,6 +60,20 @@ def FiniteEqProductionBlockingTable.ParentEarlier
   ∀ node predecessor, table.parent node = some predecessor →
     predecessor.val < node.val
 
+/-- Dimension-indexed part of the native-ABox seed needed to replay a folded
+candidate. Names are checked by the decoder but do not enter model validity. -/
+structure FiniteProductionNativeABoxContext
+    (nodeCount conceptCount roleCount : Nat) where
+  individualCount : Nat
+  roots : Fin individualCount → Fin nodeCount
+  proxies : Fin individualCount → List (Fin conceptCount)
+  assertions : Fin individualCount → List (Fin conceptCount)
+  different : List (Fin individualCount × Fin individualCount)
+  roleAssertions : List (Fin roleCount × Fin individualCount × Fin individualCount)
+  negativeRoleAssertions :
+    List (Fin roleCount × Fin individualCount × Fin individualCount)
+  apart : List (Fin nodeCount × Fin nodeCount)
+
 structure DecodedEqProductionBlockingTable where
   nodeCount : Nat
   conceptCount : Nat
@@ -62,6 +86,65 @@ structure DecodedEqProductionBlockingTable where
   validateRejections : Bool
   definitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))
   exactDefinitions : List (CardinalityDef (Fin conceptCount) (Fin roleCount))
+  nativeContext : Option (FiniteProductionNativeABoxContext
+    nodeCount conceptCount roleCount) := none
+
+def WireProductionNativeABoxContext.decode
+    (wire : WireProductionNativeABoxContext)
+    (nodeCount conceptCount roleCount : Nat) :
+    Except String (FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount) := do
+  unless wire.abox.complete do
+    throw "incomplete production native ABox payload"
+  unless wire.abox.concepts.length = conceptCount do
+    throw "production native ABox concept count differs from the blocker state"
+  unless wire.abox.roles.length = roleCount do
+    throw "production native ABox role count differs from the blocker state"
+  unless wire.abox.concepts.Nodup do
+    throw "production native ABox concept-name table contains duplicates"
+  unless wire.abox.roles.Nodup do
+    throw "production native ABox role-name table contains duplicates"
+  let individuals ← wire.abox.individuals.mapM fun individual => do
+    let proxies ← individual.proxies.mapM
+      (checkedFin "production native ABox proxy" conceptCount)
+    if proxies.isEmpty then
+      throw "production native ABox individual has no singleton proxy"
+    let assertions ← individual.assertions.mapM
+      (checkedFin "production native ABox assertion" conceptCount)
+    return (proxies, assertions)
+  let individualCount := individuals.length
+  let roots ← wire.roots.mapM
+    (checkedFin "production native ABox root" nodeCount)
+  if hroots : roots.length = individualCount then
+    if _hrootUnique : roots.Nodup then
+      let different ← wire.abox.different.mapM
+        (decodeNativePair individualCount)
+      let roleAssertions ← wire.abox.role_assertions.mapM
+        (decodeNativeRoleAssertion roleCount individualCount)
+      let negativeRoleAssertions ← wire.abox.negative_role_assertions.mapM
+        (decodeNativeRoleAssertion roleCount individualCount)
+      let apart ← wire.apart.mapM fun pair => do
+        return (← checkedFin "production native ABox apart node" nodeCount pair.left,
+          ← checkedFin "production native ABox apart node" nodeCount pair.right)
+      let nominals ← wire.abox.nominals.mapM
+        (checkedFin "production native ABox nominal" conceptCount)
+      let allProxies := individuals.flatMap (·.1)
+      unless allProxies.Nodup do
+        throw "production native ABox proxy has duplicate ownership"
+      unless allProxies.all (· ∈ nominals) do
+        throw "production native ABox proxy is absent from nominals"
+      return {
+        individualCount
+        roots := fun index => roots.get (hroots.symm ▸ index)
+        proxies := fun index => (individuals.get index).1
+        assertions := fun index => (individuals.get index).2
+        different
+        roleAssertions
+        negativeRoleAssertions
+        apart
+      }
+    else throw "production native ABox roots must be pairwise distinct"
+  else throw s!"production native ABox root map has {roots.length} entries, expected {individualCount}"
 
 /-! ## Executable equality-closed facts -/
 
@@ -402,31 +485,220 @@ def finiteFoldPairs (nodeCount : Nat) : List (Fin nodeCount × Fin nodeCount) :=
   (List.finRange nodeCount).flatMap fun source =>
     (List.finRange nodeCount).map fun blocker => (source, blocker)
 
-def DecodedEqProductionBlockingTable.assignmentCandidateValidB
+def DecodedEqProductionBlockingTable.materializeAssignment
     (decoded : DecodedEqProductionBlockingTable)
-    (assignment : FoldAssignment (Fin decoded.nodeCount)) : Bool :=
-  let certificate : FiniteEqFoldCertificate decoded.nodeCount decoded.conceptCount
-      decoded.roleCount decoded.variableCount := {
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) :
+    FiniteEqCertificate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount :=
+  ({
     base := decoded.table.base
     folds := (finiteFoldPairs decoded.nodeCount).filter fun pair =>
       decide (pair ∈ assignment)
-  }
+  } : FiniteEqFoldCertificate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount).materialize
+
+def DecodedEqProductionBlockingTable.assignmentCandidateValidB
+    (decoded : DecodedEqProductionBlockingTable)
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) : Bool :=
   if decoded.table.allBlockableSources then
-    certificate.checkWithCardinality decoded.definitions &&
-      certificate.materialize.checkCardinalityDefsExact decoded.exactDefinitions
+    let materialized := decoded.materializeAssignment assignment
+    materialized.checkEqSatWithCardinality decoded.definitions &&
+      materialized.checkCardinalityDefsExact decoded.exactDefinitions
   else
-    certificate.check
+    (decoded.materializeAssignment assignment).checkEqSat
+
+def FiniteProductionNativeABoxContext.seededB
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  ((List.finRange context.individualCount).all fun individual =>
+    ((context.proxies individual ++ context.assertions individual).all
+      fun concept => decide
+        ((context.roots individual, Lit.pos concept) ∈ state.base.base.labels))) &&
+  (context.roleAssertions.all fun assertion => decide
+    ((assertion.1, context.roots assertion.2.1,
+      context.roots assertion.2.2) ∈ state.base.base.edges)) &&
+  (context.different.all fun pair => decide
+    ((context.roots pair.1, context.roots pair.2) ∈ state.apart))
+
+def FiniteProductionNativeABoxContext.abox
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount) :
+    NativeABox (Fin context.individualCount) (Fin conceptCount) (Fin roleCount) where
+  proxies := context.proxies
+  assertions := context.assertions
+  different := context.different
+  roleAssertions := context.roleAssertions
+  negativeRoleAssertions := context.negativeRoleAssertions
+
+theorem FiniteProductionNativeABoxContext.seededB_eq_true_iff
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteDistinctEqCertificate
+      nodeCount conceptCount roleCount variableCount) :
+    context.seededB state = true ↔
+      context.abox.SeededIn state.state context.roots := by
+  simp only [FiniteProductionNativeABoxContext.seededB, Bool.and_eq_true,
+    List.all_eq_true, List.mem_finRange, true_implies, decide_eq_true_eq,
+    NativeABox.SeededIn, FiniteProductionNativeABoxContext.abox,
+    FiniteDistinctEqCertificate.state, FiniteEqCertificate.state,
+    FiniteSatCertificate.state]
+  tauto
+
+def FiniteProductionNativeABoxContext.proxySingletonsB
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  (List.finRange context.individualCount).all fun individual =>
+    (context.proxies individual).all fun proxy =>
+      (List.finRange nodeCount).all fun node =>
+        state.quotientPositiveB node proxy ==
+          state.closedRelatedB node (context.roots individual)
+
+theorem FiniteProductionNativeABoxContext.proxySingletonsB_sound
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : state.equalityClosureValidB = true)
+    (hcheck : context.proxySingletonsB state = true) :
+    context.abox.ProxySingletons state.state.quotientCanonical
+      (fun individual => Quotient.mk state.state.nodeSetoid
+        (context.roots individual)) := by
+  simp only [FiniteProductionNativeABoxContext.proxySingletonsB,
+    List.all_eq_true, List.mem_finRange, true_implies, beq_iff_eq] at hcheck
+  intro individual proxy hproxy candidate
+  refine Quotient.inductionOn candidate fun node => ?_
+  have hnode := hcheck individual proxy hproxy node
+  rw [Bool.eq_iff_iff] at hnode
+  rw [state.quotientPositiveB_eq_true hvalid node proxy,
+    state.closedRelatedB_eq_true hvalid node (context.roots individual)] at hnode
+  simpa only [Quotient.eq] using hnode
+
+def FiniteProductionNativeABoxContext.negativeRolesB
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  context.negativeRoleAssertions.all fun assertion =>
+    !state.quotientRoleB assertion.1
+      (context.roots assertion.2.1) (context.roots assertion.2.2)
+
+theorem FiniteProductionNativeABoxContext.negativeRolesB_sound
+    (context : FiniteProductionNativeABoxContext
+      nodeCount conceptCount roleCount)
+    (state : FiniteEqCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hvalid : state.equalityClosureValidB = true)
+    (hcheck : context.negativeRolesB state = true) :
+    context.abox.NegativeRoles state.state.quotientCanonical
+      (fun individual => Quotient.mk state.state.nodeSetoid
+        (context.roots individual)) := by
+  simp only [FiniteProductionNativeABoxContext.negativeRolesB,
+    List.all_eq_true] at hcheck
+  intro assertion hassertion
+  have hfalse := hcheck assertion hassertion
+  intro hrole
+  have htrue := (state.quotientRoleB_eq_true hvalid assertion.1
+    (context.roots assertion.2.1) (context.roots assertion.2.2)).mpr hrole
+  simp [htrue] at hfalse
+
+def DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB
+    (decoded : DecodedEqProductionBlockingTable)
+    (context : FiniteProductionNativeABoxContext
+      decoded.nodeCount decoded.conceptCount decoded.roleCount)
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) : Bool :=
+  let materialized := decoded.materializeAssignment assignment
+  let distinct : FiniteDistinctEqCertificate decoded.nodeCount
+      decoded.conceptCount decoded.roleCount decoded.variableCount := {
+    base := materialized
+    apart := context.apart
+  }
+  decoded.assignmentCandidateValidB assignment &&
+    distinct.apartSeparatedB && context.seededB distinct &&
+    context.proxySingletonsB materialized &&
+    context.negativeRolesB materialized
+
+def DecodedEqProductionBlockingTable.NativeCandidateSemanticallyValid
+    (decoded : DecodedEqProductionBlockingTable)
+    (context : FiniteProductionNativeABoxContext
+      decoded.nodeCount decoded.conceptCount decoded.roleCount)
+    (assignment : FoldAssignment (Fin decoded.nodeCount)) : Prop :=
+  let materialized := decoded.materializeAssignment assignment
+  if decoded.table.allBlockableSources then
+    context.abox.SatisfiableWithCardinality
+      materialized.base.ontology decoded.definitions
+  else
+    context.abox.SatisfiableWith materialized.base.ontology
+
+theorem DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB_sound
+    (decoded : DecodedEqProductionBlockingTable)
+    [Nonempty (Fin decoded.nodeCount)]
+    (context : FiniteProductionNativeABoxContext
+      decoded.nodeCount decoded.conceptCount decoded.roleCount)
+    (assignment : FoldAssignment (Fin decoded.nodeCount))
+    (hcheck : decoded.nativeAssignmentCandidateValidB context assignment = true) :
+    decoded.NativeCandidateSemanticallyValid context assignment := by
+  simp only [DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB,
+    Bool.and_eq_true] at hcheck
+  rcases hcheck with ⟨⟨⟨⟨hcandidate, hapart⟩, hseeded⟩, hsingletons⟩, hnegative⟩
+  let materialized := decoded.materializeAssignment assignment
+  let distinct : FiniteDistinctEqCertificate decoded.nodeCount
+      decoded.conceptCount decoded.roleCount decoded.variableCount := {
+    base := materialized
+    apart := context.apart
+  }
+  have hseeded' : context.abox.SeededIn distinct.state context.roots :=
+    (context.seededB_eq_true_iff distinct).mp hseeded
+  by_cases hmode : decoded.table.allBlockableSources = true
+  · simp only [DecodedEqProductionBlockingTable.NativeCandidateSemanticallyValid,
+      hmode]
+    have hcardinality : materialized.checkEqSatWithCardinality
+        decoded.definitions = true := by
+      simp [DecodedEqProductionBlockingTable.assignmentCandidateValidB,
+        hmode] at hcandidate
+      simpa [materialized] using hcandidate.1
+    have hparts := hcardinality
+    simp only [FiniteEqCertificate.checkEqSatWithCardinality,
+      Bool.and_eq_true, FiniteEqCertificate.checkEqSat] at hparts
+    have hvalid : materialized.equalityClosureValidB = true :=
+      hparts.1.1.1.1.1
+    exact distinct.checkEqSatWithCardinality_native_satisfiable
+      decoded.definitions context.abox context.roots hseeded' hcardinality
+      hapart (context.proxySingletonsB_sound materialized hvalid hsingletons)
+      (context.negativeRolesB_sound materialized hvalid hnegative)
+  · have hmodeFalse : decoded.table.allBlockableSources = false :=
+      Bool.eq_false_of_not_eq_true hmode
+    simp only [DecodedEqProductionBlockingTable.NativeCandidateSemanticallyValid,
+      hmodeFalse, Bool.false_eq]
+    have hsat : materialized.checkEqSat = true := by
+      simpa [DecodedEqProductionBlockingTable.assignmentCandidateValidB,
+        hmodeFalse, materialized] using hcandidate
+    have hparts := hsat
+    simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hparts
+    have hvalid : materialized.equalityClosureValidB = true := hparts.1.1.1.1
+    exact distinct.checkEqSat_native_satisfiable context.abox context.roots
+      hseeded' hsat hapart
+      (context.proxySingletonsB_sound materialized hvalid hsingletons)
+      (context.negativeRolesB_sound materialized hvalid hnegative)
 
 def DecodedEqProductionBlockingTable.rejectedCandidatesInvalid
     (decoded : DecodedEqProductionBlockingTable) : Bool :=
   decoded.rejectedList.all fun assignment =>
-    !decoded.assignmentCandidateValidB assignment
+    !(match decoded.nativeContext with
+      | none => decoded.assignmentCandidateValidB assignment
+      | some context => decoded.nativeAssignmentCandidateValidB context assignment)
 
 theorem DecodedEqProductionBlockingTable.rejectedCandidatesInvalid_eq_true_iff
     (decoded : DecodedEqProductionBlockingTable) :
     decoded.rejectedCandidatesInvalid = true ↔
       ∀ assignment ∈ decoded.rejectedList,
-        decoded.assignmentCandidateValidB assignment = false := by
+        (match decoded.nativeContext with
+          | none => decoded.assignmentCandidateValidB assignment
+          | some context =>
+              decoded.nativeAssignmentCandidateValidB context assignment) = false := by
   simp [DecodedEqProductionBlockingTable.rejectedCandidatesInvalid]
 
 theorem FiniteEqProductionBlockingTable.expectedOptions_filtered
@@ -495,6 +767,9 @@ def WireEqProductionBlockingTable.decode
           return (← checkedFin "rejected source" decodedBase.nodeCount pair.source,
             ← checkedFin "rejected blocker" decodedBase.nodeCount pair.target)
         return pairs.toFinset
+      let nativeContext ← wire.native_seed.mapM fun native =>
+        native.decode decodedBase.nodeCount decodedBase.conceptCount
+          decodedBase.roleCount
       return {
         nodeCount := decodedBase.nodeCount
         conceptCount := decodedBase.conceptCount
@@ -512,6 +787,7 @@ def WireEqProductionBlockingTable.decode
         validateRejections := wire.validate_rejections
         definitions := definitions
         exactDefinitions := exactDefinitions
+        nativeContext := nativeContext
       }
   | _ => throw "equality production blocker base is not a SAT-state payload"
 
@@ -594,7 +870,10 @@ theorem WireEqProductionBlockingTable.checked_rejectedCandidate_invalid
     (hvalidate : decoded.validateRejections = true)
     {assignment : FoldAssignment (Fin decoded.nodeCount)}
     (hrejected : assignment ∈ decoded.rejected) :
-    decoded.assignmentCandidateValidB assignment = false := by
+    (match decoded.nativeContext with
+      | none => decoded.assignmentCandidateValidB assignment
+      | some context =>
+          decoded.nativeAssignmentCandidateValidB context assignment) = false := by
   have checked := wire.check_sound decoded hdecode hcheck
   have hinvalid := decoded.rejectedCandidatesInvalid_eq_true_iff.mp
     (checked.2.2.2.2.2.2 hvalidate)
@@ -634,6 +913,7 @@ theorem WireEqProductionBlockingTable.checked_expansion_strict
 #print axioms FiniteEqCertificate.computableQuotientRoleBlockingSignature_eq
 #print axioms FiniteEqProductionBlockingTable.computableExpectedOptions_eq
 #print axioms WireEqProductionBlockingTable.check_sound
+#print axioms DecodedEqProductionBlockingTable.nativeAssignmentCandidateValidB_sound
 #print axioms WireEqProductionBlockingTable.checked_sourceExpansionControlled
 #print axioms WireEqProductionBlockingTable.checked_rejectedCandidate_invalid
 #print axioms WireEqProductionBlockingTable.checked_expansion_has_fresh_pair
