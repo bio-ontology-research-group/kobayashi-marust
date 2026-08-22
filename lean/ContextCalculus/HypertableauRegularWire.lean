@@ -96,6 +96,54 @@ structure DecodedRegularCertificateAt
   certificate : FiniteRegularCertificate
     nodeCount conceptCount roleCount variableCount
 
+/-- Executable equality of the membership predicates represented by two
+finite lists. List order and duplicate entries are irrelevant. -/
+def listMembershipEqB [DecidableEq α] (left right : List α) : Bool :=
+  (left.all fun entry => decide (entry ∈ right)) &&
+    (right.all fun entry => decide (entry ∈ left))
+
+theorem listMembershipEqB_eq_true_iff [DecidableEq α]
+    (left right : List α) :
+    listMembershipEqB left right = true ↔ ∀ entry, entry ∈ left ↔ entry ∈ right := by
+  simp only [listMembershipEqB, Bool.and_eq_true, List.all_eq_true,
+    decide_eq_true_eq]
+  constructor
+  · rintro ⟨hleft, hright⟩ entry
+    exact ⟨hleft entry, hright entry⟩
+  · intro h
+    exact ⟨fun entry hentry => (h entry).mp hentry,
+      fun entry hentry => (h entry).mpr hentry⟩
+
+/-- Executable extensional comparison between the completion state carried by
+a regular-unravelling certificate and the finite blocked state from which the
+certificate was produced.  List order and duplicate entries are intentionally
+irrelevant because `State` interprets each list through membership. -/
+def FiniteRegularCertificate.matchesStateB
+    (actual : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (expected : FiniteSatCertificate
+      nodeCount conceptCount roleCount variableCount) : Bool :=
+  listMembershipEqB actual.labels expected.labels &&
+    listMembershipEqB actual.edges expected.edges &&
+    listMembershipEqB actual.obligations expected.obligations
+
+theorem FiniteRegularCertificate.matchesStateB_state
+    (actual : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (expected : FiniteSatCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (hcheck : actual.matchesStateB expected = true) :
+    actual.state = expected.state := by
+  simp only [FiniteRegularCertificate.matchesStateB, Bool.and_eq_true,
+    listMembershipEqB_eq_true_iff] at hcheck
+  apply State.ext
+  · funext node literal
+    exact propext (hcheck.1.1 (node, literal))
+  · funext role source target
+    exact propext (hcheck.1.2 (role, source, target))
+  · funext role filler node
+    exact propext (hcheck.2 (role, filler, node))
+
 def decodeRedirect (nodeCount : Nat) (values : List Nat) :
     Except String (Fin nodeCount → Fin nodeCount) := do
   let decoded ← values.mapM (checkedFin "redirect node" nodeCount)
@@ -276,8 +324,12 @@ example : (match decodeRedirect 1 [] with | .error _ => true | .ok _ => false) =
     true := by native_decide
 example : (match checkedFin "node" 1 1 with | .error _ => true | .ok _ => false) =
     true := by native_decide
+example : listMembershipEqB [1, 1] [1] = true := by native_decide
+example : listMembershipEqB [1] [2] = false := by native_decide
 
 #print axioms DecodedRegularCertificate.check_models
 #print axioms DecodedRegularCertificate.check_eq_true_iff_valid
+#print axioms listMembershipEqB_eq_true_iff
+#print axioms FiniteRegularCertificate.matchesStateB_state
 
 end ContextCalculus.Hypertableau

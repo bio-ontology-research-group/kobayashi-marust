@@ -88,6 +88,13 @@
   leaf state, and every regular fallback callback is dependently indexed by
   that leaf. A regular model checked for another completion can no longer be
   reused at this terminal.
+- Add an executable, extensional comparison between regular-certificate state
+  and blocked finite state. The comparison ignores list order and duplicates,
+  matching the membership semantics of hypertableau states, and proves exact
+  equality of labels, edges, and existential obligations on acceptance.
+- Remove the theorem-producing state-match callback from regular fallback wire
+  decoding. The decoder now receives the concrete blocked-state certificate,
+  executes the extensional comparison itself, and fails closed on any mismatch.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

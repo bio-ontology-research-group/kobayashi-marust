@@ -272,6 +272,30 @@ def CheckedRegularFallbackCandidate.ofDecoded
       subst nodeCount
       exact ⟨certificate, eq_of_heq hstate, hontology, hcheck⟩
 
+/-- After dimension checking, compare the decoded regular state to the exact
+finite blocked-state payload and construct leaf-indexed evidence only when the
+executable comparison accepts. -/
+def CheckedRegularFallbackCandidate.ofDecodedChecked
+    (decoded : DecodedRegularCertificateAt conceptCount roleCount variableCount)
+    (hnodes : decoded.nodeCount = 8 * 2 ^ budget)
+    (ontology : List
+      (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
+    (expected : FiniteSatCertificate (8 * 2 ^ budget) conceptCount roleCount
+      variableCount)
+    (hontology : decoded.certificate.ontology = ontology)
+    (hcheck : decoded.certificate.check = true) :
+    Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
+      conceptCount roleCount variableCount ontology expected.state) := by
+  cases decoded with
+  | mk nodeCount positive certificate =>
+      dsimp at hnodes
+      subst nodeCount
+      if hstate : certificate.matchesStateB expected = true then
+        exact .ok ⟨certificate, certificate.matchesStateB_state expected hstate,
+          hontology, hcheck⟩
+      else
+        exact .error "regular fallback certificate differs from the blocked state"
+
 /-- Decode and recheck an untrusted regular fallback at the exact finite-search
 schedule. Vocabulary, node budget, ontology, and semantic checker acceptance
 are all enforced before typed evidence is returned. -/
@@ -280,18 +304,16 @@ def CheckedRegularFallbackCandidate.decodeWire
     (conceptCount roleCount variableCount budget : Nat)
     (ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
-    (state : State (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount))
-    (stateMatches : ∀ decoded : DecodedRegularCertificateAt conceptCount
-      roleCount variableCount, decoded.nodeCount = 8 * 2 ^ budget →
-      HEq decoded.certificate.state state) :
+    (expected : FiniteSatCertificate (8 * 2 ^ budget) conceptCount roleCount
+      variableCount) :
     Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology state) := do
+      conceptCount roleCount variableCount ontology expected.state) := do
   let decoded ← wire.decodeAt conceptCount roleCount variableCount
   if hnodes : decoded.nodeCount = 8 * 2 ^ budget then
     if hontology : decoded.certificate.ontology = ontology then
       if hcheck : decoded.certificate.check = true then
-        return .ofDecoded decoded hnodes state (stateMatches decoded hnodes)
-          hontology hcheck
+        CheckedRegularFallbackCandidate.ofDecodedChecked decoded hnodes
+          ontology expected hontology hcheck
       else
         throw "regular fallback certificate failed its semantic checker"
     else
