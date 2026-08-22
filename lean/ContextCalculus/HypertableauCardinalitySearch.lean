@@ -50,6 +50,22 @@ inductive CheckedCardinalityDecisionOutcome
       (hdefinitions : document.definition_count = definitions.length)
       (hcheck : document.check = true)
 
+/-- Construct a checked cardinality frontier from the mathematical tagged
+address invariant. -/
+def CheckedCardinalityDecisionOutcome.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedCardinalityDecisionOutcome conceptCount roleCount variableCount
+      ontology definitions :=
+  let document := WireCardinalityAddressFrontier.ofAddress address
+  .frontier document rfl rfl rfl
+    (document.checkScheduled_check budget maxWidth
+      (WireCardinalityAddressFrontier.ofAddress_checkScheduled
+        address hinjective rfl))
+
 /-- One cardinality-aware production attempt. The scheduled frontier stores
 both changing dimensions used by the termination proof. -/
 inductive CheckedCardinalityControlAttempt
@@ -89,6 +105,21 @@ inductive CheckedCardinalityControlAttempt
       (folds : Finset
         (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
       (fresh : ∃ fold ∈ folds, fold ∉ forbidden)
+
+/-- Construct the scheduled cardinality control frontier directly from an
+injective tagged address map. -/
+def CheckedCardinalityControlAttempt.frontier_of_address
+    (address : Fin (8 * 2 ^ budget) → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitions.length maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address) :
+    CheckedCardinalityControlAttempt conceptCount roleCount variableCount
+      ontology definitions budget maxWidth forbidden :=
+  let document := WireCardinalityAddressFrontier.ofAddress address
+  .frontier document rfl rfl rfl
+    (WireCardinalityAddressFrontier.ofAddress_checkScheduled
+      address hinjective rfl)
 
 def CheckedCardinalityControlAttempt.toGuarded
     {forbidden : Finset
@@ -488,6 +519,7 @@ theorem checked_cardinality_control_producer_decides_source
 
 #print axioms CheckedCardinalityDecisionOutcome.sat_semantics
 #print axioms CheckedCardinalityDecisionOutcome.closed_semantics
+#print axioms CheckedCardinalityDecisionOutcome.frontier_of_address
 #print axioms CheckedCardinalityDecisionOutcome.conclusive_semantics
 #print axioms checked_cardinality_doubling_decides
 #print axioms CheckedCardinalityDecisionOutcome.source_semantics_of_equivalent
@@ -496,6 +528,7 @@ theorem checked_cardinality_control_producer_decides_source
 #print axioms checked_cardinality_fresh_fold_producer_decides_source
 #print axioms checked_cardinality_fold_assignment_producer_decides_source
 #print axioms CheckedCardinalityControlAttempt.frontier_scheduled
+#print axioms CheckedCardinalityControlAttempt.frontier_of_address
 #print axioms CheckedCardinalityControlProducer.frontier_scheduled
 #print axioms checked_cardinality_control_producer_decides_source
 

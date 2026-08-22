@@ -43,6 +43,11 @@
   of the address-only checker. Cross-language tests confirm acceptance of a
   valid cyclic frontier and rejection of duplicate addresses and of a state
   missing the role edge required by an occupied witness address.
+- Prove completeness of the tagged cardinality-frontier serializer. Lean now
+  encodes ordinary existential slots and minimum-definition child slots,
+  proves decode/encode identity, constructs the canonical scheduled document,
+  and derives both cardinality outcome and control-attempt frontiers from an
+  injective tagged address map without a producer-supplied checker result.
 - Add the concrete settled-search constructor missing between finite HT search
   and the two-level blocker runtime. A fixed-budget refutation or checked node
   frontier now terminates that outer attempt immediately; only a genuine

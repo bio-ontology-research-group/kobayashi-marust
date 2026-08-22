@@ -48,6 +48,58 @@ def WireCardinalityWitnessStep.decode
         ← checkedFin "minimum child index" maxWidth step.index)
   | kind => throw s!"unsupported cardinality witness-step kind {kind}"
 
+def WireCardinalityWitnessStep.encode
+    (step : CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+      definitionCount maxWidth) : WireCardinalityWitnessStep :=
+  match step with
+  | .inl (role, filler) => {
+      kind := 0
+      role := role.val
+      filler := WireLit.encode filler
+      definition := 0
+      index := 0 }
+  | .inr (definition, index) => {
+      kind := 1
+      role := 0
+      filler := { concept := 0, neg := false }
+      definition := definition.val
+      index := index.val }
+
+@[simp] theorem WireCardinalityWitnessStep.decode_encode
+    (step : CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+      definitionCount maxWidth) :
+    (WireCardinalityWitnessStep.encode step).decode conceptCount roleCount
+      definitionCount maxWidth = .ok step := by
+  rcases step with ⟨role, filler⟩ | ⟨definition, index⟩
+  · simp only [WireCardinalityWitnessStep.encode,
+      WireCardinalityWitnessStep.decode, checkedFin_value,
+      WireLit.decode_encode]
+    rfl
+  · simp only [WireCardinalityWitnessStep.encode,
+      WireCardinalityWitnessStep.decode, checkedFin_value]
+    rfl
+
+def encodeWireCardinalityAddress
+    (address : RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitionCount maxWidth)
+      (Fin conceptCount) (Fin roleCount)) :
+    List WireCardinalityWitnessStep :=
+  address.2.1.map WireCardinalityWitnessStep.encode
+
+private theorem mapM_decode_encoded_cardinality_steps
+    (steps : List (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+      definitionCount maxWidth)) :
+    (steps.map WireCardinalityWitnessStep.encode).mapM
+      (WireCardinalityWitnessStep.decode conceptCount roleCount
+        definitionCount maxWidth) = .ok steps := by
+  induction steps with
+  | nil => rfl
+  | cons step rest ih =>
+      simp only [List.map_cons, List.mapM_cons,
+        WireCardinalityWitnessStep.decode_encode, ih]
+      rfl
+
 def decodeWireCardinalityAddress
     (conceptCount roleCount definitionCount maxWidth : Nat)
     (steps : List WireCardinalityWitnessStep) : Except String
@@ -64,6 +116,44 @@ def decodeWireCardinalityAddress
   else
     throw s!"cardinality witness address depth {decoded.length} exceeds the full-signature bound"
 
+@[simp] theorem decodeWireCardinalityAddress_encode
+    (address : RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitionCount maxWidth)
+      (Fin conceptCount) (Fin roleCount)) :
+    decodeWireCardinalityAddress conceptCount roleCount definitionCount maxWidth
+      (encodeWireCardinalityAddress address) = .ok address := by
+  unfold decodeWireCardinalityAddress encodeWireCardinalityAddress
+  rw [mapM_decode_encoded_cardinality_steps]
+  have hdepth : address.2.1.length ≤
+      roleBlockingSignatureCard conceptCount roleCount := by
+    rw [← card_roleBlockingSignature_fin]
+    exact address.2.2
+  change Except.bind (Except.ok address.2.1) _ = Except.ok address
+  rw [Except.bind]
+  rw [dif_pos hdepth]
+  apply congrArg (Except.ok (ε := String))
+  apply Prod.ext
+  · exact Subsingleton.elim _ _
+  · apply Subtype.ext
+    rfl
+
+private theorem mapM_decode_encoded_cardinality_address_function
+    (nodes : List (Fin nodeCount))
+    (address : Fin nodeCount → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitionCount maxWidth)
+      (Fin conceptCount) (Fin roleCount)) :
+    nodes.mapM (decodeWireCardinalityAddress conceptCount roleCount
+      definitionCount maxWidth ∘ encodeWireCardinalityAddress ∘ address) =
+        .ok (nodes.map address) := by
+  induction nodes with
+  | nil => rfl
+  | cons node rest ih =>
+      simp only [List.mapM_cons, List.map_cons, Function.comp_apply,
+        decodeWireCardinalityAddress_encode, ih]
+      rfl
+
 structure DecodedCardinalityAddressFrontier
     (nodeCount conceptCount roleCount definitionCount maxWidth : Nat) where
   address : Fin nodeCount → RootedRoleBlockedAddress (Fin 1)
@@ -71,6 +161,23 @@ structure DecodedCardinalityAddressFrontier
       definitionCount maxWidth)
     (Fin conceptCount) (Fin roleCount)
   injective : Function.Injective address
+
+/-- Canonical cardinality-frontier document for a complete tagged address
+map. -/
+def WireCardinalityAddressFrontier.ofAddress
+    (address : Fin nodeCount → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitionCount maxWidth)
+      (Fin conceptCount) (Fin roleCount)) :
+    WireCardinalityAddressFrontier where
+  version := 1
+  node_count := nodeCount
+  concept_count := conceptCount
+  role_count := roleCount
+  definition_count := definitionCount
+  max_width := maxWidth
+  addresses := (List.finRange nodeCount).map
+    (encodeWireCardinalityAddress ∘ address)
 
 def WireCardinalityAddressFrontier.decode
     (document : WireCardinalityAddressFrontier) : Except String
@@ -110,6 +217,32 @@ def WireCardinalityAddressFrontier.checkScheduled
   document.check &&
     decide (document.node_count = 8 * 2 ^ budget) &&
     decide (document.max_width = maxWidth)
+
+/-- Every injective complete tagged address map is accepted at its exact node
+and width schedule. -/
+theorem WireCardinalityAddressFrontier.ofAddress_checkScheduled
+    (address : Fin nodeCount → RootedRoleBlockedAddress (Fin 1)
+      (CardinalityWitnessSlot (Fin conceptCount) (Fin roleCount)
+        definitionCount maxWidth)
+      (Fin conceptCount) (Fin roleCount))
+    (hinjective : Function.Injective address)
+    (hnodes : nodeCount = 8 * 2 ^ budget) :
+    (WireCardinalityAddressFrontier.ofAddress address).checkScheduled
+      budget maxWidth = true := by
+  classical
+  have hnodup : ((List.finRange nodeCount).map address).Nodup :=
+    (List.nodup_finRange nodeCount).map hinjective
+  simp only [WireCardinalityAddressFrontier.checkScheduled,
+    WireCardinalityAddressFrontier.check,
+    WireCardinalityAddressFrontier.ofAddress]
+  unfold WireCardinalityAddressFrontier.decode
+  simp [mapM_decode_encoded_cardinality_address_function]
+  constructor
+  · change (Except.bind (Except.ok ((List.finRange nodeCount).map address)) _).isOk = true
+    rw [Except.bind]
+    simp [hnodup]
+    rfl
+  · exact hnodes
 
 theorem WireCardinalityAddressFrontier.checkScheduled_check
     (document : WireCardinalityAddressFrontier) (budget maxWidth : Nat)
@@ -199,6 +332,8 @@ theorem cardinality_doubling_eventually_rejects_checked_frontier
     (hdefinitions round) (hwidth round) address hinjective
 
 #print axioms WireCardinalityAddressFrontier.check_refines
+#print axioms decodeWireCardinalityAddress_encode
+#print axioms WireCardinalityAddressFrontier.ofAddress_checkScheduled
 #print axioms WireCardinalityAddressFrontier.checkScheduled_check
 #print axioms WireCardinalityAddressFrontier.checkScheduled_node_count
 #print axioms WireCardinalityAddressFrontier.checkScheduled_max_width
