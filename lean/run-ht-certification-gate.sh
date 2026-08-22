@@ -41,6 +41,7 @@ checkers=(
     ht-frontier-check
     ht-address-refinement-check
     ht-production-blocking-check
+    ht-production-trace-check
     ht-finite-production-terminal-check
     ht-regular-production-terminal-check
     ht-equality-production-blocking-check
@@ -143,6 +144,8 @@ done
     export KM_HT_TEST_LEAN_FRONTIER_CHECKER="$bin_root/ht-address-refinement-check"
     export KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
     export KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER="$bin_root/ht-production-blocking-check"
+    export KM_HT_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
+    export KM_HT_TEST_LEAN_PRODUCTION_TRACE_CHECKER="$bin_root/ht-production-trace-check"
     export KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-finite-production-terminal-check"
     export KM_HT_TEST_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-finite-production-terminal-check"
     export KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER="$bin_root/ht-regular-production-terminal-check"

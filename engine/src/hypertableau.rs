@@ -10759,6 +10759,58 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Check one exhausted equality-free blocking round and append it to the
+    /// complete fixed-budget rerun history. The trace checker enforces the
+    /// empty initial forbidden set and every exact learned-union transition.
+    fn lean_production_blocking_history_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        rejected_assignments: &HashSet<Vec<(Node, Node)>>,
+        rounds: &mut Vec<serde_json::Value>,
+    ) -> Result<bool, String> {
+        let round = self.lean_production_blocking_document_json(
+            leaf,
+            rejected_assignments,
+        )?;
+        let blocking_checker = std::env::var_os(
+            "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
+        })
+        .ok_or_else(|| {
+            "exhausted production folds require KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER"
+                .to_string()
+        })?;
+        if !self.lean_candidate_passes_with(&round, &blocking_checker)? {
+            return Ok(false);
+        }
+        let round = serde_json::from_str(&round).map_err(|error| error.to_string())?;
+        let trace_checker = std::env::var_os(
+            "KM_HT_LEAN_PRODUCTION_TRACE_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_TRACE_CHECKER")
+        })
+        .ok_or_else(|| {
+            "exhausted production folds require KM_HT_LEAN_PRODUCTION_TRACE_CHECKER"
+                .to_string()
+        })?;
+        rounds.push(round);
+        let result = (|| -> Result<bool, String> {
+            let history = serde_json::to_string(&serde_json::json!({
+                "version": 1,
+                "rounds": rounds,
+            }))
+            .map_err(|error| error.to_string())?;
+            self.lean_candidate_passes_with(&history, &trace_checker)
+        })();
+        if !matches!(&result, Ok(true)) {
+            rounds.pop();
+        }
+        result
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -11737,6 +11789,7 @@ impl Ht {
         );
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let (mut state, _) = self.lean_initial_refutation_state(&[])?;
             match self.lean_refutation_avoiding_folds(
@@ -11795,13 +11848,12 @@ impl Ht {
                     // blocked source on the next search attempt. This is a
                     // control refinement, not a claim that a constituent pair
                     // is invalid in another assignment.
-                    if !self.lean_production_blocking_passes(
+                    if !self.lean_production_blocking_history_passes(
                         &leaf,
                         &rejected_assignments,
+                        &mut production_history,
                     )? {
-                        return Err(
-                            "Lean rejected the exhausted production blocker table".to_string(),
-                        );
+                        return Err("Lean rejected the exhausted production history".to_string());
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -11821,6 +11873,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "regular decision node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -13992,6 +14046,7 @@ impl Ht {
         }
 
         let mut forbidden_folds = HashSet::new();
+        let mut production_history = Vec::new();
         loop {
             let mut state = LeanHtRefutationState::root(&initial_labels);
             match self.lean_refutation_avoiding_folds(
@@ -14051,11 +14106,12 @@ impl Ht {
                             "equality-free taxonomy assignment search must progress");
                     }
 
-                    if !self.lean_production_blocking_passes(
+                    if !self.lean_production_blocking_history_passes(
                         &leaf,
                         &rejected_assignments,
+                        &mut production_history,
                     )? {
-                        return Err("Lean rejected the equality-free taxonomy production blocker table".to_string());
+                        return Err("Lean rejected the equality-free taxonomy production history".to_string());
                     }
                     LeanHtRefutationState::learn_exhausted_fold_options(
                         &mut forbidden_folds,
@@ -14077,6 +14133,8 @@ impl Ht {
                     node_budget = node_budget.checked_mul(2).ok_or_else(|| {
                         "equality-free taxonomy node budget overflowed usize".to_string()
                     })?;
+                    forbidden_folds.clear();
+                    production_history.clear();
                 }
                 LeanHtRefutationOutcome::Invalid(error) => return Err(error),
             }
@@ -26373,6 +26431,25 @@ mod tests {
                 !rejected.status.success(),
                 "Lean must reject a non-exhausted production blocker table",
             );
+        }
+        if std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_TRACE_CHECKER").is_some() {
+            let mut production_history = Vec::new();
+            assert!(cyclic
+                .lean_production_blocking_history_passes(
+                    &leaf,
+                    &HashSet::from([leaf.folds.clone()]),
+                    &mut production_history,
+                )
+                .expect("check the genuine equality-free production history prefix"));
+            assert_eq!(production_history.len(), 1);
+            assert!(!cyclic
+                .lean_production_blocking_history_passes(
+                    &leaf,
+                    &HashSet::from([leaf.folds.clone()]),
+                    &mut production_history,
+                )
+                .expect("reject a stale equality-free production history extension"));
+            assert_eq!(production_history.len(), 1);
         }
         if let Some(checker) = std::env::var_os("KM_HT_TEST_REGULAR_LEAN_CHECKER") {
             let path = std::env::temp_dir().join(format!(

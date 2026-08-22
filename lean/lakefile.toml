@@ -57,6 +57,10 @@ name = "ht-finite-production-terminal-check"
 root = "HTFiniteProductionTerminalCheck"
 
 [[lean_exe]]
+name = "ht-production-trace-check"
+root = "HTProductionTraceCheck"
+
+[[lean_exe]]
 name = "ht-cardinality-frontier-check"
 root = "HTCardinalityFrontierCheck"
 

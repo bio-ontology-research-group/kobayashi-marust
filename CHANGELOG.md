@@ -19,6 +19,16 @@
 
 ### Strengthen the certified HT blocking boundary
 
+- Add a native equality-free production-history checker parallel to the
+  equality-aware checker. It proves that every exhausted Cartesian assignment
+  round is accepted, the first rerun starts with an empty forbidden set, and
+  each successor forbids exactly the preceding set union its complete learned
+  option-pair set while retaining the same ontology and dimensions.
+- Route global regular decisions and equality-free taxonomy cells through the
+  checked history, reset it only when a checked frontier doubles the node
+  budget, and require the trace checker at the top-level HT certification
+  boundary. A stale rerun that fails to learn the prior union is rejected.
+
 - Add a combined finite-production terminal wire and native Lean checker. It
   reconstructs the exact finite fold materialization from the blocked table
   and selected Cartesian assignment, requires the published finite certificate
