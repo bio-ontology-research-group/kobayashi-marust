@@ -621,6 +621,12 @@ equivalence. The same executable-assignment and expansion capstone covers
 regular, equality, cardinality, native-ABox, and combined
 native-ABox-cardinality global and taxonomy routes.
 
+Rust implements the outer constructor through one shared
+`learn_exhausted_fold_options` transition used by all ten global and taxonomy
+loops. It checks that every listed source has a blocker and that inserting the
+exposed pair set strictly enlarges the global forbidden set. Tests cover normal
+growth, repeated-product rejection, and an empty blocker family.
+
 `HypertableauProductionGlobalPublication.lean` and
 `HypertableauProductionTaxonomyPublication.lean` close the current semantic
 publication endpoints. The global Boolean is true exactly for source

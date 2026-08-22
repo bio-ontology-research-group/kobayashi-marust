@@ -103,6 +103,12 @@
   subsumption cell with both positive and negative exactness, including
   cardinality and native-ABox semantics. These capstones are part of the
   default `ContextCalculus` build rather than detached declarations.
+- Consolidate all ten Rust global and taxonomy assignment-exhaustion branches
+  behind one transition matching the Lean outer-expansion constructor. The
+  transition rejects an empty blocker family, inserts the full exposed pair
+  set, and verifies strict growth before rerunning saturation. Repeating an
+  exhausted product or reporting a blocked source without a blocker now fails
+  at the common certification boundary instead of drifting by route.
 
 ### Unify total production HT global decisions
 

@@ -3555,6 +3555,32 @@ impl LeanHtRefutationState {
         choose(options, 0, &mut Vec::with_capacity(options.len()), rejected)
     }
 
+    /// Perform the outer transition after every complete assignment for one
+    /// saturated state was independently rejected.  The Lean production
+    /// model permits this transition only when every blocked source had at
+    /// least one candidate and the global forbidden-pair set grows strictly.
+    fn learn_exhausted_fold_options(
+        forbidden: &mut HashSet<(Node, Node)>,
+        options: &[(Node, Vec<Node>)],
+        context: &str,
+    ) -> Result<(), String> {
+        if let Some((source, _)) = options.iter().find(|(_, blockers)| blockers.is_empty()) {
+            return Err(format!(
+                "{context}: blocked source {source} has no available blocker",
+            ));
+        }
+        let previous = forbidden.len();
+        forbidden.extend(options.iter().flat_map(|(source, blockers)| {
+            blockers.iter().map(move |&blocker| (*source, blocker))
+        }));
+        if forbidden.len() == previous {
+            return Err(format!(
+                "{context}: exhausted assignments added no fresh forbidden pair",
+            ));
+        }
+        Ok(())
+    }
+
     fn pairwise_blocked_by_ancestor(&self, node: Node) -> bool {
         self.pairwise_blocker_ancestor(node).is_some()
     }
@@ -11087,17 +11113,11 @@ impl Ht {
                     // blocked source on the next search attempt. This is a
                     // control refinement, not a claim that a constituent pair
                     // is invalid in another assignment.
-                    let mut expanded_source = false;
-                    for (source, blockers) in &leaf.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free regular decision candidate".to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &leaf.fold_options,
+                        "regular decision",
+                    )?;
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12203,18 +12223,11 @@ impl Ht {
                         assert!(inserted, "native ABox fold assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &open.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free native ABox equality candidate"
-                                .to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &open.fold_options,
+                        "native ABox equality decision",
+                    )?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12360,18 +12373,11 @@ impl Ht {
                             "native ABox cardinality fold assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &open.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free native ABox cardinality candidate"
-                                .to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &open.fold_options,
+                        "native ABox cardinality decision",
+                    )?;
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12877,17 +12883,11 @@ impl Ht {
                         assert!(inserted, "equality fold assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &state.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free equality decision candidate".to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &state.fold_options,
+                        "equality decision",
+                    )?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -12961,17 +12961,11 @@ impl Ht {
                         assert!(inserted, "cardinality fold assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &state.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free cardinality decision candidate".to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &state.fold_options,
+                        "cardinality decision",
+                    )?;
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -13107,18 +13101,11 @@ impl Ht {
                                 "cardinality taxonomy assignment search must progress");
                         }
 
-                        let mut expanded_source = false;
-                        for (source, blockers) in &state.fold_options {
-                            for &blocker in blockers {
-                                expanded_source |= forbidden_folds.insert((*source, blocker));
-                            }
-                        }
-                        if !expanded_source {
-                            return Err(
-                                "Lean rejected a fold-free cardinality taxonomy candidate"
-                                    .to_string(),
-                            );
-                        }
+                        LeanHtRefutationState::learn_exhausted_fold_options(
+                            &mut forbidden_folds,
+                            &state.fold_options,
+                            "cardinality taxonomy",
+                        )?;
                     }
                     LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                         return Err("taxonomy query reached the configured cardinality node cap"
@@ -13207,18 +13194,11 @@ impl Ht {
                             assert!(inserted, "equality taxonomy assignment search must progress");
                         }
 
-                        let mut expanded_source = false;
-                        for (source, blockers) in &state.fold_options {
-                            for &blocker in blockers {
-                                expanded_source |= forbidden_folds.insert((*source, blocker));
-                            }
-                        }
-                        if !expanded_source {
-                            return Err(
-                                "Lean rejected a fold-free equality taxonomy candidate"
-                                    .to_string(),
-                            );
-                        }
+                        LeanHtRefutationState::learn_exhausted_fold_options(
+                            &mut forbidden_folds,
+                            &state.fold_options,
+                            "equality taxonomy",
+                        )?;
                     }
                     LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                         return Err(
@@ -13286,17 +13266,11 @@ impl Ht {
                             "equality-free taxonomy assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &leaf.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free taxonomy decision candidate".to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &leaf.fold_options,
+                        "equality-free taxonomy",
+                    )?;
                 }
                 LeanHtRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -13488,18 +13462,11 @@ impl Ht {
                             "native ABox cardinality taxonomy assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &open.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free native ABox cardinality taxonomy candidate"
-                                .to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &open.fold_options,
+                        "native ABox cardinality taxonomy",
+                    )?;
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -13692,18 +13659,11 @@ impl Ht {
                         assert!(inserted, "native ABox taxonomy assignment search must progress");
                     }
 
-                    let mut expanded_source = false;
-                    for (source, blockers) in &open.fold_options {
-                        for &blocker in blockers {
-                            expanded_source |= forbidden_folds.insert((*source, blocker));
-                        }
-                    }
-                    if !expanded_source {
-                        return Err(
-                            "Lean rejected a fold-free native ABox taxonomy candidate"
-                                .to_string(),
-                        );
-                    }
+                    LeanHtRefutationState::learn_exhausted_fold_options(
+                        &mut forbidden_folds,
+                        &open.fold_options,
+                        "native ABox taxonomy",
+                    )?;
                 }
                 LeanHtEqRefutationOutcome::Frontier(_) if !deepen => {
                     return Err(
@@ -25063,6 +25023,32 @@ mod tests {
             )
             .is_none(),
             "the blocker product must report exhaustion after every unique assignment",
+        );
+        let mut forbidden_pairs = HashSet::new();
+        LeanHtRefutationState::learn_exhausted_fold_options(
+            &mut forbidden_pairs,
+            &options,
+            "test assignment product",
+        )
+        .expect("assignment exhaustion must strictly grow the pair blacklist");
+        assert_eq!(forbidden_pairs.len(), 4);
+        assert!(
+            LeanHtRefutationState::learn_exhausted_fold_options(
+                &mut forbidden_pairs,
+                &options,
+                "test repeated assignment product",
+            )
+            .is_err(),
+            "repeating an exhausted product must not masquerade as progress",
+        );
+        assert!(
+            LeanHtRefutationState::learn_exhausted_fold_options(
+                &mut HashSet::new(),
+                &[(7, Vec::new())],
+                "test empty blocker family",
+            )
+            .is_err(),
+            "every source in a certified Cartesian product needs a blocker",
         );
         let rejected_folds: HashSet<(Node, Node)> = leaf.folds.iter().copied().collect();
         let mut retry_state = LeanHtRefutationState::root(&[(0, lit(false, A))]);
