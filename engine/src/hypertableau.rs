@@ -11154,6 +11154,36 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Bind one joint native-ABox taxonomy verdict to the complete ordinary
+    /// frontier history traversed while deciding that exact query.
+    fn lean_rooted_ordinary_taxonomy_production_run_passes(
+        &self,
+        frontiers: &[serde_json::Value],
+        terminal: serde_json::Value,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "native ABox taxonomy publication requires KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+                .to_string()
+        })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "start_budget": 0,
+            "root_count": self.native_abox.individuals.len() + 1,
+            "frontiers": frontiers,
+            "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Prove that one regular SAT certificate belongs to the exact blocked
     /// state and Cartesian assignment currently selected by production search.
     /// This additionally ties the certificate redirect to that assignment.
@@ -15106,18 +15136,10 @@ impl Ht {
                 node_budget,
                 &forbidden_folds,
             ) {
-                LeanHtEqRefutationOutcome::Closed(_, _) => {
-                    let raw = self.lean_eq_refutation_certificate_json_impl(
-                        &initial_labels,
-                        |tree| LeanHtEqEvidence::Unsat { tree },
-                        true,
-                    )?;
-                    let certificate: serde_json::Value =
-                        serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-                    let tree = certificate["evidence"]["unsat"]["tree"].clone();
-                    if tree.is_null() {
-                        return Err("native ABox taxonomy refutation omitted its tree".to_string());
-                    }
+                LeanHtEqRefutationOutcome::Closed(tree, _) => {
+                    let tree = serde_json::to_value(tree)
+                        .map_err(|error| error.to_string())?;
+                    let root_state = state.equality_wire_state(node_budget);
                     let individuals: Vec<_> = self
                         .native_abox
                         .individuals
@@ -15173,12 +15195,12 @@ impl Ht {
                             "role_assertions": role_assertions,
                             "negative_role_assertions": [],
                         },
-                        "node_count": certificate["node_count"],
-                        "variable_count": certificate["variable_count"],
+                        "node_count": node_budget,
+                        "variable_count": variable_count,
                         "roots": roots,
-                        "ontology": certificate["ontology"],
+                        "ontology": ontology.clone(),
                         "state": {
-                            "base": certificate["state"],
+                            "base": root_state,
                             "apart": apart,
                         },
                     });
@@ -15191,6 +15213,17 @@ impl Ht {
                     if !self.lean_native_abox_taxonomy_candidate_passes(&document)? {
                         return Err(
                             "Lean rejected the native ABox taxonomy refutation".to_string(),
+                        );
+                    }
+                    let terminal: serde_json::Value = serde_json::from_str(&document)
+                        .map_err(|error| error.to_string())?;
+                    if !self.lean_rooted_ordinary_taxonomy_production_run_passes(
+                        &frontier_history,
+                        terminal,
+                    )? {
+                        return Err(
+                            "Lean rejected the closed native ABox taxonomy production run"
+                                .to_string(),
                         );
                     }
                     return Ok((false, document));
@@ -15216,7 +15249,14 @@ impl Ht {
                         .map_err(|error| error.to_string())?;
                         let passes =
                             self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
-                        if passes {
+                        let terminal: serde_json::Value = serde_json::from_str(&candidate)
+                            .map_err(|error| error.to_string())?;
+                        if passes
+                            && self.lean_rooted_ordinary_taxonomy_production_run_passes(
+                                &frontier_history,
+                                terminal,
+                            )?
+                        {
                             return Ok((true, candidate));
                         }
                         let inserted = rejected_assignments.insert(folds);

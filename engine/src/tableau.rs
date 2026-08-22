@@ -6259,6 +6259,7 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
     "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+    "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
     "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",
@@ -6496,6 +6497,18 @@ fn run_json_inner(input: &str, forced_ht: Option<bool>) -> Result<String, String
             {
                 return Err(
                     "HT Lean certification requires KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER to bind native ABox terminals to their complete runs"
+                        .to_string(),
+                );
+            }
+            if !native_individuals.is_empty()
+                && inp.card_defs.is_empty()
+                && std::env::var_os(
+                    "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+                )
+                .is_none()
+            {
+                return Err(
+                    "HT Lean certification requires KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER to bind native ABox taxonomy cells to their complete runs"
                         .to_string(),
                 );
             }
@@ -7212,6 +7225,7 @@ mod tests {
             "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
             "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+            "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
             "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
             "KM_HT_LEAN_PRODUCTION_BLOCKING_CHECKER",

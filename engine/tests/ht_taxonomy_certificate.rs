@@ -201,6 +201,7 @@ fn run_with_input(
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_CERT_CHECKER", global_checker)
         .env("KM_HT_LEAN_TAXONOMY_CERT_CHECKER", taxonomy_checker)
         .env("KM_HT_LEAN_CERT_OUT", &global_out)
@@ -249,6 +250,7 @@ fn run_raw_certified(input: &str, projection_checker: Option<&str>) -> std::proc
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -294,6 +296,7 @@ fn run_certification_bypass_probe(
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         // A branch that bypasses certification would incorrectly succeed.
         .env("KM_HT_LEAN_CERT_CHECKER", "/bin/false")
         .stdin(Stdio::piped())
@@ -348,6 +351,7 @@ fn run_projection_only_certification() -> std::process::Output {
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -392,6 +396,7 @@ fn run_native_abox_taxonomy_certification(
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_NATIVE_ABOX_DECISION_CHECKER", "/bin/true")
         .env(
             "KM_HT_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER",
@@ -465,6 +470,7 @@ fn run_frontier_gated_certification(frontier_checker: &str) -> std::process::Out
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -506,6 +512,7 @@ fn run_rejected_cyclic_fold_probe() -> std::process::Output {
         .env("KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER", "/bin/true")
         .env("KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER", "/bin/true")
+        .env("KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER", "/bin/true")
         // This probe isolates finite progress under a fixed cap. Production
         // history has dedicated real-checker regressions in the library gate.
         .env("KM_HT_LEAN_PRODUCTION_TRACE_CHECKER", "/bin/true")
@@ -606,6 +613,7 @@ fn isolated_native_taxonomy_interfaces_fail_closed() {
         "KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER",
+        "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
         "KM_HT_LEAN_CARDINALITY_FRONTIER_CHECKER",
         "KM_HT_LEAN_ROOTED_CARDINALITY_FRONTIER_CHECKER",
     ] {

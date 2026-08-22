@@ -71,6 +71,12 @@
   validity. KM now composes the UNSAT publication from the exact equality
   state and closing tree returned by that run instead of starting another
   refutation search.
+- Bind non-cardinality native-ABox taxonomy countermodels and refutations to
+  their complete ordinary retry histories. Lean checks the exact query
+  literals against the final frontier in addition to root count, ontology,
+  finite signature, terminal budget, and model-theoretic validity. KM now
+  publishes the equality state and closing tree returned by the deciding
+  taxonomy run instead of rerunning the query search.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search
