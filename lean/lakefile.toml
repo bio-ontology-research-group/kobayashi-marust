@@ -173,6 +173,10 @@ name = "ht-native-abox-cardinality-taxonomy-run-matrix-check"
 root = "HTNativeABoxCardinalityTaxonomyRunMatrixCheck"
 
 [[lean_exe]]
+name = "ht-native-abox-taxonomy-run-matrix-check"
+root = "HTNativeABoxTaxonomyRunMatrixCheck"
+
+[[lean_exe]]
 name = "ht-direct-native-abox-cardinality-taxonomy-cert-check"
 root = "HTDirectNativeABoxCardinalityTaxonomyCertCheck"
 

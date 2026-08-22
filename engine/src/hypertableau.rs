@@ -11156,11 +11156,11 @@ impl Ht {
 
     /// Bind one joint native-ABox taxonomy verdict to the complete ordinary
     /// frontier history traversed while deciding that exact query.
-    fn lean_rooted_ordinary_taxonomy_production_run_passes(
+    fn lean_rooted_ordinary_taxonomy_production_run_json(
         &self,
         frontiers: &[serde_json::Value],
         terminal: serde_json::Value,
-    ) -> Result<bool, String> {
+    ) -> Result<String, String> {
         let checker = std::env::var_os(
             "KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER",
         )
@@ -11179,6 +11179,38 @@ impl Ht {
             "root_count": self.native_abox.individuals.len() + 1,
             "frontiers": frontiers,
             "terminal": terminal,
+        }))
+        .map_err(|error| error.to_string())?;
+        if self.lean_candidate_passes_with(&document, &checker)? {
+            Ok(document)
+        } else {
+            Err("Lean rejected the native ABox taxonomy production run".to_string())
+        }
+    }
+
+    fn lean_native_abox_taxonomy_run_matrix_passes(
+        &self,
+        named: &[C],
+        concept_runs: Vec<serde_json::Value>,
+        subsumption_runs: Vec<Vec<serde_json::Value>>,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "native ABox taxonomy publication requires KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER"
+                .to_string()
+        })?;
+        let document = serde_json::to_string(&serde_json::json!({
+            "version": 1,
+            "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
+            "concept_runs": concept_runs,
+            "subsumption_runs": subsumption_runs,
         }))
         .map_err(|error| error.to_string())?;
         self.lean_candidate_passes_with(&document, &checker)
@@ -15169,10 +15201,10 @@ impl Ht {
     /// native ABox. Query root zero and named roots one through N are checked
     /// together by the dedicated Lean wire. An ontology-only taxonomy cell is
     /// never used for a search initialized with named individuals.
-    fn lean_native_abox_taxonomy_query_decision_certificate_json(
+    fn lean_native_abox_taxonomy_query_decision_and_run_json(
         &self,
         query: LeanHtTaxonomyQuery,
-    ) -> Result<(bool, String), String> {
+    ) -> Result<(bool, String, String), String> {
         if self.native_abox.individuals.is_empty() {
             return Err("native ABox taxonomy requires at least one individual".to_string());
         }
@@ -15297,16 +15329,11 @@ impl Ht {
                     }
                     let terminal: serde_json::Value = serde_json::from_str(&document)
                         .map_err(|error| error.to_string())?;
-                    if !self.lean_rooted_ordinary_taxonomy_production_run_passes(
+                    let run = self.lean_rooted_ordinary_taxonomy_production_run_json(
                         &frontier_history,
                         terminal,
-                    )? {
-                        return Err(
-                            "Lean rejected the closed native ABox taxonomy production run"
-                                .to_string(),
-                        );
-                    }
-                    return Ok((false, document));
+                    )?;
+                    return Ok((false, document, run));
                 }
                 LeanHtEqRefutationOutcome::Open(open) => {
                     let mut rejected_assignments = HashSet::new();
@@ -15331,13 +15358,12 @@ impl Ht {
                             self.lean_native_abox_taxonomy_candidate_passes(&candidate)?;
                         let terminal: serde_json::Value = serde_json::from_str(&candidate)
                             .map_err(|error| error.to_string())?;
-                        if passes
-                            && self.lean_rooted_ordinary_taxonomy_production_run_passes(
+                        if passes {
+                            let run = self.lean_rooted_ordinary_taxonomy_production_run_json(
                                 &frontier_history,
                                 terminal,
-                            )?
-                        {
-                            return Ok((true, candidate));
+                            )?;
+                            return Ok((true, candidate, run));
                         }
                         let inserted = rejected_assignments.insert(folds);
                         assert!(inserted, "native ABox taxonomy assignment search must progress");
@@ -15381,6 +15407,15 @@ impl Ht {
                 LeanHtEqRefutationOutcome::Invalid(error) => return Err(error),
             }
         }
+    }
+
+    fn lean_native_abox_taxonomy_query_decision_certificate_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String), String> {
+        let (answer, terminal, _) =
+            self.lean_native_abox_taxonomy_query_decision_and_run_json(query)?;
+        Ok((answer, terminal))
     }
 
     /// Certify `sub ⊑ sup` by refuting the exact root labels `sub` and `¬sup`.
@@ -15997,14 +16032,21 @@ impl Ht {
     ) -> Result<String, String> {
         let mut concepts = Vec::with_capacity(named.len());
         let mut subsumptions = Vec::with_capacity(named.len());
+        let mut ordinary_concept_runs = Vec::with_capacity(named.len());
+        let mut ordinary_subsumption_runs = Vec::with_capacity(named.len());
         let mut cardinality_concept_runs = Vec::with_capacity(named.len());
         let mut cardinality_subsumption_runs = Vec::with_capacity(named.len());
         for &concept in named {
             let document = if self.card_defs.is_empty() {
-                self.lean_native_abox_taxonomy_query_decision_certificate_json(
-                    LeanHtTaxonomyQuery::Concept(concept),
-                )?
-                .1
+                let (_, terminal, run) = self
+                    .lean_native_abox_taxonomy_query_decision_and_run_json(
+                        LeanHtTaxonomyQuery::Concept(concept),
+                    )?;
+                ordinary_concept_runs.push(
+                    serde_json::from_str::<serde_json::Value>(&run)
+                        .map_err(|error| error.to_string())?,
+                );
+                terminal
             } else {
                 let (_, terminal, run) = self
                     .lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(
@@ -16026,10 +16068,15 @@ impl Ht {
             let mut run_row = Vec::with_capacity(named.len());
             for &sup in named {
                 let document = if self.card_defs.is_empty() {
-                    self.lean_native_abox_taxonomy_query_decision_certificate_json(
-                        LeanHtTaxonomyQuery::Subsumption(sub, sup),
-                    )?
-                    .1
+                    let (_, terminal, run) = self
+                        .lean_native_abox_taxonomy_query_decision_and_run_json(
+                            LeanHtTaxonomyQuery::Subsumption(sub, sup),
+                        )?;
+                    run_row.push(
+                        serde_json::from_str::<serde_json::Value>(&run)
+                            .map_err(|error| error.to_string())?,
+                    );
+                    terminal
                 } else {
                     let (_, terminal, run) = self
                         .lean_native_abox_cardinality_taxonomy_query_decision_and_run_json(
@@ -16047,7 +16094,9 @@ impl Ht {
                 );
             }
             subsumptions.push(row);
-            if !self.card_defs.is_empty() {
+            if self.card_defs.is_empty() {
+                ordinary_subsumption_runs.push(run_row);
+            } else {
                 cardinality_subsumption_runs.push(run_row);
             }
         }
@@ -16090,6 +16139,17 @@ impl Ht {
             return Err(
                 "Lean rejected the complete native ABox cardinality taxonomy run matrix"
                     .to_string(),
+            );
+        }
+        if self.card_defs.is_empty()
+            && !self.lean_native_abox_taxonomy_run_matrix_passes(
+                named,
+                ordinary_concept_runs,
+                ordinary_subsumption_runs,
+            )?
+        {
+            return Err(
+                "Lean rejected the complete native ABox taxonomy run matrix".to_string(),
             );
         }
         Ok(payload)

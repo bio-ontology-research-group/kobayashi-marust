@@ -90,6 +90,11 @@
   coordinates, shared ABox/ontology/cardinality problem, and every full run,
   then exposes the matrix semantics. Certified publication fails closed if
   this combined checker is absent or rejects the run-derived matrix.
+- Compose the ordinary native-ABox taxonomy into the same single-artifact
+  boundary. The terminal concept and ordered-pair matrix is now derived in
+  Lean from the complete rooted ordinary runs, with matrix shape, exact query
+  coordinates, shared ABox/ontology problem, and every production history
+  checked together before publication.
 - Bind equality-free, regular equality-free, and equality-aware global UNSAT
   terminals to their complete ordinary retry histories. Lean separately checks
   the UNSAT evidence tag, the complete semantic certificate, the derived search

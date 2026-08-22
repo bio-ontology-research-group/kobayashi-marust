@@ -66,6 +66,7 @@ checkers=(
     ht-native-abox-cardinality-taxonomy-cert-check
     ht-native-abox-cardinality-taxonomy-decision-check
     ht-native-abox-cardinality-taxonomy-run-matrix-check
+    ht-native-abox-taxonomy-run-matrix-check
     ht-direct-native-abox-cardinality-taxonomy-cert-check
     ht-mixed-native-abox-cardinality-taxonomy-cert-check
     ht-native-abox-taxonomy-source-cert-check
@@ -194,6 +195,8 @@ done
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-cert-check"
     export KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-run-matrix-check"
+    export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
+    export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_RUN_MATRIX_CHECKER="$bin_root/ht-native-abox-taxonomy-run-matrix-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-source-cert-check"
     export KM_HT_TEST_LEAN_JOINT_NATIVE_ABOX_CLASSIFICATION_CHECKER="$bin_root/ht-joint-native-abox-classification-cert-check"
