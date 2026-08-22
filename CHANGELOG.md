@@ -95,6 +95,21 @@
 - Remove the theorem-producing state-match callback from regular fallback wire
   decoding. The decoder now receives the concrete blocked-state certificate,
   executes the extensional comparison itself, and fails closed on any mismatch.
+- Reconstruct the regular redirect function from the exact simultaneous fold
+  assignment and check it extensionally over every finite node. Acceptance
+  proves that the unravelling certificate uses precisely the search-selected
+  redirect, including identity on sources absent from the assignment.
+- Add a combined regular-production terminal wire and native checker. It joins
+  the exact blocked table, selected Cartesian assignment, and regular model;
+  acceptance proves blocker-table validity, assignment membership, state,
+  redirect and ontology identity, and semantic certificate validity.
+- Connect combined-terminal acceptance directly to the assignment-indexed
+  regular fallback type consumed by exhaustive production search. The bridge
+  introduces no separate provenance or semantic premise.
+- Require regular SAT publication in both global and taxonomy search to pass
+  this terminal checker before the existing model checker. Cross-language
+  regression coverage accepts the genuine cyclic redirect and rejects an
+  identity redirect forged for the same blocked state and assignment.
 - Construct native-ABox cardinality search from the certified cardinality core
   while retaining exact named-individual initialization. Positive results now
   carry seeded roots, separated inequalities, singleton proxies, and negative

@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauRegularCertificate
+import ContextCalculus.HypertableauRegularProduction
 import ContextCalculus.HypertableauWire
 import Lean
 
@@ -143,6 +144,36 @@ theorem FiniteRegularCertificate.matchesStateB_state
     exact propext (hcheck.1.2 (role, source, target))
   · funext role filler node
     exact propext (hcheck.2 (role, filler, node))
+
+/-- The redirect represented by one simultaneous fold assignment. Sources not
+present in the assignment remain fixed. Membership in a Cartesian blocker
+product guarantees that every represented source occurs exactly once. -/
+def redirectFromFoldList
+    (assignment : List (Fin nodeCount × Fin nodeCount)) (node : Fin nodeCount) :
+    Fin nodeCount :=
+  match assignment.find? fun pair => pair.1 == node with
+  | some pair => pair.2
+  | none => node
+
+/-- Executably require the regular certificate's redirect table to be exactly
+the redirect selected by the current simultaneous assignment. -/
+def FiniteRegularCertificate.redirectMatchesAssignmentB
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : List (Fin nodeCount × Fin nodeCount)) : Bool :=
+  (List.finRange nodeCount).all fun node =>
+    decide (certificate.redirect node = redirectFromFoldList assignment node)
+
+theorem FiniteRegularCertificate.redirectMatchesAssignmentB_eq_true
+    (certificate : FiniteRegularCertificate
+      nodeCount conceptCount roleCount variableCount)
+    (assignment : List (Fin nodeCount × Fin nodeCount))
+    (hcheck : certificate.redirectMatchesAssignmentB assignment = true) :
+    certificate.redirect = redirectFromFoldList assignment := by
+  funext node
+  simp only [FiniteRegularCertificate.redirectMatchesAssignmentB,
+    List.all_eq_true, decide_eq_true_eq] at hcheck
+  exact hcheck node (List.mem_finRange node)
 
 def decodeRedirect (nodeCount : Nat) (values : List Nat) :
     Except String (Fin nodeCount → Fin nodeCount) := do
@@ -327,9 +358,14 @@ example : (match checkedFin "node" 1 1 with | .error _ => true | .ok _ => false)
 example : listMembershipEqB [1, 1] [1] = true := by native_decide
 example : listMembershipEqB [1] [2] = false := by native_decide
 
+private def oneFold : List (Fin 2 × Fin 2) := [(1, 0)]
+example : redirectFromFoldList oneFold 0 = 0 := by native_decide
+example : redirectFromFoldList oneFold 1 = 0 := by native_decide
+
 #print axioms DecodedRegularCertificate.check_models
 #print axioms DecodedRegularCertificate.check_eq_true_iff_valid
 #print axioms listMembershipEqB_eq_true_iff
 #print axioms FiniteRegularCertificate.matchesStateB_state
+#print axioms FiniteRegularCertificate.redirectMatchesAssignmentB_eq_true
 
 end ContextCalculus.Hypertableau

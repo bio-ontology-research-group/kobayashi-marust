@@ -2963,6 +2963,14 @@ struct LeanHtEqProductionTerminalDocument {
     assignment: Vec<LeanHtProductionBlockingPair>,
 }
 
+#[derive(serde::Serialize)]
+struct LeanHtRegularProductionTerminalDocument {
+    version: usize,
+    table: serde_json::Value,
+    regular: serde_json::Value,
+    assignment: Vec<LeanHtProductionBlockingPair>,
+}
+
 impl LeanHtBlockedOpenLeaf {
     fn next_fold_assignment(
         &self,
@@ -10743,6 +10751,44 @@ impl Ht {
         self.lean_candidate_passes_with(&document, &checker)
     }
 
+    /// Prove that one regular SAT certificate belongs to the exact blocked
+    /// state and Cartesian assignment currently selected by production search.
+    /// This additionally ties the certificate redirect to that assignment.
+    fn lean_regular_production_terminal_passes(
+        &self,
+        leaf: &LeanHtBlockedOpenLeaf,
+        assignment: &[(Node, Node)],
+        regular: &str,
+    ) -> Result<bool, String> {
+        let checker = std::env::var_os(
+            "KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .or_else(|| {
+            std::env::var_os(
+                "KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
+            )
+        })
+        .ok_or_else(|| {
+            "regular SAT publication requires KM_HT_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER"
+                .to_string()
+        })?;
+        let table = self.lean_production_blocking_document_json(leaf, &HashSet::new())?;
+        let table = serde_json::from_str(&table).map_err(|error| error.to_string())?;
+        let regular = serde_json::from_str(regular).map_err(|error| error.to_string())?;
+        let assignment = assignment
+            .iter()
+            .map(|&(source, target)| LeanHtProductionBlockingPair { source, target })
+            .collect();
+        let document = serde_json::to_string(&LeanHtRegularProductionTerminalDocument {
+            version: 1,
+            table,
+            regular,
+            assignment,
+        })
+        .map_err(|error| error.to_string())?;
+        self.lean_candidate_passes_with(&document, &checker)
+    }
+
     /// Equality-aware counterpart of the production blocker table. Lean
     /// validates the supplied equivalence closure, reconstructs every
     /// quotient pairwise signature, and checks complete assignment exhaustion
@@ -11676,10 +11722,17 @@ impl Ht {
                         if let Ok(regular) =
                             self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
                         {
-                            let envelope = Self::lean_regular_decision_envelope(regular, true)?;
-                            let candidate = self.finalize_lean_certificate(envelope)?;
-                            if self.lean_decision_candidate_passes(&candidate)? {
-                                return Ok((true, candidate));
+                            if self.lean_regular_production_terminal_passes(
+                                &leaf,
+                                &folds,
+                                &regular,
+                            )? {
+                                let envelope =
+                                    Self::lean_regular_decision_envelope(regular, true)?;
+                                let candidate = self.finalize_lean_certificate(envelope)?;
+                                if self.lean_decision_candidate_passes(&candidate)? {
+                                    return Ok((true, candidate));
+                                }
                             }
                         }
                         let inserted = rejected_assignments.insert(folds);
@@ -13914,20 +13967,26 @@ impl Ht {
                         if let Ok(regular) =
                             self.lean_regular_blocked_open_certificate_json(&candidate_leaf)
                         {
-                            let regular: serde_json::Value = serde_json::from_str(&regular)
+                            if self.lean_regular_production_terminal_passes(
+                                &leaf,
+                                &folds,
+                                &regular,
+                            )? {
+                                let regular: serde_json::Value = serde_json::from_str(&regular)
+                                    .map_err(|error| error.to_string())?;
+                                let candidate = serde_json::to_string(&serde_json::json!({
+                                    "version": 9,
+                                    "concept_count": concept_count,
+                                    "role_count": role_count,
+                                    "variable_count": variable_count,
+                                    "ontology": ontology.clone(),
+                                    "certificate": regular,
+                                    "evidence": query.equality_open_evidence(),
+                                }))
                                 .map_err(|error| error.to_string())?;
-                            let candidate = serde_json::to_string(&serde_json::json!({
-                                "version": 9,
-                                "concept_count": concept_count,
-                                "role_count": role_count,
-                                "variable_count": variable_count,
-                                "ontology": ontology.clone(),
-                                "certificate": regular,
-                                "evidence": query.equality_open_evidence(),
-                            }))
-                            .map_err(|error| error.to_string())?;
-                            if self.lean_taxonomy_candidate_passes(&candidate)? {
-                                return Ok((true, candidate));
+                                if self.lean_taxonomy_candidate_passes(&candidate)? {
+                                    return Ok((true, candidate));
+                                }
                             }
                         }
                         let inserted = rejected_assignments.insert(folds);
@@ -26153,6 +26212,34 @@ mod tests {
                 .any(|edge| edge["source"] == 2 && edge["target"] == 2),
             "the redirected endpoint cover must expose the blocker's witness"
         );
+        if std::env::var_os(
+            "KM_HT_TEST_LEAN_REGULAR_PRODUCTION_TERMINAL_CHECKER",
+        )
+        .is_some()
+        {
+            assert!(
+                cyclic
+                    .lean_regular_production_terminal_passes(
+                        &leaf,
+                        &leaf.folds,
+                        &regular_raw,
+                    )
+                    .expect("run the regular production terminal checker"),
+                "Lean must accept the exact regular terminal and redirect",
+            );
+            let mut forged = regular.clone();
+            forged["redirect"] = serde_json::json!([0, 1, 2]);
+            assert!(
+                !cyclic
+                    .lean_regular_production_terminal_passes(
+                        &leaf,
+                        &leaf.folds,
+                        &serde_json::to_string(&forged).unwrap(),
+                    )
+                    .expect("run the regular terminal checker on a forged redirect"),
+                "Lean must reject a redirect detached from the selected assignment",
+            );
+        }
         if let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_PRODUCTION_BLOCKING_CHECKER")
         {

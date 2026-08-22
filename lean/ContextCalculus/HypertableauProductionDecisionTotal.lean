@@ -6,6 +6,7 @@ import ContextCalculus.HypertableauEqualityProductionBlockingWire
 import ContextCalculus.HypertableauCardinalityProductionSearch
 import ContextCalculus.HypertableauCardinalityProductionWire
 import ContextCalculus.HypertableauCardinalityClosedCompleteness
+import ContextCalculus.HypertableauRegularProductionTerminalWire
 
 /-!
 # Total production hypertableau global decision
@@ -250,27 +251,54 @@ structure CheckedRegularFallbackCandidate
     (nodeCount conceptCount roleCount variableCount : Nat)
     (ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
-    (state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount)) where
+    (state : State (Fin nodeCount) (Fin conceptCount) (Fin roleCount))
+    (assignment : FoldAssignment (Fin nodeCount)) where
   certificate : FiniteRegularCertificate nodeCount conceptCount roleCount
     variableCount
+  assignmentList : List (Fin nodeCount × Fin nodeCount)
+  assignment_eq : assignmentList.toFinset = assignment
   state_eq : certificate.state = state
+  redirect_eq : certificate.redirect = redirectFromFoldList assignmentList
   ontology_eq : certificate.ontology = ontology
   check : certificate.check = true
+
+/-- Acceptance of the combined production-terminal wire constructs the exact
+assignment-indexed regular fallback consumed by the concrete search runtime.
+No state, redirect, ontology, or checker premise is supplied separately. -/
+def WireRegularProductionTerminal.checkedRegularFallbackCandidate
+    (wire : WireRegularProductionTerminal)
+    (decoded : DecodedRegularProductionTerminal)
+    (hdecode : wire.decode = .ok decoded)
+    (hcheck : wire.check = .ok true) :
+    CheckedRegularFallbackCandidate decoded.nodeCount decoded.conceptCount
+      decoded.roleCount decoded.variableCount decoded.table.base.ontology
+      decoded.table.base.state decoded.assignmentList.toFinset := by
+  have sound := wire.check_sound decoded hdecode hcheck
+  exact ⟨decoded.regular, decoded.assignmentList, rfl, sound.2.2.2.2.2.1,
+    sound.2.2.2.2.2.2.1, sound.2.2.2.2.2.2.2.1,
+    sound.2.2.2.2.2.2.2.2⟩
 
 def CheckedRegularFallbackCandidate.ofDecoded
     (decoded : DecodedRegularCertificateAt conceptCount roleCount variableCount)
     (hnodes : decoded.nodeCount = 8 * 2 ^ budget)
     (state : State (Fin (8 * 2 ^ budget)) (Fin conceptCount) (Fin roleCount))
+    (assignmentList : List
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget)))
+    (hassignment : assignmentList.toFinset = assignment)
     (hstate : HEq decoded.certificate.state state)
+    (hredirect : HEq decoded.certificate.redirect
+      (redirectFromFoldList assignmentList))
     (hontology : decoded.certificate.ontology = ontology)
     (hcheck : decoded.certificate.check = true) :
     CheckedRegularFallbackCandidate (8 * 2 ^ budget) conceptCount roleCount
-      variableCount ontology state := by
+      variableCount ontology state assignment := by
   cases decoded with
   | mk nodeCount positive certificate =>
       dsimp at hnodes
       subst nodeCount
-      exact ⟨certificate, eq_of_heq hstate, hontology, hcheck⟩
+      exact ⟨certificate, assignmentList, hassignment, eq_of_heq hstate,
+        eq_of_heq hredirect, hontology, hcheck⟩
 
 /-- After dimension checking, compare the decoded regular state to the exact
 finite blocked-state payload and construct leaf-indexed evidence only when the
@@ -282,17 +310,26 @@ def CheckedRegularFallbackCandidate.ofDecodedChecked
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (expected : FiniteSatCertificate (8 * 2 ^ budget) conceptCount roleCount
       variableCount)
+    (assignmentList : List
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget)))
+    (hassignment : assignmentList.toFinset = assignment)
     (hontology : decoded.certificate.ontology = ontology)
     (hcheck : decoded.certificate.check = true) :
     Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology expected.state) := by
+      conceptCount roleCount variableCount ontology expected.state assignment) := by
   cases decoded with
   | mk nodeCount positive certificate =>
       dsimp at hnodes
       subst nodeCount
       if hstate : certificate.matchesStateB expected = true then
-        exact .ok ⟨certificate, certificate.matchesStateB_state expected hstate,
-          hontology, hcheck⟩
+        if hredirect : certificate.redirectMatchesAssignmentB assignmentList = true then
+          exact .ok ⟨certificate, assignmentList, hassignment,
+            certificate.matchesStateB_state expected hstate,
+            certificate.redirectMatchesAssignmentB_eq_true assignmentList hredirect,
+            hontology, hcheck⟩
+        else
+          exact .error "regular fallback redirect differs from the fold assignment"
       else
         exact .error "regular fallback certificate differs from the blocked state"
 
@@ -305,15 +342,19 @@ def CheckedRegularFallbackCandidate.decodeWire
     (ontology : List
       (Clause (Fin variableCount) (Fin conceptCount) (Fin roleCount)))
     (expected : FiniteSatCertificate (8 * 2 ^ budget) conceptCount roleCount
-      variableCount) :
+      variableCount)
+    (assignmentList : List
+      (Fin (8 * 2 ^ budget) × Fin (8 * 2 ^ budget)))
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget)))
+    (hassignment : assignmentList.toFinset = assignment) :
     Except String (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology expected.state) := do
+      conceptCount roleCount variableCount ontology expected.state assignment) := do
   let decoded ← wire.decodeAt conceptCount roleCount variableCount
   if hnodes : decoded.nodeCount = 8 * 2 ^ budget then
     if hontology : decoded.certificate.ontology = ontology then
       if hcheck : decoded.certificate.check = true then
         CheckedRegularFallbackCandidate.ofDecodedChecked decoded hnodes
-          ontology expected hontology hcheck
+          ontology expected assignmentList assignment hassignment hontology hcheck
       else
         throw "regular fallback certificate failed its semantic checker"
     else
@@ -323,7 +364,7 @@ def CheckedRegularFallbackCandidate.decodeWire
 
 def CheckedRegularFallbackCandidate.toBudgetResult
     (candidate : CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-      conceptCount roleCount variableCount ontology state) :
+      conceptCount roleCount variableCount ontology state assignment) :
     ConstructedRegularBudgetResult conceptCount roleCount variableCount
       ontology budget :=
   let outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
@@ -338,10 +379,10 @@ noncomputable def ProductionBlockedLeafAt.checkedRegularCandidate
     (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget))
       (Fin conceptCount) (Fin roleCount) (Fin variableCount) ontology
       forbidden)
+    (assignment : FoldAssignment (Fin (8 * 2 ^ budget)))
     (regularFallback : Option (CheckedRegularFallbackCandidate
       (8 * 2 ^ budget) conceptCount roleCount variableCount ontology
-      leaf.state))
-    (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) :
+      leaf.state assignment)) :
     Option (ConstructedRegularBudgetResult conceptCount roleCount variableCount
       ontology budget) :=
   match leaf.checkedFiniteFoldCandidate assignment with
@@ -429,9 +470,9 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
       (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
           (Fin roleCount) (Fin variableCount) ontology forbidden) →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-          FoldAssignment (Fin (8 * 2 ^ budget)) →
+          (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) →
             Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-              conceptCount roleCount variableCount ontology leaf.state)) :
+              conceptCount roleCount variableCount ontology leaf.state assignment)) :
     CartesianFoldExpansionRuntime (Fin (8 * 2 ^ budget))
       (ConstructedRegularBudgetResult conceptCount roleCount variableCount
         ontology budget) :=
@@ -439,8 +480,8 @@ noncomputable def CartesianFoldExpansionRuntime.ofConstructedRegularFiniteSearch
     (finiteProductionRoundBudgetConstructionSettlement ontology parent ancestors
       hheads root hrootEmpty frontierAddress)
     (fun forbidden leaf rejected assignment =>
-      leaf.checkedRegularCandidate
-        (regularFallback forbidden leaf rejected assignment) assignment)
+      leaf.checkedRegularCandidate assignment
+        (regularFallback forbidden leaf rejected assignment))
     (fun _forbidden leaf hempty =>
       ProductionBlockedLeafAt.regularFoldFreeResult leaf hguarded hempty)
 
@@ -480,9 +521,9 @@ structure ConstructedRegularFiniteSearchFamily
     (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
         (Fin roleCount) (Fin variableCount) ontology forbidden) →
       Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-        FoldAssignment (Fin (8 * 2 ^ budget)) →
+        (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) →
           Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-            conceptCount roleCount variableCount ontology leaf.state)
+            conceptCount roleCount variableCount ontology leaf.state assignment)
 
 noncomputable def ConstructedRegularFiniteSearchFamily.runtime
     (family : ConstructedRegularFiniteSearchFamily conceptCount roleCount
@@ -1700,9 +1741,9 @@ theorem checked_regular_finite_search_decides_source
       (leaf : ProductionBlockedLeafAt (Fin (8 * 2 ^ budget)) (Fin conceptCount)
           (Fin roleCount) (Fin variableCount) target forbidden) →
         Finset (FoldAssignment (Fin (8 * 2 ^ budget))) →
-          FoldAssignment (Fin (8 * 2 ^ budget)) →
+          (assignment : FoldAssignment (Fin (8 * 2 ^ budget))) →
             Option (CheckedRegularFallbackCandidate (8 * 2 ^ budget)
-              conceptCount roleCount variableCount target leaf.state)) :
+              conceptCount roleCount variableCount target leaf.state assignment)) :
     ∃ outcome : CheckedRegularRoundOutcome conceptCount roleCount variableCount
       target, outcome.SourceSemantics source := by
   apply checked_constructed_regular_runtime_decides_source equivalent
