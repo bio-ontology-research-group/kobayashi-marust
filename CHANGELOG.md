@@ -80,6 +80,13 @@
   rejects residual existential atoms, maps the finite source into the common
   first-order ontology, and proves the complete taxonomy equivalent to the
   exact HT source carried by the certificate.
+- Reconstruct mixed HT Skolem-pair sources in the common proper-term language.
+  Lean proves that the two shared-function role/filler clauses are equivalent
+  to the checked HT pair semantics for positive or negative bodies and fillers,
+  lifts the result to whole ontologies and taxonomy entailment, and binds it to
+  a versioned mixed-projection wire. The wire rejects existential atoms inside
+  residual or pair bodies and proves its common-source taxonomy equivalent to
+  the exact projected HT target.
 
 ### Close the executable ELC certification boundary
 
