@@ -107,6 +107,14 @@ claim that the layer is already complete.
   have semantic soundness theorems and rejecting examples. The live rule audit
   and remaining production bindings are tracked in
   `docs/CB-RULE-CERTIFICATION.tsv`.
+- `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
+  ordinary Pred and nominal r-Pred. A clause valid under its context core
+  becomes an ordinarily valid payload after the edge substitution when the
+  substituted core is appended to the payload body, exactly as production
+  `pred_payload` does before sort/dedup normalization. The same module proves
+  the exact `p → p` hypothesis installed by Succ and r-Succ universally valid.
+  Production edge selection, payload equivalence, receiver decomposition, and
+  complete queue delivery remain executable refinement obligations.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

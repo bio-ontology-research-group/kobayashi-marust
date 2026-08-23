@@ -65,6 +65,12 @@
   consumer literals, the `x ↦ term` instance, and the complete conclusion.
   Prove the rule sound and reject a forged ground instance in a kernel-evaluated
   test. Rust evidence emission remains a separate production binding.
+- Prove the semantic sender transformation used by ordinary Pred and nominal
+  r-Pred: edge substitution plus the appended sender core converts contextual
+  clause validity into ordinary payload validity. Also prove the exact
+  hypothesis installed by Succ/r-Succ universally valid. Payload serialization,
+  edge binding, receiver decomposition, and complete delivery remain part of
+  the production refinement.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
