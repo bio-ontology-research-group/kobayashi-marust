@@ -405,6 +405,29 @@ def WireLiveInsertionDerivationDocument.check
   let _ ← wire.decode
   return true
 
+theorem DecodedLiveInsertionDerivationDocument.retained_contextValid
+    (decoded : DecodedLiveInsertionDerivationDocument)
+    (context : DecodedLiveContext
+      (rProduction decoded.live.global.global.rsucc)
+      (terminalOfGlobal decoded.live.global)
+      decoded.live.ordinaryArena decoded.live.rootArena)
+    (hcontext : context ∈ decoded.live.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained)
+    {D : Type} (model : TModel D)
+    (hontology : ∀ source ∈
+      (rProduction decoded.live.global.global.rsucc).source.ontology,
+      valid model source) :
+    CBInterContext.ContextValid model
+      ((rProduction decoded.live.global.global.rsucc).contexts.get
+        context.contextIndex).core clause := by
+  obtain ⟨event, hevent, hcontextEq, hclauseEq⟩ :=
+    decoded.live.retained_has_event context hcontext clause hclause
+  intro assignment hcore
+  rw [← hclauseEq]
+  exact decoded.history.sound event hevent model assignment hontology (by
+    rw [hcontextEq]
+    exact hcore)
+
 theorem WireLiveInsertionDerivationDocument.check_sound
     (wire : WireLiveInsertionDerivationDocument)
     (hcheck : wire.check = .ok true) :
@@ -419,6 +442,7 @@ theorem WireLiveInsertionDerivationDocument.check_sound
 #print axioms EventEvidence.sound
 #print axioms CertifiedHistory.sound
 #print axioms DecodedCertifiedHistory.sound
+#print axioms DecodedLiveInsertionDerivationDocument.retained_contextValid
 #print axioms WireLiveInsertionDerivationDocument.check_sound
 
 end ContextCalculus.CBLiveInsertionDerivation

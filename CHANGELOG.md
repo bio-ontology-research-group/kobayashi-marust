@@ -137,6 +137,13 @@
   model, exact live state, and one checked evidence item for every insertion;
   `KM_CB_LEAN_CERT_CHECKER` is invoked on that complete document before stdout.
   The optional candidate path writes only an identical diagnostic copy.
+  Bind terminal retained clauses directly to that checked chronological
+  history. Live-state coverage now compares the decoded clause and context,
+  not only compact arena ids, and Lean proves that every retained clause is
+  context-valid by selecting its covered event and applying history soundness.
+  This removes the local-only production trace as the semantic authority for
+  inter-context arrivals and supplies the soundness premise needed by the
+  integrated global closure and publication theorem.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

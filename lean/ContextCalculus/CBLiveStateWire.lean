@@ -775,7 +775,7 @@ theorem DecodedLivePredEvidence.result_contextValid
   intro assignment hcore
   exact sat_of_clEquivT evidence.result_equiv (hfold assignment hcore)
 
-private def terminalOfGlobal (global : DecodedCBGlobalModelDocument) :=
+def terminalOfGlobal (global : DecodedCBGlobalModelDocument) :=
   global.global.rsucc.succ.join3.hyper.literalOrder.termOrder.factorClosure.localResolution.terminal
 
 private def liveTerminalMatches
@@ -1101,9 +1101,10 @@ private def insertionCovers
     {production : DecodedProductionRun} {ordinary root : List FCL}
     (history : List (DecodedLiveInsertionEvent production ordinary root))
     (contexts : List (DecodedLiveContext production terminal ordinary root)) : Bool :=
-  contexts.all fun context => context.retainedClauseIds.all fun clauseId =>
+  contexts.all fun context => context.retained.all fun clause =>
     history.any fun event =>
-      event.contextIndex.val == context.contextIndex.val && event.clauseId == clauseId
+      decide (event.contextIndex = context.contextIndex) &&
+        decide (event.clause = clause)
 
 def WireLiveContext.decode (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
@@ -1246,6 +1247,21 @@ def WireProductionBoundGlobalModelDocument.check
     (wire : WireProductionBoundGlobalModelDocument) : Except String Bool := do
   let _ ← wire.decode
   return true
+
+theorem DecodedLiveStateDocument.retained_has_event
+    (decoded : DecodedLiveStateDocument)
+    (context : DecodedLiveContext (rProduction decoded.global.global.rsucc)
+      (terminalOfGlobal decoded.global) decoded.ordinaryArena decoded.rootArena)
+    (hcontext : context ∈ decoded.contexts)
+    (clause : FCL) (hclause : clause ∈ context.retained) :
+    ∃ event ∈ decoded.insertionHistory,
+      event.contextIndex = context.contextIndex ∧ event.clause = clause := by
+  have hcontextCovered :=
+    (List.all_eq_true.mp decoded.retained_insertions_present) context hcontext
+  have hclauseCovered :=
+    (List.all_eq_true.mp hcontextCovered) clause hclause
+  simpa only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] using
+    hclauseCovered
 
 theorem WireProductionBoundGlobalModelDocument.check_sound
     (wire : WireProductionBoundGlobalModelDocument)
