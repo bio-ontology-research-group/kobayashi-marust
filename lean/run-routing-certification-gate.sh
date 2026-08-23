@@ -39,6 +39,7 @@ trap cleanup_checker EXIT
         ContextCalculus.HTMixedCommonSourceWire \
         ContextCalculus.HTSkolemBundleCheckerTermEmbedding \
         ContextCalculus.HTBundleCommonSourceWire \
+        ContextCalculus.HTCardinalityCheckerTermEmbedding \
         ContextCalculus.HTRoutingSource \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
@@ -61,6 +62,9 @@ for theorem in \
     WireMixedCommonSource.check_sound \
     entailsSub_bundles_encode_iff \
     WireBundleCommonSource.check_sound \
+    models_minimumClauses_iff \
+    valid_maximumClause_iff \
+    models_pairClauses_iff \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

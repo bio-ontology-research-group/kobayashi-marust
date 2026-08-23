@@ -92,6 +92,12 @@
   proves whole-bundle model and taxonomy equivalence, and binds the result to a
   versioned, fail-closed wire that preserves the checked source-concept image
   across finite-name projection and the exact HT target.
+- Reconstruct the cardinality frontend's actual proper-term clause families.
+  Lean proves exact semantics for universal maximum pigeonhole clauses,
+  minimum Skolem role and filler clauses with every required witness
+  disequality, and complementary-pair split and clash clauses. Function names
+  derive from both checked definition and witness slots, preventing accidental
+  witness sharing across cardinality definitions.
 
 ### Close the executable ELC certification boundary
 
