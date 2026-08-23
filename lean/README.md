@@ -784,6 +784,16 @@ Theorems (`sorry`-free; axioms `[propext, Classical.choice, Quot.sound]`):
 - `unsat_iff_no_good` — `O ⊨ A ⊑ ⊥` iff no good type contains `A` (precisely what
   saturation reports when it eliminates every context whose core contains `A`).
 
+`CBALCEncoding.lean` connects this complete ALC semantics to the actual
+nested-term clause language used by CB certificates. Existential-right clauses
+receive source-indexed unary Skolem functions. `models_restrict` and
+`models_extend` prove both model directions, `entailsSub_iff_ctx` proves that
+the encoding preserves and reflects atomic subsumption, and
+`entailsSub_iff_good` connects it directly to good-type elimination. A failed
+encoded subsumption has a canonical countermodel over the finite domain of good
+types. This closes the ALC source-encoding theorem; it does not by itself prove
+that the Rust context saturation computes that fixpoint.
+
 This is strictly more than the two earlier files (it handles disjunction *and*
 existential witnesses together) and more engine-faithful than the prior moose
 ALC proof, which uses *infinite* Lindenbaum/Zorn maximal types rather than the

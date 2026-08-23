@@ -2,6 +2,20 @@
 
 ## [unreleased]
 
+### Advance the CB semantic refinement
+
+- Add an exact source-indexed Skolem encoding from normalized ALC clauses to
+  the nested-term first-order clauses consumed by CB certificates.
+- Prove both model directions for the encoding. Any encoded term model
+  restricts to an ALC model, while any nonempty ALC model extends to an encoded
+  term model by choosing witnesses for existential-right clauses.
+- Prove that atomic subsumption in the encoded CB semantics is equivalent to
+  ALC good-type semantics, and construct a finite canonical countermodel for
+  every failed encoded ALC subsumption.
+- Keep this as an unreleased CB proof milestone. A CB certification release
+  still requires production-state refinement, the remaining SROIQ features,
+  mandatory fail-closed checking, and one complete release gate.
+
 ## [0.3.206] – 2026-08-23
 
 ### Complete the production ELC certification layer

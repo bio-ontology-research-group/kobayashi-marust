@@ -52,6 +52,15 @@ claim that the layer is already complete.
 - `cb-taxonomy-cert-check` is the executable JSON checker for this exact
   publication boundary. Its fixtures accept a valid document and reject a
   forged publication bit.
+- `CBALCEncoding` defines the exact indexed Skolem encoding from normalized ALC
+  clauses into the nested-term clauses consumed by the CB checker. It proves
+  both model directions: every term model restricts to an ALC model, and every
+  nonempty ALC model extends to a term model by choosing witnesses for the
+  indexed existential functions. Consequently, atomic subsumption in the
+  encoded CB semantics is equivalent to ALC good-type semantics. Every failed
+  ALC subsumption has a concrete countermodel over the finite domain of good
+  types. These theorems certify the semantic encoding, not yet the production
+  context saturation that computes a result.
 
 ## Not yet established
 
@@ -72,6 +81,13 @@ taxonomy document can prove every positive cell by derivation and every
 negative cell by a finite countermodel. The refinement remains necessary if a
 production terminal saturation is to justify omissions without emitting
 countermodels.
+
+For the normalized ALC slice, `CBALCEncoding` now closes the source-semantics
+side of this gap. What remains there is refinement from the Rust context stores
+and terminal queues to good-type elimination, plus mandatory checked
+publication. The extensions for role axioms, inverse roles, nominals, equality,
+and qualified cardinalities still require corresponding source-to-term and
+production-state refinements.
 
 Finite countermodels are a sound evidence form, not a complete replacement for
 the production refinement over full SROIQ. SROIQ does not in general have the
