@@ -107,6 +107,13 @@ claim that the layer is already complete.
   have semantic soundness theorems and rejecting examples. The live rule audit
   and remaining production bindings are tracked in
   `docs/CB-RULE-CERTIFICATION.tsv`.
+- The production trace also checks the exact three-premise Join-3 rule used for
+  nominal propagation. It requires empty provider and bridge bodies, the
+  consumer ground literal, the provider general literal, the canonical bridge
+  equality `term ≈ x`, and the exact syntactic `x ↦ term` instance before
+  accepting the combined conclusion. Lean proves this transformation sound;
+  executable examples accept the production shape and reject a forged ground
+  instance. Rust emission and index binding remain outstanding.
 
 ## Not yet established
 

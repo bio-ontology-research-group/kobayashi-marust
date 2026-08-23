@@ -39,6 +39,11 @@
   degenerate Factor witness. Record a rule-by-rule Rust-to-Lean coverage audit
   so the remaining Join-3, Nom, inter-context, and terminal obligations stay
   explicit.
+- Add an exact executable production Join-3 step. The checker validates all
+  three antecedent clauses, the canonical bridge equality, the source and
+  consumer literals, the `x ↦ term` instance, and the complete conclusion.
+  Prove the rule sound and reject a forged ground instance in a kernel-evaluated
+  test. Rust evidence emission remains a separate production binding.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

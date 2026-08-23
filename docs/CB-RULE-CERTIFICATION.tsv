@@ -10,7 +10,7 @@ Factor	engine.rs factor	CBProductionTrace factor	The exact two-equality conclusi
 Elim-forward	engine.rs add_clause / work-off	CBProductionTraceWire DecodedDiscardedClause	A skipped clause must have a retained syntactic strengthening witness	Serialize every completeness-relevant skipped clause or prove enumerator closure modulo strengthening
 Elim-backward	engine.rs back_subsume	CBProductionTraceWire DecodedDiscardedClause	A removed clause must have a retained syntactic strengthening witness	Bind every removal and pending deactivation to the snapshot
 Join-1/2	engine.rs join_resolvent	CBProductionTrace resolve	Ground-atom joins are ordinary checked resolution	Emit decomposition and bind Join indexes
-Join-3	engine.rs join_resolvent3	Nominals.join3_sound exists	No executable production-wire constructor yet	Add a bounds-checked three-premise Join-3 step and Rust evidence
+Join-3	engine.rs join_resolvent3	CBProductionTrace join3 plus CBProductionTraceWire decoding	Exact three-premise rule checks empty provider/bridge bodies, consumer/provider/equality membership, x-to-term instantiation, and the complete conclusion	Emit Join-3 evidence and bind Rust provider, bridge, and consumer indexes
 Nom	engine.rs hyper Nom branch	Nominals.nom_sound exists	No executable production-wire constructor yet	Add label-order, fresh-name, width, and budget evidence
 r-Succ	engine.rs propagate root_succ_form	Abstract context rules only	No exact production transfer wire yet	Prove and check every root successor transfer
 r-Pred	engine.rs pred_payload ground sender	Abstract context rules only	No exact production transfer wire yet	Prove and check per-source individual-edge discharge

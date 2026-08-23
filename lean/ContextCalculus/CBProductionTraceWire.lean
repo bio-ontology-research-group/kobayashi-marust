@@ -31,6 +31,8 @@ inductive WireProductionJustification where
       (literal : WireLiteral)
   | factor (source : Nat) (common first second : WireTerm)
   | deleteReflexiveInequality (source : Nat) (term : WireTerm)
+  | join3 (consumer provider bridge : Nat) (ground general : WireLiteral)
+      (term : WireTerm)
 deriving FromJson, ToJson
 
 structure WireProductionEntry where
@@ -79,6 +81,9 @@ def WireProductionJustification.decode (bounds : Bounds) :
         (← second.decode bounds)
   | .deleteReflexiveInequality source term =>
       return .deleteReflexiveInequality source (← term.decode bounds)
+  | .join3 consumer provider bridge ground general term =>
+      return .join3 consumer provider bridge (← ground.decode bounds)
+        (← general.decode bounds) (← term.decode bounds)
 
 def WireProductionEntry.decode (bounds : Bounds)
     (wire : WireProductionEntry) : Except String Entry :=

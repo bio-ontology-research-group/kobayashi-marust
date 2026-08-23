@@ -26,6 +26,7 @@ inductive Justification where
   | paramodulate (equality other : Nat) (left right : FTerm) (literal : FLit)
   | factor (source : Nat) (common first second : FTerm)
   | deleteReflexiveInequality (source : Nat) (term : FTerm)
+  | join3 (consumer provider bridge : Nat) (ground general : FLit) (term : FTerm)
 deriving Repr
 
 abbrev Entry := FCL × Justification
@@ -36,6 +37,12 @@ def factorConclusion (source : FCL) (common first second : FTerm) : FCL :=
 
 def deleteReflexiveInequalityConclusion (source : FCL) (term : FTerm) : FCL :=
   ⟨source.body, without (FLit.ineq term term) source.head⟩
+
+def join3Conclusion (consumer provider bridge : FCL)
+    (ground general : FLit) (term : FTerm) : FCL :=
+  ⟨without ground consumer.body,
+    consumer.head ++ (without general provider.head ++
+      without (FLit.eq term (.var 0)) bridge.head)⟩
 
 def stepOk (ontology assumptions done : List FCL) (clause : FCL) :
     Justification → Bool
@@ -78,6 +85,18 @@ def stepOk (ontology assumptions done : List FCL) (clause : FCL) :
             decide (clEquivT clause
               (deleteReflexiveInequalityConclusion premise term))
       | none => false
+  | .join3 consumer provider bridge ground general term =>
+      match done[consumer]?, done[provider]?, done[bridge]? with
+      | some consumerClause, some providerClause, some bridgeClause =>
+          decide (providerClause.body = []) && decide (bridgeClause.body = []) &&
+            decide (ground ∈ consumerClause.body) &&
+            decide (general ∈ providerClause.head) &&
+            decide (FLit.eq term (.var 0) ∈ bridgeClause.head) &&
+            decide (ground = substL [(0, term)] general) &&
+            decide (clEquivT clause
+              (join3Conclusion consumerClause providerClause bridgeClause
+                ground general term))
+      | _, _, _ => false
 
 def checkFold (ontology assumptions : List FCL) :
     List FCL → List Entry → Option (List FCL)
@@ -183,6 +202,73 @@ theorem deleteReflexiveInequalityConclusion_sound
     exact htrue rfl
   exact ⟨literal, mem_without.mpr ⟨hliteral, hnot⟩, htrue⟩
 
+theorem evalL_join3_instance (model : TModel D) (assignment : Int → D)
+    (general ground : FLit) (term : FTerm)
+    (hground : ground = substL [(0, term)] general)
+    (hequality : model.evalT assignment term = model.evalT assignment (.var 0)) :
+    model.evalL assignment general ↔ model.evalL assignment ground := by
+  subst ground
+  rw [evalL_substL]
+  have hassignment :
+      (fun index => model.evalT assignment (substVar [(0, term)] index)) =
+        assignment := by
+    funext index
+    by_cases hzero : index = 0
+    · subst index
+      simpa [substVar, TModel.evalT] using hequality
+    · have hzero' : (0 : Int) ≠ index := Ne.symm hzero
+      simp [substVar, hzero', TModel.evalT]
+  rw [hassignment]
+
+theorem join3Conclusion_sound (model : TModel D) (assignment : Int → D)
+    (consumer provider bridge : FCL) (ground general : FLit) (term : FTerm)
+    (hconsumer : HoldsAt model assignment consumer)
+    (hprovider : HoldsAt model assignment provider)
+    (hbridge : HoldsAt model assignment bridge)
+    (hproviderBody : provider.body = []) (hbridgeBody : bridge.body = [])
+    (_hgroundBody : ground ∈ consumer.body)
+    (_hgeneralHead : general ∈ provider.head)
+    (hground : ground = substL [(0, term)] general) :
+    HoldsAt model assignment
+      (join3Conclusion consumer provider bridge ground general term) := by
+  intro hbody
+  have hbridgeSat := hbridge (by
+    rw [hbridgeBody]
+    intro literal hliteral
+    cases hliteral)
+  obtain ⟨bridgeLiteral, hbridgeLiteral, hbridgeTrue⟩ := hbridgeSat
+  by_cases hbridgeEq : bridgeLiteral = FLit.eq term (.var 0)
+  · subst bridgeLiteral
+    have hproviderSat := hprovider (by
+      rw [hproviderBody]
+      intro literal hliteral
+      cases hliteral)
+    obtain ⟨providerLiteral, hproviderLiteral, hproviderTrue⟩ := hproviderSat
+    by_cases hproviderGeneral : providerLiteral = general
+    · subst providerLiteral
+      have hgroundTrue : model.evalL assignment ground :=
+        (evalL_join3_instance model assignment general ground term hground
+          hbridgeTrue).mp hproviderTrue
+      have hconsumerBody : ∀ literal ∈ consumer.body,
+          model.evalL assignment literal := by
+        intro literal hliteral
+        by_cases hliteralGround : literal = ground
+        · subst literal
+          exact hgroundTrue
+        · exact hbody literal (by
+            simp only [join3Conclusion]
+            exact mem_without.mpr ⟨hliteral, hliteralGround⟩)
+      obtain ⟨literal, hliteral, htrue⟩ := hconsumer hconsumerBody
+      exact ⟨literal, by simp [join3Conclusion, hliteral], htrue⟩
+    · exact ⟨providerLiteral, by
+        simp only [join3Conclusion, List.mem_append]
+        exact Or.inr (Or.inl
+          (mem_without.mpr ⟨hproviderLiteral, hproviderGeneral⟩)), hproviderTrue⟩
+  · exact ⟨bridgeLiteral, by
+      simp only [join3Conclusion, List.mem_append]
+      exact Or.inr (Or.inr
+        (mem_without.mpr ⟨hbridgeLiteral, hbridgeEq⟩)), hbridgeTrue⟩
+
 theorem stepOk_sound (model : TModel D) (assignment : Int → D)
     {ontology assumptions done : List FCL} {clause : FCL}
     {justification : Justification}
@@ -273,6 +359,29 @@ theorem stepOk_sound (model : TModel D) (assignment : Int → D)
             (deleteReflexiveInequalityConclusion_sound model assignment
               sourceClause term (hdone sourceClause
                 (List.mem_of_getElem? hsource)))
+  | join3 consumer provider bridge ground general term =>
+      simp only [stepOk] at hstep
+      cases hconsumer : done[consumer]? with
+      | none => simp [hconsumer] at hstep
+      | some consumerClause =>
+          cases hprovider : done[provider]? with
+          | none => simp [hconsumer, hprovider] at hstep
+          | some providerClause =>
+              cases hbridge : done[bridge]? with
+              | none => simp [hconsumer, hprovider, hbridge] at hstep
+              | some bridgeClause =>
+                  rw [hconsumer, hprovider, hbridge] at hstep
+                  simp only [Bool.and_eq_true, decide_eq_true_eq] at hstep
+                  rcases hstep with
+                    ⟨⟨⟨⟨⟨⟨hproviderBody, hbridgeBody⟩, hgroundBody⟩,
+                      hgeneralHead⟩, _hbridgeHead⟩, hground⟩, hequivalent⟩
+                  exact sat_of_clEquivT hequivalent
+                    (join3Conclusion_sound model assignment consumerClause
+                      providerClause bridgeClause ground general term
+                      (hdone consumerClause (List.mem_of_getElem? hconsumer))
+                      (hdone providerClause (List.mem_of_getElem? hprovider))
+                      (hdone bridgeClause (List.mem_of_getElem? hbridge))
+                      hproviderBody hbridgeBody hgroundBody hgeneralHead hground)
 
 theorem checkFold_sound (model : TModel D) (assignment : Int → D)
     {ontology assumptions done trace final}
@@ -348,9 +457,46 @@ private def reflexiveInequalityTrace : List Entry :=
 example : check [] [reflexiveInequalitySource]
     reflexiveInequalityTrace = true := by native_decide
 
+private def join3Term : FTerm := .const 0
+
+private def join3General : FLit := .P (.concept 0 (.var 0))
+
+private def join3Ground : FLit := .P (.concept 0 join3Term)
+
+private def join3Consumer : FCL :=
+  ⟨[join3Ground], [.P (.concept 1 (.var 0))]⟩
+
+private def join3Provider : FCL := ⟨[], [join3General]⟩
+
+private def join3Bridge : FCL := ⟨[], [.eq join3Term (.var 0)]⟩
+
+private def join3Trace : List Entry :=
+  [ (join3Consumer, .assumption 0)
+  , (join3Provider, .assumption 1)
+  , (join3Bridge, .assumption 2)
+  , (join3Conclusion join3Consumer join3Provider join3Bridge join3Ground
+        join3General join3Term,
+      .join3 0 1 2 join3Ground join3General join3Term) ]
+
+example : check [] [join3Consumer, join3Provider, join3Bridge]
+    join3Trace = true := by native_decide
+
+private def forgedJoin3Trace : List Entry :=
+  [ (join3Consumer, .assumption 0)
+  , (join3Provider, .assumption 1)
+  , (join3Bridge, .assumption 2)
+  , (join3Conclusion join3Consumer join3Provider join3Bridge
+        (.P (.concept 0 (.const 1))) join3General join3Term,
+      .join3 0 1 2 (.P (.concept 0 (.const 1))) join3General join3Term) ]
+
+example : check [] [join3Consumer, join3Provider, join3Bridge]
+    forgedJoin3Trace = false := by native_decide
+
 #print axioms check_sound
 #print axioms HoldsAt.of_strengthens
 #print axioms factorConclusion_sound
 #print axioms deleteReflexiveInequalityConclusion_sound
+#print axioms evalL_join3_instance
+#print axioms join3Conclusion_sound
 
 end ContextCalculus.CBProductionTrace
