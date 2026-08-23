@@ -37,7 +37,12 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(snapshot["version"], 1);
+    assert_eq!(snapshot["version"], 2);
+    assert!(snapshot["comp_ind_bits"]
+        .as_u64()
+        .is_some_and(|bits| (1..32).contains(&bits)));
+    assert!(snapshot["ordinary_clause_arena"].is_array());
+    assert!(snapshot["root_clause_arena"].is_array());
     assert_eq!(snapshot["pending_messages"], 0);
     assert_eq!(snapshot["message_truncated"], false);
     assert_eq!(snapshot["nominal_truncated"], false);
@@ -59,6 +64,14 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
         assert_eq!(
             context["rsucc_hwm"],
             context["rsucc_pool_ids"].as_array().unwrap().len()
+        );
+        assert_eq!(
+            context["predecessor_edge_seen"].as_array().unwrap().len(),
+            context["predecessors"].as_array().unwrap().len()
+        );
+        assert_eq!(
+            context["successor_reach_hwm"].as_array().unwrap().len(),
+            context["successors"].as_array().unwrap().len()
         );
     }
 }

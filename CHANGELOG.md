@@ -4,6 +4,17 @@
 
 ### Advance the CB semantic refinement
 
+- Add the first exact production-state binding for the integrated CB model
+  certificate. KM now exports both compact context-clause arenas, the active
+  packed-term layout, deterministic retained IDs, queue state, edge watermarks,
+  and truncation flags from the engine that reached the fixpoint. Lean decodes
+  the raw `UInt32` terms independently and accepts only when every live context
+  resolves to the exact source-bound retained clauses and terminal metadata
+  already checked by the global closure document. The native checker rejects
+  malformed or substituted evidence. This is unreleased until complete CB
+  publication is connected to the checker and the full certification gate
+  passes.
+
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,
   consecutive, globally fresh and disjoint witness blocks with exact budget

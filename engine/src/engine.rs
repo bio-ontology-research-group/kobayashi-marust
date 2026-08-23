@@ -3197,6 +3197,68 @@ impl From<Pred> for CbLivePred {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveLit {
+    pub kind: &'static str,
+    pub iri: Option<Iri>,
+    pub first: Term,
+    pub second: Option<Term>,
+}
+
+impl From<Pred> for CbLiveLit {
+    fn from(predicate: Pred) -> Self {
+        match predicate {
+            Pred::Concept { iri, t } => Self {
+                kind: "concept",
+                iri: Some(iri),
+                first: t,
+                second: None,
+            },
+            Pred::Role { iri, s, t } => Self {
+                kind: "role",
+                iri: Some(iri),
+                first: s,
+                second: Some(t),
+            },
+        }
+    }
+}
+
+impl From<Lit> for CbLiveLit {
+    fn from(literal: Lit) -> Self {
+        match literal {
+            Lit::P(predicate) => predicate.into(),
+            Lit::Eq { s, t } => Self {
+                kind: "equality",
+                iri: None,
+                first: s,
+                second: Some(t),
+            },
+            Lit::Ineq { s, t } => Self {
+                kind: "inequality",
+                iri: None,
+                first: s,
+                second: Some(t),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveClause {
+    pub body: Vec<CbLiveLit>,
+    pub head: Vec<CbLiveLit>,
+}
+
+impl From<&ContextClause> for CbLiveClause {
+    fn from(clause: &ContextClause) -> Self {
+        Self {
+            body: clause.body.iter().copied().map(Into::into).collect(),
+            head: clause.head.iter().copied().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CbLivePredecessorEdge {
     pub predecessor_context: usize,
     pub label: Term,
@@ -3231,13 +3293,21 @@ pub struct CbLiveContextSnapshot {
     pub rsucc_edges_grew: bool,
     pub predecessors: Vec<CbLivePredecessorEdge>,
     pub successors: Vec<CbLiveSuccessorEdge>,
+    /// Flattened in the same deterministic edge order for the Lean terminal
+    /// state wire. The full edge records above remain the authoritative live
+    /// snapshot and are used by the stronger edge-correspondence layer.
+    pub predecessor_edge_seen: Vec<usize>,
+    pub successor_reach_hwm: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CbLiveTerminalSnapshot {
     pub version: u32,
+    pub comp_ind_bits: u32,
     pub rsucc_enabled: bool,
     pub reach_concept_ids: Vec<Iri>,
+    pub ordinary_clause_arena: Vec<CbLiveClause>,
+    pub root_clause_arena: Vec<CbLiveClause>,
     pub pending_messages: usize,
     pub message_truncated: bool,
     pub nominal_truncated: bool,
@@ -7577,6 +7647,13 @@ impl Engine {
                     .collect();
                 successors.sort_by_key(|edge| (edge.label, edge.target_context));
 
+                let predecessor_edge_seen =
+                    predecessors.iter().map(|edge| edge.edge_seen).collect();
+                let successor_reach_hwm = successors
+                    .iter()
+                    .map(|edge| edge.rsucc_reach_hwm)
+                    .collect();
+
                 CbLiveContextSnapshot {
                     context_index,
                     context_id: context.id,
@@ -7600,14 +7677,19 @@ impl Engine {
                     rsucc_edges_grew: context.rsucc_edges_grew,
                     predecessors,
                     successors,
+                    predecessor_edge_seen,
+                    successor_reach_hwm,
                 }
             })
             .collect();
 
         CbLiveTerminalSnapshot {
-            version: 1,
+            version: 2,
+            comp_ind_bits: active_comp_ind_bits(),
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
+            ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
+            root_clause_arena: self.cc_arena[1].iter().map(Into::into).collect(),
             pending_messages: self.msgs.len(),
             message_truncated: self.message_truncated,
             nominal_truncated: self.nom_truncated.get(),

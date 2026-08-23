@@ -121,6 +121,10 @@ name = "cb-global-model-check"
 root = "CBGlobalModelCheck"
 
 [[lean_exe]]
+name = "cb-production-bound-global-model-check"
+root = "CBProductionBoundGlobalModelCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

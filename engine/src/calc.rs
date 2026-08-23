@@ -64,6 +64,14 @@ fn comp_ind_bits() -> u32 {
     })
 }
 
+/// Active low-bit width used by the packed `f(o)` representation.  Certificate
+/// evidence records this value so its consumer can decode the exact terms that
+/// participated in saturation instead of assuming the default layout.
+#[inline]
+pub(crate) fn active_comp_ind_bits() -> u32 {
+    comp_ind_bits()
+}
+
 /// Pick a positional split that represents every dense function and
 /// individual id. Prefer the established 17-bit individual layout whenever it
 /// fits, preserving byte-for-byte term ordering for the normal case.
