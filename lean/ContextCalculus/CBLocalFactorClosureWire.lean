@@ -429,7 +429,7 @@ private def factorGenerated : List WireFactorCoverage := [{
   strengthening_retained := 3
 }]
 
-private def acceptedExample : WireLocalFactorClosureDocument where
+def acceptedExample : WireLocalFactorClosureDocument where
   version := 1
   local_resolution := localDocument
   contexts := [{

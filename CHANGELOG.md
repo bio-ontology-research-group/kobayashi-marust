@@ -161,6 +161,13 @@
   retained reflexive inequalities, and equality-complement heads. Binding the
   special `owl:Nothing` literal filter remains part of source-to-Rust refinement
   rather than being trusted by this checker.
+- Add a proof-carrying finite term-order boundary for the upcoming Eq closure.
+  It independently collects every direct term in the verified source and all
+  terminal retained contexts, then accepts only a duplicate-free permutation
+  of exactly that universe. Lean proves rank bounds and rank injectivity on the
+  complete production universe. Omission and duplication tests fail in the
+  executable checker. This does not yet claim Eq closure or superposition
+  completeness; those are the next layer built on this checked order.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

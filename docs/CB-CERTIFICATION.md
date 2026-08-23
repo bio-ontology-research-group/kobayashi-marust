@@ -213,6 +213,15 @@ claim that the layer is already complete.
   `owl:Nothing` predicate filter still needs an exact source-symbol binding;
   this checker does not silently identify an arbitrary concept id as bottom.
   General Eq paramodulation and whole-engine closure remain open.
+- `CBFiniteTermOrderWire` supplies the finite order foundation needed to check
+  Eq orientation and maximality without trusting runtime flags. It collects all
+  direct terms from the exact verified source and every terminal retained
+  context, then requires the supplied low-to-high list to be a duplicate-free
+  permutation of exactly that finite universe. Lean proves every production
+  term has a bounded rank and equal ranks identify equal production terms. The
+  standalone `cb-finite-term-order-check` exposes this boundary. It is not yet
+  an Eq closure theorem: literal maximality, all three production Eq candidate
+  paths, and the ordered-paramodulation completeness connection remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual
