@@ -49,6 +49,7 @@ import ContextCalculus.CBFiniteOrderAdmissibilityWire
 import ContextCalculus.CBGroundEqualityBridge
 import ContextCalculus.CBRoleChainGroundCompleteness
 import ContextCalculus.CBNamedGroundCompleteness
+import ContextCalculus.CBBlockedCarrierWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

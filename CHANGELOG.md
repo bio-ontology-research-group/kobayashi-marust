@@ -205,6 +205,10 @@
   Prove semantic preservation under a name embedding and transport the quotient
   model back to the original source signature. Include every declared source
   constant in the checked production term universe, including unused names.
+- Add an executable finite blocked-carrier certificate. Derive exact source-name
+  embeddings from checked constant ranks and require a total bounded row-major
+  existential-witness table. Prove every table coordinate is in range and every
+  name embedding retrieves its original source constant.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

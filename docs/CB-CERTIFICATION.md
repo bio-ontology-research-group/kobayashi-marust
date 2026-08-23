@@ -284,6 +284,15 @@ claim that the layer is already complete.
   production term universe now includes every declared source constant even
   when it is absent from all clauses, so this name embedding is total. This
   corrects the former type-level conflation between names and blocked terms.
+- `CBBlockedCarrierWire` makes the finite production carrier and existential
+  witness choice executable. It requires the checked term permutation to be
+  nonempty, derives each source-name embedding from the exact rank of its
+  constant, and decodes a complete row-major
+  concept/role/concept/carrier witness table whose entries are all bounded
+  carrier elements. Lean proves the flat index is always in range, table lookup
+  never uses its fallback, and each embedded name decodes to its exact source
+  constant. The standalone `cb-blocked-carrier-check` exposes this boundary.
+  Ground-clause coverage by terminal production evidence remains open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

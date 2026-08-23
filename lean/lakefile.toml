@@ -73,6 +73,10 @@ name = "cb-finite-order-admissibility-check"
 root = "CBFiniteOrderAdmissibilityCheck"
 
 [[lean_exe]]
+name = "cb-blocked-carrier-check"
+root = "CBBlockedCarrierCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
