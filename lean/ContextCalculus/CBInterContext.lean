@@ -74,7 +74,21 @@ theorem succHypothesis_valid (model : TModel D) (predicate : FPred) :
   exact ⟨.P predicate, by simp [succHypothesis],
     hbody (.P predicate) (by simp [succHypothesis])⟩
 
+/-- Resolution preserves validity relative to one receiver core. This is the
+semantic receiver half used for every provider selected by `pred_from_neighbor`.
+-/
+theorem resolveContextual_sound (model : TModel D) (core : List FPred)
+    (positive negative : FCL) (literal : FLit)
+    (hpositive : ContextValid model core positive)
+    (hnegative : ContextValid model core negative)
+    (hhead : literal ∈ positive.head) (hbody : literal ∈ negative.body) :
+    ContextValid model core (resolvent positive negative literal) := by
+  intro assignment hcore
+  exact resolution_sound (model.evalL assignment) positive negative literal
+    (hpositive assignment hcore) (hnegative assignment hcore) hhead hbody
+
 #print axioms predTransfer_sound
 #print axioms succHypothesis_valid
+#print axioms resolveContextual_sound
 
 end ContextCalculus.CBInterContext

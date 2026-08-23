@@ -117,8 +117,14 @@ claim that the layer is already complete.
   indexed into an accepted production context and retained clause, checks the
   context id and duplicate-free substitution, and requires its payload to be
   clause-equivalent to the substituted clause plus substituted core. Its tests
-  reject forged sender ids and payloads. Production edge selection, receiver
-  decomposition, and complete queue delivery remain refinement obligations.
+  reject forged sender ids and payloads. The same executable document now binds
+  each accepted arrival to a receiver context and a sequence of retained
+  providers. It checks every provider index, positive-head and current-body
+  occurrence, reconstructs the complete resolution fold, and proves the exact
+  result valid under the receiver core. Forged providers and results are
+  rejected. Production edge eligibility, exhaustive Cartesian enumeration,
+  antichain pruning coverage, and complete queue delivery remain refinement
+  obligations.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge
