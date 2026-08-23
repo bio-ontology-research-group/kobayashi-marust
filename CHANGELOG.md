@@ -122,6 +122,15 @@
   folds the receiver resolutions under the receiver core. Missing, future,
   cross-context, or structurally different sender/provider references reject.
   Ordinary runs do not allocate this provenance.
+  Replace the remaining filtered-seed assumption with an executable local
+  derivation. The producer starts from the exact indexed core assumption or
+  empty-body ontology premise, resolves every statically empty head concept
+  against its exact indexed direct-bottom clause, and records each reflexive
+  inequality deletion. The existing Lean production-trace checker rechecks all
+  source indexes and steps. Bare branch-decision insertions now reject at the
+  live-state boundary: they are assumptions of the optional exhaustive split
+  search, whose validity belongs to the later case-analysis routing certificate
+  rather than to a single branch's local CB history.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

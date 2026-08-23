@@ -974,7 +974,7 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
                   else throw s!"unsupported CB live evidence for rule {hint}"
               | LiveInsertionOrigin.derived, some hint, none =>
                   if ["pred-local", "pred-arrival", "succ", "eq", "join",
-                      "branch-decision", "filtered-seed"].contains hint then
+                      "filtered-seed"].contains hint then
                     pure (none, none, none, none, none, none)
                   else throw s!"unsupported CB live derived-rule hint {hint}"
               | LiveInsertionOrigin.core _, _, _ |

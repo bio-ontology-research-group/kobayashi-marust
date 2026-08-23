@@ -1190,6 +1190,125 @@ fn cb_pred_event_evidence(
     }))
 }
 
+fn cb_filtered_seed_trace(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+    initial: crate::engine::CbLiveClause,
+    initial_justification: serde_json::Value,
+) -> Option<serde_json::Value> {
+    let arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let target = arena.get(event.clause_id as usize)?;
+    let mut current = initial;
+    let mut trace = vec![serde_json::json!({
+        "clause": cb_wire_clause(&current, live.comp_ind_bits),
+        "justification": initial_justification,
+    })];
+
+    loop {
+        let removable = current.head.iter().find_map(|literal| {
+            live.source_ontology
+                .iter()
+                .enumerate()
+                .find(|(_, source)| {
+                    source.body.as_slice() == [literal.clone()] && source.head.is_empty()
+                })
+                .map(|(index, source)| (literal.clone(), index, source.clone()))
+        });
+        let Some((literal, ontology_index, bottom_clause)) = removable else {
+            break;
+        };
+        let positive = trace.len() - 1;
+        let negative = trace.len();
+        trace.push(serde_json::json!({
+            "clause": cb_wire_clause(&bottom_clause, live.comp_ind_bits),
+            "justification": {"premise": {
+                "index": ontology_index,
+                "substitution": [],
+            }},
+        }));
+        current = cb_resolve_live(&current, &bottom_clause, &literal)?;
+        trace.push(serde_json::json!({
+            "clause": cb_wire_clause(&current, live.comp_ind_bits),
+            "justification": {"resolve": {
+                "positive": positive,
+                "negative": negative,
+                "literal": cb_wire_literal(&literal, live.comp_ind_bits),
+            }},
+        }));
+    }
+
+    while let Some(literal) = current
+        .head
+        .iter()
+        .find(|literal| literal.kind == "inequality" && literal.second == Some(literal.first))
+        .cloned()
+    {
+        let source = trace.len() - 1;
+        current.head.retain(|candidate| candidate != &literal);
+        trace.push(serde_json::json!({
+            "clause": cb_wire_clause(&current, live.comp_ind_bits),
+            "justification": {"deleteReflexiveInequality": {
+                "source": source,
+                "term": cb_wire_term(literal.first, live.comp_ind_bits),
+            }},
+        }));
+    }
+
+    if !cb_clause_set_eq(&current, target) {
+        return None;
+    }
+    Some(serde_json::json!({
+        "kind": "local",
+        "prior_events": [],
+        "trace": trace,
+        "discarded": [],
+    }))
+}
+
+fn cb_filtered_seed_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+) -> Option<serde_json::Value> {
+    if event.rule_hint != Some("filtered-seed") || event.rule_evidence.is_some() {
+        return None;
+    }
+    let context = live.contexts.get(event.context_index)?;
+    for (index, predicate) in context.core.iter().enumerate() {
+        let assumption = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(predicate)],
+        };
+        if let Some(evidence) = cb_filtered_seed_trace(
+            live,
+            event,
+            assumption,
+            serde_json::json!({"assumption": index}),
+        ) {
+            return Some(evidence);
+        }
+    }
+    for (index, source) in live.source_ontology.iter().enumerate() {
+        if source.body.is_empty() {
+            if let Some(evidence) = cb_filtered_seed_trace(
+                live,
+                event,
+                source.clone(),
+                serde_json::json!({"premise": {
+                    "index": index,
+                    "substitution": [],
+                }}),
+            ) {
+                return Some(evidence);
+            }
+        }
+    }
+    None
+}
+
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
@@ -1221,6 +1340,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
                 .or_else(|| cb_join_event_evidence(&live_state, event, &prior_insertions))
                 .or_else(|| cb_pred_event_evidence(&live_state, event, &prior_insertions))
                 .or_else(|| cb_tautology_event_evidence(&live_state, event))
+                .or_else(|| cb_filtered_seed_event_evidence(&live_state, event))
         } else {
             None
         };
@@ -1784,6 +1904,90 @@ mod cb_derivation_candidate_tests {
         assert_eq!(evidence["kind"], "pred");
         assert_eq!(evidence["sender_event"]["event_index"], 0);
         assert_eq!(evidence["provider_events"][0]["event_index"], 1);
+    }
+
+    #[test]
+    fn filtered_fact_seed_builds_source_resolution_and_inequality_trace() {
+        let concept = |iri| crate::engine::CbLiveLit {
+            kind: "concept",
+            iri: Some(iri),
+            first: crate::calc::X,
+            second: None,
+        };
+        let reflexive = crate::engine::CbLiveLit {
+            kind: "inequality",
+            iri: None,
+            first: crate::calc::X,
+            second: Some(crate::calc::X),
+        };
+        let bottom = crate::engine::CbLiveClause {
+            body: vec![concept(0)],
+            head: Vec::new(),
+        };
+        let fact = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![concept(0), concept(1), reflexive],
+        };
+        let result = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![concept(1)],
+        };
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.source_ontology = vec![bottom, fact];
+        live.root_clause_arena = vec![result];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 0,
+            context_index: 0,
+            root: true,
+            clause_id: 0,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("filtered-seed"),
+            rule_evidence: None,
+        };
+        let evidence = cb_filtered_seed_event_evidence(&live, &event).unwrap();
+        let trace = evidence["trace"].as_array().unwrap();
+        assert_eq!(trace.len(), 4);
+        assert!(trace[0]["justification"]["premise"].is_object());
+        assert!(trace[2]["justification"]["resolve"].is_object());
+        assert!(trace[3]["justification"]["deleteReflexiveInequality"].is_object());
+    }
+
+    #[test]
+    fn filtered_core_bottom_seed_starts_from_exact_core_assumption() {
+        let predicate = crate::engine::CbLivePred {
+            kind: "concept",
+            iri: 0,
+            first: crate::calc::X,
+            second: None,
+        };
+        let literal = cb_live_pred_literal(&predicate);
+        let mut live = live_snapshot();
+        live.contexts[0].core = vec![predicate];
+        live.source_ontology = vec![crate::engine::CbLiveClause {
+            body: vec![literal],
+            head: Vec::new(),
+        }];
+        live.root_clause_arena = vec![crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: Vec::new(),
+        }];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 0,
+            context_index: 0,
+            root: true,
+            clause_id: 0,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("filtered-seed"),
+            rule_evidence: None,
+        };
+        let evidence = cb_filtered_seed_event_evidence(&live, &event).unwrap();
+        let trace = evidence["trace"].as_array().unwrap();
+        assert_eq!(trace.len(), 3);
+        assert_eq!(trace[0]["justification"]["assumption"], 0);
+        assert!(trace[2]["justification"]["resolve"].is_object());
     }
 }
 
