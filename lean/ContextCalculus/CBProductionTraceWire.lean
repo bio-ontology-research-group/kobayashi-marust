@@ -58,6 +58,7 @@ deriving FromJson, ToJson
 structure WireProductionRun where
   version : Nat
   source : WireSourceBinding
+  individual_count : Nat
   contexts : List WireProductionContext
 deriving FromJson, ToJson
 
@@ -194,7 +195,12 @@ theorem DecodedProductionContext.discarded_sound
 
 structure DecodedProductionRun where
   source : DecodedSourceBinding
-  contexts : List (DecodedProductionContext source.bounds source.ontology)
+  bounds : Bounds
+  source_individuals_le : source.bounds.individuals ≤ bounds.individuals
+  bounds_concepts_eq : bounds.concepts = source.bounds.concepts
+  bounds_roles_eq : bounds.roles = source.bounds.roles
+  bounds_functions_eq : bounds.functions = source.bounds.functions
+  contexts : List (DecodedProductionContext bounds source.ontology)
   context_ids_nodup : (contexts.map (·.contextId)).Nodup
 
 def WireProductionRun.decode (wire : WireProductionRun) :
@@ -205,11 +211,24 @@ def WireProductionRun.decode (wire : WireProductionRun) :
     throw "CB production trace must contain at least one context"
   if _hwireIds : (wire.contexts.map (·.context_id)).Nodup then
     let source ← wire.source.decode
-    let contexts ← wire.contexts.mapM
-      (WireProductionContext.decode source.bounds source.ontology)
-    if hids : (contexts.map (·.contextId)).Nodup then
-      return { source, contexts, context_ids_nodup := hids }
-    else throw "decoded CB production context ids contain duplicates"
+    if hcount : source.bounds.individuals ≤ wire.individual_count then
+      let bounds : Bounds :=
+        { source.bounds with individuals := wire.individual_count }
+      let contexts ← wire.contexts.mapM
+        (WireProductionContext.decode bounds source.ontology)
+      if hids : (contexts.map (·.contextId)).Nodup then
+        return {
+          source
+          bounds
+          source_individuals_le := hcount
+          bounds_concepts_eq := rfl
+          bounds_roles_eq := rfl
+          bounds_functions_eq := rfl
+          contexts
+          context_ids_nodup := hids
+        }
+      else throw "decoded CB production context ids contain duplicates"
+    else throw "CB production individual table is smaller than the source table"
   else throw "CB production context ids contain duplicates"
 
 def WireProductionRun.check (wire : WireProductionRun) : Except String Bool := do
@@ -305,7 +324,8 @@ private def contextExample : WireProductionContext where
     ⟨⟨[], [conceptLiteral 1]⟩, .resolve 1 0 (conceptLiteral 0)⟩]
 
 private def acceptedExample : WireProductionRun :=
-  { version := 1, source := sourceExample, contexts := [contextExample] }
+  { version := 1, source := sourceExample, individual_count := 0,
+    contexts := [contextExample] }
 
 private def rejected (result : Except String Bool) : Bool :=
   match result with | .error _ => true | .ok _ => false
@@ -318,6 +338,29 @@ example : rejected ({ acceptedExample with contexts :=
 
 example : rejected ({ acceptedExample with contexts :=
     [contextExample, contextExample] }).check = true := by native_decide
+
+private def freshLiteral : WireLiteral :=
+  .predicate (.concept 0 (.constant 0))
+
+private def freshContextExample : WireProductionContext where
+  context_id := 8
+  root := true
+  query_concept := none
+  core := []
+  retained := [⟨[freshLiteral], [freshLiteral]⟩]
+  discarded := []
+  trace := [⟨⟨[freshLiteral], [freshLiteral]⟩, .tautology⟩]
+
+private def expandedIndividualExample : WireProductionRun :=
+  { acceptedExample with
+    individual_count := 1
+    contexts := [freshContextExample] }
+
+example : expandedIndividualExample.check = .ok true := by native_decide
+
+example : rejected
+    ({ expandedIndividualExample with individual_count := 0 }).check = true := by
+  native_decide
 
 #print axioms DecodedProductionContext.retained_sound
 #print axioms DecodedProductionContext.discarded_sound

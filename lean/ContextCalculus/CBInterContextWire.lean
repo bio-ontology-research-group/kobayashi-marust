@@ -80,8 +80,8 @@ def WirePredTransfer.decode (production : DecodedProductionRun)
             let variableIds := wire.substitution.map WireSubstitutionEntry.variableId
             if variableIds.Nodup then
               let substitution ← wire.substitution.mapM
-                (WireSubstitutionEntry.decode production.source.bounds)
-              let payload ← wire.payload.decode production.source.bounds
+                (WireSubstitutionEntry.decode production.bounds)
+              let payload ← wire.payload.decode production.bounds
               let expected := predTransfer substitution sender.core
                 (sender.retained.get retainedIndex)
               if hequivalent : clEquivT payload expected then
@@ -182,7 +182,7 @@ def WirePredArrival.decode (decoded : DecodedInterContextRun)
           let providers ← wire.providers.mapM (WirePredProvider.decode receiver)
           let payload := transfer.payload
           if hsteps : arrivalStepsOk receiver payload providers = true then
-            let result ← wire.result.decode decoded.production.source.bounds
+            let result ← wire.result.decode decoded.production.bounds
             let expected := arrivalConclusion receiver payload providers
             if hequivalent : clEquivT result expected then
               return {
@@ -336,6 +336,7 @@ private def contextExample : WireProductionContext where
 private def productionExample : WireProductionRun where
   version := 1
   source := sourceExample
+  individual_count := 0
   contexts := [contextExample]
 
 def acceptedExample : WireInterContextRun where

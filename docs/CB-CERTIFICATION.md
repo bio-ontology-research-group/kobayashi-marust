@@ -179,8 +179,20 @@ claim that the layer is already complete.
   mentioned by the clause was announced by that source, and selects exactly
   the first minimum-labelled representative edge for each source. Its exact
   membership theorem rules out omitted and invented retained-clause/source
-  pairs. The x-containing ground-context path and executable wire composition
-  remain open.
+  pairs. It also specifies the x-containing per-edge branch, requiring one
+  edge to cover the complete body and its receiving source to have announced
+  every individual in the clause. `enumerateAll` composes the mutually
+  exclusive branches in KM's clause-major order and has an exact membership
+  theorem. Executable wire composition remains open.
+- Production traces now distinguish the normalized source individual bound
+  from the runtime individual bound. The runtime table must extend the source
+  table, while concept, role, and function bounds remain identical. Context
+  clauses, substitutions, payloads, and arrivals decode against the runtime
+  bound, so Nom-generated fresh constants can be represented instead of being
+  rejected before their allocation proof is checked. Tests accept a fresh
+  runtime constant under an extended table and reject the same trace when the
+  runtime table is truncated. Binding the exact runtime bound to the Nom
+  allocation document remains open.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

@@ -116,7 +116,14 @@
   checks multi-edge body discharge per receiving source, announcement of every
   non-fresh individual, and the unique first minimum-labelled representative
   edge, then proves list membership equivalent to those production conditions.
-  The x-containing nominal path and wire composition remain open.
+  Add the x-containing per-edge branch with complete body coverage and
+  individual announcement, and compose both mutually exclusive branches in
+  the production clause-major order with an exact membership theorem.
+- Separate source and runtime individual bounds in production traces. Require
+  the runtime table to extend the source table, preserve all other symbol
+  bounds, and decode contexts, substitutions, transfers, and arrivals against
+  it. This makes fresh Nom constants representable while rejecting truncated
+  runtime tables. Exact binding to nominal allocation remains open.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

@@ -65,11 +65,11 @@ def WirePredEdge.decode (production : DecodedProductionRun)
       ⟨wire.receiver_context_index, hreceiver⟩
     let receiver := production.contexts.get receiverIndex
     if hid : receiver.contextId = wire.receiver_context_id then
-      let label ← wire.label.decode production.source.bounds
+      let label ← wire.label.decode production.bounds
       if hlabel : ordinaryLabel label = true then
         if _hwireNodup : wire.pushed.Nodup then
           let pushed ← wire.pushed.mapM
-            (WirePredicate.decode production.source.bounds)
+            (WirePredicate.decode production.bounds)
           if hpushedNodup : pushed.Nodup then
             return {
               receiverIndex
@@ -277,6 +277,7 @@ private def contextExample : WireProductionContext where
 private def productionExample : WireProductionRun where
   version := 1
   source := sourceExample
+  individual_count := 0
   contexts := [contextExample]
 
 private def interContextExample : WireInterContextRun where
