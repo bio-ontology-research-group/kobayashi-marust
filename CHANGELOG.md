@@ -4,6 +4,18 @@
 
 ### Advance the CB semantic refinement
 
+- Add a compact joint production boundary for the typed CB source. Lean checks
+  one chronological proof DAG containing local and arbitrarily nested Pred
+  nodes, then requires every positive taxonomy cell to cite the exact checked
+  node that proves its target unit or contradiction. Negative cells retain
+  independently checked finite or arbitrary-chain regular countermodels. The
+  matrix shape, publication bits, public names, source encoding, and shared
+  proof are checked together. Native KM emits each insertion event once,
+  rejects cycles and forward references, invokes the real Lean checker
+  fail-closed, and has cross-language tests for local and Pred DAGs plus a
+  forged cell redirected to the wrong node. This closes detached and duplicated
+  positive evidence; automatic delivery of the typed source through routing is
+  still required before this becomes the default certified route.
 - Add the source-bound extensional production capstone. `CBTaxonomyWire` now
   accepts complete production traces for positive cells and the strongest
   arbitrary-chain regular countermodel for negative cells. The new

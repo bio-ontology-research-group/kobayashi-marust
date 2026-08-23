@@ -1,6 +1,7 @@
 import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBStandaloneContextProofWire
+import ContextCalculus.CBSourceProductionTaxonomyWire
 
 /-!
 # Public CB certification surface
@@ -17,6 +18,21 @@ open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
 open ContextCalculus.CBLiveExactTaxonomyPublication
 open ContextCalculus.CBStandaloneContextProofWire
+
+/-- The compact native CB publication capstone: one typed source, one shared
+chronological production DAG, and one complete positive-or-countermodel matrix
+are accepted together and publish exactly the source semantics. -/
+theorem certifiedCBSharedProductionTaxonomyPublication
+    (wire : CBSourceProductionTaxonomyWire.WireDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : CBSourceProductionTaxonomyWire.DecodedDocument,
+      wire.decode = .ok decoded ∧
+      ∀ index : Fin decoded.cells.length,
+        (decoded.cells.map (·.answer)).get ⟨index, by simp⟩ = true ↔
+          decoded.SourceEntails (decoded.cells.get index) :=
+  wire.check_sound hcheck
+
+#print axioms certifiedCBSharedProductionTaxonomyPublication
 
 /-- Every node accepted by the chronological source-bound proof checker is
 context-valid in every model of the exact typed ontology. This includes local

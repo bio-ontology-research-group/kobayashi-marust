@@ -1346,15 +1346,28 @@ fn verify_cb_lean_publication(
             KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER"
             .to_string());
     }
+    let source_production_checker =
+        std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER");
+    let source_production_path =
+        std::env::var_os("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE");
+    if source_production_checker.is_some() && source_production_path.is_none() {
+        return Err("KM_CB_SOURCE_PRODUCTION_TAXONOMY_CANDIDATE is required with \
+            KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER"
+            .to_string());
+    }
     let global_path = std::env::var_os("KM_CB_TYPED_SOURCE_CERT")
         .or_else(|| std::env::var_os("KM_CB_GLOBAL_MODEL_CERT"))
         .ok_or_else(|| {
             "KM_CB_TYPED_SOURCE_CERT or KM_CB_GLOBAL_MODEL_CERT is required".to_string()
         })?;
     let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER");
-    if checker.is_none() && source_exact_checker.is_none() {
+    if checker.is_none()
+        && source_exact_checker.is_none()
+        && source_production_checker.is_none()
+    {
         return Err(
-            "KM_CB_LEAN_CERT_CHECKER or KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER is required"
+            "KM_CB_LEAN_CERT_CHECKER, KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER, or \
+             KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER is required"
                 .to_string(),
         );
     }
@@ -1520,6 +1533,31 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot flush standalone CB context proof: {error}"))?;
     }
 
+    if let Some(path) = source_production_path.as_ref() {
+        let (document, unresolved) = cb_source_production_taxonomy_candidate(&certificate)?;
+        if unresolved != 0 {
+            return Err(format!(
+                "source-production CB taxonomy has {unresolved} unresolved cells"
+            ));
+        }
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!(
+                "cannot create source-production CB taxonomy {}: {error}",
+                std::path::Path::new(path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &document).map_err(|error| {
+            format!("cannot serialize source-production CB taxonomy: {error}")
+        })?;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-production CB taxonomy: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush source-production CB taxonomy: {error}"))?;
+    }
+
     if let Some(candidate_path) = derivation_candidate_path {
         let file = std::fs::File::create(&candidate_path).map_err(|error| {
             format!(
@@ -1592,6 +1630,26 @@ fn verify_cb_lean_publication(
         if !status.success() {
             return Err(format!(
                 "standalone CB context checker rejected the proof with {status}"
+            ));
+        }
+    }
+    if let Some(production_checker) = source_production_checker {
+        let path = source_production_path.as_ref().ok_or_else(|| {
+            "source-production CB taxonomy checker has no candidate path".to_string()
+        })?;
+        let status = std::process::Command::new(&production_checker)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-production CB taxonomy checker {}: {error}",
+                    std::path::Path::new(&production_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "source-production CB taxonomy checker rejected the matrix with {status}"
             ));
         }
     }
@@ -3782,6 +3840,176 @@ fn cb_source_exact_taxonomy_candidate(
     }), unresolved))
 }
 
+fn cb_source_production_taxonomy_candidate(
+    live_publication: &serde_json::Value,
+) -> Result<(serde_json::Value, usize), String> {
+    let (legacy, unresolved) = cb_source_exact_taxonomy_candidate(live_publication)?;
+    let taxonomy = legacy
+        .get("taxonomy")
+        .ok_or_else(|| "source-exact CB candidate has no taxonomy".to_string())?;
+    let named = taxonomy
+        .get("named_concepts")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| "source-exact CB taxonomy has no named concepts".to_string())?;
+    let events = cb_public_witness_events(live_publication)?;
+    let (mut proof_document, event_nodes) =
+        cb_standalone_context_proof_document(live_publication, &events)?;
+    let proof_nodes = proof_document
+        .pointer_mut("/proof/nodes")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| "standalone CB proof has no node array".to_string())?;
+    let concept_predicate = |concept: usize| {
+        serde_json::json!({"concept": {
+            "concept": concept, "term": {"var": {"index": 0}}
+        }})
+    };
+    let concept_literal = |concept: usize| {
+        serde_json::json!({"predicate": {"predicate": concept_predicate(concept)}})
+    };
+    let unit = |concept: usize| {
+        serde_json::json!({"body": [], "head": [concept_literal(concept)]})
+    };
+    let mut reflexive_nodes = std::collections::HashMap::new();
+    for value in &named {
+        let concept = value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "named CB concept is not numeric".to_string())?;
+        let node = proof_nodes.len();
+        proof_nodes.push(serde_json::json!({
+            "core": [concept_predicate(concept)],
+            "clause": unit(concept),
+            "evidence": {"local": {
+                "prior_nodes": [],
+                "trace": [{
+                    "clause": unit(concept),
+                    "justification": {"assumption": {"index": 0}},
+                }],
+            }},
+        }));
+        reflexive_nodes.insert(concept, node);
+    }
+
+    let live_exact = cb_exact_taxonomy_candidate(live_publication)?.0;
+    let live_cells = live_exact
+        .get("cells")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live exact CB candidate has no cells".to_string())?;
+    let legacy_cells = taxonomy
+        .get("cells")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "source-exact CB taxonomy has no cells".to_string())?;
+    if live_cells.len() != legacy_cells.len() {
+        return Err("live and source-exact CB matrix lengths differ".to_string());
+    }
+    let positives = live_publication
+        .get("public_subsumptions")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no positive cells".to_string())?;
+    let unsatisfiable = live_publication
+        .get("unsatisfiable")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no unsatisfiable rows".to_string())?;
+    let live_unit = |concept: usize| {
+        serde_json::json!({"body": [], "head": [{
+            "kind": "concept", "iri": concept,
+            "first": crate::calc::X, "second": null
+        }]})
+    };
+    let empty = serde_json::json!({"body": [], "head": []});
+    let mut cells = Vec::with_capacity(legacy_cells.len());
+    for (live_cell, legacy_cell) in live_cells.iter().zip(legacy_cells) {
+        let sub = live_cell
+            .get("sub")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live CB cell has no subclass".to_string())?;
+        let sup = live_cell
+            .get("sup")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live CB cell has no superclass".to_string())?;
+        let answer = live_cell
+            .get("answer")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| "live CB cell has no answer".to_string())?;
+        let evidence = if answer {
+            let node = if sub == sup {
+                *reflexive_nodes
+                    .get(&sub)
+                    .ok_or_else(|| "reflexive CB cell has no proof node".to_string())?
+            } else if let Some(index) = live_cell
+                .pointer("/evidence/positive/live_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+            {
+                let positive = positives
+                    .get(index)
+                    .ok_or_else(|| "positive CB cell index is out of bounds".to_string())?;
+                let context = positive
+                    .get("context_index")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|value| usize::try_from(value).ok())
+                    .ok_or_else(|| "positive CB cell has no context".to_string())?;
+                let event = cb_live_terminal_event_for_clause(
+                    live_publication,
+                    context,
+                    &live_unit(sup),
+                )?;
+                *event_nodes
+                    .get(&event)
+                    .ok_or_else(|| "positive CB witness is absent from the shared DAG".to_string())?
+            } else if let Some(index) = live_cell
+                .pointer("/evidence/unsatisfiable/live_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+            {
+                let row = unsatisfiable
+                    .get(index)
+                    .ok_or_else(|| "unsatisfiable CB row index is out of bounds".to_string())?;
+                let context = row
+                    .get("context_index")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|value| usize::try_from(value).ok())
+                    .ok_or_else(|| "unsatisfiable CB row has no context".to_string())?;
+                let event = cb_live_terminal_event_for_clause(live_publication, context, &empty)?;
+                *event_nodes.get(&event).ok_or_else(||
+                    "unsatisfiable CB witness is absent from the shared DAG".to_string())?
+            } else {
+                return Err("true CB cell has no shared production witness".to_string());
+            };
+            serde_json::json!({"positiveNode": {"node": node}})
+        } else {
+            legacy_cell
+                .get("evidence")
+                .cloned()
+                .ok_or_else(|| "negative CB cell has no evidence".to_string())?
+        };
+        cells.push(serde_json::json!({
+            "sub": sub,
+            "sup": sup,
+            "answer": answer,
+            "evidence": evidence,
+        }));
+    }
+    Ok((serde_json::json!({
+        "version": 1,
+        "source": legacy.get("source").cloned().ok_or_else(||
+            "source-exact CB candidate has no source".to_string())?,
+        "proof": proof_document.get("proof").cloned().ok_or_else(||
+            "standalone CB document has no proof".to_string())?,
+        "concept_names": taxonomy.get("concept_names").cloned().ok_or_else(||
+            "source-exact CB taxonomy has no concept names".to_string())?,
+        "named_concepts": named,
+        "published": taxonomy.get("published").cloned().ok_or_else(||
+            "source-exact CB taxonomy has no publication bits".to_string())?,
+        "public_subsumptions": taxonomy.get("public_subsumptions").cloned().ok_or_else(||
+            "source-exact CB taxonomy has no public payload".to_string())?,
+        "cells": cells,
+    }), unresolved))
+}
+
 /// Translate the exact grouped answer into the semantic ids and live-context
 /// witnesses checked by Lean. Any row without a direct retained witness makes
 /// certified publication fail closed.
@@ -4233,6 +4461,9 @@ mod cb_derivation_candidate_tests {
         let context_checker =
             std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
                 .expect("the standalone context test requires the real Lean checker");
+        let production_checker =
+            std::env::var_os("KM_CB_TEST_SOURCE_PRODUCTION_TAXONOMY_CHECKER")
+                .expect("the shared-production taxonomy test requires the real Lean checker");
         let term = |variable: i64| serde_json::json!({"var": {"index": variable}});
         let concept = |id: usize| serde_json::json!({"predicate": {"predicate": {
             "concept": {"concept": id, "term": term(0)}
@@ -4325,6 +4556,7 @@ mod cb_derivation_candidate_tests {
             .join(format!("cb-source-exact-test-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let proof_path = path.with_extension("context.json");
+        let production_path = path.with_extension("production.json");
         let witness_events = cb_public_witness_events(&publication).unwrap();
         let (context_document, event_nodes) =
             cb_standalone_context_proof_document(&publication, &witness_events).unwrap();
@@ -4337,6 +4569,37 @@ mod cb_derivation_candidate_tests {
                 .unwrap()
                 .success(),
             "Lean must accept the native chronological context proof"
+        );
+        let (mut production_document, production_unresolved) =
+            cb_source_production_taxonomy_candidate(&publication).unwrap();
+        assert_eq!(production_unresolved, 0);
+        std::fs::write(
+            &production_path,
+            serde_json::to_vec(&production_document).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            std::process::Command::new(&production_checker)
+                .arg(&production_path)
+                .status()
+                .unwrap()
+                .success(),
+            "Lean must accept the joint source, shared DAG, and matrix"
+        );
+        production_document["cells"][1]["evidence"] =
+            serde_json::json!({"positiveNode": {"node": 0}});
+        std::fs::write(
+            &production_path,
+            serde_json::to_vec(&production_document).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            !std::process::Command::new(&production_checker)
+                .arg(&production_path)
+                .status()
+                .unwrap()
+                .success(),
+            "Lean must reject a matrix cell redirected to the wrong shared node"
         );
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         let accepted = std::process::Command::new(&checker)
@@ -4374,6 +4637,7 @@ mod cb_derivation_candidate_tests {
         assert!(rejected, "Lean must reject a forged source-exact publication bit");
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_file(proof_path);
+        let _ = std::fs::remove_file(production_path);
     }
 
     #[test]

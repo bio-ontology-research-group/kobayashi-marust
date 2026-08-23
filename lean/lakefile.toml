@@ -37,6 +37,10 @@ name = "cb-standalone-context-proof-check"
 root = "CBStandaloneContextProofCheck"
 
 [[lean_exe]]
+name = "cb-source-production-taxonomy-check"
+root = "CBSourceProductionTaxonomyCheck"
+
+[[lean_exe]]
 name = "cb-nominal-allocation-check"
 root = "CBNominalAllocationCheck"
 
