@@ -127,6 +127,12 @@ claim that the layer is already complete.
   context-count and context-id matching. Lean still decodes the copied trace,
   checks every inference, and requires the live event clause in its terminal.
   Events removed before the terminal state remain explicit producer gaps.
+  Removed insertions now have a separate `discarded` evidence form. It rechecks
+  the full local trace, every source document redundancy witness, exact equality
+  with the live removed clause, and the indexed retained strengthening. This
+  proves removed local clauses without relying on a later chronological event.
+  A removed clause absent from the source-bound discarded list remains
+  `unproved` and is rejected.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

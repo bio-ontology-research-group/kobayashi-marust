@@ -183,7 +183,7 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(saw_core && saw_ontology_fact);
     let candidate: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&derivation).unwrap()).unwrap();
-    assert_eq!(candidate["version"], 1);
+    assert_eq!(candidate["version"], 2);
     assert_eq!(candidate["production_bound"], document);
     let evidence = candidate["insertion_evidence"].as_array().unwrap();
     assert_eq!(evidence.len(), history.len());
@@ -196,6 +196,7 @@ fn mandatory_lean_rejection_prevents_publication() {
         assert_eq!(proof["kind"], expected);
         assert_eq!(proof["prior_events"].as_array().unwrap().len(), 0);
         assert_eq!(proof["trace"].as_array().unwrap().len(), 0);
+        assert_eq!(proof["discarded"].as_array().unwrap().len(), 0);
     }
     std::fs::remove_file(global).unwrap();
     std::fs::remove_file(bundle).unwrap();

@@ -65,6 +65,12 @@
   context id match the live snapshot, then copies the trace for independent
   Lean decoding. Removed events and retained events without a matching trace
   remain `unproved`; no structural JSON match is trusted as certification.
+  Add checked evidence for insertions removed by redundancy. The producer
+  copies the context's complete discarded-witness list and source-bound trace.
+  Lean rechecks the trace, independently decodes every discarded clause and
+  retained strengthening index, finds the exact live event clause, and proves
+  it from that stronger terminal clause. Missing or forged deletion witnesses
+  reject instead of falling back to a forward reference.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

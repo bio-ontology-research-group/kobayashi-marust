@@ -56,6 +56,13 @@ inductive EventEvidence
         (production.contexts.get event.contextIndex).assumptions
         (priorClauses references) trace = some final)
       (conclusion : event.clause ∈ final) : EventEvidence done event
+  | discarded (event)
+      (trace : List Entry) (final : List FCL)
+      (checked : checkFold production.source.ontology
+        (production.contexts.get event.contextIndex).assumptions [] trace = some final)
+      (strengtheningIndex : Fin final.length)
+      (strengthens : Strengthens (final.get strengtheningIndex) event.clause) :
+      EventEvidence done event
 
 inductive CertifiedHistory :
     List (LiveEvent production ordinary root) → Type
@@ -108,6 +115,21 @@ theorem EventEvidence.sound
         (prior_local_sound hall references model assignment hontology hcore)
         checked
       exact hfinal event.clause conclusion
+  | discarded trace final checked strengtheningIndex strengthens =>
+      intro D model assignment hontology hcore
+      apply HoldsAt.of_strengthens model assignment strengthens
+      have hfinal := checkFold_sound model assignment hontology
+        (fun assumption hassumption => by
+          rw [(production.contexts.get event.contextIndex).assumptions_eq]
+            at hassumption
+          simp only [List.mem_map] at hassumption
+          obtain ⟨predicate, hpredicate, rfl⟩ := hassumption
+          intro _
+          exact ⟨.P predicate, List.mem_singleton.mpr rfl,
+            hcore predicate hpredicate⟩)
+        (by simp) checked
+      exact hfinal (final.get strengtheningIndex)
+        (List.get_mem final strengtheningIndex)
 
 theorem CertifiedHistory.sound
     {history : List (LiveEvent production ordinary root)}
@@ -131,6 +153,7 @@ structure WireEventEvidence where
   kind : String
   prior_events : List WirePriorLocalRef
   trace : List WireProductionEntry
+  discarded : List WireDiscardedClause
 deriving FromJson, ToJson
 
 def WirePriorLocalRef.decode
@@ -151,13 +174,15 @@ def WireEventEvidence.decode
     (wire : WireEventEvidence) : Except String (EventEvidence done event) := do
   match wire.kind with
   | "seed" =>
-      if wire.prior_events.isEmpty ∧ wire.trace.isEmpty then
+      if wire.prior_events.isEmpty ∧ wire.trace.isEmpty ∧ wire.discarded.isEmpty then
         if hseed : event.origin ≠ .derived then
           return .seed event hseed
         else throw "CB derived insertion is labelled as a seed"
       else throw "CB insertion seed unexpectedly carries derivation data"
   | "local" =>
       if _horigin : event.origin = .derived then
+        if !wire.discarded.isEmpty then
+          throw "CB local insertion trace unexpectedly carries discarded witnesses"
         let references ← wire.prior_events.mapM
           (WirePriorLocalRef.decode done event)
         let trace ← wire.trace.mapM
@@ -171,6 +196,29 @@ def WireEventEvidence.decode
               return .localTrace event references trace final hchecked hconclusion
             else throw "CB local insertion trace does not derive its event clause"
       else throw "CB insertion seed is labelled as a local derivation"
+  | "discarded" =>
+      if _horigin : event.origin = .derived then
+        if !wire.prior_events.isEmpty then
+          throw "CB discarded insertion evidence unexpectedly cites earlier events"
+        let trace ← wire.trace.mapM
+          (WireProductionEntry.decode production.bounds)
+        match hchecked : checkFold production.source.ontology
+            (production.contexts.get event.contextIndex).assumptions [] trace with
+        | none => throw "CB discarded insertion trace was rejected"
+        | some final =>
+            let discarded ← wire.discarded.mapM
+              (WireDiscardedClause.decode production.bounds final)
+            let isTarget := fun (witness : DecodedDiscardedClause final) =>
+              decide (witness.clause = event.clause)
+            match hfound : discarded.find? isTarget with
+            | none => throw "CB discarded evidence omits the exact live event clause"
+            | some witness =>
+                have hclause : witness.clause = event.clause :=
+                  of_decide_eq_true (by
+                    simpa [isTarget] using List.find?_some hfound)
+                return .discarded event trace final hchecked
+                  witness.strengtheningIndex (hclause ▸ witness.strengthens)
+      else throw "CB insertion seed is labelled as discarded"
   | kind => throw s!"unsupported CB insertion evidence kind {kind}"
 
 structure DecodedHistoryPrefix
@@ -250,7 +298,7 @@ structure DecodedLiveInsertionDerivationDocument where
 def WireLiveInsertionDerivationDocument.decode
     (wire : WireLiveInsertionDerivationDocument) :
     Except String DecodedLiveInsertionDerivationDocument := do
-  if wire.version != 1 then
+  if wire.version != 2 then
     throw s!"unsupported CB live insertion-derivation version {wire.version}"
   let live ← wire.production_bound.decode
   let history ← decodeHistoryEvidence

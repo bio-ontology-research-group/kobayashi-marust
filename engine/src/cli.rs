@@ -590,17 +590,40 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             } else {
                 Vec::new()
             };
+            let discarded = if event.origin_hint == "derived" && !retained {
+                production_contexts
+                    .and_then(|contexts| contexts.get(event.context_index))
+                    .and_then(|context| context.get("discarded"))
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let discarded_trace = if !discarded.is_empty() {
+                production_contexts
+                    .and_then(|contexts| contexts.get(event.context_index))
+                    .and_then(|context| context.get("trace"))
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             let kind = if event.origin_hint != "derived" {
                 "seed"
             } else if retained && !trace.is_empty() {
                 "local"
+            } else if !discarded.is_empty() && !discarded_trace.is_empty() {
+                "discarded"
             } else {
                 "unproved"
             };
             serde_json::json!({
                 "kind": kind,
                 "prior_events": [],
-                "trace": trace,
+                "trace": if kind == "discarded" { discarded_trace } else { trace },
+                "discarded": discarded,
             })
         })
         .collect();
@@ -628,7 +651,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
 
     if let Some(candidate_path) = derivation_candidate_path {
         let candidate = serde_json::json!({
-            "version": 1,
+            "version": 2,
             "production_bound": bundle,
             "insertion_evidence": insertion_evidence,
         });
