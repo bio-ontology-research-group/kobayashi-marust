@@ -259,6 +259,15 @@ claim that the layer is already complete.
   of the rank-induced order. The standalone
   `cb-finite-order-admissibility-check` exposes this boundary. The final
   ordered-paramodulation model theorem still remains open.
+- `CBGroundEqualityBridge` connects production `FLit` clauses to the ground
+  propositional equality language consumed by `CompletenessEq`. The translation
+  treats disequality by polarity: a body inequality becomes a positive equality
+  atom and a head inequality becomes a negative equality atom. Lean proves
+  clause-level satisfaction equivalence, exact membership in the translated
+  finite clause set, model equivalence for the whole set, and unsatisfiability
+  equivalence. This makes the existing congruence-quotient model construction
+  applicable once the remaining production grounding and closure refinement is
+  established.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

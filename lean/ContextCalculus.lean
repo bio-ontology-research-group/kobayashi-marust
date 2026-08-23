@@ -46,6 +46,7 @@ import ContextCalculus.CBFiniteLiteralOrderWire
 import ContextCalculus.CBLocalEqEnumeration
 import ContextCalculus.CBLocalEqClosureWire
 import ContextCalculus.CBFiniteOrderAdmissibilityWire
+import ContextCalculus.CBGroundEqualityBridge
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

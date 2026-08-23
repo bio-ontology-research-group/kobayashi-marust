@@ -192,6 +192,11 @@
   strict order whenever both applications occur. Prove these conditions,
   production-term trichotomy, and well-foundedness. The corresponding model
   theorem remains part of the unreleased CB certification layer.
+- Bridge production ground clauses to the propositional equality clauses used
+  by the existing congruence-quotient completeness construction. Translate
+  disequalities with the correct body/head polarity and prove exact
+  satisfaction, whole-set model, and unsatisfiability equivalences. Production
+  grounding and saturation refinement remain open.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
