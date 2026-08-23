@@ -2,6 +2,21 @@
 
 ## [unreleased]
 
+### Close the executable ELC certification boundary
+
+- Add the wire-level ELC publication capstone. Acceptance of the exact
+  `WireCertificate` consumed by `elc-cert-check` now proves that decoding
+  succeeded and yields the same decoded V5 certificate together with exact
+  source-level inconsistency, ID-taxonomy, and named-taxonomy semantics. This
+  closes the gap between the prior theorem over an already decoded value and
+  the executable JSON checker boundary.
+- Make the native ELC checker import that executable capstone and extend the
+  local gate's axiom audit to require it. The exhaustive ELC gate passes with
+  no `sorryAx`: production-fixpoint reconstruction, source partitioning,
+  canonical witnesses, finite residual compilation, tamper rejection,
+  fail-closed checker configuration, and exact checker-approved publication
+  all pass against the real Lean executable.
+
 ### Complete the local hypertableau certification gate
 
 - Audit the executable HT publication boundary across ordinary, cardinality,

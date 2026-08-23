@@ -28,7 +28,7 @@ trap cleanup_native_checker EXIT
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
     LEAN_NUM_THREADS=4 lake build elc-cert-check
-    LEAN_NUM_THREADS=4 lake build ContextCalculus.ELCompletionPublication \
+    LEAN_NUM_THREADS=4 lake build ContextCalculus.ELCompletionExecutablePublication \
         2>&1 | tee "$surface_log"
 )
 
@@ -40,6 +40,12 @@ fi
 grep -q "ELCompletionPublication.*checkV5_publication_semantics\|'ContextCalculus.ELCompletion.DecodedCertificate.checkV5_publication_semantics'" \
     "$surface_log" || {
     echo "missing ELC publication-surface axiom audit" >&2
+    exit 1
+}
+
+grep -q "ELCompletionExecutablePublication.*check_publication_semantics\|'ContextCalculus.ELCompletion.WireCertificate.check_publication_semantics'" \
+    "$surface_log" || {
+    echo "missing executable ELC wire-publication axiom audit" >&2
     exit 1
 }
 

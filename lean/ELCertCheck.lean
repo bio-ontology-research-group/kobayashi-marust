@@ -1,4 +1,4 @@
-import ContextCalculus.ELCompletionPublication
+import ContextCalculus.ELCompletionExecutablePublication
 
 open Lean
 open ContextCalculus.ELCompletion
