@@ -37,7 +37,7 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(snapshot["version"], 2);
+    assert_eq!(snapshot["version"], 3);
     assert!(snapshot["comp_ind_bits"]
         .as_u64()
         .is_some_and(|bits| (1..32).contains(&bits)));
@@ -155,11 +155,13 @@ fn mandatory_lean_rejection_prevents_publication() {
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
     assert_eq!(document["version"], 1);
-    assert_eq!(document["live_state"]["version"], 2);
+    assert_eq!(document["live_state"]["version"], 3);
     let history = document["live_state"]["insertion_history"]
         .as_array()
         .unwrap();
     assert!(!history.is_empty());
+    let mut saw_core = false;
+    let mut saw_ontology_fact = false;
     for (sequence, event) in history.iter().enumerate() {
         assert_eq!(event["sequence"], sequence);
         let root = event["root"].as_bool().unwrap();
@@ -169,7 +171,13 @@ fn mandatory_lean_rejection_prevents_publication() {
             &document["live_state"]["ordinary_clause_arena"]
         };
         assert!(event["clause_id"].as_u64().unwrap() < arena.as_array().unwrap().len() as u64);
+        let origin = event["origin_hint"].as_str().unwrap();
+        assert!(matches!(origin, "core" | "ontology_fact" | "derived"));
+        assert_eq!(event["origin_index"].is_number(), origin != "derived");
+        saw_core |= origin == "core";
+        saw_ontology_fact |= origin == "ontology_fact";
     }
+    assert!(saw_core && saw_ontology_fact);
     std::fs::remove_file(global).unwrap();
     std::fs::remove_file(bundle).unwrap();
 }

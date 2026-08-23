@@ -3286,6 +3286,8 @@ pub struct CbLiveInsertionEvent {
     pub context_index: usize,
     pub root: bool,
     pub clause_id: u32,
+    pub origin_hint: &'static str,
+    pub origin_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -4210,6 +4212,8 @@ impl Engine {
                 context_index: id,
                 root,
                 clause_id: cid,
+                origin_hint: "derived",
+                origin_index: None,
             });
         }
         if let Some(t) = __t {
@@ -7712,8 +7716,29 @@ impl Engine {
             })
             .collect();
 
+        let mut insertion_history = self.certificate_history.clone().unwrap_or_default();
+        for event in &mut insertion_history {
+            let context = &self.contexts[event.context_index];
+            let clause = &self.cc_arena[event.root as usize][event.clause_id as usize];
+            if clause.body.is_empty() {
+                if let Some((index, _)) = context.core.iter().enumerate().find(|(_, predicate)| {
+                    clause.head.as_slice() == [Lit::P(**predicate)]
+                }) {
+                    event.origin_hint = "core";
+                    event.origin_index = Some(index);
+                    continue;
+                }
+                if let Some((index, _)) = self.ont.clauses.iter().enumerate().find(|(_, source)| {
+                    source.body.is_empty() && source.head == clause.head
+                }) {
+                    event.origin_hint = "ontology_fact";
+                    event.origin_index = Some(index);
+                }
+            }
+        }
+
         CbLiveTerminalSnapshot {
-            version: 2,
+            version: 3,
             comp_ind_bits: active_comp_ind_bits(),
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
@@ -7722,7 +7747,7 @@ impl Engine {
             pending_messages: self.msgs.len(),
             message_truncated: self.message_truncated,
             nominal_truncated: self.nom_truncated.get(),
-            insertion_history: self.certificate_history.clone().unwrap_or_default(),
+            insertion_history,
             contexts,
         }
     }

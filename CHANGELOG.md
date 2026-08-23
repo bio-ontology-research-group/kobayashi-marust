@@ -27,6 +27,13 @@
   clause has an insertion event. This supplies the well-founded event stream
   from which the producer can reconstruct rule justifications using only earlier
   premises; ordinary runs retain sharing and allocate no history.
+  KM now classifies each insertion seed as an indexed context-core assumption,
+  an indexed normalized ontology fact, or a still-derived event. The version-3
+  live-state wire rejects unknown origin tags, missing or spurious indexes, and
+  any core or ontology claim whose indexed clause is not structurally exact.
+  Lean exposes the accepted index equalities as reusable theorems for the
+  chronological derivation checker. Head-filtered facts deliberately remain
+  derived until their transformation receives separate checked evidence.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

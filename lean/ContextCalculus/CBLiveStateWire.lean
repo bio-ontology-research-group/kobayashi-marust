@@ -62,6 +62,8 @@ structure WireLiveInsertionEvent where
   context_index : Nat
   root : Bool
   clause_id : Nat
+  origin_hint : String
+  origin_index : Option Nat
 deriving FromJson, ToJson
 
 structure WireLiveContext where
@@ -262,6 +264,28 @@ def WireLiveSuccessorEdge.decode (production : DecodedProductionRun)
     }
   else throw "CB live successor context is outside the production run"
 
+inductive LiveInsertionOrigin where
+  | core (index : Nat)
+  | ontologyFact (index : Nat)
+  | derived
+deriving Repr, DecidableEq
+
+private def liveAssumptionClause (predicate : FPred) : FCL :=
+  ⟨[], [.P predicate]⟩
+
+private def insertionOriginOk (production : DecodedProductionRun)
+    (contextIndex : Fin production.contexts.length) (clause : FCL) :
+    LiveInsertionOrigin → Bool
+  | .core index =>
+      match (production.contexts.get contextIndex).core[index]? with
+      | some predicate => decide (clause = liveAssumptionClause predicate)
+      | none => false
+  | .ontologyFact index =>
+      match production.source.ontology[index]? with
+      | some source => decide (source.body = [] ∧ clause = source)
+      | none => false
+  | .derived => true
+
 structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
     (ordinary root : List FCL) where
   sequence : Nat
@@ -270,6 +294,8 @@ structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
   root_eq : (production.contexts.get contextIndex).root = rootDomain
   clauseId : Nat
   clause : FCL
+  origin : LiveInsertionOrigin
+  origin_valid : insertionOriginOk production contextIndex clause origin = true
 
 def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
     (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
@@ -280,17 +306,70 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
     if hroot : context.root = wire.root then
       let arena := if wire.root then root else ordinary
       match arena[wire.clause_id]? with
-      | some clause => return {
-          sequence := wire.sequence
-          contextIndex := contextIndex
-          rootDomain := wire.root
-          root_eq := hroot
-          clauseId := wire.clause_id
-          clause := clause
-        }
+      | some clause =>
+          let origin ← match wire.origin_hint, wire.origin_index with
+            | "core", some index => pure (.core index)
+            | "ontology_fact", some index => pure (.ontologyFact index)
+            | "derived", none => pure .derived
+            | "core", none => throw "CB core insertion origin has no index"
+            | "ontology_fact", none =>
+                throw "CB ontology-fact insertion origin has no index"
+            | "derived", some _ =>
+                throw "CB derived insertion origin unexpectedly has an index"
+            | hint, _ => throw s!"unsupported CB insertion origin {hint}"
+          if horigin : insertionOriginOk production contextIndex clause origin = true then
+            return {
+              sequence := wire.sequence
+              contextIndex := contextIndex
+              rootDomain := wire.root
+              root_eq := hroot
+              clauseId := wire.clause_id
+              clause := clause
+              origin := origin
+              origin_valid := horigin
+            }
+          else throw "CB insertion origin does not match its indexed production seed"
       | none => throw "CB insertion-history clause id is outside its arena"
     else throw "CB insertion-history arena domain differs from its context"
   else throw "CB insertion-history context is outside the production run"
+
+theorem DecodedLiveInsertionEvent.core_origin_exact
+    (event : DecodedLiveInsertionEvent production ordinary root)
+    (index : Nat) (horigin : event.origin = .core index) :
+    ∃ predicate,
+      (production.contexts.get event.contextIndex).core[index]? = some predicate ∧
+      event.clause = liveAssumptionClause predicate := by
+  have hvalid := event.origin_valid
+  rw [horigin] at hvalid
+  let core := (production.contexts.get event.contextIndex).core
+  change (match core[index]? with
+    | some predicate => decide (event.clause = liveAssumptionClause predicate)
+    | none => false) = true at hvalid
+  cases hlookup : core[index]? with
+  | none => simp [hlookup] at hvalid
+  | some predicate =>
+      have heq : event.clause = liveAssumptionClause predicate := by
+        exact of_decide_eq_true (by simpa [hlookup] using hvalid)
+      exact ⟨predicate, by simpa [core] using hlookup, heq⟩
+
+theorem DecodedLiveInsertionEvent.ontology_origin_exact
+    (event : DecodedLiveInsertionEvent production ordinary root)
+    (index : Nat) (horigin : event.origin = .ontologyFact index) :
+    ∃ source,
+      production.source.ontology[index]? = some source ∧
+      source.body = [] ∧ event.clause = source := by
+  have hvalid := event.origin_valid
+  rw [horigin] at hvalid
+  let ontology := production.source.ontology
+  change (match ontology[index]? with
+    | some source => decide (source.body = [] ∧ event.clause = source)
+    | none => false) = true at hvalid
+  cases hlookup : ontology[index]? with
+  | none => simp [hlookup] at hvalid
+  | some source =>
+      have heq : source.body = [] ∧ event.clause = source := by
+        exact of_decide_eq_true (by simpa [hlookup] using hvalid)
+      exact ⟨source, by simpa [ontology] using hlookup, heq⟩
 
 structure DecodedLiveContext
     (production : DecodedProductionRun)
@@ -398,7 +477,7 @@ def WireProductionBoundGlobalModelDocument.decode
     Except String DecodedLiveStateDocument := do
   if wire.version != 1 then
     throw s!"unsupported production-bound CB global-model version {wire.version}"
-  if wire.live_state.version != 2 then
+  if wire.live_state.version != 3 then
     throw s!"unsupported CB live-state version {wire.live_state.version}"
   let global ← wire.global_model.decode
   let production := rProduction global.global.rsucc
