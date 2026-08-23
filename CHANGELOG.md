@@ -144,6 +144,13 @@
   This removes the local-only production trace as the semantic authority for
   inter-context arrivals and supplies the soundness premise needed by the
   integrated global closure and publication theorem.
+  Add the first live CB taxonomy publication boundary. Every serialized
+  positive `A ⊑ B` cell must name A's exact query context, whose core is checked
+  to be exactly `A(x)`, and a retained `top → B(x)` clause. Lean obtains that
+  clause's context validity from the certified chronological history and proves
+  semantic subsumption for the exact source encoding. A native checker exposes
+  this theorem. Unsatisfiable rows, exact public-payload binding, and negative
+  completeness evidence remain part of the integrated taxonomy layer.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

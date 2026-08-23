@@ -129,6 +129,10 @@ name = "cb-live-insertion-derivation-check"
 root = "CBLiveInsertionDerivationCheck"
 
 [[lean_exe]]
+name = "cb-live-taxonomy-publication-check"
+root = "CBLiveTaxonomyPublicationCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
