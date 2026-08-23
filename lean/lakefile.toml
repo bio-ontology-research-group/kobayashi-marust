@@ -81,6 +81,10 @@ name = "cb-blocked-ground-saturation-check"
 root = "CBBlockedGroundSaturationCheck"
 
 [[lean_exe]]
+name = "cb-hyper-closure-check"
+root = "CBHyperClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
