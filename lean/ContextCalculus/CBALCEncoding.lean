@@ -15,11 +15,11 @@ namespace ContextCalculus.CBALCEncoding
 open ContextCalculus CheckerTerm
 open ContextCalculus.Ctx
 
-private def x : FTerm := .var 0
-private def y : FTerm := .var (-1)
-private def con (concept : Fin conceptCount) (term : FTerm) : FLit :=
+def x : FTerm := .var 0
+def y : FTerm := .var (-1)
+def con (concept : Fin conceptCount) (term : FTerm) : FLit :=
   .P (.concept concept.val term)
-private def rol (role : Fin roleCount) (source target : FTerm) : FLit :=
+def rol (role : Fin roleCount) (source target : FTerm) : FLit :=
   .P (.role role.val source target)
 
 def encodeClause (index : Nat) : Ctx.Clause (Fin conceptCount) (Fin roleCount) → List FCL

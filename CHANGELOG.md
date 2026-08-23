@@ -12,6 +12,10 @@
 - Prove that atomic subsumption in the encoded CB semantics is equivalent to
   ALC good-type semantics, and construct a finite canonical countermodel for
   every failed encoded ALC subsumption.
+- Extend the exact source-to-term bridge through role inclusions, inverse-role
+  bridges, functionality, nominals, and arbitrary qualified at-most
+  restrictions. Prove both atomic-subsumption and nonempty-domain
+  satisfiability equivalence for this equational source language.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

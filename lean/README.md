@@ -794,6 +794,15 @@ encoded subsumption has a canonical countermodel over the finite domain of good
 types. This closes the ALC source-encoding theorem; it does not by itself prove
 that the Rust context saturation computes that fixpoint.
 
+`CBEqEncoding.lean` extends the same exact bridge to the normalized equational
+language from `CompletenessEq`: role inclusions, inverse roles, functionality,
+nominals, and arbitrary qualified at-most restrictions. It proves model
+restriction and Skolem extension for every constructor, then derives exact
+atomic-subsumption and nonempty-domain satisfiability equivalence. The at-most
+encoding checks all `n + 1` qualified successors and exposes every pairwise
+equality alternative. Role chains and the production context-state refinement
+are not included in this theorem.
+
 This is strictly more than the two earlier files (it handles disjunction *and*
 existential witnesses together) and more engine-faithful than the prior moose
 ALC proof, which uses *infinite* Lindenbaum/Zorn maximal types rather than the

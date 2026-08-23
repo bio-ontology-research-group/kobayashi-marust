@@ -61,6 +61,15 @@ claim that the layer is already complete.
   ALC subsumption has a concrete countermodel over the finite domain of good
   types. These theorems certify the semantic encoding, not yet the production
   context saturation that computes a result.
+- `CBEqEncoding` extends the exact two-way model bridge to the equational
+  ontology language used by `CompletenessEq`: role inclusions, inverse-role
+  bridges, functionality, nominals, and arbitrary qualified at-most
+  restrictions, in addition to the disjunctive ALC constructors. Its encoding
+  uses fixed individual constants, source-indexed existential functions, real
+  equality, and the complete pairwise equality head for each at-most clause.
+  It proves both atomic-subsumption equivalence and satisfiability equivalence
+  under the standard nonempty-domain convention. Role chains, transitivity as
+  a chain, and the production-state refinement remain separate obligations.
 
 ## Not yet established
 
@@ -83,11 +92,12 @@ production terminal saturation is to justify omissions without emitting
 countermodels.
 
 For the normalized ALC slice, `CBALCEncoding` now closes the source-semantics
-side of this gap. What remains there is refinement from the Rust context stores
-and terminal queues to good-type elimination, plus mandatory checked
-publication. The extensions for role axioms, inverse roles, nominals, equality,
-and qualified cardinalities still require corresponding source-to-term and
-production-state refinements.
+side of this gap. `CBEqEncoding` extends that source-to-term refinement through
+role inclusions, inverse roles, nominals, equality, functionality, and
+qualified at-most restrictions. Role chains and transitivity still need a
+corresponding source-to-term theorem. All features still need refinement from
+the Rust context stores and terminal queues to the complete abstract calculus,
+plus mandatory checked publication.
 
 Finite countermodels are a sound evidence form, not a complete replacement for
 the production refinement over full SROIQ. SROIQ does not in general have the
