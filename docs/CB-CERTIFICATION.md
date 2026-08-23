@@ -268,6 +268,14 @@ claim that the layer is already complete.
   equivalence. This makes the existing congruence-quotient model construction
   applicable once the remaining production grounding and closure refinement is
   established.
+- `CBRoleChainGroundCompleteness` extends the concrete finite equality grounder
+  and congruence-quotient construction through every instance of every
+  arbitrary role chain. Lean proves the quotient role interpretation satisfies
+  each checked path clause and derives a clash-free finite-grounding model for
+  the complete typed source language accepted by `CBSourceWire`, including
+  transitivity as the two-edge special case. This removes the role-chain gap in
+  the source-level CB completeness theorem. Connecting the production terminal
+  state to this concrete ground set remains a refinement obligation.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual
