@@ -736,6 +736,9 @@ mod cb_derivation_candidate_tests {
             context_index: context_id,
             context_id,
             root: true,
+            nominal_ground: false,
+            query_concept: None,
+            core: Vec::new(),
             retained_clause_ids: Vec::new(),
             todo_clause_ids: Vec::new(),
             dirty: false,
@@ -757,8 +760,14 @@ mod cb_derivation_candidate_tests {
 
     fn live_snapshot() -> crate::engine::CbLiveTerminalSnapshot {
         crate::engine::CbLiveTerminalSnapshot {
-            version: 3,
+            version: 4,
             comp_ind_bits: 17,
+            concept_count: 1,
+            role_count: 0,
+            function_count: 0,
+            source_individual_count: 0,
+            runtime_individual_count: 0,
+            source_ontology: Vec::new(),
             rsucc_enabled: false,
             reach_concept_ids: Vec::new(),
             ordinary_clause_arena: Vec::new(),

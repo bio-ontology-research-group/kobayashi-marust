@@ -70,6 +70,9 @@ structure WireLiveContext where
   context_index : Nat
   context_id : Nat
   root : Bool
+  nominal_ground : Bool
+  query_concept : Option Nat
+  core : List WireLivePredicate
   retained_clause_ids : List Nat
   todo_clause_ids : List Nat
   dirty : Bool
@@ -91,6 +94,12 @@ deriving FromJson, ToJson
 structure WireLiveStateDocument where
   version : Nat
   comp_ind_bits : Nat
+  concept_count : Nat
+  role_count : Nat
+  function_count : Nat
+  source_individual_count : Nat
+  runtime_individual_count : Nat
+  source_ontology : List WireLiveClause
   rsucc_enabled : Bool
   reach_concept_ids : List Nat
   pending_messages : Nat
@@ -400,12 +409,18 @@ structure DecodedLiveContext
   contextIndex : Fin production.contexts.length
   contextId : Nat
   rootDomain : Bool
+  live : WireLiveContext
   context_id_eq : (production.contexts.get contextIndex).contextId = contextId
   root_eq : (production.contexts.get contextIndex).root = rootDomain
+  nominal_ground_eq : (production.contexts.get contextIndex).nominalGround =
+    live.nominal_ground
+  query_concept_eq : (production.contexts.get contextIndex).queryConcept =
+    live.query_concept
+  core : List FPred
+  core_eq : core = (production.contexts.get contextIndex).core
   retainedClauseIds : List Nat
   retained : List FCL
   retained_eq : retained = (production.contexts.get contextIndex).retained
-  live : WireLiveContext
   predecessors : List DecodedLivePredecessorEdge
   predecessors_exact : predecessors.map (·.semantic) =
     expectedIncoming terminal.sendCoverage contextIndex.val
@@ -437,6 +452,11 @@ def WireLiveContext.decode (production : DecodedProductionRun)
     let context := production.contexts.get contextIndex
     if hid : context.contextId = wire.context_id then
       if hroot : context.root = wire.root then
+        if hnominal : context.nominalGround = wire.nominal_ground then
+        if hquery : context.queryConcept = wire.query_concept then
+        let core ← wire.core.mapM
+          (WireLivePredicate.decode production.bounds bits)
+        if hcore : core = context.core then
         let arena := if wire.root then root else ordinary
         let retained ← wire.retained_clause_ids.mapM fun clauseId =>
           match arena[clauseId]? with
@@ -457,8 +477,8 @@ def WireLiveContext.decode (production : DecodedProductionRun)
             let terminalIndex : Fin terminal.contexts.length :=
               ⟨contextIndex.val, hterminalLength ▸ contextIndex.isLt⟩
             if hterminal : liveTerminalMatches terminal terminalIndex wire = true then
-              return DecodedLiveContext.mk contextIndex wire.context_id wire.root
-                hid hroot wire.retained_clause_ids retained hretained wire predecessors
+              return DecodedLiveContext.mk contextIndex wire.context_id wire.root wire
+                hid hroot hnominal hquery core hcore wire.retained_clause_ids retained hretained predecessors
                 hpredecessors successors hsuccessors hpredWatermarks hsuccWatermarks
                 hterminalLength hterminal
             else throw "CB live queues or high-water marks differ from terminal evidence"
@@ -468,6 +488,9 @@ def WireLiveContext.decode (production : DecodedProductionRun)
           else throw "CB live successors differ from certified outgoing edges"
           else throw "CB live predecessors differ from certified incoming edges"
         else throw "CB live retained clauses differ from the certified terminal context"
+        else throw "CB live context core differs from the certified context"
+        else throw "CB live query concept differs from the certified context"
+        else throw "CB live nominal-ground identity differs from the certified context"
       else throw "CB live context uses the wrong clause-arena domain"
     else throw "CB live context id differs from the certified context"
   else throw "CB live context index is outside the certified production run"
@@ -499,11 +522,25 @@ def WireProductionBoundGlobalModelDocument.decode
     Except String DecodedLiveStateDocument := do
   if wire.version != 1 then
     throw s!"unsupported production-bound CB global-model version {wire.version}"
-  if wire.live_state.version != 3 then
+  if wire.live_state.version != 4 then
     throw s!"unsupported CB live-state version {wire.live_state.version}"
   let global ← wire.global_model.decode
   let production := rProduction global.global.rsucc
   let terminal := terminalOfGlobal global
+  if wire.live_state.concept_count = production.bounds.concepts then pure ()
+    else throw "CB live concept bound differs from the certified production run"
+  if wire.live_state.role_count = production.bounds.roles then pure ()
+    else throw "CB live role bound differs from the certified production run"
+  if wire.live_state.function_count = production.bounds.functions then pure ()
+    else throw "CB live function bound differs from the certified production run"
+  if wire.live_state.source_individual_count = production.source.bounds.individuals then pure ()
+    else throw "CB live source-individual bound differs from the certified source"
+  if wire.live_state.runtime_individual_count = production.bounds.individuals then pure ()
+    else throw "CB live runtime-individual bound differs from the certified production run"
+  let sourceOntology ← wire.live_state.source_ontology.mapM
+    (WireLiveClause.decode production.source.bounds wire.live_state.comp_ind_bits)
+  if sourceOntology = production.source.ontology then pure ()
+    else throw "CB live normalized ontology differs from the certified source ontology"
   if wire.live_state.rsucc_enabled = true then pure ()
     else throw "CB live state did not run with r-Succ enabled"
   if wire.live_state.reach_concept_ids = global.global.rsucc.reachConcepts then pure ()

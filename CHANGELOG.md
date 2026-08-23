@@ -28,7 +28,7 @@
   from which the producer can reconstruct rule justifications using only earlier
   premises; ordinary runs retain sharing and allocate no history.
   KM now classifies each insertion seed as an indexed context-core assumption,
-  an indexed normalized ontology fact, or a still-derived event. The version-3
+  an indexed normalized ontology fact, or a still-derived event. The live-state
   live-state wire rejects unknown origin tags, missing or spurious indexes, and
   any core or ontology claim whose indexed clause is not structurally exact.
   Lean exposes the accepted index equalities as reusable theorems for the
@@ -71,6 +71,13 @@
   retained strengthening index, finds the exact live event clause, and proves
   it from that stronger terminal clause. Missing or forged deletion witnesses
   reject instead of falling back to a forward reference.
+  Extend the version-4 live snapshot with the exact post-preprocessing
+  normalized ontology, source and runtime symbol bounds, and each context's
+  core, query concept, and nominal-ground identity. Lean independently decodes
+  these compact engine values and requires exact equality with the nested
+  source-bound production certificate. Generated global evidence can therefore
+  use the live snapshot as its authoritative input, but cannot choose a
+  different ontology, signature, or context identity.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

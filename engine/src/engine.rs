@@ -3264,6 +3264,15 @@ impl From<&ContextClause> for CbLiveClause {
     }
 }
 
+impl From<&OntologyClause> for CbLiveClause {
+    fn from(clause: &OntologyClause) -> Self {
+        Self {
+            body: clause.body.iter().copied().map(Into::into).collect(),
+            head: clause.head.iter().copied().map(Into::into).collect(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CbLivePredecessorEdge {
     pub predecessor_context: usize,
@@ -3295,6 +3304,9 @@ pub struct CbLiveContextSnapshot {
     pub context_index: usize,
     pub context_id: usize,
     pub root: bool,
+    pub nominal_ground: bool,
+    pub query_concept: Option<Iri>,
+    pub core: Vec<CbLivePred>,
     pub retained_clause_ids: Vec<u32>,
     pub todo_clause_ids: Vec<u32>,
     pub dirty: bool,
@@ -3320,6 +3332,12 @@ pub struct CbLiveContextSnapshot {
 pub struct CbLiveTerminalSnapshot {
     pub version: u32,
     pub comp_ind_bits: u32,
+    pub concept_count: usize,
+    pub role_count: usize,
+    pub function_count: usize,
+    pub source_individual_count: usize,
+    pub runtime_individual_count: usize,
+    pub source_ontology: Vec<CbLiveClause>,
     pub rsucc_enabled: bool,
     pub reach_concept_ids: Vec<Iri>,
     pub ordinary_clause_arena: Vec<CbLiveClause>,
@@ -3352,6 +3370,10 @@ mod cb_live_snapshot_tests {
         let second = engine.live_terminal_snapshot();
         assert_eq!(first, second);
         assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&second).unwrap());
+        assert_eq!(first.version, 4);
+        assert_eq!(first.concept_count, engine.sig.concept_names.len());
+        assert_eq!(first.role_count, engine.sig.role_names.len());
+        assert_eq!(first.source_ontology.len(), engine.ont.clauses.len());
         assert!(first.rsucc_enabled);
         assert!(first.pending_messages == 0);
         assert!(!first.message_truncated && !first.nominal_truncated);
@@ -7691,6 +7713,9 @@ impl Engine {
                     context_index,
                     context_id: context.id,
                     root: context.root,
+                    nominal_ground: self.ground_ctx == Some(context_index),
+                    query_concept: context.query,
+                    core: context.core.iter().copied().map(Into::into).collect(),
                     retained_clause_ids: context.worked_off().iter().collect(),
                     todo_clause_ids: context.todo.iter().copied().collect(),
                     dirty: context.dirty,
@@ -7737,9 +7762,53 @@ impl Engine {
             }
         }
 
+        let mut function_count = 0usize;
+        let mut see_function = |term: Term| {
+            let function = if is_comp(term) {
+                Some(comp_parts(term).0)
+            } else if is_function(term) {
+                Some(term)
+            } else {
+                None
+            };
+            if let Some(function) = function {
+                function_count = function_count.max((function - FTERM_BASE) as usize + 1);
+            }
+        };
+        for clause in &self.ont.clauses {
+            for predicate in &clause.body {
+                match *predicate {
+                    Pred::Concept { t, .. } => see_function(t),
+                    Pred::Role { s, t, .. } => {
+                        see_function(s);
+                        see_function(t);
+                    }
+                }
+            }
+            for literal in &clause.head {
+                match *literal {
+                    Lit::P(Pred::Concept { t, .. }) => see_function(t),
+                    Lit::P(Pred::Role { s, t, .. }) => {
+                        see_function(s);
+                        see_function(t);
+                    }
+                    Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                        see_function(s);
+                        see_function(t);
+                    }
+                }
+            }
+        }
+
         CbLiveTerminalSnapshot {
-            version: 3,
+            version: 4,
             comp_ind_bits: active_comp_ind_bits(),
+            concept_count: self.sig.concept_names.len(),
+            role_count: self.sig.role_names.len(),
+            function_count,
+            source_individual_count: ind_id(self.nom_base) as usize,
+            runtime_individual_count: self.nom_next.get() as usize,
+            source_ontology: self.ont.clauses.iter().map(Into::into).collect(),
             rsucc_enabled: self.sig.rsucc,
             reach_concept_ids,
             ordinary_clause_arena: self.cc_arena[0].iter().map(Into::into).collect(),
