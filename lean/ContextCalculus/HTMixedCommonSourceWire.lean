@@ -63,7 +63,7 @@ noncomputable def natFunctions [Nonempty Domain]
     (natFunctions functions).app function.val value = functions.app function value := by
   simp [natFunctions]
 
-private theorem holdsBody_map_nat [Nonempty Domain]
+theorem holdsBody_map_nat [Nonempty Domain]
     (interpretation : Interp Domain (Fin concepts) (Fin roles))
     (assignment : Fin nvars → Domain)
     (body : List (Atom (Fin nvars) (Fin concepts) (Fin roles))) :
@@ -80,7 +80,7 @@ private theorem holdsBody_map_nat [Nonempty Domain]
     exact (satAtom_map_natInterp interpretation assignment source).2
       (hbody source hsource)
 
-private theorem holdsBody_map_fin [Nonempty Domain]
+theorem holdsBody_map_fin [Nonempty Domain]
     (interpretation : Interp Domain Nat Nat) (assignment : Nat → Domain)
     (body : List (Atom (Fin nvars) (Fin concepts) (Fin roles))) :
     HoldsBody (finInterp interpretation) (fun index => assignment index.val) body ↔

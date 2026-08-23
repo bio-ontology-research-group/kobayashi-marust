@@ -87,6 +87,11 @@
   a versioned mixed-projection wire. The wire rejects existential atoms inside
   residual or pair bodies and proves its common-source taxonomy equivalent to
   the exact projected HT target.
+- Reconstruct multi-filler HT Skolem bundles in the common proper-term source,
+  including the role-witness clause for bundles with no concept fillers. Lean
+  proves whole-bundle model and taxonomy equivalence, and binds the result to a
+  versioned, fail-closed wire that preserves the checked source-concept image
+  across finite-name projection and the exact HT target.
 
 ### Close the executable ELC certification boundary
 
