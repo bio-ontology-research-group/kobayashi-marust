@@ -20,6 +20,14 @@
   their nested-term clauses are equivalent to path semantics, preserve and
   reflect subsumption and satisfiability when combined with the equational
   source, and that `R ∘ R ⊑ R` is exactly role transitivity.
+- Add a typed, bounds-checked source wire for the normalized CB constructors and
+  require exact equality between its verified encoding and the clause stream
+  consumed by certificate checking.
+- Add the joint source-taxonomy publication boundary. It rejects mismatched
+  symbol tables or clause streams and proves that every checked matrix bit is
+  exactly the semantic answer for the typed source ontology. Retain coordinate
+  bounds in decoded taxonomy cells and finite countermodels so numeric queries
+  cannot escape the source symbol table at the theorem boundary.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

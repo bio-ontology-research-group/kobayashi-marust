@@ -44,7 +44,7 @@ claim that the layer is already complete.
   the exact source bounds. An accepted countermodel proves that a claimed
   subsumption does not follow from the complete decoded ontology.
 - `CBTaxonomyWire` combines positive derivations and negative countermodels in
-  one source-bound, row-major named-concept matrix. It checks every coordinate,
+  one clause-bound, row-major named-concept matrix. It checks every coordinate,
   every publication bit, complete matrix shape, a duplicate-free public concept
   name table, and the exact non-reflexive public subsumption payload. The public theorem in
   `CBCertificationSurface` proves that every accepted bit is true exactly when
@@ -78,6 +78,17 @@ claim that the layer is already complete.
   atomic-subsumption, and nonempty-domain satisfiability equivalence.
   `satChain_transitiveChain_iff` separately proves that `R ∘ R ⊑ R` is exactly
   ordinary role transitivity.
+- `CBSourceWire` bounds-checks a typed normalized source containing all of the
+  constructors above and requires its decoded nested-term clauses to equal the
+  verified source encoding exactly. `CBSourceTaxonomyWire` then requires that
+  source document and the complete taxonomy document have identical symbol
+  bounds and clause lists. Its theorem proves every accepted matrix bit is
+  exactly the corresponding typed-source semantic answer. Countermodel and
+  taxonomy decoders retain proofs that all query coordinates are within the
+  source concept table. The public capstone
+  `certifiedCBSourceExactTaxonomyPublication` exposes this complete semantic
+  chain. It does not yet prove that an unchecked Rust saturation produced the
+  evidence.
 
 ## Not yet established
 
@@ -93,11 +104,11 @@ The remaining production gap is the representation refinement between:
 2. the abstract complete saturation or good-type fixpoint used by the Lean
    completeness theorems.
 
-Exact result certification no longer depends on that refinement: a complete
-taxonomy document can prove every positive cell by derivation and every
-negative cell by a finite countermodel. The refinement remains necessary if a
-production terminal saturation is to justify omissions without emitting
-countermodels.
+For source ontologies with suitable finite countermodels, exact result
+certification can avoid that refinement: a complete taxonomy document can
+prove every positive cell by derivation and every negative cell by a finite
+countermodel. The refinement remains necessary for general SROIQ and whenever
+a production terminal saturation justifies an omission without such a model.
 
 For the normalized ALC slice, `CBALCEncoding` now closes the source-semantics
 side of this gap. `CBEqEncoding` extends that source-to-term refinement through

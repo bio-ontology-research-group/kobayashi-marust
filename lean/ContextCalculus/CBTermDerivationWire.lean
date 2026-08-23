@@ -81,6 +81,7 @@ structure Bounds where
   roles : Nat
   functions : Nat
   individuals : Nat
+deriving DecidableEq
 
 def checkId (kind : String) (bound value : Nat) : Except String Nat :=
   if value < bound then .ok value

@@ -113,7 +113,9 @@ deriving FromJson, ToJson, Repr
 
 structure DecodedCountermodel (bounds : Bounds) (ontology : List FCL) where
   coreConcept : Nat
+  core_in_bounds : coreConcept < bounds.concepts
   superconcept : Nat
+  super_in_bounds : superconcept < bounds.concepts
   modelWire : WireFiniteModel
   finite : DecodedFiniteModel bounds
   witness : Fin finite.domainSize
@@ -121,19 +123,26 @@ structure DecodedCountermodel (bounds : Bounds) (ontology : List FCL) where
   has_core : finite.model.concept coreConcept witness = true
   omits_super : finite.model.concept superconcept witness = false
 
+private def checkFiniteId (kind : String) (bound value : Nat) :
+    Except String (Fin bound) :=
+  if h : value < bound then .ok ⟨value, h⟩
+  else .error s!"{kind} id {value} is outside [0,{bound})"
+
 def WireCountermodel.decode (bounds : Bounds) (ontology : List FCL)
     (wire : WireCountermodel) :
     Except String (DecodedCountermodel bounds ontology) := do
-  let core ← checkId "countermodel core concept" bounds.concepts wire.core_concept
-  let superconcept ← checkId "countermodel superconcept" bounds.concepts wire.superconcept
+  let core ← checkFiniteId "countermodel core concept" bounds.concepts wire.core_concept
+  let superconcept ← checkFiniteId "countermodel superconcept" bounds.concepts wire.superconcept
   let finite ← wire.model.decode bounds
   let witness ← decodeDomainValue finite.domainSize wire.witness
   if hmodels : finite.model.modelsB ontology = true then
-    if hcore : finite.model.concept core witness = true then
-      if hsuper : finite.model.concept superconcept witness = false then
+    if hcore : finite.model.concept core.val witness = true then
+      if hsuper : finite.model.concept superconcept.val witness = false then
         return {
-          coreConcept := core
-          superconcept
+          coreConcept := core.val
+          core_in_bounds := core.isLt
+          superconcept := superconcept.val
+          super_in_bounds := superconcept.isLt
           modelWire := wire.model
           finite
           witness

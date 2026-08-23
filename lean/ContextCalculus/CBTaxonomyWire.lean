@@ -41,7 +41,9 @@ deriving DecidableEq, FromJson, ToJson, Repr
 
 structure DecodedCell (bounds : Bounds) (ontology : List FCL) where
   coreConcept : Nat
+  core_in_bounds : coreConcept < bounds.concepts
   superconcept : Nat
+  super_in_bounds : superconcept < bounds.concepts
   answer : Bool
   exact : answer = true ↔ Entails ontology coreConcept superconcept
 
@@ -49,6 +51,8 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
     (wire : WireCell) : Except String (DecodedCell bounds ontology) := do
   let core ← checkId "taxonomy core concept" bounds.concepts wire.core_concept
   let superconcept ← checkId "taxonomy superconcept" bounds.concepts wire.superconcept
+  if hcore : core < bounds.concepts then
+    if hsuper : superconcept < bounds.concepts then
   match wire.evidence with
   | .positive wireTrace =>
       if wire.answer != true then
@@ -65,7 +69,9 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
           simpa [Entails, document] using document.check_sound hcheck
         return {
           coreConcept := core
+          core_in_bounds := hcore
           superconcept
+          super_in_bounds := hsuper
           answer := true
           exact := ⟨fun _ => hsemantic, fun _ => rfl⟩
         }
@@ -84,10 +90,14 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
           countermodel.superconcept := countermodel.refutes_subsumption
       return {
         coreConcept := countermodel.coreConcept
+        core_in_bounds := countermodel.core_in_bounds
         superconcept := countermodel.superconcept
+        super_in_bounds := countermodel.super_in_bounds
         answer := false
         exact := ⟨by simp, fun hentails => (hnot hentails).elim⟩
       }
+    else throw "taxonomy superconcept escaped its checked bound"
+  else throw "taxonomy core concept escaped its checked bound"
 
 structure WireTaxonomy where
   version : Nat
