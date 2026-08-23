@@ -72,6 +72,7 @@ for theorem in \
     entailsSub_cardinalityClauses_iff \
     modelsProjectedDefs_map_natInterp \
     modelsProjectedDefs_map_finInterp \
+    WireDirectCardinalityCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

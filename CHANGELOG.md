@@ -107,6 +107,11 @@
   natural-number cardinality source. Lean proves projected definition and
   complementary-pair semantics in both directions through finite restriction
   and natural extension, preparing the direct executable cardinality wire.
+- Bind the versioned direct-cardinality executable wire to one combined common
+  ontology containing its exact signed residual and reconstructed cardinality
+  clauses. The decoder rejects residual existential atoms, and Lean proves the
+  common taxonomy equivalent to the exact direct HT target with first-class
+  cardinality definitions.
 
 ### Close the executable ELC certification boundary
 
