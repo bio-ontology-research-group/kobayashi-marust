@@ -107,6 +107,12 @@
   insertions in the same context, and emits a two-premise trace. Lean decodes
   the same arena clauses and packed terms and accepts the insertion only when
   its executable paramodulation rule reconstructs the exact live conclusion.
+  Join now records exact consumer and provider ids for ordinary ground
+  resolution, and exact consumer, provider, bridge, ground/general predicates,
+  and individual term for nominal Join-3. Rust reconstructs each conclusion
+  and requires chronological same-context sources before emitting a trace.
+  Lean independently checks the two-premise Resolution or three-premise Join-3
+  step against the decoded production arena and proves the accepted result.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

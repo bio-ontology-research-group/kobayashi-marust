@@ -3328,6 +3328,19 @@ pub enum CbLiveRuleEvidence {
         right: Term,
         literal: CbLiveLit,
     },
+    JoinResolve {
+        consumer_clause_id: u32,
+        provider_clause_id: u32,
+        ground: CbLivePred,
+    },
+    Join3 {
+        consumer_clause_id: u32,
+        provider_clause_id: u32,
+        bridge_clause_id: u32,
+        ground: CbLivePred,
+        general: CbLivePred,
+        term: Term,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -4579,9 +4592,15 @@ impl Engine {
             // Join rule (nominal calculus): in-context resolution on ground
             // atoms; no-op (empty indexes) without individuals.
             {
-                let results = self.join(id, &clause, root);
-                for r in results {
-                    if self.add_clause_with_rule(id, r, Some("join"), None) && prof {
+                let results = self.join_with_evidence(id, cid, &clause, root);
+                for (r, evidence) in results {
+                    if self.add_clause_with_rule(
+                        id,
+                        r,
+                        Some("join"),
+                        Some(evidence),
+                    ) && prof
+                    {
                         nadded += 1;
                     }
                 }
@@ -5640,10 +5659,11 @@ impl Engine {
         &self,
         ctx: &Context,
         arena: &[ContextClause],
+        consumer_clause_id: u32,
         consumer: &ContextClause,
         a: Pred,
         root: bool,
-        out: &mut Vec<ContextClause>,
+        out: &mut Vec<(ContextClause, CbLiveRuleEvidence)>,
     ) {
         let mut variants: Vec<(Pred, Term)> = Vec::new();
         match a {
@@ -5682,7 +5702,17 @@ impl Engine {
                     }
                     let bcl = &arena[bi as usize];
                     if let Some(r) = self.join_resolvent3(consumer, a, pcl, aprime, bcl, o, root) {
-                        out.push(r);
+                        out.push((
+                            r,
+                            CbLiveRuleEvidence::Join3 {
+                                consumer_clause_id,
+                                provider_clause_id: pi,
+                                bridge_clause_id: bi,
+                                ground: a.into(),
+                                general: aprime.into(),
+                                term: o,
+                            },
+                        ));
                     }
                 }
             }
@@ -5696,7 +5726,13 @@ impl Engine {
     /// provider over `x` and an `x ≈ o` bridge.  Fired at work-off from every
     /// arrival order (consumer, provider, or bridge last).  Inert without
     /// individuals: all the indexes involved are then empty.
-    fn join(&self, id: usize, side: &ContextClause, root: bool) -> Vec<ContextClause> {
+    fn join_with_evidence(
+        &self,
+        id: usize,
+        side_clause_id: u32,
+        side: &ContextClause,
+        root: bool,
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         if ctx.join_indexes_empty() {
@@ -5709,7 +5745,14 @@ impl Engine {
             if p.is_ground() {
                 for ci in ctx.ground_body(p).iter() {
                     if let Some(r) = self.join_resolvent(&arena[ci as usize], p, side, root) {
-                        out.push(r);
+                        out.push((
+                            r,
+                            CbLiveRuleEvidence::JoinResolve {
+                                consumer_clause_id: ci,
+                                provider_clause_id: side_clause_id,
+                                ground: p.into(),
+                            },
+                        ));
                     }
                 }
             }
@@ -5725,11 +5768,18 @@ impl Engine {
                 let c = &arena[ci as usize];
                 if c.max_head_predicates().any(|(p, _)| p == a) {
                     if let Some(r) = self.join_resolvent(side, a, c, root) {
-                        out.push(r);
+                        out.push((
+                            r,
+                            CbLiveRuleEvidence::JoinResolve {
+                                consumer_clause_id: side_clause_id,
+                                provider_clause_id: ci,
+                                ground: a.into(),
+                            },
+                        ));
                     }
                 }
             }
-            self.join_case3_for(ctx, arena, side, a, root, &mut out);
+            self.join_case3_for(ctx, arena, side_clause_id, side, a, root, &mut out);
         }
         // (c) `side` as a late-arriving case-3 bridge or provider.
         if side.body.is_empty() {
@@ -5785,7 +5835,17 @@ impl Engine {
                                         if let Some(r) = self.join_resolvent3(
                                             consumer, atom, pcl, aprime, side, o, root,
                                         ) {
-                                            out.push(r);
+                                            out.push((
+                                                r,
+                                                CbLiveRuleEvidence::Join3 {
+                                                    consumer_clause_id: ci,
+                                                    provider_clause_id: pi,
+                                                    bridge_clause_id: side_clause_id,
+                                                    ground: atom.into(),
+                                                    general: aprime.into(),
+                                                    term: o,
+                                                },
+                                            ));
                                         }
                                     }
                                 }
@@ -5819,7 +5879,17 @@ impl Engine {
                                     if let Some(r) =
                                         self.join_resolvent3(consumer, a, side, p, bcl, o, root)
                                     {
-                                        out.push(r);
+                                        out.push((
+                                            r,
+                                            CbLiveRuleEvidence::Join3 {
+                                                consumer_clause_id: ci,
+                                                provider_clause_id: side_clause_id,
+                                                bridge_clause_id: bi,
+                                                ground: a.into(),
+                                                general: p.into(),
+                                                term: o,
+                                            },
+                                        ));
                                     }
                                 }
                             }

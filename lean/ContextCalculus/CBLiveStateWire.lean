@@ -82,6 +82,12 @@ structure WireLiveRuleEvidence where
   left : Option Nat
   right : Option Nat
   literal : Option WireLiveLiteral
+  consumer_clause_id : Option Nat
+  provider_clause_id : Option Nat
+  bridge_clause_id : Option Nat
+  ground : Option WireLivePredicate
+  general : Option WireLivePredicate
+  term : Option Nat
 deriving FromJson, ToJson
 
 structure WireLiveInsertionEvent where
@@ -255,7 +261,9 @@ def WireLiveRuleEvidence.decodeHyper (production : DecodedProductionRun)
   if wire.source_clause_id.isSome ∨ wire.common.isSome ∨ wire.first.isSome ∨
       wire.second.isSome ∨ wire.equality_clause_id.isSome ∨
       wire.other_clause_id.isSome ∨ wire.left.isSome ∨ wire.right.isSome ∨
-      wire.literal.isSome then
+      wire.literal.isSome ∨ wire.consumer_clause_id.isSome ∨
+      wire.provider_clause_id.isSome ∨ wire.bridge_clause_id.isSome ∨
+      wire.ground.isSome ∨ wire.general.isSome ∨ wire.term.isSome then
     throw "CB live Hyper evidence carries fields from another rule"
   let instantiatedSource ← sourceWire.decode production.bounds bits
   let substitution ← substitutionWire.mapM
@@ -303,7 +311,9 @@ def WireLiveRuleEvidence.decodeFactor (production : DecodedProductionRun)
       wire.context_clause_ids.isSome ∨ wire.matched_predicates.isSome ∨
       wire.substitution.isSome ∨ wire.equality_clause_id.isSome ∨
       wire.other_clause_id.isSome ∨ wire.left.isSome ∨ wire.right.isSome ∨
-      wire.literal.isSome then
+      wire.literal.isSome ∨ wire.consumer_clause_id.isSome ∨
+      wire.provider_clause_id.isSome ∨ wire.bridge_clause_id.isSome ∨
+      wire.ground.isSome ∨ wire.general.isSome ∨ wire.term.isSome then
     throw "CB live Factor evidence carries fields from another rule"
   let sourceClauseId ← requireSome
     "CB live Factor evidence omits its source clause"
@@ -367,7 +377,10 @@ def WireLiveRuleEvidence.decodeParamodulate (production : DecodedProductionRun)
   if wire.ontology_index.isSome ∨ wire.instantiated_source.isSome ∨
       wire.context_clause_ids.isSome ∨ wire.matched_predicates.isSome ∨
       wire.substitution.isSome ∨ wire.source_clause_id.isSome ∨
-      wire.common.isSome ∨ wire.first.isSome ∨ wire.second.isSome then
+      wire.common.isSome ∨ wire.first.isSome ∨ wire.second.isSome ∨
+      wire.consumer_clause_id.isSome ∨ wire.provider_clause_id.isSome ∨
+      wire.bridge_clause_id.isSome ∨ wire.ground.isSome ∨
+      wire.general.isSome ∨ wire.term.isSome then
     throw "CB live paramodulation evidence carries fields from another rule"
   let equalityClauseId ← requireSome
     "CB live paramodulation evidence omits its equality clause"
@@ -452,6 +465,157 @@ theorem DecodedLiveParamodulateEvidence.sound
       · simpa [hderived] using hother)
     evidence.trace_valid
   exact hfinal evidence.result evidence.result_derived
+
+structure DecodedLiveJoinResolveEvidence where
+  consumerClauseId : Nat
+  consumerClause : FCL
+  providerClauseId : Nat
+  providerClause : FCL
+  literal : FLit
+  result : FCL
+  step_valid : CBProductionTrace.stepOk [] [] [providerClause, consumerClause] result
+    (.resolve 0 1 literal) = true
+
+def WireLiveRuleEvidence.decodeJoinResolve (production : DecodedProductionRun)
+    (bits : Nat) (arena : List FCL) (result : FCL)
+    (wire : WireLiveRuleEvidence) : Except String DecodedLiveJoinResolveEvidence := do
+  if wire.kind != "join_resolve" then
+    throw s!"unsupported CB live Join-resolution evidence kind {wire.kind}"
+  if wire.ontology_index.isSome ∨ wire.instantiated_source.isSome ∨
+      wire.context_clause_ids.isSome ∨ wire.matched_predicates.isSome ∨
+      wire.substitution.isSome ∨ wire.source_clause_id.isSome ∨
+      wire.common.isSome ∨ wire.first.isSome ∨ wire.second.isSome ∨
+      wire.equality_clause_id.isSome ∨ wire.other_clause_id.isSome ∨
+      wire.left.isSome ∨ wire.right.isSome ∨ wire.literal.isSome ∨
+      wire.bridge_clause_id.isSome ∨ wire.general.isSome ∨ wire.term.isSome then
+    throw "CB live Join resolution carries fields from another rule"
+  let consumerClauseId ← requireSome
+    "CB live Join resolution omits its consumer clause" wire.consumer_clause_id
+  let consumerClause ← match arena[consumerClauseId]? with
+    | some clause => pure clause
+    | none => throw "CB live Join consumer id is outside its context arena"
+  let providerClauseId ← requireSome
+    "CB live Join resolution omits its provider clause" wire.provider_clause_id
+  let providerClause ← match arena[providerClauseId]? with
+    | some clause => pure clause
+    | none => throw "CB live Join provider id is outside its context arena"
+  let literalWire ← requireSome
+    "CB live Join resolution omits its literal" wire.ground
+  let predicate ← literalWire.decode production.bounds bits
+  let literal := FLit.P predicate
+  if hstep : CBProductionTrace.stepOk [] [] [providerClause, consumerClause] result
+      (.resolve 0 1 literal) = true then
+    return {
+      consumerClauseId
+      consumerClause
+      providerClauseId
+      providerClause
+      literal
+      result
+      step_valid := hstep
+    }
+  else throw "CB live Join-resolution conclusion was rejected"
+
+theorem DecodedLiveJoinResolveEvidence.sound
+    (evidence : DecodedLiveJoinResolveEvidence)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hprovider : CBProductionTrace.HoldsAt model assignment evidence.providerClause)
+    (hconsumer : CBProductionTrace.HoldsAt model assignment evidence.consumerClause) :
+    CBProductionTrace.HoldsAt model assignment evidence.result := by
+  exact CBProductionTrace.stepOk_sound model assignment
+    (by simp) (by simp)
+    (by
+      intro derived hderived
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hderived
+      rcases hderived with hderived | hderived
+      · simpa [hderived] using hprovider
+      · simpa [hderived] using hconsumer)
+    evidence.step_valid
+
+structure DecodedLiveJoin3Evidence where
+  consumerClauseId : Nat
+  consumerClause : FCL
+  providerClauseId : Nat
+  providerClause : FCL
+  bridgeClauseId : Nat
+  bridgeClause : FCL
+  ground : FLit
+  general : FLit
+  term : FTerm
+  result : FCL
+  step_valid : CBProductionTrace.stepOk [] []
+    [consumerClause, providerClause, bridgeClause] result
+    (.join3 0 1 2 ground general term) = true
+
+def WireLiveRuleEvidence.decodeJoin3 (production : DecodedProductionRun)
+    (bits : Nat) (arena : List FCL) (result : FCL)
+    (wire : WireLiveRuleEvidence) : Except String DecodedLiveJoin3Evidence := do
+  if wire.kind != "join3" then
+    throw s!"unsupported CB live Join-3 evidence kind {wire.kind}"
+  if wire.ontology_index.isSome ∨ wire.instantiated_source.isSome ∨
+      wire.context_clause_ids.isSome ∨ wire.matched_predicates.isSome ∨
+      wire.substitution.isSome ∨ wire.source_clause_id.isSome ∨
+      wire.common.isSome ∨ wire.first.isSome ∨ wire.second.isSome ∨
+      wire.equality_clause_id.isSome ∨ wire.other_clause_id.isSome ∨
+      wire.left.isSome ∨ wire.right.isSome ∨ wire.literal.isSome then
+    throw "CB live Join-3 evidence carries fields from another rule"
+  let consumerClauseId ← requireSome
+    "CB live Join-3 omits its consumer clause" wire.consumer_clause_id
+  let consumerClause ← match arena[consumerClauseId]? with
+    | some clause => pure clause
+    | none => throw "CB live Join-3 consumer id is outside its context arena"
+  let providerClauseId ← requireSome
+    "CB live Join-3 omits its provider clause" wire.provider_clause_id
+  let providerClause ← match arena[providerClauseId]? with
+    | some clause => pure clause
+    | none => throw "CB live Join-3 provider id is outside its context arena"
+  let bridgeClauseId ← requireSome
+    "CB live Join-3 omits its bridge clause" wire.bridge_clause_id
+  let bridgeClause ← match arena[bridgeClauseId]? with
+    | some clause => pure clause
+    | none => throw "CB live Join-3 bridge id is outside its context arena"
+  let groundWire ← requireSome "CB live Join-3 omits ground" wire.ground
+  let generalWire ← requireSome "CB live Join-3 omits general" wire.general
+  let termRaw ← requireSome "CB live Join-3 omits its term" wire.term
+  let ground := FLit.P (← groundWire.decode production.bounds bits)
+  let general := FLit.P (← generalWire.decode production.bounds bits)
+  let term ← decodeRawTerm production.bounds bits termRaw
+  if hstep : CBProductionTrace.stepOk [] []
+      [consumerClause, providerClause, bridgeClause] result
+      (.join3 0 1 2 ground general term) = true then
+    return {
+      consumerClauseId
+      consumerClause
+      providerClauseId
+      providerClause
+      bridgeClauseId
+      bridgeClause
+      ground
+      general
+      term
+      result
+      step_valid := hstep
+    }
+  else throw "CB live Join-3 conclusion was rejected"
+
+theorem DecodedLiveJoin3Evidence.sound
+    (evidence : DecodedLiveJoin3Evidence)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hconsumer : CBProductionTrace.HoldsAt model assignment evidence.consumerClause)
+    (hprovider : CBProductionTrace.HoldsAt model assignment evidence.providerClause)
+    (hbridge : CBProductionTrace.HoldsAt model assignment evidence.bridgeClause) :
+    CBProductionTrace.HoldsAt model assignment evidence.result := by
+  exact CBProductionTrace.stepOk_sound model assignment
+    (by simp) (by simp)
+    (by
+      intro derived hderived
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hderived
+      rcases hderived with hderived | hderived
+      · simpa [hderived] using hconsumer
+      · rcases hderived with hderived | hderived
+        · simpa [hderived] using hprovider
+        · simpa [hderived] using hbridge)
+    evidence.step_valid
 
 private def terminalOfGlobal (global : DecodedCBGlobalModelDocument) :=
   global.global.rsucc.succ.join3.hyper.literalOrder.termOrder.factorClosure.localResolution.terminal
@@ -596,6 +760,8 @@ structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
   hyperEvidence : Option (DecodedLiveHyperEvidence production)
   factorEvidence : Option DecodedLiveFactorEvidence
   paramodulateEvidence : Option DecodedLiveParamodulateEvidence
+  joinResolveEvidence : Option DecodedLiveJoinResolveEvidence
+  join3Evidence : Option DecodedLiveJoin3Evidence
 
 def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
     (bits : Nat) (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
@@ -618,23 +784,34 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
                 throw "CB derived insertion origin unexpectedly has an index"
             | hint, _ => throw s!"unsupported CB insertion origin {hint}"
           if horigin : insertionOriginOk production contextIndex clause origin = true then
-            let (hyperEvidence, factorEvidence, paramodulateEvidence) ←
+            let (hyperEvidence, factorEvidence, paramodulateEvidence,
+                joinResolveEvidence, join3Evidence) ←
               match origin, wire.rule_hint, wire.rule_evidence with
-              | LiveInsertionOrigin.core _, none, none => pure (none, none, none)
-              | LiveInsertionOrigin.ontologyFact _, none, none => pure (none, none, none)
+              | LiveInsertionOrigin.core _, none, none =>
+                  pure (none, none, none, none, none)
+              | LiveInsertionOrigin.ontologyFact _, none, none =>
+                  pure (none, none, none, none, none)
               | LiveInsertionOrigin.derived, some "hyper", some evidence =>
                   let decoded ← evidence.decodeHyper production bits arena
-                  pure (some decoded, none, none)
+                  pure (some decoded, none, none, none, none)
               | LiveInsertionOrigin.derived, some "factor", some evidence =>
                   let decoded ← evidence.decodeFactor production bits arena clause
-                  pure (none, some decoded, none)
+                  pure (none, some decoded, none, none, none)
               | LiveInsertionOrigin.derived, some "eq", some evidence =>
                   let decoded ← evidence.decodeParamodulate production bits arena clause
-                  pure (none, none, some decoded)
+                  pure (none, none, some decoded, none, none)
+              | LiveInsertionOrigin.derived, some "join", some evidence =>
+                  if evidence.kind = "join_resolve" then
+                    let decoded ← evidence.decodeJoinResolve production bits arena clause
+                    pure (none, none, none, some decoded, none)
+                  else if evidence.kind = "join3" then
+                    let decoded ← evidence.decodeJoin3 production bits arena clause
+                    pure (none, none, none, none, some decoded)
+                  else throw s!"unsupported CB live Join-evidence kind {evidence.kind}"
               | LiveInsertionOrigin.derived, some hint, none =>
                   if ["pred-local", "pred-arrival", "succ", "eq", "join",
                       "branch-decision", "filtered-seed"].contains hint then
-                    pure (none, none, none)
+                    pure (none, none, none, none, none)
                   else throw s!"unsupported CB live derived-rule hint {hint}"
               | LiveInsertionOrigin.core _, _, _ |
                   LiveInsertionOrigin.ontologyFact _, _, _ =>
@@ -656,6 +833,8 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
               hyperEvidence
               factorEvidence
               paramodulateEvidence
+              joinResolveEvidence
+              join3Evidence
             }
           else throw "CB insertion origin does not match its indexed production seed"
       | none => throw "CB insertion-history clause id is outside its arena"
@@ -938,5 +1117,7 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
 #print axioms DecodedLiveHyperEvidence.source_sound
 #print axioms DecodedLiveFactorEvidence.sound
 #print axioms DecodedLiveParamodulateEvidence.sound
+#print axioms DecodedLiveJoinResolveEvidence.sound
+#print axioms DecodedLiveJoin3Evidence.sound
 
 end ContextCalculus.CBLiveStateWire
