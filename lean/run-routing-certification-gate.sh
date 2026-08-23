@@ -40,6 +40,7 @@ trap cleanup_checker EXIT
         ContextCalculus.HTSkolemBundleCheckerTermEmbedding \
         ContextCalculus.HTBundleCommonSourceWire \
         ContextCalculus.HTCardinalityCheckerTermEmbedding \
+        ContextCalculus.HTDirectCardinalityCommonSourceWire \
         ContextCalculus.HTRoutingSource \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
@@ -69,6 +70,8 @@ for theorem in \
     models_cardinalityClauses_implies_projected \
     projected_implies_exists_cardinalityClauses_model \
     entailsSub_cardinalityClauses_iff \
+    modelsProjectedDefs_map_natInterp \
+    modelsProjectedDefs_map_finInterp \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

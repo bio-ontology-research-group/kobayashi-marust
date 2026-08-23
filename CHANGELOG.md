@@ -103,6 +103,10 @@
   one proper-term function interpretation. Lean proves both directions of model
   construction and complete taxonomy-entailment equivalence for whole
   definition lists and complementary-pair lists.
+- Connect finite executable HT concept and role identifiers to the reconstructed
+  natural-number cardinality source. Lean proves projected definition and
+  complementary-pair semantics in both directions through finite restriction
+  and natural extension, preparing the direct executable cardinality wire.
 
 ### Close the executable ELC certification boundary
 
