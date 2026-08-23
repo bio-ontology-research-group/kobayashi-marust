@@ -85,6 +85,10 @@
   executable, and an iff theorem proves its members choose exactly one provider
   from every complete dimension. Ground remainders and generated-result
   disposition remain to be joined to the inter-context wire.
+- Add the production ground-remainder planner and prove every accepted plan
+  classifies each payload body literal as a complete nonempty provider
+  dimension or a provider-free ground remainder. Reject a non-ground literal
+  with no provider instead of silently treating it as residual.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

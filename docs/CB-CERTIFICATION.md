@@ -137,6 +137,11 @@ claim that the layer is already complete.
   complete dimension. The next wire layer must account for ground remainder
   literals and bind every generated selection to either an emitted arrival or
   a retained strengthening.
+  `providerPlan_exact` now handles the ground exception used by production:
+  every accepted payload-body plan classifies each literal as either a complete
+  nonempty provider dimension or a provider-free, syntactically ground
+  remainder. A missing provider for a non-ground literal rejects the arrival.
+  Generated-result disposition is the remaining join to the wire.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge
