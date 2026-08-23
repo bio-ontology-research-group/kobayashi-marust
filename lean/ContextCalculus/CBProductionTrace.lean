@@ -24,9 +24,18 @@ inductive Justification where
   | tautology
   | resolve (positive negative : Nat) (literal : FLit)
   | paramodulate (equality other : Nat) (left right : FTerm) (literal : FLit)
+  | factor (source : Nat) (common first second : FTerm)
+  | deleteReflexiveInequality (source : Nat) (term : FTerm)
 deriving Repr
 
 abbrev Entry := FCL × Justification
+
+def factorConclusion (source : FCL) (common first second : FTerm) : FCL :=
+  ⟨source.body,
+    FLit.ineq first second :: without (FLit.eq common first) source.head⟩
+
+def deleteReflexiveInequalityConclusion (source : FCL) (term : FTerm) : FCL :=
+  ⟨source.body, without (FLit.ineq term term) source.head⟩
 
 def stepOk (ontology assumptions done : List FCL) (clause : FCL) :
     Justification → Bool
@@ -53,6 +62,22 @@ def stepOk (ontology assumptions done : List FCL) (clause : FCL) :
             decide (clEquivT clause
               (paraResolvent eqClause otherClause left right literal))
       | _, _ => false
+  | .factor source common first second =>
+      match done[source]? with
+      | some premise =>
+          decide (first ≠ second) &&
+            decide (FLit.eq common first ∈ premise.head) &&
+            decide (FLit.eq common second ∈ premise.head) &&
+            decide (clEquivT clause
+              (factorConclusion premise common first second))
+      | none => false
+  | .deleteReflexiveInequality source term =>
+      match done[source]? with
+      | some premise =>
+          decide (FLit.ineq term term ∈ premise.head) &&
+            decide (clEquivT clause
+              (deleteReflexiveInequalityConclusion premise term))
+      | none => false
 
 def checkFold (ontology assumptions : List FCL) :
     List FCL → List Entry → Option (List FCL)
@@ -117,6 +142,46 @@ theorem HoldsAt.of_strengthens (model : TModel D) (assignment : Int → D)
     exact hbody literal (hstrengthens.1 hliteral)
   obtain ⟨literal, hliteral, htrue⟩ := hstronger hstrongBody
   exact ⟨literal, hstrengthens.2 hliteral, htrue⟩
+
+theorem factorConclusion_sound (model : TModel D) (assignment : Int → D)
+    (source : FCL) (common first second : FTerm)
+    (hdistinct : first ≠ second)
+    (_hfirst : FLit.eq common first ∈ source.head)
+    (hsecond : FLit.eq common second ∈ source.head)
+    (hsource : HoldsAt model assignment source) :
+    HoldsAt model assignment (factorConclusion source common first second) := by
+  intro hbody
+  obtain ⟨literal, hliteral, htrue⟩ := hsource hbody
+  by_cases hremoved : literal = FLit.eq common first
+  · subst literal
+    simp only [TModel.evalL] at htrue
+    by_cases hsecondTrue : model.evalT assignment common =
+        model.evalT assignment second
+    · have hreverse : second ≠ first := Ne.symm hdistinct
+      exact ⟨FLit.eq common second, by
+          simp [factorConclusion, mem_without, hsecond, hreverse], hsecondTrue⟩
+    · have hinequality : model.evalT assignment first ≠
+          model.evalT assignment second := by
+          intro heq
+          apply hsecondTrue
+          exact htrue.trans heq
+      exact ⟨FLit.ineq first second, by simp [factorConclusion], hinequality⟩
+  · exact ⟨literal, by
+      simp only [factorConclusion, List.mem_cons]
+      exact Or.inr (mem_without.mpr ⟨hliteral, hremoved⟩), htrue⟩
+
+theorem deleteReflexiveInequalityConclusion_sound
+    (model : TModel D) (assignment : Int → D) (source : FCL) (term : FTerm)
+    (hsource : HoldsAt model assignment source) :
+    HoldsAt model assignment
+      (deleteReflexiveInequalityConclusion source term) := by
+  intro hbody
+  obtain ⟨literal, hliteral, htrue⟩ := hsource hbody
+  have hnot : literal ≠ FLit.ineq term term := by
+    intro heq
+    subst literal
+    exact htrue rfl
+  exact ⟨literal, mem_without.mpr ⟨hliteral, hnot⟩, htrue⟩
 
 theorem stepOk_sound (model : TModel D) (assignment : Int → D)
     {ontology assumptions done : List FCL} {clause : FCL}
@@ -185,6 +250,29 @@ theorem stepOk_sound (model : TModel D) (assignment : Int → D)
                   (hdone eqClause (List.mem_of_getElem? heqClause))
                   (hdone otherClause (List.mem_of_getElem? hotherClause))
                   hequality hliteral)
+  | factor source common first second =>
+      simp only [stepOk] at hstep
+      cases hsource : done[source]? with
+      | none => simp [hsource] at hstep
+      | some sourceClause =>
+          rw [hsource] at hstep
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hstep
+          rcases hstep with ⟨⟨⟨hdistinct, hfirst⟩, hsecond⟩, hequivalent⟩
+          exact sat_of_clEquivT hequivalent
+            (factorConclusion_sound model assignment sourceClause common first second
+              hdistinct hfirst hsecond
+              (hdone sourceClause (List.mem_of_getElem? hsource)))
+  | deleteReflexiveInequality source term =>
+      simp only [stepOk] at hstep
+      cases hsource : done[source]? with
+      | none => simp [hsource] at hstep
+      | some sourceClause =>
+          rw [hsource] at hstep
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hstep
+          exact sat_of_clEquivT hstep.2
+            (deleteReflexiveInequalityConclusion_sound model assignment
+              sourceClause term (hdone sourceClause
+                (List.mem_of_getElem? hsource)))
 
 theorem checkFold_sound (model : TModel D) (assignment : Int → D)
     {ontology assumptions done trace final}
@@ -232,7 +320,37 @@ theorem check_sound (model : TModel D) (assignment : Int → D)
       exact checkFold_sound model assignment hontology hassumptions
         (by intro derived hmem; cases hmem) hfold
 
+private def factorSource : FCL :=
+  ⟨[], [.eq (.var 0) (.var 1), .eq (.var 0) (.var 2)]⟩
+
+private def factorTrace : List Entry :=
+  [ (factorSource, .assumption 0)
+  , (factorConclusion factorSource (.var 0) (.var 1) (.var 2),
+      .factor 0 (.var 0) (.var 1) (.var 2)) ]
+
+example : check [] [factorSource] factorTrace = true := by native_decide
+
+private def badFactorTrace : List Entry :=
+  [ (factorSource, .assumption 0)
+  , (factorConclusion factorSource (.var 0) (.var 1) (.var 1),
+      .factor 0 (.var 0) (.var 1) (.var 1)) ]
+
+example : check [] [factorSource] badFactorTrace = false := by native_decide
+
+private def reflexiveInequalitySource : FCL :=
+  ⟨[], [.ineq (.var 0) (.var 0), .P (.concept 0 (.var 0))]⟩
+
+private def reflexiveInequalityTrace : List Entry :=
+  [ (reflexiveInequalitySource, .assumption 0)
+  , (deleteReflexiveInequalityConclusion reflexiveInequalitySource (.var 0),
+      .deleteReflexiveInequality 0 (.var 0)) ]
+
+example : check [] [reflexiveInequalitySource]
+    reflexiveInequalityTrace = true := by native_decide
+
 #print axioms check_sound
 #print axioms HoldsAt.of_strengthens
+#print axioms factorConclusion_sound
+#print axioms deleteReflexiveInequalityConclusion_sound
 
 end ContextCalculus.CBProductionTrace

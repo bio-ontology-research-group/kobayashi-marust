@@ -34,6 +34,11 @@
   discarded clause to have a retained syntactic strengthening witness. This is
   the local sound-step and redundancy foundation; production rule coverage,
   closure, fairness, and Rust emission remain unreleased obligations.
+- Add checked production steps for equality Factor and reflexive-inequality
+  elimination, including semantic soundness proofs and rejection of a
+  degenerate Factor witness. Record a rule-by-rule Rust-to-Lean coverage audit
+  so the remaining Join-3, Nom, inter-context, and terminal obligations stay
+  explicit.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

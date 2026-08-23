@@ -1,0 +1,20 @@
+production_rule	rust_site	lean_evidence	current_boundary	remaining_obligation
+Core	engine.rs Context::new / seed	ContextCalculus.CBProductionTrace assumption	Exact multi-predicate context core is checked	Bind serialized core to the Rust context snapshot
+Hyper	engine.rs hyper / hyper_join	CBProductionTrace premise plus resolve	Every retained conclusion can carry a primitive source-instance derivation	Emit primitive derivations and prove all Hyper candidate forms are representable
+Pred-local	engine.rs pred_local	CBProductionTrace resolve	Local Cartesian-product conclusions can be decomposed into resolution	Emit decomposition and bind provider indexes
+Pred-arrival	engine.rs pred_payload / pred_from_neighbor	CBProductionTrace premise, assumption, resolve	Nested-term traces can prove the received conclusion under the target core	Bind sender substitution, edge, target core, and complete message delivery
+Succ	engine.rs propagate / apply_succ	CBProductionTrace tautology	The installed p-to-p hypothesis is a checked tautology	Bind successor creation, trigger sets, edges, and complete message delivery
+Eq	engine.rs eq_from_pred / eq_from_equation / build_eq	CBProductionTrace paramodulate	Retained equality rewrites have checked paramodulation evidence	Emit decomposition and bind maximal-literal candidate enumeration
+Ineq	engine.rs filter_head	CBProductionTrace deleteReflexiveInequality	Removing t!=t is directly checked and proved sound	Bind every filtered retained conclusion to this step
+Factor	engine.rs factor	CBProductionTrace factor	The exact two-equality conclusion is checked and proved sound	Emit Factor evidence and bind maximal-side selection
+Elim-forward	engine.rs add_clause / work-off	CBProductionTraceWire DecodedDiscardedClause	A skipped clause must have a retained syntactic strengthening witness	Serialize every completeness-relevant skipped clause or prove enumerator closure modulo strengthening
+Elim-backward	engine.rs back_subsume	CBProductionTraceWire DecodedDiscardedClause	A removed clause must have a retained syntactic strengthening witness	Bind every removal and pending deactivation to the snapshot
+Join-1/2	engine.rs join_resolvent	CBProductionTrace resolve	Ground-atom joins are ordinary checked resolution	Emit decomposition and bind Join indexes
+Join-3	engine.rs join_resolvent3	Nominals.join3_sound exists	No executable production-wire constructor yet	Add a bounds-checked three-premise Join-3 step and Rust evidence
+Nom	engine.rs hyper Nom branch	Nominals.nom_sound exists	No executable production-wire constructor yet	Add label-order, fresh-name, width, and budget evidence
+r-Succ	engine.rs propagate root_succ_form	Abstract context rules only	No exact production transfer wire yet	Prove and check every root successor transfer
+r-Pred	engine.rs pred_payload ground sender	Abstract context rules only	No exact production transfer wire yet	Prove and check per-source individual-edge discharge
+Ground-fact-seed	engine.rs seed_fact	CBProductionTrace premise	A seeded ground fact can be checked as a source instance	Bind demand-driven individual discovery and complete seed set
+Shared-closure-seed	engine.rs shared_closure / shared_base	CBProductionTrace retained trace	Local clauses remain checked under each receiving core	Prove snapshot identity and trace reuse across base-layer contexts
+Queue-terminal	engine.rs saturate / run_for	none	Not certified	Check empty todo and message queues, no truncation, and all propagation high-water marks
+Blocking/core-growth	engine.rs central_successor_for_core	Termination and abstract strategy theorems only	Not refined to Rust state	Bind finite context keys, trigger growth, blocking, and abstract complete fixpoint

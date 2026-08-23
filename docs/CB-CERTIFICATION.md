@@ -101,6 +101,12 @@ claim that the layer is already complete.
   of a typed source model. The Rust engine does not yet emit this document, and
   the current trace language still needs checked decompositions or direct rules
   for every production inference family.
+- `CBProductionTrace` also has direct executable rules for the two local
+  transformations not represented by ordinary resolution or paramodulation:
+  equality Factor and removal of a reflexive inequality. Both transformations
+  have semantic soundness theorems and rejecting examples. The live rule audit
+  and remaining production bindings are tracked in
+  `docs/CB-RULE-CERTIFICATION.tsv`.
 
 ## Not yet established
 

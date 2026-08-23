@@ -29,6 +29,8 @@ inductive WireProductionJustification where
   | resolve (positive negative : Nat) (literal : WireLiteral)
   | paramodulate (equality other : Nat) (left right : WireTerm)
       (literal : WireLiteral)
+  | factor (source : Nat) (common first second : WireTerm)
+  | deleteReflexiveInequality (source : Nat) (term : WireTerm)
 deriving FromJson, ToJson
 
 structure WireProductionEntry where
@@ -72,6 +74,11 @@ def WireProductionJustification.decode (bounds : Bounds) :
   | .paramodulate equality other left right literal =>
       return .paramodulate equality other (← left.decode bounds)
         (← right.decode bounds) (← literal.decode bounds)
+  | .factor source common first second =>
+      return .factor source (← common.decode bounds) (← first.decode bounds)
+        (← second.decode bounds)
+  | .deleteReflexiveInequality source term =>
+      return .deleteReflexiveInequality source (← term.decode bounds)
 
 def WireProductionEntry.decode (bounds : Bounds)
     (wire : WireProductionEntry) : Except String Entry :=
