@@ -45,7 +45,8 @@ claim that the layer is already complete.
   subsumption does not follow from the complete decoded ontology.
 - `CBTaxonomyWire` combines positive derivations and negative countermodels in
   one source-bound, row-major named-concept matrix. It checks every coordinate,
-  every publication bit, and complete matrix shape. The public theorem in
+  every publication bit, complete matrix shape, a duplicate-free public concept
+  name table, and the exact non-reflexive public subsumption payload. The public theorem in
   `CBCertificationSurface` proves that every accepted bit is true exactly when
   its decoded source ontology entails that subsumption.
 - `cb-taxonomy-cert-check` is the executable JSON checker for this exact
@@ -71,6 +72,12 @@ taxonomy document can prove every positive cell by derivation and every
 negative cell by a finite countermodel. The refinement remains necessary if a
 production terminal saturation is to justify omissions without emitting
 countermodels.
+
+Finite countermodels are a sound evidence form, not a complete replacement for
+the production refinement over full SROIQ. SROIQ does not in general have the
+finite-model property. The complete CB layer must therefore justify every
+remaining negative cell through a complete terminal-state theorem or another
+certificate form capable of representing the required infinite models.
 
 Benchmark agreement with another reasoner is regression evidence only.
 

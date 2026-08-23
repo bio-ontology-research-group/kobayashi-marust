@@ -3,9 +3,11 @@
   ================================
   **Blocking termination.**
 
-  `CompletenessEq.herbrand_complete_ground` takes the Herbrand universe `T` as a
-  `Fintype` — the *blocked, terminated* saturation.  This file discharges that
-  assumption: it proves the engine's blocking makes the completion finite.
+  `CompletenessEq.herbrand_complete_ground` takes its term universe `T` as a
+  `Fintype`. This file constructs one finite no-repeat-core universe and proves
+  its combinatorial depth bound. It does not prove that the Rust engine's
+  blocking relation preserves models, that production contexts are branches in
+  this universe, or that the production saturation terminates.
 
   The engine attaches to each context a **core** (a finite set of concept names,
   the concepts the central element must satisfy).  The Succ rule spawns a
@@ -25,9 +27,10 @@
                               is a finite type, exactly what `CompletenessEq`
                               needs.
 
-  This is the König-style argument behind blocking: finite branching (each
-  context has finitely many existentials, hence finitely many successors) plus
-  finite depth gives a finite completion, so saturation terminates.
+  This is the finite-depth component of a König-style blocking argument. A
+  production termination and completeness theorem still needs checked
+  refinement hypotheses connecting contexts, successors, reuse, and blocking
+  to this abstract universe.
 -/
 import Mathlib.Data.Set.Finite.List
 import Mathlib.Data.Fintype.Card
@@ -77,14 +80,14 @@ variable (CN : Type) [Fintype CN] [DecidableEq CN]
 /-- The blocked Herbrand universe: branches of distinct cores over `CN`. -/
 def blockedUniverse : Type := {br : List (Finset CN) // BlockedBranch br}
 
-/-- **The blocked universe is finite** — exactly the `Fintype` premise that
-    `CompletenessEq.herbrand_complete_ground` requires. -/
+/-- **The abstract blocked universe is finite.** This supplies a possible
+    `Fintype` term universe; a separate refinement theorem must show that it
+    represents the production engine's terms and blocking. -/
 noncomputable instance : Fintype (blockedUniverse CN) :=
   (reachable_finite (L := Finset CN)).fintype
 
-/-- **Termination, concretely.**  Every branch of the context-calculus completion
-    has length at most `2 ^ |CN|`; combined with finite branching, saturation
-    terminates. -/
+/-- Every duplicate-free abstract core branch has length at most
+    `2 ^ |CN|`. This theorem alone does not establish production termination. -/
 theorem context_branch_bound {br : List (Finset CN)} (h : BlockedBranch br) :
     br.length ≤ 2 ^ Fintype.card CN := by
   have := branch_depth_bound (L := Finset CN) h

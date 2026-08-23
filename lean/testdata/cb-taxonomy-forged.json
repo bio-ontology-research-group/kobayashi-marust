@@ -1,12 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "concept_count": 1,
   "role_count": 0,
   "function_count": 0,
   "individual_count": 0,
   "ontology": [],
+  "concept_names": ["A"],
   "named_concepts": [0],
   "published": [false],
+  "public_subsumptions": [],
   "cells": [{
     "core_concept": 0,
     "superconcept": 0,

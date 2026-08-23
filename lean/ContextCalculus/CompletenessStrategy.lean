@@ -1,16 +1,12 @@
 /-
   ContextCalculus/CompletenessStrategy.lean
   ==========================================
-  **Completeness of the saturation strategy the engine runs.**
+  **Completeness of an abstract finite type-elimination strategy.**
 
-  `engine/src/engine.rs` classifies by *consequence-based type-elimination*: it
-  seeds the candidate contexts and repeatedly discards any context whose
-  existential demands (`a ⊑ ∃r.b`) are no longer realised by a surviving
-  context, until a fixpoint is reached.  The *pay-as-you-go* expansion strategy
-  (one successor context per function symbol) only changes how the surviving
-  contexts are *represented*; the **set of contexts it converges to is exactly
-  this elimination fixpoint** (the benchmark confirms verdicts are byte-identical
-  to the trivial strategy).  This file proves that fixpoint decides subsumption.
+  This file proves that explicit elimination over the complete finite ALC type
+  space decides subsumption. The Rust CB engine uses disjunctive context clauses
+  and does not explicitly enumerate or discard these types. No theorem in this
+  file identifies a production terminal state with this elimination fixpoint.
 
   Everything here is `sorry`-free.  The chain is:
 
@@ -42,7 +38,7 @@
                               to `saturate_decides`); `coverage_of_seeds` records why
                               coverage is free.
 
-  Scope note: this is the ALCHIQ **type-level** argument, now hypothesis-free.  The
+  Scope note: this is the ALC **type-level** argument, now hypothesis-free. The
   principal thing left between it and the running Rust binary is *not* coverage but the
   **representation refinement**: the engine manipulates disjunctive context *clauses*
   rather than enumerated types, and that its clause saturation computes the same
