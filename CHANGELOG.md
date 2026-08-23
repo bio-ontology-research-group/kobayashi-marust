@@ -143,6 +143,14 @@
   once, cleared dirty flags, complete Pred/Succ/r-Succ high-water marks,
   complete r-Succ successor-pair scans, and predecessor edge watermarks equal
   to the exact pushed-set lengths from Pred sender evidence.
+- Add exact local-resolution closure evidence for every terminal production
+  context. Lean independently enumerates every ordered retained-clause pair and
+  every literal shared by the positive head and negative body, then requires a
+  retained clause that syntactically strengthens each resolvent. Exact ordered
+  signature comparison rejects omitted, duplicated, and invented candidates.
+  A standalone checker and non-vacuous fixture exercise all four pairings of a
+  mutually resolvable retained pair. Hyper, equality, Factor, Join-3, Succ, and
+  production emission remain separate closure obligations.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

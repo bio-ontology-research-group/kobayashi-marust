@@ -49,6 +49,10 @@ name = "cb-terminal-state-check"
 root = "CBTerminalStateCheck"
 
 [[lean_exe]]
+name = "cb-local-resolution-closure-check"
+root = "CBLocalResolutionClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

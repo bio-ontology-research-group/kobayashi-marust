@@ -191,6 +191,16 @@ claim that the layer is already complete.
   `cb-terminal-state-check` checker exposes this boundary. Production emission
   and the semantic theorem connecting these finite bookkeeping conditions to
   rule closure remain open.
+- `CBLocalResolutionClosureWire` independently enumerates every ordinary local
+  resolution candidate in every terminal production context: all ordered
+  retained-clause pairs and every literal occurring in the first clause's head
+  and the second clause's body. Every candidate must have a retained syntactic
+  strengthening, and the supplied ordered signatures must equal the computed
+  list exactly. Its non-vacuous fixture checks interacting retained clauses and
+  rejects omission of the generated candidates. The standalone
+  `cb-local-resolution-closure-check` exposes this boundary. This proves closure
+  modulo redundancy for ordinary local resolution only; it does not establish
+  Hyper, equality, Factor, Join-3, Succ, blocking, or whole-engine closure.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

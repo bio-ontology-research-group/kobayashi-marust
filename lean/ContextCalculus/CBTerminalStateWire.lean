@@ -251,7 +251,7 @@ private def terminalContextExample : WireTerminalContextState where
   rsucc_edges_grew := false
   edge_seen := [1]
 
-private def acceptedExample : WireCBTerminalStateDocument where
+def acceptedExample : WireCBTerminalStateDocument where
   version := 1
   send_coverage := CBPredSendCoverageWire.acceptedExample
   pending_messages := 0
