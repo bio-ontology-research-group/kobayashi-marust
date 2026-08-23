@@ -74,6 +74,7 @@ checkers=(
     ht-source-bound-ordinary-global-check
     ht-source-bound-cardinality-global-check
     ht-source-bound-cardinality-taxonomy-check
+    ht-cardinality-common-taxonomy-check
     ht-source-bound-native-abox-global-check
     ht-source-bound-native-abox-cardinality-global-check
     ht-source-bound-native-abox-taxonomy-check
@@ -166,6 +167,9 @@ surface_theorems=(
     certifiedHTDirectCommonTaxonomyPublication
     certifiedHTMixedCommonTaxonomyPublication
     certifiedHTBundleCommonTaxonomyPublication
+    certifiedHTDirectCardinalityCommonTaxonomyPublication
+    certifiedHTMixedCardinalityCommonTaxonomyPublication
+    certifiedHTBundleCardinalityCommonTaxonomyPublication
 )
 for theorem in "${surface_theorems[@]}"; do
     grep -q "HypertableauCertificationSurface.*$theorem\|'ContextCalculus.Hypertableau.$theorem'" \

@@ -359,11 +359,19 @@ theorem WireMixedCardinalityTaxonomyPublication.check_target_concept_sound
     (_hdecode : wire.decode = .ok decoded) (_hcheck : wire.check = .ok true) :
     decoded.TargetConceptSemantics := decoded.target_concept_semantics
 
+def WireMixedCardinalityTaxonomyPublication.SemanticallyValid
+    (wire : WireMixedCardinalityTaxonomyPublication) : Prop :=
+  ∃ decoded : DecodedMixedCardinalityTaxonomyPublication,
+    wire.decode = .ok decoded ∧ decoded.CommonSemantics
+
 theorem WireMixedCardinalityTaxonomyPublication.check_sound
     (wire : WireMixedCardinalityTaxonomyPublication)
-    (decoded : DecodedMixedCardinalityTaxonomyPublication)
-    (_hdecode : wire.decode = .ok decoded) (_hcheck : wire.check = .ok true) :
-    decoded.CommonSemantics := decoded.common_semantics
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireMixedCardinalityTaxonomyPublication.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, hdecode, decoded.common_semantics⟩
 
 #print axioms WireMixedCardinalityTaxonomyPublication.check_subsumption_sound
 #print axioms WireMixedCardinalityTaxonomyPublication.check_target_concept_sound

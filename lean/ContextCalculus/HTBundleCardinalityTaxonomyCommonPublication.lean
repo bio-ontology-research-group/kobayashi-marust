@@ -353,11 +353,19 @@ theorem DecodedBundleCardinalityTaxonomyPublication.common_semantics
     decoded.CommonSemantics :=
   ⟨decoded.common_concept_semantics, decoded.common_subsumption_semantics⟩
 
+def WireBundleCardinalityTaxonomyPublication.SemanticallyValid
+    (wire : WireBundleCardinalityTaxonomyPublication) : Prop :=
+  ∃ decoded : DecodedBundleCardinalityTaxonomyPublication,
+    wire.decode = .ok decoded ∧ decoded.CommonSemantics
+
 theorem WireBundleCardinalityTaxonomyPublication.check_sound
     (wire : WireBundleCardinalityTaxonomyPublication)
-    (decoded : DecodedBundleCardinalityTaxonomyPublication)
-    (_hdecode : wire.decode = .ok decoded) (_hcheck : wire.check = .ok true) :
-    decoded.CommonSemantics := decoded.common_semantics
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireBundleCardinalityTaxonomyPublication.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, hdecode, decoded.common_semantics⟩
 
 #print axioms DecodedBundleCardinalityTaxonomyPublication.common_subsumption_semantics
 #print axioms WireBundleCardinalityTaxonomyPublication.check_sound

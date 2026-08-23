@@ -469,11 +469,19 @@ theorem DecodedDirectCardinalityTaxonomyPublication.common_semantics
       decoded.subsumption_answer_iff_common entry hentry sub sup
         hsubCoordinate hsupCoordinate⟩
 
+def WireDirectCardinalityTaxonomyPublication.SemanticallyValid
+    (wire : WireDirectCardinalityTaxonomyPublication) : Prop :=
+  ∃ decoded : DecodedDirectCardinalityTaxonomyPublication,
+    wire.decode = .ok decoded ∧ decoded.CommonSemantics
+
 theorem WireDirectCardinalityTaxonomyPublication.check_sound
     (wire : WireDirectCardinalityTaxonomyPublication)
-    (decoded : DecodedDirectCardinalityTaxonomyPublication)
-    (_hdecode : wire.decode = .ok decoded) (_hcheck : wire.check = .ok true) :
-    decoded.CommonSemantics := decoded.common_semantics
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireDirectCardinalityTaxonomyPublication.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, hdecode, decoded.common_semantics⟩
 
 #print axioms DecodedDirectCardinalityTaxonomyPublication.common_semantics
 #print axioms WireDirectCardinalityTaxonomyPublication.check_sound

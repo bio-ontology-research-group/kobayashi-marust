@@ -329,6 +329,10 @@ name = "ht-source-bound-cardinality-taxonomy-check"
 root = "HTSourceBoundCardinalityTaxonomyCheck"
 
 [[lean_exe]]
+name = "ht-cardinality-common-taxonomy-check"
+root = "HTCardinalityCommonTaxonomyCheck"
+
+[[lean_exe]]
 name = "ht-source-bound-native-abox-global-check"
 root = "HTSourceBoundNativeABoxGlobalCheck"
 

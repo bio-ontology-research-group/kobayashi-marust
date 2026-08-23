@@ -7,6 +7,9 @@ import ContextCalculus.HypertableauExecutablePublicationWire
 import ContextCalculus.HTDirectTaxonomyCommonPublication
 import ContextCalculus.HTMixedTaxonomyCommonPublication
 import ContextCalculus.HTBundleTaxonomyCommonPublication
+import ContextCalculus.HTDirectCardinalityTaxonomyCommonPublication
+import ContextCalculus.HTMixedCardinalityTaxonomyCommonPublication
+import ContextCalculus.HTBundleCardinalityTaxonomyCommonPublication
 
 /-!
 # Current production hypertableau certification surface
@@ -140,6 +143,29 @@ theorem certifiedHTBundleCommonTaxonomyPublication
     (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
   wire.check_sound hcheck
 
+/-- The direct cardinality route publishes every named concept status and
+subsumption against the exact common source, including complementary-pair
+recognition obligations. -/
+theorem certifiedHTDirectCardinalityCommonTaxonomyPublication
+    (wire : HTDirectCardinalityTaxonomyCommonPublication.WireDirectCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
+/-- The mixed cardinality route composes the retained unary-Skolem functions
+with disjoint cardinality witness functions and publishes the exact taxonomy
+of that common source. -/
+theorem certifiedHTMixedCardinalityCommonTaxonomyPublication
+    (wire : HTMixedCardinalityTaxonomyCommonPublication.WireMixedCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
+/-- The bundle cardinality route publishes source-concept answers through its
+checked injective embedding into the expanded target vocabulary. -/
+theorem certifiedHTBundleCardinalityCommonTaxonomyPublication
+    (wire : HTBundleCardinalityTaxonomyCommonPublication.WireBundleCardinalityTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
@@ -156,5 +182,8 @@ theorem certifiedHTBundleCommonTaxonomyPublication
 #print axioms certifiedHTDirectCommonTaxonomyPublication
 #print axioms certifiedHTMixedCommonTaxonomyPublication
 #print axioms certifiedHTBundleCommonTaxonomyPublication
+#print axioms certifiedHTDirectCardinalityCommonTaxonomyPublication
+#print axioms certifiedHTMixedCardinalityCommonTaxonomyPublication
+#print axioms certifiedHTBundleCardinalityCommonTaxonomyPublication
 
 end ContextCalculus.Hypertableau
