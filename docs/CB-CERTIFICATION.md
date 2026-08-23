@@ -114,6 +114,17 @@ claim that the layer is already complete.
   accepting the combined conclusion. Lean proves this transformation sound;
   executable examples accept the production shape and reject a forged ground
   instance. Rust emission and index binding remain outstanding.
+- `Nominals.nom_family_sound` lifts the single-firing Nom covering theorem to
+  any finite family when each firing receives a disjoint block of fresh
+  constants. A separate finite theorem demonstrates that independently valid
+  one-firing witnesses cannot in general share one constant block. The proof
+  audit therefore changed KM's interner: each exact grounded Hyper firing now
+  receives a stable disjoint block, while an exact replay reuses that block so
+  saturation remains finite. Allocation is all-or-nothing and exhaustion marks
+  the run incomplete. `nom_shared_cover_sound` also records the stronger
+  invariant that would permit cross-firing reuse, but KM no longer relies on
+  that unproved optimization. Executable Nom evidence must still bind the
+  firing key, width, freshness, ordering, and no-truncation state.
 
 ## Not yet established
 

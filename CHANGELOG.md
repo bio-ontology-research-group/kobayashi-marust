@@ -44,6 +44,16 @@
   consumer literals, the `x ↦ term` instance, and the complete conclusion.
   Prove the rule sound and reject a forged ground instance in a kernel-evaluated
   test. Rust evidence emission remains a separate production binding.
+- Lift the Nom covering theorem from one firing to a finite family with
+  disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
+  independent one-firing witnesses cannot generally share one block. This
+  isolates the exact remaining obligation in KM's cross-firing nominal-label
+  interning. Prove that shared-name firings restrict one predecessor predicate
+  with a common checked cover, and derive shared-block soundness from that
+  invariant. Change KM to the certified alternative: allocate one stable,
+  disjoint block per exact grounded Hyper firing. Exact replays reuse their
+  block for termination; unrelated firings cannot share witnesses; budget or
+  term-range exhaustion rejects the complete block and marks the run incomplete.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

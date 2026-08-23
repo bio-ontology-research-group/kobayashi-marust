@@ -1,10 +1,10 @@
 # Nominal support in the CB engine (ALCHOIQ calculus)
 
-Status: PHASES 0–3 IMPLEMENTED AND ROUTED (updated 2026-07-16). Phases 0+1 (frontend DL7/DL8 +
+Status: PHASES 0–2 IMPLEMENTED AND ROUTED; PHASE 3 IN PROGRESS. Phases 0+1 (frontend DL7/DL8 +
 ground ABox; engine v_r, r-Succ/r-Pred, grounded Hyper, Table-2 deltas) landed
 first; Phase 2 (Join, r-Succ condition (*), the Nom rule with additional
-nominals) and Phase 3 (Lean soundness certification,
-`lean/ContextCalculus/Nominals.lean`) followed. All six witness probes pass
+nominals) and the single-firing Lean soundness layer in
+`lean/ContextCalculus/Nominals.lean` followed. All six witness probes pass
 (the five Phase-1 probes plus `oracle/ontologies/nom_oiq_funct.ofn`, the
 paper's Example 3, the O+I+Q interaction that *requires* Nom), each matching
 the HermiT oracle. `KM_NOMINALS=1` is now the internal setting of the exact
@@ -23,8 +23,10 @@ Phase-2 implementation notes (engine.rs):
   `K + K''` additional nominals, NOT the paper's `K` (or its proof's
   `max(K,K'')`): the certified covering bound (`nom_cover` in Lean) is the sum
   `(n−1) + K''`, and wider disjunctions are sound. Additional nominals are
-  interned per `(o, S, orientation, k)` with a budget (`KM_NOM_BUDGET`,
-  default 4096; exhaustion is reported, never silent).
+  allocated in a stable disjoint block per exact grounded Hyper firing. An
+  exact replay reuses its block so saturation remains finite; unrelated
+  firings do not share existential witnesses. `KM_NOM_BUDGET` defaults to
+  4096; a block that does not fit marks the run incomplete before publication.
 - The Hyper candidate scan includes the side clause at non-side positions in
   the ground context (given-clause `S_v ∪ {C}` semantics): elsewhere the
   self-pair is provably redundant, but `S(x,z₁)∧S(x,z₂)` matching the same
@@ -185,8 +187,9 @@ Engine:
   resolve against ground body atoms. Case 3 needs the `x≈o` bridge form.
 - r-Pred is non-local: any context with an o-edge subscribes to v_r
   conclusions. Reuse the existing Pred message queue with a v_r channel.
-- Nom: gated behind detection of the O+I+Q interaction triple; nominal
-  labels ρ as interned strings with the `o_ρ > o_ρ'` order hook.
+- Nom: gated behind detection of the O+I+Q interaction triple. Production now
+  uses exact-firing witness blocks; the remaining certification must bind the
+  generated block identity and ordering to the executable trace.
 
 Frontend:
 - New mode (env `KM_NOMINALS=1` while landing, default on once validated):
@@ -213,9 +216,11 @@ Frontend:
 - Phase 2: Nom + additional nominals + order conditions. Gate: synthetic
   O+I+Q probes (paper Example 3 as a test), termination guard
   (additional-nominal budget with explicit report, never silent).
-- Phase 3: Lean re-certification following proof-sound.tex (soundness of the
-  four rules + the generalised Table 2 rules) and the completeness argument.
-  This IS calculus logic: re-cert is mandatory before default-on.
+- Phase 3: Lean certification of the four rules, generalised Table 2 rules,
+  production-state refinement, and completeness. Single-firing Nom soundness,
+  finite composition with disjoint blocks, and the exact Join-3 transformation
+  are established. Executable Nom evidence, inter-context transfer, terminal
+  closure, and the production completeness refinement remain open.
 
 ## 5. Open questions
 

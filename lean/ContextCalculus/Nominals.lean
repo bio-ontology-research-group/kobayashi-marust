@@ -354,7 +354,89 @@ theorem nom_sound (B : D → Prop) (pins : List D) (n : Nat)
     have hk' : k < n + pins.length := Nat.lt_of_lt_of_le hk hlen
     exact ⟨⟨k, hk'⟩, by simp [List.getD, List.getElem?_eq_getElem hk, ← hget]⟩
 
-/-! ## 7. Completeness of the ground fragment
+/-! ## 7. Composing a finite family of Nom firings
+
+The existential interpretation produced by `nom_sound` is local to one rule
+firing.  A production run may contain many Nom conclusions, so those choices
+must be made simultaneously.  Giving every firing a disjoint block of fresh
+constants makes the choices independent and therefore compositional.  Reusing
+one block across unrelated firings requires an additional common-cover
+invariant; it does not follow from per-firing soundness alone. -/
+
+structure NomObligation (D : Type) where
+  B : D → Prop
+  pins : List D
+  n : Nat
+  groundEscape : Prop
+  dflt : D
+  escape : groundEscape ∨ Escapes B pins (n + 1)
+
+def NomObligation.width (obligation : NomObligation D) : Nat :=
+  obligation.n + obligation.pins.length
+
+def NomObligation.SatisfiedWith (obligation : NomObligation D)
+    (interp : Fin obligation.width → D) : Prop :=
+  obligation.groundEscape ∨
+    ∀ d, obligation.B d → ∃ j, d = interp j
+
+theorem NomObligation.exists_interp (obligation : NomObligation D) :
+    ∃ interp : Fin obligation.width → D, obligation.SatisfiedWith interp := by
+  rcases nom_sound obligation.B obligation.pins obligation.n
+      obligation.groundEscape obligation.dflt obligation.escape with
+    hground | ⟨interp, hinterp⟩
+  · exact ⟨fun _ => obligation.dflt, Or.inl hground⟩
+  · exact ⟨interp, Or.inr hinterp⟩
+
+def NomFamilyInterpretation (obligations : List (NomObligation D)) : Type :=
+  (index : Fin obligations.length) →
+    Fin (obligations.get index).width → D
+
+theorem nom_family_sound (obligations : List (NomObligation D)) :
+    ∃ interp : NomFamilyInterpretation obligations,
+      ∀ index, (obligations.get index).SatisfiedWith (interp index) := by
+  let interp : NomFamilyInterpretation obligations := fun index =>
+    Classical.choose (obligations.get index).exists_interp
+  refine ⟨interp, ?_⟩
+  intro index
+  exact Classical.choose_spec (obligations.get index).exists_interp
+
+/-- Reusing one nominal block is sound when all firings in the reuse class are
+    restrictions of one predicate with a single checked escape bound.  This is
+    the common-cover invariant that a label-based production interner must
+    establish; per-firing escape bounds are not enough. -/
+theorem nom_shared_cover_sound (B : D → Prop) (pins : List D) (n : Nat)
+    (groundEscape : Prop) (dflt : D) (firings : List (D → Prop))
+    (hsub : ∀ firing ∈ firings, ∀ d, firing d → B d)
+    (hescape : groundEscape ∨ Escapes B pins (n + 1)) :
+    groundEscape ∨ ∃ interp : Fin (n + pins.length) → D,
+      ∀ firing ∈ firings, ∀ d, firing d → ∃ j, d = interp j := by
+  rcases nom_sound B pins n groundEscape dflt hescape with
+    hground | ⟨interp, hinterp⟩
+  · exact Or.inl hground
+  · exact Or.inr ⟨interp, by
+      intro firing hfiring d hd
+      exact hinterp d (hsub firing hfiring d hd)⟩
+
+theorem independent_nom_witnesses_need_not_share :
+    (∃ interp : Fin 1 → Bool,
+      ∀ d, d = false → ∃ j, d = interp j) ∧
+    (∃ interp : Fin 1 → Bool,
+      ∀ d, d = true → ∃ j, d = interp j) ∧
+    ¬ ∃ interp : Fin 1 → Bool,
+      (∀ d, d = false → ∃ j, d = interp j) ∧
+      (∀ d, d = true → ∃ j, d = interp j) := by
+  constructor
+  · exact ⟨fun _ => false, fun d hd => ⟨⟨0, by decide⟩, hd⟩⟩
+  constructor
+  · exact ⟨fun _ => true, fun d hd => ⟨⟨0, by decide⟩, hd⟩⟩
+  · rintro ⟨interp, hfalse, htrue⟩
+    obtain ⟨jfalse, hjfalse⟩ := hfalse false rfl
+    obtain ⟨jtrue, hjtrue⟩ := htrue true rfl
+    have hindex : jfalse = jtrue := Subsingleton.elim _ _
+    rw [hindex] at hjfalse
+    exact Bool.noConfusion (hjfalse.trans hjtrue.symm)
+
+/-! ## 8. Completeness of the ground fragment
 
 The ground-context reasoning core — ground context clauses over atoms
 `B(o)`, `S(o,o')` (individuals and composites only), resolved by Join cases
@@ -377,5 +459,9 @@ theorem ground_fragment_complete {A : Type} [DecidableEq A]
     (S : Finset (PropRes.PClause A)) (h : PropRes.Unsat S) :
     PropRes.Derivable S PropRes.PClause.bot :=
   PropRes.completeness S h
+
+#print axioms nom_family_sound
+#print axioms nom_shared_cover_sound
+#print axioms independent_nom_witnesses_need_not_share
 
 end ContextCalculus.Nominals

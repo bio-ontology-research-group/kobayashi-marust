@@ -488,6 +488,20 @@ struct CentralSubst {
     /// copied unsubstituted, so mixing the two would be unsound).
     allow_ground: bool,
 }
+
+/// Stable identity of one fully selected grounded Hyper firing that invokes
+/// Nom. Distinct firings receive disjoint additional-nominal blocks; replaying
+/// the exact same firing reuses its block so saturation remains finite.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct NomFiringKey {
+    context: usize,
+    source_body: Vec<Pred>,
+    source_head: Vec<Lit>,
+    side_body: Vec<Pred>,
+    side_head: Vec<Lit>,
+    selected: Vec<(usize, Pred)>,
+    substitution: Vec<(Term, Term)>,
+}
 impl CentralSubst {
     fn new(allow_ground: bool) -> Self {
         CentralSubst {
@@ -3099,13 +3113,15 @@ pub struct Engine {
     /// 0 when the ontology has at most one neighbour variable per clause (the
     /// Nom preconditions then cannot arise).
     nom_k: usize,
-    /// Additional-nominal interner: (parent individual `o`, role `S`, edge
-    /// orientation `S(o,y)` vs `S(y,o)`, index `1..=K`) → fresh individual id
-    /// (the nominal label `ρ·S^i`).  Allocation order extends labels, so the
-    /// id order satisfies the Def-3 label-monotonicity `o_ρ·σ > o_ρ`.
+    /// Additional-nominal interner: one disjoint block per exact grounded Hyper
+    /// firing. Replaying the same firing reuses its block, while unrelated
+    /// firings never share existential witnesses. This is the compositional
+    /// boundary proved by `Nominals.nom_family_sound`.
     /// Interior mutability: allocation happens inside the otherwise read-only
     /// Hyper resolvent build (single-threaded engine, never shared).
-    nom_table: std::cell::RefCell<HashMap<(Term, Iri, bool, u16), Term>>,
+    nom_table: std::cell::RefCell<HashMap<NomFiringKey, Vec<Term>>>,
+    /// Number of additional nominal terms stored across all firing blocks.
+    nom_allocated: std::cell::Cell<usize>,
     /// next fresh individual id (starts above every input individual)
     nom_next: std::cell::Cell<i32>,
     /// first additional-nominal id (= the initial `nom_next`): ids at or
@@ -3309,6 +3325,7 @@ impl Engine {
             message_truncated: false,
             nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::default()),
+            nom_allocated: std::cell::Cell::new(0),
             nom_next: std::cell::Cell::new(prepared.nom_first),
             nom_base: ind_term(prepared.nom_first),
             nom_budget,
@@ -4682,18 +4699,20 @@ impl Engine {
         }
     }
 
-    /// The additional nominal `o'_{ρ·S^k}` for parent individual `o` (label ρ),
-    /// role `S`, edge orientation `fwd` (`S(o,y)` vs `S(y,o)`), and index `k`
-    /// (Nom rule).  Interned: re-firing Nom with the same parameters reuses the
-    /// same individual.  `None` when the budget (or the individual id range) is
-    /// exhausted — reported once, never silent.
-    fn nom_term(&self, o: Term, role: Iri, fwd: bool, k: u16) -> Option<Term> {
-        let key = (o, role, fwd, k);
-        if let Some(&t) = self.nom_table.borrow().get(&key) {
-            return Some(t);
+    /// Allocate or retrieve the disjoint witness block for one exact Nom
+    /// firing. `None` marks the whole run truncated when the configured budget
+    /// or tagged-individual range cannot hold the complete block.
+    fn nom_terms(&self, key: NomFiringKey, width: usize) -> Option<Vec<Term>> {
+        if let Some(terms) = self.nom_table.borrow().get(&key) {
+            return Some(terms.clone());
         }
+        let allocated = self.nom_allocated.get();
         let next = self.nom_next.get();
-        if self.nom_table.borrow().len() >= self.nom_budget || next >= (FTERM_BASE - X) as i32 {
+        let width_i32 = i32::try_from(width).ok();
+        let range_ok = width_i32
+            .and_then(|count| next.checked_add(count))
+            .is_some_and(|end| end <= (FTERM_BASE - X) as i32);
+        if allocated.saturating_add(width) > self.nom_budget || !range_ok {
             if !self.nom_truncated.replace(true) {
                 eprintln!(
                     "WARNING: kobayashi-marust additional-nominal budget ({}) exhausted; \
@@ -4703,10 +4722,13 @@ impl Engine {
             }
             return None;
         }
-        self.nom_next.set(next + 1);
-        let t = ind_term(next);
-        self.nom_table.borrow_mut().insert(key, t);
-        Some(t)
+        let terms: Vec<Term> = (0..width)
+            .map(|offset| ind_term(next + offset as i32))
+            .collect();
+        self.nom_next.set(next + width as i32);
+        self.nom_allocated.set(allocated + width);
+        self.nom_table.borrow_mut().insert(key, terms.clone());
+        Some(terms)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4781,12 +4803,23 @@ impl Engine {
             let mut labelled = false;
             'outer: for i in 0..candidates.len() {
                 let (_, matched) = candidates[i][idxs[i]];
-                if let Pred::Role { iri, s, t } = matched {
+                if let Pred::Role { s, t, .. } = matched {
                     let fwd = s == o && t == Y;
                     let bwd = t == o && s == Y;
                     if fwd || bwd {
-                        for k in 1..=k_eff as u16 {
-                            head.push(Lit::eq(Y, self.nom_term(o, iri, fwd, k)?));
+                        let key = NomFiringKey {
+                            context: id,
+                            source_body: oc.body.clone(),
+                            source_head: oc.head.clone(),
+                            side_body: side.body.clone(),
+                            side_head: side.head.clone(),
+                            selected: (0..candidates.len())
+                                .map(|position| candidates[position][idxs[position]])
+                                .collect(),
+                            substitution: sigma.map.to_vec(),
+                        };
+                        for nominal in self.nom_terms(key, k_eff)? {
+                            head.push(Lit::eq(Y, nominal));
                         }
                         labelled = true;
                         break 'outer;
@@ -7876,6 +7909,36 @@ mod tests {
         assert_eq!(g.apply(fterm(1)), comp_term(fterm(1), o));
         // Re-binding x to a different individual is rejected.
         assert!(!g.add(X, ind_term(4)));
+    }
+
+    #[test]
+    fn nominal_blocks_reuse_only_the_exact_firing() {
+        let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
+        engine.nom_budget = 4;
+        let key = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(Y, Y)],
+            side_body: vec![],
+            side_head: vec![],
+            selected: vec![],
+            substitution: vec![(X, ind_term(1))],
+        };
+        let first = engine.nom_terms(key.clone(), 2).expect("first Nom block");
+        let replay = engine.nom_terms(key.clone(), 2).expect("replayed Nom block");
+        assert_eq!(first, replay, "the exact same firing must reuse its block");
+        assert_eq!(engine.nom_allocated.get(), 2);
+
+        let mut other = key.clone();
+        other.side_head.push(Lit::P(cx(0, X)));
+        let second = engine.nom_terms(other, 2).expect("distinct Nom block");
+        assert!(first.iter().all(|term| !second.contains(term)));
+        assert_eq!(engine.nom_allocated.get(), 4);
+
+        let mut over_budget = key;
+        over_budget.context = 1;
+        assert!(engine.nom_terms(over_budget, 1).is_none());
+        assert!(engine.nom_truncated.get());
     }
 
     /// Trail invariant for the clone-free Hyper join: `mark()` + `rollback()`
