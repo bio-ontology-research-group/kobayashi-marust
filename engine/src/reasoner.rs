@@ -874,7 +874,8 @@ impl Reasoner {
                 mutual_unit_groups.len()
             );
         }
-        let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some();
+        let retain_certificate_engine = std::env::var_os("KM_CB_LIVE_STATE").is_some()
+            || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
         let threads = if retain_certificate_engine {
             1
         } else {
@@ -1076,14 +1077,7 @@ impl Reasoner {
         &self,
         path: impl AsRef<std::path::Path>,
     ) -> Result<(), String> {
-        let engine = self.certificate_engine.as_deref().ok_or_else(|| {
-            "CB live-state emission requires KM_CB_LIVE_STATE and a sequential production run"
-                .to_string()
-        })?;
-        if engine.incomplete() {
-            return Err("CB live-state emission refused an incomplete engine".to_string());
-        }
-        let snapshot = engine.live_terminal_snapshot();
+        let snapshot = self.live_terminal_snapshot()?;
         let file = std::fs::File::create(path.as_ref()).map_err(|error| {
             format!(
                 "cannot create CB live-state snapshot {}: {error}",
@@ -1100,6 +1094,20 @@ impl Reasoner {
         writer
             .flush()
             .map_err(|error| format!("cannot flush CB live-state snapshot: {error}"))
+    }
+
+    /// Return the deterministic terminal snapshot retained for mandatory Lean
+    /// checking.  Keeping this accessor on `Reasoner` ensures the certificate
+    /// bundle is built from the same engine whose answer would be published.
+    pub fn live_terminal_snapshot(&self) -> Result<crate::engine::CbLiveTerminalSnapshot, String> {
+        let engine = self.certificate_engine.as_deref().ok_or_else(|| {
+            "CB live-state evidence requires certified mode and a sequential production run"
+                .to_string()
+        })?;
+        if engine.incomplete() {
+            return Err("CB live-state emission refused an incomplete engine".to_string());
+        }
+        Ok(engine.live_terminal_snapshot())
     }
 
     pub fn dropped_unsupported(&self) -> usize {

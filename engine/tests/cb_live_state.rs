@@ -109,3 +109,51 @@ fn unsupported_certification_schedule_fails_without_publishing() {
     assert!(output.stdout.is_empty());
     assert!(!path.exists());
 }
+
+#[test]
+fn mandatory_lean_mode_fails_without_complete_configuration() {
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("KM_CB_GLOBAL_MODEL_CERT"));
+}
+
+#[test]
+fn mandatory_lean_rejection_prevents_publication() {
+    let global = snapshot_path("global-model");
+    let bundle = snapshot_path("bundle");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/false")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(bundle.exists());
+    let document: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
+    assert_eq!(document["version"], 1);
+    assert_eq!(document["live_state"]["version"], 2);
+    std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
+}

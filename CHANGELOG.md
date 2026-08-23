@@ -14,9 +14,11 @@
   incoming and outgoing edge from the certified Pred snapshots and requires
   exact agreement with the live endpoints, labels, pushed predicates, and edge
   watermarks. The native checker rejects malformed or substituted evidence.
-  This is unreleased until complete CB
-  publication is connected to the checker and the full certification gate
-  passes.
+  Mandatory CB Lean mode now retains that same production engine, combines its
+  snapshot with the source-bound global-model certificate, invokes the native
+  checker before extraction, and emits no classification when configuration,
+  evidence, I/O, or checking fails. Automatic construction of the nested global
+  certificate remains unreleased work before the complete CB gate can pass.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

@@ -495,6 +495,12 @@ pub fn run_engine() {
             exit(5);
         }
     }
+    if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
+        if let Err(error) = verify_cb_lean_publication(&r) {
+            eprintln!("CB Lean certification failed: {error}");
+            exit(5);
+        }
+    }
 
     let t3 = std::time::Instant::now();
     // The derived-clause echo doubles output volume and is only consumed by the
@@ -543,6 +549,64 @@ pub fn run_engine() {
             t_extract.as_secs_f64() * 1e3,
             t4.elapsed().as_secs_f64() * 1e3,
         );
+    }
+}
+
+/// Construct the exact production-bound certificate bundle and require the
+/// native Lean checker to accept it before any CB answer reaches stdout.
+fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
+    let global_path = std::env::var_os("KM_CB_GLOBAL_MODEL_CERT")
+        .ok_or_else(|| "KM_CB_GLOBAL_MODEL_CERT is required".to_string())?;
+    let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER")
+        .ok_or_else(|| "KM_CB_LEAN_CERT_CHECKER is required".to_string())?;
+    let bundle_path = std::env::var_os("KM_CB_CERT_BUNDLE")
+        .ok_or_else(|| "KM_CB_CERT_BUNDLE is required".to_string())?;
+
+    let global_bytes = std::fs::read(&global_path).map_err(|error| {
+        format!(
+            "cannot read global CB certificate {}: {error}",
+            std::path::Path::new(&global_path).display()
+        )
+    })?;
+    let global_model: serde_json::Value = serde_json::from_slice(&global_bytes)
+        .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
+    let live_state = reasoner.live_terminal_snapshot()?;
+    let bundle = serde_json::json!({
+        "version": 1,
+        "global_model": global_model,
+        "live_state": live_state,
+    });
+    let file = std::fs::File::create(&bundle_path).map_err(|error| {
+        format!(
+            "cannot create CB certificate bundle {}: {error}",
+            std::path::Path::new(&bundle_path).display()
+        )
+    })?;
+    let mut writer = std::io::BufWriter::new(file);
+    serde_json::to_writer(&mut writer, &bundle)
+        .map_err(|error| format!("cannot serialize CB certificate bundle: {error}"))?;
+    use std::io::Write;
+    writer
+        .write_all(b"\n")
+        .map_err(|error| format!("cannot finish CB certificate bundle: {error}"))?;
+    writer
+        .flush()
+        .map_err(|error| format!("cannot flush CB certificate bundle: {error}"))?;
+
+    let status = std::process::Command::new(&checker)
+        .arg(&bundle_path)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .map_err(|error| {
+            format!(
+                "cannot run CB Lean checker {}: {error}",
+                std::path::Path::new(&checker).display()
+            )
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("CB Lean checker rejected the bundle with {status}"))
     }
 }
 
