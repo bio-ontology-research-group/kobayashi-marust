@@ -539,6 +539,18 @@ and negative superclass at its root. The exact matrix accepts this evidence as
 projection bridges for equality, nominals, and cardinality clauses; they are
 not routed through this ALC case.
 
+The `regularRole` evidence form extends that boundary to the equality-free
+RBox fragment. Its source syntax preserves the original clause order, so each
+existential keeps its production Skolem-function index. It admits disjunctive
+GCIs, existential and universal restrictions, subroles, inverse-role
+equivalences, and binary role chains. The wire requires the complete encoded
+source to equal the production clause list, and separately requires the
+regular certificate's residual and normalized role-clause lists to equal the
+proved translations. The unravelling theorem establishes all source clauses
+and role chains before installing CB's functions. Functionality, nominals,
+qualified cardinality, and chains longer than two remain outside this evidence
+form and fail the exact-source check.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

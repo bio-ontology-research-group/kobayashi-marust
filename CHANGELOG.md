@@ -56,6 +56,14 @@
   possibly infinite `TModel` that refutes the taxonomy cell. The exact matrix
   accepts this as `regularALC`; richer equality, nominal, and cardinality
   projections remain open.
+  Extend regular CB countermodels through the equality-free RBox. The new
+  source-preserving syntax retains production clause order and proves the
+  semantic transport for subroles, inverse-role equivalences, and binary role
+  chains alongside the ALC forms. Its wire independently checks the exact CB
+  source encoding, HT residual clauses, normalized role clauses, root query
+  labels, and regular certificate. Exact taxonomy cells can cite this as
+  `regularRole`. Functionality, nominals, qualified cardinality, and longer
+  chains remain outside this fail-closed projection.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

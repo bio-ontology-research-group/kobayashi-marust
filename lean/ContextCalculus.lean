@@ -56,6 +56,8 @@ import ContextCalculus.CBBlockedTaxonomyCountermodel
 import ContextCalculus.CBBlockedTaxonomyCountermodelWire
 import ContextCalculus.CBRegularALCCountermodel
 import ContextCalculus.CBRegularALCCountermodelWire
+import ContextCalculus.CBRegularRoleCountermodel
+import ContextCalculus.CBRegularRoleCountermodelWire
 import ContextCalculus.CBHyperClosure
 import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBJoin3Closure
