@@ -560,9 +560,25 @@ singleton interpretation with the checked regular role model and transports it
 through the complete ordered CB encoding. The executable wire checks the exact
 CB clause list, projected residual and role clauses, every individual-root
 mapping, both query labels, and the anchored certificate before exposing a
-countermodel. Functionality and qualified at-most restrictions remain open;
-they need the slot-preserving anchored-cardinality certificate rather than the
-plain anchored equality model.
+countermodel.
+
+`CBRegularCardinalityCountermodel` supplies the slot-preserving extension for
+global functionality and qualified at-most restrictions. HT cardinality
+definitions are marker guarded, whereas these normalized CB source clauses are
+unconditional. The exact projection therefore includes residual unit clauses
+that make every selected marker universal and, for functionality, make its
+selected filler universal. Lean proves these units in the anchored regular
+model and only then derives the unconditional CB clauses from checked maximum
+definitions. The wire also requires the full definition list to equal the
+source projection. `regularNominal` and `regularCardinality` are accepted as
+negative evidence by the exact taxonomy matrix. The Rust producer does not yet
+construct these wires automatically, so that production connection remains
+part of the complete CB gate. This first wire keeps source and target concept
+bounds equal. It is sound, but it is not complete if no source concept can be
+interpreted as universal. Full coverage therefore also requires an injective
+source-to-target concept renaming and a fresh target-only universal marker,
+using the existing HT concept-renaming semantics. Do not treat the
+same-signature wire as the final cardinality completeness layer.
 
 ## Requirements for the complete CB layer
 

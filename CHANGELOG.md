@@ -72,8 +72,24 @@
   concept is exactly that singleton, combines it with the base role model, and
   installs the full CB term model. The bounds-checked wire verifies exact CB
   source identity, residual and RBox identity, every individual-to-root anchor,
-  query labels, and certificate acceptance. Functionality and qualified
-  cardinality still require the anchored slot/cardinality bridge.
+  query labels, and certificate acceptance.
+  Extend the same mixed, order-preserving source through global functionality
+  and qualified at-most restrictions. The projection records an HT maximum
+  definition for each source clause and includes explicit residual unit clauses
+  proving that every activation marker is universal; functionality also proves
+  its selected filler universal. Lean derives the unconditional CB semantics
+  from those checked obligations and the anchored slot-preserving regular
+  model. A new exact wire checks the source encoding, projected RBox/residual,
+  cardinality-definition list, nominal roots, query labels, and full anchored
+  cardinality certificate. Exact taxonomy cells can cite `regularNominal` or
+  `regularCardinality`; Rust generation of these evidence forms remains to be
+  connected before the complete production gate can use them automatically.
+  The current cardinality wire is the same-signature specialization: marker
+  and functionality-filler concepts are selected from the decoded source
+  concept bounds. It is sound but not a complete evidence form when every
+  source concept is constrained away from top. The complete construction must
+  rename source concepts into an extended target signature with a structurally
+  fresh universal concept; that generalization remains open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable
