@@ -37,7 +37,13 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     let snapshot: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(snapshot["version"], 3);
+    assert_eq!(snapshot["version"], 4);
+    assert!(snapshot["concept_count"].is_number());
+    assert!(snapshot["role_count"].is_number());
+    assert!(snapshot["function_count"].is_number());
+    assert!(snapshot["source_individual_count"].is_number());
+    assert!(snapshot["runtime_individual_count"].is_number());
+    assert!(snapshot["source_ontology"].is_array());
     assert!(snapshot["comp_ind_bits"]
         .as_u64()
         .is_some_and(|bits| (1..32).contains(&bits)));
@@ -51,6 +57,9 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     for (index, context) in contexts.iter().enumerate() {
         assert_eq!(context["context_index"], index);
         assert_eq!(context["context_id"], index);
+        assert!(context["nominal_ground"].is_boolean());
+        assert!(context["query_concept"].is_null() || context["query_concept"].is_number());
+        assert!(context["core"].is_array());
         assert_eq!(context["todo_clause_ids"].as_array().unwrap().len(), 0);
         assert_eq!(context["dirty"], false);
         assert_eq!(
@@ -158,7 +167,18 @@ fn mandatory_lean_rejection_prevents_publication() {
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
     assert_eq!(document["version"], 1);
-    assert_eq!(document["live_state"]["version"], 3);
+    assert_eq!(document["live_state"]["version"], 4);
+    assert!(document["live_state"]["concept_count"].is_number());
+    assert!(document["live_state"]["role_count"].is_number());
+    assert!(document["live_state"]["function_count"].is_number());
+    assert!(document["live_state"]["source_individual_count"].is_number());
+    assert!(document["live_state"]["runtime_individual_count"].is_number());
+    assert!(document["live_state"]["source_ontology"].is_array());
+    for context in document["live_state"]["contexts"].as_array().unwrap() {
+        assert!(context["nominal_ground"].is_boolean());
+        assert!(context["query_concept"].is_null() || context["query_concept"].is_number());
+        assert!(context["core"].is_array());
+    }
     let history = document["live_state"]["insertion_history"]
         .as_array()
         .unwrap();
