@@ -134,9 +134,12 @@ claim that the layer is already complete.
   that such a witness satisfies the exact retained-head-plus-`y ≈ fresh`
   production clause. `nomConclusion_exists_extension` constructs the
   corresponding first-order model extension and proves that every source clause
-  below the fresh boundary retains its truth. The remaining Nom evidence must
-  derive each obligation from the firing's exact covering/counting premises and
-  check that its decoded body and residual head have the required meanings.
+  below the fresh boundary retains its truth. Each allocation block now carries
+  its decoded body, residual head, and emitted clause; the executable checker
+  requires that clause to be exactly the residual head plus every equality in
+  the block and rejects a forged omitted equality. The remaining Nom evidence
+  must derive each obligation from the firing's exact covering/counting premises
+  and check that its decoded body and residual head have the required meanings.
 
 ## Not yet established
 

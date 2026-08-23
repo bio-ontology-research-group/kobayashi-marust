@@ -36,6 +36,9 @@ structure WireNominalBlock where
   key : WireNominalFiringKey
   first : Nat
   width : Nat
+  body : List WireLiteral
+  kept_head : List WireLiteral
+  conclusion : WireClause
 deriving DecidableEq, FromJson, ToJson
 
 structure WireNominalAllocation where
@@ -62,6 +65,12 @@ structure NominalBlock where
   key : NominalFiringKey
   first : Nat
   width : Nat
+  body : List CheckerTerm.FLit
+  keptHead : List CheckerTerm.FLit
+  conclusion : CheckerTerm.FCL
+  conclusion_equiv : CheckerTerm.clEquivT conclusion
+    ⟨body, keptHead ++ (List.finRange width).map fun index =>
+      .eq (.var (-1)) (.const (first + index.val))⟩
 
 private def decodeSelected (bounds : Bounds)
     (entry : Nat × WirePredicate) :
@@ -90,7 +99,20 @@ def WireNominalFiringKey.decode (bounds : Bounds)
 def WireNominalBlock.decode (bounds : Bounds)
     (wire : WireNominalBlock) : Except String NominalBlock := do
   let key ← wire.key.decode bounds
-  return { wireKey := wire.key, key, first := wire.first, width := wire.width }
+  if wire.body.Nodup then
+    if wire.kept_head.Nodup then
+      let body ← wire.body.mapM (WireLiteral.decode bounds)
+      let keptHead ← wire.kept_head.mapM (WireLiteral.decode bounds)
+      let conclusion ← wire.conclusion.decode bounds
+      let expected : CheckerTerm.FCL :=
+        ⟨body, keptHead ++ (List.finRange wire.width).map fun index =>
+          .eq (.var (-1)) (.const (wire.first + index.val))⟩
+      if hequivalent : CheckerTerm.clEquivT conclusion expected then
+        return NominalBlock.mk wire.key key wire.first wire.width body
+          keptHead conclusion hequivalent
+      else throw "CB Nom emitted clause differs from its checked block conclusion"
+    else throw "CB Nom retained head contains a duplicate literal"
+  else throw "CB Nom conclusion body contains a duplicate literal"
 
 def blockIds (block : NominalBlock) : List Nat :=
   (List.range block.width).map (block.first + ·)
@@ -231,6 +253,15 @@ def nomConclusion {width : Nat} (body keptHead : List CheckerTerm.FLit)
     (fresh : Fin width → CheckerTerm.FTerm) : CheckerTerm.FCL :=
   ⟨body, keptHead ++ (List.finRange width).map fun index =>
     .eq (.var (-1)) (fresh index)⟩
+
+theorem NominalBlock.emitted_conclusion_sound {D : Type}
+    (block : NominalBlock) (model : CheckerTerm.TModel D)
+    (assignment : Int → D)
+    (hexpected : HoldsAt model assignment
+      (nomConclusion (width := block.width) block.body block.keptHead
+        fun index => .const (block.first + index.val))) :
+    HoldsAt model assignment block.conclusion := by
+  exact CheckerTerm.sat_of_clEquivT block.conclusion_equiv hexpected
 
 /-- Interpret one consecutive block of fresh individual constants while
 leaving concepts, roles, functions, and every other constant unchanged. -/
@@ -455,16 +486,26 @@ private def acceptedExample : WireNominalAllocation where
   allocated := 3
   truncated := false
   blocks :=
-    [{ key := exampleKey 0, first := 1, width := 2 },
-     { key := exampleKey 1, first := 3, width := 1 }]
+    [{ key := exampleKey 0, first := 1, width := 2, body := [], kept_head := [],
+       conclusion := { body := [], head :=
+         [.equality (.var (-1)) (.constant 1),
+          .equality (.var (-1)) (.constant 2)] } },
+     { key := exampleKey 1, first := 3, width := 1, body := [], kept_head := [],
+       conclusion := { body := [], head :=
+         [.equality (.var (-1)) (.constant 3)] } }]
 
 example : acceptedExample.check = .ok true := by native_decide
 
 private def overlappingExample : WireNominalAllocation :=
   { acceptedExample with
     blocks :=
-      [{ key := exampleKey 0, first := 1, width := 2 },
-       { key := exampleKey 1, first := 2, width := 1 }] }
+      [{ key := exampleKey 0, first := 1, width := 2, body := [], kept_head := [],
+         conclusion := { body := [], head :=
+           [.equality (.var (-1)) (.constant 1),
+            .equality (.var (-1)) (.constant 2)] } },
+       { key := exampleKey 1, first := 2, width := 1, body := [], kept_head := [],
+         conclusion := { body := [], head :=
+           [.equality (.var (-1)) (.constant 2)] } }] }
 
 private def rejected (result : Except String Bool) : Bool :=
   match result with
@@ -476,10 +517,26 @@ example : rejected overlappingExample.check = true := by native_decide
 private def replayedKeyExample : WireNominalAllocation :=
   { acceptedExample with
     blocks :=
-      [{ key := exampleKey 0, first := 1, width := 2 },
-       { key := exampleKey 0, first := 3, width := 1 }] }
+      [{ key := exampleKey 0, first := 1, width := 2, body := [], kept_head := [],
+         conclusion := { body := [], head :=
+           [.equality (.var (-1)) (.constant 1),
+            .equality (.var (-1)) (.constant 2)] } },
+       { key := exampleKey 0, first := 3, width := 1, body := [], kept_head := [],
+         conclusion := { body := [], head :=
+           [.equality (.var (-1)) (.constant 3)] } }] }
 
 example : rejected replayedKeyExample.check = true := by native_decide
+
+private def forgedConclusionExample : WireNominalAllocation :=
+  { acceptedExample with blocks :=
+    [{ key := exampleKey 0, first := 1, width := 2, body := [], kept_head := [],
+       conclusion := { body := [], head :=
+         [.equality (.var (-1)) (.constant 1)] } },
+     { key := exampleKey 1, first := 3, width := 1, body := [], kept_head := [],
+       conclusion := { body := [], head :=
+         [.equality (.var (-1)) (.constant 3)] } }] }
+
+example : rejected forgedConclusionExample.check = true := by native_decide
 
 private def truncatedExample : WireNominalAllocation :=
   { acceptedExample with truncated := true }
@@ -489,6 +546,7 @@ example : rejected truncatedExample.check = true := by native_decide
 #print axioms WireNominalAllocation.check_sound
 #print axioms WireNominalAllocation.check_family_sound
 #print axioms nomConclusion_sound
+#print axioms NominalBlock.emitted_conclusion_sound
 #print axioms extendNomBlock_fresh
 #print axioms valid_extendNomBlock_of_below
 #print axioms nomConclusion_exists_extension

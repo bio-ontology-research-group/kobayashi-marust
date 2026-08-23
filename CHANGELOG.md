@@ -13,7 +13,10 @@
   theorem proves these witnesses satisfy KM's exact residual head plus fresh
   equality disjunction. A constructive model-extension theorem interprets one
   consecutive block and proves every source clause below the block boundary
-  remains valid. Exact covering-premise decoding remains unfinished.
+  remains valid. Each block now carries its body, residual head, and emitted
+  clause; executable checking requires the exact complete equality disjunction
+  and rejects an omitted block member. Exact covering-premise decoding remains
+  unfinished.
 
 - Add an exact source-indexed Skolem encoding from normalized ALC clauses to
   the nested-term first-order clauses consumed by CB certificates.
