@@ -125,11 +125,12 @@
   The exact taxonomy matrix now inserts accepted `regularArbitraryChain`
   candidates after its bounded and blocked finite attempts. A dedicated Lean
   executable checks the generated wire directly; cross-language tests cover an
-  empty source, a genuine length-three role chain, global functionality, and a
-  forged target-role bound. Native production currently declines sources with
-  individuals and sources requiring more than one universal-marker cardinality
-  definition. Those two producer cases remain before the exact CB gate can be
-  called complete.
+  empty source, a genuine length-three role chain, one and two global
+  functionality axioms, and a forged target-role bound. A certification-only
+  exact definition multiset supports repeated universal markers without
+  changing the optimized reasoner's historical lookup. Native production
+  currently declines sources with individuals. Nominal-root production remains
+  before the exact CB gate can be called complete.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

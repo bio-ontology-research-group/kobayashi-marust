@@ -605,9 +605,9 @@ witness. The bounds-checked wire independently checks the production source at
 its original concept bound and the anchored cardinality certificate at the
 extended bound. Exact taxonomy cells can cite this evidence as
 `regularFreshCardinality`. Native generation uses the stronger combined
-`regularArbitraryChain` wire for individual-free sources with at most one
-universal-marker cardinality definition. Multiple such definitions and nominal
-root seeding remain open producer cases.
+`regularArbitraryChain` wire for individual-free sources. Its certification
+search retains repeated universal-marker definitions as an exact multiset;
+nominal root seeding remains the open producer case.
 
 `CBRoleChainBinaryDerivation` closes the semantic gap between arbitrary source
 chains and HT's binary regular role rules. A checked tree starts from renamed
@@ -622,10 +622,10 @@ anchored certificate before `regularArbitraryChain` can enter the exact matrix.
 This removes the binary-chain restriction from the certified regular evidence
 language. Rust now generates the enlarged target projection, derivation trees,
 and anchored payload automatically. A dedicated Lean checker accepts native
-empty, length-three-chain, and functionality examples and rejects a forged
-target signature. The current producer declines named individuals and repeated
-top-marker cardinality definitions; completing those cases is still required
-for the full CB capstone.
+empty, length-three-chain, single-functionality, and repeated-functionality
+examples and rejects a forged target signature. The current producer declines
+named individuals; completing nominal-root production is still required for
+the full CB capstone.
 
 ## Requirements for the complete CB layer
 

@@ -2614,9 +2614,6 @@ fn cb_regular_arbitrary_chain_countermodel(
             other => return Err(format!("unsupported certified source constructor {other}")),
         }
     }
-    if cardinality_defs.len() > 1 {
-        return Ok(None);
-    }
     for binary in &binary_chains {
         let value = |name: &str| -> Result<u32, String> {
             numeric(
@@ -2650,7 +2647,7 @@ fn cb_regular_arbitrary_chain_countermodel(
 
     let mut tableau = crate::tableau::hypertableau::Ht::new_certified(clauses);
     if !cardinality_defs.is_empty() {
-        tableau.set_card_defs_raw(&cardinality_defs);
+        tableau.set_certification_card_defs_raw(&cardinality_defs);
     }
     tableau.set_certificate_signature_floor(
         source.concept_count + 1,
@@ -3411,6 +3408,51 @@ mod cb_derivation_candidate_tests {
         assert!(
             check(&document),
             "Lean must accept the native functionality countermodel"
+        );
+
+        let multi_functional_binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 2,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [
+                {"functional": {"role": 0}},
+                {"functional": {"role": 1}}
+            ],
+            "role_chains": [],
+            "ontology": [
+                {
+                    "body": [role_literal(0, 0, -1), role_literal(0, 0, -2)],
+                    "head": [{"equality": {"left": term(-1), "right": term(-2)}}]
+                },
+                {
+                    "body": [role_literal(1, 0, -1), role_literal(1, 0, -2)],
+                    "head": [{"equality": {"left": term(-1), "right": term(-2)}}]
+                }
+            ]
+        });
+        let multi_source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": multi_functional_binding}}),
+        )
+        .unwrap();
+        let multi_countermodel =
+            cb_regular_arbitrary_chain_countermodel(&multi_source, 0, 1)
+                .expect("construct a repeated-definition countermodel")
+                .expect("two functional roles do not entail the concept query");
+        document = serde_json::json!({
+            "concept_count": multi_source.concept_count,
+            "role_count": multi_source.role_count,
+            "function_count": 0,
+            "individual_count": multi_source.individual_count,
+            "source": multi_source.source_ontology,
+            "sub": 0,
+            "sup": 1,
+            "countermodel": multi_countermodel,
+        });
+        assert!(
+            check(&document),
+            "Lean must accept repeated universal-marker definitions"
         );
         document["countermodel"]["target_role_count"] = serde_json::json!(0);
         assert!(

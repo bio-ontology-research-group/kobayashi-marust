@@ -4561,6 +4561,11 @@ pub struct Ht {
     /// `applyATMOSTRule` fire when a marker concept lands on a node, instead of
     /// KM's clausified `⋁ Eq` merge. Empty unless `card` is on.
     card_defs: HashMap<C, CardDef>,
+    /// Exact ordered definition multiset used only by certification adapters.
+    /// The optimized reasoner keeps its historical one-definition-per-marker
+    /// index; fresh-source projections may deliberately activate several
+    /// maximum definitions with the same universal marker.
+    cert_card_defs_override: Option<Vec<(C, CardDef)>>,
     /// Lower bounds on the serialized certificate signature.  They are inert
     /// for reasoning and let source-projection adapters retain declared but
     /// otherwise unused fresh names without injecting tautological clauses.
@@ -9895,18 +9900,33 @@ impl Ht {
         .map_err(|error| error.to_string())
     }
 
+    fn lean_cardinality_definitions(&self) -> Vec<(C, CardDef)> {
+        let mut definitions = self.cert_card_defs_override.clone().unwrap_or_else(|| {
+            self.card_defs
+                .iter()
+                .map(|(&marker, &definition)| (marker, definition))
+                .collect()
+        });
+        definitions.sort_unstable_by_key(|&(marker, definition)| {
+            (
+                marker,
+                definition.kind == CardKind::Max,
+                definition.n,
+                definition.role,
+                definition.filler.c,
+                definition.filler.neg,
+            )
+        });
+        definitions
+    }
+
     fn wrap_cardinality_lean_certificate(&self, payload: String) -> Result<String, String> {
         let certificate: serde_json::Value =
             serde_json::from_str(&payload).map_err(|error| error.to_string())?;
         if certificate["version"] != 2 {
             return Err("cardinality evidence requires an equality-state HT payload".to_string());
         }
-        let mut definitions: Vec<(C, CardDef)> = self
-            .card_defs
-            .iter()
-            .map(|(&marker, &definition)| (marker, definition))
-            .collect();
-        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions = self.lean_cardinality_definitions();
         let exact_maximums: Vec<usize> = definitions
             .iter()
             .enumerate()
@@ -12202,12 +12222,7 @@ impl Ht {
                     .collect()
             })
             .collect();
-        let mut definitions: Vec<(C, CardDef)> = self
-            .card_defs
-            .iter()
-            .map(|(&marker, &definition)| (marker, definition))
-            .collect();
-        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions = self.lean_cardinality_definitions();
         let exact_definitions = definitions
             .iter()
             .enumerate()
@@ -12976,12 +12991,7 @@ impl Ht {
                 }));
             }
         }
-        let mut definitions: Vec<(C, CardDef)> = self
-            .card_defs
-            .iter()
-            .map(|(&marker, &definition)| (marker, definition))
-            .collect();
-        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions = self.lean_cardinality_definitions();
         let definitions: Vec<_> = definitions
             .into_iter()
             .map(|(marker, definition)| {
@@ -15237,7 +15247,7 @@ impl Ht {
                 }
             }
         }
-        for (&marker, definition) in &self.card_defs {
+        for (marker, definition) in self.lean_cardinality_definitions() {
             concept_count = concept_count
                 .max(marker as usize + 1)
                 .max(definition.filler.c as usize + 1);
@@ -15421,12 +15431,7 @@ impl Ht {
             return Err("cardinality decision certificates require definitions".to_string());
         }
         let (variable_count, concept_count, role_count, ontology) = self.lean_decision_signature();
-        let mut definitions: Vec<(C, CardDef)> = self
-            .card_defs
-            .iter()
-            .map(|(&marker, &definition)| (marker, definition))
-            .collect();
-        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions = self.lean_cardinality_definitions();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
@@ -15600,12 +15605,7 @@ impl Ht {
         for &(_, literal) in &initial_labels {
             concept_count = concept_count.max(literal.c as usize + 1);
         }
-        let mut definitions: Vec<(C, CardDef)> = self
-            .card_defs
-            .iter()
-            .map(|(&marker, &definition)| (marker, definition))
-            .collect();
-        definitions.sort_unstable_by_key(|&(marker, _)| marker);
+        let definitions = self.lean_cardinality_definitions();
         let (mut node_budget, deepen) = self.lean_refutation_budget()?;
         let mut forbidden_folds = HashSet::new();
         let mut production_history = Vec::new();
@@ -17850,6 +17850,7 @@ impl Ht {
             },
             forall_idx,
             card_defs: HashMap::new(),
+            cert_card_defs_override: None,
             cert_concept_count_floor: 0,
             cert_role_count_floor: 0,
             cert_variable_count_floor: 0,
@@ -18102,6 +18103,7 @@ impl Ht {
         self.cert_number_roles
             .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
+        self.cert_card_defs_override = None;
         self.card = true;
     }
 
@@ -18196,6 +18198,39 @@ impl Ht {
             }
         }
         self.set_card_defs(map);
+    }
+
+    /// Install every source-projected definition, including repeated marker
+    /// concepts, for the total certification search. The optimized lookup keeps
+    /// one representative only because this method is never used by the fast
+    /// tableau verdict path.
+    pub(crate) fn set_certification_card_defs_raw(
+        &mut self,
+        defs: &[(C, bool, u32, R, C, bool)],
+    ) {
+        let exact: Vec<_> = defs
+            .iter()
+            .map(|&(marker, is_min, n, role, filler, _)| {
+                (
+                    marker,
+                    CardDef {
+                        kind: if is_min { CardKind::Min } else { CardKind::Max },
+                        n,
+                        role,
+                        filler: CLit {
+                            neg: false,
+                            c: filler,
+                        },
+                    },
+                )
+            })
+            .collect();
+        let mut indexed = HashMap::new();
+        for &(marker, definition) in &exact {
+            indexed.entry(marker).or_insert(definition);
+        }
+        self.set_card_defs(indexed);
+        self.cert_card_defs_override = Some(exact);
     }
 
     /// Preserve exact source-projection dimensions in generated certificates.
