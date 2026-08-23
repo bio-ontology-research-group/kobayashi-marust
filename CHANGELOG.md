@@ -70,6 +70,11 @@
   source and ABox into both global-consistency and complete-taxonomy evidence;
   acceptance proves both source-level contracts and never trusts fingerprints
   or independently supplied duplicate sources.
+- Normalize signed direct HT clauses into the same proper-term first-order
+  source used by ELC and CB. Lean proves clause, ontology, and taxonomy
+  equivalence: negative body concepts move to heads, negative head concepts
+  move to bodies, and existential atoms are explicitly excluded because their
+  separate Skolem-pair and bundle projections carry that obligation.
 
 ### Close the executable ELC certification boundary
 
