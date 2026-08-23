@@ -81,11 +81,13 @@ done
     cd "$engine_root"
     export CARGO_TARGET_DIR="$target_root"
     export KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER="$bin_root/cb-source-taxonomy-cert-check"
+    export KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER="$bin_root/cb-standalone-context-proof-check"
     export KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER="$bin_root/cb-regular-arbitrary-chain-countermodel-check"
 
     cargo test --test cb_live_state
     cargo test --lib certified_typed_source
     cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models
+    cargo test --lib pred_standalone_dag_passes_the_real_lean_checker
     cargo test --lib native_regular_countermodel_passes_the_exact_lean_wire_checker
 )
 

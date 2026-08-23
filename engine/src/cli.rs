@@ -1193,6 +1193,15 @@ fn cb_pred_event_evidence(
         "discarded": [],
         "sender_event": {"event_index": sender_event},
         "provider_events": provider_events,
+        "edge_label": cb_wire_term(*edge_label, live.comp_ind_bits),
+        "payload": cb_wire_clause(payload, live.comp_ind_bits),
+        "matched_predicates": matched_predicates
+            .iter()
+            .map(|predicate| cb_wire_literal(
+                &cb_live_pred_literal(predicate), live.comp_ind_bits)["predicate"]
+                ["predicate"]
+                .clone())
+            .collect::<Vec<_>>(),
     }))
 }
 
@@ -1326,6 +1335,15 @@ fn verify_cb_lean_publication(
     if source_exact_checker.is_some() && source_exact_candidate_path.is_none() {
         return Err("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE is required with \
             KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER"
+            .to_string());
+    }
+    let standalone_context_checker =
+        std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER");
+    let standalone_context_path =
+        std::env::var_os("KM_CB_STANDALONE_CONTEXT_PROOF_CANDIDATE");
+    if standalone_context_checker.is_some() && standalone_context_path.is_none() {
+        return Err("KM_CB_STANDALONE_CONTEXT_PROOF_CANDIDATE is required with \
+            KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER"
             .to_string());
     }
     let global_path = std::env::var_os("KM_CB_TYPED_SOURCE_CERT")
@@ -1482,6 +1500,26 @@ fn verify_cb_lean_publication(
         .flush()
         .map_err(|error| format!("cannot flush CB certificate bundle: {error}"))?;
 
+    if let Some(path) = standalone_context_path.as_ref() {
+        let events = cb_public_witness_events(&certificate)?;
+        let (document, _) = cb_standalone_context_proof_document(&certificate, &events)?;
+        let file = std::fs::File::create(path).map_err(|error| {
+            format!(
+                "cannot create standalone CB context proof {}: {error}",
+                std::path::Path::new(path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &document)
+            .map_err(|error| format!("cannot serialize standalone CB context proof: {error}"))?;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish standalone CB context proof: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush standalone CB context proof: {error}"))?;
+    }
+
     if let Some(candidate_path) = derivation_candidate_path {
         let file = std::fs::File::create(&candidate_path).map_err(|error| {
             format!(
@@ -1535,6 +1573,26 @@ fn verify_cb_lean_publication(
             })?;
         if !status.success() {
             return Err(format!("CB Lean checker rejected the bundle with {status}"));
+        }
+    }
+    if let Some(context_checker) = standalone_context_checker {
+        let path = standalone_context_path
+            .as_ref()
+            .ok_or_else(|| "standalone CB context checker has no candidate path".to_string())?;
+        let status = std::process::Command::new(&context_checker)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run standalone CB context checker {}: {error}",
+                    std::path::Path::new(&context_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "standalone CB context checker rejected the proof with {status}"
+            ));
         }
     }
     if let Some(exact_checker) = exact_checker {
@@ -3036,6 +3094,323 @@ fn cb_standalone_production_trace(
     Ok(output)
 }
 
+fn cb_wire_live_predicate_json(
+    value: &serde_json::Value,
+    bits: u32,
+) -> Result<serde_json::Value, String> {
+    let kind = value
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "CB live core predicate has no kind".to_string())?;
+    let iri = value
+        .get("iri")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "CB live core predicate has no IRI".to_string())?;
+    let first = value
+        .get("first")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|term| u32::try_from(term).ok())
+        .ok_or_else(|| "CB live core predicate has no first term".to_string())?;
+    match kind {
+        "concept" => Ok(serde_json::json!({"concept": {
+            "concept": iri,
+            "term": cb_wire_term(first, bits),
+        }})),
+        "role" => {
+            let second = value
+                .get("second")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|term| u32::try_from(term).ok())
+                .ok_or_else(|| "CB live role core predicate has no target".to_string())?;
+            Ok(serde_json::json!({"role": {
+                "role": iri,
+                "source": cb_wire_term(first, bits),
+                "target": cb_wire_term(second, bits),
+            }}))
+        }
+        other => Err(format!("unsupported CB live core predicate kind {other}")),
+    }
+}
+
+/// Translate the dependency closure of selected live insertion events to the
+/// compact chronological proof DAG checked by `CBStandaloneContextProofWire`.
+/// Each live event is emitted at most once, and every edge points to an earlier
+/// node. This is the native positive-evidence boundary for nested Pred chains.
+fn cb_standalone_context_proof_document(
+    live_publication: &serde_json::Value,
+    terminal_events: &[usize],
+) -> Result<(serde_json::Value, std::collections::HashMap<usize, usize>), String> {
+    let global = live_publication
+        .pointer("/derivation/production_bound/global_model")
+        .ok_or_else(|| "live CB publication has no typed source certificate".to_string())?;
+    let source = cb_regular_arbitrary_chain_source(global)?;
+    let live = live_publication
+        .pointer("/derivation/production_bound/live_state")
+        .ok_or_else(|| "live CB publication has no live state".to_string())?;
+    let history = live
+        .get("insertion_history")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB state has no insertion history".to_string())?;
+    let proofs = live_publication
+        .pointer("/derivation/insertion_evidence")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no insertion evidence".to_string())?;
+    let contexts = live
+        .get("contexts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB state has no contexts".to_string())?;
+    let bits = live
+        .get("comp_ind_bits")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| "live CB state has no packed-term width".to_string())?;
+    if history.len() != proofs.len() {
+        return Err("CB insertion history and evidence lengths differ".to_string());
+    }
+
+    fn reference_index(value: &serde_json::Value, name: &str) -> Result<usize, String> {
+        value
+            .get("event_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|index| usize::try_from(index).ok())
+            .ok_or_else(|| format!("CB {name} reference has no event index"))
+    }
+
+    struct Builder<'a> {
+        history: &'a [serde_json::Value],
+        proofs: &'a [serde_json::Value],
+        contexts: &'a [serde_json::Value],
+        live: &'a serde_json::Value,
+        bits: u32,
+        nodes: Vec<serde_json::Value>,
+        event_nodes: std::collections::HashMap<usize, usize>,
+        active: std::collections::BTreeSet<usize>,
+    }
+
+    impl Builder<'_> {
+        fn append(&mut self, event_index: usize) -> Result<usize, String> {
+            if let Some(&node) = self.event_nodes.get(&event_index) {
+                return Ok(node);
+            }
+            if !self.active.insert(event_index) {
+                return Err("CB standalone context proof contains a dependency cycle".to_string());
+            }
+            let event = self
+                .history
+                .get(event_index)
+                .ok_or_else(|| "CB standalone proof references a missing event".to_string())?;
+            let proof = self
+                .proofs
+                .get(event_index)
+                .ok_or_else(|| "CB standalone proof event has no evidence".to_string())?;
+            let context_index = event
+                .get("context_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|index| usize::try_from(index).ok())
+                .ok_or_else(|| "CB insertion event has no context index".to_string())?;
+            let context = self
+                .contexts
+                .get(context_index)
+                .ok_or_else(|| "CB insertion event references a missing context".to_string())?;
+            let root = event
+                .get("root")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or_else(|| "CB insertion event has no arena domain".to_string())?;
+            let clause_id = event
+                .get("clause_id")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|id| usize::try_from(id).ok())
+                .ok_or_else(|| "CB insertion event has no clause id".to_string())?;
+            let raw_clause = self
+                .live
+                .get(if root { "root_clause_arena" } else { "ordinary_clause_arena" })
+                .and_then(serde_json::Value::as_array)
+                .and_then(|arena| arena.get(clause_id))
+                .ok_or_else(|| "CB insertion event references a missing arena clause".to_string())?;
+            let clause = cb_wire_clause(&cb_decode_live_clause_json(raw_clause)?, self.bits);
+            let core = context
+                .get("core")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB insertion context has no core".to_string())?
+                .iter()
+                .map(|predicate| cb_wire_live_predicate_json(predicate, self.bits))
+                .collect::<Result<Vec<_>, _>>()?;
+            let kind = proof
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "CB insertion evidence has no kind".to_string())?;
+            let evidence = match kind {
+                "seed" => {
+                    let origin = event
+                        .get("origin_hint")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| "CB seed event has no origin".to_string())?;
+                    let origin_index = event
+                        .get("origin_index")
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| "CB seed event has no origin index".to_string())?;
+                    let justification = match origin {
+                        "core" => serde_json::json!({"assumption": {"index": origin_index}}),
+                        "ontology_fact" => serde_json::json!({"premise": {
+                            "index": origin_index, "substitution": []
+                        }}),
+                        other => return Err(format!("unsupported CB seed origin {other}")),
+                    };
+                    serde_json::json!({"local": {
+                        "prior_nodes": [],
+                        "trace": [{"clause": clause.clone(), "justification": justification}],
+                    }})
+                }
+                "local" => {
+                    let references = proof
+                        .get("prior_events")
+                        .and_then(serde_json::Value::as_array)
+                        .ok_or_else(|| "local CB evidence has no prior events".to_string())?;
+                    let mut prior_nodes = Vec::with_capacity(references.len());
+                    for reference in references {
+                        let dependency = reference_index(reference, "local premise")?;
+                        if dependency >= event_index {
+                            return Err("local CB evidence references a non-earlier event".to_string());
+                        }
+                        prior_nodes.push(self.append(dependency)?);
+                    }
+                    let trace = proof
+                        .get("trace")
+                        .and_then(serde_json::Value::as_array)
+                        .cloned()
+                        .ok_or_else(|| "local CB evidence has no trace".to_string())?;
+                    serde_json::json!({"local": {
+                        "prior_nodes": prior_nodes,
+                        "trace": trace,
+                    }})
+                }
+                "pred" => {
+                    let sender = reference_index(
+                        proof.get("sender_event").ok_or_else(||
+                            "CB Pred evidence has no sender".to_string())?,
+                        "Pred sender",
+                    )?;
+                    if sender >= event_index {
+                        return Err("CB Pred sender is not earlier".to_string());
+                    }
+                    let sender_node = self.append(sender)?;
+                    let mut provider_nodes = Vec::new();
+                    for provider in proof
+                        .get("provider_events")
+                        .and_then(serde_json::Value::as_array)
+                        .ok_or_else(|| "CB Pred evidence has no providers".to_string())?
+                    {
+                        let dependency = reference_index(provider, "Pred provider")?;
+                        if dependency >= event_index {
+                            return Err("CB Pred provider is not earlier".to_string());
+                        }
+                        provider_nodes.push(self.append(dependency)?);
+                    }
+                    serde_json::json!({"pred": {
+                        "sender_node": sender_node,
+                        "provider_nodes": provider_nodes,
+                        "edge_label": proof.get("edge_label").cloned().ok_or_else(||
+                            "CB Pred evidence has no edge label".to_string())?,
+                        "payload": proof.get("payload").cloned().ok_or_else(||
+                            "CB Pred evidence has no payload".to_string())?,
+                        "matched": proof.get("matched_predicates").cloned().ok_or_else(||
+                            "CB Pred evidence has no matched predicates".to_string())?,
+                    }})
+                }
+                other => return Err(format!(
+                    "CB event {event_index} has no chronological proof ({other})"
+                )),
+            };
+            let node_index = self.nodes.len();
+            self.nodes.push(serde_json::json!({
+                "core": core,
+                "clause": clause,
+                "evidence": evidence,
+            }));
+            self.event_nodes.insert(event_index, node_index);
+            self.active.remove(&event_index);
+            Ok(node_index)
+        }
+    }
+
+    let mut builder = Builder {
+        history,
+        proofs,
+        contexts,
+        live,
+        bits,
+        nodes: Vec::new(),
+        event_nodes: std::collections::HashMap::new(),
+        active: std::collections::BTreeSet::new(),
+    };
+    for &event in terminal_events {
+        builder.append(event)?;
+    }
+    let document = serde_json::json!({
+        "version": 1,
+        "concept_count": source.concept_count,
+        "role_count": source.role_count,
+        "function_count": source.function_count,
+        "individual_count": source.individual_count,
+        "ontology": source.source_ontology,
+        "proof": {"version": 1, "nodes": builder.nodes},
+    });
+    Ok((document, builder.event_nodes))
+}
+
+fn cb_public_witness_events(
+    live_publication: &serde_json::Value,
+) -> Result<Vec<usize>, String> {
+    let live_unit_clause = |concept: usize| {
+        serde_json::json!({"body": [], "head": [{
+            "kind": "concept", "iri": concept,
+            "first": crate::calc::X, "second": null
+        }]})
+    };
+    let mut events = Vec::new();
+    for positive in live_publication
+        .get("public_subsumptions")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no public subsumptions".to_string())?
+    {
+        let context = positive
+            .get("context_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "positive CB witness has no context index".to_string())?;
+        let sup = positive
+            .get("sup")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "positive CB witness has no superclass".to_string())?;
+        events.push(cb_live_terminal_event_for_clause(
+            live_publication,
+            context,
+            &live_unit_clause(sup),
+        )?);
+    }
+    let empty = serde_json::json!({"body": [], "head": []});
+    for unsatisfiable in live_publication
+        .get("unsatisfiable")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no unsatisfiable rows".to_string())?
+    {
+        let context = unsatisfiable
+            .get("context_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "unsatisfiable CB witness has no context index".to_string())?;
+        events.push(cb_live_terminal_event_for_clause(
+            live_publication,
+            context,
+            &empty,
+        )?);
+    }
+    events.sort_unstable();
+    events.dedup();
+    Ok(events)
+}
+
 /// Build the exact row-major matrix around an already checked live publication.
 /// Positive, reflexive, and bottom-implied cells are complete immediately.
 /// Omitted cells remain explicit `unresolved` evidence and are rejected by the
@@ -3855,6 +4230,9 @@ mod cb_derivation_candidate_tests {
     fn source_exact_taxonomy_uses_real_production_traces_and_models() {
         let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
             .expect("the source-exact taxonomy test requires the real Lean checker");
+        let context_checker =
+            std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
+                .expect("the standalone context test requires the real Lean checker");
         let term = |variable: i64| serde_json::json!({"var": {"index": variable}});
         let concept = |id: usize| serde_json::json!({"predicate": {"predicate": {
             "concept": {"concept": id, "term": term(0)}
@@ -3892,8 +4270,10 @@ mod cb_derivation_candidate_tests {
             "ordinary_clause_arena": [],
             "root_clause_arena": [live_unit(0), live_unit(1)],
             "contexts": [
-                {"root": true, "query_concept": 0, "retained_clause_ids": [0, 1]},
-                {"root": true, "query_concept": 1, "retained_clause_ids": [1]}
+                {"root": true, "query_concept": 0, "core": [live_concept(0)],
+                 "retained_clause_ids": [0, 1]},
+                {"root": true, "query_concept": 1, "core": [live_concept(1)],
+                 "retained_clause_ids": [1]}
             ],
             "insertion_history": [
                 {"sequence": 0, "context_index": 0, "root": true,
@@ -3944,6 +4324,20 @@ mod cb_derivation_candidate_tests {
             .join(".work/artifacts")
             .join(format!("cb-source-exact-test-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let proof_path = path.with_extension("context.json");
+        let witness_events = cb_public_witness_events(&publication).unwrap();
+        let (context_document, event_nodes) =
+            cb_standalone_context_proof_document(&publication, &witness_events).unwrap();
+        assert_eq!(event_nodes.len(), 3, "the shared DAG must deduplicate witnesses");
+        std::fs::write(&proof_path, serde_json::to_vec(&context_document).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new(&context_checker)
+                .arg(&proof_path)
+                .status()
+                .unwrap()
+                .success(),
+            "Lean must accept the native chronological context proof"
+        );
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         let accepted = std::process::Command::new(&checker)
             .arg(&path)
@@ -3979,6 +4373,7 @@ mod cb_derivation_candidate_tests {
             .success();
         assert!(rejected, "Lean must reject a forged source-exact publication bit");
         let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(proof_path);
     }
 
     #[test]
@@ -4738,6 +5133,132 @@ mod cb_derivation_candidate_tests {
         assert_eq!(evidence["kind"], "pred");
         assert_eq!(evidence["sender_event"]["event_index"], 0);
         assert_eq!(evidence["provider_events"][0]["event_index"], 1);
+        assert_eq!(evidence["edge_label"], cb_wire_term(crate::calc::X, 17));
+        assert_eq!(evidence["payload"]["body"].as_array().unwrap().len(), 1);
+        assert_eq!(evidence["matched_predicates"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn pred_standalone_dag_passes_the_real_lean_checker() {
+        let Some(checker) =
+            std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
+        else {
+            return;
+        };
+        let predicate = |iri| crate::engine::CbLivePred {
+            kind: "concept",
+            iri,
+            first: crate::calc::X,
+            second: None,
+        };
+        let premise = predicate(0);
+        let conclusion = predicate(1);
+        let payload = crate::engine::CbLiveClause {
+            body: vec![cb_live_pred_literal(&premise)],
+            head: vec![cb_live_pred_literal(&conclusion)],
+        };
+        let provider = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&premise)],
+        };
+        let result = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&conclusion)],
+        };
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.concept_names = vec!["A".to_string(), "B".to_string()];
+        live.root_clause_arena = vec![payload.clone(), provider.clone(), result];
+        live.contexts[0].root = true;
+        live.contexts[1].root = true;
+        live.insertion_history = vec![
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 0,
+                context_index: 0,
+                root: true,
+                clause_id: 0,
+                origin_hint: "ontology_fact",
+                origin_index: Some(0),
+                rule_hint: None,
+                rule_evidence: None,
+            },
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 1,
+                context_index: 1,
+                root: true,
+                clause_id: 1,
+                origin_hint: "ontology_fact",
+                origin_index: Some(1),
+                rule_hint: None,
+                rule_evidence: None,
+            },
+            crate::engine::CbLiveInsertionEvent {
+                sequence: 2,
+                context_index: 1,
+                root: true,
+                clause_id: 2,
+                origin_hint: "derived",
+                origin_index: None,
+                rule_hint: Some("pred-arrival"),
+                rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Pred {
+                    sender_context_index: 0,
+                    sender_clause_id: 0,
+                    edge_label: crate::calc::X,
+                    payload: payload.clone(),
+                    provider_clause_ids: vec![1],
+                    matched_predicates: vec![premise],
+                }),
+            },
+        ];
+        let prior = std::collections::HashMap::from([((0, true, 0), 0), ((1, true, 1), 1)]);
+        let pred_evidence = cb_pred_event_evidence(&live, &live.insertion_history[2], &prior)
+            .expect("exact Pred evidence");
+        let wire_ontology = vec![
+            cb_wire_clause(&payload, live.comp_ind_bits),
+            cb_wire_clause(&provider, live.comp_ind_bits),
+        ];
+        let source = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [],
+            "role_chains": [],
+            "ontology": wire_ontology,
+        });
+        let publication = serde_json::json!({
+            "derivation": {
+                "production_bound": {
+                    "global_model": {"source": source},
+                    "live_state": live,
+                },
+                "insertion_evidence": [
+                    {"kind": "seed", "prior_events": [], "trace": [], "discarded": []},
+                    {"kind": "seed", "prior_events": [], "trace": [], "discarded": []},
+                    pred_evidence,
+                ],
+            }
+        });
+        let (document, event_nodes) =
+            cb_standalone_context_proof_document(&publication, &[2]).unwrap();
+        assert_eq!(event_nodes.len(), 3);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".work/artifacts")
+            .join(format!("cb-standalone-pred-{}.json", std::process::id()));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new(checker)
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success(),
+            "Lean must accept the native nested Pred DAG"
+        );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
