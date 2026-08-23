@@ -2,6 +2,25 @@
 
 ## [unreleased]
 
+### Complete the local hypertableau certification gate
+
+- Audit the executable HT publication boundary across ordinary, cardinality,
+  native-ABox, and native-ABox-cardinality global and taxonomy routes. Each
+  accepted branch reruns its source normalization, complete production-run or
+  run-matrix check, and exact payload binding. The public Lean surface exposes
+  13 capstones and its kernel axiom report contains no `sorryAx`.
+- Pass the exhaustive local HT gate: every checker declared in the Lake
+  manifest builds, all public capstones pass the axiom audit, and the complete
+  Rust-to-Lean suite passes, including 16 publication-boundary tests covering
+  route dispatch, source projection, frontier histories, checker rejection,
+  bridge bypass attempts, complete taxonomy payloads, role chains, native
+  ABoxes, and cardinality.
+- Reclaim statically linked native checker executables automatically when the
+  CB, HT, or ELC gate exits. They are reproducible gate products and had grown
+  the shared Lean cache by about 12 GiB during the HT audit. Set
+  `KM_CERT_KEEP_NATIVE_CHECKERS=1` only when retaining binaries for a focused
+  investigation.
+
 ### Advance the CB semantic refinement
 
 - Add a compact joint production boundary for the typed CB source. Lean checks

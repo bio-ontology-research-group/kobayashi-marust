@@ -17,6 +17,13 @@ else
     /home/leechuck/Public/software/kobayashi-marust/tools/workspace-preflight.sh
 fi
 
+checker="$bin_root/elc-cert-check"
+cleanup_native_checker() {
+    [[ "${KM_CERT_KEEP_NATIVE_CHECKERS:-0}" == "1" ]] && return
+    [[ ! -e "$checker" ]] || unlink "$checker"
+}
+trap cleanup_native_checker EXIT
+
 (
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
@@ -36,7 +43,6 @@ grep -q "ELCompletionPublication.*checkV5_publication_semantics\|'ContextCalculu
     exit 1
 }
 
-checker="$bin_root/elc-cert-check"
 [[ -x "$checker" ]] || {
     echo "missing Lean checker: $checker" >&2
     exit 1

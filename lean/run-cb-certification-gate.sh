@@ -36,6 +36,18 @@ mapfile -t checkers < <(
     exit 1
 }
 
+# These statically linked executables are disposable gate products and can
+# collectively occupy many gigabytes. Preserve the proof-library cache, but
+# reclaim the checker binaries on exit unless explicitly retained for audit.
+cleanup_native_checkers() {
+    [[ "${KM_CERT_KEEP_NATIVE_CHECKERS:-0}" == "1" ]] && return
+    local checker
+    for checker in "${checkers[@]}"; do
+        [[ ! -e "$bin_root/$checker" ]] || unlink "$bin_root/$checker"
+    done
+}
+trap cleanup_native_checkers EXIT
+
 (
     cd "$lean_root"
     LEAN_NUM_THREADS="$lean_threads" lake build
