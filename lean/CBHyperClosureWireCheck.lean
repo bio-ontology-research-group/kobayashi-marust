@@ -1,0 +1,6 @@
+import ContextCalculus.CBHyperClosureWire
+
+open ContextCalculus.CBHyperClosureWire
+
+#print axioms DecodedContextHyperClosure.complete_coverage
+#print axioms WireHyperClosureDocument.check_sound

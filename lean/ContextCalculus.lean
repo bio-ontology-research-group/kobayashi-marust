@@ -53,6 +53,7 @@ import ContextCalculus.CBBlockedCarrierWire
 import ContextCalculus.CBFiniteAtomEncoding
 import ContextCalculus.CBBlockedGroundSaturationWire
 import ContextCalculus.CBHyperClosure
+import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker
