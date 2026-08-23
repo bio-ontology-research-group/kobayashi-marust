@@ -36,6 +36,7 @@ import ContextCalculus.CBProductionTraceWire
 import ContextCalculus.CBInterContext
 import ContextCalculus.CBInterContextWire
 import ContextCalculus.CBPredEnumeration
+import ContextCalculus.CBPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO

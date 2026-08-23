@@ -100,6 +100,12 @@
   record for every accepted transfer, preventing whole-transfer omission or
   duplication. Test omitted selections, provider forgery, invalid strengthening
   indexes, and duplicated transfer coverage.
+- Add an independent ordinary-Pred send enumerator over typed terminal
+  snapshots. It checks the production-compatible head fragment and complete
+  edge-body coverage for every retained-clause/edge pair. Prove membership is
+  equivalent to bounded indexes plus production eligibility, so the finite
+  enumeration omits and invents no eligible pair. Binding the snapshot and
+  emitted transfer list to final Rust state remains unreleased work.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

@@ -154,6 +154,14 @@ claim that the layer is already complete.
   provider, an out-of-range strengthening arrival, and duplicated transfer
   coverage. Edge eligibility, exact enumeration of all production transfers,
   and complete queue delivery remain open.
+- `CBPredSendEnumeration` independently specifies the finite ordinary-Pred
+  sender scan over a typed terminal context snapshot. It recomputes
+  function-free Pred-compatible head eligibility and complete edge-body
+  coverage for every retained-clause/edge pair. `mem_enumerate_iff` proves that
+  its clause-major, edge-minor output contains exactly the eligible pairs. The
+  next wire layer must bind the snapshot to KM's final retained clauses and
+  predecessor edges, require the transfer list to equal this enumeration, and
+  add the separate nominal r-Pred eligibility cases.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge
