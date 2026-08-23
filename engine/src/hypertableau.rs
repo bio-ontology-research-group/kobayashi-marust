@@ -15611,7 +15611,7 @@ impl Ht {
         let mut production_history = Vec::new();
         let mut frontier_history = Vec::new();
         loop {
-            let mut state = LeanHtRefutationState::root(&initial_labels);
+            let (mut state, _) = self.lean_initial_refutation_state(&initial_labels)?;
             match self.lean_distinct_cardinality_refutation_avoiding_folds(
                 &mut state,
                 &definitions,
@@ -16085,12 +16085,6 @@ impl Ht {
         sub: C,
         sup: C,
     ) -> Result<Option<serde_json::Value>, String> {
-        if !self.native_abox.individuals.is_empty() {
-            return Err(
-                "CB anchored-cardinality countermodels require the source-projected nominal encoding"
-                    .to_string(),
-            );
-        }
         let (open, terminal, _) = self.lean_cardinality_taxonomy_query_decision(
             LeanHtTaxonomyQuery::Subsumption(sub, sup),
             false,

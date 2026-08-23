@@ -2335,7 +2335,8 @@ fn cb_regular_arbitrary_chain_source(
         let base = |kind: &str, payload: &serde_json::Value| {
             let mut constructor = serde_json::Map::new();
             constructor.insert(kind.to_string(), payload.clone());
-            serde_json::json!({"core": {"base": serde_json::Value::Object(constructor)}})
+            serde_json::json!({"core": {"clause": {"base": {"clause":
+                serde_json::Value::Object(constructor)}}}})
         };
         match kind.as_str() {
             "gci" | "exR" | "allR" | "exL" => Ok(base(kind, payload)),
@@ -2349,7 +2350,9 @@ fn cb_regular_arbitrary_chain_source(
                 }),
             )),
             "inverse" => Ok(base("inv", payload)),
-            "nominal" => Ok(serde_json::json!({"core": {"nominal": payload}})),
+            "nominal" => Ok(serde_json::json!({"core": {"clause": {"nominal": {
+                "clause": payload
+            }}}})),
             "functional" => {
                 let role = payload
                     .get("role")
@@ -2448,10 +2451,6 @@ fn cb_regular_arbitrary_chain_countermodel(
     if sub >= source.concept_count || sup >= source.concept_count {
         return Err("CB regular query exceeds the certified source signature".to_string());
     }
-    if source.individual_count != 0 {
-        return Ok(None);
-    }
-
     let chain_pairs = source
         .chains
         .iter()
@@ -2481,6 +2480,7 @@ fn cb_regular_arbitrary_chain_countermodel(
 
     let mut clauses = Vec::new();
     let mut cardinality_defs = Vec::new();
+    let mut nominal_proxies: Vec<Vec<u32>> = vec![Vec::new(); source.individual_count];
     for clause in &source.source_clauses {
         let object = clause
             .as_object()
@@ -2609,7 +2609,13 @@ fn cb_regular_arbitrary_chain_countermodel(
                 clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
             }
             "nominal" => {
-                return Ok(None);
+                let individual: usize = field(payload, "individual")?
+                    .try_into()
+                    .map_err(|_| "nominal individual exceeds usize".to_string())?;
+                let proxies = nominal_proxies
+                    .get_mut(individual)
+                    .ok_or_else(|| "nominal individual exceeds the source bound".to_string())?;
+                proxies.push(concept(payload, "concept")?);
             }
             other => return Err(format!("unsupported certified source constructor {other}")),
         }
@@ -2649,6 +2655,19 @@ fn cb_regular_arbitrary_chain_countermodel(
     if !cardinality_defs.is_empty() {
         tableau.set_certification_card_defs_raw(&cardinality_defs);
     }
+    if source.individual_count != 0 {
+        let nominals = nominal_proxies.iter().flatten().copied().collect();
+        tableau.set_nominals(nominals);
+        tableau.set_native_abox(
+            nominal_proxies
+                .iter()
+                .cloned()
+                .map(|proxies| (proxies, Vec::new()))
+                .collect(),
+            Vec::new(),
+            Vec::new(),
+        );
+    }
     tableau.set_certificate_signature_floor(
         source.concept_count + 1,
         target_role_count,
@@ -2658,18 +2677,30 @@ fn cb_regular_arbitrary_chain_countermodel(
         u32::try_from(sub + 1).map_err(|_| "subclass id exceeds u32".to_string())?,
         u32::try_from(sup + 1).map_err(|_| "superclass id exceeds u32".to_string())?,
     )?;
-    Ok(anchored.map(|anchored| {
-        serde_json::json!({
-            "version": 1,
-            "clauses": source.clauses,
-            "chains": source.chains,
-            "target_role_count": target_role_count,
-            "binary_chains": binary_chains,
-            "chain_derivations": chain_derivations,
-            "individual_roots": [],
-            "anchored": anchored,
+    anchored
+        .map(|anchored| {
+            let individual_roots = (0..source.individual_count)
+                .map(|individual| {
+                    anchored
+                        .pointer(&format!("/anchored/class_map/{}", individual + 1))
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| {
+                            "anchored countermodel omits an individual root class".to_string()
+                        })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(serde_json::json!({
+                "version": 1,
+                "clauses": source.clauses,
+                "chains": source.chains,
+                "target_role_count": target_role_count,
+                "binary_chains": binary_chains,
+                "chain_derivations": chain_derivations,
+                "individual_roots": individual_roots,
+                "anchored": anchored,
+            }))
         })
-    }))
+        .transpose()
 }
 
 /// Build the exact row-major matrix around an already checked live publication.
@@ -3234,14 +3265,20 @@ mod cb_derivation_candidate_tests {
             "body": [0, 1, 2], "sup": 2
         })]);
         assert_eq!(safe.clauses[0], serde_json::json!({
-            "core": {"base": {"gci": {"body": [0], "head": [1, 2]}}}
+            "core": {"clause": {"base": {"clause": {
+                "gci": {"body": [0], "head": [1, 2]}
+            }}}}
         }));
         assert_eq!(safe.clauses[5], serde_json::json!({
-            "core": {"base": {"inv": {"role": 1, "inverse": 2}}}
+            "core": {"clause": {"base": {"clause": {
+                "inv": {"role": 1, "inverse": 2}
+            }}}}
         }));
         assert_eq!(safe.clauses[6], serde_json::json!({"func": {"role": 2}}));
         assert_eq!(safe.clauses[7], serde_json::json!({
-            "core": {"nominal": {"concept": 3, "individual": 0}}
+            "core": {"clause": {"nominal": {"clause": {
+                "concept": 3, "individual": 0
+            }}}}
         }));
         assert_eq!(safe.clauses[8], serde_json::json!({
             "atMost": {"bound": 2, "role": 0, "filler": 1}
@@ -3454,10 +3491,95 @@ mod cb_derivation_candidate_tests {
             check(&document),
             "Lean must accept repeated universal-marker definitions"
         );
-        document["countermodel"]["target_role_count"] = serde_json::json!(0);
+
+        let concept_literal = |concept, value| serde_json::json!({
+            "predicate": {"predicate": {"concept": {
+                "concept": concept, "term": value
+            }}}
+        });
+        let gci_binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 3,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
+            "role_chains": [],
+            "ontology": [{
+                "body": [concept_literal(0, term(0))],
+                "head": [concept_literal(1, term(0))]
+            }]
+        });
+        let gci_source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": gci_binding}}),
+        )
+        .unwrap();
+        let gci_countermodel = cb_regular_arbitrary_chain_countermodel(&gci_source, 0, 2)
+            .expect("construct a GCI countermodel")
+            .expect("the GCI does not entail the unrelated concept query");
+        document = serde_json::json!({
+            "concept_count": gci_source.concept_count,
+            "role_count": gci_source.role_count,
+            "function_count": 0,
+            "individual_count": gci_source.individual_count,
+            "source": gci_source.source_ontology,
+            "sub": 0,
+            "sup": 2,
+            "countermodel": gci_countermodel,
+        });
+        assert!(
+            check(&document),
+            "Lean must accept the native core-GCI countermodel"
+        );
+
+        let individual_zero = serde_json::json!({"constant": {"individual": 0}});
+        let nominal_binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 3,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 1,
+            "source_clauses": [{"nominal": {"concept": 0, "individual": 0}}],
+            "role_chains": [],
+            "ontology": [
+                {
+                    "body": [concept_literal(0, term(0))],
+                    "head": [{"equality": {
+                        "left": term(0),
+                        "right": {"constant": {"individual": 0}}
+                    }}]
+                },
+                {
+                    "body": [],
+                    "head": [concept_literal(0, individual_zero)]
+                }
+            ]
+        });
+        let nominal_source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": nominal_binding}}),
+        )
+        .unwrap();
+        let nominal_countermodel = cb_regular_arbitrary_chain_countermodel(&nominal_source, 1, 2)
+            .expect("construct a nominal countermodel")
+            .expect("the nominal source does not entail the unrelated concept query");
+        document = serde_json::json!({
+            "concept_count": nominal_source.concept_count,
+            "role_count": nominal_source.role_count,
+            "function_count": 0,
+            "individual_count": nominal_source.individual_count,
+            "source": nominal_source.source_ontology,
+            "sub": 1,
+            "sup": 2,
+            "countermodel": nominal_countermodel,
+        });
+        assert!(
+            check(&document),
+            "Lean must accept the native nominal-root countermodel"
+        );
+        document["countermodel"]["individual_roots"] = serde_json::json!([]);
         assert!(
             !check(&document),
-            "Lean must reject a countermodel with a forged target signature"
+            "Lean must reject a countermodel with a forged nominal-root assignment"
         );
         let _ = std::fs::remove_file(path);
     }
