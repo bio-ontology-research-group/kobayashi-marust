@@ -16,10 +16,11 @@ constructor and are deliberately not admitted as local derivations here.
 
 namespace ContextCalculus.CBLiveInsertionDerivation
 
-open ContextCalculus ContextCalculus.CheckerTerm
+open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBProductionTrace
 open ContextCalculus.CBProductionTraceWire
 open ContextCalculus.CBLiveStateWire
+open ContextCalculus.CBGlobalClosureWire
 
 abbrev LiveEvent (production : DecodedProductionRun)
     (ordinary root : List FCL) :=
@@ -122,7 +123,161 @@ theorem CertifiedHistory.sound
       · exact ih candidate hprior
       · exact evidence.sound ih
 
+structure WirePriorLocalRef where
+  event_index : Nat
+deriving FromJson, ToJson
+
+structure WireEventEvidence where
+  kind : String
+  prior_events : List WirePriorLocalRef
+  trace : List WireProductionEntry
+deriving FromJson, ToJson
+
+def WirePriorLocalRef.decode
+    (done : List (LiveEvent production ordinary root))
+    (event : LiveEvent production ordinary root)
+    (wire : WirePriorLocalRef) : Except String (PriorLocalRef done event) := do
+  if hindex : wire.event_index < done.length then
+    let index : Fin done.length := ⟨wire.event_index, hindex⟩
+    if hcontext : (done.get index).contextIndex = event.contextIndex then
+      return { index, context_eq := hcontext }
+    else throw "CB local insertion derivation cites another context"
+  else throw "CB local insertion derivation cites a non-earlier event"
+
+def WireEventEvidence.decode
+    (production : DecodedProductionRun)
+    (done : List (LiveEvent production ordinary root))
+    (event : LiveEvent production ordinary root)
+    (wire : WireEventEvidence) : Except String (EventEvidence done event) := do
+  match wire.kind with
+  | "seed" =>
+      if wire.prior_events.isEmpty ∧ wire.trace.isEmpty then
+        if hseed : event.origin ≠ .derived then
+          return .seed event hseed
+        else throw "CB derived insertion is labelled as a seed"
+      else throw "CB insertion seed unexpectedly carries derivation data"
+  | "local" =>
+      if _horigin : event.origin = .derived then
+        let references ← wire.prior_events.mapM
+          (WirePriorLocalRef.decode done event)
+        let trace ← wire.trace.mapM
+          (WireProductionEntry.decode production.bounds)
+        match hchecked : checkFold production.source.ontology
+            (production.contexts.get event.contextIndex).assumptions
+            (priorClauses references) trace with
+        | none => throw "CB local insertion trace was rejected"
+        | some final =>
+            if hconclusion : event.clause ∈ final then
+              return .localTrace event references trace final hchecked hconclusion
+            else throw "CB local insertion trace does not derive its event clause"
+      else throw "CB insertion seed is labelled as a local derivation"
+  | kind => throw s!"unsupported CB insertion evidence kind {kind}"
+
+structure DecodedHistoryPrefix
+    (production : DecodedProductionRun) (ordinary root : List FCL) where
+  history : List (LiveEvent production ordinary root)
+  certificate : CertifiedHistory history
+
+structure DecodedHistoryResult
+    (production : DecodedProductionRun) (ordinary root : List FCL)
+    (initial remaining : List (LiveEvent production ordinary root)) where
+  history : List (LiveEvent production ordinary root)
+  history_eq : history = initial ++ remaining
+  certificate : CertifiedHistory history
+
+def decodeHistoryLoop (production : DecodedProductionRun) :
+    (ordinary root : List FCL) →
+    (accumulated : DecodedHistoryPrefix production ordinary root) →
+    (remaining : List (LiveEvent production ordinary root)) →
+    List WireEventEvidence →
+    Except String (DecodedHistoryResult production ordinary root
+      accumulated.history remaining)
+  | ordinary, root, accumulated, [], [] =>
+      pure {
+        history := accumulated.history
+        history_eq := by simp
+        certificate := accumulated.certificate
+      }
+  | ordinary, root, accumulated, event :: remaining, wire :: wires => do
+      let evidence ← wire.decode production accumulated.history event
+      let next : DecodedHistoryPrefix production ordinary root := {
+        history := accumulated.history ++ [event]
+        certificate := accumulated.certificate.snoc evidence
+      }
+      let decoded ← decodeHistoryLoop production ordinary root next remaining wires
+      return {
+        history := decoded.history
+        history_eq := by
+          simpa [next, List.append_assoc] using decoded.history_eq
+        certificate := decoded.certificate
+      }
+  | _, _, _, _, _ => throw "CB insertion evidence does not match history length"
+termination_by _ _ _ remaining _ => remaining.length
+
+structure DecodedCertifiedHistory
+    (production : DecodedProductionRun) (ordinary root : List FCL)
+    (history : List (LiveEvent production ordinary root)) where
+  certificate : CertifiedHistory history
+
+def decodeHistoryEvidence (production : DecodedProductionRun)
+    (ordinary root : List FCL)
+    (history : List (LiveEvent production ordinary root))
+    (wire : List WireEventEvidence) :
+    Except String (DecodedCertifiedHistory production ordinary root history) := do
+  let decoded ← decodeHistoryLoop production ordinary root
+    { history := [], certificate := .nil } history wire
+  have hexact : decoded.history = history := by
+    simpa using decoded.history_eq
+  return { certificate := hexact ▸ decoded.certificate }
+
+theorem DecodedCertifiedHistory.sound
+    (decoded : DecodedCertifiedHistory production ordinary root history) :
+    ∀ event ∈ history, EventSound event :=
+  decoded.certificate.sound
+
+structure WireLiveInsertionDerivationDocument where
+  version : Nat
+  production_bound : WireProductionBoundGlobalModelDocument
+  insertion_evidence : List WireEventEvidence
+deriving FromJson, ToJson
+
+structure DecodedLiveInsertionDerivationDocument where
+  live : DecodedLiveStateDocument
+  history : DecodedCertifiedHistory
+    (rProduction live.global.global.rsucc)
+    live.ordinaryArena live.rootArena live.insertionHistory
+
+def WireLiveInsertionDerivationDocument.decode
+    (wire : WireLiveInsertionDerivationDocument) :
+    Except String DecodedLiveInsertionDerivationDocument := do
+  if wire.version != 1 then
+    throw s!"unsupported CB live insertion-derivation version {wire.version}"
+  let live ← wire.production_bound.decode
+  let history ← decodeHistoryEvidence
+    (rProduction live.global.global.rsucc)
+    live.ordinaryArena live.rootArena live.insertionHistory
+    wire.insertion_evidence
+  return { live, history }
+
+def WireLiveInsertionDerivationDocument.check
+    (wire : WireLiveInsertionDerivationDocument) : Except String Bool := do
+  let _ ← wire.decode
+  return true
+
+theorem WireLiveInsertionDerivationDocument.check_sound
+    (wire : WireLiveInsertionDerivationDocument)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedLiveInsertionDerivationDocument,
+      wire.decode = .ok decoded ∧
+      ∀ event ∈ decoded.live.insertionHistory, EventSound event := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireLiveInsertionDerivationDocument.check, hdecode] at hcheck
+  | ok decoded => exact ⟨decoded, rfl, decoded.history.sound⟩
+
 #print axioms EventEvidence.sound
 #print axioms CertifiedHistory.sound
+#print axioms DecodedCertifiedHistory.sound
+#print axioms WireLiveInsertionDerivationDocument.check_sound
 
 end ContextCalculus.CBLiveInsertionDerivation

@@ -46,6 +46,13 @@
   Lean proves by induction that a certified history makes every inserted clause
   valid under its exact context core. Inter-context arrivals are intentionally
   excluded until their evidence is bound to the checked Pred/r-Pred transfer.
+  Add the executable chronological evidence wire and native
+  `cb-live-insertion-derivation-check` checker. It folds over the exact live
+  insertion stream, rejects evidence-length mismatches, future and
+  cross-context references, malformed or failing trace fragments, omitted
+  conclusions, and seed/local origin confusion, and constructs the certified
+  history during decoding. This checker remains separate from mandatory CB
+  publication until KM emits evidence for every derived event.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

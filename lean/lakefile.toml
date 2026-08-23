@@ -125,6 +125,10 @@ name = "cb-production-bound-global-model-check"
 root = "CBProductionBoundGlobalModelCheck"
 
 [[lean_exe]]
+name = "cb-live-insertion-derivation-check"
+root = "CBLiveInsertionDerivationCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

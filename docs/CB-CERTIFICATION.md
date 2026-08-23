@@ -114,8 +114,10 @@ claim that the layer is already complete.
   and intermediate local inferences therefore need not have been retained by
   KM. Accepted seed events use the independently checked core/fact origin. Lean
   proves every event in a certified chronological history valid under its
-  context core. The executable history wire, Rust evidence producer, and the
-  distinct inter-context evidence constructor remain open.
+  context core. `WireLiveInsertionDerivationDocument` makes the local history
+  layer executable and the `cb-live-insertion-derivation-check` native checker
+  exposes it. The Rust evidence producer, mandatory publication integration,
+  and the distinct inter-context evidence constructor remain open.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the
