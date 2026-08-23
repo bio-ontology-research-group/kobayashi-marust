@@ -65,6 +65,11 @@
   expansions, distinctness constraints, and exact complementary-pair
   recognition have the same models and taxonomy consequences as the
   first-class cardinality definitions consumed by certified HT search.
+- Add one executable joint native-ABox classification checker for all direct,
+  mixed, bundle, and cardinality variants. The checker injects one shared TBox
+  source and ABox into both global-consistency and complete-taxonomy evidence;
+  acceptance proves both source-level contracts and never trusts fingerprints
+  or independently supplied duplicate sources.
 
 ### Close the executable ELC certification boundary
 

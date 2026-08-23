@@ -451,4 +451,91 @@ theorem DecodedJointBundleNativeABoxCardinalityClassification.semantic_valid
 
 #print axioms DecodedJointBundleNativeABoxCardinalityClassification.semantic_valid
 
+/-! ## Unified executable native-ABox classification boundary -/
+
+/-- Every production native-ABox classification shape.  The constructor only
+selects the matching decoder; source identity is established by that decoder
+injecting one shared source and ABox into both global and taxonomy evidence. -/
+inductive WireJointNativeABoxClassification where
+  | direct (document : WireJointDirectNativeABoxClassification)
+  | mixed (document : WireJointMixedNativeABoxClassification)
+  | bundle (document : WireJointBundleNativeABoxClassification)
+  | directCardinality
+      (document : WireJointDirectNativeABoxCardinalityClassification)
+  | mixedCardinality
+      (document : WireJointMixedNativeABoxCardinalityClassification)
+  | bundleCardinality
+      (document : WireJointBundleNativeABoxCardinalityClassification)
+deriving FromJson, ToJson, Repr
+
+def WireJointNativeABoxClassification.check :
+    WireJointNativeABoxClassification → Except String Bool
+  | .direct document => document.check
+  | .mixed document => document.check
+  | .bundle document => document.check
+  | .directCardinality document => document.check
+  | .mixedCardinality document => document.check
+  | .bundleCardinality document => document.check
+
+def WireJointNativeABoxClassification.SemanticallyValid :
+    WireJointNativeABoxClassification → Prop
+  | .direct document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+  | .mixed document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+  | .bundle document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+  | .directCardinality document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+  | .mixedCardinality document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+  | .bundleCardinality document => ∃ decoded,
+      document.decode = .ok decoded ∧ decoded.SemanticallyValid
+
+/-- Acceptance yields source-level global and taxonomy semantics for one exact
+shared TBox projection and native ABox. No fingerprint or independently
+supplied duplicate source is trusted. -/
+theorem WireJointNativeABoxClassification.check_sound
+    (wire : WireJointNativeABoxClassification)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid := by
+  cases wire with
+  | direct document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointDirectNativeABoxClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+  | mixed document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointMixedNativeABoxClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+  | bundle document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointBundleNativeABoxClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+  | directCardinality document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointDirectNativeABoxCardinalityClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+  | mixedCardinality document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointMixedNativeABoxCardinalityClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+  | bundleCardinality document =>
+      unfold WireJointNativeABoxClassification.check
+        WireJointBundleNativeABoxCardinalityClassification.check at hcheck
+      cases hdecode : document.decode with
+      | error message => simp [hdecode] at hcheck
+      | ok decoded => exact ⟨decoded, hdecode, decoded.semantic_valid⟩
+
+#print axioms WireJointNativeABoxClassification.check_sound
+
 end ContextCalculus.Hypertableau

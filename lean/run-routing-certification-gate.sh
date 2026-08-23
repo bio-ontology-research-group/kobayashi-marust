@@ -47,6 +47,7 @@ for theorem in \
     SourceBoundWorker.liftTranslation \
     SourceBoundWorker.liftTranslation_completeAt \
     WirePublication.check_sound \
+    WireJointNativeABoxClassification.check_sound \
     models_encode_iff \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \

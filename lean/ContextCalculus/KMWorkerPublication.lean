@@ -1,5 +1,6 @@
 import ContextCalculus.ELCompletionExecutablePublication
 import ContextCalculus.HypertableauExecutablePublicationWire
+import ContextCalculus.HypertableauJointSourceClassificationWire
 import ContextCalculus.CBCertificationSurface
 
 /-!
@@ -24,6 +25,8 @@ inductive WirePublication where
   | elc (document : ELCompletion.WireCertificate)
   | htGlobal (document : Hypertableau.WireExecutableHTGlobalPublication)
   | htTaxonomy (document : Hypertableau.WireExecutableHTTaxonomyPublication)
+  | htNativeClassification
+      (document : Hypertableau.WireJointNativeABoxClassification)
   | cbTaxonomy
       (document : CBLiveExactTaxonomyPublication.WireLiveExactTaxonomyPublication)
 deriving Lean.FromJson, Lean.ToJson
@@ -33,6 +36,7 @@ def WirePublication.check : WirePublication → Except String Bool
   | .elc document => document.check
   | .htGlobal document => .ok document.check
   | .htTaxonomy document => .ok document.check
+  | .htNativeClassification document => document.check
   | .cbTaxonomy document => document.check
 
 /-- Branch-specific semantic payload recovered after acceptance.  Each case
@@ -45,6 +49,7 @@ def WirePublication.SemanticallyValid : WirePublication → Prop
           ELCompletion.PublicationSemantics decoded
   | .htGlobal document => document.SemanticallyValid
   | .htTaxonomy document => document.SemanticallyValid
+  | .htNativeClassification document => document.SemanticallyValid
   | .cbTaxonomy document =>
       ∃ decoded : CBLiveExactTaxonomyPublication.DecodedLiveExactTaxonomyPublication,
         document.decode = .ok decoded ∧
@@ -71,6 +76,8 @@ theorem WirePublication.check_sound (wire : WirePublication)
       exact document.check_sound (by simpa [WirePublication.check] using hcheck)
   | htTaxonomy document =>
       exact document.check_sound (by simpa [WirePublication.check] using hcheck)
+  | htNativeClassification document =>
+      exact document.check_sound hcheck
   | cbTaxonomy document =>
       exact CB.certifiedCBProductionExactTaxonomyPublication document hcheck
 
