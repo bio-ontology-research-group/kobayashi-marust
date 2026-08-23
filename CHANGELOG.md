@@ -55,6 +55,10 @@
   clause and ontology, including individuals, auxiliary names, and arbitrarily
   nested Skolem functions. This establishes a semantic common-source boundary
   for ELC and CB without relying on byte identity or hashes.
+- Extend that common-language embedding to ELC's exact V5 residual source.
+  Equality atoms, nested terms, individuals, auxiliaries, concepts, and roles
+  now have proved clause and whole-list satisfaction equivalence in the common
+  proper-term language, rather than covering only the ordinary raw partition.
 - Package HT's retained direct clauses and complete, uniquely keyed Skolem-pair
   family as a routing source. Lean proves both model-existence equivalence and
   taxonomy-entailment equivalence with the exact existential HT ontology. This

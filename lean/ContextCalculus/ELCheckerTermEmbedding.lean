@@ -1,4 +1,5 @@
 import ContextCalculus.ELRawNormalization
+import ContextCalculus.ELResidualCompilation
 import ContextCalculus.CheckerTerm
 import Mathlib.Data.Nat.Pairing
 
@@ -50,6 +51,15 @@ def encodeAtom : RawAtom Nat Nat → FLit
 
 def encodeClause (clause : RawClause Nat Nat) : FCL :=
   ⟨clause.body.map encodeAtom, clause.head.map encodeAtom⟩
+
+def encodeResidualAtom : RawResidualAtom Nat Nat → FLit
+  | .concept concept term => .P (.concept concept (encodeTerm term))
+  | .role role source target =>
+      .P (.role role (encodeTerm source) (encodeTerm target))
+  | .eq left right => .eq (encodeTerm left) (encodeTerm right)
+
+def encodeResidualClause (clause : RawResidualClause Nat Nat) : FCL :=
+  ⟨clause.body.map encodeResidualAtom, clause.head.map encodeResidualAtom⟩
 
 def rawTermInterp (model : TModel Domain) : RawTermInterp Domain where
   individual individual := model.const (individualCode individual)
@@ -139,7 +149,75 @@ theorem models_encode_iff (model : TModel Domain) (top bottom : Nat)
   · exact (valid_encodeClause_iff model top bottom topTrue bottomFalse clause).2
       (h clause hclause)
 
+@[simp] theorem eval_encodeResidualAtom (model : TModel Domain)
+    (assignment : Int → Domain) (top bottom : Nat)
+    (topTrue : ∀ value, model.conc top value)
+    (bottomFalse : ∀ value, ¬ model.conc bottom value)
+    (atom : RawResidualAtom Nat Nat) :
+    model.evalL assignment (encodeResidualAtom atom) ↔
+      satRawResidualAtom (elInterp model top bottom topTrue bottomFalse)
+        (rawTermInterp model) (fun index => assignment (Int.ofNat index)) atom := by
+  cases atom <;>
+    simp [encodeResidualAtom, TModel.evalL, satRawResidualAtom, elInterp]
+
+theorem valid_encodeResidualClause_iff (model : TModel Domain)
+    (top bottom : Nat) (topTrue : ∀ value, model.conc top value)
+    (bottomFalse : ∀ value, ¬ model.conc bottom value)
+    (clause : RawResidualClause Nat Nat) :
+    valid model (encodeResidualClause clause) ↔
+      satRawResidualClause (elInterp model top bottom topTrue bottomFalse)
+        (rawTermInterp model) clause := by
+  constructor
+  · intro hvalid environment hbody
+    let assignment : Int → Domain := fun index =>
+      match index with
+      | .ofNat index => environment index
+      | .negSucc _ => environment 0
+    have hencodedBody : ∀ literal ∈ (encodeResidualClause clause).body,
+        model.evalL assignment literal := by
+      intro literal hliteral
+      rcases List.mem_map.mp hliteral with ⟨atom, hatom, rfl⟩
+      apply (eval_encodeResidualAtom model assignment top bottom topTrue
+        bottomFalse atom).2
+      simpa [assignment] using hbody atom hatom
+    rcases hvalid assignment hencodedBody with ⟨literal, hliteral, htrue⟩
+    rcases List.mem_map.mp hliteral with ⟨atom, hatom, rfl⟩
+    refine ⟨atom, hatom, ?_⟩
+    have hresult := (eval_encodeResidualAtom model assignment top bottom topTrue
+      bottomFalse atom).1 htrue
+    simpa [assignment] using hresult
+  · intro hraw assignment hbody
+    let environment : Nat → Domain := fun index => assignment (Int.ofNat index)
+    have hrawBody : ∀ atom ∈ clause.body,
+        satRawResidualAtom (elInterp model top bottom topTrue bottomFalse)
+          (rawTermInterp model) environment atom := by
+      intro atom hatom
+      apply (eval_encodeResidualAtom model assignment top bottom topTrue
+        bottomFalse atom).1
+      exact hbody (encodeResidualAtom atom)
+        (List.mem_map.mpr ⟨atom, hatom, rfl⟩)
+    rcases hraw environment hrawBody with ⟨atom, hatom, htrue⟩
+    refine ⟨encodeResidualAtom atom,
+      List.mem_map.mpr ⟨atom, hatom, rfl⟩, ?_⟩
+    exact (eval_encodeResidualAtom model assignment top bottom topTrue
+      bottomFalse atom).2 htrue
+
+theorem models_encodeResidual_iff (model : TModel Domain) (top bottom : Nat)
+    (topTrue : ∀ value, model.conc top value)
+    (bottomFalse : ∀ value, ¬ model.conc bottom value)
+    (ontology : List (RawResidualClause Nat Nat)) :
+    (∀ clause ∈ ontology, valid model (encodeResidualClause clause)) ↔
+      modelsRawResidual (elInterp model top bottom topTrue bottomFalse)
+        (rawTermInterp model) ontology := by
+  constructor <;> intro h clause hclause
+  · exact (valid_encodeResidualClause_iff model top bottom topTrue bottomFalse
+      clause).1 (h clause hclause)
+  · exact (valid_encodeResidualClause_iff model top bottom topTrue bottomFalse
+      clause).2 (h clause hclause)
+
 #print axioms valid_encodeClause_iff
 #print axioms models_encode_iff
+#print axioms valid_encodeResidualClause_iff
+#print axioms models_encodeResidual_iff
 
 end ContextCalculus.ELCheckerTermEmbedding

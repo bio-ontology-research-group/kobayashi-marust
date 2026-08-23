@@ -60,6 +60,7 @@ for theorem in \
     WirePublication.check_sound \
     WireJointNativeABoxClassification.check_sound \
     models_encode_iff \
+    models_encodeResidual_iff \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
     entailsSub_mixed_encode_iff \
