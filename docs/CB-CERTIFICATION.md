@@ -558,8 +558,11 @@ extends to the fresh path-role signature. The frontend implements the same
 construction with collision-safe internal role names. It retains generated
 rules in the CB clause stream and records the original source chain separately,
 so certification does not infer source syntax from transformed clauses. This
-establishes the semantic basis for `regularArbitraryChain`; producing its full
-anchored regular certificate from a live Rust run remains unfinished.
+establishes the semantic basis for `regularArbitraryChain`. The native producer
+now recovers the typed source from the checked production certificate, compiles
+its finite chains to the proved binary family, and builds the anchored regular
+payload through the total HT countermodel search. The exact matrix uses this
+producer after bounded and blocked finite witnesses fail.
 
 `CBRegularNominalCountermodel` adds nominals without weakening source identity.
 Its mixed clause list retains arbitrary production order, then projects only
@@ -581,9 +584,10 @@ selected filler universal. Lean proves these units in the anchored regular
 model and only then derives the unconditional CB clauses from checked maximum
 definitions. The wire also requires the full definition list to equal the
 source projection. `regularNominal` and `regularCardinality` are accepted as
-negative evidence by the exact taxonomy matrix. The Rust producer does not yet
-construct these wires automatically, so that production connection remains
-part of the complete CB gate. This first wire keeps source and target concept
+negative evidence by the exact taxonomy matrix. Rust emits the stronger
+fresh-signature combined wire for the currently supported cardinality case;
+native nominal-root production remains part of the complete CB gate. This
+first wire keeps source and target concept
 bounds equal. It is sound, but it is not complete if no source concept can be
 interpreted as universal. Full coverage therefore also requires an injective
 source-to-target concept renaming and a fresh target-only universal marker,
@@ -600,9 +604,10 @@ to the exact source signature, and preserves the positive and negative query
 witness. The bounds-checked wire independently checks the production source at
 its original concept bound and the anchored cardinality certificate at the
 extended bound. Exact taxonomy cells can cite this evidence as
-`regularFreshCardinality`. The Rust producer does not yet construct any of the
-regular nominal/cardinality wires automatically, so native generation remains
-open.
+`regularFreshCardinality`. Native generation uses the stronger combined
+`regularArbitraryChain` wire for individual-free sources with at most one
+universal-marker cardinality definition. Multiple such definitions and nominal
+root seeding remain open producer cases.
 
 `CBRoleChainBinaryDerivation` closes the semantic gap between arbitrary source
 chains and HT's binary regular role rules. A checked tree starts from renamed
@@ -615,8 +620,12 @@ anchors, and cardinality definitions. Its wire checks the original production
 source, the enlarged target bounds, every binary chain and derivation, and the
 anchored certificate before `regularArbitraryChain` can enter the exact matrix.
 This removes the binary-chain restriction from the certified regular evidence
-language. Rust still needs to generate the enlarged target projection and its
-derivation trees automatically.
+language. Rust now generates the enlarged target projection, derivation trees,
+and anchored payload automatically. A dedicated Lean checker accepts native
+empty, length-three-chain, and functionality examples and rejects a forged
+target signature. The current producer declines named individuals and repeated
+top-marker cardinality definitions; completing those cases is still required
+for the full CB capstone.
 
 ## Requirements for the complete CB layer
 

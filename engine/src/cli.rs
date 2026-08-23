@@ -2271,6 +2271,410 @@ fn cb_canonical_binary_role_chains(
     Ok((next_role, rules, derivations))
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct CbRegularArbitraryChainSource {
+    concept_count: usize,
+    role_count: usize,
+    individual_count: usize,
+    source_clauses: Vec<serde_json::Value>,
+    source_ontology: Vec<serde_json::Value>,
+    clauses: Vec<serde_json::Value>,
+    chains: Vec<serde_json::Value>,
+}
+
+/// Recover the exact typed source carried by the already checked production
+/// certificate and translate it to the safe-source wire used by the strongest
+/// CB regular countermodel.  The global certificate repeats its production run
+/// under several closure branches.  Requiring every encountered source binding
+/// to agree prevents this adapter from selecting a convenient but unrelated
+/// copy.
+fn cb_regular_arbitrary_chain_source(
+    global_model: &serde_json::Value,
+) -> Result<CbRegularArbitraryChainSource, String> {
+    fn collect<'a>(value: &'a serde_json::Value, found: &mut Vec<&'a serde_json::Value>) {
+        match value {
+            serde_json::Value::Object(object) => {
+                if object.contains_key("source_clauses")
+                    && object.contains_key("role_chains")
+                    && object.contains_key("ontology")
+                    && object.contains_key("concept_count")
+                    && object.contains_key("role_count")
+                    && object.contains_key("individual_count")
+                {
+                    found.push(value);
+                }
+                for child in object.values() {
+                    collect(child, found);
+                }
+            }
+            serde_json::Value::Array(array) => {
+                for child in array {
+                    collect(child, found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn count(source: &serde_json::Value, field: &str) -> Result<usize, String> {
+        source
+            .get(field)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("certified CB source has no numeric {field}"))
+    }
+
+    fn translate_clause(clause: &serde_json::Value) -> Result<serde_json::Value, String> {
+        let object = clause
+            .as_object()
+            .ok_or_else(|| "certified CB source clause is not an object".to_string())?;
+        if object.len() != 1 {
+            return Err("certified CB source clause has an ambiguous constructor".to_string());
+        }
+        let (kind, payload) = object.iter().next().expect("one source constructor");
+        let base = |kind: &str, payload: &serde_json::Value| {
+            let mut constructor = serde_json::Map::new();
+            constructor.insert(kind.to_string(), payload.clone());
+            serde_json::json!({"core": {"base": serde_json::Value::Object(constructor)}})
+        };
+        match kind.as_str() {
+            "gci" | "exR" | "allR" | "exL" => Ok(base(kind, payload)),
+            "subR" => Ok(base(
+                "subR",
+                &serde_json::json!({
+                    "premise": payload.get("sub").ok_or_else(||
+                        "subR source clause has no sub role".to_string())?,
+                    "conclusion": payload.get("sup").ok_or_else(||
+                        "subR source clause has no super role".to_string())?,
+                }),
+            )),
+            "inverse" => Ok(base("inv", payload)),
+            "nominal" => Ok(serde_json::json!({"core": {"nominal": payload}})),
+            "functional" => {
+                let role = payload
+                    .get("role")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| "functional source clause has no role".to_string())?;
+                Ok(serde_json::json!({"func": {"role": role}}))
+            }
+            "atMost" => {
+                let field = |name: &str| {
+                    payload
+                        .get(name)
+                        .and_then(serde_json::Value::as_u64)
+                        .ok_or_else(|| format!("atMost source clause has no {name}"))
+                };
+                Ok(serde_json::json!({"atMost": {
+                    "bound": field("cardinality")?,
+                    "role": field("role")?,
+                    "filler": field("concept")?,
+                }}))
+            }
+            other => Err(format!("unsupported certified CB source constructor {other}")),
+        }
+    }
+
+    let mut bindings = Vec::new();
+    collect(global_model, &mut bindings);
+    let first = bindings
+        .first()
+        .copied()
+        .ok_or_else(|| "CB global model has no typed source binding".to_string())?;
+    for binding in bindings.iter().skip(1) {
+        if *binding != first {
+            return Err("CB global model contains disagreeing typed source bindings".to_string());
+        }
+    }
+    let source_clauses = first
+        .get("source_clauses")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "certified CB source has no source_clauses array".to_string())?;
+    let clauses = source_clauses
+        .iter()
+        .map(translate_clause)
+        .collect::<Result<Vec<_>, _>>()?;
+    let chains = first
+        .get("role_chains")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| "certified CB source has no role_chains array".to_string())?;
+    let source_ontology = first
+        .get("ontology")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| "certified CB source has no ontology array".to_string())?;
+    Ok(CbRegularArbitraryChainSource {
+        concept_count: count(first, "concept_count")?,
+        role_count: count(first, "role_count")?,
+        individual_count: count(first, "individual_count")?,
+        source_clauses: source_clauses.clone(),
+        source_ontology,
+        clauses,
+        chains,
+    })
+}
+
+fn cb_regular_arbitrary_chain_countermodel(
+    source: &CbRegularArbitraryChainSource,
+    sub: usize,
+    sup: usize,
+) -> Result<Option<serde_json::Value>, String> {
+    use crate::tableau::{Atom, Clause, CLit};
+
+    let numeric = |value: u64, kind: &str| -> Result<u32, String> {
+        u32::try_from(value).map_err(|_| format!("{kind} id exceeds the HT numeric bound"))
+    };
+    let field = |payload: &serde_json::Value, name: &str| -> Result<u64, String> {
+        payload
+            .get(name)
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("certified CB source constructor has no numeric {name}"))
+    };
+    let concept = |payload: &serde_json::Value, name: &str| -> Result<u32, String> {
+        let raw = field(payload, name)?;
+        let mapped = raw
+            .checked_add(1)
+            .ok_or_else(|| "CB concept-map successor overflow".to_string())?;
+        numeric(mapped, "concept")
+    };
+    let role = |payload: &serde_json::Value, name: &str| -> Result<u32, String> {
+        numeric(field(payload, name)?, "role")
+    };
+    let pos = |concept, term| Atom::Concept {
+        lit: CLit::pos(concept),
+        t: term,
+    };
+
+    if sub >= source.concept_count || sup >= source.concept_count {
+        return Err("CB regular query exceeds the certified source signature".to_string());
+    }
+    if source.individual_count != 0 {
+        return Ok(None);
+    }
+
+    let chain_pairs = source
+        .chains
+        .iter()
+        .map(|chain| {
+            let body = chain
+                .get("body")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "certified role chain has no body".to_string())?
+                .iter()
+                .map(|value| {
+                    value
+                        .as_u64()
+                        .and_then(|value| usize::try_from(value).ok())
+                        .ok_or_else(|| "certified role chain body is not numeric".to_string())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let sup = chain
+                .get("sup")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "certified role chain has no super-role".to_string())?;
+            Ok((body, sup))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let (target_role_count, binary_chains, chain_derivations) =
+        cb_canonical_binary_role_chains(source.role_count, &chain_pairs)?;
+
+    let mut clauses = Vec::new();
+    let mut cardinality_defs = Vec::new();
+    for clause in &source.source_clauses {
+        let object = clause
+            .as_object()
+            .ok_or_else(|| "certified source clause is not an object".to_string())?;
+        let (kind, payload) = object
+            .iter()
+            .next()
+            .ok_or_else(|| "certified source clause has no constructor".to_string())?;
+        match kind.as_str() {
+            "gci" => {
+                let concepts = |name: &str| -> Result<Vec<u32>, String> {
+                    payload
+                        .get(name)
+                        .and_then(serde_json::Value::as_array)
+                        .ok_or_else(|| format!("gci source clause has no {name}"))?
+                        .iter()
+                        .map(|value| {
+                            let raw = value
+                                .as_u64()
+                                .ok_or_else(|| "gci concept is not numeric".to_string())?;
+                            numeric(
+                                raw.checked_add(1)
+                                    .ok_or_else(|| "gci concept-map overflow".to_string())?,
+                                "concept",
+                            )
+                        })
+                        .collect()
+                };
+                clauses.push(Clause::new(
+                    concepts("body")?.into_iter().map(|c| pos(c, 0)).collect(),
+                    concepts("head")?.into_iter().map(|c| pos(c, 0)).collect(),
+                ));
+            }
+            "exR" => clauses.push(Clause::new(
+                vec![pos(concept(payload, "source")?, 0)],
+                vec![Atom::Exists {
+                    r: role(payload, "role")?,
+                    fil: CLit::pos(concept(payload, "filler")?),
+                    t: 0,
+                }],
+            )),
+            "allR" => clauses.push(Clause::new(
+                vec![
+                    pos(concept(payload, "source")?, 0),
+                    Atom::Role {
+                        r: role(payload, "role")?,
+                        s: 0,
+                        t: 2,
+                    },
+                ],
+                vec![pos(concept(payload, "filler")?, 2)],
+            )),
+            "exL" => clauses.push(Clause::new(
+                vec![
+                    Atom::Role {
+                        r: role(payload, "role")?,
+                        s: 0,
+                        t: 2,
+                    },
+                    pos(concept(payload, "filler")?, 2),
+                ],
+                vec![pos(concept(payload, "conclusion")?, 0)],
+            )),
+            "subR" => clauses.push(Clause::new(
+                vec![Atom::Role {
+                    r: role(payload, "sub")?,
+                    s: 0,
+                    t: 2,
+                }],
+                vec![Atom::Role {
+                    r: role(payload, "sup")?,
+                    s: 0,
+                    t: 2,
+                }],
+            )),
+            "inverse" => {
+                let first = role(payload, "role")?;
+                let second = role(payload, "inverse")?;
+                clauses.push(Clause::new(
+                    vec![Atom::Role {
+                        r: first,
+                        s: 0,
+                        t: 2,
+                    }],
+                    vec![Atom::Role {
+                        r: second,
+                        s: 2,
+                        t: 0,
+                    }],
+                ));
+                clauses.push(Clause::new(
+                    vec![Atom::Role {
+                        r: second,
+                        s: 0,
+                        t: 2,
+                    }],
+                    vec![Atom::Role {
+                        r: first,
+                        s: 2,
+                        t: 0,
+                    }],
+                ));
+            }
+            "functional" => {
+                cardinality_defs.push((
+                    0,
+                    false,
+                    1,
+                    role(payload, "role")?,
+                    0,
+                    false,
+                ));
+                clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
+                clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
+            }
+            "atMost" => {
+                cardinality_defs.push((
+                    0,
+                    false,
+                    u32::try_from(field(payload, "cardinality")?)
+                        .map_err(|_| "atMost bound exceeds u32".to_string())?,
+                    role(payload, "role")?,
+                    concept(payload, "concept")?,
+                    false,
+                ));
+                clauses.push(Clause::new(Vec::new(), vec![pos(0, 0)]));
+            }
+            "nominal" => {
+                return Ok(None);
+            }
+            other => return Err(format!("unsupported certified source constructor {other}")),
+        }
+    }
+    if cardinality_defs.len() > 1 {
+        return Ok(None);
+    }
+    for binary in &binary_chains {
+        let value = |name: &str| -> Result<u32, String> {
+            numeric(
+                binary
+                    .get(name)
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| format!("binary role chain has no {name}"))?,
+                "binary-chain role",
+            )
+        };
+        clauses.push(Clause::new(
+            vec![
+                Atom::Role {
+                    r: value("first")?,
+                    s: 0,
+                    t: 1,
+                },
+                Atom::Role {
+                    r: value("second")?,
+                    s: 1,
+                    t: 2,
+                },
+            ],
+            vec![Atom::Role {
+                r: value("conclusion")?,
+                s: 0,
+                t: 2,
+            }],
+        ));
+    }
+
+    let mut tableau = crate::tableau::hypertableau::Ht::new_certified(clauses);
+    if !cardinality_defs.is_empty() {
+        tableau.set_card_defs_raw(&cardinality_defs);
+    }
+    tableau.set_certificate_signature_floor(
+        source.concept_count + 1,
+        target_role_count,
+        3,
+    );
+    let anchored = tableau.lean_cb_anchored_cardinality_countermodel_json(
+        u32::try_from(sub + 1).map_err(|_| "subclass id exceeds u32".to_string())?,
+        u32::try_from(sup + 1).map_err(|_| "superclass id exceeds u32".to_string())?,
+    )?;
+    Ok(anchored.map(|anchored| {
+        serde_json::json!({
+            "version": 1,
+            "clauses": source.clauses,
+            "chains": source.chains,
+            "target_role_count": target_role_count,
+            "binary_chains": binary_chains,
+            "chain_derivations": chain_derivations,
+            "individual_roots": [],
+            "anchored": anchored,
+        })
+    }))
+}
+
 /// Build the exact row-major matrix around an already checked live publication.
 /// Positive, reflexive, and bottom-implied cells are complete immediately.
 /// Omitted cells remain explicit `unresolved` evidence and are rejected by the
@@ -2294,6 +2698,14 @@ fn cb_exact_taxonomy_candidate(
         .get("unsatisfiable")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| "live CB publication has no unsatisfiable array".to_string())?;
+    let regular_source = live_publication
+        .pointer("/derivation/production_bound/global_model")
+        .map(cb_regular_arbitrary_chain_source)
+        .transpose()?;
+    let regular_countermodel = |sub, sup| match regular_source.as_ref() {
+        Some(source) => cb_regular_arbitrary_chain_countermodel(source, sub, sup),
+        None => Ok(None),
+    };
 
     let mut named = Vec::with_capacity(rows.len());
     for row in rows {
@@ -2369,6 +2781,12 @@ fn cb_exact_taxonomy_candidate(
                 cb_blocked_taxonomy_countermodel(live_publication, sub, sup)?
             {
                 (false, serde_json::json!({"blocked": countermodel}))
+            } else if let Some(countermodel) = regular_countermodel(sub, sup)?
+            {
+                (
+                    false,
+                    serde_json::json!({"regularArbitraryChain": countermodel}),
+                )
             } else {
                 unresolved += 1;
                 (false, serde_json::json!("unresolved"))
@@ -2783,6 +3201,223 @@ mod cb_derivation_candidate_tests {
         assert!(cb_canonical_binary_role_chains(2, &[(vec![0, 1], 2)])
             .unwrap_err()
             .contains("exceeds"));
+    }
+
+    #[test]
+    fn certified_typed_source_maps_exactly_to_arbitrary_chain_safe_wire() {
+        let source = serde_json::json!({
+            "version": 1,
+            "concept_count": 4,
+            "role_count": 3,
+            "function_count": 1,
+            "individual_count": 1,
+            "source_clauses": [
+                {"gci": {"body": [0], "head": [1, 2]}},
+                {"exR": {"source": 0, "role": 0, "filler": 1}},
+                {"allR": {"source": 1, "role": 1, "filler": 2}},
+                {"exL": {"role": 1, "filler": 2, "conclusion": 3}},
+                {"subR": {"sub": 0, "sup": 1}},
+                {"inverse": {"role": 1, "inverse": 2}},
+                {"functional": {"role": 2}},
+                {"nominal": {"concept": 3, "individual": 0}},
+                {"atMost": {"cardinality": 2, "role": 0, "concept": 1}}
+            ],
+            "role_chains": [{"body": [0, 1, 2], "sup": 2}],
+            "ontology": []
+        });
+        let global = serde_json::json!({
+            "left": {"source": source.clone()},
+            "right": [{"nested": {"source": source}}]
+        });
+        let safe = cb_regular_arbitrary_chain_source(&global).unwrap();
+        assert_eq!(safe.concept_count, 4);
+        assert_eq!(safe.role_count, 3);
+        assert_eq!(safe.individual_count, 1);
+        assert_eq!(safe.chains, vec![serde_json::json!({
+            "body": [0, 1, 2], "sup": 2
+        })]);
+        assert_eq!(safe.clauses[0], serde_json::json!({
+            "core": {"base": {"gci": {"body": [0], "head": [1, 2]}}}
+        }));
+        assert_eq!(safe.clauses[5], serde_json::json!({
+            "core": {"base": {"inv": {"role": 1, "inverse": 2}}}
+        }));
+        assert_eq!(safe.clauses[6], serde_json::json!({"func": {"role": 2}}));
+        assert_eq!(safe.clauses[7], serde_json::json!({
+            "core": {"nominal": {"concept": 3, "individual": 0}}
+        }));
+        assert_eq!(safe.clauses[8], serde_json::json!({
+            "atMost": {"bound": 2, "role": 0, "filler": 1}
+        }));
+    }
+
+    #[test]
+    fn certified_typed_source_rejects_disagreeing_embedded_runs() {
+        let source = |concept_count| serde_json::json!({
+            "version": 1,
+            "concept_count": concept_count,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [],
+            "role_chains": [],
+            "ontology": []
+        });
+        let forged = serde_json::json!({
+            "first": source(1),
+            "second": source(2),
+        });
+        assert!(cb_regular_arbitrary_chain_source(&forged)
+            .unwrap_err()
+            .contains("disagreeing"));
+    }
+
+    #[test]
+    fn native_regular_countermodel_passes_the_exact_lean_wire_checker() {
+        let Some(checker) = std::env::var_os("KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER")
+        else {
+            return;
+        };
+        let binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [],
+            "role_chains": [],
+            "ontology": []
+        });
+        let source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": binding}}),
+        )
+        .unwrap();
+        let countermodel = cb_regular_arbitrary_chain_countermodel(&source, 0, 1)
+            .expect("construct the native regular countermodel")
+            .expect("the empty source does not entail concept 0 below concept 1");
+        let mut document = serde_json::json!({
+            "concept_count": source.concept_count,
+            "role_count": source.role_count,
+            "function_count": 0,
+            "individual_count": source.individual_count,
+            "source": source.source_ontology,
+            "sub": 0,
+            "sup": 1,
+            "countermodel": countermodel,
+        });
+        let artifact_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("engine has a repository parent")
+            .join(".work/artifacts");
+        std::fs::create_dir_all(&artifact_root).unwrap();
+        let path = artifact_root.join(format!(
+            "cb-regular-arbitrary-chain-test-{}.json",
+            std::process::id()
+        ));
+        let check = |value: &serde_json::Value| {
+            std::fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("run the dedicated Lean countermodel checker")
+                .success()
+        };
+        assert!(check(&document), "Lean must accept the native countermodel");
+
+        let term = |index| serde_json::json!({"var": {"index": index}});
+        let role_literal = |role, source, target| serde_json::json!({
+            "predicate": {"predicate": {"role": {
+                "role": role, "source": term(source), "target": term(target)
+            }}}
+        });
+        let chain_binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 3,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [],
+            "role_chains": [{"body": [0, 1, 2], "sup": 2}],
+            "ontology": [{
+                "body": [
+                    role_literal(0, 0, -1),
+                    role_literal(1, -1, -2),
+                    role_literal(2, -2, -3)
+                ],
+                "head": [role_literal(2, 0, -3)]
+            }]
+        });
+        let chain_source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": chain_binding}}),
+        )
+        .unwrap();
+        let chain_countermodel =
+            cb_regular_arbitrary_chain_countermodel(&chain_source, 0, 1)
+                .expect("construct an arbitrary-chain countermodel")
+                .expect("the role-only source does not entail the concept query");
+        document = serde_json::json!({
+            "concept_count": chain_source.concept_count,
+            "role_count": chain_source.role_count,
+            "function_count": 0,
+            "individual_count": chain_source.individual_count,
+            "source": chain_source.source_ontology,
+            "sub": 0,
+            "sup": 1,
+            "countermodel": chain_countermodel,
+        });
+        assert!(
+            check(&document),
+            "Lean must accept the native arbitrary-chain countermodel"
+        );
+
+        let functional_binding = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 1,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [{"functional": {"role": 0}}],
+            "role_chains": [],
+            "ontology": [{
+                "body": [
+                    role_literal(0, 0, -1),
+                    role_literal(0, 0, -2)
+                ],
+                "head": [{"equality": {
+                    "left": term(-1), "right": term(-2)
+                }}]
+            }]
+        });
+        let functional_source = cb_regular_arbitrary_chain_source(
+            &serde_json::json!({"production": {"source": functional_binding}}),
+        )
+        .unwrap();
+        let functional_countermodel =
+            cb_regular_arbitrary_chain_countermodel(&functional_source, 0, 1)
+                .expect("construct a functionality countermodel")
+                .expect("functionality does not entail the concept query");
+        document = serde_json::json!({
+            "concept_count": functional_source.concept_count,
+            "role_count": functional_source.role_count,
+            "function_count": 0,
+            "individual_count": functional_source.individual_count,
+            "source": functional_source.source_ontology,
+            "sub": 0,
+            "sup": 1,
+            "countermodel": functional_countermodel,
+        });
+        assert!(
+            check(&document),
+            "Lean must accept the native functionality countermodel"
+        );
+        document["countermodel"]["target_role_count"] = serde_json::json!(0);
+        assert!(
+            !check(&document),
+            "Lean must reject a countermodel with a forged target signature"
+        );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

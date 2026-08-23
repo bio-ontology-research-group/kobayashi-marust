@@ -137,6 +137,10 @@ name = "cb-live-exact-taxonomy-publication-check"
 root = "CBLiveExactTaxonomyPublicationCheck"
 
 [[lean_exe]]
+name = "cb-regular-arbitrary-chain-countermodel-check"
+root = "CBRegularArbitraryChainCountermodelCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

@@ -106,8 +106,7 @@
   regular countermodel and bounds-checked wire preserve the exact production
   source while allowing fresh intermediate target roles, the fresh universal
   concept, nominals, functionality, and qualified at-most clauses together.
-  Exact cells can cite `regularArbitraryChain`. Rust generation of this evidence
-  remains open.
+  Exact cells can cite `regularArbitraryChain`.
   Add the canonical finite binary compiler and prove it conservative in the
   other direction. Every model of the original finite chain family extends to
   the compiled signature by interpreting each fresh path role as relational
@@ -117,7 +116,20 @@
   preprocessing, preserves legacy binary RBox rows, and carries longer source
   chains in an explicit `chain-n` row. Short malformed chains fail closed.
   Focused Rust tests check the exact generated rule family and retention.
-  Native generation of the anchored regular model payload remains open.
+  Connect this strongest regular evidence form to the native producer. Rust
+  recovers the typed source directly from the independently checked production
+  certificate, requires every repeated embedded source binding to agree,
+  applies the proved canonical binary compiler, and runs the total HT
+  countermodel search on the exact enlarged projection. Certificate-only
+  signature floors preserve unused fresh names without changing the clause set.
+  The exact taxonomy matrix now inserts accepted `regularArbitraryChain`
+  candidates after its bounded and blocked finite attempts. A dedicated Lean
+  executable checks the generated wire directly; cross-language tests cover an
+  empty source, a genuine length-three role chain, global functionality, and a
+  forged target-role bound. Native production currently declines sources with
+  individuals and sources requiring more than one universal-marker cardinality
+  definition. Those two producer cases remain before the exact CB gate can be
+  called complete.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

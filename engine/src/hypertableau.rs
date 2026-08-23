@@ -4561,6 +4561,12 @@ pub struct Ht {
     /// `applyATMOSTRule` fire when a marker concept lands on a node, instead of
     /// KM's clausified `⋁ Eq` merge. Empty unless `card` is on.
     card_defs: HashMap<C, CardDef>,
+    /// Lower bounds on the serialized certificate signature.  They are inert
+    /// for reasoning and let source-projection adapters retain declared but
+    /// otherwise unused fresh names without injecting tautological clauses.
+    cert_concept_count_floor: usize,
+    cert_role_count_floor: usize,
+    cert_variable_count_floor: usize,
     /// Source markers whose recognition split was removed by `cb_to_ht`.
     /// Only these require exact marker semantics in a SAT certificate.
     cert_exact_cardinality_markers: HashSet<C>,
@@ -10844,9 +10850,11 @@ impl Ht {
         leaf: &LeanHtBlockedOpenLeaf,
         evidence: LeanHtEvidence,
     ) -> Result<String, String> {
-        let mut variable_count = self.lean_source_variable_count();
-        let mut concept_count = 0usize;
-        let mut role_count = 0usize;
+        let mut variable_count = self
+            .lean_source_variable_count()
+            .max(self.cert_variable_count_floor);
+        let mut concept_count = self.cert_concept_count_floor;
+        let mut role_count = self.cert_role_count_floor;
         for record in &self.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
@@ -12443,9 +12451,11 @@ impl Ht {
         &self,
         leaf: &LeanHtBlockedOpenLeaf,
     ) -> Result<LeanHtRegularCertificate, String> {
-        let mut variable_count = self.lean_source_variable_count();
-        let mut concept_count = 0usize;
-        let mut role_count = 0usize;
+        let mut variable_count = self
+            .lean_source_variable_count()
+            .max(self.cert_variable_count_floor);
+        let mut concept_count = self.cert_concept_count_floor;
+        let mut role_count = self.cert_role_count_floor;
         let mut role_clauses = Vec::new();
         let mut residual = Vec::new();
         let mut sub_roles = Vec::new();
@@ -15200,9 +15210,11 @@ impl Ht {
     }
 
     fn lean_decision_signature(&self) -> (usize, usize, usize, Vec<LeanHtClause>) {
-        let mut variable_count = self.lean_source_variable_count();
-        let mut concept_count = 0usize;
-        let mut role_count = 0usize;
+        let mut variable_count = self
+            .lean_source_variable_count()
+            .max(self.cert_variable_count_floor);
+        let mut concept_count = self.cert_concept_count_floor;
+        let mut role_count = self.cert_role_count_floor;
         for record in &self.clauses {
             for atom in record.0.body.iter().chain(record.0.head.iter()) {
                 match atom {
@@ -15577,10 +15589,11 @@ impl Ht {
         Ok((consistent, certificate))
     }
 
-    fn lean_cardinality_taxonomy_query_decision_and_run_json(
+    fn lean_cardinality_taxonomy_query_decision(
         &self,
         query: LeanHtTaxonomyQuery,
-    ) -> Result<(bool, String, String), String> {
+        require_production_run: bool,
+    ) -> Result<(bool, String, Option<String>), String> {
         let initial_labels = query.initial_labels();
         let (variable_count, mut concept_count, role_count, ontology) =
             self.lean_decision_signature();
@@ -15620,11 +15633,15 @@ impl Ht {
                             "Lean rejected the exact cardinality taxonomy refutation".to_string()
                         );
                     }
-                    let run = self.lean_cardinality_taxonomy_production_run_json(
-                        query,
-                        &frontier_history,
-                        &raw,
-                    )?;
+                    let run = require_production_run
+                        .then(|| {
+                            self.lean_cardinality_taxonomy_production_run_json(
+                                query,
+                                &frontier_history,
+                                &raw,
+                            )
+                        })
+                        .transpose()?;
                     return Ok((false, raw, run));
                 }
                 LeanHtDistinctCardinalityRefutationOutcome::Open(open) => {
@@ -15655,11 +15672,15 @@ impl Ht {
                         let candidate =
                             serde_json::to_string(&document).map_err(|error| error.to_string())?;
                         if self.lean_taxonomy_candidate_passes(&candidate)? {
-                            let run = self.lean_cardinality_taxonomy_production_run_json(
-                                query,
-                                &frontier_history,
-                                &candidate,
-                            )?;
+                            let run = require_production_run
+                                .then(|| {
+                                    self.lean_cardinality_taxonomy_production_run_json(
+                                        query,
+                                        &frontier_history,
+                                        &candidate,
+                                    )
+                                })
+                                .transpose()?;
                             return Ok((true, candidate, run));
                         }
                         let inserted = rejected_assignments.insert(folds);
@@ -15711,6 +15732,18 @@ impl Ht {
                 }
             }
         }
+    }
+
+    fn lean_cardinality_taxonomy_query_decision_and_run_json(
+        &self,
+        query: LeanHtTaxonomyQuery,
+    ) -> Result<(bool, String, String), String> {
+        let (answer, terminal, run) = self.lean_cardinality_taxonomy_query_decision(query, true)?;
+        Ok((
+            answer,
+            terminal,
+            run.ok_or_else(|| "cardinality taxonomy production run is missing".to_string())?,
+        ))
     }
 
     /// Decide one taxonomy cell with the same total certification search used
@@ -16035,6 +16068,41 @@ impl Ht {
     ) -> Result<(bool, String), String> {
         let (answer, terminal, _) = self.lean_taxonomy_query_decision_and_run_json(query, 0)?;
         Ok((answer, terminal))
+    }
+
+    /// Produce the checker-ready anchored cardinality countermodel for one negative
+    /// taxonomy cell.  This is the native bridge used by the CB exact-taxonomy
+    /// publisher: it deliberately calls the same total taxonomy search as the
+    /// HT publication boundary, rather than asking the optimized tableau for a
+    /// verdict and attempting to reconstruct evidence afterwards.
+    ///
+    /// `Ok(None)` means that the source ontology entails `sub ⊑ sup`.  An
+    /// open cell must carry the exact anchored payload accepted by the HT
+    /// candidate checker; accepting any of the other terminal formats here
+    /// would silently weaken the CB countermodel boundary.
+    pub(crate) fn lean_cb_anchored_cardinality_countermodel_json(
+        &self,
+        sub: C,
+        sup: C,
+    ) -> Result<Option<serde_json::Value>, String> {
+        if !self.native_abox.individuals.is_empty() {
+            return Err(
+                "CB anchored-cardinality countermodels require the source-projected nominal encoding"
+                    .to_string(),
+            );
+        }
+        let (open, terminal, _) = self.lean_cardinality_taxonomy_query_decision(
+            LeanHtTaxonomyQuery::Subsumption(sub, sup),
+            false,
+        )?;
+        if !open {
+            return Ok(None);
+        }
+        let terminal: serde_json::Value =
+            serde_json::from_str(&terminal).map_err(|error| error.to_string())?;
+        terminal.get("anchored").cloned().map(Some).ok_or_else(|| {
+            "open CB cardinality cell did not carry an anchored countermodel".to_string()
+        })
     }
 
     /// Decide one taxonomy cell in the joint query/native-ABox state while
@@ -17782,6 +17850,9 @@ impl Ht {
             },
             forall_idx,
             card_defs: HashMap::new(),
+            cert_concept_count_floor: 0,
+            cert_role_count_floor: 0,
+            cert_variable_count_floor: 0,
             cert_exact_cardinality_markers: HashSet::new(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
@@ -18125,6 +18196,19 @@ impl Ht {
             }
         }
         self.set_card_defs(map);
+    }
+
+    /// Preserve exact source-projection dimensions in generated certificates.
+    /// This changes only bounds metadata; the clause set and search are intact.
+    pub(crate) fn set_certificate_signature_floor(
+        &mut self,
+        concept_count: usize,
+        role_count: usize,
+        variable_count: usize,
+    ) {
+        self.cert_concept_count_floor = concept_count;
+        self.cert_role_count_floor = role_count;
+        self.cert_variable_count_floor = variable_count;
     }
 
     /// Provide the nominal concept ids (the o-rule singletons `{o}`). Re-applied to
@@ -29813,6 +29897,48 @@ mod tests {
             "Lean must reject a run retained under the wrong matrix coordinate"
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cb_bridge_returns_only_the_open_anchored_cardinality_payload() {
+        let mut tableau = ht(Vec::new());
+        tableau.set_card_defs_raw(&[(D, true, 0, R0, A, false)]);
+        let anchored = tableau
+            .lean_cb_anchored_cardinality_countermodel_json(A, B)
+            .expect("decide the CB negative cell")
+            .expect("A is not subsumed by B");
+        assert_eq!(anchored["version"], 1);
+        assert_eq!(anchored["concept_count"], D as usize + 1);
+        assert_eq!(anchored["role_count"], R0 as usize + 1);
+        assert!(anchored["anchored"]["equality_state"]["labels"]
+            .as_array()
+            .is_some_and(|labels| labels.iter().any(|label| {
+                label["node"] == 0
+                    && label["literal"]["concept"] == A as usize
+                    && label["literal"]["neg"] == false
+            })));
+        assert!(anchored["anchored"]["equality_state"]["labels"]
+            .as_array()
+            .is_some_and(|labels| labels.iter().any(|label| {
+                label["node"] == 0
+                    && label["literal"]["concept"] == B as usize
+                    && label["literal"]["neg"] == true
+            })));
+
+        let mut entailed = ht(vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![con(false, B, X)],
+        )]);
+        entailed.set_card_defs_raw(&[(D, true, 0, R0, A, false)]);
+        assert!(entailed
+            .lean_cb_anchored_cardinality_countermodel_json(A, B)
+            .expect("decide the entailed CB cell")
+            .is_none());
+
+        assert!(ht(Vec::new())
+            .lean_cb_anchored_cardinality_countermodel_json(A, B)
+            .expect("the empty source also has a regular countermodel")
+            .is_some());
     }
 
     #[test]
