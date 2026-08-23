@@ -168,6 +168,12 @@
   complete production universe. Omission and duplication tests fail in the
   executable checker. This does not yet claim Eq closure or superposition
   completeness; those are the next layer built on this checked order.
+- Extend the proof-carrying order through the exact finite production literal
+  universe. Lean rejects omitted, invented, or duplicate literals and computes
+  maximal head positions directly from the checked low-to-high permutation.
+  An iff theorem exposes bounded index, literal identity, and domination of
+  every other head literal. Runtime maximality masks are not trusted. Eq/Hyper
+  candidate closure and the admissible-order completeness theorem remain open.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

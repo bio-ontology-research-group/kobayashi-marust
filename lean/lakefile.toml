@@ -61,6 +61,10 @@ name = "cb-finite-term-order-check"
 root = "CBFiniteTermOrderCheck"
 
 [[lean_exe]]
+name = "cb-finite-literal-order-check"
+root = "CBFiniteLiteralOrderCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

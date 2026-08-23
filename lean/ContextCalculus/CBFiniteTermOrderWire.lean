@@ -131,7 +131,7 @@ theorem WireFiniteTermOrderDocument.check_sound
         decoded.mem_ordered_iff,
         decoded.rank_injective_on_production⟩
 
-private def acceptedExample : WireFiniteTermOrderDocument where
+def acceptedExample : WireFiniteTermOrderDocument where
   version := 1
   factor_closure := CBLocalFactorClosureWire.acceptedExample
   ordered_terms := [.var (-4), .var (-3), .var (-2), .var (-1), .var 0]

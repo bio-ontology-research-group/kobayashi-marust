@@ -222,6 +222,15 @@ claim that the layer is already complete.
   standalone `cb-finite-term-order-check` exposes this boundary. It is not yet
   an Eq closure theorem: literal maximality, all three production Eq candidate
   paths, and the ordered-paramodulation completeness connection remain open.
+- `CBFiniteLiteralOrderWire` extends that boundary to every literal in the
+  verified source and terminal retained contexts. The supplied low-to-high
+  literal list must be an exact duplicate-free permutation. Lean derives every
+  maximal head index from rank comparison and proves its executable membership
+  condition equivalent to a bounded index whose literal dominates every other
+  head literal. The standalone `cb-finite-literal-order-check` exposes this
+  boundary. This removes runtime maximality masks from the trusted base, but it
+  does not yet prove Eq or Hyper candidate closure or that the selected order
+  satisfies the final ordered-calculus admissibility theorem.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual
