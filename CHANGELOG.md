@@ -33,7 +33,11 @@
   any core or ontology claim whose indexed clause is not structurally exact.
   Lean exposes the accepted index equalities as reusable theorems for the
   chronological derivation checker. Head-filtered facts deliberately remain
-  derived until their transformation receives separate checked evidence.
+  derived until their transformation receives separate checked evidence. The
+  semantic seed theorem proves every accepted non-derived event in every model
+  of the exact source ontology that satisfies the event's exact context core.
+  It supplies the base case for induction over the chronological insertion
+  stream without assuming the validity of any derived event.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

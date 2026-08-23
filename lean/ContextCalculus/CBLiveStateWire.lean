@@ -371,6 +371,28 @@ theorem DecodedLiveInsertionEvent.ontology_origin_exact
         exact of_decide_eq_true (by simpa [hlookup] using hvalid)
       exact ⟨source, by simpa [ontology] using hlookup, heq⟩
 
+theorem DecodedLiveInsertionEvent.seed_sound
+    (event : DecodedLiveInsertionEvent production ordinary root)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hontology : ∀ source ∈ production.source.ontology, valid model source)
+    (hcore : CoreHolds model assignment
+      (production.contexts.get event.contextIndex).core)
+    (hseed : event.origin ≠ .derived) :
+    CBProductionTrace.HoldsAt model assignment event.clause := by
+  cases horigin : event.origin with
+  | core index =>
+      obtain ⟨predicate, hlookup, hclause⟩ := event.core_origin_exact index horigin
+      rw [hclause]
+      intro _
+      exact ⟨.P predicate, List.mem_singleton.mpr rfl,
+        hcore predicate (List.mem_of_getElem? hlookup)⟩
+  | ontologyFact index =>
+      obtain ⟨source, hlookup, _, hclause⟩ :=
+        event.ontology_origin_exact index horigin
+      rw [hclause]
+      exact hontology source (List.mem_of_getElem? hlookup) assignment
+  | derived => exact (hseed horigin).elim
+
 structure DecodedLiveContext
     (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
@@ -555,5 +577,6 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
           context.successors_exact⟩⟩
 
 #print axioms WireProductionBoundGlobalModelDocument.check_sound
+#print axioms DecodedLiveInsertionEvent.seed_sound
 
 end ContextCalculus.CBLiveStateWire
