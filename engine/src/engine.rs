@@ -22,9 +22,9 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
+use serde::Serialize;
 use smallvec::SmallVec;
 use thin_vec::ThinVec;
-use serde::Serialize;
 
 use crate::calc::*;
 use crate::clause::*;
@@ -221,11 +221,7 @@ fn sorted_pred_insert(set: &mut Vec<Pred>, pred: Pred) -> bool {
 
 /// `posting_remove` for the `Vec<u32>`-valued indexes (`ground_body_index`,
 /// `bridge_index`) — same incremental-inverse semantics as above.
-fn vec_posting_remove<K: std::hash::Hash + Eq>(
-    map: &mut HashMap<K, Vec<u32>>,
-    key: K,
-    cid: u32,
-) {
+fn vec_posting_remove<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Vec<u32>>, key: K, cid: u32) {
     if let Some(posting) = map.get_mut(&key) {
         posting.retain(|candidate| *candidate != cid);
         if posting.is_empty() {
@@ -1266,7 +1262,8 @@ impl DeterminedIndex {
             return;
         }
         if self.per_position.len() < candidates.len() {
-            self.per_position.resize_with(candidates.len(), || (0, None));
+            self.per_position
+                .resize_with(candidates.len(), || (0, None));
         }
         let slot = &mut self.per_position[position];
         slot.0 = slot.0.saturating_add(1);
@@ -1343,7 +1340,10 @@ impl Ontology {
             let guarded_role = if c.body.len() == 2 {
                 let pair = match (c.body[0], c.body[1]) {
                     (
-                        Pred::Concept { iri: concept, t: ct },
+                        Pred::Concept {
+                            iri: concept,
+                            t: ct,
+                        },
                         Pred::Role {
                             iri: role,
                             s,
@@ -1356,10 +1356,11 @@ impl Ontology {
                             s,
                             t: rt,
                         },
-                        Pred::Concept { iri: concept, t: ct },
-                    ) if ct == rt && is_central(s) && is_neighbour(rt) => {
-                        Some((role, concept))
-                    }
+                        Pred::Concept {
+                            iri: concept,
+                            t: ct,
+                        },
+                    ) if ct == rt && is_central(s) && is_neighbour(rt) => Some((role, concept)),
                     _ => None,
                 };
                 pair
@@ -2462,10 +2463,10 @@ impl Context {
     /// is a seeded closure), so `base_removed ⊆ base.worked_off` and the mask
     /// size is exactly the number of masked-out base entries.
     fn worked_off_len(&self) -> usize {
-        debug_assert!(self
-            .base_removed
-            .iter()
-            .all(|cid| self.base.as_deref().is_some_and(|b| b.clause_keys.contains(cid))));
+        debug_assert!(self.base_removed.iter().all(|cid| self
+            .base
+            .as_deref()
+            .is_some_and(|b| b.clause_keys.contains(cid))));
         self.base.as_deref().map_or(0, |b| b.worked_off.len()) - self.base_removed.len()
             + self.delta.worked_off.len()
     }
@@ -2508,7 +2509,10 @@ impl Context {
     fn pred_pool_at(&self, i: usize) -> u32 {
         let nb = self.base.as_deref().map_or(0, |b| b.pred_pool.len());
         if i < nb {
-            self.base.as_deref().expect("nb > 0 implies a base").pred_pool[i]
+            self.base
+                .as_deref()
+                .expect("nb > 0 implies a base")
+                .pred_pool[i]
         } else {
             self.delta.pred_pool[i - nb]
         }
@@ -2696,7 +2700,9 @@ impl Context {
                     rarest = Some(posting);
                 }
             }
-            rarest.map(|posting| posting.iter().collect()).unwrap_or_default()
+            rarest
+                .map(|posting| posting.iter().collect())
+                .unwrap_or_default()
         };
         let removed: HashSet<u32> = candidates
             .into_iter()
@@ -2769,6 +2775,13 @@ impl Context {
 struct PredClause {
     body: Vec<Pred>,
     head: Vec<Lit>,
+}
+
+#[derive(Clone, Copy)]
+struct PredOrigin {
+    sender_context_index: usize,
+    sender_clause_id: u32,
+    edge_label: Term,
 }
 
 /// Sequoia `Rules.Pred` inserts each Cartesian-product conclusion through
@@ -3086,6 +3099,9 @@ pub struct Engine {
     /// on role-chain ontologies, where the per-context copies dominated peak
     /// memory.  Append-only; ids are stable.
     pred_interned: Vec<PredClause>,
+    /// One sound sender origin per interned payload. This vector remains empty
+    /// in ordinary runs and is allocated only for certification histories.
+    pred_origins: Vec<Option<PredOrigin>>,
     /// content hash -> candidate ids (collisions resolved by exact comparison)
     pred_intern_idx: HashMap<u64, Posting>,
     /// Global content-interned clause arenas, one per ordering domain
@@ -3341,6 +3357,14 @@ pub enum CbLiveRuleEvidence {
         general: CbLivePred,
         term: Term,
     },
+    Pred {
+        sender_context_index: usize,
+        sender_clause_id: u32,
+        edge_label: Term,
+        payload: CbLiveClause,
+        provider_clause_ids: Vec<u32>,
+        matched_predicates: Vec<CbLivePred>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -3419,7 +3443,10 @@ mod cb_live_snapshot_tests {
         let first = engine.live_terminal_snapshot();
         let second = engine.live_terminal_snapshot();
         assert_eq!(first, second);
-        assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&second).unwrap());
+        assert_eq!(
+            serde_json::to_vec(&first).unwrap(),
+            serde_json::to_vec(&second).unwrap()
+        );
         assert_eq!(first.version, 5);
         assert_eq!(first.concept_count, engine.sig.concept_names.len());
         assert_eq!(first.role_count, engine.sig.role_names.len());
@@ -3442,7 +3469,6 @@ mod cb_live_snapshot_tests {
                     .all(|edge| edge.rsucc_reach_hwm == context.rsucc_reach.len())
         }));
     }
-
 }
 
 /// Direction B (`KM_SPLIT`): the consequences of one query context's closure,
@@ -3599,6 +3625,7 @@ impl Engine {
             base_layer: std::env::var_os("KM_NO_BASE_LAYER").is_none(),
             equality: true,
             pred_interned: Vec::new(),
+            pred_origins: Vec::new(),
             pred_intern_idx: HashMap::default(),
             cc_arena: [Vec::new(), Vec::new()],
             cc_sig: [Vec::new(), Vec::new()],
@@ -3853,15 +3880,8 @@ impl Engine {
                 let side = self.cc_arena[root as usize][cid as usize].clone();
                 let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
                 for max in maxima {
-                    for (result, evidence) in
-                        self.hyper_with_evidence(id, cid, &side, max, root)
-                    {
-                        self.add_clause_with_rule(
-                            id,
-                            result,
-                            Some("hyper"),
-                            Some(evidence),
-                        );
+                    for (result, evidence) in self.hyper_with_evidence(id, cid, &side, max, root) {
+                        self.add_clause_with_rule(id, result, Some("hyper"), Some(evidence));
                     }
                 }
             }
@@ -3949,10 +3969,7 @@ impl Engine {
         // add only the core rule (the facts live in the closure).  The empty-core
         // top context is itself the closure, so seeding it is a no-op-equivalent
         // (it adds no core clause and derives nothing further).
-        if root
-            && std::env::var_os("KM_NO_SHARE").is_none()
-            && self.certificate_history.is_none()
-        {
+        if root && std::env::var_os("KM_NO_SHARE").is_none() && self.certificate_history.is_none() {
             self.attach_shared_base(id);
             self.add_core(id);
         } else {
@@ -4430,12 +4447,8 @@ impl Engine {
                             nhyper += results.len() as u64;
                         }
                         for (r, evidence) in results {
-                            if self.add_clause_with_rule(
-                                id,
-                                r,
-                                Some("hyper"),
-                                Some(evidence),
-                            ) && prof
+                            if self.add_clause_with_rule(id, r, Some("hyper"), Some(evidence))
+                                && prof
                             {
                                 nadded += 1;
                             }
@@ -4446,7 +4459,10 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause_with_rule(id, r, Some("pred-local"), None) && prof {
+                                let evidence = self.pred_local_rule_evidence(id, cid, *p, &r, root);
+                                if self.add_clause_with_rule(id, r, Some("pred-local"), evidence)
+                                    && prof
+                                {
                                     nadded += 1;
                                 }
                             }
@@ -4460,12 +4476,8 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for (r, evidence) in results {
-                                    if self.add_clause_with_rule(
-                                        id,
-                                        r,
-                                        Some("eq"),
-                                        Some(evidence),
-                                    ) && prof
+                                    if self.add_clause_with_rule(id, r, Some("eq"), Some(evidence))
+                                        && prof
                                     {
                                         nadded += 1;
                                     }
@@ -4482,7 +4494,10 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause_with_rule(id, r, Some("pred-local"), None) && prof {
+                                let evidence = self.pred_local_rule_evidence(id, cid, *p, &r, root);
+                                if self.add_clause_with_rule(id, r, Some("pred-local"), evidence)
+                                    && prof
+                                {
                                     nadded += 1;
                                 }
                             }
@@ -4496,12 +4511,8 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for (r, evidence) in results {
-                                    if self.add_clause_with_rule(
-                                        id,
-                                        r,
-                                        Some("eq"),
-                                        Some(evidence),
-                                    ) && prof
+                                    if self.add_clause_with_rule(id, r, Some("eq"), Some(evidence))
+                                        && prof
                                     {
                                         nadded += 1;
                                     }
@@ -4521,12 +4532,7 @@ impl Engine {
                             neqe += results.len() as u64;
                         }
                         for (r, evidence) in results {
-                            if self.add_clause_with_rule(
-                                id,
-                                r,
-                                Some("eq"),
-                                Some(evidence),
-                            ) && prof
+                            if self.add_clause_with_rule(id, r, Some("eq"), Some(evidence)) && prof
                             {
                                 nadded += 1;
                             }
@@ -4546,12 +4552,7 @@ impl Engine {
                             neqp += results.len() as u64;
                         }
                         for (r, evidence) in results {
-                            if self.add_clause_with_rule(
-                                id,
-                                r,
-                                Some("eq"),
-                                Some(evidence),
-                            ) && prof
+                            if self.add_clause_with_rule(id, r, Some("eq"), Some(evidence)) && prof
                             {
                                 nadded += 1;
                             }
@@ -4578,13 +4579,7 @@ impl Engine {
                     nfact += results.len() as u64;
                 }
                 for (r, evidence) in results {
-                    if self.add_clause_with_rule(
-                        id,
-                        r,
-                        Some("factor"),
-                        Some(evidence),
-                    ) && prof
-                    {
+                    if self.add_clause_with_rule(id, r, Some("factor"), Some(evidence)) && prof {
                         nadded += 1;
                     }
                 }
@@ -4594,13 +4589,7 @@ impl Engine {
             {
                 let results = self.join_with_evidence(id, cid, &clause, root);
                 for (r, evidence) in results {
-                    if self.add_clause_with_rule(
-                        id,
-                        r,
-                        Some("join"),
-                        Some(evidence),
-                    ) && prof
-                    {
+                    if self.add_clause_with_rule(id, r, Some("join"), Some(evidence)) && prof {
                         nadded += 1;
                     }
                 }
@@ -4694,10 +4683,7 @@ impl Engine {
         if let Some(started) = started {
             prof_add(&HYPER_NS, started);
         }
-        results
-            .into_iter()
-            .map(|(clause, _)| clause)
-            .collect()
+        results.into_iter().map(|(clause, _)| clause).collect()
     }
 
     fn hyper_with_evidence(
@@ -5035,7 +5021,9 @@ impl Engine {
                     body: oc
                         .body
                         .iter()
-                        .map(|predicate| CbLiveLit::from(predicate.apply(&|term| sigma.apply(term))))
+                        .map(|predicate| {
+                            CbLiveLit::from(predicate.apply(&|term| sigma.apply(term)))
+                        })
                         .collect(),
                     head: oc
                         .head
@@ -5453,8 +5441,7 @@ impl Engine {
                         // The pinned position for `max` is provided by the side
                         // clause, which has no arena id.
                         let provider = if ci == usize::MAX { side } else { &arena[ci] };
-                        let body =
-                            merge_sorted_unique(&partial.body, &provider.body, None);
+                        let body = merge_sorted_unique(&partial.body, &provider.body, None);
                         let head = merge_sorted_unique(
                             &partial.head,
                             &provider.head,
@@ -5463,9 +5450,7 @@ impl Engine {
                         if let Some(head) = self.filter_head(head) {
                             push_nonredundant_pred_result(
                                 &mut next,
-                                ContextClause::from_sorted_unique(
-                                    body, head, root, &self.sig,
-                                ),
+                                ContextClause::from_sorted_unique(body, head, root, &self.sig),
                             );
                         }
                     }
@@ -5974,17 +5959,9 @@ impl Engine {
             for l in c.max_head() {
                 if let Lit::Eq { s, t } = l {
                     if s == mterm && max.contains_at_rewrite_position(s) {
-                        if let Some(res) = self.build_eq(
-                            side_clause_id,
-                            side,
-                            max,
-                            ci,
-                            c,
-                            s,
-                            t,
-                            l,
-                            root,
-                        ) {
+                        if let Some(res) =
+                            self.build_eq(side_clause_id, side, max, ci, c, s, t, l, root)
+                        {
                             out.push(res);
                         }
                     }
@@ -6017,17 +5994,9 @@ impl Engine {
                 if l.contains_at_rewrite_position(s) && l != max {
                     if let Lit::Eq { s: es, t: et } = max {
                         // side provides equality es==et, rewrite l
-                        if let Some(res) = self.build_eq(
-                            ci,
-                            c,
-                            l,
-                            side_clause_id,
-                            side,
-                            es,
-                            et,
-                            max,
-                            root,
-                        ) {
+                        if let Some(res) =
+                            self.build_eq(ci, c, l, side_clause_id, side, es, et, max, root)
+                        {
                             out.push(res);
                         }
                     }
@@ -6885,15 +6854,20 @@ impl Engine {
     /// resolvents. Returns `to`; the caller saturates and propagates it once at
     /// the end of the message batch (see `apply_succ`).
     fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
+        let origin = PredOrigin {
+            sender_context_index: from,
+            sender_clause_id: self.contexts[from].pred_pool_at(pool_idx as usize),
+            edge_label,
+        };
         if !self.prof_time {
             let pc = self.pred_payload(from, edge_label, pool_idx);
-            return self.apply_pred_payload(to, pc);
+            return self.apply_pred_payload(to, pc, origin);
         }
         let t = std::time::Instant::now();
         let pc = self.pred_payload(from, edge_label, pool_idx);
         prof_add(&PREDPAYLOAD_NS, t);
         let t = std::time::Instant::now();
-        let r = self.apply_pred_payload(to, pc);
+        let r = self.apply_pred_payload(to, pc, origin);
         prof_add(&PREDARRIVAL_NS, t);
         r
     }
@@ -6941,8 +6915,14 @@ impl Engine {
     /// `todo`; batch-end saturation both processes them and fires local Pred
     /// against every neighbor clause received in this batch. Mutates only
     /// context `to` (plus the shared arena / intern tables). Returns `to`.
-    fn apply_pred_payload(&mut self, to: usize, pc: PredClause) -> usize {
+    fn apply_pred_payload(&mut self, to: usize, pc: PredClause, origin: PredOrigin) -> usize {
         let pid = self.intern_pred(pc);
+        if self.certificate_history.is_some() {
+            if self.pred_origins.len() < self.pred_interned.len() {
+                self.pred_origins.resize(self.pred_interned.len(), None);
+            }
+            self.pred_origins[pid as usize].get_or_insert(origin);
+        }
         let msgprof = !self.stat_pred_out_by_ctx.is_empty();
         // Duplicate arrival (same substituted clause already received, e.g. from
         // a successor's pre- and post-growth contexts): everything it could
@@ -6973,7 +6953,8 @@ impl Engine {
             self.stat_pred_conclusions += results.len() as u64;
         }
         for r in results {
-            let fresh = self.add_clause_with_rule(to, r, Some("pred-arrival"), None);
+            let evidence = self.pred_rule_evidence(to, &[pid], None, &r, root);
+            let fresh = self.add_clause_with_rule(to, r, Some("pred-arrival"), evidence);
             if msgprof && fresh {
                 self.stat_pred_conclusions_new += 1;
             }
@@ -7028,11 +7009,8 @@ impl Engine {
                 for &(ci, matched) in &dimension {
                     let provider = &arena[ci];
                     let body = merge_sorted_unique(&partial.body, &provider.body, None);
-                    let head = merge_sorted_unique(
-                        &partial.head,
-                        &provider.head,
-                        Some(Lit::P(matched)),
-                    );
+                    let head =
+                        merge_sorted_unique(&partial.head, &provider.head, Some(Lit::P(matched)));
                     if let Some(head) = self.filter_head(head) {
                         push_nonredundant_pred_result(
                             &mut next,
@@ -7047,6 +7025,141 @@ impl Engine {
             }
         }
         partials
+    }
+
+    fn find_pred_provider_path(
+        &self,
+        root: bool,
+        target: &ContextClause,
+        dimensions: &[Vec<(u32, Pred)>],
+        index: usize,
+        current: ContextClause,
+        chosen: &mut Vec<(u32, Pred)>,
+    ) -> Option<Vec<(u32, Pred)>> {
+        if index == dimensions.len() {
+            return (current.body == target.body && current.head == target.head)
+                .then(|| chosen.clone());
+        }
+        let arena = &self.cc_arena[root as usize];
+        for &(clause_id, matched) in &dimensions[index] {
+            let provider = &arena[clause_id as usize];
+            let body = merge_sorted_unique(&current.body, &provider.body, Some(matched));
+            let head = merge_sorted_unique(&current.head, &provider.head, Some(Lit::P(matched)));
+            let Some(head) = self.filter_head(head) else {
+                continue;
+            };
+            if head.iter().any(|literal| !target.head.contains(literal)) {
+                continue;
+            }
+            chosen.push((clause_id, matched));
+            let next = ContextClause::from_sorted_unique(body, head, root, &self.sig);
+            if let Some(path) =
+                self.find_pred_provider_path(root, target, dimensions, index + 1, next, chosen)
+            {
+                return Some(path);
+            }
+            chosen.pop();
+        }
+        None
+    }
+
+    /// Reconstruct one exact provider path for a live Pred conclusion. This is
+    /// used only while retaining certification history. It follows the same
+    /// left-deep resolution semantics as production and prunes any partial
+    /// head that already contains a literal absent from the target.
+    fn pred_rule_evidence(
+        &self,
+        id: usize,
+        candidate_payload_ids: &[u32],
+        pinned: Option<(u32, Pred)>,
+        target: &ContextClause,
+        root: bool,
+    ) -> Option<CbLiveRuleEvidence> {
+        let ctx = &self.contexts[id];
+        for &payload_id in candidate_payload_ids {
+            let payload = self.pred_interned.get(payload_id as usize)?;
+            let origin = self
+                .pred_origins
+                .get(payload_id as usize)
+                .and_then(|origin| *origin)?;
+            let mut ground = Vec::new();
+            let mut dimensions = Vec::new();
+            let mut possible = true;
+            for &body_predicate in &payload.body {
+                if let Some((side_clause_id, pinned_predicate)) = pinned {
+                    if body_predicate == pinned_predicate {
+                        dimensions.push(vec![(side_clause_id, body_predicate)]);
+                        continue;
+                    }
+                }
+                let providers: Vec<(u32, Pred)> = ctx
+                    .max_head_pred(body_predicate)
+                    .iter()
+                    .map(|clause_id| (clause_id, body_predicate))
+                    .collect();
+                if providers.is_empty() {
+                    if body_predicate.is_ground() {
+                        ground.push(body_predicate);
+                    } else {
+                        possible = false;
+                        break;
+                    }
+                } else {
+                    dimensions.push(providers);
+                }
+            }
+            if !possible {
+                continue;
+            }
+            dimensions.sort_by_key(Vec::len);
+            let Some(head) = self.filter_head(payload.head.clone()) else {
+                continue;
+            };
+            let initial = ContextClause::new(ground, head, root, &self.sig);
+            let Some(path) = self.find_pred_provider_path(
+                root,
+                target,
+                &dimensions,
+                0,
+                initial,
+                &mut Vec::new(),
+            ) else {
+                continue;
+            };
+            return Some(CbLiveRuleEvidence::Pred {
+                sender_context_index: origin.sender_context_index,
+                sender_clause_id: origin.sender_clause_id,
+                edge_label: origin.edge_label,
+                payload: CbLiveClause {
+                    body: payload.body.iter().copied().map(Into::into).collect(),
+                    head: payload.head.iter().copied().map(Into::into).collect(),
+                },
+                provider_clause_ids: path.iter().map(|(clause_id, _)| *clause_id).collect(),
+                matched_predicates: path
+                    .into_iter()
+                    .map(|(_, predicate)| predicate.into())
+                    .collect(),
+            });
+        }
+        None
+    }
+
+    fn pred_local_rule_evidence(
+        &self,
+        id: usize,
+        side_clause_id: u32,
+        matched: Pred,
+        target: &ContextClause,
+        root: bool,
+    ) -> Option<CbLiveRuleEvidence> {
+        let payload_ids = self.contexts[id].neighbor_pred_body_index.get(&matched)?;
+        self.pred_rule_evidence(
+            id,
+            payload_ids,
+            Some((side_clause_id, matched)),
+            target,
+            root,
+        )
     }
 
     // ------------------------------ driver ---------------------------------
@@ -7990,10 +8103,8 @@ impl Engine {
 
                 let predecessor_edge_seen =
                     predecessors.iter().map(|edge| edge.edge_seen).collect();
-                let successor_reach_hwm = successors
-                    .iter()
-                    .map(|edge| edge.rsucc_reach_hwm)
-                    .collect();
+                let successor_reach_hwm =
+                    successors.iter().map(|edge| edge.rsucc_reach_hwm).collect();
 
                 CbLiveContextSnapshot {
                     context_index,
@@ -8032,16 +8143,23 @@ impl Engine {
             let context = &self.contexts[event.context_index];
             let clause = &self.cc_arena[event.root as usize][event.clause_id as usize];
             if event.rule_hint.is_none() && clause.body.is_empty() {
-                if let Some((index, _)) = context.core.iter().enumerate().find(|(_, predicate)| {
-                    clause.head.as_slice() == [Lit::P(**predicate)]
-                }) {
+                if let Some((index, _)) = context
+                    .core
+                    .iter()
+                    .enumerate()
+                    .find(|(_, predicate)| clause.head.as_slice() == [Lit::P(**predicate)])
+                {
                     event.origin_hint = "core";
                     event.origin_index = Some(index);
                     continue;
                 }
-                if let Some((index, _)) = self.ont.clauses.iter().enumerate().find(|(_, source)| {
-                    source.body.is_empty() && source.head == clause.head
-                }) {
+                if let Some((index, _)) = self
+                    .ont
+                    .clauses
+                    .iter()
+                    .enumerate()
+                    .find(|(_, source)| source.body.is_empty() && source.head == clause.head)
+                {
                     event.origin_hint = "ontology_fact";
                     event.origin_index = Some(index);
                 }
@@ -8642,7 +8760,9 @@ mod tests {
             substitution: vec![(X, ind_term(1))],
         };
         let first = engine.nom_terms(key.clone(), 2).expect("first Nom block");
-        let replay = engine.nom_terms(key.clone(), 2).expect("replayed Nom block");
+        let replay = engine
+            .nom_terms(key.clone(), 2)
+            .expect("replayed Nom block");
         assert_eq!(first, replay, "the exact same firing must reuse its block");
         assert_eq!(engine.nom_allocated.get(), 2);
 
@@ -8943,11 +9063,7 @@ mod tests {
                 &mut determined,
                 &mut narrow_results,
             );
-            assert_eq!(
-                sigma.mark(),
-                sigma0.mark(),
-                "narrowed join leaked bindings"
-            );
+            assert_eq!(sigma.mark(), sigma0.mark(), "narrowed join leaked bindings");
         }
         let narrow_out = narrow_results
             .into_iter()
@@ -8991,11 +9107,7 @@ mod tests {
 
     /// Seed a non-root context with unit clauses `-> p` (the worked-off facts
     /// Hyper's candidate indexes are built from) and return `(engine, ctx id)`.
-    fn engine_with_units(
-        sig: Sig,
-        ont: Vec<OntologyClause>,
-        units: Vec<Pred>,
-    ) -> (Engine, usize) {
+    fn engine_with_units(sig: Sig, ont: Vec<OntologyClause>, units: Vec<Pred>) -> (Engine, usize) {
         let mut e = Engine::new(sig, ont, 0);
         let id = e.contexts.len();
         let mut ctx = Context::new(id, vec![], false, None);
@@ -9111,10 +9223,7 @@ mod tests {
         );
         // 2 witnesses, 3 filler-only terms, 4 edge-only targets.
         let fillers: Vec<Pred> = (1..=5).map(|i| cx(c, fterm(i))).collect();
-        let edges: Vec<Pred> = (1..=2)
-            .chain(6..=9)
-            .map(|i| rl(r, X, fterm(i)))
-            .collect();
+        let edges: Vec<Pred> = (1..=2).chain(6..=9).map(|i| rl(r, X, fterm(i))).collect();
         let mut candidates: Vec<Vec<(usize, Pred)>> = oc
             .body
             .iter()
@@ -9277,7 +9386,10 @@ mod tests {
             raw_entries += raw.iter().map(Vec::len).sum::<usize>();
             narrowed_entries += widths.iter().sum::<usize>();
         }
-        assert!(compared >= 100, "property test degenerated: {compared} cases");
+        assert!(
+            compared >= 100,
+            "property test degenerated: {compared} cases"
+        );
         assert!(
             narrowed_entries < raw_entries,
             "reduction never removed a candidate ({narrowed_entries} of {raw_entries})"
@@ -9411,10 +9523,7 @@ mod tests {
         let cc = |body: Vec<Pred>, head: Vec<Lit>| ContextClause::new(body, head, true, &sig);
         let arena = vec![
             // 0: A(x) → R(x,o) ⊔ B(x) — maximal role head with a ground endpoint.
-            cc(
-                vec![cx(a, X)],
-                vec![Lit::P(rl(r, X, o)), Lit::P(cx(b, X))],
-            ),
+            cc(vec![cx(a, X)], vec![Lit::P(rl(r, X, o)), Lit::P(cx(b, X))]),
             // 1: A(x) → R(x,o) — strengthens 0.
             cc(vec![cx(a, X)], vec![Lit::P(rl(r, X, o))]),
             // 2: survivor.
@@ -9472,7 +9581,10 @@ mod tests {
         let mut e = Engine::new(sig, clauses, 0);
         e.run_for(&[a]);
         let sups = supers_of(&e, "A");
-        assert!(sups.contains(&"B".to_string()), "expected A ⊑ B, got {sups:?}");
+        assert!(
+            sups.contains(&"B".to_string()),
+            "expected A ⊑ B, got {sups:?}"
+        );
         assert!(!e.inconsistent());
     }
 
@@ -9875,9 +9987,18 @@ mod tests {
             ctx.delta.index_clause(&arena, cid);
         }
 
-        assert_eq!(ctx.delta.head_concept_index.get(&7).unwrap().as_slice(), &[0, 1]);
-        assert_eq!(ctx.delta.max_head_pred_index.get(&p1).unwrap().as_slice(), &[0]);
-        assert_eq!(ctx.delta.max_head_pred_index.get(&p2).unwrap().as_slice(), &[1]);
+        assert_eq!(
+            ctx.delta.head_concept_index.get(&7).unwrap().as_slice(),
+            &[0, 1]
+        );
+        assert_eq!(
+            ctx.delta.max_head_pred_index.get(&p1).unwrap().as_slice(),
+            &[0]
+        );
+        assert_eq!(
+            ctx.delta.max_head_pred_index.get(&p2).unwrap().as_slice(),
+            &[1]
+        );
     }
 
     #[test]
@@ -10264,6 +10385,12 @@ mod tests {
             body: vec![max, other],
             head: vec![],
         });
+        e.certificate_history = Some(Vec::new());
+        e.pred_origins.push(Some(PredOrigin {
+            sender_context_index: 0,
+            sender_clause_id: 0,
+            edge_label: X,
+        }));
         e.contexts[0]
             .neighbor_pred_body_index
             .entry(max)
@@ -10271,9 +10398,30 @@ mod tests {
             .push(0);
 
         let side = ContextClause::new(vec![guard], vec![Lit::P(max)], false, &e.sig);
+        e.cc_arena[0].push(side.clone());
         let local = e.pred_local_inner(0, &side, max, false);
         assert_eq!(local.len(), 1);
         assert_eq!(local[0].body, vec![guard]);
+        let evidence = e
+            .pred_local_rule_evidence(0, 2, max, &local[0], false)
+            .expect("production Pred path must retain exact provenance");
+        let CbLiveRuleEvidence::Pred {
+            sender_context_index,
+            sender_clause_id,
+            provider_clause_ids,
+            matched_predicates,
+            ..
+        } = evidence
+        else {
+            panic!("expected Pred evidence")
+        };
+        assert_eq!(sender_context_index, 0);
+        assert_eq!(sender_clause_id, 0);
+        assert_eq!(provider_clause_ids, vec![2, 1]);
+        assert_eq!(
+            matched_predicates,
+            vec![CbLivePred::from(max), CbLivePred::from(other)]
+        );
 
         // The complementary event remains complete: if the Pred clause arrives
         // after both providers, it joins against the full worked-off index.
@@ -11213,7 +11361,10 @@ mod rsucc_rolechain_tests {
             replay_driver_gate(&schedule);
         let dt = t0.elapsed();
 
-        assert_eq!(g_fired, u_fired, "microbench: gate diverged from unconditional");
+        assert_eq!(
+            g_fired, u_fired,
+            "microbench: gate diverged from unconditional"
+        );
         assert_eq!(g_pushed, u_pushed, "microbench: gate pushed set diverged");
         // Both paths ran inside `replay_driver_gate`; report the sweep counts.
         // Unconditional cross-step runs = every round; gated runs = delta rounds.
@@ -11287,7 +11438,14 @@ mod base_delta_tests {
         let o1 = ind_term(1);
         let o2 = ind_term(2);
         let f1 = fterm(1);
-        let concepts = [cx(1, X), cx(2, X), cx(3, X), cx(1, o1), cx(2, o2), cx(4, f1)];
+        let concepts = [
+            cx(1, X),
+            cx(2, X),
+            cx(3, X),
+            cx(1, o1),
+            cx(2, o2),
+            cx(4, f1),
+        ];
         let roles = [rl(5, X, o1), rl(5, o1, X), rl(6, X, Y), rl(6, o2, o1)];
         let eqs = [Lit::eq(o1, X), Lit::eq(o2, X), Lit::eq(o1, o2)];
         let mut state = seed | 1;
@@ -11400,16 +11558,8 @@ mod base_delta_tests {
             todo: ctx.todo.iter().copied().collect(),
             head_concept: index_snapshot!(ctx, head_concept_index, head_concept),
             head_role: index_snapshot!(ctx, head_role_index, head_role),
-            ground_role_source: index_snapshot!(
-                ctx,
-                ground_role_source_index,
-                ground_role_source
-            ),
-            ground_role_target: index_snapshot!(
-                ctx,
-                ground_role_target_index,
-                ground_role_target
-            ),
+            ground_role_source: index_snapshot!(ctx, ground_role_source_index, ground_role_source),
+            ground_role_target: index_snapshot!(ctx, ground_role_target_index, ground_role_target),
             max_head_pred: index_snapshot!(ctx, max_head_pred_index, max_head_pred),
             max_head_term: index_snapshot!(ctx, max_head_term_index, max_head_term),
             active_head_lit: index_snapshot!(ctx, active_head_lit_index, active_head_lit),
@@ -11544,7 +11694,10 @@ mod base_delta_tests {
                     );
                 }
             }
-            assert!(join_guard_is_safe(&layered), "join guard claimed empty at {cid}");
+            assert!(
+                join_guard_is_safe(&layered),
+                "join guard claimed empty at {cid}"
+            );
         }
 
         // ---- deterministic tail -------------------------------------------

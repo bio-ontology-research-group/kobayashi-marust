@@ -56,6 +56,17 @@ inductive EventEvidence
         (production.contexts.get event.contextIndex).assumptions
         (priorClauses references) trace = some final)
       (conclusion : event.clause ∈ final) : EventEvidence done event
+  | pred (event) (predEvidence : DecodedLivePredEvidence production)
+      (event_evidence_eq : event.predEvidence = some predEvidence)
+      (result_eq : predEvidence.result = event.clause)
+      (senderIndex : Fin done.length)
+      (sender_context_eq : (done.get senderIndex).contextIndex = predEvidence.senderIndex)
+      (sender_clause_eq : (done.get senderIndex).clause = predEvidence.senderClause)
+      (providerIndices : List (Fin done.length))
+      (provider_contexts_eq : providerIndices.all fun index =>
+        decide ((done.get index).contextIndex = event.contextIndex))
+      (provider_clauses_eq : providerIndices.map (fun index => (done.get index).clause) =
+        predEvidence.providers.map (·.clause)) : EventEvidence done event
   | discarded (event)
       (trace : List Entry) (final : List FCL)
       (checked : checkFold production.source.ontology
@@ -115,6 +126,42 @@ theorem EventEvidence.sound
         (prior_local_sound hall references model assignment hontology hcore)
         checked
       exact hfinal event.clause conclusion
+  | pred predEvidence _ result_eq senderIndex senderContext senderClause
+      providerIndices providerContexts providerClauses =>
+      intro D model assignment hontology hcore
+      have hsenderEvent : EventSound (done.get senderIndex) :=
+        hall (done.get senderIndex) (List.get_mem done senderIndex)
+      have hsender : CBInterContext.ContextValid model
+          (production.contexts.get predEvidence.senderIndex).core
+          predEvidence.senderClause := by
+        intro senderAssignment senderCore
+        rw [← senderClause]
+        exact hsenderEvent model senderAssignment hontology (by
+          rw [senderContext]
+          exact senderCore)
+      have hproviders : ∀ provider ∈ predEvidence.providers,
+          CBInterContext.ContextValid model
+            (production.contexts.get event.contextIndex).core provider.clause := by
+        intro provider hprovider
+        have hclause : provider.clause ∈
+            providerIndices.map (fun index => (done.get index).clause) := by
+          rw [providerClauses]
+          exact List.mem_map.mpr ⟨provider, hprovider, rfl⟩
+        obtain ⟨index, hindex, hclauseEq⟩ := List.mem_map.mp hclause
+        have hcontext : (done.get index).contextIndex = event.contextIndex := by
+          have hallContexts := List.all_eq_true.mp providerContexts index hindex
+          exact of_decide_eq_true hallContexts
+        have hproviderEvent : EventSound (done.get index) :=
+          hall (done.get index) (List.get_mem done index)
+        intro providerAssignment providerCore
+        rw [← hclauseEq]
+        exact hproviderEvent model providerAssignment hontology (by
+          rw [hcontext]
+          exact providerCore)
+      have hresult := predEvidence.result_contextValid
+        (production.contexts.get event.contextIndex).core model hsender hproviders
+      rw [← result_eq]
+      exact hresult assignment hcore
   | discarded trace final checked strengtheningIndex strengthens =>
       intro D model assignment hontology hcore
       apply HoldsAt.of_strengthens model assignment strengthens
@@ -154,6 +201,8 @@ structure WireEventEvidence where
   prior_events : List WirePriorLocalRef
   trace : List WireProductionEntry
   discarded : List WireDiscardedClause
+  sender_event : Option WirePriorLocalRef
+  provider_events : Option (List WirePriorLocalRef)
 deriving FromJson, ToJson
 
 def WirePriorLocalRef.decode
@@ -174,14 +223,16 @@ def WireEventEvidence.decode
     (wire : WireEventEvidence) : Except String (EventEvidence done event) := do
   match wire.kind with
   | "seed" =>
-      if wire.prior_events.isEmpty ∧ wire.trace.isEmpty ∧ wire.discarded.isEmpty then
+      if wire.prior_events.isEmpty ∧ wire.trace.isEmpty ∧ wire.discarded.isEmpty ∧
+          wire.sender_event.isNone ∧ wire.provider_events.isNone then
         if hseed : event.origin ≠ .derived then
           return .seed event hseed
         else throw "CB derived insertion is labelled as a seed"
       else throw "CB insertion seed unexpectedly carries derivation data"
   | "local" =>
       if _horigin : event.origin = .derived then
-        if !wire.discarded.isEmpty then
+        if !wire.discarded.isEmpty ∨ wire.sender_event.isSome ∨
+            wire.provider_events.isSome then
           throw "CB local insertion trace unexpectedly carries discarded witnesses"
         let references ← wire.prior_events.mapM
           (WirePriorLocalRef.decode done event)
@@ -198,7 +249,8 @@ def WireEventEvidence.decode
       else throw "CB insertion seed is labelled as a local derivation"
   | "discarded" =>
       if _horigin : event.origin = .derived then
-        if !wire.prior_events.isEmpty then
+        if !wire.prior_events.isEmpty ∨ wire.sender_event.isSome ∨
+            wire.provider_events.isSome then
           throw "CB discarded insertion evidence unexpectedly cites earlier events"
         let trace ← wire.trace.mapM
           (WireProductionEntry.decode production.bounds)
@@ -219,6 +271,47 @@ def WireEventEvidence.decode
                 return .discarded event trace final hchecked
                   witness.strengtheningIndex (hclause ▸ witness.strengthens)
       else throw "CB insertion seed is labelled as discarded"
+  | "pred" =>
+      if _horigin : event.origin = .derived then
+        if !wire.prior_events.isEmpty ∨ !wire.trace.isEmpty ∨
+            !wire.discarded.isEmpty then
+          throw "CB Pred insertion unexpectedly carries local trace data"
+        match hevidence : event.predEvidence with
+        | none => throw "CB Pred insertion has no checked live Pred evidence"
+        | some predEvidence =>
+          let senderWire ← match wire.sender_event with
+            | some reference => pure reference
+            | none => throw "CB Pred insertion omits its sender event"
+          if hsenderIndex : senderWire.event_index < done.length then
+            let senderIndex : Fin done.length :=
+              ⟨senderWire.event_index, hsenderIndex⟩
+            if hsenderContext :
+                (done.get senderIndex).contextIndex = predEvidence.senderIndex then
+              if hsenderClause :
+                  (done.get senderIndex).clause = predEvidence.senderClause then
+                let providerWires ← match wire.provider_events with
+                  | some references => pure references
+                  | none => throw "CB Pred insertion omits its provider events"
+                let providerIndices ← providerWires.mapM fun reference =>
+                  if hindex : reference.event_index < done.length then
+                    pure (⟨reference.event_index, hindex⟩ : Fin done.length)
+                  else throw "CB Pred provider cites a non-earlier event"
+                if hcontexts : providerIndices.all fun index =>
+                    decide ((done.get index).contextIndex = event.contextIndex) then
+                  let actualClauses := providerIndices.map fun index =>
+                    (done.get index).clause
+                  let expectedClauses := predEvidence.providers.map (·.clause)
+                  if hclauses : actualClauses = expectedClauses then
+                    if hresult : predEvidence.result = event.clause then
+                      return .pred event predEvidence hevidence hresult senderIndex
+                        hsenderContext hsenderClause providerIndices hcontexts hclauses
+                    else throw "CB Pred evidence result differs from its live event"
+                  else throw "CB Pred provider events differ from checked provider clauses"
+                else throw "CB Pred provider event belongs to another receiver context"
+              else throw "CB Pred sender event clause differs from its checked sender clause"
+            else throw "CB Pred sender event belongs to another context"
+          else throw "CB Pred sender cites a non-earlier event"
+      else throw "CB insertion seed is labelled as Pred-derived"
   | kind => throw s!"unsupported CB insertion evidence kind {kind}"
 
 structure DecodedHistoryPrefix

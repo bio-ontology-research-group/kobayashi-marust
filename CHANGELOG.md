@@ -113,6 +113,15 @@
   and requires chronological same-context sources before emitting a trace.
   Lean independently checks the two-premise Resolution or three-premise Join-3
   step against the decoded production arena and proves the accepted result.
+  Pred-local and Pred-arrival insertions now retain the exact sender context
+  and clause, edge label, transported payload, and ordered receiver-provider
+  path. Rust independently reconstructs the sender substitution and each
+  receiver resolution before emitting chronological cross-context evidence.
+  Lean checks the same payload and provider path, proves sender validity under
+  the sender core, applies the formal inter-context Pred-transfer theorem, and
+  folds the receiver resolutions under the receiver core. Missing, future,
+  cross-context, or structurally different sender/provider references reject.
+  Ordinary runs do not allocate this provenance.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

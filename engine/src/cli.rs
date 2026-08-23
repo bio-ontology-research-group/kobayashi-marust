@@ -135,9 +135,7 @@ struct OfnClausesOnly {
 pub fn run_ofn(args: &[String]) {
     use crate::frontend::ofn_to_clauses;
     if args.is_empty() {
-        eprintln!(
-            "usage: ofn <ontology.ofn> [--meta <meta.json>] [--elc-binary <clauses.bin>]"
-        );
+        eprintln!("usage: ofn <ontology.ofn> [--meta <meta.json>] [--elc-binary <clauses.bin>]");
         exit(2);
     }
     let path = &args[0];
@@ -174,10 +172,7 @@ pub fn run_ofn(args: &[String]) {
             exit(3);
         }
     };
-    let binary_route = result
-        .route
-        .parse::<crate::routing::Route>()
-        .ok();
+    let binary_route = result.route.parse::<crate::routing::Route>().ok();
     // Both EL-first routes can consume the compact typed-clause sidecar. A
     // CertifiedElProduction refusal recursively reruns the frontend under its
     // mandatory ProductionAll fallback, so pre-serialising a giant JSON clause
@@ -691,10 +686,12 @@ fn cb_hyper_event_evidence(
     let mut trace = Vec::with_capacity(context_clause_ids.len() + 1);
     let wire_substitution = substitution
         .iter()
-        .map(|entry| serde_json::json!({
+        .map(|entry| {
+            serde_json::json!({
             "variableId": i64::from(entry.variable_id) - i64::from(crate::calc::X),
             "term": cb_wire_term(entry.value, live.comp_ind_bits),
-        }))
+            })
+        })
         .collect::<Vec<_>>();
     trace.push(serde_json::json!({
         "clause": cb_wire_clause(instantiated_source, live.comp_ind_bits),
@@ -705,11 +702,7 @@ fn cb_hyper_event_evidence(
     }));
     let premise_count = providers.len();
     let mut current = instantiated_source.clone();
-    for (index, (provider, matched)) in providers
-        .into_iter()
-        .zip(matched_predicates)
-        .enumerate()
-    {
+    for (index, (provider, matched)) in providers.into_iter().zip(matched_predicates).enumerate() {
         let literal = cb_live_pred_literal(matched);
         current = cb_resolve_live(provider, &current, &literal)?;
         trace.push(serde_json::json!({
@@ -886,7 +879,12 @@ fn cb_paramodulate_event_evidence(
         .head
         .iter()
         .filter(|candidate| *candidate != &equality)
-        .chain(other_clause.head.iter().filter(|candidate| *candidate != literal))
+        .chain(
+            other_clause
+                .head
+                .iter()
+                .filter(|candidate| *candidate != literal),
+        )
     {
         cb_push_unique(&mut expected.head, candidate.clone());
     }
@@ -923,11 +921,7 @@ fn cb_paramodulate_event_evidence(
             }}
         }));
     }
-    let equality_event = *prior.get(&(
-        event.context_index,
-        event.root,
-        *equality_clause_id,
-    ))?;
+    let equality_event = *prior.get(&(event.context_index, event.root, *equality_clause_id))?;
     let other_event = *prior.get(&(event.context_index, event.root, *other_clause_id))?;
     Some(serde_json::json!({
         "kind": "local",
@@ -964,16 +958,10 @@ fn cb_join_event_evidence(
             if !cb_clause_set_eq(&expected, result) {
                 return None;
             }
-            let provider_event = *prior.get(&(
-                event.context_index,
-                event.root,
-                *provider_clause_id,
-            ))?;
-            let consumer_event = *prior.get(&(
-                event.context_index,
-                event.root,
-                *consumer_clause_id,
-            ))?;
+            let provider_event =
+                *prior.get(&(event.context_index, event.root, *provider_clause_id))?;
+            let consumer_event =
+                *prior.get(&(event.context_index, event.root, *consumer_clause_id))?;
             Some(serde_json::json!({
                 "kind": "local",
                 "prior_events": [
@@ -1042,18 +1030,19 @@ fn cb_join_event_evidence(
                 .head
                 .iter()
                 .filter(|candidate| *candidate != &general_literal)
-                .chain(bridge.head.iter().filter(|candidate| *candidate != &bridge_literal))
+                .chain(
+                    bridge
+                        .head
+                        .iter()
+                        .filter(|candidate| *candidate != &bridge_literal),
+                )
             {
                 cb_push_unique(&mut expected.head, candidate.clone());
             }
             if !cb_clause_set_eq(&expected, result) {
                 return None;
             }
-            let references = [
-                *consumer_clause_id,
-                *provider_clause_id,
-                *bridge_clause_id,
-            ]
+            let references = [*consumer_clause_id, *provider_clause_id, *bridge_clause_id]
             .into_iter()
             .map(|clause_id| {
                 prior
@@ -1083,6 +1072,124 @@ fn cb_join_event_evidence(
     }
 }
 
+fn cb_pred_backwards(
+    term: crate::calc::Term,
+    edge: crate::calc::Term,
+    bits: u32,
+) -> crate::calc::Term {
+    use crate::calc::{COMP_BASE, X, Y};
+    if edge >= COMP_BASE {
+        let individual = X + ((edge - COMP_BASE) & ((1u32 << bits) - 1));
+        return if term == Y {
+            individual
+        } else if term == X {
+            edge
+        } else {
+            term
+        };
+    }
+    if term == Y {
+        X
+    } else if term == X {
+        edge
+    } else {
+        term
+    }
+}
+
+fn cb_map_live_literal(
+    literal: &crate::engine::CbLiveLit,
+    map: impl Fn(crate::calc::Term) -> crate::calc::Term,
+) -> crate::engine::CbLiveLit {
+    crate::engine::CbLiveLit {
+        kind: literal.kind,
+        iri: literal.iri,
+        first: map(literal.first),
+        second: literal.second.map(map),
+    }
+}
+
+fn cb_pred_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+    prior: &std::collections::HashMap<(usize, bool, u32), usize>,
+) -> Option<serde_json::Value> {
+    let crate::engine::CbLiveRuleEvidence::Pred {
+        sender_context_index,
+        sender_clause_id,
+        edge_label,
+        payload,
+        provider_clause_ids,
+        matched_predicates,
+    } = event.rule_evidence.as_ref()?
+    else {
+        return None;
+    };
+    let sender_context = live.contexts.get(*sender_context_index)?;
+    let sender_arena = if sender_context.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let receiver_arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let sender_clause = sender_arena.get(*sender_clause_id as usize)?;
+    let map = |term| cb_pred_backwards(term, *edge_label, live.comp_ind_bits);
+    let mut expected_payload = crate::engine::CbLiveClause {
+        body: sender_clause
+            .body
+            .iter()
+            .map(|literal| cb_map_live_literal(literal, map))
+            .collect(),
+        head: sender_clause
+            .head
+            .iter()
+            .map(|literal| cb_map_live_literal(literal, map))
+            .collect(),
+    };
+    for predicate in &sender_context.core {
+        cb_push_unique(
+            &mut expected_payload.body,
+            cb_map_live_literal(&cb_live_pred_literal(predicate), map),
+        );
+    }
+    if !cb_clause_set_eq(&expected_payload, payload)
+        || provider_clause_ids.len() != matched_predicates.len()
+    {
+        return None;
+    }
+    let mut current = payload.clone();
+    let mut provider_events = Vec::with_capacity(provider_clause_ids.len());
+    for (&clause_id, matched) in provider_clause_ids.iter().zip(matched_predicates) {
+        let provider = receiver_arena.get(clause_id as usize)?;
+        let literal = cb_live_pred_literal(matched);
+        current = cb_resolve_live(provider, &current, &literal)?;
+        provider_events.push(serde_json::json!({
+            "event_index": *prior.get(&(event.context_index, event.root, clause_id))?
+        }));
+    }
+    let result = receiver_arena.get(event.clause_id as usize)?;
+    if !cb_clause_set_eq(&current, result) {
+        return None;
+    }
+    let sender_event = *prior.get(&(
+        *sender_context_index,
+        sender_context.root,
+        *sender_clause_id,
+    ))?;
+    Some(serde_json::json!({
+        "kind": "pred",
+        "prior_events": [],
+        "trace": [],
+        "discarded": [],
+        "sender_event": {"event_index": sender_event},
+        "provider_events": provider_events,
+    }))
+}
+
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
@@ -1110,10 +1217,9 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         let automatic_derivation = if event.origin_hint == "derived" {
             cb_hyper_event_evidence(&live_state, event, &prior_insertions)
                 .or_else(|| cb_factor_event_evidence(&live_state, event, &prior_insertions))
-                .or_else(|| {
-                    cb_paramodulate_event_evidence(&live_state, event, &prior_insertions)
-                })
+                .or_else(|| cb_paramodulate_event_evidence(&live_state, event, &prior_insertions))
                 .or_else(|| cb_join_event_evidence(&live_state, event, &prior_insertions))
+                .or_else(|| cb_pred_event_evidence(&live_state, event, &prior_insertions))
                 .or_else(|| cb_tautology_event_evidence(&live_state, event))
         } else {
             None
@@ -1247,10 +1353,17 @@ fn find_cb_production_contexts<'a>(
         if object.contains_key("source") && object.contains_key("individual_count") {
             if let Some(contexts) = object.get("contexts").and_then(serde_json::Value::as_array) {
                 let exact = contexts.len() == live.contexts.len()
-                    && contexts.iter().zip(&live.contexts).all(|(candidate, context)| {
-                        candidate.get("context_id").and_then(serde_json::Value::as_u64)
+                    && contexts
+                        .iter()
+                        .zip(&live.contexts)
+                        .all(|(candidate, context)| {
+                            candidate
+                                .get("context_id")
+                                .and_then(serde_json::Value::as_u64)
                             == Some(context.context_id as u64)
-                            && candidate.get("trace").is_some_and(serde_json::Value::is_array)
+                                && candidate
+                                    .get("trace")
+                                    .is_some_and(serde_json::Value::is_array)
                     });
                 if exact {
                     return Some(contexts);
@@ -1454,10 +1567,7 @@ mod cb_derivation_candidate_tests {
                 literal: rewritten_literal,
             }),
         };
-        let prior = std::collections::HashMap::from([
-            ((0, true, 0), 0),
-            ((0, true, 1), 1),
-        ]);
+        let prior = std::collections::HashMap::from([((0, true, 0), 0), ((0, true, 1), 1)]);
         let evidence = cb_paramodulate_event_evidence(&live, &event, &prior).unwrap();
         assert_eq!(evidence["kind"], "local");
         assert_eq!(evidence["prior_events"][0]["event_index"], 0);
@@ -1508,14 +1618,10 @@ mod cb_derivation_candidate_tests {
                 literal: target,
             }),
         };
-        let prior = std::collections::HashMap::from([
-            ((0, true, 0), 0),
-            ((0, true, 1), 1),
-        ]);
+        let prior = std::collections::HashMap::from([((0, true, 0), 0), ((0, true, 1), 1)]);
         let evidence = cb_paramodulate_event_evidence(&live, &event, &prior).unwrap();
         assert_eq!(evidence["trace"].as_array().unwrap().len(), 2);
-        assert!(evidence["trace"][1]["justification"]["deleteReflexiveInequality"]
-            .is_object());
+        assert!(evidence["trace"][1]["justification"]["deleteReflexiveInequality"].is_object());
     }
 
     #[test]
@@ -1559,10 +1665,7 @@ mod cb_derivation_candidate_tests {
                 ground: predicate,
             }),
         };
-        let prior = std::collections::HashMap::from([
-            ((0, true, 0), 0),
-            ((0, true, 1), 1),
-        ]);
+        let prior = std::collections::HashMap::from([((0, true, 0), 0), ((0, true, 1), 1)]);
         let evidence = cb_join_event_evidence(&live, &event, &prior).unwrap();
         assert!(evidence["trace"][0]["justification"]["resolve"].is_object());
     }
@@ -1632,6 +1735,55 @@ mod cb_derivation_candidate_tests {
         let evidence = cb_join_event_evidence(&live, &event, &prior).unwrap();
         assert_eq!(evidence["prior_events"].as_array().unwrap().len(), 3);
         assert!(evidence["trace"][0]["justification"]["join3"].is_object());
+    }
+
+    #[test]
+    fn pred_metadata_cites_exact_sender_and_provider_events() {
+        let predicate = |iri| crate::engine::CbLivePred {
+            kind: "concept",
+            iri,
+            first: crate::calc::X,
+            second: None,
+        };
+        let premise = predicate(0);
+        let conclusion = predicate(1);
+        let payload = crate::engine::CbLiveClause {
+            body: vec![cb_live_pred_literal(&premise)],
+            head: vec![cb_live_pred_literal(&conclusion)],
+        };
+        let provider = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&premise)],
+        };
+        let result = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![cb_live_pred_literal(&conclusion)],
+        };
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.root_clause_arena = vec![payload.clone(), provider, result];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 2,
+            context_index: 1,
+            root: true,
+            clause_id: 2,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("pred-arrival"),
+            rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Pred {
+                sender_context_index: 0,
+                sender_clause_id: 0,
+                edge_label: crate::calc::X,
+                payload,
+                provider_clause_ids: vec![1],
+                matched_predicates: vec![premise],
+            }),
+        };
+        let prior = std::collections::HashMap::from([((0, true, 0), 0), ((1, true, 1), 1)]);
+        let evidence = cb_pred_event_evidence(&live, &event, &prior).unwrap();
+        assert_eq!(evidence["kind"], "pred");
+        assert_eq!(evidence["sender_event"]["event_index"], 0);
+        assert_eq!(evidence["provider_events"][0]["event_index"], 1);
     }
 }
 
