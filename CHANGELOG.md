@@ -59,6 +59,12 @@
   derived event. The native checker therefore rejects incomplete candidates,
   while the artifact gives rule reconstruction a length-exact per-run worklist
   without weakening mandatory publication.
+  The candidate producer now reuses the already source-bound production trace
+  for each derived insertion that remains retained in its terminal context. It
+  accepts a nested trace array only when the complete context count and every
+  context id match the live snapshot, then copies the trace for independent
+  Lean decoding. Removed events and retained events without a matching trace
+  remain `unproved`; no structural JSON match is trusted as certification.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

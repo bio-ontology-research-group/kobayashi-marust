@@ -572,14 +572,35 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
     let global_model: serde_json::Value = serde_json::from_slice(&global_bytes)
         .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
     let live_state = reasoner.live_terminal_snapshot()?;
+    let production_contexts = find_cb_production_contexts(&global_model, &live_state);
     let insertion_evidence: Vec<_> = live_state
         .insertion_history
         .iter()
         .map(|event| {
+            let retained = live_state.contexts[event.context_index]
+                .retained_clause_ids
+                .contains(&event.clause_id);
+            let trace = if event.origin_hint == "derived" && retained {
+                production_contexts
+                    .and_then(|contexts| contexts.get(event.context_index))
+                    .and_then(|context| context.get("trace"))
+                    .and_then(serde_json::Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let kind = if event.origin_hint != "derived" {
+                "seed"
+            } else if retained && !trace.is_empty() {
+                "local"
+            } else {
+                "unproved"
+            };
             serde_json::json!({
-                "kind": if event.origin_hint == "derived" { "unproved" } else { "seed" },
+                "kind": kind,
                 "prior_events": [],
-                "trace": [],
+                "trace": trace,
             })
         })
         .collect();
@@ -642,6 +663,119 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         Ok(())
     } else {
         Err(format!("CB Lean checker rejected the bundle with {status}"))
+    }
+}
+
+/// Find the source-bound production context array already present in the
+/// nested global certificate. A shape match alone is insufficient because the
+/// document contains several nested context arrays. Require the exact live
+/// context count and context ids; Lean still independently decodes and binds
+/// every copied trace.
+fn find_cb_production_contexts<'a>(
+    value: &'a serde_json::Value,
+    live: &crate::engine::CbLiveTerminalSnapshot,
+) -> Option<&'a Vec<serde_json::Value>> {
+    if let Some(object) = value.as_object() {
+        if object.contains_key("source") && object.contains_key("individual_count") {
+            if let Some(contexts) = object.get("contexts").and_then(serde_json::Value::as_array) {
+                let exact = contexts.len() == live.contexts.len()
+                    && contexts.iter().zip(&live.contexts).all(|(candidate, context)| {
+                        candidate.get("context_id").and_then(serde_json::Value::as_u64)
+                            == Some(context.context_id as u64)
+                            && candidate.get("trace").is_some_and(serde_json::Value::is_array)
+                    });
+                if exact {
+                    return Some(contexts);
+                }
+            }
+        }
+        for child in object.values() {
+            if let Some(found) = find_cb_production_contexts(child, live) {
+                return Some(found);
+            }
+        }
+    } else if let Some(array) = value.as_array() {
+        for child in array {
+            if let Some(found) = find_cb_production_contexts(child, live) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod cb_derivation_candidate_tests {
+    use super::*;
+
+    fn live_context(context_id: usize) -> crate::engine::CbLiveContextSnapshot {
+        crate::engine::CbLiveContextSnapshot {
+            context_index: context_id,
+            context_id,
+            root: true,
+            retained_clause_ids: Vec::new(),
+            todo_clause_ids: Vec::new(),
+            dirty: false,
+            pred_pool_ids: Vec::new(),
+            pred_hwm: 0,
+            succ_pool_ids: Vec::new(),
+            succ_hwm: 0,
+            rsucc_pool_ids: Vec::new(),
+            rsucc_hwm: 0,
+            rsucc_reach: Vec::new(),
+            rsucc_offered: 0,
+            rsucc_edges_grew: false,
+            predecessors: Vec::new(),
+            successors: Vec::new(),
+            predecessor_edge_seen: Vec::new(),
+            successor_reach_hwm: Vec::new(),
+        }
+    }
+
+    fn live_snapshot() -> crate::engine::CbLiveTerminalSnapshot {
+        crate::engine::CbLiveTerminalSnapshot {
+            version: 3,
+            comp_ind_bits: 17,
+            rsucc_enabled: false,
+            reach_concept_ids: Vec::new(),
+            ordinary_clause_arena: Vec::new(),
+            root_clause_arena: Vec::new(),
+            pending_messages: 0,
+            message_truncated: false,
+            nominal_truncated: false,
+            insertion_history: Vec::new(),
+            contexts: vec![live_context(7), live_context(11)],
+        }
+    }
+
+    #[test]
+    fn production_trace_extraction_requires_exact_live_context_identity() {
+        let document = serde_json::json!({
+            "decoy": {
+                "source": {}, "individual_count": 0,
+                "contexts": [{"context_id": 7, "trace": ["wrong"]}]
+            },
+            "nested": {
+                "source": {}, "individual_count": 0,
+                "contexts": [
+                    {"context_id": 7, "trace": ["first"]},
+                    {"context_id": 11, "trace": ["second"]}
+                ]
+            }
+        });
+        let live = live_snapshot();
+        let contexts = find_cb_production_contexts(&document, &live).unwrap();
+        assert_eq!(contexts[0]["trace"], serde_json::json!(["first"]));
+        assert_eq!(contexts[1]["trace"], serde_json::json!(["second"]));
+
+        let forged = serde_json::json!({
+            "source": {}, "individual_count": 0,
+            "contexts": [
+                {"context_id": 7, "trace": []},
+                {"context_id": 12, "trace": []}
+            ]
+        });
+        assert!(find_cb_production_contexts(&forged, &live).is_none());
     }
 }
 

@@ -122,6 +122,11 @@ claim that the layer is already complete.
   plus one evidence slot per insertion. Verified seeds are populated; derived
   slots use an unsupported `unproved` tag so the checker fails closed until a
   rule reconstruction replaces every such slot.
+  For terminal retained derived events, the producer reuses the corresponding
+  context trace from the nested source-bound production document after exact
+  context-count and context-id matching. Lean still decodes the copied trace,
+  checks every inference, and requires the live event clause in its terminal.
+  Events removed before the terminal state remain explicit producer gaps.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the
