@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "decision": {
+    "certifiedElProduction": false,
+    "fragment": "sriqCore",
+    "nominalIndependentLargeEl": false,
+    "nominalIndependentLarge": false,
+    "nominalLargeTBoxSmallIdentityABox": false,
+    "nominalSmallClassIdentityABox": false,
+    "nominalGroundGeneralHT": false,
+    "inverseCardinalityRoleSeparable": false,
+    "cardNumberRoleSeparable": false,
+    "nominalLargeNoCardinalityABox": false,
+    "nominalLargePortfolio": false,
+    "nominalTypedBridgeNonCardinality": false,
+    "nominalTypedBridge": false,
+    "nominalNITBox": false,
+    "sriqEL": false,
+    "sriqLargeHornFunctionalBridge": true,
+    "positiveABoxEL": false,
+    "learned": "productionAll",
+    "oneThreadSmallProduction": false
+  },
+  "selected": "elc"
+}

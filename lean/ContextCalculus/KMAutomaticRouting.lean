@@ -1,4 +1,5 @@
 import ContextCalculus.CertifiedRouting
+import Lean.Data.Json
 
 /-!
 # KM automatic-route decision boundary
@@ -15,6 +16,8 @@ complete fallback, and a total calculus supplies completeness directly.
 
 namespace ContextCalculus.KMAutomaticRouting
 
+open Lean
+
 inductive SemanticFragment where
   | unsupportedRules
   | rules
@@ -22,7 +25,7 @@ inductive SemanticFragment where
   | positiveABox
   | nominal
   | sriqCore
-deriving DecidableEq, Repr
+deriving DecidableEq, FromJson, ToJson, Repr
 
 /-- Exactly the routes that the production `select` function may return. -/
 inductive Route where
@@ -47,7 +50,7 @@ inductive Route where
   | lean
   | seqOn
   | seqOff
-deriving DecidableEq, Repr
+deriving DecidableEq, FromJson, ToJson, Repr
 
 def learnedEligible : Route → Bool
   | .elc | .cbPlain16 | .cbPlain8 | .cbPlain1
@@ -79,7 +82,7 @@ structure Decision where
   positiveABoxEL : Bool := false
   learned : Route := .productionAll
   oneThreadSmallProduction : Bool := false
-deriving Repr
+deriving FromJson, ToJson, Repr
 
 private def selectNominal (decision : Decision) : Route :=
   if decision.nominalIndependentLargeEl then .elc
@@ -120,6 +123,22 @@ def select (decision : Decision) : Route :=
         if decision.positiveABoxEL then .elc
         else if decision.inverseCardinalityRoleSeparable then .productionAll
         else selectLearned decision
+
+/-- Executable selector boundary. The version prevents silently reinterpreting
+an old decision schema after the Rust or Lean branch order changes. -/
+structure WireSelection where
+  version : Nat
+  decision : Decision
+  selected : Route
+deriving FromJson, ToJson, Repr
+
+def WireSelection.check (wire : WireSelection) : Bool :=
+  wire.version == 1 && decide (wire.selected = select wire.decision)
+
+theorem WireSelection.check_sound (wire : WireSelection)
+    (hcheck : wire.check = true) :
+    wire.version = 1 ∧ wire.selected = select wire.decision := by
+  simpa [WireSelection.check, Bool.and_eq_true, beq_iff_eq] using hcheck
 
 inductive CoverageBasis where
   /-- The worker's checked fragment theorem proves totality on this source. -/
@@ -188,5 +207,6 @@ example (decision : Decision)
 
 #print axioms selected_route_has_coverage_basis
 #print axioms selected_route_requires_exact_source
+#print axioms WireSelection.check_sound
 
 end ContextCalculus.KMAutomaticRouting

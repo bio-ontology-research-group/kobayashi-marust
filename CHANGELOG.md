@@ -16,6 +16,12 @@
   mandatory source identity and the routes whose absorbed preprocessing still
   needs a source-equivalence certificate. Concrete profile-predicate and worker
   adapter proofs remain before the integrated routing theorem is complete.
+- Add the versioned executable automatic-selector checker and a local routing
+  certification gate. The checker recomputes the ordered Lean selector and
+  rejects a claimed route that differs; fixtures cover the large Horn fallback
+  branch and a forged ELC selection. The gate audits the routing capstones for
+  `sorryAx`, runs both wire checks, and executes the focused Rust release
+  regression.
 - Replace the automatic large Horn-functional atomic bridge leaf with the
   bridge-first `production_all` portfolio. The bridge still runs before CB with
   two bounded subject workers, preserving the non-concurrent memory schedule,
