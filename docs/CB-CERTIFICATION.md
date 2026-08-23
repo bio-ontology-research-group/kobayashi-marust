@@ -130,6 +130,13 @@ claim that the layer is already complete.
   a retained strengthening, validity of the retained antichain implies
   validity of every pruned conclusion. What remains is to compute and check
   that exhaustive finite coverage from the production snapshot.
+- `CBPredEnumeration` supplies the exact finite foundation for that check. It
+  computes each provider posting directly from every retained receiver clause
+  whose head contains the required literal, enumerates the Cartesian product,
+  and proves membership equivalent to choosing exactly one member of every
+  complete dimension. The next wire layer must account for ground remainder
+  literals and bind every generated selection to either an emitted arrival or
+  a retained strengthening.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge

@@ -80,6 +80,11 @@
   Cartesian result has a retained syntactic strengthening, receiver-core
   validity of the retained results covers every pruned result. Executable
   enumeration still has to establish that finite coverage premise.
+- Add exact finite provider enumeration for Pred. Provider postings are
+  recomputed from every retained receiver head, the Cartesian product is
+  executable, and an iff theorem proves its members choose exactly one provider
+  from every complete dimension. Ground remainders and generated-result
+  disposition remain to be joined to the inter-context wire.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
