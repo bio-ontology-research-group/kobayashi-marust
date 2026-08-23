@@ -57,6 +57,13 @@ structure WireLiveSuccessorEdge where
   rsucc_reach_hwm : Nat
 deriving FromJson, ToJson
 
+structure WireLiveInsertionEvent where
+  sequence : Nat
+  context_index : Nat
+  root : Bool
+  clause_id : Nat
+deriving FromJson, ToJson
+
 structure WireLiveContext where
   context_index : Nat
   context_id : Nat
@@ -89,6 +96,7 @@ structure WireLiveStateDocument where
   nominal_truncated : Bool
   ordinary_clause_arena : List WireLiveClause
   root_clause_arena : List WireLiveClause
+  insertion_history : List WireLiveInsertionEvent
   contexts : List WireLiveContext
 deriving FromJson, ToJson
 
@@ -254,6 +262,36 @@ def WireLiveSuccessorEdge.decode (production : DecodedProductionRun)
     }
   else throw "CB live successor context is outside the production run"
 
+structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
+    (ordinary root : List FCL) where
+  sequence : Nat
+  contextIndex : Fin production.contexts.length
+  rootDomain : Bool
+  root_eq : (production.contexts.get contextIndex).root = rootDomain
+  clauseId : Nat
+  clause : FCL
+
+def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
+    (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
+    Except String (DecodedLiveInsertionEvent production ordinary root) := do
+  if hcontext : wire.context_index < production.contexts.length then
+    let contextIndex : Fin production.contexts.length := ⟨wire.context_index, hcontext⟩
+    let context := production.contexts.get contextIndex
+    if hroot : context.root = wire.root then
+      let arena := if wire.root then root else ordinary
+      match arena[wire.clause_id]? with
+      | some clause => return {
+          sequence := wire.sequence
+          contextIndex := contextIndex
+          rootDomain := wire.root
+          root_eq := hroot
+          clauseId := wire.clause_id
+          clause := clause
+        }
+      | none => throw "CB insertion-history clause id is outside its arena"
+    else throw "CB insertion-history arena domain differs from its context"
+  else throw "CB insertion-history context is outside the production run"
+
 structure DecodedLiveContext
     (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
@@ -280,6 +318,14 @@ structure DecodedLiveContext
   terminalContextsEq : production.contexts.length = terminal.contexts.length
   terminal_matches : liveTerminalMatches terminal
     ⟨contextIndex.val, terminalContextsEq ▸ contextIndex.isLt⟩ live = true
+
+private def insertionCovers
+    {production : DecodedProductionRun} {ordinary root : List FCL}
+    (history : List (DecodedLiveInsertionEvent production ordinary root))
+    (contexts : List (DecodedLiveContext production terminal ordinary root)) : Bool :=
+  contexts.all fun context => context.retainedClauseIds.all fun clauseId =>
+    history.any fun event =>
+      event.contextIndex.val == context.contextIndex.val && event.clauseId == clauseId
 
 def WireLiveContext.decode (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
@@ -330,11 +376,16 @@ structure DecodedLiveStateDocument where
   compIndBits : Nat
   ordinaryArena : List FCL
   rootArena : List FCL
+  insertionHistory : List (DecodedLiveInsertionEvent
+    (rProduction global.global.rsucc) ordinaryArena rootArena)
+  insertion_sequence_exact : insertionHistory.map (·.sequence) =
+    List.range insertionHistory.length
   contexts : List (DecodedLiveContext (rProduction global.global.rsucc)
     (terminalOfGlobal global)
     ordinaryArena rootArena)
   context_indices_exact : contexts.map (fun context => context.contextIndex.val) =
     List.range (rProduction global.global.rsucc).contexts.length
+  retained_insertions_present : insertionCovers insertionHistory contexts = true
 
 structure WireProductionBoundGlobalModelDocument where
   version : Nat
@@ -365,20 +416,30 @@ def WireProductionBoundGlobalModelDocument.decode
       (WireLiveClause.decode production.bounds wire.live_state.comp_ind_bits)
     let root ← wire.live_state.root_clause_arena.mapM
       (WireLiveClause.decode production.bounds wire.live_state.comp_ind_bits)
+    let insertionHistory ← wire.live_state.insertion_history.mapM
+      (WireLiveInsertionEvent.decode production ordinary root)
+    if hinsertionSequence : insertionHistory.map (·.sequence) =
+        List.range insertionHistory.length then
     let contexts ← wire.live_state.contexts.mapM
       (WireLiveContext.decode production terminal wire.live_state.comp_ind_bits ordinary root)
     let actual := contexts.map fun context => context.contextIndex.val
     let expected := List.range production.contexts.length
     if hcontexts : actual = expected then
+    if hretainedInsertions : insertionCovers insertionHistory contexts = true then
       return {
         global := global
         compIndBits := wire.live_state.comp_ind_bits
         ordinaryArena := ordinary
         rootArena := root
+        insertionHistory := insertionHistory
+        insertion_sequence_exact := hinsertionSequence
         contexts := contexts
         context_indices_exact := hcontexts
+        retained_insertions_present := hretainedInsertions
       }
+    else throw "CB live retained clause has no chronological insertion event"
     else throw "CB live contexts do not exactly enumerate the certified contexts"
+    else throw "CB insertion-history sequence is not exact"
   else throw "CB live Nom-truncation flag differs from terminal evidence"
 
 def WireProductionBoundGlobalModelDocument.check
@@ -393,6 +454,9 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
       wire.decode = .ok decoded ∧
       decoded.contexts.map (fun context => context.contextIndex.val) =
         List.range (rProduction decoded.global.global.rsucc).contexts.length ∧
+      decoded.insertionHistory.map (·.sequence) =
+        List.range decoded.insertionHistory.length ∧
+      insertionCovers decoded.insertionHistory decoded.contexts = true ∧
       ∀ context ∈ decoded.contexts,
         context.retained =
           ((rProduction decoded.global.global.rsucc).contexts.get
@@ -407,6 +471,7 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
   | error message => simp [WireProductionBoundGlobalModelDocument.check, hdecode] at hcheck
   | ok decoded =>
       exact ⟨decoded, rfl, decoded.context_indices_exact,
+        decoded.insertion_sequence_exact, decoded.retained_insertions_present,
         fun context _ => ⟨context.retained_eq, context.predecessors_exact,
           context.successors_exact⟩⟩
 

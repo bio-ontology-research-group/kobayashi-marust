@@ -19,6 +19,14 @@
   checker before extraction, and emits no classification when configuration,
   evidence, I/O, or checking fails. Automatic construction of the nested global
   certificate remains unreleased work before the complete CB gate can pass.
+  Mandatory mode now also disables shared-closure pre-seeding and records every
+  successful context-clause insertion in exact chronological order, including
+  clauses later removed by redundancy. The Lean live-state checker resolves
+  every event through the correct arena, checks its context and ordering domain,
+  requires gap-free sequence numbers, and confirms that every terminal retained
+  clause has an insertion event. This supplies the well-founded event stream
+  from which the producer can reconstruct rule justifications using only earlier
+  premises; ordinary runs retain sharing and allocate no history.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

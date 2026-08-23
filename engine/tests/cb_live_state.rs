@@ -143,7 +143,9 @@ fn mandatory_lean_rejection_prevents_publication() {
         .stderr(Stdio::piped())
         .spawn()
         .and_then(|mut child| {
-            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.stdin.take().unwrap().write_all(
+                br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#,
+            )?;
             child.wait_with_output()
         })
         .unwrap();
@@ -154,6 +156,55 @@ fn mandatory_lean_rejection_prevents_publication() {
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
     assert_eq!(document["version"], 1);
     assert_eq!(document["live_state"]["version"], 2);
+    let history = document["live_state"]["insertion_history"]
+        .as_array()
+        .unwrap();
+    assert!(!history.is_empty());
+    for (sequence, event) in history.iter().enumerate() {
+        assert_eq!(event["sequence"], sequence);
+        let root = event["root"].as_bool().unwrap();
+        let arena = if root {
+            &document["live_state"]["root_clause_arena"]
+        } else {
+            &document["live_state"]["ordinary_clause_arena"]
+        };
+        assert!(event["clause_id"].as_u64().unwrap() < arena.as_array().unwrap().len() as u64);
+    }
+    std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
+}
+
+#[test]
+fn provenance_schedule_preserves_the_uncertified_answer() {
+    let input = br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#;
+    let run = |required: bool, global: &std::path::Path, bundle: &std::path::Path| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"));
+        if required {
+            command
+                .env("KM_CB_LEAN_REQUIRED", "1")
+                .env("KM_CB_GLOBAL_MODEL_CERT", global)
+                .env("KM_CB_LEAN_CERT_CHECKER", "/bin/true")
+                .env("KM_CB_CERT_BUNDLE", bundle);
+        }
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                child.stdin.take().unwrap().write_all(input)?;
+                child.wait_with_output()
+            })
+            .unwrap()
+    };
+    let global = snapshot_path("schedule-global");
+    let bundle = snapshot_path("schedule-bundle");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let ordinary = run(false, &global, &bundle);
+    let certified_schedule = run(true, &global, &bundle);
+    assert!(ordinary.status.success());
+    assert!(certified_schedule.status.success());
+    assert_eq!(certified_schedule.stdout, ordinary.stdout);
     std::fs::remove_file(global).unwrap();
     std::fs::remove_file(bundle).unwrap();
 }

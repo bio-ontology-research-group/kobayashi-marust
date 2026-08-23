@@ -3103,6 +3103,12 @@ pub struct Engine {
     cc_sig: [Vec<ClauseSig>; 2],
     /// content hash -> candidate arena ids, per domain (exact-compare verified)
     cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
+    /// Complete chronological clause-insertion history for mandatory CB Lean
+    /// certification.  `None` in ordinary runs, so the hot path pays one
+    /// predictable branch and allocates no provenance data. Arena ids remain
+    /// valid even after back-subsumption, which preserves every intermediate
+    /// premise needed for post-run derivation reconstruction.
+    certificate_history: Option<Vec<CbLiveInsertionEvent>>,
     pub dropped_unsupported: usize,
     /// A resource backstop dropped work before the monotone fixpoint. The
     /// derived clauses remain sound, but classification is not complete and
@@ -3275,6 +3281,14 @@ pub struct CbLiveSuccessorEdge {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveInsertionEvent {
+    pub sequence: usize,
+    pub context_index: usize,
+    pub root: bool,
+    pub clause_id: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CbLiveContextSnapshot {
     pub context_index: usize,
     pub context_id: usize,
@@ -3311,6 +3325,7 @@ pub struct CbLiveTerminalSnapshot {
     pub pending_messages: usize,
     pub message_truncated: bool,
     pub nominal_truncated: bool,
+    pub insertion_history: Vec<CbLiveInsertionEvent>,
     pub contexts: Vec<CbLiveContextSnapshot>,
 }
 
@@ -3514,6 +3529,9 @@ impl Engine {
             cc_arena: [Vec::new(), Vec::new()],
             cc_sig: [Vec::new(), Vec::new()],
             cc_intern_idx: [HashMap::default(), HashMap::default()],
+            certificate_history: std::env::var_os("KM_CB_LEAN_REQUIRED")
+                .is_some()
+                .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
             nom_k: prepared.nom_k,
@@ -3850,7 +3868,10 @@ impl Engine {
         // add only the core rule (the facts live in the closure).  The empty-core
         // top context is itself the closure, so seeding it is a no-op-equivalent
         // (it adds no core clause and derives nothing further).
-        if root && std::env::var_os("KM_NO_SHARE").is_none() {
+        if root
+            && std::env::var_os("KM_NO_SHARE").is_none()
+            && self.certificate_history.is_none()
+        {
             self.attach_shared_base(id);
             self.add_core(id);
         } else {
@@ -4183,6 +4204,14 @@ impl Engine {
         // above rejected those), so it enters the delta layer.
         ctx.delta.clause_keys.insert(cid);
         ctx.delta.index_active_clause(&self.cc_arena[d], cid);
+        if let Some(history) = self.certificate_history.as_mut() {
+            history.push(CbLiveInsertionEvent {
+                sequence: history.len(),
+                context_index: id,
+                root,
+                clause_id: cid,
+            });
+        }
         if let Some(t) = __t {
             prof_add(&ADD_INDEX_NS, t);
         }
@@ -5778,7 +5807,7 @@ impl Engine {
             return s;
         }
         // Disabled via KM_NO_SHARE for A/B measurement; default on.
-        if std::env::var_os("KM_NO_SHARE").is_some() {
+        if std::env::var_os("KM_NO_SHARE").is_some() || self.certificate_history.is_some() {
             let id = self.contexts.len();
             let ctx = Context::new(id, vec![], false, None);
             self.contexts.push(ctx);
@@ -5824,7 +5853,7 @@ impl Engine {
         let ctx = Context::new(id, core, false, None);
         self.contexts.push(ctx);
         self.central_index.entry(h).or_default().push(id);
-        if std::env::var_os("KM_NO_SHARE").is_some() {
+        if std::env::var_os("KM_NO_SHARE").is_some() || self.certificate_history.is_some() {
             self.init_context(id);
         } else if let Some(src) = seed_from {
             // KM_SEED_FROM_SUBSET: the caller guarantees the source context's core
@@ -7693,6 +7722,7 @@ impl Engine {
             pending_messages: self.msgs.len(),
             message_truncated: self.message_truncated,
             nominal_truncated: self.nom_truncated.get(),
+            insertion_history: self.certificate_history.clone().unwrap_or_default(),
             contexts,
         }
     }
