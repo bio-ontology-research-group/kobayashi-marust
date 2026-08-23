@@ -60,6 +60,11 @@
   taxonomy-entailment equivalence with the exact existential HT ontology. This
   makes existential projection a checked source translation rather than an
   assumed preprocessing step.
+- Extend the HT routing-source contract to cardinality projections. Lean proves
+  that the complete maximum/minimum frontend clause families, witness
+  expansions, distinctness constraints, and exact complementary-pair
+  recognition have the same models and taxonomy consequences as the
+  first-class cardinality definitions consumed by certified HT search.
 
 ### Close the executable ELC certification boundary
 

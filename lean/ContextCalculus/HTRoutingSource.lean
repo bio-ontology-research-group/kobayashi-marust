@@ -1,4 +1,5 @@
 import ContextCalculus.HypertableauSkolemProjection
+import ContextCalculus.HypertableauCardinalityProjection
 import ContextCalculus.CertifiedRouting
 
 /-!
@@ -71,5 +72,56 @@ theorem Source.entailsSub_iff_target [DecidableEq Function]
 
 #print axioms Source.models_iff_target
 #print axioms Source.entailsSub_iff_target
+
+/-- Exact frontend cardinality source retained before HT replaces clause
+families by first-class definitions. -/
+structure CardinalitySource (Concept Role : Type) where
+  definitions : List (CardinalityDef Concept Role)
+  pairs : List (PairedCardinality Concept Role)
+  pairsCovered : ∀ pair ∈ pairs,
+    pair.maximum ∈ definitions ∧ pair.minimum ∈ definitions
+
+def CardinalitySource.Models
+    (source : CardinalitySource Concept Role)
+    (I : Interp Domain Concept Role) : Prop :=
+  I.modelsProjectedCardinalityDefs source.definitions source.pairs
+
+def CardinalitySource.TargetModels
+    (source : CardinalitySource Concept Role)
+    (I : Interp Domain Concept Role) : Prop :=
+  I.modelsProjectedCardinalityTargets source.definitions source.pairs
+
+/-- All maximum pigeonhole clauses, minimum witness expansions, and exact-pair
+split/clash clauses have precisely the same models as the cardinality
+definitions consumed by certified HT search. -/
+theorem CardinalitySource.models_iff_target
+    (source : CardinalitySource Concept Role)
+    (I : Interp Domain Concept Role) :
+    source.Models I ↔ source.TargetModels I := by
+  exact modelsProjectedCardinalityDefs_iff_targets I source.definitions
+    source.pairs source.pairsCovered
+
+def CardinalitySource.EntailsSub
+    (source : CardinalitySource Concept Role) (sub sup : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    source.Models I → ∀ value, I.concept sub value → I.concept sup value
+
+def CardinalitySource.TargetEntailsSub
+    (source : CardinalitySource Concept Role) (sub sup : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    source.TargetModels I →
+      ∀ value, I.concept sub value → I.concept sup value
+
+theorem CardinalitySource.entailsSub_iff_target
+    (source : CardinalitySource Concept Role) (sub sup : Concept) :
+    source.EntailsSub sub sup ↔ source.TargetEntailsSub sub sup := by
+  constructor
+  · intro hsource Domain I htarget
+    exact hsource Domain I ((source.models_iff_target I).mpr htarget)
+  · intro htarget Domain I hsource
+    exact htarget Domain I ((source.models_iff_target I).mp hsource)
+
+#print axioms CardinalitySource.models_iff_target
+#print axioms CardinalitySource.entailsSub_iff_target
 
 end ContextCalculus.HTRoutingSource

@@ -49,6 +49,7 @@ for theorem in \
     WirePublication.check_sound \
     models_encode_iff \
     Source.entailsSub_iff_target \
+    CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \
     WireSelection.check_sound \
     automatic_specialist_decline_has_coverage \
