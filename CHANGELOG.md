@@ -4,6 +4,13 @@
 
 ### Advance the CB semantic refinement
 
+- Add a bounds-checked executable CB Nom-allocation certificate. It records the
+  complete grounded Hyper firing key and accepts only positive-width,
+  consecutive, globally fresh and disjoint witness blocks with exact budget
+  accounting and no truncation. This is the operational allocation premise for
+  the finite-family Nom soundness theorem; premise-to-conclusion binding remains
+  part of the unfinished integrated CB layer.
+
 - Add an exact source-indexed Skolem encoding from normalized ALC clauses to
   the nested-term first-order clauses consumed by CB certificates.
 - Prove both model directions for the encoding. Any encoded term model

@@ -123,8 +123,13 @@ claim that the layer is already complete.
   saturation remains finite. Allocation is all-or-nothing and exhaustion marks
   the run incomplete. `nom_shared_cover_sound` also records the stronger
   invariant that would permit cross-firing reuse, but KM no longer relies on
-  that unproved optimization. Executable Nom evidence must still bind the
-  firing key, width, freshness, ordering, and no-truncation state.
+  that unproved optimization. `CBNominalAllocationWire` now checks exact firing
+  identities, positive widths, one consecutive allocation sequence, global
+  freshness and disjointness, exact budget accounting, and no truncation. Its
+  executable checker rejects overlapping blocks, replayed keys, and truncated
+  runs. The remaining Nom evidence must bind each checked firing to its exact
+  covering/counting premises and emitted conclusion, then compose the resulting
+  existential model extension with the ordinary production trace.
 
 ## Not yet established
 
