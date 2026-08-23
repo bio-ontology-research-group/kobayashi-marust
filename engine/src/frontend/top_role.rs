@@ -159,7 +159,9 @@ pub fn elide_vacuous_inclusions(ontology: &mut Ontology, reg: &IriRegistry) -> u
 /// they are what puts the builtin into the `TInput` role table.
 pub fn elide_vacuous_rbox_rows(rbox: &mut Vec<RboxRecord>, reg: &IriRegistry) {
     rbox.retain(|record| match record {
-        RboxRecord::Subrole(_, sup) | RboxRecord::Chain(_, _, sup) => {
+        RboxRecord::Subrole(_, sup)
+        | RboxRecord::Chain(_, _, sup)
+        | RboxRecord::ChainN(_, sup) => {
             !is_builtin_top_role(reg, sup)
         }
         _ => true,

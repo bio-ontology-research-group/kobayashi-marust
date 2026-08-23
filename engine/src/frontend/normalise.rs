@@ -106,6 +106,7 @@ fn nnf_not(b: &Concept) -> Concept {
 
 pub struct Clausifier {
     counter: u64,
+    role_counter: u64,
     prefix: String,
     reified: HashMap<Concept, String>,
     pub clauses: Vec<DLClause>,
@@ -156,6 +157,7 @@ impl Clausifier {
     pub fn new() -> Self {
         Clausifier {
             counter: 0,
+            role_counter: 0,
             prefix: "Q_".to_string(),
             reified: HashMap::new(),
             clauses: Vec::new(),
@@ -449,6 +451,12 @@ impl Clausifier {
     fn fresh(&mut self) -> String {
         let name = format!("{}{}", self.prefix, self.counter);
         self.counter += 1;
+        name
+    }
+
+    fn fresh_chain_role(&mut self) -> String {
+        let name = format!("__chain__{}", self.role_counter);
+        self.role_counter += 1;
         name
     }
 
@@ -1341,13 +1349,29 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                 ));
             }
             Axiom::RoleChain(chain, sup) => {
-                let k = chain.len();
-                let xs: Vec<Term> = (0..=k).map(|i| Term::Var(format!("x{}", i))).collect();
-                let body_atoms: Vec<Atom> = (0..k)
-                    .map(|i| Atom::Role(chain[i].clone(), xs[i].clone(), xs[i + 1].clone()))
-                    .collect();
-                let head_atom = Atom::Role(sup.clone(), xs[0].clone(), xs[k].clone());
-                clausifier.clauses.push(clause(body_atoms, [head_atom]));
+                debug_assert!(chain.len() >= 2, "parser rejects short role chains");
+                let x0 = Term::Var("x0".to_string());
+                let x1 = Term::Var("x1".to_string());
+                let x2 = Term::Var("x2".to_string());
+                let mut suffix = chain[chain.len() - 1].clone();
+                for role in chain[1..chain.len() - 1].iter().rev() {
+                    let combined = clausifier.fresh_chain_role();
+                    clausifier.clauses.push(clause(
+                        [
+                            Atom::Role(role.clone(), x0.clone(), x1.clone()),
+                            Atom::Role(suffix, x1.clone(), x2.clone()),
+                        ],
+                        [Atom::Role(combined.clone(), x0.clone(), x2.clone())],
+                    ));
+                    suffix = combined;
+                }
+                clausifier.clauses.push(clause(
+                    [
+                        Atom::Role(chain[0].clone(), x0.clone(), x1.clone()),
+                        Atom::Role(suffix, x1, x2.clone()),
+                    ],
+                    [Atom::Role(sup.clone(), x0, x2)],
+                ));
             }
             Axiom::TransitiveRole(role) => {
                 let z = Term::Var("z".to_string());
@@ -1498,4 +1522,57 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
     }
 
     (clausifier.clauses, abox_clauses, clausifier.hooks)
+}
+
+#[cfg(test)]
+mod chain_compilation_tests {
+    use super::*;
+
+    #[test]
+    fn long_role_chain_is_compiled_right_associatively() {
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::RoleChain(
+            vec!["r".into(), "s".into(), "t".into(), "u".into()],
+            "v".into(),
+        ));
+        let (clauses, abox, hooks) = normalise(&ontology);
+        assert_eq!(clauses.len(), 3);
+        let role_names = |clause: &DLClause| -> (Vec<String>, String) {
+            let body = clause
+                .body
+                .iter()
+                .map(|atom| match atom {
+                    Atom::Role(role, _, _) => role.clone(),
+                    _ => panic!("chain body contains a non-role atom"),
+                })
+                .collect();
+            let head = match clause.head.as_slice() {
+                [Atom::Role(role, _, _)] => role.clone(),
+                _ => panic!("chain head is not one role atom"),
+            };
+            (body, head)
+        };
+        assert_eq!(
+            role_names(&clauses[0]),
+            (vec!["t".into(), "u".into()], "__chain__0".into())
+        );
+        assert_eq!(
+            role_names(&clauses[1]),
+            (vec!["__chain__0".into(), "s".into()], "__chain__1".into())
+        );
+        assert_eq!(
+            role_names(&clauses[2]),
+            (vec!["__chain__1".into(), "r".into()], "v".into())
+        );
+        let augmented = crate::frontend::preprocess::augment(clauses, &abox, &hooks);
+        let retained = augmented
+            .iter()
+            .filter(|clause| {
+                clause.body.iter().chain(&clause.head).any(
+                    |atom| matches!(atom, Atom::Role(role, _, _) if role.starts_with("__chain__")),
+                )
+            })
+            .count();
+        assert_eq!(retained, 3, "preprocessing filtered a certified chain rule");
+    }
 }

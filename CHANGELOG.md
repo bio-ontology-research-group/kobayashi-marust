@@ -108,6 +108,16 @@
   concept, nominals, functionality, and qualified at-most clauses together.
   Exact cells can cite `regularArbitraryChain`. Rust generation of this evidence
   remains open.
+  Add the canonical finite binary compiler and prove it conservative in the
+  other direction. Every model of the original finite chain family extends to
+  the compiled signature by interpreting each fresh path role as relational
+  composition, while the existing derivation theorem proves every compiled
+  model satisfies the source chains. The Rust frontend now applies this exact
+  right-associated construction, retains the generated binary rules through
+  preprocessing, preserves legacy binary RBox rows, and carries longer source
+  chains in an explicit `chain-n` row. Short malformed chains fail closed.
+  Focused Rust tests check the exact generated rule family and retention.
+  Native generation of the anchored regular model payload remains open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

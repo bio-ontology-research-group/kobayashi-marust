@@ -551,6 +551,16 @@ and role chains before installing CB's functions. Functionality, nominals,
 qualified cardinality, and chains longer than two remain outside this evidence
 form and fail the exact-source check.
 
+`CBRoleChainCanonicalBinary` closes the preprocessing equivalence needed for
+longer chains. It constructs a finite right-associated family of binary rules,
+proves those rules derive every original chain, and proves every source model
+extends to the fresh path-role signature. The frontend implements the same
+construction with collision-safe internal role names. It retains generated
+rules in the CB clause stream and records the original source chain separately,
+so certification does not infer source syntax from transformed clauses. This
+establishes the semantic basis for `regularArbitraryChain`; producing its full
+anchored regular certificate from a live Rust run remains unfinished.
+
 `CBRegularNominalCountermodel` adds nominals without weakening source identity.
 Its mixed clause list retains arbitrary production order, then projects only
 the base ALC/RBox clauses for the regular HT check. The anchored equality

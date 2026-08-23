@@ -68,6 +68,48 @@ theorem path_of_indexed_edges
             ⟨index.val + 1, by simpa using Nat.add_lt_add_right index.isLt 1⟩)
         simpa [tailValues] using htail
 
+/-- A recursive path has an exact finite sequence of vertices. This is the
+    converse representation needed to apply the OWL indexed-chain semantics. -/
+theorem indexed_edges_of_path
+    (roles : List Role) (source target : D)
+    (path : Path relation roles source target) :
+    ∃ values : Fin (roles.length + 1) → D,
+      values ⟨0, Nat.zero_lt_succ _⟩ = source ∧
+      values ⟨roles.length, Nat.lt_succ_self _⟩ = target ∧
+      ∀ index : Fin roles.length,
+        relation (roles.get index)
+          (values ⟨index.val, Nat.lt_succ_of_lt index.isLt⟩)
+          (values ⟨index.val + 1, Nat.add_lt_add_right index.isLt 1⟩) := by
+  induction roles generalizing source with
+  | nil =>
+      refine ⟨fun _ => source, rfl, ?_, ?_⟩
+      · simpa [Path] using path
+      · intro index
+        exact Fin.elim0 index
+  | cons role roles ih =>
+      rcases path with ⟨middle, hedge, tail⟩
+      rcases ih middle tail with ⟨tailValues, hstart, hend, hedges⟩
+      let values : Fin ((role :: roles).length + 1) → D :=
+        Fin.cases source tailValues
+      refine ⟨values, ?_, ?_, ?_⟩
+      · simp [values]
+      · simpa [values, hend] using hend
+      · intro index
+        refine Fin.cases ?_ (fun tailIndex => ?_) index
+        · change relation role source (tailValues ⟨0, Nat.zero_lt_succ _⟩)
+          rw [hstart]
+          exact hedge
+        · simpa [values] using hedges tailIndex
+
+theorem satChain_apply_path
+    (chain : RoleChain Role) (hchain : satChain relation chain)
+    (path : Path relation chain.body source target) :
+    relation chain.sup source target := by
+  rcases indexed_edges_of_path chain.body source target path with
+    ⟨values, hsource, htarget, hedges⟩
+  rw [← hsource, ← htarget]
+  exact hchain values hedges
+
 inductive Derivation (roleMap : SourceRole → TargetRole)
     (rules : List (CBRegularRoleCountermodel.BinaryChain TargetRole)) :
     List SourceRole → TargetRole → Prop where
@@ -81,6 +123,16 @@ inductive Derivation (roleMap : SourceRole → TargetRole)
       (hsecond : rule.second = rightRole)
       (hconclusion : rule.conclusion = resultRole) :
       Derivation roleMap rules (leftBody ++ rightBody) resultRole
+
+theorem Derivation.weaken
+    (derivation : Derivation roleMap rules body resultRole)
+    (hsubset : ∀ rule, rule ∈ rules → rule ∈ largerRules) :
+    Derivation roleMap largerRules body resultRole := by
+  induction derivation with
+  | atom role => exact .atom role
+  | compose left right rule hrule hfirst hsecond hconclusion ihLeft ihRight =>
+      exact .compose ihLeft ihRight rule
+        (hsubset rule hrule) hfirst hsecond hconclusion
 
 theorem Derivation.sound
     (roleMap : SourceRole → TargetRole)
@@ -130,6 +182,9 @@ theorem satChain_of_derivation
     (path_of_indexed_edges chain.body values edges)
 
 #print axioms path_of_indexed_edges
+#print axioms indexed_edges_of_path
+#print axioms satChain_apply_path
+#print axioms Derivation.weaken
 #print axioms Derivation.sound
 #print axioms satChain_of_derivation
 

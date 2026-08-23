@@ -361,6 +361,11 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                     for r in chain_args {
                         chain.push(role_str(reg, r)?);
                     }
+                    if chain.len() < 2 {
+                        return Err(OutOfFragment(
+                            "ObjectPropertyChain requires at least two roles".to_string(),
+                        ));
+                    }
                     o.add(Axiom::RoleChain(chain, role_str(reg, args[1])?));
                     return Ok(());
                 }

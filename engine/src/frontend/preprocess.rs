@@ -1026,6 +1026,13 @@ fn is_chain_axiom(c: &DLClause) -> bool {
     false
 }
 
+fn is_canonical_long_chain_axiom(c: &DLClause) -> bool {
+    c.body.iter().chain(&c.head).any(|atom| match atom {
+        Atom::Role(role, _, _) => role.starts_with("__chain__"),
+        _ => false,
+    })
+}
+
 /// Port of `augment`: tbox minus raw chain axioms, plus nominal / transitivity /
 /// chain encodings.
 pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> {
@@ -1068,9 +1075,8 @@ pub fn augment_with_chains(
     // headers while every atom/string allocation remains owned and is moved.
     let mut base = Vec::with_capacity(tbox.len());
     base.extend(
-        tbox
-            .into_iter()
-            .filter(|c| keep_chains || !is_chain_axiom(c)),
+        tbox.into_iter()
+            .filter(|c| keep_chains || !is_chain_axiom(c) || is_canonical_long_chain_axiom(c)),
     );
     base.extend(nominal_clauses(abox, hooks));
     if std::env::var_os("KM_NOMINALS").is_some() {

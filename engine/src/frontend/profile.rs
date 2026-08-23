@@ -466,9 +466,9 @@ impl<'a> SourceProfileBuilder<'a> {
                         self.stats.role_chain_axioms += 1;
                         self.stats.max_role_chain_length =
                             self.stats.max_role_chain_length.max(rs.len() as u64);
-                        // The normalized RBox channel represents only binary
-                        // chains. Longer/shorter chains are fenced by rbox.rs,
-                        // so the source-side route certificate must decline too.
+                        // The direct HT RBox bridge represents only binary
+                        // chains. The normalizer compiles longer chains for CB,
+                        // but this source-side HT certificate must still decline.
                         if rs.len() != 2 {
                             self.inverse_cardinality_certificate_invalid = true;
                         }

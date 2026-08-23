@@ -27,6 +27,9 @@ pub enum RboxRecord {
     /// from the clause stream (it bloats cb_to_ht); the chain info rides the
     /// rbox instead.
     Chain(String, String, String),
+    /// Arbitrary finite named-role chain. Existing consumers fail closed on
+    /// its distinct row tag until they opt into certified decomposition.
+    ChainN(Vec<String>, String),
 }
 
 /// RBox source nodes retained during the primary parse without consulting the
@@ -96,6 +99,13 @@ pub fn to_row(record: &RboxRecord) -> Vec<String> {
         RboxRecord::Chain(left, right, sup) => {
             vec!["chain".into(), left.clone(), right.clone(), sup.clone()]
         }
+        RboxRecord::ChainN(body, sup) => {
+            let mut row = Vec::with_capacity(body.len() + 2);
+            row.push("chain-n".into());
+            row.push(sup.clone());
+            row.extend(body.iter().cloned());
+            row
+        }
     }
 }
 
@@ -149,26 +159,24 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 if sub.head() == Some("ObjectPropertyChain") {
                     // KM_KEEP_CHAIN_AXIOMS: emit the chain as side data
                     // (Chain(r1, r2, sup)) so cb_to_ht can populate the TInput
-                    // `chains` field for the Ht chain-unfolding.  The raw chain
-                    // axiom is filtered from the clause stream (it bloats
-                    // cb_to_ht); the chain info rides the rbox.  Fall back to the
-                    // fenced record when the chain roles are not plain.
+                    // `chains` field for the Ht chain-unfolding. Binary rows
+                    // retain the legacy shape. Longer named chains use the
+                    // distinct `chain-n` source row and are compiled to
+                    // certified binary clauses by the normalizer. Fall back to
+                    // a fence only when a chain role is not plain.
                     let chain_args: Vec<&Node> = match sub {
                         Node::List(_, ca) => strip_annotations(ca),
                         _ => Vec::new(),
                     };
-                    if chain_args.len() == 2 {
-                        if let (Some(r1), Some(r2), Some(rs)) = (
-                            plain_role(reg, chain_args[0]),
-                            plain_role(reg, chain_args[1]),
-                            ssup,
-                        ) {
-                            out.push(RboxRecord::Chain(r1, r2, rs));
+                    let roles: Option<Vec<String>> = chain_args
+                        .iter()
+                        .map(|role| plain_role(reg, role))
+                        .collect();
+                    if let (Some(roles), Some(rs)) = (roles, ssup) {
+                        if let [r1, r2] = roles.as_slice() {
+                            out.push(RboxRecord::Chain(r1.clone(), r2.clone(), rs));
                         } else {
-                            out.push(RboxRecord::Fenced(
-                                "role-chain".to_string(),
-                                format!("{:?} ⊑ {:?}", sub, sup),
-                            ));
+                            out.push(RboxRecord::ChainN(roles, rs));
                         }
                     } else {
                         out.push(RboxRecord::Fenced(
@@ -312,7 +320,7 @@ pub fn el_rbox_safe(records: &[RboxRecord]) -> bool {
         RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
         RboxRecord::Fenced(reason, _) => reason == "role-chain" || reason == "reflexivity",
         RboxRecord::Inverse(..) => false,
-        RboxRecord::Transitive(..) | RboxRecord::Chain(..) => true,
+        RboxRecord::Transitive(..) | RboxRecord::Chain(..) | RboxRecord::ChainN(..) => true,
     })
 }
 
@@ -333,7 +341,7 @@ pub fn el_rbox_safe_relaxed(records: &[RboxRecord], relevant: &HashSet<String>) 
                 || (reason == "symmetric-role" && !relevant.contains(role))
         }
         RboxRecord::Inverse(r, s) => !relevant.contains(r) && !relevant.contains(s),
-        RboxRecord::Transitive(..) | RboxRecord::Chain(..) => true,
+        RboxRecord::Transitive(..) | RboxRecord::Chain(..) | RboxRecord::ChainN(..) => true,
     })
 }
 
@@ -350,6 +358,24 @@ mod tests {
 
     fn record_bytes(records: &[RboxRecord]) -> Vec<u8> {
         serde_json::to_vec(&records.iter().map(to_row).collect::<Vec<_>>()).unwrap()
+    }
+
+    #[test]
+    fn arbitrary_named_chain_is_retained_without_changing_binary_rows() {
+        let text = "Ontology(\
+            SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) \
+            SubObjectPropertyOf(ObjectPropertyChain(<r> <s> <u>) <v>))";
+        let mut registry = IriRegistry::new();
+        parse::parse_axioms(&mut registry, text).unwrap();
+        let mut records = Vec::new();
+        parse::for_each_ontology_child(text, |node| {
+            rbox_node(&mut registry, node, &mut records);
+            Ok(())
+        })
+        .unwrap();
+        let rows: Vec<Vec<String>> = records.iter().map(to_row).collect();
+        assert_eq!(rows[0], ["chain", "r", "s", "t"]);
+        assert_eq!(rows[1], ["chain-n", "v", "r", "s", "u"]);
     }
 
     #[test]

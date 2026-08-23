@@ -2199,6 +2199,78 @@ fn cb_blocked_taxonomy_countermodel(
     })))
 }
 
+/// Canonically decompose every finite source role chain into binary rules.
+/// Source role ids retain their numeric identity; fresh intermediate roles are
+/// allocated consecutively above `source_role_count`. The returned derivation
+/// trees use the exact externally-tagged JSON shape checked by Lean's
+/// `CBRoleChainBinaryDerivationWire`.
+fn cb_canonical_binary_role_chains(
+    source_role_count: usize,
+    chains: &[(Vec<usize>, usize)],
+) -> Result<(usize, Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    fn atom(role: usize) -> serde_json::Value {
+        serde_json::json!({"atom": {"role": role}})
+    }
+
+    fn identity(
+        body: &[usize],
+        next_role: &mut usize,
+        rules: &mut Vec<serde_json::Value>,
+    ) -> Result<(usize, serde_json::Value), String> {
+        let (&first, rest) = body
+            .split_first()
+            .ok_or_else(|| "canonical binary identity received an empty path".to_string())?;
+        if rest.is_empty() {
+            return Ok((first, atom(first)));
+        }
+        let (right_role, right) = identity(rest, next_role, rules)?;
+        let result = *next_role;
+        *next_role = next_role
+            .checked_add(1)
+            .ok_or_else(|| "canonical binary fresh-role count overflow".to_string())?;
+        let rule = rules.len();
+        rules.push(serde_json::json!({
+            "first": first,
+            "second": right_role,
+            "conclusion": result,
+        }));
+        Ok((
+            result,
+            serde_json::json!({"compose": {
+                "left": atom(first),
+                "right": right,
+                "rule": rule,
+            }}),
+        ))
+    }
+
+    let mut next_role = source_role_count;
+    let mut rules = Vec::new();
+    let mut derivations = Vec::with_capacity(chains.len());
+    for (body, sup) in chains {
+        if body.len() < 2 {
+            return Err("OWL property chain has fewer than two body roles".to_string());
+        }
+        if *sup >= source_role_count || body.iter().any(|role| *role >= source_role_count) {
+            return Err("OWL property chain role exceeds the source role bound".to_string());
+        }
+        let first = body[0];
+        let (right_role, right) = identity(&body[1..], &mut next_role, &mut rules)?;
+        let rule = rules.len();
+        rules.push(serde_json::json!({
+            "first": first,
+            "second": right_role,
+            "conclusion": sup,
+        }));
+        derivations.push(serde_json::json!({"compose": {
+            "left": atom(first),
+            "right": right,
+            "rule": rule,
+        }}));
+    }
+    Ok((next_role, rules, derivations))
+}
+
 /// Build the exact row-major matrix around an already checked live publication.
 /// Positive, reflexive, and bottom-implied cells are complete immediately.
 /// Omitted cells remain explicit `unresolved` evidence and are rejected by the
@@ -2668,6 +2740,49 @@ mod cb_derivation_candidate_tests {
         assert!(cb_exact_taxonomy_candidate(&duplicate)
             .unwrap_err()
             .contains("duplicate subject"));
+    }
+
+    #[test]
+    fn canonical_binary_role_chains_allocate_finite_fresh_roles() {
+        let (target_roles, rules, derivations) = cb_canonical_binary_role_chains(
+            5,
+            &[(vec![0, 1], 2), (vec![0, 1, 2, 3], 4)],
+        )
+        .unwrap();
+        assert_eq!(target_roles, 7);
+        assert_eq!(rules.len(), 4);
+        assert_eq!(derivations.len(), 2);
+        assert_eq!(
+            rules[0],
+            serde_json::json!({"first": 0, "second": 1, "conclusion": 2})
+        );
+        assert_eq!(
+            rules[1],
+            serde_json::json!({"first": 2, "second": 3, "conclusion": 5})
+        );
+        assert_eq!(
+            rules[2],
+            serde_json::json!({"first": 1, "second": 5, "conclusion": 6})
+        );
+        assert_eq!(
+            rules[3],
+            serde_json::json!({"first": 0, "second": 6, "conclusion": 4})
+        );
+        assert_eq!(derivations[0]["compose"]["rule"], 0);
+        assert_eq!(derivations[1]["compose"]["rule"], 3);
+    }
+
+    #[test]
+    fn canonical_binary_role_chains_reject_malformed_sources() {
+        assert!(cb_canonical_binary_role_chains(2, &[(vec![0], 1)])
+            .unwrap_err()
+            .contains("fewer than two"));
+        assert!(cb_canonical_binary_role_chains(2, &[(vec![0, 2], 1)])
+            .unwrap_err()
+            .contains("exceeds"));
+        assert!(cb_canonical_binary_role_chains(2, &[(vec![0, 1], 2)])
+            .unwrap_err()
+            .contains("exceeds"));
     }
 
     #[test]
