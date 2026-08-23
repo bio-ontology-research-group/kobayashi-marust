@@ -1,0 +1,6 @@
+import ContextCalculus.CBGlobalModelWire
+
+open ContextCalculus.CBGlobalModelWire
+
+#print axioms DecodedCBGlobalModelDocument.source_model
+#print axioms WireCBGlobalModelDocument.check_sound
