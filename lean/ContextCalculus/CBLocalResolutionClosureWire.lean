@@ -269,7 +269,12 @@ private def resolutionTerminal : WireCBTerminalStateDocument :=
       inter_context := { inter with
         production := { production with contexts } } } }
 
-private def acceptedExample : WireLocalResolutionClosureDocument where
+def vacuousAcceptedExample : WireLocalResolutionClosureDocument where
+  version := 1
+  terminal := CBTerminalStateWire.acceptedExample
+  contexts := [{ context_index := 0, context_id := 7, generated := [] }]
+
+def acceptedExample : WireLocalResolutionClosureDocument where
   version := 1
   terminal := resolutionTerminal
   contexts := [{

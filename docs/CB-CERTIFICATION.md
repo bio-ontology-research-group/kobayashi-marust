@@ -201,6 +201,18 @@ claim that the layer is already complete.
   `cb-local-resolution-closure-check` exposes this boundary. This proves closure
   modulo redundancy for ordinary local resolution only; it does not establish
   Hyper, equality, Factor, Join-3, Succ, blocking, or whole-engine closure.
+- `CBLocalFactorClosureWire` nests that resolution certificate and independently
+  enumerates every ordered pair of distinct terminal head equalities that share
+  a left side and have different right sides. It mirrors production removal of
+  reflexive inequalities and rejection of reflexive-equality or
+  equality/inequality-complement tautologies, then requires a retained
+  strengthening for every remaining Factor result. Lean proves normalization
+  preserves truth and proves every enumerated candidate from the checked source
+  clause. Terminal retained heads must already be normalized. The standalone
+  `cb-local-factor-closure-check` exposes this boundary. The Rust-only
+  `owl:Nothing` predicate filter still needs an exact source-symbol binding;
+  this checker does not silently identify an arbitrary concept id as bottom.
+  General Eq paramodulation and whole-engine closure remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

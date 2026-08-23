@@ -151,6 +151,16 @@
   A standalone checker and non-vacuous fixture exercise all four pairings of a
   mutually resolvable retained pair. Hyper, equality, Factor, Join-3, Succ, and
   production emission remain separate closure obligations.
+- Add exact local Factor closure and terminal head-normalization evidence. Lean
+  reproduces the ordered distinct-pair scan over equalities with a shared left
+  side, applies reflexive equality/inequality and equality-complement filtering,
+  and requires a retained strengthening for every non-tautological result. Prove
+  both the filtering step and each accepted generated Factor candidate
+  semantically sound. The nested certificate first rechecks terminal and local
+  resolution closure. Non-vacuous tests reject omitted Factor candidates,
+  retained reflexive inequalities, and equality-complement heads. Binding the
+  special `owl:Nothing` literal filter remains part of source-to-Rust refinement
+  rather than being trusted by this checker.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

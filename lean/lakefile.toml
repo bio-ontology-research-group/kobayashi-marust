@@ -53,6 +53,10 @@ name = "cb-local-resolution-closure-check"
 root = "CBLocalResolutionClosureCheck"
 
 [[lean_exe]]
+name = "cb-local-factor-closure-check"
+root = "CBLocalFactorClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 
