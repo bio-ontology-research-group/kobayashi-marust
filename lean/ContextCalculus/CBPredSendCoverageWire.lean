@@ -53,6 +53,7 @@ deriving FromJson, ToJson
 
 def ordinaryLabel : FTerm → Bool
   | .app _ (.var 0) => true
+  | .app _ (.const _) => true
   | _ => false
 
 structure DecodedPredEdge (production : DecodedProductionRun) where

@@ -1,0 +1,6 @@
+import ContextCalculus.CBSuccClosureWire
+
+open ContextCalculus.CBSuccClosureWire
+
+#print axioms DecodedContextSuccClosure.complete_delivery
+#print axioms WireSuccClosureDocument.check_sound
