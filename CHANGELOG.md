@@ -64,6 +64,11 @@
   function interpretations preserve arbitrary nesting. Lean now proves full
   residual-taxonomy equivalence between ELC semantics and the common source,
   not only satisfaction preservation from an existing common model.
+- Bind the finite identifiers decoded by the executable V5 ELC wire to that
+  common residual source. Lean proves natural extension and finite restriction
+  preserve equality-bearing residual clauses and all taxonomy queries. One
+  accepted wire now yields both its existing publication contract and this
+  complete source-translation theorem.
 - Package HT's retained direct clauses and complete, uniquely keyed Skolem-pair
   family as a routing source. Lean proves both model-existence equivalence and
   taxonomy-entailment equivalence with the exact existential HT ontology. This
