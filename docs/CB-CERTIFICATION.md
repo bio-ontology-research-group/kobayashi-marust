@@ -433,6 +433,31 @@ certificate form capable of representing the required infinite models.
 
 Benchmark agreement with another reasoner is regression evidence only.
 
+## Current integrated publication boundary
+
+`cb-live-taxonomy-publication-check` now checks the exact grouped taxonomy map
+used for CB JSON output. The certificate includes the complete concept-name
+table, unique public subject rows, positive superclass ids, unsatisfiable-row
+flags, and the global inconsistency flag. Each positive cell must identify a
+query context with its retained unit clause; each unsatisfiable row must identify
+the retained empty clause; and a reported global inconsistency must identify an
+empty-core context with a retained empty clause. Lean derives the corresponding
+source entailments and refutations from the checked chronological insertion
+history. The checker rejects row/witness disagreement, duplicate names or rows,
+out-of-bounds ids, unsupported input clauses, incomplete state, and missing
+publication witnesses before the worker writes stdout.
+
+Certified execution currently materializes roots for classes already recognized
+as bottom and bypasses SCC query aliases and the nominal-label query shortcut.
+This leaves ordinary execution unchanged while preventing uncertified
+post-processing from entering the checked answer. Separate refinement proofs
+can restore those optimizations to certified execution later.
+
+This boundary proves sound positive taxonomy cells, sound unsatisfiable rows,
+and sound reported inconsistency. It does not yet prove omitted taxonomy cells
+negative or prove a reported consistency result. Those claims require the
+global closure, fairness, and countermodel layer below.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

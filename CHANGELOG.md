@@ -4,6 +4,20 @@
 
 ### Advance the CB semantic refinement
 
+- Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
+  serializes. The production document now carries the concept-name interner,
+  one unique row per public subject, every positive cell, every unsatisfiable
+  row, and the global inconsistency flag. Lean requires the grouped rows to be
+  exactly the flattening of the checked positive and contradiction witnesses,
+  proves every positive cell and unsatisfiable row sound, and proves a reported
+  global inconsistency refutes every source model. Certified mode fails closed
+  on unsupported input clauses or output rows without retained witnesses, and
+  serializes the checked row map after acceptance. It materializes direct-
+  bottom roots and temporarily bypasses SCC-alias and nominal-label query
+  shortcuts so these optimizations cannot escape the proof boundary; ordinary
+  classification keeps all three optimizations. Negative taxonomy cells and a
+  reported consistency result still require the global completeness layer, so
+  this is an integrated development milestone rather than a release.
 - Add the first exact production-state binding for the integrated CB model
   certificate. KM now exports both compact context-clause arenas, the active
   packed-term layout, deterministic retained IDs, queue state, edge watermarks,

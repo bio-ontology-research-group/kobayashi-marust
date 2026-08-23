@@ -39,6 +39,10 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
     std::fs::remove_file(&path).unwrap();
     assert_eq!(snapshot["version"], 5);
     assert!(snapshot["concept_count"].is_number());
+    assert_eq!(
+        snapshot["concept_names"].as_array().unwrap().len(),
+        snapshot["concept_count"].as_u64().unwrap() as usize
+    );
     assert!(snapshot["role_count"].is_number());
     assert!(snapshot["function_count"].is_number());
     assert!(snapshot["source_individual_count"].is_number());
@@ -166,12 +170,25 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(derivation.exists());
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
-    assert_eq!(document["version"], 2);
-    let production_bound = &document["production_bound"];
+    assert_eq!(document["version"], 1);
+    assert!(document["concept_names"].is_array());
+    assert!(document["public_rows"].is_array());
+    assert!(document["public_subsumptions"].is_array());
+    assert!(document["unsatisfiable"].is_array());
+    assert!(document["inconsistent"].is_boolean());
+    assert!(document["inconsistency_witness"].is_null()
+        || document["inconsistency_witness"].is_object());
+    let derivation_document = &document["derivation"];
+    assert_eq!(derivation_document["version"], 2);
+    let production_bound = &derivation_document["production_bound"];
     assert_eq!(production_bound["version"], 1);
     let live_state = &production_bound["live_state"];
     assert_eq!(live_state["version"], 5);
     assert!(live_state["concept_count"].is_number());
+    assert_eq!(
+        live_state["concept_names"].as_array().unwrap().len(),
+        live_state["concept_count"].as_u64().unwrap() as usize
+    );
     assert!(live_state["role_count"].is_number());
     assert!(live_state["function_count"].is_number());
     assert!(live_state["source_individual_count"].is_number());
@@ -232,7 +249,9 @@ fn mandatory_lean_rejection_prevents_publication() {
     let candidate: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&derivation).unwrap()).unwrap();
     assert_eq!(candidate, document);
-    let evidence = document["insertion_evidence"].as_array().unwrap();
+    let evidence = derivation_document["insertion_evidence"]
+        .as_array()
+        .unwrap();
     assert_eq!(evidence.len(), history.len());
     for (event, proof) in history.iter().zip(evidence) {
         let expected = if event["rule_hint"] == "hyper" {
@@ -259,7 +278,9 @@ fn mandatory_lean_rejection_prevents_publication() {
 
 #[test]
 fn provenance_schedule_preserves_the_uncertified_answer() {
-    let input = br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#;
+    // Exercise the two query optimizations deliberately bypassed by certified
+    // mode: A/B form a unit-equivalence SCC and C is promoted to bottom.
+    let input = br#"{"clauses":[{"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}]},{"body":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]},{"body":[{"kind":"concept","concept":"C","term":{"kind":"var","name":"x"}}],"head":[]}]}"#;
     let run = |required: bool, global: &std::path::Path, bundle: &std::path::Path| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"));
         if required {

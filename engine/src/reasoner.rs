@@ -812,7 +812,12 @@ impl Reasoner {
         // worker thread. The query list also comes from it, which drops the
         // throw-away engine that used to be built just to enumerate queries.
         let prepared = self.prepare();
-        let mut queries = prepared.named_queries();
+        let certified = std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
+        let mut queries = if certified {
+            prepared.certification_queries()
+        } else {
+            prepared.named_queries()
+        };
         // KM_QUERIES: classify only the named subjects listed (comma-
         // separated internal names) — the certified-EL hybrid's residue path:
         // elc answers every subject its certificate determined, and the
@@ -857,7 +862,14 @@ impl Reasoner {
             set_root_ordered(0);
             return;
         }
-        let (queries, mutual_unit_groups) = self.collapse_mutual_unit_queries(&queries);
+        // Alias restoration has no root context for the restored aliases.
+        // Certified runs retain every query root until that post-processing
+        // argument is represented in Lean.
+        let (queries, mutual_unit_groups) = if certified {
+            (queries, Vec::new())
+        } else {
+            self.collapse_mutual_unit_queries(&queries)
+        };
         if release_input {
             self.clauses0.clear();
             self.clauses0.shrink_to_fit();

@@ -490,12 +490,17 @@ pub fn run_engine() {
             exit(5);
         }
     }
-    if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
-        if let Err(error) = verify_cb_lean_publication(&r) {
-            eprintln!("CB Lean certification failed: {error}");
-            exit(5);
+    let certified_subsumptions = if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
+        match verify_cb_lean_publication(&r) {
+            Ok(subsumptions) => Some(subsumptions),
+            Err(error) => {
+                eprintln!("CB Lean certification failed: {error}");
+                exit(5);
+            }
         }
-    }
+    } else {
+        None
+    };
 
     let t3 = std::time::Instant::now();
     // The derived-clause echo doubles output volume and is only consumed by the
@@ -509,8 +514,9 @@ pub fn run_engine() {
     };
     let inconsistent = r.inconsistent();
     let dropped = r.dropped_unsupported();
-    let subsumptions = r
-        .take_subsumptions()
+    let production_subsumptions = r.take_subsumptions();
+    let subsumptions = certified_subsumptions
+        .unwrap_or(production_subsumptions)
         .into_iter()
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
@@ -1311,7 +1317,9 @@ fn cb_filtered_seed_event_evidence(
 
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
-fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
+fn verify_cb_lean_publication(
+    reasoner: &crate::reasoner::Reasoner,
+) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
     let global_path = std::env::var_os("KM_CB_GLOBAL_MODEL_CERT")
         .ok_or_else(|| "KM_CB_GLOBAL_MODEL_CERT is required".to_string())?;
     let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER")
@@ -1329,6 +1337,14 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
     let global_model: serde_json::Value = serde_json::from_slice(&global_bytes)
         .map_err(|error| format!("cannot parse global CB certificate: {error}"))?;
     let live_state = reasoner.live_terminal_snapshot()?;
+    let public_answer = reasoner.subsumptions();
+    let public_inconsistent = reasoner.inconsistent();
+    if reasoner.dropped_unsupported() != 0 {
+        return Err(format!(
+            "CB certified publication refuses {} unsupported input clauses",
+            reasoner.dropped_unsupported()
+        ));
+    }
     let production_contexts = find_cb_production_contexts(&global_model, &live_state);
     let mut prior_insertions = std::collections::HashMap::new();
     let mut insertion_evidence = Vec::with_capacity(live_state.insertion_history.len());
@@ -1403,10 +1419,27 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         "global_model": global_model,
         "live_state": live_state,
     });
-    let certificate = serde_json::json!({
+    let derivation = serde_json::json!({
         "version": 2,
         "production_bound": production_bound,
         "insertion_evidence": insertion_evidence,
+    });
+    let (public_rows, public_subsumptions, unsatisfiable) =
+        cb_live_publication_rows(&live_state, &public_answer)?;
+    let inconsistency_witness = if public_inconsistent {
+        Some(cb_live_inconsistency_witness(&live_state)?)
+    } else {
+        None
+    };
+    let certificate = serde_json::json!({
+        "version": 1,
+        "derivation": derivation,
+        "concept_names": live_state.concept_names,
+        "public_rows": public_rows,
+        "public_subsumptions": public_subsumptions,
+        "unsatisfiable": unsatisfiable,
+        "inconsistent": public_inconsistent,
+        "inconsistency_witness": inconsistency_witness,
     });
     let file = std::fs::File::create(&bundle_path).map_err(|error| {
         format!(
@@ -1454,10 +1487,134 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             )
         })?;
     if status.success() {
-        Ok(())
+        Ok(public_answer)
     } else {
         Err(format!("CB Lean checker rejected the bundle with {status}"))
     }
+}
+
+fn cb_live_inconsistency_witness(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+) -> Result<serde_json::Value, String> {
+    for (context_index, context) in live.contexts.iter().enumerate() {
+        if !context.core.is_empty() {
+            continue;
+        }
+        let arena = if context.root {
+            &live.root_clause_arena
+        } else {
+            &live.ordinary_clause_arena
+        };
+        if context.retained_clause_ids.iter().any(|&id| {
+            arena
+                .get(id as usize)
+                .is_some_and(|clause| clause.body.is_empty() && clause.head.is_empty())
+        }) {
+            return Ok(serde_json::json!({"context_index": context_index}));
+        }
+    }
+    Err("published CB inconsistency has no empty-core retained contradiction".to_string())
+}
+
+/// Translate the exact grouped answer into the semantic ids and live-context
+/// witnesses checked by Lean. Any row without a direct retained witness makes
+/// certified publication fail closed.
+fn cb_live_publication_rows(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    answer: &std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> Result<
+    (
+        Vec<serde_json::Value>,
+        Vec<serde_json::Value>,
+        Vec<serde_json::Value>,
+    ),
+    String,
+> {
+    let ids: std::collections::HashMap<&str, usize> = live
+        .concept_names
+        .iter()
+        .enumerate()
+        .map(|(id, name)| (name.as_str(), id))
+        .collect();
+    if ids.len() != live.concept_names.len() {
+        return Err("CB concept-name interner contains duplicate public names".to_string());
+    }
+    let mut rows = Vec::with_capacity(answer.len());
+    let mut cells = Vec::new();
+    let mut unsatisfiable = Vec::new();
+    for (sub_name, supers) in answer {
+        let sub = *ids
+            .get(sub_name.as_str())
+            .ok_or_else(|| format!("published CB subject {sub_name:?} is not interned"))?;
+        let (context_index, context) = live
+            .contexts
+            .iter()
+            .enumerate()
+            .find(|(_, context)| context.query_concept == Some(sub as crate::calc::Iri))
+            .ok_or_else(|| format!("published CB subject {sub_name:?} has no query context"))?;
+        let arena = if context.root {
+            &live.root_clause_arena
+        } else {
+            &live.ordinary_clause_arena
+        };
+        let retained: Vec<&crate::engine::CbLiveClause> = context
+            .retained_clause_ids
+            .iter()
+            .map(|&id| {
+                arena
+                    .get(id as usize)
+                    .ok_or_else(|| format!("context {context_index} retains missing clause {id}"))
+            })
+            .collect::<Result<_, _>>()?;
+        let contradiction = retained
+            .iter()
+            .any(|clause| clause.body.is_empty() && clause.head.is_empty());
+        let mut numeric_supers = Vec::new();
+        let mut row_unsatisfiable = false;
+        for sup_name in supers {
+            if sup_name == "owl:Nothing" {
+                if !contradiction {
+                    return Err(format!(
+                        "published CB unsatisfiable subject {sub_name:?} has no retained contradiction"
+                    ));
+                }
+                row_unsatisfiable = true;
+                unsatisfiable.push(serde_json::json!({
+                    "sub": sub,
+                    "context_index": context_index,
+                }));
+                continue;
+            }
+            let sup = *ids
+                .get(sup_name.as_str())
+                .ok_or_else(|| format!("published CB superclass {sup_name:?} is not interned"))?;
+            let witnessed = retained.iter().any(|clause| {
+                clause.body.is_empty()
+                    && clause.head.len() == 1
+                    && clause.head[0].kind == "concept"
+                    && clause.head[0].iri == Some(sup as crate::calc::Iri)
+                    && clause.head[0].first == crate::calc::X
+                    && clause.head[0].second.is_none()
+            });
+            if !witnessed {
+                return Err(format!(
+                    "published CB cell {sub_name:?} <= {sup_name:?} has no retained unit witness"
+                ));
+            }
+            numeric_supers.push(sup);
+            cells.push(serde_json::json!({
+                "sub": sub,
+                "sup": sup,
+                "context_index": context_index,
+            }));
+        }
+        rows.push(serde_json::json!({
+            "sub": sub,
+            "supers": numeric_supers,
+            "unsatisfiable": row_unsatisfiable,
+        }));
+    }
+    Ok((rows, cells, unsatisfiable))
 }
 
 /// Find the source-bound production context array already present in the
@@ -1541,6 +1698,7 @@ mod cb_derivation_candidate_tests {
             version: 5,
             comp_ind_bits: 17,
             concept_count: 1,
+            concept_names: vec!["A".to_string()],
             role_count: 0,
             function_count: 0,
             source_individual_count: 0,
@@ -1586,6 +1744,67 @@ mod cb_derivation_candidate_tests {
             ]
         });
         assert!(find_cb_production_contexts(&forged, &live).is_none());
+    }
+
+    #[test]
+    fn live_publication_rows_cover_the_exact_grouped_answer() {
+        let mut live = live_snapshot();
+        live.concept_count = 2;
+        live.concept_names = vec!["A".to_string(), "B".to_string()];
+        live.root_clause_arena = vec![
+            crate::engine::CbLiveClause {
+                body: Vec::new(),
+                head: vec![crate::engine::CbLiveLit {
+                    kind: "concept",
+                    iri: Some(1),
+                    first: crate::calc::X,
+                    second: None,
+                }],
+            },
+            crate::engine::CbLiveClause {
+                body: Vec::new(),
+                head: Vec::new(),
+            },
+        ];
+        live.contexts.truncate(1);
+        live.contexts[0].query_concept = Some(0);
+        live.contexts[0].retained_clause_ids = vec![0, 1];
+        let answer = std::collections::BTreeMap::from([(
+            "A".to_string(),
+            std::collections::BTreeSet::from([
+                "B".to_string(),
+                "owl:Nothing".to_string(),
+            ]),
+        )]);
+        let (rows, cells, unsatisfiable) =
+            cb_live_publication_rows(&live, &answer).unwrap();
+        assert_eq!(rows, vec![serde_json::json!({
+            "sub": 0,
+            "supers": [1],
+            "unsatisfiable": true,
+        })]);
+        assert_eq!(cells, vec![serde_json::json!({
+            "sub": 0,
+            "sup": 1,
+            "context_index": 0,
+        })]);
+        assert_eq!(unsatisfiable, vec![serde_json::json!({
+            "sub": 0,
+            "context_index": 0,
+        })]);
+
+        live.contexts[0].retained_clause_ids = vec![1];
+        assert!(cb_live_publication_rows(&live, &answer)
+            .unwrap_err()
+            .contains("no retained unit witness"));
+
+        live.contexts[0].core.clear();
+        assert_eq!(
+            cb_live_inconsistency_witness(&live).unwrap(),
+            serde_json::json!({"context_index": 0})
+        );
+        live.contexts[0].retained_clause_ids.clear();
+        assert!(cb_live_inconsistency_witness(&live).is_err());
     }
 
     #[test]

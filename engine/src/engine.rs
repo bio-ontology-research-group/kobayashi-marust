@@ -2963,6 +2963,15 @@ impl PreparedOntology {
             .filter(|&i| !self.sig.is_internal(i) && !self.sig.is_nothing_concept(i))
             .collect()
     }
+
+    /// Materialise a root even for a named concept already known to be bottom,
+    /// so certified publication can use a retained contradiction witness for
+    /// every unsatisfiable output row.
+    pub(crate) fn certification_queries(&self) -> Vec<Iri> {
+        (0..self.sig.concept_names.len() as Iri)
+            .filter(|&i| !self.sig.is_internal(i) && self.sig.bottom != Some(i))
+            .collect()
+    }
 }
 
 #[derive(Clone)]
@@ -3407,6 +3416,8 @@ pub struct CbLiveTerminalSnapshot {
     pub version: u32,
     pub comp_ind_bits: u32,
     pub concept_count: usize,
+    /// Exact name interner consumed by the production taxonomy readout.
+    pub concept_names: Vec<String>,
     pub role_count: usize,
     pub function_count: usize,
     pub source_individual_count: usize,
@@ -4098,7 +4109,9 @@ impl Engine {
         // entailed unit can be trapped in a residual disjunction, so the
         // shortcut readout is not certified there — fall back to ordinary CB
         // classification (complete via the refutation residue readout).
-        if root_ordered_mode() != 0 {
+        // The nominal-label shortcut is exact, but its ground intersection
+        // proof is not represented by the live publication wire yet.
+        if root_ordered_mode() != 0 || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
             return;
         }
         if std::env::var_os("KM_NO_NOMINAL_LABEL_CACHE").is_some()
@@ -8211,6 +8224,7 @@ impl Engine {
             version: 5,
             comp_ind_bits: active_comp_ind_bits(),
             concept_count: self.sig.concept_names.len(),
+            concept_names: self.sig.concept_names.clone(),
             role_count: self.sig.role_names.len(),
             function_count,
             source_individual_count: ind_id(self.nom_base) as usize,

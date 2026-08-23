@@ -28,11 +28,28 @@ structure WireLiveUnsatisfiable where
   context_index : Nat
 deriving FromJson, ToJson
 
+/-- One exact grouped row consumed by the Rust JSON serializer. Superconcept
+ids exclude `owl:Nothing`; the Boolean records that distinguished public
+value. Names are carried once by `concept_names`, indexed by these ids. -/
+structure WireLiveTaxonomyRow where
+  sub : Nat
+  supers : List Nat
+  unsatisfiable : Bool
+deriving FromJson, ToJson
+
+structure WireLiveInconsistency where
+  context_index : Nat
+deriving FromJson, ToJson
+
 structure WireLiveTaxonomyPublication where
   version : Nat
   derivation : WireLiveInsertionDerivationDocument
+  concept_names : List String
+  public_rows : List WireLiveTaxonomyRow
   public_subsumptions : List WireLiveSubsumption
   unsatisfiable : List WireLiveUnsatisfiable
+  inconsistent : Bool
+  inconsistency_witness : Option WireLiveInconsistency
 deriving FromJson, ToJson
 
 def queryCore (sub : Nat) : List FPred :=
@@ -140,10 +157,61 @@ def WireLiveUnsatisfiable.decode
     else throw "published CB unsatisfiable context index is outside the live run"
   else throw "published CB unsatisfiable concept is outside the source signature"
 
+structure DecodedLiveInconsistency
+    (derivation : DecodedLiveInsertionDerivationDocument) where
+  contextListIndex : Fin derivation.live.contexts.length
+  contextIndex : Fin (rProduction derivation.live.global.global.rsucc).contexts.length
+  context_index_eq :
+    (derivation.live.contexts.get contextListIndex).contextIndex = contextIndex
+  core_eq :
+    ((rProduction derivation.live.global.global.rsucc).contexts.get contextIndex).core = []
+  contradiction_mem : contradictionClause ∈
+    (derivation.live.contexts.get contextListIndex).retained
+
+def WireLiveInconsistency.decode
+    (derivation : DecodedLiveInsertionDerivationDocument)
+    (wire : WireLiveInconsistency) :
+    Except String (DecodedLiveInconsistency derivation) := do
+  if hlist : wire.context_index < derivation.live.contexts.length then
+    let contextListIndex : Fin derivation.live.contexts.length :=
+      ⟨wire.context_index, hlist⟩
+    let context := derivation.live.contexts.get contextListIndex
+    let contextIndex := context.contextIndex
+    if hcore :
+        ((rProduction derivation.live.global.global.rsucc).contexts.get contextIndex).core = [] then
+      if hcontradiction : contradictionClause ∈ context.retained then
+        return {
+          contextListIndex
+          contextIndex
+          context_index_eq := rfl
+          core_eq := hcore
+          contradiction_mem := hcontradiction
+        }
+      else throw "published CB inconsistency has no retained contradiction"
+    else throw "published CB inconsistency witness has a nonempty core"
+  else throw "published CB inconsistency context index is outside the live run"
+
 structure DecodedLiveTaxonomyPublication where
   derivation : DecodedLiveInsertionDerivationDocument
+  conceptNames : List String
+  publicRows : List WireLiveTaxonomyRow
   publicSubsumptions : List (DecodedLiveSubsumption derivation)
   unsatisfiable : List (DecodedLiveUnsatisfiable derivation)
+  inconsistency : Option (DecodedLiveInconsistency derivation)
+  concept_names_length : conceptNames.length =
+    (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
+  concept_names_nodup : conceptNames.Nodup
+  row_subjects_nodup : (publicRows.map (·.sub)).Nodup
+  row_ids_bounded : ∀ row ∈ publicRows,
+    row.sub < (rProduction derivation.live.global.global.rsucc).source.bounds.concepts ∧
+    ∀ sup ∈ row.supers,
+      sup < (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
+  positive_rows_exact :
+    publicRows.flatMap (fun row => row.supers.map (fun sup => (row.sub, sup))) =
+      publicSubsumptions.map (fun cell => (cell.sub.val, cell.sup.val))
+  unsatisfiable_rows_exact :
+    (publicRows.filter (·.unsatisfiable)).map (·.sub) =
+      unsatisfiable.map (·.sub.val)
 
 def WireLiveTaxonomyPublication.decode
     (wire : WireLiveTaxonomyPublication) :
@@ -155,7 +223,45 @@ def WireLiveTaxonomyPublication.decode
     (WireLiveSubsumption.decode derivation)
   let unsatisfiable ← wire.unsatisfiable.mapM
     (WireLiveUnsatisfiable.decode derivation)
-  return { derivation, publicSubsumptions, unsatisfiable }
+  let inconsistency : Option (DecodedLiveInconsistency derivation) ←
+    match wire.inconsistent, wire.inconsistency_witness with
+    | true, some witness => pure (some (← witness.decode derivation))
+    | false, none => pure none
+    | true, none => throw "live CB inconsistency output has no witness"
+    | false, some _ => throw "live CB consistency output carries an inconsistency witness"
+  let concepts := (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
+  if hnamesLength : wire.concept_names.length = concepts then
+    if hnamesNodup : wire.concept_names.Nodup then
+      if hsubjects : (wire.public_rows.map (·.sub)).Nodup then
+        if hbounds : ∀ row ∈ wire.public_rows,
+            row.sub < concepts ∧ ∀ sup ∈ row.supers, sup < concepts then
+          if hpositive :
+              wire.public_rows.flatMap
+                  (fun row => row.supers.map (fun sup => (row.sub, sup))) =
+                publicSubsumptions.map (fun cell => (cell.sub.val, cell.sup.val)) then
+            if hunsatisfiable :
+                (wire.public_rows.filter (·.unsatisfiable)).map (·.sub) =
+                  unsatisfiable.map (·.sub.val) then
+              return {
+                derivation
+                conceptNames := wire.concept_names
+                publicRows := wire.public_rows
+                publicSubsumptions
+                unsatisfiable
+                inconsistency
+                concept_names_length := hnamesLength
+                concept_names_nodup := hnamesNodup
+                row_subjects_nodup := hsubjects
+                row_ids_bounded := hbounds
+                positive_rows_exact := hpositive
+                unsatisfiable_rows_exact := hunsatisfiable
+              }
+            else throw "live CB unsatisfiable witnesses do not equal the public rows"
+          else throw "live CB positive witnesses do not equal the public rows"
+        else throw "live CB public row contains an out-of-bounds concept id"
+      else throw "live CB public taxonomy contains duplicate subject rows"
+    else throw "live CB concept-name table contains duplicates"
+  else throw "live CB concept-name table has the wrong length"
 
 def WireLiveTaxonomyPublication.check
     (wire : WireLiveTaxonomyPublication) : Except String Bool := do
@@ -216,6 +322,30 @@ theorem DecodedLiveUnsatisfiable.refutes
   obtain ⟨literal, hliteral, _⟩ := hfalse
   cases hliteral
 
+theorem DecodedLiveInconsistency.refutes
+    (row : DecodedLiveInconsistency derivation) :
+    ¬∃ (D : Type) (model : TModel D),
+      ∀ source ∈
+        (rProduction derivation.live.global.global.rsucc).source.ontology,
+        valid model source := by
+  rintro ⟨D, model, hontology⟩
+  let context := derivation.live.contexts.get row.contextListIndex
+  have hcontext : context ∈ derivation.live.contexts :=
+    List.get_mem derivation.live.contexts row.contextListIndex
+  have hvalid := derivation.retained_contextValid context hcontext
+    contradictionClause row.contradiction_mem model hontology
+  have hcore : CoreHolds model (fun _ => model.const 0)
+      ((rProduction derivation.live.global.global.rsucc).contexts.get
+        context.contextIndex).core := by
+    rw [row.context_index_eq, row.core_eq]
+    intro predicate hpredicate
+    cases hpredicate
+  have hfalse := hvalid (fun _ => model.const 0) hcore (by
+    intro literal hliteral
+    cases hliteral)
+  obtain ⟨literal, hliteral, _⟩ := hfalse
+  cases hliteral
+
 theorem WireLiveTaxonomyPublication.check_sound
     (wire : WireLiveTaxonomyPublication) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedLiveTaxonomyPublication,
@@ -228,16 +358,22 @@ theorem WireLiveTaxonomyPublication.check_sound
           (∀ source ∈
             (rProduction decoded.derivation.live.global.global.rsucc).source.ontology,
             valid model source) →
-          ∀ element, ¬model.conc row.sub.val element) := by
+          ∀ element, ¬model.conc row.sub.val element) ∧
+      (∀ inconsistency ∈ decoded.inconsistency,
+        ¬∃ (D : Type) (model : TModel D),
+          ∀ source ∈
+            (rProduction decoded.derivation.live.global.global.rsucc).source.ontology,
+            valid model source) := by
   cases hdecode : wire.decode with
   | error message =>
       simp [WireLiveTaxonomyPublication.check, hdecode] at hcheck
   | ok decoded =>
       exact ⟨decoded, rfl, fun cell _ => cell.entails,
-        fun row _ => row.refutes⟩
+        fun row _ => row.refutes, fun inconsistency _ => inconsistency.refutes⟩
 
 #print axioms DecodedLiveSubsumption.entails
 #print axioms DecodedLiveUnsatisfiable.refutes
+#print axioms DecodedLiveInconsistency.refutes
 #print axioms WireLiveTaxonomyPublication.check_sound
 
 end ContextCalculus.CBLiveTaxonomyPublication
