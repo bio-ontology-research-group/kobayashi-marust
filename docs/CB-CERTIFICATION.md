@@ -144,7 +144,14 @@ claim that the layer is already complete.
   recorded source body and head to equal that exact clause in the verified
   normalized ontology; an out-of-range index is rejected. Lean transports the
   indexed source clause's validity to the recorded premise without trusting the
-  duplicate payload.
+  duplicate payload. `escape_of_valid_counting_premise` now proves the central
+  semantic step that had previously only been described: validity of that
+  counting premise, truth of every selected body match, and exhaustive
+  classification of every possible true head literal imply exactly
+  `groundEscape ∨ Escapes`, the premise consumed by `nom_sound`. The remaining
+  executable refinement must reconstruct the tuple assignment from the checked
+  substitution and providers and discharge the body-truth and exhaustive-head
+  classification hypotheses from their concrete syntax.
 
 ## Not yet established
 

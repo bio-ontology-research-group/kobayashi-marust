@@ -279,6 +279,63 @@ theorem NominalFiringKey.recorded_source_sound {D : Type}
       key.source_equiv.2.2.2, key.source_equiv.2.2.1⟩
     (hsource assignment)
 
+/-! ## Deriving the covering escape condition from a valid counting premise -/
+
+/-- The exact semantic interface implemented by the syntactic counting-head
+decoder. For every tuple of matched predecessor values, each true source-head
+literal must be either a retained ground disjunct, a repeated slot, or a slot
+pinned to one of the replaced right-hand values. -/
+def HeadClassified {D : Type} (groundEscape : Prop) (pins : List D)
+    {slots : Nat} (values : Fin slots → D) : Prop :=
+  groundEscape ∨
+    (∃ left right, left ≠ right ∧ values left = values right) ∨
+    (∃ index, values index ∈ pins)
+
+/-- A valid counting clause and a complete body/head decoding imply precisely
+the escape condition required by the Nom covering theorem. `assignmentFor`
+represents the checked grounding of all counting slots; `hbody` is discharged
+by the selected Hyper providers, and `hhead` is discharged by exhaustive
+syntactic classification of the indexed source head. -/
+theorem escape_of_valid_counting_premise {D : Type}
+    (model : CheckerTerm.TModel D) (clause : CheckerTerm.FCL)
+    (B : D → Prop) (pins : List D) (n : Nat)
+    (groundEscape : Prop)
+    (assignmentFor : (Fin (n + 1) → D) → Int → D)
+    (hvalid : CheckerTerm.valid model clause)
+    (hbody : ∀ values : Fin (n + 1) → D,
+      (∀ index, B (values index)) →
+      ∀ literal ∈ clause.body,
+        model.evalL (assignmentFor values) literal)
+    (hhead : ∀ (values : Fin (n + 1) → D) literal,
+      literal ∈ clause.head →
+      model.evalL (assignmentFor values) literal →
+      HeadClassified groundEscape pins values) :
+    groundEscape ∨ Escapes B pins (n + 1) := by
+  by_cases hground : groundEscape
+  · exact Or.inl hground
+  · right
+    intro values hvalues
+    obtain ⟨literal, hliteral, htrue⟩ :=
+      hvalid (assignmentFor values) (hbody values hvalues)
+    rcases hhead values literal hliteral htrue with
+      hground' | hrepeat | hpin
+    · exact absurd hground' hground
+    · exact Or.inl hrepeat
+    · exact Or.inr hpin
+
+/-- Package the derived escape fact as the exact semantic obligation consumed
+by the finite-family and model-extension theorems. -/
+def obligationOfCountingPremise {D : Type}
+    (B : D → Prop) (pins : List D) (n : Nat) (groundEscape : Prop)
+    (dflt : D) (escape : groundEscape ∨ Escapes B pins (n + 1)) :
+    NomObligation D where
+  B := B
+  pins := pins
+  n := n
+  groundEscape := groundEscape
+  dflt := dflt
+  escape := escape
+
 theorem NominalBlock.emitted_conclusion_sound {D : Type}
     (block : NominalBlock) (model : CheckerTerm.TModel D)
     (assignment : Int → D)
@@ -581,6 +638,7 @@ example : rejected truncatedExample.check = true := by native_decide
 #print axioms nomConclusion_sound
 #print axioms NominalBlock.emitted_conclusion_sound
 #print axioms NominalFiringKey.recorded_source_sound
+#print axioms escape_of_valid_counting_premise
 #print axioms extendNomBlock_fresh
 #print axioms valid_extendNomBlock_of_below
 #print axioms nomConclusion_exists_extension

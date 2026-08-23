@@ -15,8 +15,12 @@
   consecutive block and proves every source clause below the block boundary
   remains valid. Each block now carries its body, residual head, and emitted
   clause; executable checking requires the exact complete equality disjunction
-  and rejects an omitted block member. Exact covering-premise decoding remains
-  unfinished. Each firing now indexes the verified normalized ontology, and
+  and rejects an omitted block member. Prove that validity of the indexed
+  counting premise, truth of all selected body matches, and exhaustive
+  classification of its true head literals imply the exact escape obligation
+  consumed by the Nom covering theorem. Concrete tuple-assignment and
+  provider/head decoding remain unfinished. Each firing now indexes the
+  verified normalized ontology, and
   decoding checks its duplicated source body/head against that exact premise.
   Lean transports source validity across the checked equivalence; forged source
   indexes are rejected.
