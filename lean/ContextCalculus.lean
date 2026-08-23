@@ -34,6 +34,7 @@ import ContextCalculus.CBSourceTaxonomyWire
 import ContextCalculus.CBProductionTrace
 import ContextCalculus.CBProductionTraceWire
 import ContextCalculus.CBInterContext
+import ContextCalculus.CBInterContextWire
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm

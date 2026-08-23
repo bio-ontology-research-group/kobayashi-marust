@@ -33,6 +33,10 @@ name = "cb-nominal-allocation-check"
 root = "CBNominalAllocationCheck"
 
 [[lean_exe]]
+name = "cb-inter-context-check"
+root = "CBInterContextCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

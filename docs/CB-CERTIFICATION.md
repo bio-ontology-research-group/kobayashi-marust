@@ -113,8 +113,12 @@ claim that the layer is already complete.
   substituted core is appended to the payload body, exactly as production
   `pred_payload` does before sort/dedup normalization. The same module proves
   the exact `p → p` hypothesis installed by Succ and r-Succ universally valid.
-  Production edge selection, payload equivalence, receiver decomposition, and
-  complete queue delivery remain executable refinement obligations.
+  `CBInterContextWire` makes the sender theorem executable: every transfer is
+  indexed into an accepted production context and retained clause, checks the
+  context id and duplicate-free substitution, and requires its payload to be
+  clause-equivalent to the substituted clause plus substituted core. Its tests
+  reject forged sender ids and payloads. Production edge selection, receiver
+  decomposition, and complete queue delivery remain refinement obligations.
 - The production trace also checks the exact three-premise Join-3 rule used for
   nominal propagation. It requires empty provider and bridge bodies, the
   consumer ground literal, the provider general literal, the canonical bridge
