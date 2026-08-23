@@ -64,6 +64,16 @@
   labels, and regular certificate. Exact taxonomy cells can cite this as
   `regularRole`. Functionality, nominals, qualified cardinality, and longer
   chains remain outside this fail-closed projection.
+  Add exact nominal-aware regular countermodels on top of that role fragment.
+  The mixed source representation preserves arbitrary production clause order,
+  including interleaved nominal and existential clauses, so every Skolem index
+  remains exact. A checked anchored equality certificate maps each source
+  individual to a canonical root; Lean proves the corresponding nominal
+  concept is exactly that singleton, combines it with the base role model, and
+  installs the full CB term model. The bounds-checked wire verifies exact CB
+  source identity, residual and RBox identity, every individual-to-root anchor,
+  query labels, and certificate acceptance. Functionality and qualified
+  cardinality still require the anchored slot/cardinality bridge.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

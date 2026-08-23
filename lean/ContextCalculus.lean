@@ -58,6 +58,8 @@ import ContextCalculus.CBRegularALCCountermodel
 import ContextCalculus.CBRegularALCCountermodelWire
 import ContextCalculus.CBRegularRoleCountermodel
 import ContextCalculus.CBRegularRoleCountermodelWire
+import ContextCalculus.CBRegularNominalCountermodel
+import ContextCalculus.CBRegularNominalCountermodelWire
 import ContextCalculus.CBHyperClosure
 import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBJoin3Closure

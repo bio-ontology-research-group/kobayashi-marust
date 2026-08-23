@@ -551,6 +551,19 @@ and role chains before installing CB's functions. Functionality, nominals,
 qualified cardinality, and chains longer than two remain outside this evidence
 form and fail the exact-source check.
 
+`CBRegularNominalCountermodel` adds nominals without weakening source identity.
+Its mixed clause list retains arbitrary production order, then projects only
+the base ALC/RBox clauses for the regular HT check. The anchored equality
+certificate assigns each source individual a canonical root and proves that
+every associated nominal concept denotes exactly that root. Lean combines this
+singleton interpretation with the checked regular role model and transports it
+through the complete ordered CB encoding. The executable wire checks the exact
+CB clause list, projected residual and role clauses, every individual-root
+mapping, both query labels, and the anchored certificate before exposing a
+countermodel. Functionality and qualified at-most restrictions remain open;
+they need the slot-preserving anchored-cardinality certificate rather than the
+plain anchored equality model.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the
