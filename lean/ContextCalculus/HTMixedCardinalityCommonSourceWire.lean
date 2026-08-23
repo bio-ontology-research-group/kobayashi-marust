@@ -242,6 +242,27 @@ def DecodedMixedCardinalityCommonSource.FiniteSourceEntails
       decoded.projection.semanticPairs →
       ∀ value, I.concept sub value → I.concept sup value
 
+def DecodedMixedCardinalityCommonSource.CommonUnsatisfiable
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ decoded.commonOntology, valid model clause) →
+      ∀ value, ¬model.conc concept.val value
+
+def DecodedMixedCardinalityCommonSource.FiniteSourceUnsatisfiable
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (I : Interp Domain (Fin decoded.projection.mixed.concepts.length)
+      (Fin decoded.projection.mixed.roles.length))
+    (functions : SkolemInterp Domain
+      (Fin decoded.projection.mixed.functions.length)),
+    I.models decoded.projection.mixed.direct →
+    ModelsSkolemPairs I functions decoded.projection.mixed.pairs →
+    I.modelsProjectedCardinalityDefs decoded.projection.definitions
+      decoded.projection.semanticPairs →
+      ∀ value, ¬I.concept concept value
+
 def DecodedMixedCardinalityCommonSource.TargetEntails
     (decoded : DecodedMixedCardinalityCommonSource)
     (sub sup : Fin decoded.projection.mixed.concepts.length) : Prop :=
@@ -252,6 +273,17 @@ def DecodedMixedCardinalityCommonSource.TargetEntails
       I.modelsPairedCardinalityTargets decoded.projection.definitions
         decoded.projection.semanticPairs) →
       ∀ value, I.concept sub value → I.concept sup value
+
+def DecodedMixedCardinalityCommonSource.TargetUnsatisfiable
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (I : Interp Domain (Fin decoded.projection.mixed.concepts.length)
+      (Fin decoded.projection.mixed.roles.length)),
+    (I.models decoded.projection.mixed.target ∧
+      I.modelsPairedCardinalityTargets decoded.projection.definitions
+        decoded.projection.semanticPairs) →
+      ∀ value, ¬I.concept concept value
 
 theorem DecodedMixedCardinalityCommonSource.finiteSource_entails_iff_target
     (decoded : DecodedMixedCardinalityCommonSource)
@@ -268,6 +300,23 @@ theorem DecodedMixedCardinalityCommonSource.finiteSource_entails_iff_target
     exact htarget Domain I
       ((decoded.projection.models_source_iff_target I functions).1
         ⟨functions, hdirect, hpairs, hcardinality⟩) value hsub
+
+theorem DecodedMixedCardinalityCommonSource.finiteSource_unsatisfiable_iff_target
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) :
+    decoded.FiniteSourceUnsatisfiable concept ↔
+      decoded.TargetUnsatisfiable concept := by
+  constructor
+  · intro hsource Domain I htarget value hconcept
+    let base : SkolemInterp Domain
+        (Fin decoded.projection.mixed.functions.length) := ⟨fun _ _ => value⟩
+    rcases (decoded.projection.models_source_iff_target I base).2 htarget with
+      ⟨functions, hdirect, hpairs, hcardinality⟩
+    exact hsource Domain I functions hdirect hpairs hcardinality value hconcept
+  · intro htarget Domain I functions hdirect hpairs hcardinality value hconcept
+    exact htarget Domain I
+      ((decoded.projection.models_source_iff_target I functions).1
+        ⟨functions, hdirect, hpairs, hcardinality⟩) value hconcept
 
 theorem DecodedMixedCardinalityCommonSource.common_entails_iff_finiteSource
     (decoded : DecodedMixedCardinalityCommonSource)
@@ -412,6 +461,181 @@ theorem DecodedMixedCardinalityCommonSource.entails_target_iff
     decoded.CommonEntails sub sup ↔ decoded.TargetEntails sub sup :=
   (decoded.common_entails_iff_finiteSource sub sup).trans
     (decoded.finiteSource_entails_iff_target sub sup)
+
+theorem DecodedMixedCardinalityCommonSource.common_unsatisfiable_iff_finiteSource
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      decoded.FiniteSourceUnsatisfiable concept := by
+  constructor
+  · intro hcommon Domain I functions hdirect hpairs hcardinality value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    let natI := natInterp I
+    let natFunctions := HTMixedCommonSourceWire.natFunctions functions
+    have hcardNat : natI.modelsProjectedCardinalityDefs
+        decoded.natDefinitions decoded.natPairs :=
+      (modelsProjectedDefs_map_natInterp I decoded.projection.definitions
+        decoded.projection.semanticPairs).2 hcardinality
+    rcases projected_implies_exists_cardinalityClauses_model natI value
+        decoded.natDefinitions decoded.natPairs hcardNat with
+      ⟨cardinalityModel, hcardInterp, hcardClauses⟩
+    let model := mergedModel decoded.projection.mixed.functions.length
+      natFunctions.app cardinalityModel
+    have hcardShifted : ∀ clause ∈ shiftOntologyFunctions
+        decoded.projection.mixed.functions.length
+          (cardinalityClauses decoded.natDefinitions decoded.natPairs),
+        valid model clause := by
+      apply (models_shiftOntologyFunctions_iff model
+        decoded.projection.mixed.functions.length _).2
+      simpa [model] using hcardClauses
+    have hdirectNat : natI.models decoded.commonDirect := by
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+      exact (modelsClause_map_natInterp I source).2 (hdirect source hsource)
+    have hpairsMerged : ModelsSkolemPairs
+        (HTCheckerTermEmbedding.htInterp model)
+        (HTSkolemPairCheckerTermEmbedding.skolemInterp model)
+        decoded.commonPairs := by
+      intro pair hpair
+      rcases List.mem_map.mp hpair with ⟨source, hsource, rfl⟩
+      have hpairNat := (models_mapPair_nat_iff I functions source).2
+        (hpairs source hsource)
+      change SkolemPairSpec.models natI natFunctions (mapPair source) at hpairNat
+      rw [← hcardInterp] at hpairNat
+      have hfn (sourceValue : Domain) :
+          (HTSkolemPairCheckerTermEmbedding.skolemInterp model).app
+              source.function.val sourceValue =
+            natFunctions.app source.function.val sourceValue := by
+        exact mergeFunctions_prefix decoded.projection.mixed.functions.length
+          natFunctions.app cardinalityModel.fn source.function sourceValue
+      rw [SkolemPairSpec.models, ModelsSkolemPair] at hpairNat ⊢
+      simp only [mapPair] at hpairNat ⊢
+      constructor
+      · intro assignment hbody
+        rw [hfn]
+        exact hpairNat.1 assignment (by
+          simpa [model, mergedModel, HTCheckerTermEmbedding.htInterp, mapPair]
+            using hbody)
+      · intro assignment hbody
+        rw [hfn]
+        exact hpairNat.2 assignment (by
+          simpa [model, mergedModel, HTCheckerTermEmbedding.htInterp, mapPair]
+            using hbody)
+    have hdirectMerged : (HTCheckerTermEmbedding.htInterp model).models
+        decoded.commonDirect := by
+      rw [← hcardInterp] at hdirectNat
+      simpa [model, mergedModel, HTCheckerTermEmbedding.htInterp] using hdirectNat
+    have hmixed : ∀ clause ∈
+        HTSkolemPairCheckerTermEmbedding.encodeMixed decoded.commonDirect
+          decoded.commonPairs, valid model clause :=
+      (HTSkolemPairCheckerTermEmbedding.models_mixed_encode_iff model
+        decoded.commonDirect decoded.commonPairs decoded.directMixed).2
+        ⟨hdirectMerged, hpairsMerged⟩
+    have hmodels : ∀ clause ∈ decoded.commonOntology, valid model clause := by
+      intro clause hclause
+      simp only [DecodedMixedCardinalityCommonSource.commonOntology,
+        List.mem_append] at hclause
+      exact hclause.elim (hmixed clause) (hcardShifted clause)
+    apply hcommon Domain model hmodels value
+    have hconcepts := congrArg (fun interpretation => interpretation.concept)
+      hcardInterp
+    change cardinalityModel.conc = natI.concept at hconcepts
+    simpa [model, mergedModel, natI, natInterp, hconcepts] using hconcept
+  · intro hfinite Domain model hmodels value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hmixedClauses : ∀ clause ∈
+        HTSkolemPairCheckerTermEmbedding.encodeMixed decoded.commonDirect
+          decoded.commonPairs, valid model clause := by
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [DecodedMixedCardinalityCommonSource.commonOntology,
+          List.mem_append]
+        exact Or.inl hclause)
+    have hmixed := (HTSkolemPairCheckerTermEmbedding.models_mixed_encode_iff
+      model decoded.commonDirect decoded.commonPairs decoded.directMixed).1
+      hmixedClauses
+    let natI := HTCheckerTermEmbedding.htInterp model
+    let natFunctions := HTSkolemPairCheckerTermEmbedding.skolemInterp model
+    let finI : Interp Domain (Fin decoded.projection.mixed.concepts.length)
+        (Fin decoded.projection.mixed.roles.length) := finInterp natI
+    let finFunctions : SkolemInterp Domain
+        (Fin decoded.projection.mixed.functions.length) :=
+      HTMixedCommonSourceWire.finFunctions natFunctions
+    have hdirectFin : finI.models decoded.projection.mixed.direct := by
+      intro clause hclause
+      exact (modelsClause_map_finInterp natI clause).2
+        (hmixed.1 (mapClause clause)
+          (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+    have hpairsFin : ModelsSkolemPairs finI finFunctions
+        decoded.projection.mixed.pairs := by
+      intro pair hpair
+      exact (models_mapPair_fin_iff natI natFunctions pair).2
+        (hmixed.2 (mapPair pair) (List.mem_map.mpr ⟨pair, hpair, rfl⟩))
+    have hcardShifted : ∀ clause ∈ shiftOntologyFunctions
+        decoded.projection.mixed.functions.length
+          (cardinalityClauses decoded.natDefinitions decoded.natPairs),
+        valid model clause := by
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [DecodedMixedCardinalityCommonSource.commonOntology,
+          List.mem_append]
+        exact Or.inr hclause)
+    have hcardCommon := (models_shiftOntologyFunctions_iff model
+      decoded.projection.mixed.functions.length _).1 hcardShifted
+    have hcardNat := models_cardinalityClauses_implies_projected
+      (functionView model decoded.projection.mixed.functions.length)
+      decoded.natDefinitions decoded.natPairs hcardCommon
+    have hcardFin : finI.modelsProjectedCardinalityDefs
+        decoded.projection.definitions decoded.projection.semanticPairs := by
+      apply (modelsProjectedDefs_map_finInterp
+        (HTCheckerTermEmbedding.htInterp
+          (functionView model decoded.projection.mixed.functions.length))
+        decoded.projection.definitions decoded.projection.semanticPairs).2
+      simpa [functionView, natI] using hcardNat
+    exact hfinite Domain finI finFunctions hdirectFin hpairsFin hcardFin value
+      (by simpa [finI, finInterp, natI, HTCheckerTermEmbedding.htInterp]
+        using hconcept)
+
+theorem DecodedMixedCardinalityCommonSource.unsatisfiable_target_iff
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔ decoded.TargetUnsatisfiable concept :=
+  (decoded.common_unsatisfiable_iff_finiteSource concept).trans
+    (decoded.finiteSource_unsatisfiable_iff_target concept)
+
+theorem DecodedMixedCardinalityCommonSource.exact_entails_iff_target
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (sub sup : Fin decoded.projection.mixed.concepts.length) :
+    EntailsSubWithExactCardinality decoded.projection.mixed.target
+        decoded.projection.definitions
+        (pairedExactDefinitions decoded.projection.semanticPairs) sub sup ↔
+      decoded.TargetEntails sub sup := by
+  constructor
+  · intro hentails Domain I htarget value hsub
+    exact hentails Domain I htarget.1 htarget.2.1
+      ((modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).2 htarget.2.2) value hsub
+  · intro hentails Domain I hontology hdefinitions hexact value hsub
+    exact hentails Domain I ⟨hontology, hdefinitions,
+      (modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).1 hexact⟩ value hsub
+
+theorem DecodedMixedCardinalityCommonSource.exact_unsatisfiable_iff_target
+    (decoded : DecodedMixedCardinalityCommonSource)
+    (concept : Fin decoded.projection.mixed.concepts.length) :
+    UnsatisfiableConceptWithExactCardinality decoded.projection.mixed.target
+        decoded.projection.definitions
+        (pairedExactDefinitions decoded.projection.semanticPairs) concept ↔
+      decoded.TargetUnsatisfiable concept := by
+  constructor
+  · intro hunsat Domain I htarget value hconcept
+    exact hunsat Domain I htarget.1 htarget.2.1
+      ((modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).2 htarget.2.2) value hconcept
+  · intro hunsat Domain I hontology hdefinitions hexact value hconcept
+    exact hunsat Domain I ⟨hontology, hdefinitions,
+      (modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).1 hexact⟩ value hconcept
 
 theorem WireMixedCardinalityCommonSource.check_sound
     (wire : WireMixedCardinalityCommonSource)
