@@ -20,6 +20,7 @@ namespace ContextCalculus.CBNominalAllocationWire
 
 open Lean ContextCalculus.CBTermWire ContextCalculus.CBSourceWire
 open ContextCalculus.Nominals
+open ContextCalculus.CBProductionTrace
 
 structure WireNominalFiringKey where
   context : Nat
@@ -221,6 +222,209 @@ theorem WireNominalAllocation.check_family_sound {D : Type}
   exact ⟨decoded, hdecode, haligned decoded hdecode, hids, hfresh,
     interp, hinterp⟩
 
+/-! ## Binding a semantic Nom obligation to the emitted production clause -/
+
+/-- Exact clause shape emitted after Nom replaces the triggering equalities:
+the ordinary residual head is retained and one `y ≈ fresh` disjunct is added
+for every slot in the firing's checked block. -/
+def nomConclusion {width : Nat} (body keptHead : List CheckerTerm.FLit)
+    (fresh : Fin width → CheckerTerm.FTerm) : CheckerTerm.FCL :=
+  ⟨body, keptHead ++ (List.finRange width).map fun index =>
+    .eq (.var (-1)) (fresh index)⟩
+
+/-- Interpret one consecutive block of fresh individual constants while
+leaving concepts, roles, functions, and every other constant unchanged. -/
+def extendNomBlock {D : Type} (model : CheckerTerm.TModel D) (first : Nat)
+    {width : Nat} (interp : Fin width → D) : CheckerTerm.TModel D where
+  conc := model.conc
+  rol := model.rol
+  fn := model.fn
+  const := fun individual =>
+    if h : first ≤ individual ∧ individual < first + width then
+      interp ⟨individual - first, by omega⟩
+    else model.const individual
+
+def constantsBelowTerm (bound : Nat) : CheckerTerm.FTerm → Prop
+  | .var _ => True
+  | .const individual => individual < bound
+  | .app _ argument => constantsBelowTerm bound argument
+
+def constantsBelowPredicate (bound : Nat) : CheckerTerm.FPred → Prop
+  | .concept _ term => constantsBelowTerm bound term
+  | .role _ source target =>
+      constantsBelowTerm bound source ∧ constantsBelowTerm bound target
+
+def constantsBelowLiteral (bound : Nat) : CheckerTerm.FLit → Prop
+  | .P predicate => constantsBelowPredicate bound predicate
+  | .eq left right | .ineq left right =>
+      constantsBelowTerm bound left ∧ constantsBelowTerm bound right
+
+def ConstantsBelowClause (bound : Nat) (clause : CheckerTerm.FCL) : Prop :=
+  (∀ literal ∈ clause.body, constantsBelowLiteral bound literal) ∧
+  (∀ literal ∈ clause.head, constantsBelowLiteral bound literal)
+
+theorem extendNomBlock_fresh {D : Type} (model : CheckerTerm.TModel D)
+    (first : Nat) {width : Nat} (interp : Fin width → D)
+    (assignment : Int → D) (index : Fin width) :
+    (extendNomBlock model first interp).evalT assignment
+        (.const (first + index.val)) = interp index := by
+  simp only [CheckerTerm.TModel.evalT, extendNomBlock]
+  have hrange : first ≤ first + index.val ∧
+      first + index.val < first + width := by omega
+  rw [dif_pos hrange]
+  congr
+  omega
+
+theorem evalT_extendNomBlock_of_below {D : Type}
+    (model : CheckerTerm.TModel D) (first : Nat) {width : Nat}
+    (interp : Fin width → D) (assignment : Int → D) :
+    ∀ term : CheckerTerm.FTerm, constantsBelowTerm first term →
+      (extendNomBlock model first interp).evalT assignment term =
+        model.evalT assignment term
+  | .var _, _ => rfl
+  | .const individual, hbelow => by
+      simp only [CheckerTerm.TModel.evalT, extendNomBlock]
+      rw [dif_neg]
+      exact fun hrange => (Nat.not_lt_of_ge hrange.1) hbelow
+  | .app function argument, hbelow => by
+      change model.fn function
+          ((extendNomBlock model first interp).evalT assignment argument) =
+        model.fn function (model.evalT assignment argument)
+      rw [evalT_extendNomBlock_of_below model first interp assignment
+        argument hbelow]
+
+theorem evalL_extendNomBlock_of_below {D : Type}
+    (model : CheckerTerm.TModel D) (first : Nat) {width : Nat}
+    (interp : Fin width → D) (assignment : Int → D) :
+    ∀ literal : CheckerTerm.FLit, constantsBelowLiteral first literal →
+      ((extendNomBlock model first interp).evalL assignment literal ↔
+        model.evalL assignment literal) := by
+  intro literal hbelow
+  cases literal with
+  | P predicate => cases predicate with
+    | concept concept term =>
+      simp only [constantsBelowLiteral, constantsBelowPredicate] at hbelow
+      change model.conc concept
+          ((extendNomBlock model first interp).evalT assignment term) ↔
+        model.conc concept (model.evalT assignment term)
+      rw [evalT_extendNomBlock_of_below model first interp assignment term hbelow]
+    | role role source target =>
+      simp only [constantsBelowLiteral, constantsBelowPredicate] at hbelow
+      change model.rol role
+          ((extendNomBlock model first interp).evalT assignment source)
+          ((extendNomBlock model first interp).evalT assignment target) ↔
+        model.rol role (model.evalT assignment source)
+          (model.evalT assignment target)
+      rw [evalT_extendNomBlock_of_below model first interp assignment source hbelow.1,
+        evalT_extendNomBlock_of_below model first interp assignment target hbelow.2]
+  | eq left right =>
+    simp only [constantsBelowLiteral, CheckerTerm.TModel.evalL] at hbelow ⊢
+    rw [evalT_extendNomBlock_of_below model first interp assignment left hbelow.1,
+      evalT_extendNomBlock_of_below model first interp assignment right hbelow.2]
+  | ineq left right =>
+    simp only [constantsBelowLiteral, CheckerTerm.TModel.evalL] at hbelow ⊢
+    rw [evalT_extendNomBlock_of_below model first interp assignment left hbelow.1,
+      evalT_extendNomBlock_of_below model first interp assignment right hbelow.2]
+
+theorem valid_extendNomBlock_of_below {D : Type}
+    (model : CheckerTerm.TModel D) (first : Nat) {width : Nat}
+    (interp : Fin width → D) (clause : CheckerTerm.FCL)
+    (hbelow : ConstantsBelowClause first clause)
+    (hvalid : CheckerTerm.valid model clause) :
+    CheckerTerm.valid (extendNomBlock model first interp) clause := by
+  intro assignment hbody
+  have hbodyBase : ∀ literal ∈ clause.body,
+      model.evalL assignment literal := by
+    intro literal hliteral
+    exact (evalL_extendNomBlock_of_below model first interp assignment
+      literal (hbelow.1 literal hliteral)).mp
+        (hbody literal hliteral)
+  obtain ⟨literal, hliteral, htrue⟩ := hvalid assignment hbodyBase
+  exact ⟨literal, hliteral,
+    (evalL_extendNomBlock_of_below model first interp assignment
+      literal (hbelow.2 literal hliteral)).mpr htrue⟩
+
+/-- A simultaneous witness supplied by `nom_family_sound` makes the exact
+production equality disjunction true. The premise decoder has two precise
+semantic duties: identify the retained body with `B`, and identify the retained
+non-Nom head with `groundEscape`. The constant decoder must identify each
+checked block slot with the corresponding interpretation selected for it. -/
+theorem nomConclusion_sound {D : Type} (model : CheckerTerm.TModel D)
+    (obligation : NomObligation D)
+    (interp : Fin obligation.width → D)
+    (hsatisfied : obligation.SatisfiedWith interp)
+    (body keptHead : List CheckerTerm.FLit)
+    (fresh : Fin obligation.width → CheckerTerm.FTerm)
+    (hbodyMeaning : ∀ assignment : Int → D,
+      (∀ literal ∈ body, model.evalL assignment literal) →
+        obligation.B (assignment (-1)))
+    (hgroundMeaning : obligation.groundEscape →
+      ∀ assignment : Int → D, ∃ literal ∈ keptHead,
+        model.evalL assignment literal)
+    (hfreshMeaning : ∀ (assignment : Int → D)
+      (index : Fin obligation.width),
+        model.evalT assignment (fresh index) = interp index) :
+    ∀ assignment : Int → D,
+      HoldsAt model assignment (nomConclusion body keptHead fresh) := by
+  intro assignment hbody
+  rcases hsatisfied with hground | hcover
+  · obtain ⟨literal, hliteral, htrue⟩ := hgroundMeaning hground assignment
+    exact ⟨literal, by simp [nomConclusion, hliteral], htrue⟩
+  · obtain ⟨index, heq⟩ := hcover (assignment (-1))
+      (hbodyMeaning assignment hbody)
+    refine ⟨.eq (.var (-1)) (fresh index), ?_, ?_⟩
+    · simp [nomConclusion]
+    · simpa [CheckerTerm.TModel.evalL, CheckerTerm.TModel.evalT,
+        hfreshMeaning assignment index] using heq
+
+/-- One checked Nom firing can be realized by an explicit fresh-constant model
+extension. Every source clause below the block boundary remains valid, and the
+exact equality-disjunction conclusion becomes valid in the extended model. -/
+theorem nomConclusion_exists_extension {D : Type}
+    (model : CheckerTerm.TModel D) (obligation : NomObligation D)
+    (first : Nat) (source : List CheckerTerm.FCL)
+    (body keptHead : List CheckerTerm.FLit)
+    (hsourceBelow : ∀ clause ∈ source, ConstantsBelowClause first clause)
+    (hsourceValid : ∀ clause ∈ source, CheckerTerm.valid model clause)
+    (hbodyBelow : ∀ literal ∈ body,
+      constantsBelowLiteral first literal)
+    (hheadBelow : ∀ literal ∈ keptHead,
+      constantsBelowLiteral first literal)
+    (hbodyMeaning : ∀ assignment : Int → D,
+      (∀ literal ∈ body, model.evalL assignment literal) →
+        obligation.B (assignment (-1)))
+    (hgroundMeaning : obligation.groundEscape →
+      ∀ assignment : Int → D, ∃ literal ∈ keptHead,
+        model.evalL assignment literal) :
+    ∃ interp : Fin obligation.width → D,
+      let extended := extendNomBlock model first interp
+      (∀ clause ∈ source, CheckerTerm.valid extended clause) ∧
+      CheckerTerm.valid extended
+        (nomConclusion (width := obligation.width) body keptHead
+          fun (index : Fin obligation.width) =>
+          .const (first + index.val)) := by
+  obtain ⟨interp, hsatisfied⟩ := obligation.exists_interp
+  refine ⟨interp, ?_, ?_⟩
+  · intro clause hclause
+    exact valid_extendNomBlock_of_below model first interp clause
+      (hsourceBelow clause hclause) (hsourceValid clause hclause)
+  · apply nomConclusion_sound (extendNomBlock model first interp)
+      obligation interp hsatisfied body keptHead
+      (fun index => .const (first + index.val))
+    · intro assignment hextendedBody
+      apply hbodyMeaning assignment
+      intro literal hliteral
+      exact (evalL_extendNomBlock_of_below model first interp assignment
+        literal (hbodyBelow literal hliteral)).mp
+          (hextendedBody literal hliteral)
+    · intro hground assignment
+      obtain ⟨literal, hliteral, htrue⟩ :=
+        hgroundMeaning hground assignment
+      exact ⟨literal, hliteral,
+        (evalL_extendNomBlock_of_below model first interp assignment
+          literal (hheadBelow literal hliteral)).mpr htrue⟩
+    · exact extendNomBlock_fresh model first interp
+
 private def conceptAt (concept individual : Nat) : WirePredicate :=
   .concept concept (.constant individual)
 
@@ -284,5 +488,9 @@ example : rejected truncatedExample.check = true := by native_decide
 
 #print axioms WireNominalAllocation.check_sound
 #print axioms WireNominalAllocation.check_family_sound
+#print axioms nomConclusion_sound
+#print axioms extendNomBlock_fresh
+#print axioms valid_extendNomBlock_of_below
+#print axioms nomConclusion_exists_extension
 
 end ContextCalculus.CBNominalAllocationWire

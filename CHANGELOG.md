@@ -9,9 +9,11 @@
   consecutive, globally fresh and disjoint witness blocks with exact budget
   accounting and no truncation. This is the operational allocation premise for
   the finite-family Nom soundness theorem. The compositional capstone supplies
-  simultaneous witnesses for every width-aligned firing obligation;
-  premise-to-conclusion decoding remains part of the unfinished integrated CB
-  layer.
+  simultaneous witnesses for every width-aligned firing obligation. The clause
+  theorem proves these witnesses satisfy KM's exact residual head plus fresh
+  equality disjunction. A constructive model-extension theorem interprets one
+  consecutive block and proves every source clause below the block boundary
+  remains valid. Exact covering-premise decoding remains unfinished.
 
 - Add an exact source-indexed Skolem encoding from normalized ALC clauses to
   the nested-term first-order clauses consumed by CB certificates.
