@@ -28,6 +28,12 @@
   exactly the semantic answer for the typed source ontology. Retain coordinate
   bounds in decoded taxonomy cells and finite countermodels so numeric queries
   cannot escape the source symbol table at the theorem boundary.
+- Add a multi-core production-context trace checker and bounds-checked run wire.
+  It binds every context to the exact typed source, checks the complete retained
+  trace, proves all retained clauses under the context core, and requires every
+  discarded clause to have a retained syntactic strengthening witness. This is
+  the local sound-step and redundancy foundation; production rule coverage,
+  closure, fairness, and Rust emission remain unreleased obligations.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.

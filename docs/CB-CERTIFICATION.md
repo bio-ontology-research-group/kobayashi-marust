@@ -89,13 +89,26 @@ claim that the layer is already complete.
   `certifiedCBSourceExactTaxonomyPublication` exposes this complete semantic
   chain. It does not yet prove that an unchecked Rust saturation produced the
   evidence.
+- `CBProductionTrace` generalizes the derivation checker from one query concept
+  to a production context with an arbitrary duplicate-free predicate core. It
+  checks ontology instantiation, local assumptions, tautologies, resolution,
+  and paramodulation, and proves every retained trace clause under the complete
+  context core. `CBProductionTraceWire` binds all contexts to the verified typed
+  source, requires unique context ids, exact retained trace terminals, and
+  bounds-checked symbols. Every discarded clause must name a retained clause
+  that syntactically strengthens it; Lean proves the deletion preserves local
+  truth. The source-level theorem evaluates traces in the exact Skolem extension
+  of a typed source model. The Rust engine does not yet emit this document, and
+  the current trace language still needs checked decompositions or direct rules
+  for every production inference family.
 
 ## Not yet established
 
-The production Rust worker does not currently invoke a mandatory Lean CB
-checker. Generated files under `lean/Validation` certify selected positive
-verdicts, but they do not certify every production run, omitted taxonomy cells,
-or the supervisor's publication behavior.
+The production Rust worker does not currently emit or invoke the complete
+production-run CB document. Generated files under `lean/Validation` certify
+selected positive verdicts, but they do not certify every production run,
+terminal closure, omitted taxonomy cells, or the supervisor's publication
+behavior.
 
 The remaining production gap is the representation refinement between:
 

@@ -31,6 +31,8 @@ import ContextCalculus.CBEqEncoding
 import ContextCalculus.CBRoleChainEncoding
 import ContextCalculus.CBSourceWire
 import ContextCalculus.CBSourceTaxonomyWire
+import ContextCalculus.CBProductionTrace
+import ContextCalculus.CBProductionTraceWire
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm
