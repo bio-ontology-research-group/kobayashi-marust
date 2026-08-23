@@ -127,9 +127,12 @@ claim that the layer is already complete.
   identities, positive widths, one consecutive allocation sequence, global
   freshness and disjointness, exact budget accounting, and no truncation. Its
   executable checker rejects overlapping blocks, replayed keys, and truncated
-  runs. The remaining Nom evidence must bind each checked firing to its exact
-  covering/counting premises and emitted conclusion, then compose the resulting
-  existential model extension with the ordinary production trace.
+  runs. `check_family_sound` composes accepted allocation evidence with
+  `nom_family_sound`: once the next decoder supplies one width-aligned semantic
+  obligation per firing, all obligations receive simultaneous witnesses while
+  their concrete blocks remain fresh and disjoint. The remaining Nom evidence
+  must derive those obligations from each firing's exact covering/counting
+  premises and bind their conclusions into the ordinary production trace.
 
 ## Not yet established
 

@@ -1,4 +1,5 @@
 import ContextCalculus.CBProductionTraceWire
+import ContextCalculus.Nominals
 
 /-!
 # Executable allocation evidence for production CB Nom firings
@@ -18,6 +19,7 @@ Nom conclusion from being incorrectly justified as ordinary resolution.
 namespace ContextCalculus.CBNominalAllocationWire
 
 open Lean ContextCalculus.CBTermWire ContextCalculus.CBSourceWire
+open ContextCalculus.Nominals
 
 structure WireNominalFiringKey where
   context : Nat
@@ -183,6 +185,42 @@ theorem WireNominalAllocation.check_sound (wire : WireNominalAllocation)
       exact ⟨decoded, rfl, decoded.keys_nodup, decoded.ids_nodup,
         decoded.ids_fresh, decoded.allocated_eq, decoded.allocated_le_budget⟩
 
+/-- The semantic obligations and allocation document agree firing-for-firing.
+The obligation list is supplied by the next premise-decoding layer; this
+predicate makes its exact remaining responsibility explicit. -/
+structure AlignedObligations {D : Type}
+    (decoded : DecodedNominalAllocation)
+    (obligations : List (NomObligation D)) : Prop where
+  length_eq : decoded.blocks.length = obligations.length
+  widths : ∀ index : Fin obligations.length,
+    (decoded.blocks.get (Fin.cast length_eq.symm index)).width =
+      (obligations.get index).width
+
+/-- Allocation acceptance composes with the finite-family Nom theorem.  Thus,
+once the premise layer produces an aligned obligation for every checked firing,
+all firings have simultaneous witnesses while their concrete constant blocks
+remain fresh and disjoint. -/
+theorem WireNominalAllocation.check_family_sound {D : Type}
+    (wire : WireNominalAllocation) (hcheck : wire.check = .ok true)
+    (obligations : List (NomObligation D))
+    (haligned : ∀ decoded, wire.decode = .ok decoded →
+      AlignedObligations decoded obligations) :
+    ∃ decoded : DecodedNominalAllocation,
+      wire.decode = .ok decoded ∧
+      AlignedObligations decoded obligations ∧
+      (allBlockIds decoded.blocks).Nodup ∧
+      (∀ id ∈ allBlockIds decoded.blocks,
+        decoded.source.bounds.individuals ≤ id ∧
+          id < decoded.individualCount) ∧
+      ∃ interp : NomFamilyInterpretation obligations,
+        ∀ index : Fin obligations.length,
+          (obligations.get index).SatisfiedWith (interp index) := by
+  obtain ⟨decoded, hdecode, _, hids, hfresh, _, _⟩ :=
+    wire.check_sound hcheck
+  obtain ⟨interp, hinterp⟩ := nom_family_sound obligations
+  exact ⟨decoded, hdecode, haligned decoded hdecode, hids, hfresh,
+    interp, hinterp⟩
+
 private def conceptAt (concept individual : Nat) : WirePredicate :=
   .concept concept (.constant individual)
 
@@ -245,5 +283,6 @@ private def truncatedExample : WireNominalAllocation :=
 example : rejected truncatedExample.check = true := by native_decide
 
 #print axioms WireNominalAllocation.check_sound
+#print axioms WireNominalAllocation.check_family_sound
 
 end ContextCalculus.CBNominalAllocationWire

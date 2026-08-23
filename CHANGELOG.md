@@ -8,8 +8,10 @@
   complete grounded Hyper firing key and accepts only positive-width,
   consecutive, globally fresh and disjoint witness blocks with exact budget
   accounting and no truncation. This is the operational allocation premise for
-  the finite-family Nom soundness theorem; premise-to-conclusion binding remains
-  part of the unfinished integrated CB layer.
+  the finite-family Nom soundness theorem. The compositional capstone supplies
+  simultaneous witnesses for every width-aligned firing obligation;
+  premise-to-conclusion decoding remains part of the unfinished integrated CB
+  layer.
 
 - Add an exact source-indexed Skolem encoding from normalized ALC clauses to
   the nested-term first-order clauses consumed by CB certificates.
