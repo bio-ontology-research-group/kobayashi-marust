@@ -1,0 +1,5 @@
+import ContextCalculus.CBRSuccClosureWire
+
+open ContextCalculus.CBRSuccClosureWire
+
+#print axioms DecodedContextRSuccClosure.complete_delivery
