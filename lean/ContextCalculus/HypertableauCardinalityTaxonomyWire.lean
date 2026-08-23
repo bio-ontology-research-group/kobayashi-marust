@@ -157,6 +157,11 @@ structure WireCardinalityTaxonomyCertificate where
   variable_count : Nat
   ontology : List WireClause
   definitions : List WireCardinalityDef
+  /-- Shared maximum-only exactness indices retained from every query cell. -/
+  exact_maximums : List Nat := []
+  /-- Shared exactness indices retained from every query cell.  These are
+  required to certify countermodels for exact complementary projections. -/
+  exact_definitions : List Nat := []
   named : List Nat
   concepts : List WireCardinalityQueryPayload
   subsumptions : List (List WireCardinalityQueryPayload)

@@ -1,6 +1,7 @@
 import ContextCalculus.HTDirectCommonSourceWire
 import ContextCalculus.HTCardinalityCheckerTermEmbedding
 import ContextCalculus.HypertableauDirectCardinalityProjectionWire
+import ContextCalculus.HypertableauCardinalityWire
 
 /-!
 # Direct HT cardinality sources in the common routing language
@@ -41,6 +42,22 @@ def mapPairedCardinality
     same_role := congrArg Fin.val pair.complementary.same_role
     same_filler := congrArg Fin.val pair.complementary.same_filler
   }
+
+def pairedExactDefinitions
+    (pairs : List (PairedCardinality Concept Role)) :
+    List (CardinalityDef Concept Role) :=
+  pairs.flatMap fun pair => [pair.maximum, pair.minimum]
+
+theorem modelsCardinalityDefsExact_pairedExactDefinitions_iff
+    (I : Interp Domain Concept Role)
+    (pairs : List (PairedCardinality Concept Role)) :
+    I.modelsCardinalityDefsExact (pairedExactDefinitions pairs) ↔
+      ∀ pair ∈ pairs,
+        I.modelsCardinalityDefExact pair.maximum ∧
+          I.modelsCardinalityDefExact pair.minimum := by
+  simp only [Interp.modelsCardinalityDefsExact, pairedExactDefinitions,
+    List.mem_flatMap, List.mem_cons, List.mem_singleton]
+  aesop
 
 @[simp] theorem cardinalitySuccessor_map_natInterp [Nonempty Domain]
     (I : Interp Domain (Fin concepts) (Fin roles))
@@ -198,6 +215,148 @@ theorem modelsProjectedDefs_map_finInterp [Nonempty Domain]
       exact (modelsSplit_map_finInterp I pair).2
         (hpairs (mapPairedCardinality pair)
           (List.mem_map.mpr ⟨pair, hpair, rfl⟩))
+
+@[simp] theorem modelsCardinalityDefExact_map_natInterp [Nonempty Domain]
+    (I : Interp Domain (Fin concepts) (Fin roles))
+    (definition : CardinalityDef (Fin concepts) (Fin roles)) :
+    (natInterp I).modelsCardinalityDefExact (mapCardinalityDef definition) ↔
+      I.modelsCardinalityDefExact definition := by
+  have hsuccessor (source : Domain) :
+      (natInterp I).cardinalitySuccessor (mapCardinalityDef definition) source =
+        I.cardinalitySuccessor definition source := by
+    funext target
+    apply propext
+    exact cardinalitySuccessor_map_natInterp I definition source target
+  constructor <;> intro hmodels source
+  · have hresult := hmodels source
+    change (natInterp I).concept definition.marker.val source ↔
+      match definition.kind with
+      | .minimum => HasAtLeast definition.bound
+          ((natInterp I).cardinalitySuccessor (mapCardinalityDef definition) source)
+      | .maximum => HasAtMost definition.bound
+          ((natInterp I).cardinalitySuccessor (mapCardinalityDef definition) source)
+      at hresult
+    rw [hsuccessor source] at hresult
+    simpa [natInterp, Interp.cardinalityCondition] using hresult
+  · have hresult := hmodels source
+    change I.concept definition.marker source ↔
+      match definition.kind with
+      | .minimum => HasAtLeast definition.bound
+          (I.cardinalitySuccessor definition source)
+      | .maximum => HasAtMost definition.bound
+          (I.cardinalitySuccessor definition source)
+      at hresult
+    change (natInterp I).concept definition.marker.val source ↔
+      match definition.kind with
+      | .minimum => HasAtLeast definition.bound
+          ((natInterp I).cardinalitySuccessor (mapCardinalityDef definition) source)
+      | .maximum => HasAtMost definition.bound
+          ((natInterp I).cardinalitySuccessor (mapCardinalityDef definition) source)
+    rw [hsuccessor source]
+    simpa [natInterp] using hresult
+
+@[simp] theorem modelsCardinalityDefExact_map_finInterp [Nonempty Domain]
+    (I : Interp Domain Nat Nat)
+    (definition : CardinalityDef (Fin concepts) (Fin roles)) :
+    (finInterp I).modelsCardinalityDefExact definition ↔
+      I.modelsCardinalityDefExact (mapCardinalityDef definition) := by
+  constructor <;> intro hmodels source
+  · simpa [mapCardinalityDef, finInterp, Interp.modelsCardinalityDefExact,
+      Interp.cardinalityCondition, Interp.cardinalitySuccessor] using hmodels source
+  · simpa [mapCardinalityDef, finInterp, Interp.modelsCardinalityDefExact,
+      Interp.cardinalityCondition, Interp.cardinalitySuccessor] using hmodels source
+
+theorem modelsCardinalityDefsExact_map_natInterp [Nonempty Domain]
+    (I : Interp Domain (Fin concepts) (Fin roles))
+    (definitions : List (CardinalityDef (Fin concepts) (Fin roles))) :
+    (natInterp I).modelsCardinalityDefsExact
+        (definitions.map mapCardinalityDef) ↔
+      I.modelsCardinalityDefsExact definitions := by
+  constructor <;> intro hmodels definition hdefinition
+  · exact (modelsCardinalityDefExact_map_natInterp I definition).1
+      (hmodels (mapCardinalityDef definition)
+        (List.mem_map.mpr ⟨definition, hdefinition, rfl⟩))
+  · rcases List.mem_map.mp hdefinition with ⟨source, hsource, rfl⟩
+    exact (modelsCardinalityDefExact_map_natInterp I source).2
+      (hmodels source hsource)
+
+theorem modelsCardinalityDefsExact_map_finInterp [Nonempty Domain]
+    (I : Interp Domain Nat Nat)
+    (definitions : List (CardinalityDef (Fin concepts) (Fin roles))) :
+    (finInterp I).modelsCardinalityDefsExact definitions ↔
+      I.modelsCardinalityDefsExact (definitions.map mapCardinalityDef) := by
+  constructor
+  · intro hmodels definition hdefinition
+    rcases List.mem_map.mp hdefinition with ⟨source, hsource, rfl⟩
+    exact (modelsCardinalityDefExact_map_finInterp I source).1
+      (hmodels source hsource)
+  · intro hmodels definition hdefinition
+    exact (modelsCardinalityDefExact_map_finInterp I definition).2
+      (hmodels (mapCardinalityDef definition)
+        (List.mem_map.mpr ⟨definition, hdefinition, rfl⟩))
+
+theorem modelsCardinalityDefs_map_natInterp [Nonempty Domain]
+    (I : Interp Domain (Fin concepts) (Fin roles))
+    (definitions : List (CardinalityDef (Fin concepts) (Fin roles))) :
+    (natInterp I).modelsCardinalityDefs (definitions.map mapCardinalityDef) ↔
+      I.modelsCardinalityDefs definitions := by
+  constructor <;> intro hmodels definition hdefinition
+  · exact (modelsCardinalityDef_map_natInterp I definition).1
+      (hmodels _ (List.mem_map.mpr ⟨definition, hdefinition, rfl⟩))
+  · rcases List.mem_map.mp hdefinition with ⟨source, hsource, rfl⟩
+    exact (modelsCardinalityDef_map_natInterp I source).2 (hmodels source hsource)
+
+theorem modelsCardinalityDefs_map_finInterp [Nonempty Domain]
+    (I : Interp Domain Nat Nat)
+    (definitions : List (CardinalityDef (Fin concepts) (Fin roles))) :
+    (finInterp I).modelsCardinalityDefs definitions ↔
+      I.modelsCardinalityDefs (definitions.map mapCardinalityDef) := by
+  constructor
+  · intro hmodels definition hdefinition
+    rcases List.mem_map.mp hdefinition with ⟨source, hsource, rfl⟩
+    exact (modelsCardinalityDef_map_finInterp I source).1 (hmodels source hsource)
+  · intro hmodels definition hdefinition
+    exact (modelsCardinalityDef_map_finInterp I definition).2
+      (hmodels _ (List.mem_map.mpr ⟨definition, hdefinition, rfl⟩))
+
+theorem entailsWithExact_mapOntology_iff
+    (ontology : List (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (definitions exactDefinitions :
+      List (CardinalityDef (Fin concepts) (Fin roles)))
+    (sub sup : Fin concepts) :
+    EntailsSubWithExactCardinality ontology definitions exactDefinitions sub sup ↔
+      EntailsSubWithExactCardinality (mapOntology ontology)
+        (definitions.map mapCardinalityDef)
+        (exactDefinitions.map mapCardinalityDef) sub.val sup.val := by
+  constructor
+  · intro hfinite Domain I hontology hdefinitions hexact value hsub
+    letI : Nonempty Domain := ⟨value⟩
+    have hontologyFin : (finInterp I).models ontology := by
+      intro clause hclause
+      exact (modelsClause_map_finInterp I clause).2
+        (hontology (mapClause clause)
+          (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+    have hdefinitionsFin : (finInterp I).modelsCardinalityDefs definitions := by
+      exact (modelsCardinalityDefs_map_finInterp I definitions).2 hdefinitions
+    have hexactFin : (finInterp I).modelsCardinalityDefsExact exactDefinitions := by
+      exact (modelsCardinalityDefsExact_map_finInterp I exactDefinitions).2 hexact
+    exact hfinite Domain (finInterp I) hontologyFin hdefinitionsFin hexactFin value
+      (by simpa [finInterp] using hsub)
+  · intro hnat Domain I hontology hdefinitions hexact value hsub
+    letI : Nonempty Domain := ⟨value⟩
+    have hontologyNat : (natInterp I).models (mapOntology ontology) := by
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+      exact (modelsClause_map_natInterp I source).2 (hontology source hsource)
+    have hdefinitionsNat : (natInterp I).modelsCardinalityDefs
+        (definitions.map mapCardinalityDef) := by
+      exact (modelsCardinalityDefs_map_natInterp I definitions).2 hdefinitions
+    have hexactNat : (natInterp I).modelsCardinalityDefsExact
+        (exactDefinitions.map mapCardinalityDef) := by
+      exact (modelsCardinalityDefsExact_map_natInterp I exactDefinitions).2 hexact
+    have hresult := hnat Domain (natInterp I) hontologyNat hdefinitionsNat hexactNat value
+      (by simpa [natInterp] using hsub)
+    simpa [natInterp] using hresult
 
 structure WireDirectCardinalityCommonSource where
   version : Nat
@@ -380,6 +539,37 @@ theorem DecodedDirectCardinalityCommonSource.entails_target_iff
     decoded.CommonEntails sub sup ↔ decoded.TargetEntails sub sup :=
   (decoded.common_entails_iff_finiteSource sub sup).trans
     (decoded.finiteSource_entails_iff_target sub sup)
+
+theorem DecodedDirectCardinalityCommonSource.exact_entails_iff_target
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (sub sup : Fin decoded.projection.concepts.length) :
+    EntailsSubWithExactCardinality decoded.projection.target
+        decoded.projection.definitions
+        (pairedExactDefinitions decoded.projection.semanticPairs) sub sup ↔
+      decoded.TargetEntails sub sup := by
+  constructor
+  · intro hentails Domain I hmodels value hsub
+    exact hentails Domain I hmodels.1
+      (fun definition hdefinition =>
+        (modelsProjectedCardinalityTargets_iff_paired I
+          decoded.projection.definitions decoded.projection.semanticPairs
+          (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).1
+          hmodels.2 |>.1 definition hdefinition)
+      ((modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).2
+        ((modelsProjectedCardinalityTargets_iff_paired I
+          decoded.projection.definitions decoded.projection.semanticPairs
+          (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).1
+          hmodels.2 |>.2)) value hsub
+  · intro hentails Domain I hontology hdefinitions hexact value hsub
+    have htargets : I.modelsProjectedCardinalityTargets
+        decoded.projection.definitions decoded.projection.semanticPairs := by
+      apply (modelsProjectedCardinalityTargets_iff_paired I
+        decoded.projection.definitions decoded.projection.semanticPairs
+        (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).2
+      exact ⟨hdefinitions, (modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).1 hexact⟩
+    exact hentails Domain I ⟨hontology, htargets⟩ value hsub
 
 theorem WireDirectCardinalityCommonSource.check_sound
     (wire : WireDirectCardinalityCommonSource)

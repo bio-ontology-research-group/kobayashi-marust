@@ -17321,6 +17321,13 @@ impl Ht {
                         "HT cardinality taxonomy query changed shared definitions".to_string()
                     );
                 }
+                for field in ["exact_maximums", "exact_definitions"] {
+                    if previous[field] != full[field] {
+                        return Err(format!(
+                            "HT cardinality taxonomy query changed shared {field}"
+                        ));
+                    }
+                }
             } else {
                 shared = Some(full.clone());
             }
@@ -17381,6 +17388,8 @@ impl Ht {
             "variable_count": inner["variable_count"],
             "ontology": inner["ontology"],
             "definitions": shared["definitions"],
+            "exact_maximums": shared["exact_maximums"],
+            "exact_definitions": shared["exact_definitions"],
             "named": named.iter().map(|&concept| concept as usize).collect::<Vec<_>>(),
             "concepts": concepts,
             "subsumptions": subsumptions,
@@ -29926,6 +29935,39 @@ mod tests {
             "Lean must reject a run retained under the wrong matrix coordinate"
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cardinality_taxonomy_retains_shared_exact_recognition_indices() {
+        if std::env::var_os("KM_HT_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER")
+            .or_else(|| {
+                std::env::var_os(
+                    "KM_HT_TEST_LEAN_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER",
+                )
+            })
+            .is_none()
+        {
+            return;
+        }
+        const MIN_MARKER: C = 30;
+        const FILLER: C = 31;
+        const MAX_MARKER: C = 32;
+        let mut tableau = ht(vec![Clause::new(
+            Vec::new(),
+            vec![con(false, MAX_MARKER, X), con(true, MIN_MARKER, X)],
+        )]);
+        tableau.set_card_defs_raw(&[
+            (MIN_MARKER, true, 2, R0, FILLER, true),
+            (MAX_MARKER, false, 1, R0, FILLER, true),
+        ]);
+        let document = tableau
+            .lean_cardinality_taxonomy_certificate_json(&[MIN_MARKER])
+            .expect("produce exact cardinality taxonomy");
+        let wire: serde_json::Value =
+            serde_json::from_str(&document).expect("taxonomy certificate is JSON");
+        let payload = wire.get("certificate").unwrap_or(&wire);
+        assert_eq!(payload["exact_maximums"], serde_json::json!([1]));
+        assert_eq!(payload["exact_definitions"], serde_json::json!([0]));
     }
 
     #[test]

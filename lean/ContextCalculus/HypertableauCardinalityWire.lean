@@ -214,6 +214,38 @@ def DecodedCardinalityEqCertificate.SemanticallyValid
       UnsatisfiableConceptWithCardinality certificate.base.ontology
         decoded.definitions concept
 
+/-- Semantics of a cardinality publication that retains the frontend's exact
+recognition obligations in addition to the directional definitions. -/
+def EntailsSubWithExactCardinality
+    (ontology : List (Clause Variable Concept Role))
+    (definitions exactDefinitions : List (CardinalityDef Concept Role))
+    (sub sup : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    I.models ontology → I.modelsCardinalityDefs definitions →
+      I.modelsCardinalityDefsExact exactDefinitions →
+      ∀ value, I.concept sub value → I.concept sup value
+
+def UnsatisfiableConceptWithExactCardinality
+    (ontology : List (Clause Variable Concept Role))
+    (definitions exactDefinitions : List (CardinalityDef Concept Role))
+    (concept : Concept) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Concept Role),
+    I.models ontology → I.modelsCardinalityDefs definitions →
+      I.modelsCardinalityDefsExact exactDefinitions →
+      ∀ value, ¬I.concept concept value
+
+theorem entailsSubWithCardinality_implies_exact
+    (h : EntailsSubWithCardinality ontology definitions sub sup) :
+    EntailsSubWithExactCardinality ontology definitions exactDefinitions sub sup := by
+  intro Domain I hontology hdefinitions _hexact value hsub
+  exact h Domain I hontology hdefinitions value hsub
+
+theorem unsatisfiableConceptWithCardinality_implies_exact
+    (h : UnsatisfiableConceptWithCardinality ontology definitions concept) :
+    UnsatisfiableConceptWithExactCardinality ontology definitions exactDefinitions concept := by
+  intro Domain I hontology hdefinitions _hexact value
+  exact h Domain I hontology hdefinitions value
+
 theorem DecodedCardinalityEqCertificate.check_sound
     (decoded : DecodedCardinalityEqCertificate)
     (hcheck : decoded.check = true) : decoded.SemanticallyValid := by
@@ -331,6 +363,141 @@ theorem DecodedCardinalityEqCertificate.check_sat_models_exact
     (by rw [hroot]; exact hvalid) hcheck.2
   rw [hroot] at hexact
   exact ⟨hmodels.1, hmodels.2, hexact⟩
+
+theorem DecodedCardinalityEqCertificate.check_nonSubsumption_not_exact
+    (decoded : DecodedCardinalityEqCertificate)
+    (certificate : FiniteEqCertificate decoded.base.nodeCount decoded.base.conceptCount
+      decoded.base.roleCount decoded.base.variableCount)
+    (root : Fin decoded.base.nodeCount)
+    (sub sup : Fin decoded.base.conceptCount)
+    (hevidence : decoded.base.evidence = .nonSubsumption certificate root sub sup)
+    (hcheck : decoded.check = true) :
+    ¬EntailsSubWithExactCardinality certificate.base.ontology decoded.definitions
+      decoded.exactDefinitions sub sup := by
+  simp only [DecodedCardinalityEqCertificate.check, hevidence,
+    Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  rcases hcheck with ⟨⟨⟨hsubLabel, hsupLabel⟩, hsat⟩, hexactCheck⟩
+  have hmodels := certificate.checkEqSatWithCardinality_models decoded.definitions hsat
+  have hcardParts := hsat
+  simp only [FiniteEqCertificate.checkEqSatWithCardinality,
+    Bool.and_eq_true] at hcardParts
+  have hsatParts := hcardParts.1
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hsatParts
+  have hvalid : certificate.equalityClosureValidB = true := hsatParts.1.1.1.1
+  have hroot : decoded.base.rootCertificate = certificate := by
+    simp [DecodedEqCertificate.rootCertificate, hevidence]
+  have hexact := decoded.checkExactDefinitions_sound (by rw [hroot]; exact hvalid)
+    hexactCheck
+  rw [hroot] at hexact
+  intro hentails
+  have hsub : certificate.state.quotientCanonical.concept sub
+      (Quotient.mk certificate.state.nodeSetoid root) := ⟨root, rfl, hsubLabel⟩
+  have hclashFalse : certificate.closedClashB = false := by
+    simpa using hsatParts.1.1.2
+  have hclash := certificate.not_closedClashB_closedClashFree hvalid hclashFalse
+  have hnotsup : ¬certificate.state.quotientCanonical.concept sup
+      (Quotient.mk certificate.state.nodeSetoid root) := by
+    exact certificate.state.quotientCanonical_sat_closedLabel hclash
+      root (.negated sup)
+        ⟨root, certificate.state.equiv_equivalence.1 root, hsupLabel⟩
+  exact hnotsup (hentails _ certificate.state.quotientCanonical hmodels.1 hmodels.2
+    hexact _ hsub)
+
+theorem DecodedCardinalityEqCertificate.check_satisfiableConcept_not_exact
+    (decoded : DecodedCardinalityEqCertificate)
+    (certificate : FiniteEqCertificate decoded.base.nodeCount decoded.base.conceptCount
+      decoded.base.roleCount decoded.base.variableCount)
+    (root : Fin decoded.base.nodeCount) (concept : Fin decoded.base.conceptCount)
+    (hevidence : decoded.base.evidence = .satisfiableConcept certificate root concept)
+    (hcheck : decoded.check = true) :
+    ¬UnsatisfiableConceptWithExactCardinality certificate.base.ontology
+      decoded.definitions decoded.exactDefinitions concept := by
+  simp only [DecodedCardinalityEqCertificate.check, hevidence,
+    Bool.and_eq_true, decide_eq_true_eq] at hcheck
+  rcases hcheck with ⟨⟨hconceptLabel, hsat⟩, hexactCheck⟩
+  have hmodels := certificate.checkEqSatWithCardinality_models decoded.definitions hsat
+  have hcardParts := hsat
+  simp only [FiniteEqCertificate.checkEqSatWithCardinality,
+    Bool.and_eq_true] at hcardParts
+  have hsatParts := hcardParts.1
+  simp only [FiniteEqCertificate.checkEqSat, Bool.and_eq_true] at hsatParts
+  have hvalid : certificate.equalityClosureValidB = true := hsatParts.1.1.1.1
+  have hroot : decoded.base.rootCertificate = certificate := by
+    simp [DecodedEqCertificate.rootCertificate, hevidence]
+  have hexact := decoded.checkExactDefinitions_sound (by rw [hroot]; exact hvalid)
+    hexactCheck
+  rw [hroot] at hexact
+  intro hunsatisfiable
+  exact hunsatisfiable _ certificate.state.quotientCanonical hmodels.1 hmodels.2
+    hexact (Quotient.mk certificate.state.nodeSetoid root) ⟨root, rfl, hconceptLabel⟩
+
+def DecodedCardinalityEqCertificate.ExactSemanticallyValid
+    (decoded : DecodedCardinalityEqCertificate) : Prop :=
+  match decoded.base.evidence with
+  | .sat certificate =>
+      ∃ (Domain : Type) (I : Interp Domain (Fin decoded.base.conceptCount)
+          (Fin decoded.base.roleCount)), Nonempty Domain ∧
+        I.models certificate.base.ontology ∧
+        I.modelsCardinalityDefs decoded.definitions ∧
+        I.modelsCardinalityDefsExact decoded.exactDefinitions
+  | .nonSubsumption certificate _ sub sup =>
+      ¬EntailsSubWithExactCardinality certificate.base.ontology decoded.definitions
+        decoded.exactDefinitions sub sup
+  | .satisfiableConcept certificate _ concept =>
+      ¬UnsatisfiableConceptWithExactCardinality certificate.base.ontology
+        decoded.definitions decoded.exactDefinitions concept
+  | .unsat certificate _ =>
+      ¬∃ (Domain : Type) (I : Interp Domain (Fin decoded.base.conceptCount)
+          (Fin decoded.base.roleCount)), Nonempty Domain ∧
+        I.models certificate.base.ontology ∧
+        I.modelsCardinalityDefs decoded.definitions ∧
+        I.modelsCardinalityDefsExact decoded.exactDefinitions
+  | .subsumption certificate _ sub sup _ =>
+      EntailsSubWithExactCardinality certificate.base.ontology decoded.definitions
+        decoded.exactDefinitions sub sup
+  | .unsatisfiableConcept certificate _ concept _ =>
+      UnsatisfiableConceptWithExactCardinality certificate.base.ontology
+        decoded.definitions decoded.exactDefinitions concept
+
+theorem DecodedCardinalityEqCertificate.check_exact_sound
+    (decoded : DecodedCardinalityEqCertificate) (hcheck : decoded.check = true) :
+    decoded.ExactSemanticallyValid := by
+  have hweak := decoded.check_sound hcheck
+  cases hevidence : decoded.base.evidence with
+  | sat certificate =>
+      rcases decoded.check_sat_models_exact certificate hevidence hcheck with
+        ⟨hontology, hdefinitions, hexact⟩
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      exact ⟨certificate.state.QuotientDomain, certificate.state.quotientCanonical,
+        ⟨Quotient.mk certificate.state.nodeSetoid (Classical.choice
+          (show Nonempty (Fin decoded.base.nodeCount) from by
+            simp only [DecodedCardinalityEqCertificate.check, hevidence,
+              Bool.and_eq_true, decide_eq_true_eq] at hcheck
+            exact ⟨⟨0, hcheck.1.1⟩⟩))⟩,
+        hontology, hdefinitions, hexact⟩
+  | nonSubsumption certificate root sub sup =>
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      exact decoded.check_nonSubsumption_not_exact certificate root sub sup hevidence hcheck
+  | satisfiableConcept certificate root concept =>
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      exact decoded.check_satisfiableConcept_not_exact certificate root concept hevidence hcheck
+  | unsat certificate tree =>
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at hweak
+      intro witness
+      apply hweak
+      rcases witness with ⟨Domain, I, hnonempty, hontology, hdefinitions, _⟩
+      exact ⟨Domain, I, hnonempty, hontology, hdefinitions⟩
+  | subsumption certificate root sub sup tree =>
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at hweak
+      exact entailsSubWithCardinality_implies_exact hweak
+  | unsatisfiableConcept certificate root concept tree =>
+      simp only [DecodedCardinalityEqCertificate.ExactSemanticallyValid, hevidence]
+      simp only [DecodedCardinalityEqCertificate.SemanticallyValid, hevidence] at hweak
+      exact unsatisfiableConceptWithCardinality_implies_exact hweak
+
+#print axioms DecodedCardinalityEqCertificate.check_exact_sound
 
 namespace CardinalityWireTests
 
