@@ -155,7 +155,7 @@ fn mandatory_lean_rejection_prevents_publication() {
         .spawn()
         .and_then(|mut child| {
             child.stdin.take().unwrap().write_all(
-                br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#,
+                br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]},{"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}]}]}"#,
             )?;
             child.wait_with_output()
         })
@@ -185,6 +185,7 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(!history.is_empty());
     let mut saw_core = false;
     let mut saw_ontology_fact = false;
+    let mut saw_hyper = false;
     for (sequence, event) in history.iter().enumerate() {
         assert_eq!(event["sequence"], sequence);
         let root = event["root"].as_bool().unwrap();
@@ -199,8 +200,10 @@ fn mandatory_lean_rejection_prevents_publication() {
         assert_eq!(event["origin_index"].is_number(), origin != "derived");
         saw_core |= origin == "core";
         saw_ontology_fact |= origin == "ontology_fact";
+        saw_hyper |= origin == "derived" && event["rule_hint"] == "hyper";
     }
     assert!(saw_core && saw_ontology_fact);
+    assert!(saw_hyper);
     let candidate: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&derivation).unwrap()).unwrap();
     assert_eq!(candidate["version"], 2);

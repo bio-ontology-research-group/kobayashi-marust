@@ -78,6 +78,13 @@
   source-bound production certificate. Generated global evidence can therefore
   use the live snapshot as its authoritative input, but cannot choose a
   different ontology, signature, or context identity.
+  Record the production rule family at the clause-insertion boundary for every
+  derived event. Hyper, local and arriving Pred, Succ, Eq, Factor, Join, and
+  branch-decision insertions are distinguished without changing scheduling or
+  the derived clause set. Seed classification remains structurally exact and
+  cannot overwrite an explicit derived-rule origin. This is producer metadata,
+  not trusted proof: generated justifications still require independent Lean
+  reconstruction and checking.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

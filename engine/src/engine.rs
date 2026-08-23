@@ -3297,6 +3297,11 @@ pub struct CbLiveInsertionEvent {
     pub clause_id: u32,
     pub origin_hint: &'static str,
     pub origin_index: Option<usize>,
+    /// Production rule family that requested this insertion. Seed origins are
+    /// resolved exactly after saturation; derived events retain this family so
+    /// the certificate producer can reconstruct the corresponding checked
+    /// justification without guessing across every calculus rule.
+    pub rule_hint: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -3804,7 +3809,7 @@ impl Engine {
                 let maxima: Vec<Pred> = side.max_head_predicates().map(|(p, _)| p).collect();
                 for max in maxima {
                     for result in self.hyper(id, &side, max, root) {
-                        self.add_clause(id, result);
+                        self.add_clause_with_rule(id, result, Some("hyper"));
                     }
                 }
             }
@@ -3913,7 +3918,7 @@ impl Engine {
                         root,
                         &self.sig,
                     );
-                    self.add_clause(id, c);
+                    self.add_clause_with_rule(id, c, Some("branch-decision"));
                 }
             }
         }
@@ -4148,16 +4153,30 @@ impl Engine {
     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
     /// it subsumes; enqueue to todo. Returns true if added.
     fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
+        self.add_clause_with_rule(id, clause, None)
+    }
+
+    fn add_clause_with_rule(
+        &mut self,
+        id: usize,
+        clause: ContextClause,
+        rule_hint: Option<&'static str>,
+    ) -> bool {
         if !self.prof_time {
-            return self.add_clause_inner(id, clause);
+            return self.add_clause_inner(id, clause, rule_hint);
         }
         let t = std::time::Instant::now();
-        let r = self.add_clause_inner(id, clause);
+        let r = self.add_clause_inner(id, clause, rule_hint);
         prof_add(&ADDCLAUSE_NS, t);
         r
     }
 
-    fn add_clause_inner(&mut self, id: usize, clause: ContextClause) -> bool {
+    fn add_clause_inner(
+        &mut self,
+        id: usize,
+        clause: ContextClause,
+        rule_hint: Option<&'static str>,
+    ) -> bool {
         if clause.is_head_tautology() {
             return false;
         }
@@ -4236,6 +4255,7 @@ impl Engine {
                 clause_id: cid,
                 origin_hint: "derived",
                 origin_index: None,
+                rule_hint,
             });
         }
         if let Some(t) = __t {
@@ -4355,7 +4375,7 @@ impl Engine {
                             nhyper += results.len() as u64;
                         }
                         for r in results {
-                            if self.add_clause(id, r) && prof {
+                            if self.add_clause_with_rule(id, r, Some("hyper")) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4365,7 +4385,7 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause(id, r) && prof {
+                                if self.add_clause_with_rule(id, r, Some("pred-local")) && prof {
                                     nadded += 1;
                                 }
                             }
@@ -4379,7 +4399,7 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof {
+                                    if self.add_clause_with_rule(id, r, Some("eq")) && prof {
                                         nadded += 1;
                                     }
                                 }
@@ -4395,7 +4415,7 @@ impl Engine {
                                 npred += results.len() as u64;
                             }
                             for r in results {
-                                if self.add_clause(id, r) && prof {
+                                if self.add_clause_with_rule(id, r, Some("pred-local")) && prof {
                                     nadded += 1;
                                 }
                             }
@@ -4409,7 +4429,7 @@ impl Engine {
                                     neqp += results.len() as u64;
                                 }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof {
+                                    if self.add_clause_with_rule(id, r, Some("eq")) && prof {
                                         nadded += 1;
                                     }
                                 }
@@ -4428,7 +4448,7 @@ impl Engine {
                             neqe += results.len() as u64;
                         }
                         for r in results {
-                            if self.add_clause(id, r) && prof {
+                            if self.add_clause_with_rule(id, r, Some("eq")) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4447,7 +4467,7 @@ impl Engine {
                             neqp += results.len() as u64;
                         }
                         for r in results {
-                            if self.add_clause(id, r) && prof {
+                            if self.add_clause_with_rule(id, r, Some("eq")) && prof {
                                 nadded += 1;
                             }
                         }
@@ -4473,7 +4493,7 @@ impl Engine {
                     nfact += results.len() as u64;
                 }
                 for r in results {
-                    if self.add_clause(id, r) && prof {
+                    if self.add_clause_with_rule(id, r, Some("factor")) && prof {
                         nadded += 1;
                     }
                 }
@@ -4483,7 +4503,7 @@ impl Engine {
             {
                 let results = self.join(id, &clause, root);
                 for r in results {
-                    if self.add_clause(id, r) && prof {
+                    if self.add_clause_with_rule(id, r, Some("join")) && prof {
                         nadded += 1;
                     }
                 }
@@ -6591,7 +6611,7 @@ impl Engine {
         // context creation still sit in `todo` and must be worked off.
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
-        self.add_clause(target, c);
+        self.add_clause_with_rule(target, c, Some("succ"));
         target
     }
 
@@ -6687,7 +6707,7 @@ impl Engine {
             self.stat_pred_conclusions += results.len() as u64;
         }
         for r in results {
-            let fresh = self.add_clause(to, r);
+            let fresh = self.add_clause_with_rule(to, r, Some("pred-arrival"));
             if msgprof && fresh {
                 self.stat_pred_conclusions_new += 1;
             }
@@ -7745,7 +7765,7 @@ impl Engine {
         for event in &mut insertion_history {
             let context = &self.contexts[event.context_index];
             let clause = &self.cc_arena[event.root as usize][event.clause_id as usize];
-            if clause.body.is_empty() {
+            if event.rule_hint.is_none() && clause.body.is_empty() {
                 if let Some((index, _)) = context.core.iter().enumerate().find(|(_, predicate)| {
                     clause.head.as_slice() == [Lit::P(**predicate)]
                 }) {
