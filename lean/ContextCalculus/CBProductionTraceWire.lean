@@ -48,6 +48,7 @@ deriving FromJson, ToJson
 structure WireProductionContext where
   context_id : Nat
   root : Bool
+  nominal_ground : Bool
   query_concept : Option Nat
   core : List WirePredicate
   retained : List WireClause
@@ -113,6 +114,8 @@ def WireDiscardedClause.decode (bounds : Bounds) (retained : List FCL)
 structure DecodedProductionContext (bounds : Bounds) (ontology : List FCL) where
   contextId : Nat
   root : Bool
+  nominalGround : Bool
+  nominal_ground_root : nominalGround = true → root = true
   queryConcept : Option Nat
   core : List FPred
   core_nodup : core.Nodup
@@ -139,20 +142,24 @@ def WireProductionContext.decode (bounds : Bounds) (ontology : List FCL)
       let trace ← wire.trace.mapM (WireProductionEntry.decode bounds)
       if hretained : retained = terminal trace then
         if htrace : check ontology assumptions trace = true then
-          return {
-            contextId := wire.context_id
-            root := wire.root
-            queryConcept
-            core
-            core_nodup := hdecodedCoreNodup
-            assumptions
-            assumptions_eq := rfl
-            retained
-            discarded
-            trace
-            retained_eq := hretained
-            trace_valid := htrace
-          }
+          if hnominalRoot : wire.nominal_ground = true → wire.root = true then
+            return {
+              contextId := wire.context_id
+              root := wire.root
+              nominalGround := wire.nominal_ground
+              nominal_ground_root := hnominalRoot
+              queryConcept
+              core
+              core_nodup := hdecodedCoreNodup
+              assumptions
+              assumptions_eq := rfl
+              retained
+              discarded
+              trace
+              retained_eq := hretained
+              trace_valid := htrace
+            }
+          else throw "nominal ground context is not a root context"
         else throw "production context trace was rejected"
       else throw "production retained clauses differ from the checked trace terminal"
     else throw "decoded production context core contains duplicates"
@@ -205,7 +212,7 @@ structure DecodedProductionRun where
 
 def WireProductionRun.decode (wire : WireProductionRun) :
     Except String DecodedProductionRun := do
-  if wire.version != 1 then
+  if wire.version != 2 then
     throw s!"unsupported CB production-trace version {wire.version}"
   if wire.contexts.isEmpty then
     throw "CB production trace must contain at least one context"
@@ -311,6 +318,7 @@ private def sourceExample : WireSourceBinding where
 private def contextExample : WireProductionContext where
   context_id := 7
   root := true
+  nominal_ground := false
   query_concept := some 0
   core := [conceptPredicate 0]
   retained := [
@@ -324,7 +332,7 @@ private def contextExample : WireProductionContext where
     ⟨⟨[], [conceptLiteral 1]⟩, .resolve 1 0 (conceptLiteral 0)⟩]
 
 private def acceptedExample : WireProductionRun :=
-  { version := 1, source := sourceExample, individual_count := 0,
+  { version := 2, source := sourceExample, individual_count := 0,
     contexts := [contextExample] }
 
 private def rejected (result : Except String Bool) : Bool :=
@@ -345,6 +353,7 @@ private def freshLiteral : WireLiteral :=
 private def freshContextExample : WireProductionContext where
   context_id := 8
   root := true
+  nominal_ground := true
   query_concept := none
   core := []
   retained := [⟨[freshLiteral], [freshLiteral]⟩]

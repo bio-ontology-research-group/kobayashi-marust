@@ -38,6 +38,7 @@ import ContextCalculus.CBInterContextWire
 import ContextCalculus.CBPredEnumeration
 import ContextCalculus.CBPredSendEnumeration
 import ContextCalculus.CBPredSendCoverageWire
+import ContextCalculus.CBTerminalStateWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

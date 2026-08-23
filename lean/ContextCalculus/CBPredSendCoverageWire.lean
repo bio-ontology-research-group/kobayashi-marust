@@ -216,10 +216,10 @@ def rootTransferIndices (decoded : DecodedCompleteInterContextRun)
     | some transfer => decide (transfer.senderIndex.val = groundContextIndex)
     | none => false
 
-def rootContextIndices (production : DecodedProductionRun) : List Nat :=
+def nominalGroundContextIndices (production : DecodedProductionRun) : List Nat :=
   (List.range production.contexts.length).filter fun index =>
     match production.contexts[index]? with
-    | some context => context.root
+    | some context => context.nominalGround
     | none => false
 
 structure DecodedPredSenderSnapshot
@@ -364,7 +364,7 @@ structure DecodedPredSendCoverageDocument where
   ground_index_valid : ∀ index ∈ groundContextIndex,
     index < interContext.base.production.contexts.length
   ground_index_exact : groundContextIndex.toList =
-    rootContextIndices interContext.base.production
+    nominalGroundContextIndices interContext.base.production
   senders : List (DecodedPredSenderSnapshot interContext)
   rootSender : Option (DecodedRootPredSenderSnapshot interContext)
   nominalAllocation : Option
@@ -395,7 +395,7 @@ def WirePredSendCoverageDocument.decode
   if hground : ∀ index ∈ wire.ground_context_index,
       index < interContext.base.production.contexts.length then
     if hgroundExact : wire.ground_context_index.toList =
-        rootContextIndices interContext.base.production then
+        nominalGroundContextIndices interContext.base.production then
     let senders ← wire.senders.mapM
       (WirePredSenderSnapshot.decode interContext)
     let actualSenders := senders.map fun sender => sender.senderIndex.val
@@ -468,7 +468,7 @@ theorem WirePredSendCoverageDocument.check_sound
     ∃ decoded : DecodedPredSendCoverageDocument,
       wire.decode = .ok decoded ∧
       decoded.groundContextIndex.toList =
-        rootContextIndices decoded.interContext.base.production ∧
+        nominalGroundContextIndices decoded.interContext.base.production ∧
       decoded.senders.map (fun sender => sender.senderIndex.val) =
         ordinarySenderIndices decoded.interContext.base.production.contexts.length
           decoded.groundContextIndex ∧
@@ -521,6 +521,7 @@ private def sourceExample : WireSourceBinding where
 private def contextExample : WireProductionContext where
   context_id := 7
   root := false
+  nominal_ground := false
   query_concept := none
   core := [concept 0]
   retained := [⟨[literal 0], [literal 1]⟩]
@@ -528,7 +529,7 @@ private def contextExample : WireProductionContext where
   trace := [⟨⟨[literal 0], [literal 1]⟩, .premise 0 []⟩]
 
 private def productionExample : WireProductionRun where
-  version := 1
+  version := 2
   source := sourceExample
   individual_count := 0
   contexts := [contextExample]
@@ -618,10 +619,14 @@ private def rootSourceExample : WireSourceBinding :=
   { sourceExample with individual_count := 1 }
 
 private def rootContextExample : WireProductionContext :=
-  { contextExample with context_id := 9, root := true, core := [] }
+  { contextExample with
+    context_id := 9
+    root := true
+    nominal_ground := true
+    core := [] }
 
 private def rootProductionExample : WireProductionRun where
-  version := 1
+  version := 2
   source := rootSourceExample
   individual_count := 1
   contexts := [rootContextExample]
@@ -673,7 +678,7 @@ private def missingRootMarkerExample : WirePredSendCoverageDocument :=
       rootInterContextExample with
       production := {
         rootProductionExample with
-        contexts := [{ rootContextExample with root := false }]
+        contexts := [{ rootContextExample with nominal_ground := false }]
       }
     } }
 

@@ -133,6 +133,16 @@
   source count plus the exact allocated width, rejecting invented trailing
   identifiers. Bind each runtime table extension in Pred evidence to a checked
   allocation with identical source bounds, encoded ontology, and runtime count.
+- Separate the unique nominal-ground designation from the calculus `root`
+  flag in production context evidence. Query and top contexts are also roots in
+  KM, so identifying the ground context from that flag was invalid. The schema
+  now requires exactly the dedicated marker and proves that its context is a
+  root.
+- Add executable CB terminal-state evidence. Acceptance requires empty global
+  and local work queues, no message or Nom truncation, every context exactly
+  once, cleared dirty flags, complete Pred/Succ/r-Succ high-water marks,
+  complete r-Succ successor-pair scans, and predecessor edge watermarks equal
+  to the exact pushed-set lengths from Pred sender evidence.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

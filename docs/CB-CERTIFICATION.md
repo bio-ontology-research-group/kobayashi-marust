@@ -172,11 +172,25 @@ claim that the layer is already complete.
   both sender modes and reject an omitted transfer, a forged pushed set, a
   missing root snapshot, and a non-individual root label. The same document now
   requires its ground-context designation to equal exactly the production
-  contexts marked root, rejecting both a missing root and multiple roots. It
+  context carrying the dedicated nominal-ground marker, rejecting both a
+  missing marker and multiple markers. The ordinary `root` flag is deliberately
+  separate because KM also marks query and top contexts as calculus roots. It
   binds every runtime individual-table extension to a checked Nom allocation
   over the identical source bounds and ontology. A standalone
   `cb-pred-send-coverage-check` executable exposes this boundary. Binding the
   predecessor snapshots to serialized terminal Rust state remains open.
+- `CBTerminalStateWire` rejects termination-as-evidence and instead checks the
+  concrete fixpoint bookkeeping used by KM. The global message queue must be
+  empty, neither the message cap nor Nom budget may have truncated the run, and
+  every production context must occur exactly once with an empty local todo
+  queue and a cleared dirty flag. Pred, Succ, and r-Succ pool high-water marks,
+  the r-Succ reach driver and every successor-pair watermark must be complete.
+  Every predecessor-edge watermark must equal the pushed-set length from the
+  exact send snapshot. Kernel tests reject pending messages, truncation,
+  incomplete pool scans, and stale edge scans. The standalone
+  `cb-terminal-state-check` checker exposes this boundary. Production emission
+  and the semantic theorem connecting these finite bookkeeping conditions to
+  rule closure remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

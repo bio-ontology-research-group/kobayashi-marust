@@ -325,6 +325,7 @@ private def sourceExample : WireSourceBinding where
 private def contextExample : WireProductionContext where
   context_id := 7
   root := false
+  nominal_ground := false
   query_concept := none
   core := [concept 0]
   retained := [⟨[literal 0], [literal 1]⟩, ⟨[], [literal 0]⟩]
@@ -334,7 +335,7 @@ private def contextExample : WireProductionContext where
     ⟨⟨[], [literal 0]⟩, .assumption 0⟩]
 
 private def productionExample : WireProductionRun where
-  version := 1
+  version := 2
   source := sourceExample
   individual_count := 0
   contexts := [contextExample]
