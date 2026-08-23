@@ -55,6 +55,7 @@ import ContextCalculus.CBBlockedGroundSaturationWire
 import ContextCalculus.CBHyperClosure
 import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBJoin3Closure
+import ContextCalculus.CBJoin3ClosureWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

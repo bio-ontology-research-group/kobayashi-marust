@@ -1,0 +1,6 @@
+import ContextCalculus.CBJoin3ClosureWire
+
+open ContextCalculus.CBJoin3ClosureWire
+
+#print axioms DecodedContextJoin3Closure.complete_coverage
+#print axioms WireJoin3ClosureDocument.check_sound
