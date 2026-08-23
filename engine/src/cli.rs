@@ -1398,10 +1398,15 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             event.sequence,
         );
     }
-    let bundle = serde_json::json!({
+    let production_bound = serde_json::json!({
         "version": 1,
         "global_model": global_model,
         "live_state": live_state,
+    });
+    let certificate = serde_json::json!({
+        "version": 2,
+        "production_bound": production_bound,
+        "insertion_evidence": insertion_evidence,
     });
     let file = std::fs::File::create(&bundle_path).map_err(|error| {
         format!(
@@ -1410,7 +1415,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         )
     })?;
     let mut writer = std::io::BufWriter::new(file);
-    serde_json::to_writer(&mut writer, &bundle)
+    serde_json::to_writer(&mut writer, &certificate)
         .map_err(|error| format!("cannot serialize CB certificate bundle: {error}"))?;
     use std::io::Write;
     writer
@@ -1421,11 +1426,6 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         .map_err(|error| format!("cannot flush CB certificate bundle: {error}"))?;
 
     if let Some(candidate_path) = derivation_candidate_path {
-        let candidate = serde_json::json!({
-            "version": 2,
-            "production_bound": bundle,
-            "insertion_evidence": insertion_evidence,
-        });
         let file = std::fs::File::create(&candidate_path).map_err(|error| {
             format!(
                 "cannot create CB derivation candidate {}: {error}",
@@ -1433,7 +1433,7 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
             )
         })?;
         let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, &candidate)
+        serde_json::to_writer(&mut writer, &certificate)
             .map_err(|error| format!("cannot serialize CB derivation candidate: {error}"))?;
         writer
             .write_all(b"\n")

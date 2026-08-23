@@ -116,23 +116,17 @@ claim that the layer is already complete.
   proves every event in a certified chronological history valid under its
   context core. `WireLiveInsertionDerivationDocument` makes the local history
   layer executable and the `cb-live-insertion-derivation-check` native checker
-  exposes it. The Rust evidence producer, mandatory publication integration,
-  and the distinct inter-context evidence constructor remain open.
-  `KM_CB_DERIVATION_CANDIDATE` emits the exact nested production-bound document
-  plus one evidence slot per insertion. Verified seeds are populated; derived
-  slots use an unsupported `unproved` tag so the checker fails closed until a
-  rule reconstruction replaces every such slot.
-  For terminal retained derived events, the producer reuses the corresponding
-  context trace from the nested source-bound production document after exact
-  context-count and context-id matching. Lean still decodes the copied trace,
-  checks every inference, and requires the live event clause in its terminal.
-  Events removed before the terminal state remain explicit producer gaps.
-  Removed insertions now have a separate `discarded` evidence form. It rechecks
-  the full local trace, every source document redundancy witness, exact equality
-  with the live removed clause, and the indexed retained strengthening. This
-  proves removed local clauses without relying on a later chronological event.
-  A removed clause absent from the source-bound discarded list remains
-  `unproved` and is rejected.
+  exposes it. KM emits exact evidence for Hyper, Factor, paramodulation, Join,
+  Join-3, Succ, Pred-local, Pred-arrival, filtered source seeds, and clauses
+  removed by redundancy. Pred evidence names the earlier sender event and the
+  complete receiver-provider path; Lean applies the checked inter-context
+  transfer theorem before folding the local resolutions. Every missing or
+  malformed evidence slot fails closed. Mandatory publication now writes this
+  complete version-2 document to `KM_CB_CERT_BUNDLE` and invokes
+  `KM_CB_LEAN_CERT_CHECKER` on it before stdout. The optional
+  `KM_CB_DERIVATION_CANDIDATE` path writes an identical diagnostic copy.
+  Automatic production of the nested global-closure and blocked-model evidence
+  remains open; it is currently supplied through `KM_CB_GLOBAL_MODEL_CERT`.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

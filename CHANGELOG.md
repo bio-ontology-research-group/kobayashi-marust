@@ -131,6 +131,12 @@
   live-state boundary: they are assumptions of the optional exhaustive split
   search, whose validity belongs to the later case-analysis routing certificate
   rather than to a single branch's local CB history.
+  Promote the chronological insertion derivation from an optional diagnostic
+  to the mandatory CB publication artifact. `KM_CB_CERT_BUNDLE` now contains
+  the version-2 derivation document, including the production-bound global
+  model, exact live state, and one checked evidence item for every insertion;
+  `KM_CB_LEAN_CERT_CHECKER` is invoked on that complete document before stdout.
+  The optional candidate path writes only an identical diagnostic copy.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

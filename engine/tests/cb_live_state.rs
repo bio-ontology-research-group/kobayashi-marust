@@ -166,20 +166,23 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(derivation.exists());
     let document: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&bundle).unwrap()).unwrap();
-    assert_eq!(document["version"], 1);
-    assert_eq!(document["live_state"]["version"], 5);
-    assert!(document["live_state"]["concept_count"].is_number());
-    assert!(document["live_state"]["role_count"].is_number());
-    assert!(document["live_state"]["function_count"].is_number());
-    assert!(document["live_state"]["source_individual_count"].is_number());
-    assert!(document["live_state"]["runtime_individual_count"].is_number());
-    assert!(document["live_state"]["source_ontology"].is_array());
-    for context in document["live_state"]["contexts"].as_array().unwrap() {
+    assert_eq!(document["version"], 2);
+    let production_bound = &document["production_bound"];
+    assert_eq!(production_bound["version"], 1);
+    let live_state = &production_bound["live_state"];
+    assert_eq!(live_state["version"], 5);
+    assert!(live_state["concept_count"].is_number());
+    assert!(live_state["role_count"].is_number());
+    assert!(live_state["function_count"].is_number());
+    assert!(live_state["source_individual_count"].is_number());
+    assert!(live_state["runtime_individual_count"].is_number());
+    assert!(live_state["source_ontology"].is_array());
+    for context in live_state["contexts"].as_array().unwrap() {
         assert!(context["nominal_ground"].is_boolean());
         assert!(context["query_concept"].is_null() || context["query_concept"].is_number());
         assert!(context["core"].is_array());
     }
-    let history = document["live_state"]["insertion_history"]
+    let history = live_state["insertion_history"]
         .as_array()
         .unwrap();
     assert!(!history.is_empty());
@@ -190,9 +193,9 @@ fn mandatory_lean_rejection_prevents_publication() {
         assert_eq!(event["sequence"], sequence);
         let root = event["root"].as_bool().unwrap();
         let arena = if root {
-            &document["live_state"]["root_clause_arena"]
+            &live_state["root_clause_arena"]
         } else {
-            &document["live_state"]["ordinary_clause_arena"]
+            &live_state["ordinary_clause_arena"]
         };
         assert!(event["clause_id"].as_u64().unwrap() < arena.as_array().unwrap().len() as u64);
         let origin = event["origin_hint"].as_str().unwrap();
@@ -205,7 +208,7 @@ fn mandatory_lean_rejection_prevents_publication() {
             let evidence = &event["rule_evidence"];
             assert_eq!(evidence["kind"], "hyper");
             assert!(evidence["ontology_index"].as_u64().unwrap()
-                < document["live_state"]["source_ontology"]
+                < live_state["source_ontology"]
                     .as_array()
                     .unwrap()
                     .len() as u64);
@@ -228,9 +231,8 @@ fn mandatory_lean_rejection_prevents_publication() {
     assert!(saw_hyper);
     let candidate: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&derivation).unwrap()).unwrap();
-    assert_eq!(candidate["version"], 2);
-    assert_eq!(candidate["production_bound"], document);
-    let evidence = candidate["insertion_evidence"].as_array().unwrap();
+    assert_eq!(candidate, document);
+    let evidence = document["insertion_evidence"].as_array().unwrap();
     assert_eq!(evidence.len(), history.len());
     for (event, proof) in history.iter().zip(evidence) {
         let expected = if event["rule_hint"] == "hyper" {
