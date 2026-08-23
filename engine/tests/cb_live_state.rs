@@ -10,6 +10,24 @@ fn snapshot_path(label: &str) -> std::path::PathBuf {
     root.join(format!("cb-live-{label}-{}.json", std::process::id()))
 }
 
+fn write_trivial_typed_source(path: &std::path::Path) {
+    let x = serde_json::json!({"var": {"index": 0}});
+    let concept = serde_json::json!({"predicate": {"predicate": {"concept": {
+        "concept": 0, "term": x
+    }}}});
+    let source = serde_json::json!({"source": {
+        "version": 1,
+        "concept_count": 1,
+        "role_count": 0,
+        "function_count": 0,
+        "individual_count": 1,
+        "source_clauses": [{"gci": {"body": [], "head": [0]}}],
+        "role_chains": [],
+        "ontology": [{"body": [], "head": [concept]}]
+    }});
+    std::fs::write(path, serde_json::to_vec(&source).unwrap()).unwrap();
+}
+
 #[test]
 fn cli_emits_one_exact_terminal_engine_for_certification() {
     let path = snapshot_path("accepted");
@@ -309,7 +327,7 @@ fn exact_lean_rejection_prevents_publication() {
     let global = snapshot_path("exact-reject-global");
     let bundle = snapshot_path("exact-reject-bundle");
     let exact = snapshot_path("exact-reject-candidate");
-    std::fs::write(&global, b"{}\n").unwrap();
+    write_trivial_typed_source(&global);
     let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
         .env("KM_CB_LEAN_REQUIRED", "1")
         .env("KM_CB_GLOBAL_MODEL_CERT", &global)
@@ -343,7 +361,7 @@ fn both_lean_checkers_must_accept_before_publication() {
     let global = snapshot_path("exact-accept-global");
     let bundle = snapshot_path("exact-accept-bundle");
     let exact = snapshot_path("exact-accept-candidate");
-    std::fs::write(&global, b"{}\n").unwrap();
+    write_trivial_typed_source(&global);
     let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
         .env("KM_CB_LEAN_REQUIRED", "1")
         .env("KM_CB_GLOBAL_MODEL_CERT", &global)
@@ -374,6 +392,63 @@ fn both_lean_checkers_must_accept_before_publication() {
     assert_eq!(matrix["cells"].as_array().unwrap().len(), 1);
     assert_eq!(matrix["cells"][0]["evidence"], "reflexive");
     std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
+    std::fs::remove_file(exact).unwrap();
+}
+
+#[test]
+fn source_exact_lean_checker_accepts_real_cb_publication() {
+    let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
+        .expect("the integration gate must provide the real source-exact Lean checker");
+    let source = snapshot_path("source-exact-typed-source");
+    let bundle = snapshot_path("source-exact-live-bundle");
+    let exact = snapshot_path("source-exact-matrix");
+    let x = serde_json::json!({"var": {"index": 0}});
+    let concept = |id| serde_json::json!({"predicate": {"predicate": {"concept": {
+        "concept": id, "term": x
+    }}}});
+    std::fs::write(
+        &source,
+        serde_json::to_vec(&serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 1,
+            "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
+            "role_chains": [],
+            "ontology": [{"body": [concept(0)], "head": [concept(1)]}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let input = br#"{"clauses":[{"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}]}]}"#;
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_TYPED_SOURCE_CERT", &source)
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE", &exact)
+        .env("KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER", checker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(input)?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.stdout.is_empty());
+    let candidate: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&exact).unwrap()).unwrap();
+    assert_eq!(candidate["source"]["source_clauses"][0]["gci"]["body"], serde_json::json!([0]));
+    assert_eq!(candidate["taxonomy"]["published"], serde_json::json!([true, true, false, true]));
+    std::fs::remove_file(source).unwrap();
     std::fs::remove_file(bundle).unwrap();
     std::fs::remove_file(exact).unwrap();
 }

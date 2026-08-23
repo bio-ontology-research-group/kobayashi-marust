@@ -1,4 +1,5 @@
 import ContextCalculus.CBSourceTaxonomyWire
+import ContextCalculus.CBLiveExactTaxonomyPublication
 
 /-!
 # Public CB certification surface
@@ -13,6 +14,7 @@ namespace ContextCalculus.CB
 
 open ContextCalculus.CBTaxonomyWire
 open ContextCalculus.CBSourceTaxonomyWire
+open ContextCalculus.CBLiveExactTaxonomyPublication
 
 theorem certifiedCBExactTaxonomyPublication
     (wire : WireTaxonomy) (hcheck : wire.check = .ok true) :
@@ -50,5 +52,34 @@ theorem certifiedCBSourceExactTaxonomyPublication
   exact ⟨decoded, hdecode, decoded.taxonomy.exact_public, hexact⟩
 
 #print axioms certifiedCBSourceExactTaxonomyPublication
+
+/-- The production-bound capstone: an accepted live document enumerates every
+materialized named-concept coordinate and publishes exactly the typed source
+semantics at that coordinate. Positive cells are tied to checked chronological
+production derivations; negative cells carry independently checked finite,
+blocked, or regular countermodels. -/
+theorem certifiedCBProductionExactTaxonomyPublication
+    (wire : WireLiveExactTaxonomyPublication)
+    (hcheck : wire.check = .ok true) :
+    ∃ decoded : DecodedLiveExactTaxonomyPublication,
+      wire.decode = .ok decoded ∧
+      decoded.named.toFinset = (liveNamedConcepts decoded.live).toFinset ∧
+      decoded.cells.map (fun cell => (cell.sub, cell.sup)) =
+        CBLiveExactTaxonomyPublication.coordinates decoded.named ∧
+      ∀ index : Fin decoded.cells.length,
+        (decoded.cells.get index).answer = true ↔
+          SourceExactEntails decoded.live
+            ⟨(decoded.cells.get index).sub,
+              (decoded.cells.get index).sub_in_bounds⟩
+            ⟨(decoded.cells.get index).sup,
+              (decoded.cells.get index).sup_in_bounds⟩ := by
+  cases hdecode : wire.decode with
+  | error message =>
+      simp [WireLiveExactTaxonomyPublication.check, hdecode] at hcheck
+  | ok decoded =>
+      exact ⟨decoded, rfl, decoded.named_exact, decoded.coordinates_exact,
+        decoded.cell_source_exact⟩
+
+#print axioms certifiedCBProductionExactTaxonomyPublication
 
 end ContextCalculus.CB

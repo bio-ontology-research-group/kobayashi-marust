@@ -29,6 +29,10 @@ name = "cb-taxonomy-cert-check"
 root = "CBTaxonomyCertCheck"
 
 [[lean_exe]]
+name = "cb-source-taxonomy-cert-check"
+root = "CBSourceTaxonomyCertCheck"
+
+[[lean_exe]]
 name = "cb-nominal-allocation-check"
 root = "CBNominalAllocationCheck"
 
@@ -81,32 +85,16 @@ name = "cb-blocked-ground-saturation-check"
 root = "CBBlockedGroundSaturationCheck"
 
 [[lean_exe]]
-name = "cb-hyper-closure-check"
-root = "CBHyperClosureCheck"
-
-[[lean_exe]]
 name = "cb-hyper-closure-wire-check"
 root = "CBHyperClosureWireCheck"
-
-[[lean_exe]]
-name = "cb-join3-closure-check"
-root = "CBJoin3ClosureCheck"
 
 [[lean_exe]]
 name = "cb-join3-closure-wire-check"
 root = "CBJoin3ClosureWireCheck"
 
 [[lean_exe]]
-name = "cb-succ-closure-check"
-root = "CBSuccClosureCheck"
-
-[[lean_exe]]
 name = "cb-succ-closure-wire-check"
 root = "CBSuccClosureWireCheck"
-
-[[lean_exe]]
-name = "cb-rsucc-closure-check"
-root = "CBRSuccClosureCheck"
 
 [[lean_exe]]
 name = "cb-rsucc-closure-wire-check"

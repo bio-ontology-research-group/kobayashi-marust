@@ -128,6 +128,20 @@ Run the production ELC certification gate with:
 ./lean/run-elc-certification-gate.sh
 ```
 
+Run the production CB certification gate with:
+
+```sh
+./lean/run-cb-certification-gate.sh
+```
+
+The CB gate builds every native `cb-*` checker declared in Lake, audits the
+public theorem surface for admitted axioms, and exercises the real
+Rust-to-Lean source-bound taxonomy path. In mandatory source-exact mode, KM
+publishes only after Lean checks every positive cell from a production trace
+and every negative cell from a finite or regular countermodel. The remaining
+CB certification work is total producer coverage for all production inference
+shapes and binding the typed source certificate through the routing layer.
+
 ### Current certified HT boundary
 
 `ContextCalculus.HypertableauCertificationSurface` exports the current

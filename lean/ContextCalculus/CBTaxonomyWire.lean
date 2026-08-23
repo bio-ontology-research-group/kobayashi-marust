@@ -1,4 +1,6 @@
 import ContextCalculus.CBFiniteModelWire
+import ContextCalculus.CBProductionTraceWire
+import ContextCalculus.CBRegularArbitraryChainCountermodelWire
 import Mathlib.Data.Finset.Basic
 
 /-!
@@ -16,6 +18,8 @@ namespace ContextCalculus.CBTaxonomyWire
 
 open Lean ContextCalculus CheckerTerm CBFiniteModelWire
 open ContextCalculus.CBTermWire
+open ContextCalculus.CBProductionTrace ContextCalculus.CBProductionTraceWire
+open ContextCalculus.CBRegularArbitraryChainCountermodelWire
 
 def Entails (ontology : List FCL) (core superconcept : Nat) : Prop :=
   ∀ (D : Type) (model : TModel D),
@@ -24,7 +28,9 @@ def Entails (ontology : List FCL) (core superconcept : Nat) : Prop :=
 
 inductive WireCellEvidence where
   | positive (trace : List WireEntry)
+  | positiveProduction (trace : List WireProductionEntry)
   | negative (witness : Nat) (model : WireFiniteModel)
+  | regularArbitraryChain (model : WireRegularArbitraryChainCountermodel)
 deriving FromJson, ToJson
 
 structure WireCell where
@@ -76,6 +82,76 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
           exact := ⟨fun _ => hsemantic, fun _ => rfl⟩
         }
       else throw "positive CB taxonomy derivation was rejected"
+  | .positiveProduction wireTrace =>
+      if wire.answer != true then
+        throw "production CB taxonomy evidence is paired with a false answer"
+      let queryPredicate : WirePredicate := .concept core (.var 0)
+      let contextWire : WireProductionContext := {
+        context_id := 0
+        root := true
+        nominal_ground := false
+        query_concept := some core
+        core := [queryPredicate]
+        retained := wireTrace.map (·.clause)
+        discarded := []
+        trace := wireTrace
+      }
+      let context ← contextWire.decode bounds ontology
+      let target : FCL :=
+        ⟨[], [.P (.concept superconcept (.var 0))]⟩
+      if hcoreExact : context.core = [.concept core (.var 0)] then
+        if htarget : target ∈ context.retained then
+          have hsemantic : Entails ontology core superconcept := by
+            intro D model hontology element hsub
+            let assignment : Int → D := fun _ => element
+            have hcore : CoreHolds model assignment context.core := by
+              rw [hcoreExact]
+              intro predicate hpredicate
+              simp only [List.mem_singleton] at hpredicate
+              subst predicate
+              exact hsub
+            have hvalid := context.retained_sound model assignment hontology
+              hcore target htarget
+            have hhead := hvalid (by intro literal hliteral; cases hliteral)
+            obtain ⟨literal, hliteral, heval⟩ := hhead
+            simp only [target, List.mem_singleton] at hliteral
+            subst literal
+            exact heval
+          return {
+            coreConcept := core
+            core_in_bounds := hcore
+            superconcept
+            super_in_bounds := hsuper
+            answer := true
+            exact := ⟨fun _ => hsemantic, fun _ => rfl⟩
+          }
+        else
+          let bottom : FCL := ⟨[], []⟩
+          if hbottom : bottom ∈ context.retained then
+            have hsemantic : Entails ontology core superconcept := by
+              intro D model hontology element hsub
+              let assignment : Int → D := fun _ => element
+              have hcore : CoreHolds model assignment context.core := by
+                rw [hcoreExact]
+                intro predicate hpredicate
+                simp only [List.mem_singleton] at hpredicate
+                subst predicate
+                exact hsub
+              have hvalid := context.retained_sound model assignment hontology
+                hcore bottom hbottom
+              have hfalse := hvalid (by intro literal hliteral; cases hliteral)
+              obtain ⟨literal, hliteral, _⟩ := hfalse
+              cases hliteral
+            return {
+              coreConcept := core
+              core_in_bounds := hcore
+              superconcept
+              super_in_bounds := hsuper
+              answer := true
+              exact := ⟨fun _ => hsemantic, fun _ => rfl⟩
+            }
+          else throw "production CB taxonomy trace omits its target unit or contradiction"
+      else throw "production CB taxonomy trace uses the wrong query core"
   | .negative witness model =>
       if wire.answer != false then
         throw "negative CB taxonomy evidence is paired with a true answer"
@@ -93,6 +169,23 @@ def WireCell.decode (bounds : Bounds) (ontology : List FCL)
         core_in_bounds := countermodel.core_in_bounds
         superconcept := countermodel.superconcept
         super_in_bounds := countermodel.super_in_bounds
+        answer := false
+        exact := ⟨by simp, fun hentails => (hnot hentails).elim⟩
+      }
+  | .regularArbitraryChain model =>
+      if wire.answer != false then
+        throw "regular CB taxonomy evidence is paired with a true answer"
+      let countermodel ← model.decode bounds ontology core superconcept
+      have hnot : ¬Entails ontology core superconcept := by
+        intro hentails
+        rcases countermodel.refutes with
+          ⟨D, interpretation, element, hontology, hpositive, hnegative⟩
+        exact hnegative (hentails D interpretation hontology element hpositive)
+      return {
+        coreConcept := core
+        core_in_bounds := hcore
+        superconcept
+        super_in_bounds := hsuper
         answer := false
         exact := ⟨by simp, fun hentails => (hnot hentails).elim⟩
       }

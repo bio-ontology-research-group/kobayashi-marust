@@ -4,6 +4,29 @@
 
 ### Advance the CB semantic refinement
 
+- Add the source-bound extensional production capstone. `CBTaxonomyWire` now
+  accepts complete production traces for positive cells and the strongest
+  arbitrary-chain regular countermodel for negative cells. The new
+  `cb-source-taxonomy-cert-check` executable checks the typed source, exact
+  encoded ontology, complete row-major matrix, public name payload, and every
+  cell's soundness/completeness evidence in one document. Mandatory CB mode can
+  use `KM_CB_TYPED_SOURCE_CERT`,
+  `KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE`, and
+  `KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER`; no abstract global-closure checker is
+  trusted on this path, and failed or unresolved evidence produces no stdout.
+  Cross-language tests run the real worker and checker on a derived positive
+  and explicit negative cell, accept both finite and regular negative evidence,
+  and reject a forged publication bit.
+- Add `run-cb-certification-gate.sh`. It builds every declared native CB
+  checker, audits all public CB capstones for `sorryAx`, and runs the real
+  fail-closed process tests. The first exhaustive run found four theorem-only
+  modules incorrectly declared as executables and three wire auditors without
+  entry points. The manifest now declares only real checkers, and the Hyper,
+  Join-3, Succ, and r-Succ wire auditors link as JSON executables. The complete
+  local gate passes. This is not yet a CB release: total standalone-trace
+  production for every cross-context inference shape and routed typed-source
+  delivery remain open.
+
 - Add `CBLiveExactTaxonomyPublication`, the production-bound exact-matrix
   capstone for CB. Every row-major cell over the materialized query concepts
   must cite reflexivity, an exact live positive, an exact unsatisfiable-row

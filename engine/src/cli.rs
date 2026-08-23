@@ -1320,10 +1320,26 @@ fn cb_filtered_seed_event_evidence(
 fn verify_cb_lean_publication(
     reasoner: &crate::reasoner::Reasoner,
 ) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>, String> {
-    let global_path = std::env::var_os("KM_CB_GLOBAL_MODEL_CERT")
-        .ok_or_else(|| "KM_CB_GLOBAL_MODEL_CERT is required".to_string())?;
-    let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER")
-        .ok_or_else(|| "KM_CB_LEAN_CERT_CHECKER is required".to_string())?;
+    let source_exact_checker = std::env::var_os("KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER");
+    let source_exact_candidate_path =
+        std::env::var_os("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE");
+    if source_exact_checker.is_some() && source_exact_candidate_path.is_none() {
+        return Err("KM_CB_SOURCE_EXACT_TAXONOMY_CANDIDATE is required with \
+            KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER"
+            .to_string());
+    }
+    let global_path = std::env::var_os("KM_CB_TYPED_SOURCE_CERT")
+        .or_else(|| std::env::var_os("KM_CB_GLOBAL_MODEL_CERT"))
+        .ok_or_else(|| {
+            "KM_CB_TYPED_SOURCE_CERT or KM_CB_GLOBAL_MODEL_CERT is required".to_string()
+        })?;
+    let checker = std::env::var_os("KM_CB_LEAN_CERT_CHECKER");
+    if checker.is_none() && source_exact_checker.is_none() {
+        return Err(
+            "KM_CB_LEAN_CERT_CHECKER or KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER is required"
+                .to_string(),
+        );
+    }
     let bundle_path = std::env::var_os("KM_CB_CERT_BUNDLE")
         .ok_or_else(|| "KM_CB_CERT_BUNDLE is required".to_string())?;
     let derivation_candidate_path = std::env::var_os("KM_CB_DERIVATION_CANDIDATE");
@@ -1506,18 +1522,20 @@ fn verify_cb_lean_publication(
         exact_unresolved = Some(unresolved);
     }
 
-    let status = std::process::Command::new(&checker)
-        .arg(&bundle_path)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|error| {
-            format!(
-                "cannot run CB Lean checker {}: {error}",
-                std::path::Path::new(&checker).display()
-            )
-        })?;
-    if !status.success() {
-        return Err(format!("CB Lean checker rejected the bundle with {status}"));
+    if let Some(checker) = checker {
+        let status = std::process::Command::new(&checker)
+            .arg(&bundle_path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run CB Lean checker {}: {error}",
+                    std::path::Path::new(&checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!("CB Lean checker rejected the bundle with {status}"));
+        }
     }
     if let Some(exact_checker) = exact_checker {
         let unresolved = exact_unresolved
@@ -1543,6 +1561,47 @@ fn verify_cb_lean_publication(
         if !status.success() {
             return Err(format!(
                 "exact CB Lean checker rejected the matrix with {status}"
+            ));
+        }
+    }
+    if let Some(source_checker) = source_exact_checker {
+        let source_path = source_exact_candidate_path
+            .as_ref()
+            .ok_or_else(|| "source-exact CB checker has no candidate path".to_string())?;
+        let (candidate, unresolved) = cb_source_exact_taxonomy_candidate(&certificate)?;
+        if unresolved != 0 {
+            return Err(format!(
+                "source-exact CB taxonomy has {unresolved} unresolved cells"
+            ));
+        }
+        let file = std::fs::File::create(source_path).map_err(|error| {
+            format!(
+                "cannot create source-exact CB taxonomy candidate {}: {error}",
+                std::path::Path::new(source_path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize source-exact CB taxonomy: {error}"))?;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish source-exact CB taxonomy: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush source-exact CB taxonomy: {error}"))?;
+        let status = std::process::Command::new(&source_checker)
+            .arg(source_path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run source-exact CB Lean checker {}: {error}",
+                    std::path::Path::new(&source_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "source-exact CB Lean checker rejected the matrix with {status}"
             ));
         }
     }
@@ -2275,7 +2334,9 @@ fn cb_canonical_binary_role_chains(
 struct CbRegularArbitraryChainSource {
     concept_count: usize,
     role_count: usize,
+    function_count: usize,
     individual_count: usize,
+    source_binding: serde_json::Value,
     source_clauses: Vec<serde_json::Value>,
     source_ontology: Vec<serde_json::Value>,
     clauses: Vec<serde_json::Value>,
@@ -2409,7 +2470,9 @@ fn cb_regular_arbitrary_chain_source(
     Ok(CbRegularArbitraryChainSource {
         concept_count: count(first, "concept_count")?,
         role_count: count(first, "role_count")?,
+        function_count: count(first, "function_count")?,
         individual_count: count(first, "individual_count")?,
+        source_binding: first.clone(),
         source_clauses: source_clauses.clone(),
         source_ontology,
         clauses,
@@ -2703,6 +2766,276 @@ fn cb_regular_arbitrary_chain_countermodel(
         .transpose()
 }
 
+fn cb_remap_production_trace_index(
+    raw: usize,
+    prior_terminals: &[usize],
+    local_base: usize,
+    local_len: usize,
+    current_local: usize,
+) -> Result<usize, String> {
+    if let Some(&mapped) = prior_terminals.get(raw) {
+        return Ok(mapped);
+    }
+    let local = raw
+        .checked_sub(prior_terminals.len())
+        .ok_or_else(|| "CB production trace index underflow".to_string())?;
+    if local >= local_len || local >= current_local {
+        return Err("CB production trace contains a forward or out-of-range reference".to_string());
+    }
+    Ok(local_base + local)
+}
+
+fn cb_decode_live_clause_json(
+    value: &serde_json::Value,
+) -> Result<crate::engine::CbLiveClause, String> {
+    let decode_literal = |value: &serde_json::Value| -> Result<crate::engine::CbLiveLit, String> {
+        let kind = match value
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "CB live literal has no kind".to_string())?
+        {
+            "concept" => "concept",
+            "role" => "role",
+            "equality" => "equality",
+            "inequality" => "inequality",
+            other => return Err(format!("unsupported CB live literal kind {other}")),
+        };
+        let numeric = |field: &str| -> Result<u32, String> {
+            value
+                .get(field)
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|raw| u32::try_from(raw).ok())
+                .ok_or_else(|| format!("CB live literal has no numeric {field}"))
+        };
+        let optional = |field: &str| -> Result<Option<u32>, String> {
+            match value.get(field) {
+                None | Some(serde_json::Value::Null) => Ok(None),
+                Some(_) => numeric(field).map(Some),
+            }
+        };
+        Ok(crate::engine::CbLiveLit {
+            kind,
+            iri: optional("iri")?,
+            first: numeric("first")?,
+            second: optional("second")?,
+        })
+    };
+    let decode_side = |name: &str| -> Result<Vec<crate::engine::CbLiveLit>, String> {
+        value
+            .get(name)
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("CB live clause has no {name}"))?
+            .iter()
+            .map(decode_literal)
+            .collect()
+    };
+    Ok(crate::engine::CbLiveClause {
+        body: decode_side("body")?,
+        head: decode_side("head")?,
+    })
+}
+
+fn cb_remap_production_justification(
+    justification: &serde_json::Value,
+    prior_terminals: &[usize],
+    local_base: usize,
+    local_len: usize,
+    current_local: usize,
+) -> Result<serde_json::Value, String> {
+    let mut result = justification.clone();
+    let object = result
+        .as_object_mut()
+        .ok_or_else(|| "CB production justification is not an object".to_string())?;
+    let Some((kind, payload)) = object.iter_mut().next() else {
+        return Err("CB production justification is empty".to_string());
+    };
+    let fields: &[&str] = match kind.as_str() {
+        "resolve" => &["positive", "negative"],
+        "paramodulate" => &["equality", "other"],
+        "factor" | "deleteReflexiveInequality" => &["source"],
+        "join3" => &["consumer", "provider", "bridge"],
+        "premise" | "assumption" | "tautology" => &[],
+        other => return Err(format!("unsupported CB production justification {other}")),
+    };
+    for field in fields {
+        let raw = payload
+            .get(*field)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("CB production justification has no numeric {field}"))?;
+        payload[*field] = serde_json::json!(cb_remap_production_trace_index(
+            raw,
+            prior_terminals,
+            local_base,
+            local_len,
+            current_local,
+        )?);
+    }
+    Ok(result)
+}
+
+fn cb_standalone_production_trace(
+    live_publication: &serde_json::Value,
+    terminal_event: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    let history = live_publication
+        .pointer("/derivation/production_bound/live_state/insertion_history")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no insertion history".to_string())?;
+    let evidence = live_publication
+        .pointer("/derivation/insertion_evidence")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no insertion evidence".to_string())?;
+    let live_state = live_publication
+        .pointer("/derivation/production_bound/live_state")
+        .ok_or_else(|| "live CB publication has no live state".to_string())?;
+    if history.len() != evidence.len() {
+        return Err("CB insertion history and evidence lengths differ".to_string());
+    }
+
+    fn append(
+        event_index: usize,
+        history: &[serde_json::Value],
+        evidence: &[serde_json::Value],
+        live_state: &serde_json::Value,
+        active: &mut std::collections::BTreeSet<usize>,
+        output: &mut Vec<serde_json::Value>,
+    ) -> Result<usize, String> {
+        if !active.insert(event_index) {
+            return Err("CB insertion evidence contains a dependency cycle".to_string());
+        }
+        let event = history
+            .get(event_index)
+            .ok_or_else(|| "CB insertion evidence references a missing event".to_string())?;
+        let proof = evidence
+            .get(event_index)
+            .ok_or_else(|| "CB insertion event has no evidence".to_string())?;
+        let kind = proof
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "CB insertion evidence has no kind".to_string())?;
+        let result = if kind == "seed" {
+            let root = event
+                .get("root")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or_else(|| "CB insertion event has no arena domain".to_string())?;
+            let clause_id = event
+                .get("clause_id")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "CB insertion event has no clause id".to_string())?;
+            let arena_name = if root {
+                "root_clause_arena"
+            } else {
+                "ordinary_clause_arena"
+            };
+            let raw_clause = live_state
+                .get(arena_name)
+                .and_then(serde_json::Value::as_array)
+                .and_then(|arena| arena.get(clause_id))
+                .cloned()
+                .ok_or_else(|| "CB seed event references a missing arena clause".to_string())?;
+            let raw_clause = cb_decode_live_clause_json(&raw_clause)?;
+            let comp_ind_bits = live_state
+                .get("comp_ind_bits")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok())
+                .ok_or_else(|| "CB live state has no packed-term width".to_string())?;
+            let clause = cb_wire_clause(&raw_clause, comp_ind_bits);
+            let origin = event
+                .get("origin_hint")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "CB seed event has no origin".to_string())?;
+            let origin_index = event
+                .get("origin_index")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "CB seed event has no origin index".to_string())?;
+            let justification = match origin {
+                "core" => serde_json::json!({"assumption": {"index": origin_index}}),
+                "ontology_fact" => serde_json::json!({"premise": {
+                    "index": origin_index, "substitution": []
+                }}),
+                other => return Err(format!("unsupported CB seed origin {other}")),
+            };
+            output.push(serde_json::json!({
+                "clause": clause,
+                "justification": justification,
+            }));
+            output.len() - 1
+        } else if kind == "local" {
+            let prior = proof
+                .get("prior_events")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "local CB insertion evidence has no prior events".to_string())?;
+            let mut prior_terminals = Vec::with_capacity(prior.len());
+            for reference in prior {
+                let prior_index = reference
+                    .get("event_index")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|value| usize::try_from(value).ok())
+                    .ok_or_else(|| "CB prior-event reference is not numeric".to_string())?;
+                if prior_index >= event_index {
+                    return Err("CB insertion evidence references a non-earlier event".to_string());
+                }
+                prior_terminals.push(append(
+                    prior_index,
+                    history,
+                    evidence,
+                    live_state,
+                    active,
+                    output,
+                )?);
+            }
+            let trace = proof
+                .get("trace")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "local CB insertion evidence has no trace".to_string())?;
+            if trace.is_empty() {
+                return Err("local CB insertion evidence has an empty trace".to_string());
+            }
+            let local_base = output.len();
+            for (local_index, entry) in trace.iter().enumerate() {
+                let clause = entry
+                    .get("clause")
+                    .cloned()
+                    .ok_or_else(|| "CB local trace entry has no clause".to_string())?;
+                let justification = cb_remap_production_justification(
+                    entry
+                        .get("justification")
+                        .ok_or_else(|| "CB local trace entry has no justification".to_string())?,
+                    &prior_terminals,
+                    local_base,
+                    trace.len(),
+                    local_index,
+                )?;
+                output.push(serde_json::json!({
+                    "clause": clause,
+                    "justification": justification,
+                }));
+            }
+            output.len() - 1
+        } else {
+            return Err(format!(
+                "CB event {event_index} has no standalone production derivation ({kind})"
+            ));
+        };
+        active.remove(&event_index);
+        Ok(result)
+    }
+
+    let mut output = Vec::new();
+    append(
+        terminal_event,
+        history,
+        evidence,
+        live_state,
+        &mut std::collections::BTreeSet::new(),
+        &mut output,
+    )?;
+    Ok(output)
+}
+
 /// Build the exact row-major matrix around an already checked live publication.
 /// Positive, reflexive, and bottom-implied cells are complete immediately.
 /// Omitted cells remain explicit `unresolved` evidence and are rejected by the
@@ -2839,6 +3172,239 @@ fn cb_exact_taxonomy_candidate(
         }),
         unresolved,
     ))
+}
+
+fn cb_live_terminal_event_for_clause(
+    live_publication: &serde_json::Value,
+    context_index: usize,
+    clause: &serde_json::Value,
+) -> Result<usize, String> {
+    let live = live_publication
+        .pointer("/derivation/production_bound/live_state")
+        .ok_or_else(|| "live CB publication has no live state".to_string())?;
+    let context = live
+        .get("contexts")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|contexts| contexts.get(context_index))
+        .ok_or_else(|| "CB publication witness references a missing context".to_string())?;
+    let root = context
+        .get("root")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| "CB publication context has no arena domain".to_string())?;
+    let arena = live
+        .get(if root {
+            "root_clause_arena"
+        } else {
+            "ordinary_clause_arena"
+        })
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "CB publication live state has no clause arena".to_string())?;
+    let retained = context
+        .get("retained_clause_ids")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "CB publication context has no retained clauses".to_string())?;
+    let clause_id = retained
+        .iter()
+        .filter_map(serde_json::Value::as_u64)
+        .filter_map(|value| usize::try_from(value).ok())
+        .find(|&id| arena.get(id) == Some(clause))
+        .ok_or_else(|| "CB publication witness has no exact retained clause".to_string())?;
+    let history = live
+        .get("insertion_history")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "CB publication live state has no insertion history".to_string())?;
+    history
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, event)| {
+            event.get("context_index").and_then(serde_json::Value::as_u64)
+                == Some(context_index as u64)
+                && event.get("root").and_then(serde_json::Value::as_bool) == Some(root)
+                && event.get("clause_id").and_then(serde_json::Value::as_u64)
+                    == Some(clause_id as u64)
+        })
+        .map(|(index, _)| index)
+        .ok_or_else(|| "retained CB publication clause has no insertion event".to_string())
+}
+
+/// Build a source-bound exact taxonomy that can be checked without trusting
+/// the much larger abstract global-closure document. Every positive cell gets
+/// a standalone production derivation; every negative cell gets an explicit
+/// finite or regular model. This is the extensional soundness-and-completeness
+/// boundary for the actual matrix emitted by KM.
+fn cb_source_exact_taxonomy_candidate(
+    live_publication: &serde_json::Value,
+) -> Result<(serde_json::Value, usize), String> {
+    let global = live_publication
+        .pointer("/derivation/production_bound/global_model")
+        .ok_or_else(|| "live CB publication has no typed source certificate".to_string())?;
+    let source = cb_regular_arbitrary_chain_source(global)?;
+    let (live_exact, _) = cb_exact_taxonomy_candidate(live_publication)?;
+    let named = live_exact
+        .get("named_concepts")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| "live exact CB candidate has no named concepts".to_string())?;
+    let names = live_publication
+        .pointer("/derivation/production_bound/live_state/concept_names")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| "live CB state has no concept-name table".to_string())?;
+    if names.len() != source.concept_count {
+        return Err("CB typed source and live concept-name bounds differ".to_string());
+    }
+
+    let concept_literal = |concept: usize| {
+        serde_json::json!({"predicate": {"predicate": {"concept": {
+            "concept": concept, "term": {"var": {"index": 0}}
+        }}}})
+    };
+    let unit_clause = |concept: usize| {
+        serde_json::json!({"body": [], "head": [concept_literal(concept)]})
+    };
+    let live_unit_clause = |concept: usize| {
+        serde_json::json!({"body": [], "head": [{
+            "kind": "concept", "iri": concept,
+            "first": crate::calc::X, "second": null
+        }]})
+    };
+    let empty_clause = serde_json::json!({"body": [], "head": []});
+    let positives = live_publication
+        .get("public_subsumptions")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no positive cells".to_string())?;
+    let unsatisfiable = live_publication
+        .get("unsatisfiable")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no unsatisfiable rows".to_string())?;
+
+    let mut cells = Vec::new();
+    let mut published = Vec::new();
+    let mut public_subsumptions = Vec::new();
+    let mut unresolved = 0usize;
+    let exact_cells = live_exact
+        .get("cells")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live exact CB candidate has no cells".to_string())?;
+    for cell in exact_cells {
+        let sub = cell
+            .get("sub")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live exact CB cell has no subclass".to_string())?;
+        let sup = cell
+            .get("sup")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live exact CB cell has no superclass".to_string())?;
+        let answer = cell
+            .get("answer")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| "live exact CB cell has no answer".to_string())?;
+        let live_evidence = cell
+            .get("evidence")
+            .ok_or_else(|| "live exact CB cell has no evidence".to_string())?;
+        let evidence = if live_evidence == "reflexive" {
+            serde_json::json!({"positiveProduction": {"trace": [{
+                "clause": unit_clause(sup),
+                "justification": {"assumption": {"index": 0}}
+            }]}})
+        } else if let Some(index) = live_evidence
+            .pointer("/positive/live_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+        {
+            let context_index = positives
+                .get(index)
+                .and_then(|positive| positive.get("context_index"))
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "positive CB witness has no context index".to_string())?;
+            let event = cb_live_terminal_event_for_clause(
+                live_publication,
+                context_index,
+                &live_unit_clause(sup),
+            )?;
+            let trace = cb_standalone_production_trace(live_publication, event)?;
+            serde_json::json!({"positiveProduction": {"trace": trace}})
+        } else if let Some(index) = live_evidence
+            .pointer("/unsatisfiable/live_index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+        {
+            let context_index = unsatisfiable
+                .get(index)
+                .and_then(|row| row.get("context_index"))
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .ok_or_else(|| "unsatisfiable CB witness has no context index".to_string())?;
+            let event = cb_live_terminal_event_for_clause(
+                live_publication,
+                context_index,
+                &empty_clause,
+            )?;
+            let trace = cb_standalone_production_trace(live_publication, event)?;
+            serde_json::json!({"positiveProduction": {"trace": trace}})
+        } else if let Some(negative) = live_evidence.get("negative") {
+            serde_json::json!({"negative": negative})
+        } else if let Some(regular) = live_evidence.get("regularArbitraryChain") {
+            serde_json::json!({"regularArbitraryChain": {"model": regular}})
+        } else if !answer {
+            match cb_regular_arbitrary_chain_countermodel(&source, sub, sup)? {
+                Some(regular) => {
+                    serde_json::json!({"regularArbitraryChain": {"model": regular}})
+                }
+                None => {
+                    unresolved += 1;
+                    serde_json::json!({"negative": {
+                        "witness": 0,
+                        "model": {"domain_size": 0, "concepts": [], "roles": [],
+                            "constants": [], "functions": []}
+                    }})
+                }
+            }
+        } else {
+            return Err("true CB cell has no positive derivation".to_string());
+        };
+        if answer && sub != sup {
+            let sub_name = names
+                .get(sub)
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "CB subclass has no public name".to_string())?;
+            let sup_name = names
+                .get(sup)
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "CB superclass has no public name".to_string())?;
+            public_subsumptions.push(serde_json::json!({"sub": sub_name, "sup": sup_name}));
+        }
+        published.push(answer);
+        cells.push(serde_json::json!({
+            "core_concept": sub,
+            "superconcept": sup,
+            "answer": answer,
+            "evidence": evidence,
+        }));
+    }
+
+    let taxonomy = serde_json::json!({
+        "version": 2,
+        "concept_count": source.concept_count,
+        "role_count": source.role_count,
+        "function_count": source.function_count,
+        "individual_count": source.individual_count,
+        "ontology": source.source_ontology,
+        "concept_names": names,
+        "named_concepts": named,
+        "published": published,
+        "public_subsumptions": public_subsumptions,
+        "cells": cells,
+    });
+    Ok((serde_json::json!({
+        "version": 1,
+        "source": source.source_binding,
+        "taxonomy": taxonomy,
+    }), unresolved))
 }
 
 /// Translate the exact grouped answer into the semantic ids and live-context
@@ -3283,6 +3849,136 @@ mod cb_derivation_candidate_tests {
         assert_eq!(safe.clauses[8], serde_json::json!({
             "atMost": {"bound": 2, "role": 0, "filler": 1}
         }));
+    }
+
+    #[test]
+    fn source_exact_taxonomy_uses_real_production_traces_and_models() {
+        let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
+            .expect("the source-exact taxonomy test requires the real Lean checker");
+        let term = |variable: i64| serde_json::json!({"var": {"index": variable}});
+        let concept = |id: usize| serde_json::json!({"predicate": {"predicate": {
+            "concept": {"concept": id, "term": term(0)}
+        }}});
+        let unit = |id: usize| serde_json::json!({"body": [], "head": [concept(id)]});
+        let gci = serde_json::json!({"body": [concept(0)], "head": [concept(1)]});
+        let live_concept = |id: usize| serde_json::json!({
+            "kind": "concept", "iri": id,
+            "first": crate::calc::X, "second": null
+        });
+        let live_unit = |id: usize| serde_json::json!({
+            "body": [], "head": [live_concept(id)]
+        });
+        let live_gci = serde_json::json!({
+            "body": [live_concept(0)], "head": [live_concept(1)]
+        });
+        let source = serde_json::json!({
+            "version": 1,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "individual_count": 0,
+            "source_clauses": [{"gci": {"body": [0], "head": [1]}}],
+            "role_chains": [],
+            "ontology": [gci]
+        });
+        let live_state = serde_json::json!({
+            "comp_ind_bits": 17,
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "source_individual_count": 0,
+            "concept_names": ["A", "B"],
+            "source_ontology": [live_gci],
+            "ordinary_clause_arena": [],
+            "root_clause_arena": [live_unit(0), live_unit(1)],
+            "contexts": [
+                {"root": true, "query_concept": 0, "retained_clause_ids": [0, 1]},
+                {"root": true, "query_concept": 1, "retained_clause_ids": [1]}
+            ],
+            "insertion_history": [
+                {"sequence": 0, "context_index": 0, "root": true,
+                 "clause_id": 0, "origin_hint": "core", "origin_index": 0},
+                {"sequence": 1, "context_index": 0, "root": true,
+                 "clause_id": 1, "origin_hint": "derived", "origin_index": null},
+                {"sequence": 2, "context_index": 1, "root": true,
+                 "clause_id": 1, "origin_hint": "core", "origin_index": 0}
+            ]
+        });
+        let publication = serde_json::json!({
+            "derivation": {
+                "production_bound": {
+                    "global_model": {"source": source},
+                    "live_state": live_state
+                },
+                "insertion_evidence": [
+                    {"kind": "seed", "prior_events": [], "trace": [], "discarded": []},
+                    {"kind": "local", "prior_events": [{"event_index": 0}],
+                     "trace": [
+                        {"clause": gci, "justification": {"premise": {
+                            "index": 0, "substitution": []
+                        }}},
+                        {"clause": unit(1), "justification": {"resolve": {
+                            "positive": 0, "negative": 1, "literal": concept(0)
+                        }}}
+                     ], "discarded": []},
+                    {"kind": "seed", "prior_events": [], "trace": [], "discarded": []}
+                ]
+            },
+            "public_rows": [
+                {"sub": 0, "supers": [0, 1], "unsatisfiable": false},
+                {"sub": 1, "supers": [1], "unsatisfiable": false}
+            ],
+            "public_subsumptions": [
+                {"sub": 0, "sup": 0, "context_index": 0},
+                {"sub": 0, "sup": 1, "context_index": 0},
+                {"sub": 1, "sup": 1, "context_index": 1}
+            ],
+            "unsatisfiable": []
+        });
+        let (mut candidate, unresolved) = cb_source_exact_taxonomy_candidate(&publication)
+            .expect("construct the standalone source-exact taxonomy");
+        assert_eq!(unresolved, 0);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".work/artifacts")
+            .join(format!("cb-source-exact-test-{}.json", std::process::id()));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
+        let accepted = std::process::Command::new(&checker)
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success();
+        assert!(accepted, "Lean must accept the exact production trace and countermodel matrix");
+        let regular_source = cb_regular_arbitrary_chain_source(
+            publication.pointer("/derivation/production_bound/global_model").unwrap(),
+        )
+        .unwrap();
+        let regular = cb_regular_arbitrary_chain_countermodel(&regular_source, 1, 0)
+            .unwrap()
+            .expect("the empty role source has a regular B-not-A model");
+        candidate["taxonomy"]["cells"][2]["evidence"] =
+            serde_json::json!({"regularArbitraryChain": {"model": regular}});
+        std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new(&checker)
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success(),
+            "the source-bound taxonomy checker must accept regular negative evidence"
+        );
+        let mut forged = candidate;
+        forged["taxonomy"]["published"][2] = serde_json::json!(true);
+        std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
+        let rejected = !std::process::Command::new(checker)
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success();
+        assert!(rejected, "Lean must reject a forged source-exact publication bit");
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

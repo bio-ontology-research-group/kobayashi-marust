@@ -125,8 +125,10 @@ claim that the layer is already complete.
   complete version-2 document to `KM_CB_CERT_BUNDLE` and invokes
   `KM_CB_LEAN_CERT_CHECKER` on it before stdout. The optional
   `KM_CB_DERIVATION_CANDIDATE` path writes an identical diagnostic copy.
-  Automatic production of the nested global-closure and blocked-model evidence
-  remains open; it is currently supplied through `KM_CB_GLOBAL_MODEL_CERT`.
+  The legacy live-state path still accepts a nested global-closure document.
+  The source-exact path no longer trusts that document: it extracts standalone
+  production traces and combines them with independently checked finite or
+  regular negative models under one exact typed source binding.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the
@@ -500,6 +502,18 @@ answer reaches stdout only after both checkers succeed. This provides an
 end-to-end exact taxonomy boundary for inputs whose negative cells are all
 closed by the current producer, while failing closed on the larger-model tail.
 
+`CBTaxonomyWire` and `CBSourceTaxonomyWire` now provide the smaller extensional
+production boundary used by mandatory source-exact mode. A positive cell may
+carry a complete `CBProductionTrace`, including Factor, paramodulation,
+Join-3, and reflexive-inequality deletion. A negative cell may carry either a
+complete finite interpretation or the arbitrary-chain anchored regular model.
+`cb-source-taxonomy-cert-check` binds those cells to the exact typed source,
+the complete coordinate matrix, and the public name payload. Rust invokes it
+with `KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER`; unresolved cells or unsupported
+standalone traces decline before publication. The focused process gate passes
+with the real checker. Producer totality for cross-context traces and routing
+delivery of the typed source document remain certification obligations.
+
 After the one-element reduction, the producer also searches bounded
 two-element interpretations. It enumerates only constant symbols and unary
 function entries referenced by the normalized source, grounds every clause for
@@ -585,8 +599,9 @@ model and only then derives the unconditional CB clauses from checked maximum
 definitions. The wire also requires the full definition list to equal the
 source projection. `regularNominal` and `regularCardinality` are accepted as
 negative evidence by the exact taxonomy matrix. Rust emits the stronger
-fresh-signature combined wire for the currently supported cardinality case;
-native nominal-root production remains part of the complete CB gate. This
+  fresh-signature combined wire for the currently supported cardinality case;
+native nominal-root production is connected through the combined arbitrary-
+chain wire. This
 first wire keeps source and target concept
 bounds equal. It is sound, but it is not complete if no source concept can be
 interpreted as universal. Full coverage therefore also requires an injective
@@ -605,9 +620,9 @@ witness. The bounds-checked wire independently checks the production source at
 its original concept bound and the anchored cardinality certificate at the
 extended bound. Exact taxonomy cells can cite this evidence as
 `regularFreshCardinality`. Native generation uses the stronger combined
-`regularArbitraryChain` wire for individual-free sources. Its certification
+`regularArbitraryChain` wire. Its certification
 search retains repeated universal-marker definitions as an exact multiset;
-nominal root seeding remains the open producer case.
+nominal root seeding emits one checked anchored root per source individual.
 
 `CBRoleChainBinaryDerivation` closes the semantic gap between arbitrary source
 chains and HT's binary regular role rules. A checked tree starts from renamed
@@ -622,10 +637,10 @@ anchored certificate before `regularArbitraryChain` can enter the exact matrix.
 This removes the binary-chain restriction from the certified regular evidence
 language. Rust now generates the enlarged target projection, derivation trees,
 and anchored payload automatically. A dedicated Lean checker accepts native
-empty, length-three-chain, single-functionality, and repeated-functionality
-examples and rejects a forged target signature. The current producer declines
-named individuals; completing nominal-root production is still required for
-the full CB capstone.
+empty, length-three-chain, single-functionality, repeated-functionality, core
+GCI, and named-individual examples and rejects forged nominal-root evidence.
+The remaining capstone work concerns total positive-trace extraction and
+routing-bound typed-source delivery, not nominal countermodel construction.
 
 ## Requirements for the complete CB layer
 

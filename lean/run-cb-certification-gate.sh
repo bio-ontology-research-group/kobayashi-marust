@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+lean_root="$repo_root/lean"
+engine_root="$repo_root/engine"
+bin_root="$lean_root/.lake/build/bin"
+target_root="$repo_root/.work/target"
+artifact_root="$repo_root/.work/artifacts"
+surface_log="$artifact_root/cb-certification-surface.log"
+lean_threads=${KM_CERT_LEAN_THREADS:-4}
+
+mkdir -p "$artifact_root"
+
+preflight="$repo_root/tools/workspace-preflight.sh"
+if [[ -x "$preflight" ]]; then
+    "$preflight"
+else
+    /home/leechuck/Public/software/kobayashi-marust/tools/workspace-preflight.sh
+fi
+
+mapfile -t checkers < <(
+    awk '
+        /^name = "cb-/ {
+            value = $3
+            gsub(/"/, "", value)
+            print value
+        }
+    ' "$lean_root/lakefile.toml" | sort -u
+)
+
+# The manifest is authoritative. Every native CB checker is built by this gate,
+# so adding a checker cannot silently leave it outside release validation.
+(( ${#checkers[@]} > 0 )) || {
+    echo "CB certification gate found no native checkers" >&2
+    exit 1
+}
+
+(
+    cd "$lean_root"
+    LEAN_NUM_THREADS="$lean_threads" lake build
+    LEAN_NUM_THREADS="$lean_threads" lake build "${checkers[@]}"
+    LEAN_NUM_THREADS="$lean_threads" lake build ContextCalculus.CBCertificationSurface \
+        2>&1 | tee "$surface_log"
+)
+
+if grep -q 'sorryAx' "$surface_log"; then
+    echo "CB certification surface depends on an admitted theorem" >&2
+    exit 1
+fi
+
+surface_theorems=(
+    certifiedCBExactTaxonomyPublication
+    certifiedCBSourceExactTaxonomyPublication
+    certifiedCBProductionExactTaxonomyPublication
+)
+for theorem in "${surface_theorems[@]}"; do
+    grep -q "CBCertificationSurface.*$theorem" "$surface_log" || {
+        echo "missing CB certification-surface axiom audit: $theorem" >&2
+        exit 1
+    }
+done
+
+for checker in "${checkers[@]}"; do
+    [[ -x "$bin_root/$checker" ]] || {
+        echo "missing Lean checker: $bin_root/$checker" >&2
+        exit 1
+    }
+done
+
+(
+    cd "$engine_root"
+    export CARGO_TARGET_DIR="$target_root"
+    export KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER="$bin_root/cb-source-taxonomy-cert-check"
+    export KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER="$bin_root/cb-regular-arbitrary-chain-countermodel-check"
+
+    cargo test --test cb_live_state
+    cargo test --lib certified_typed_source
+    cargo test --lib source_exact_taxonomy_uses_real_production_traces_and_models
+    cargo test --lib native_regular_countermodel_passes_the_exact_lean_wire_checker
+)
+
+echo "CB certification gate passed"
