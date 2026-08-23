@@ -3321,6 +3321,13 @@ pub enum CbLiveRuleEvidence {
         first: Term,
         second: Term,
     },
+    Paramodulate {
+        equality_clause_id: u32,
+        other_clause_id: u32,
+        left: Term,
+        right: Term,
+        literal: CbLiveLit,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -4432,15 +4439,21 @@ impl Engine {
                             }
                             if self.equality {
                                 let __t = self.prof_time.then(std::time::Instant::now);
-                                let results = self.eq_from_pred(id, &clause, *max, root);
+                            let results = self.eq_from_pred(id, cid, &clause, *max, root);
                                 if let Some(t) = __t {
                                     prof_add(&EQRULE_NS, t);
                                 }
                                 if prof {
                                     neqp += results.len() as u64;
                                 }
-                                for r in results {
-                                    if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
+                                for (r, evidence) in results {
+                                    if self.add_clause_with_rule(
+                                        id,
+                                        r,
+                                        Some("eq"),
+                                        Some(evidence),
+                                    ) && prof
+                                    {
                                         nadded += 1;
                                     }
                                 }
@@ -4462,15 +4475,21 @@ impl Engine {
                             }
                             if self.equality {
                                 let __t = self.prof_time.then(std::time::Instant::now);
-                                let results = self.eq_from_pred(id, &clause, *max, root);
+                                let results = self.eq_from_pred(id, cid, &clause, *max, root);
                                 if let Some(t) = __t {
                                     prof_add(&EQRULE_NS, t);
                                 }
                                 if prof {
                                     neqp += results.len() as u64;
                                 }
-                                for r in results {
-                                    if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
+                                for (r, evidence) in results {
+                                    if self.add_clause_with_rule(
+                                        id,
+                                        r,
+                                        Some("eq"),
+                                        Some(evidence),
+                                    ) && prof
+                                    {
                                         nadded += 1;
                                     }
                                 }
@@ -4481,15 +4500,21 @@ impl Engine {
                         // This equality is the paramodulation source: rewrite
                         // matching literals of worked-off clauses.
                         let __t = self.prof_time.then(std::time::Instant::now);
-                        let results = self.eq_from_equation(id, &clause, *max, root);
+                        let results = self.eq_from_equation(id, cid, &clause, *max, root);
                         if let Some(t) = __t {
                             prof_add(&EQRULE_NS, t);
                         }
                         if prof {
                             neqe += results.len() as u64;
                         }
-                        for r in results {
-                            if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
+                        for (r, evidence) in results {
+                            if self.add_clause_with_rule(
+                                id,
+                                r,
+                                Some("eq"),
+                                Some(evidence),
+                            ) && prof
+                            {
                                 nadded += 1;
                             }
                         }
@@ -4500,15 +4525,21 @@ impl Engine {
                         // the equality/inequality clash is found regardless of
                         // derivation order).
                         let __t = self.prof_time.then(std::time::Instant::now);
-                        let results = self.eq_from_pred(id, &clause, *max, root);
+                        let results = self.eq_from_pred(id, cid, &clause, *max, root);
                         if let Some(t) = __t {
                             prof_add(&EQRULE_NS, t);
                         }
                         if prof {
                             neqp += results.len() as u64;
                         }
-                        for r in results {
-                            if self.add_clause_with_rule(id, r, Some("eq"), None) && prof {
+                        for (r, evidence) in results {
+                            if self.add_clause_with_rule(
+                                id,
+                                r,
+                                Some("eq"),
+                                Some(evidence),
+                            ) && prof
+                            {
                                 nadded += 1;
                             }
                         }
@@ -5858,10 +5889,11 @@ impl Engine {
     fn eq_from_pred(
         &self,
         id: usize,
+        side_clause_id: u32,
         side: &ContextClause,
         max: Lit,
         root: bool,
-    ) -> Vec<ContextClause> {
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
@@ -5872,7 +5904,17 @@ impl Engine {
             for l in c.max_head() {
                 if let Lit::Eq { s, t } = l {
                     if s == mterm && max.contains_at_rewrite_position(s) {
-                        if let Some(res) = self.build_eq(side, max, c, s, t, l, root) {
+                        if let Some(res) = self.build_eq(
+                            side_clause_id,
+                            side,
+                            max,
+                            ci,
+                            c,
+                            s,
+                            t,
+                            l,
+                            root,
+                        ) {
                             out.push(res);
                         }
                     }
@@ -5886,10 +5928,11 @@ impl Engine {
     fn eq_from_equation(
         &self,
         id: usize,
+        side_clause_id: u32,
         side: &ContextClause,
         max: Lit,
         root: bool,
-    ) -> Vec<ContextClause> {
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
@@ -5904,7 +5947,17 @@ impl Engine {
                 if l.contains_at_rewrite_position(s) && l != max {
                     if let Lit::Eq { s: es, t: et } = max {
                         // side provides equality es==et, rewrite l
-                        if let Some(res) = self.build_eq(c, l, side, es, et, max, root) {
+                        if let Some(res) = self.build_eq(
+                            ci,
+                            c,
+                            l,
+                            side_clause_id,
+                            side,
+                            es,
+                            et,
+                            max,
+                            root,
+                        ) {
                             out.push(res);
                         }
                     }
@@ -5919,14 +5972,16 @@ impl Engine {
     #[allow(clippy::too_many_arguments)]
     fn build_eq(
         &self,
+        other_clause_id: u32,
         clause: &ContextClause,
         max: Lit,
+        equality_clause_id: u32,
         eq_clause: &ContextClause,
         s: Term,
         t: Term,
         equality: Lit,
         root: bool,
-    ) -> Option<ContextClause> {
+    ) -> Option<(ContextClause, CbLiveRuleEvidence)> {
         let mut head: Vec<Lit> = Vec::new();
         // rewrite max's s-occurrence to t
         match max {
@@ -5969,7 +6024,16 @@ impl Engine {
         if c.is_head_tautology() {
             None
         } else {
-            Some(c)
+            Some((
+                c,
+                CbLiveRuleEvidence::Paramodulate {
+                    equality_clause_id,
+                    other_clause_id,
+                    left: s,
+                    right: t,
+                    literal: max.into(),
+                },
+            ))
         }
     }
 

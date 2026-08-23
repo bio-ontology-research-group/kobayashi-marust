@@ -101,6 +101,12 @@
   against the actual arena clause and inserted conclusion. The chronological
   producer emits the matching one-premise trace only when its independently
   reconstructed compact conclusion equals the live event clause.
+  Paramodulation now records both exact source-clause ids, the oriented
+  equality, and the rewritten literal. The candidate producer independently
+  reconstructs the compact Eq conclusion, requires both sources to be earlier
+  insertions in the same context, and emits a two-premise trace. Lean decodes
+  the same arena clauses and packed terms and accepts the insertion only when
+  its executable paramodulation rule reconstructs the exact live conclusion.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

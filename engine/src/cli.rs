@@ -825,6 +825,121 @@ fn cb_factor_event_evidence(
     }))
 }
 
+fn cb_rewrite_live_literal(
+    literal: &crate::engine::CbLiveLit,
+    left: crate::calc::Term,
+    right: crate::calc::Term,
+) -> Option<crate::engine::CbLiveLit> {
+    let mut rewritten = literal.clone();
+    match (literal.kind, literal.second) {
+        ("concept", None) if literal.first == left => rewritten.first = right,
+        ("role", Some(_)) if literal.first == left => rewritten.first = right,
+        ("role", Some(target)) if target == left => rewritten.second = Some(right),
+        ("equality" | "inequality", Some(_)) if literal.first == left => {
+            rewritten.first = right;
+        }
+        _ => return None,
+    }
+    Some(rewritten)
+}
+
+fn cb_paramodulate_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+    prior: &std::collections::HashMap<(usize, bool, u32), usize>,
+) -> Option<serde_json::Value> {
+    let crate::engine::CbLiveRuleEvidence::Paramodulate {
+        equality_clause_id,
+        other_clause_id,
+        left,
+        right,
+        literal,
+    } = event.rule_evidence.as_ref()?
+    else {
+        return None;
+    };
+    let arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let equality_clause = arena.get(*equality_clause_id as usize)?;
+    let other_clause = arena.get(*other_clause_id as usize)?;
+    let equality = crate::engine::CbLiveLit {
+        kind: "equality",
+        iri: None,
+        first: *left,
+        second: Some(*right),
+    };
+    if !equality_clause.head.contains(&equality) || !other_clause.head.contains(literal) {
+        return None;
+    }
+    let rewritten = cb_rewrite_live_literal(literal, *left, *right)?;
+    let mut expected = crate::engine::CbLiveClause {
+        body: Vec::new(),
+        head: vec![rewritten.clone()],
+    };
+    for candidate in equality_clause.body.iter().chain(&other_clause.body) {
+        cb_push_unique(&mut expected.body, candidate.clone());
+    }
+    for candidate in equality_clause
+        .head
+        .iter()
+        .filter(|candidate| *candidate != &equality)
+        .chain(other_clause.head.iter().filter(|candidate| *candidate != literal))
+    {
+        cb_push_unique(&mut expected.head, candidate.clone());
+    }
+    let result = arena.get(event.clause_id as usize)?;
+    let mut trace = vec![serde_json::json!({
+        "clause": cb_wire_clause(&expected, live.comp_ind_bits),
+        "justification": {"paramodulate": {
+            "equality": 0,
+            "other": 1,
+            "left": cb_wire_term(*left, live.comp_ind_bits),
+            "right": cb_wire_term(*right, live.comp_ind_bits),
+            "literal": cb_wire_literal(literal, live.comp_ind_bits),
+        }}
+    })];
+    if cb_clause_set_eq(&expected, result) {
+        trace[0]["clause"] = cb_wire_clause(result, live.comp_ind_bits);
+    } else {
+        if rewritten.kind != "inequality"
+            || rewritten.first != *right
+            || rewritten.second != Some(*right)
+        {
+            return None;
+        }
+        let mut filtered = expected.clone();
+        filtered.head.retain(|candidate| candidate != &rewritten);
+        if !cb_clause_set_eq(&filtered, result) {
+            return None;
+        }
+        trace.push(serde_json::json!({
+            "clause": cb_wire_clause(result, live.comp_ind_bits),
+            "justification": {"deleteReflexiveInequality": {
+                "source": 2,
+                "term": cb_wire_term(*right, live.comp_ind_bits),
+            }}
+        }));
+    }
+    let equality_event = *prior.get(&(
+        event.context_index,
+        event.root,
+        *equality_clause_id,
+    ))?;
+    let other_event = *prior.get(&(event.context_index, event.root, *other_clause_id))?;
+    Some(serde_json::json!({
+        "kind": "local",
+        "prior_events": [
+            {"event_index": equality_event},
+            {"event_index": other_event},
+        ],
+        "trace": trace,
+        "discarded": [],
+    }))
+}
+
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
@@ -852,6 +967,9 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
         let automatic_derivation = if event.origin_hint == "derived" {
             cb_hyper_event_evidence(&live_state, event, &prior_insertions)
                 .or_else(|| cb_factor_event_evidence(&live_state, event, &prior_insertions))
+                .or_else(|| {
+                    cb_paramodulate_event_evidence(&live_state, event, &prior_insertions)
+                })
                 .or_else(|| cb_tautology_event_evidence(&live_state, event))
         } else {
             None
@@ -1141,6 +1259,119 @@ mod cb_derivation_candidate_tests {
         assert_eq!(evidence["kind"], "local");
         assert_eq!(evidence["prior_events"][0]["event_index"], 0);
         assert!(evidence["trace"][0]["justification"]["factor"].is_object());
+    }
+
+    #[test]
+    fn paramodulation_metadata_builds_a_chronological_checked_trace() {
+        let equality = |left, right| crate::engine::CbLiveLit {
+            kind: "equality",
+            iri: None,
+            first: left,
+            second: Some(right),
+        };
+        let concept = |iri, term| crate::engine::CbLiveLit {
+            kind: "concept",
+            iri: Some(iri),
+            first: term,
+            second: None,
+        };
+        let left = crate::calc::FTERM_BASE;
+        let right = crate::calc::FTERM_BASE + 1;
+        let rewritten_literal = concept(0, left);
+        let equality_clause = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![equality(left, right)],
+        };
+        let other_clause = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![rewritten_literal.clone()],
+        };
+        let result = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![concept(0, right)],
+        };
+        let mut live = live_snapshot();
+        live.concept_count = 1;
+        live.function_count = 2;
+        live.root_clause_arena = vec![equality_clause, other_clause, result];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 2,
+            context_index: 0,
+            root: true,
+            clause_id: 2,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("eq"),
+            rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Paramodulate {
+                equality_clause_id: 0,
+                other_clause_id: 1,
+                left,
+                right,
+                literal: rewritten_literal,
+            }),
+        };
+        let prior = std::collections::HashMap::from([
+            ((0, true, 0), 0),
+            ((0, true, 1), 1),
+        ]);
+        let evidence = cb_paramodulate_event_evidence(&live, &event, &prior).unwrap();
+        assert_eq!(evidence["kind"], "local");
+        assert_eq!(evidence["prior_events"][0]["event_index"], 0);
+        assert_eq!(evidence["prior_events"][1]["event_index"], 1);
+        assert!(evidence["trace"][0]["justification"]["paramodulate"].is_object());
+    }
+
+    #[test]
+    fn paramodulation_trace_exposes_folded_reflexive_inequality_deletion() {
+        let binary = |kind, left, right| crate::engine::CbLiveLit {
+            kind,
+            iri: None,
+            first: left,
+            second: Some(right),
+        };
+        let left = crate::calc::FTERM_BASE;
+        let right = crate::calc::FTERM_BASE + 1;
+        let target = binary("inequality", left, right);
+        let mut live = live_snapshot();
+        live.function_count = 2;
+        live.root_clause_arena = vec![
+            crate::engine::CbLiveClause {
+                body: Vec::new(),
+                head: vec![binary("equality", left, right)],
+            },
+            crate::engine::CbLiveClause {
+                body: Vec::new(),
+                head: vec![target.clone()],
+            },
+            crate::engine::CbLiveClause {
+                body: Vec::new(),
+                head: Vec::new(),
+            },
+        ];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 2,
+            context_index: 0,
+            root: true,
+            clause_id: 2,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("eq"),
+            rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Paramodulate {
+                equality_clause_id: 0,
+                other_clause_id: 1,
+                left,
+                right,
+                literal: target,
+            }),
+        };
+        let prior = std::collections::HashMap::from([
+            ((0, true, 0), 0),
+            ((0, true, 1), 1),
+        ]);
+        let evidence = cb_paramodulate_event_evidence(&live, &event, &prior).unwrap();
+        assert_eq!(evidence["trace"].as_array().unwrap().len(), 2);
+        assert!(evidence["trace"][1]["justification"]["deleteReflexiveInequality"]
+            .is_object());
     }
 }
 
