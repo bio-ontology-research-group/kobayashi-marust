@@ -50,6 +50,11 @@
   Lean checker. The worker tag selects a decoder but supplies no theorem
   premise: every accepted branch recovers its existing source-bound soundness
   and completeness contract, including the exact published taxonomy payload.
+- Embed ELC's exact raw frontend clauses into CB's general proper-term
+  first-order source language. Lean proves satisfaction equivalent for every
+  clause and ontology, including individuals, auxiliary names, and arbitrarily
+  nested Skolem functions. This establishes a semantic common-source boundary
+  for ELC and CB without relying on byte identity or hashes.
 
 ### Close the executable ELC certification boundary
 
