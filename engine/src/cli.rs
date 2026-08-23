@@ -669,7 +669,10 @@ fn cb_hyper_event_evidence(
         context_clause_ids,
         matched_predicates,
         substitution,
-    } = event.rule_evidence.as_ref()?;
+    } = event.rule_evidence.as_ref()?
+    else {
+        return None;
+    };
     if context_clause_ids.len() != matched_predicates.len() {
         return None;
     }
@@ -730,6 +733,98 @@ fn cb_hyper_event_evidence(
     }))
 }
 
+fn cb_tautology_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+) -> Option<serde_json::Value> {
+    if event.rule_hint != Some("succ") {
+        return None;
+    }
+    let arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let clause = arena.get(event.clause_id as usize)?;
+    if !clause
+        .body
+        .iter()
+        .any(|literal| clause.head.contains(literal))
+    {
+        return None;
+    }
+    Some(serde_json::json!({
+        "kind": "local",
+        "prior_events": [],
+        "trace": [{
+            "clause": cb_wire_clause(clause, live.comp_ind_bits),
+            "justification": "tautology",
+        }],
+        "discarded": [],
+    }))
+}
+
+fn cb_factor_event_evidence(
+    live: &crate::engine::CbLiveTerminalSnapshot,
+    event: &crate::engine::CbLiveInsertionEvent,
+    prior: &std::collections::HashMap<(usize, bool, u32), usize>,
+) -> Option<serde_json::Value> {
+    let crate::engine::CbLiveRuleEvidence::Factor {
+        source_clause_id,
+        common,
+        first,
+        second,
+    } = event.rule_evidence.as_ref()?
+    else {
+        return None;
+    };
+    let arena = if event.root {
+        &live.root_clause_arena
+    } else {
+        &live.ordinary_clause_arena
+    };
+    let source = arena.get(*source_clause_id as usize)?;
+    let removed = crate::engine::CbLiveLit {
+        kind: "equality",
+        iri: None,
+        first: *common,
+        second: Some(*first),
+    };
+    if !source.head.contains(&removed) || first == second {
+        return None;
+    }
+    let mut expected = source.clone();
+    expected.head.retain(|literal| literal != &removed);
+    cb_push_unique(
+        &mut expected.head,
+        crate::engine::CbLiveLit {
+            kind: "inequality",
+            iri: None,
+            first: *first,
+            second: Some(*second),
+        },
+    );
+    let result = arena.get(event.clause_id as usize)?;
+    if !cb_clause_set_eq(&expected, result) {
+        return None;
+    }
+    let source_event = *prior.get(&(event.context_index, event.root, *source_clause_id))?;
+    Some(serde_json::json!({
+        "kind": "local",
+        "prior_events": [{"event_index": source_event}],
+        "trace": [{
+            "clause": cb_wire_clause(result, live.comp_ind_bits),
+            "justification": {"factor": {
+                "source": 0,
+                "common": cb_wire_term(*common, live.comp_ind_bits),
+                "first": cb_wire_term(*first, live.comp_ind_bits),
+                "second": cb_wire_term(*second, live.comp_ind_bits),
+            }}
+        }],
+        "discarded": [],
+    }))
+}
+
 /// Construct the exact production-bound certificate bundle and require the
 /// native Lean checker to accept it before any CB answer reaches stdout.
 fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<(), String> {
@@ -754,64 +849,66 @@ fn verify_cb_lean_publication(reasoner: &crate::reasoner::Reasoner) -> Result<()
     let mut prior_insertions = std::collections::HashMap::new();
     let mut insertion_evidence = Vec::with_capacity(live_state.insertion_history.len());
     for event in &live_state.insertion_history {
-            let automatic_hyper = if event.origin_hint == "derived" {
-                cb_hyper_event_evidence(&live_state, event, &prior_insertions)
-            } else {
-                None
-            };
-            let retained = live_state.contexts[event.context_index]
-                .retained_clause_ids
-                .contains(&event.clause_id);
-            let trace = if event.origin_hint == "derived" && retained {
-                production_contexts
-                    .and_then(|contexts| contexts.get(event.context_index))
-                    .and_then(|context| context.get("trace"))
-                    .and_then(serde_json::Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            let discarded = if event.origin_hint == "derived" && !retained {
-                production_contexts
-                    .and_then(|contexts| contexts.get(event.context_index))
-                    .and_then(|context| context.get("discarded"))
-                    .and_then(serde_json::Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            let discarded_trace = if !discarded.is_empty() {
-                production_contexts
-                    .and_then(|contexts| contexts.get(event.context_index))
-                    .and_then(|context| context.get("trace"))
-                    .and_then(serde_json::Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            let fallback_kind = if event.origin_hint != "derived" {
-                "seed"
-            } else if retained && !trace.is_empty() {
-                "local"
-            } else if !discarded.is_empty() && !discarded_trace.is_empty() {
-                "discarded"
-            } else {
-                "unproved"
-            };
-            let fallback = serde_json::json!({
-                "kind": fallback_kind,
-                "prior_events": [],
-                "trace": if fallback_kind == "discarded" { discarded_trace } else { trace },
-                "discarded": discarded,
-            });
-            insertion_evidence.push(automatic_hyper.unwrap_or(fallback));
-            prior_insertions.insert(
-                (event.context_index, event.root, event.clause_id),
-                event.sequence,
-            );
+        let automatic_derivation = if event.origin_hint == "derived" {
+            cb_hyper_event_evidence(&live_state, event, &prior_insertions)
+                .or_else(|| cb_factor_event_evidence(&live_state, event, &prior_insertions))
+                .or_else(|| cb_tautology_event_evidence(&live_state, event))
+        } else {
+            None
+        };
+        let retained = live_state.contexts[event.context_index]
+            .retained_clause_ids
+            .contains(&event.clause_id);
+        let trace = if event.origin_hint == "derived" && retained {
+            production_contexts
+                .and_then(|contexts| contexts.get(event.context_index))
+                .and_then(|context| context.get("trace"))
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let discarded = if event.origin_hint == "derived" && !retained {
+            production_contexts
+                .and_then(|contexts| contexts.get(event.context_index))
+                .and_then(|context| context.get("discarded"))
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let discarded_trace = if !discarded.is_empty() {
+            production_contexts
+                .and_then(|contexts| contexts.get(event.context_index))
+                .and_then(|context| context.get("trace"))
+                .and_then(serde_json::Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let fallback_kind = if event.origin_hint != "derived" {
+            "seed"
+        } else if retained && !trace.is_empty() {
+            "local"
+        } else if !discarded.is_empty() && !discarded_trace.is_empty() {
+            "discarded"
+        } else {
+            "unproved"
+        };
+        let fallback = serde_json::json!({
+            "kind": fallback_kind,
+            "prior_events": [],
+            "trace": if fallback_kind == "discarded" { discarded_trace } else { trace },
+            "discarded": discarded,
+        });
+        insertion_evidence.push(automatic_derivation.unwrap_or(fallback));
+        prior_insertions.insert(
+            (event.context_index, event.root, event.clause_id),
+            event.sequence,
+        );
     }
     let bundle = serde_json::json!({
         "version": 1,
@@ -994,6 +1091,56 @@ mod cb_derivation_candidate_tests {
             ]
         });
         assert!(find_cb_production_contexts(&forged, &live).is_none());
+    }
+
+    #[test]
+    fn factor_metadata_builds_a_chronological_checked_trace() {
+        let equality = |left, right| crate::engine::CbLiveLit {
+            kind: "equality",
+            iri: None,
+            first: left,
+            second: Some(right),
+        };
+        let inequality = |left, right| crate::engine::CbLiveLit {
+            kind: "inequality",
+            iri: None,
+            first: left,
+            second: Some(right),
+        };
+        let common = crate::calc::FTERM_BASE;
+        let first = crate::calc::FTERM_BASE + 1;
+        let second = crate::calc::FTERM_BASE + 2;
+        let source = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![equality(common, first), equality(common, second)],
+        };
+        let result = crate::engine::CbLiveClause {
+            body: Vec::new(),
+            head: vec![equality(common, second), inequality(first, second)],
+        };
+        let mut live = live_snapshot();
+        live.function_count = 3;
+        live.root_clause_arena = vec![source, result];
+        let event = crate::engine::CbLiveInsertionEvent {
+            sequence: 1,
+            context_index: 0,
+            root: true,
+            clause_id: 1,
+            origin_hint: "derived",
+            origin_index: None,
+            rule_hint: Some("factor"),
+            rule_evidence: Some(crate::engine::CbLiveRuleEvidence::Factor {
+                source_clause_id: 0,
+                common,
+                first,
+                second,
+            }),
+        };
+        let prior = std::collections::HashMap::from([((0, true, 0), 0)]);
+        let evidence = cb_factor_event_evidence(&live, &event, &prior).unwrap();
+        assert_eq!(evidence["kind"], "local");
+        assert_eq!(evidence["prior_events"][0]["event_index"], 0);
+        assert!(evidence["trace"][0]["justification"]["factor"].is_object());
     }
 }
 

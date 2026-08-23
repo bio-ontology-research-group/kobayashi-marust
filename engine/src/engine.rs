@@ -3315,6 +3315,12 @@ pub enum CbLiveRuleEvidence {
         matched_predicates: Vec<CbLivePred>,
         substitution: Vec<CbLiveSubstitution>,
     },
+    Factor {
+        source_clause_id: u32,
+        common: Term,
+        first: Term,
+        second: Term,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -4520,15 +4526,21 @@ impl Engine {
                     >= 2
             {
                 let __t = self.prof_time.then(std::time::Instant::now);
-                let results = self.factor(&clause, root);
+                let results = self.factor_with_evidence(cid, &clause, root);
                 if let Some(t) = __t {
                     prof_add(&EQRULE_NS, t);
                 }
                 if prof {
                     nfact += results.len() as u64;
                 }
-                for r in results {
-                    if self.add_clause_with_rule(id, r, Some("factor"), None) && prof {
+                for (r, evidence) in results {
+                    if self.add_clause_with_rule(
+                        id,
+                        r,
+                        Some("factor"),
+                        Some(evidence),
+                    ) && prof
+                    {
                         nadded += 1;
                     }
                 }
@@ -5793,7 +5805,12 @@ impl Engine {
     /// `s ≈ t` and `s ≈ t'` with the same maximal side `s`, derive the clause
     /// with `s ≈ t` replaced by `t ≉ t'`.  Sound: if `s = t` and `s ≠ t'` then
     /// `t ≠ t'`.  Needed for `≤ n` value-partition clashes.
-    fn factor(&self, clause: &ContextClause, root: bool) -> Vec<ContextClause> {
+    fn factor_with_evidence(
+        &self,
+        source_clause_id: u32,
+        clause: &ContextClause,
+        root: bool,
+    ) -> Vec<(ContextClause, CbLiveRuleEvidence)> {
         let mut out = Vec::new();
         let heads = &clause.head;
         for i in 0..heads.len() {
@@ -5818,7 +5835,15 @@ impl Engine {
                         if let Some(h) = self.filter_head(newhead) {
                             let c = ContextClause::new(clause.body.clone(), h, root, &self.sig);
                             if !c.is_head_tautology() {
-                                out.push(c);
+                                out.push((
+                                    c,
+                                    CbLiveRuleEvidence::Factor {
+                                        source_clause_id,
+                                        common: s,
+                                        first: t,
+                                        second: t2,
+                                    },
+                                ));
                             }
                         }
                     }

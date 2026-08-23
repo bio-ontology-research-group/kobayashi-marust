@@ -31,6 +31,10 @@ structure WireLiveLiteral where
   second : Option Nat
 deriving FromJson, ToJson
 
+private def requireSome (message : String) : Option α → Except String α
+  | some value => pure value
+  | none => throw message
+
 structure WireLiveClause where
   body : List WireLiveLiteral
   head : List WireLiveLiteral
@@ -64,11 +68,15 @@ deriving FromJson, ToJson
 
 structure WireLiveRuleEvidence where
   kind : String
-  ontology_index : Nat
-  instantiated_source : WireLiveClause
-  context_clause_ids : List Nat
-  matched_predicates : List WireLivePredicate
-  substitution : List WireLiveSubstitution
+  ontology_index : Option Nat
+  instantiated_source : Option WireLiveClause
+  context_clause_ids : Option (List Nat)
+  matched_predicates : Option (List WireLivePredicate)
+  substitution : Option (List WireLiveSubstitution)
+  source_clause_id : Option Nat
+  common : Option Nat
+  first : Option Nat
+  second : Option Nat
 deriving FromJson, ToJson
 
 structure WireLiveInsertionEvent where
@@ -224,16 +232,34 @@ def WireLiveRuleEvidence.decodeHyper (production : DecodedProductionRun)
     Except String (DecodedLiveHyperEvidence production) := do
   if wire.kind != "hyper" then
     throw s!"unsupported CB live rule-evidence kind {wire.kind}"
-  let instantiatedSource ← wire.instantiated_source.decode production.bounds bits
-  let substitution ← wire.substitution.mapM
+  let ontologyIndex ← requireSome
+    "CB live Hyper evidence omits its ontology index"
+    wire.ontology_index
+  let sourceWire ← requireSome
+    "CB live Hyper evidence omits its instantiated source"
+    wire.instantiated_source
+  let clauseIds ← requireSome
+    "CB live Hyper evidence omits its context premises"
+    wire.context_clause_ids
+  let matchedWires ← requireSome
+    "CB live Hyper evidence omits its matched predicates"
+    wire.matched_predicates
+  let substitutionWire ← requireSome
+    "CB live Hyper evidence omits its substitution"
+    wire.substitution
+  if wire.source_clause_id.isSome ∨ wire.common.isSome ∨ wire.first.isSome ∨
+      wire.second.isSome then
+    throw "CB live Hyper evidence carries Factor fields"
+  let instantiatedSource ← sourceWire.decode production.bounds bits
+  let substitution ← substitutionWire.mapM
     (WireLiveSubstitution.decode production.bounds bits)
   if hsubstitution : (substitution.map Prod.fst).Nodup then
   if hsource : CBProductionTrace.stepOk production.source.ontology [] []
-      instantiatedSource (.premise wire.ontology_index substitution) = true then
+      instantiatedSource (.premise ontologyIndex substitution) = true then
     let premises ← decodeLiveHyperPremises production.bounds bits arena
-      wire.context_clause_ids wire.matched_predicates
+      clauseIds matchedWires
     return {
-      ontologyIndex := wire.ontology_index
+      ontologyIndex
       instantiatedSource
       substitution
       substitution_nodup := hsubstitution
@@ -250,6 +276,64 @@ theorem DecodedLiveHyperEvidence.source_sound
     CBProductionTrace.HoldsAt model assignment evidence.instantiatedSource := by
   exact CBProductionTrace.stepOk_sound model assignment hontology
     (by simp) (by simp) evidence.source_step_valid
+
+structure DecodedLiveFactorEvidence where
+  sourceClauseId : Nat
+  source : FCL
+  commonTerm : FTerm
+  firstTerm : FTerm
+  secondTerm : FTerm
+  result : FCL
+  step_valid : CBProductionTrace.stepOk [] [] [source] result
+    (.factor 0 commonTerm firstTerm secondTerm) = true
+
+def WireLiveRuleEvidence.decodeFactor (production : DecodedProductionRun)
+    (bits : Nat) (arena : List FCL) (result : FCL)
+    (wire : WireLiveRuleEvidence) : Except String DecodedLiveFactorEvidence := do
+  if wire.kind != "factor" then
+    throw s!"unsupported CB live Factor-evidence kind {wire.kind}"
+  if wire.ontology_index.isSome ∨ wire.instantiated_source.isSome ∨
+      wire.context_clause_ids.isSome ∨ wire.matched_predicates.isSome ∨
+      wire.substitution.isSome then
+    throw "CB live Factor evidence carries Hyper fields"
+  let sourceClauseId ← requireSome
+    "CB live Factor evidence omits its source clause"
+    wire.source_clause_id
+  let source ← match arena[sourceClauseId]? with
+    | some source => pure source
+    | none => throw "CB live Factor source id is outside its context arena"
+  let commonRaw ← requireSome "CB live Factor evidence omits common" wire.common
+  let firstRaw ← requireSome "CB live Factor evidence omits first" wire.first
+  let secondRaw ← requireSome "CB live Factor evidence omits second" wire.second
+  let commonTerm ← decodeRawTerm production.bounds bits commonRaw
+  let firstTerm ← decodeRawTerm production.bounds bits firstRaw
+  let secondTerm ← decodeRawTerm production.bounds bits secondRaw
+  if hstep : CBProductionTrace.stepOk [] [] [source] result
+      (.factor 0 commonTerm firstTerm secondTerm) = true then
+    return {
+      sourceClauseId := sourceClauseId
+      source := source
+      commonTerm := commonTerm
+      firstTerm := firstTerm
+      secondTerm := secondTerm
+      result := result
+      step_valid := hstep
+    }
+  else throw "CB live Factor conclusion was rejected"
+
+theorem DecodedLiveFactorEvidence.sound
+    (evidence : DecodedLiveFactorEvidence)
+    {D : Type} (model : TModel D) (assignment : Int → D)
+    (hsource : CBProductionTrace.HoldsAt model assignment evidence.source) :
+    CBProductionTrace.HoldsAt model assignment evidence.result := by
+  exact CBProductionTrace.stepOk_sound model assignment
+    (by simp) (by simp)
+    (by
+      intro derived hderived
+      simp only [List.mem_singleton] at hderived
+      subst derived
+      exact hsource)
+    evidence.step_valid
 
 private def terminalOfGlobal (global : DecodedCBGlobalModelDocument) :=
   global.global.rsucc.succ.join3.hyper.literalOrder.termOrder.factorClosure.localResolution.terminal
@@ -392,6 +476,7 @@ structure DecodedLiveInsertionEvent (production : DecodedProductionRun)
   origin_valid : insertionOriginOk production contextIndex clause origin = true
   ruleHint : Option String
   hyperEvidence : Option (DecodedLiveHyperEvidence production)
+  factorEvidence : Option DecodedLiveFactorEvidence
 
 def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
     (bits : Nat) (ordinary root : List FCL) (wire : WireLiveInsertionEvent) :
@@ -414,21 +499,27 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
                 throw "CB derived insertion origin unexpectedly has an index"
             | hint, _ => throw s!"unsupported CB insertion origin {hint}"
           if horigin : insertionOriginOk production contextIndex clause origin = true then
-            let hyperEvidence ← match origin, wire.rule_hint, wire.rule_evidence with
-              | .core _, none, none => pure none
-              | .ontologyFact _, none, none => pure none
-              | .derived, some "hyper", some evidence =>
-                  some <$> evidence.decodeHyper production bits arena
-              | .derived, some hint, none =>
-                  if ["pred-local", "pred-arrival", "succ", "eq", "factor", "join",
+            let (hyperEvidence, factorEvidence) ←
+              match origin, wire.rule_hint, wire.rule_evidence with
+              | LiveInsertionOrigin.core _, none, none => pure (none, none)
+              | LiveInsertionOrigin.ontologyFact _, none, none => pure (none, none)
+              | LiveInsertionOrigin.derived, some "hyper", some evidence =>
+                  let decoded ← evidence.decodeHyper production bits arena
+                  pure (some decoded, none)
+              | LiveInsertionOrigin.derived, some "factor", some evidence =>
+                  let decoded ← evidence.decodeFactor production bits arena clause
+                  pure (none, some decoded)
+              | LiveInsertionOrigin.derived, some hint, none =>
+                  if ["pred-local", "pred-arrival", "succ", "eq", "join",
                       "branch-decision", "filtered-seed"].contains hint then
-                    pure none
+                    pure (none, none)
                   else throw s!"unsupported CB live derived-rule hint {hint}"
-              | .core _, _, _ | .ontologyFact _, _, _ =>
+              | LiveInsertionOrigin.core _, _, _ |
+                  LiveInsertionOrigin.ontologyFact _, _, _ =>
                   throw "CB live insertion seed unexpectedly carries rule metadata"
-              | .derived, none, _ =>
+              | LiveInsertionOrigin.derived, none, _ =>
                   throw "CB live derived insertion omits its rule hint"
-              | .derived, some _, some _ =>
+              | LiveInsertionOrigin.derived, some _, some _ =>
                   throw "CB live non-Hyper insertion unexpectedly carries Hyper evidence"
             return {
               sequence := wire.sequence
@@ -441,6 +532,7 @@ def WireLiveInsertionEvent.decode (production : DecodedProductionRun)
               origin_valid := horigin
               ruleHint := wire.rule_hint
               hyperEvidence
+              factorEvidence
             }
           else throw "CB insertion origin does not match its indexed production seed"
       | none => throw "CB insertion-history clause id is outside its arena"
@@ -721,5 +813,6 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
 #print axioms WireProductionBoundGlobalModelDocument.check_sound
 #print axioms DecodedLiveInsertionEvent.seed_sound
 #print axioms DecodedLiveHyperEvidence.source_sound
+#print axioms DecodedLiveFactorEvidence.sound
 
 end ContextCalculus.CBLiveStateWire

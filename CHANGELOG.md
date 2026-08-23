@@ -94,6 +94,13 @@
   context. Firings affected by filtering or Nom transformation fail closed and
   retain the existing unsupported or externally checked fallback until those
   transformations receive dedicated evidence.
+  Generate local evidence for two more production rules. Succ hypothesis
+  insertions are emitted as explicit tautology steps. Factor insertions record
+  the exact earlier source-clause id and the common, first, and second terms;
+  Lean bounds-checks those terms and re-evaluates the production Factor step
+  against the actual arena clause and inserted conclusion. The chronological
+  producer emits the matching one-premise trace only when its independently
+  reconstructed compact conclusion equals the live event clause.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,
