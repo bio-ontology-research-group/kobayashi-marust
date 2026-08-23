@@ -41,6 +41,7 @@ trap cleanup_checker EXIT
         ContextCalculus.HTBundleCommonSourceWire \
         ContextCalculus.HTCardinalityCheckerTermEmbedding \
         ContextCalculus.HTDirectCardinalityCommonSourceWire \
+        ContextCalculus.HTMixedCardinalityCommonSourceWire \
         ContextCalculus.HTRoutingSource \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
@@ -73,6 +74,9 @@ for theorem in \
     modelsProjectedDefs_map_natInterp \
     modelsProjectedDefs_map_finInterp \
     WireDirectCardinalityCommonSource.check_sound \
+    valid_shiftClauseFunctions_iff \
+    models_shiftOntologyFunctions_iff \
+    functionView_mergedModel \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

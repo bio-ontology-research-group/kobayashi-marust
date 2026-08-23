@@ -112,6 +112,11 @@
   clauses. The decoder rejects residual existential atoms, and Lean proves the
   common taxonomy equivalent to the exact direct HT target with first-class
   cardinality definitions.
+- Separate mixed Skolem functions from cardinality witness functions with a
+  proved namespace shift. Lean proves term, literal, clause, and whole-ontology
+  semantic preservation, then proves that the merged model retains the mixed
+  finite prefix and exposes the cardinality model exactly through its shifted
+  suffix. This prevents accidental cross-family function aliasing.
 
 ### Close the executable ELC certification boundary
 
