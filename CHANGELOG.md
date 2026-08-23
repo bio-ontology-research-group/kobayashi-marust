@@ -10,8 +10,11 @@
   and truncation flags from the engine that reached the fixpoint. Lean decodes
   the raw `UInt32` terms independently and accepts only when every live context
   resolves to the exact source-bound retained clauses and terminal metadata
-  already checked by the global closure document. The native checker rejects
-  malformed or substituted evidence. This is unreleased until complete CB
+  already checked by the global closure document. It also reconstructs every
+  incoming and outgoing edge from the certified Pred snapshots and requires
+  exact agreement with the live endpoints, labels, pushed predicates, and edge
+  watermarks. The native checker rejects malformed or substituted evidence.
+  This is unreleased until complete CB
   publication is connected to the checker and the full certification gate
   passes.
 

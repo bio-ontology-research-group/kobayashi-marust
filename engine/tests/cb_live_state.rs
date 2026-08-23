@@ -66,12 +66,26 @@ fn cli_emits_one_exact_terminal_engine_for_certification() {
             context["rsucc_pool_ids"].as_array().unwrap().len()
         );
         assert_eq!(
-            context["predecessor_edge_seen"].as_array().unwrap().len(),
-            context["predecessors"].as_array().unwrap().len()
+            context["predecessor_edge_seen"],
+            serde_json::Value::Array(
+                context["predecessors"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|edge| edge["edge_seen"].clone())
+                    .collect()
+            )
         );
         assert_eq!(
-            context["successor_reach_hwm"].as_array().unwrap().len(),
-            context["successors"].as_array().unwrap().len()
+            context["successor_reach_hwm"],
+            serde_json::Value::Array(
+                context["successors"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|edge| edge["rsucc_reach_hwm"].clone())
+                    .collect()
+            )
         );
     }
 }

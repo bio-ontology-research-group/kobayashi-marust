@@ -43,6 +43,20 @@ structure WireLivePredicate where
   second : Option Nat
 deriving FromJson, ToJson
 
+structure WireLivePredecessorEdge where
+  predecessor_context : Nat
+  label : Nat
+  pushed : List WireLivePredicate
+  pred_pool_seen : List Nat
+  edge_seen : Nat
+deriving FromJson, ToJson
+
+structure WireLiveSuccessorEdge where
+  label : Nat
+  target_context : Nat
+  rsucc_reach_hwm : Nat
+deriving FromJson, ToJson
+
 structure WireLiveContext where
   context_index : Nat
   context_id : Nat
@@ -61,6 +75,8 @@ structure WireLiveContext where
   rsucc_edges_grew : Bool
   predecessor_edge_seen : List Nat
   successor_reach_hwm : List Nat
+  predecessors : List WireLivePredecessorEdge
+  successors : List WireLiveSuccessorEdge
 deriving FromJson, ToJson
 
 structure WireLiveStateDocument where
@@ -109,6 +125,17 @@ def WireLiveLiteral.decode (bounds : Bounds) (bits : Nat)
       return .ineq first (← decodeRawTerm bounds bits second)
   | _, _, _ => throw "malformed CB live literal"
 
+def WireLivePredicate.decode (bounds : Bounds) (bits : Nat)
+    (wire : WireLivePredicate) : Except String FPred := do
+  let first ← decodeRawTerm bounds bits wire.first
+  match wire.kind, wire.second with
+  | "concept", none =>
+      return .concept (← checkId "CB live concept" bounds.concepts wire.iri) first
+  | "role", some second =>
+      return .role (← checkId "CB live role" bounds.roles wire.iri) first
+        (← decodeRawTerm bounds bits second)
+  | _, _ => throw "malformed CB live predicate"
+
 def WireLiveClause.decode (bounds : Bounds) (bits : Nat)
     (wire : WireLiveClause) : Except String FCL := do
   let body ← wire.body.mapM (WireLiveLiteral.decode bounds bits)
@@ -141,6 +168,92 @@ private def liveTerminalMatches
   decide (wire.rsucc_edges_grew = state.rsuccEdgesGrew) &&
   decide (wire.predecessor_edge_seen = state.edgeSeen)
 
+structure LiveIncomingEdge where
+  predecessorIndex : Nat
+  receiverIndex : Nat
+  label : FTerm
+  pushed : List FPred
+deriving DecidableEq
+
+structure LiveOutgoingEdge where
+  label : FTerm
+  targetIndex : Nat
+deriving DecidableEq
+
+private def ordinaryIncoming
+    (send : ContextCalculus.CBPredSendCoverageWire.DecodedPredSendCoverageDocument) :
+    List LiveIncomingEdge :=
+  send.senders.flatMap fun sender => sender.edges.map fun edge =>
+    { predecessorIndex := sender.senderIndex.val
+      receiverIndex := edge.receiverIndex.val
+      label := edge.label
+      pushed := edge.pushed }
+
+private def rootIncoming
+    (send : ContextCalculus.CBPredSendCoverageWire.DecodedPredSendCoverageDocument) :
+    List LiveIncomingEdge :=
+  send.rootSender.toList.flatMap fun sender => sender.edges.map fun edge =>
+    { predecessorIndex := sender.senderIndex.val
+      receiverIndex := edge.receiverIndex.val
+      label := .const edge.individual
+      pushed := edge.pushed }
+
+private def expectedIncoming
+    (send : ContextCalculus.CBPredSendCoverageWire.DecodedPredSendCoverageDocument)
+    (receiverIndex : Nat) : List LiveIncomingEdge :=
+  (ordinaryIncoming send ++ rootIncoming send).filter
+    fun edge => decide (edge.receiverIndex = receiverIndex)
+
+private def expectedOutgoing
+    (send : ContextCalculus.CBPredSendCoverageWire.DecodedPredSendCoverageDocument)
+    (predecessorIndex : Nat) : List LiveOutgoingEdge :=
+  (ordinaryIncoming send ++ rootIncoming send).filterMap fun edge =>
+    if edge.predecessorIndex = predecessorIndex then
+      some { label := edge.label, targetIndex := edge.receiverIndex }
+    else none
+
+structure DecodedLivePredecessorEdge where
+  semantic : LiveIncomingEdge
+  predPoolSeen : List Nat
+  edgeSeen : Nat
+
+def WireLivePredecessorEdge.decode (production : DecodedProductionRun)
+    (bits receiverIndex : Nat) (wire : WireLivePredecessorEdge) :
+    Except String DecodedLivePredecessorEdge := do
+  if wire.predecessor_context < production.contexts.length then
+    let pushed ← wire.pushed.mapM (WireLivePredicate.decode production.bounds bits)
+    if pushed.Nodup then
+      let label ← decodeRawTerm production.bounds bits wire.label
+      return {
+        semantic := {
+          predecessorIndex := wire.predecessor_context
+          receiverIndex := receiverIndex
+          label := label
+          pushed := pushed
+        }
+        predPoolSeen := wire.pred_pool_seen
+        edgeSeen := wire.edge_seen
+      }
+    else throw "CB live predecessor pushed set contains duplicates"
+  else throw "CB live predecessor context is outside the production run"
+
+structure DecodedLiveSuccessorEdge where
+  semantic : LiveOutgoingEdge
+  reachHwm : Nat
+
+def WireLiveSuccessorEdge.decode (production : DecodedProductionRun)
+    (bits : Nat) (wire : WireLiveSuccessorEdge) : Except String DecodedLiveSuccessorEdge := do
+  if wire.target_context < production.contexts.length then
+    let label ← decodeRawTerm production.bounds bits wire.label
+    return {
+      semantic := {
+        label := label
+        targetIndex := wire.target_context
+      }
+      reachHwm := wire.rsucc_reach_hwm
+    }
+  else throw "CB live successor context is outside the production run"
+
 structure DecodedLiveContext
     (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
@@ -154,13 +267,23 @@ structure DecodedLiveContext
   retained : List FCL
   retained_eq : retained = (production.contexts.get contextIndex).retained
   live : WireLiveContext
+  predecessors : List DecodedLivePredecessorEdge
+  predecessors_exact : predecessors.map (·.semantic) =
+    expectedIncoming terminal.sendCoverage contextIndex.val
+  successors : List DecodedLiveSuccessorEdge
+  successors_exact : successors.map (·.semantic) =
+    expectedOutgoing terminal.sendCoverage contextIndex.val
+  predecessor_watermarks_exact : predecessors.map (·.edgeSeen) =
+    live.predecessor_edge_seen
+  successor_watermarks_exact : successors.map (·.reachHwm) =
+    live.successor_reach_hwm
   terminalContextsEq : production.contexts.length = terminal.contexts.length
   terminal_matches : liveTerminalMatches terminal
     ⟨contextIndex.val, terminalContextsEq ▸ contextIndex.isLt⟩ live = true
 
 def WireLiveContext.decode (production : DecodedProductionRun)
     (terminal : ContextCalculus.CBTerminalStateWire.DecodedCBTerminalStateDocument)
-    (ordinary root : List FCL) (wire : WireLiveContext) :
+    (bits : Nat) (ordinary root : List FCL) (wire : WireLiveContext) :
     Except String (DecodedLiveContext production terminal ordinary root) := do
   if hindex : wire.context_index < production.contexts.length then
     let contextIndex : Fin production.contexts.length := ⟨wire.context_index, hindex⟩
@@ -173,15 +296,30 @@ def WireLiveContext.decode (production : DecodedProductionRun)
           | some clause => pure clause
           | none => throw "CB live retained clause id is outside its arena"
         if hretained : retained = context.retained then
+          let predecessors ← wire.predecessors.mapM
+            (WireLivePredecessorEdge.decode production bits wire.context_index)
+          let successors ← wire.successors.mapM
+            (WireLiveSuccessorEdge.decode production bits)
+          if hpredecessors : predecessors.map (·.semantic) =
+              expectedIncoming terminal.sendCoverage wire.context_index then
+          if hsuccessors : successors.map (·.semantic) =
+              expectedOutgoing terminal.sendCoverage wire.context_index then
+          if hpredWatermarks : predecessors.map (·.edgeSeen) = wire.predecessor_edge_seen then
+          if hsuccWatermarks : successors.map (·.reachHwm) = wire.successor_reach_hwm then
           if hterminalLength : production.contexts.length = terminal.contexts.length then
             let terminalIndex : Fin terminal.contexts.length :=
               ⟨contextIndex.val, hterminalLength ▸ contextIndex.isLt⟩
             if hterminal : liveTerminalMatches terminal terminalIndex wire = true then
               return DecodedLiveContext.mk contextIndex wire.context_id wire.root
-                hid hroot wire.retained_clause_ids retained hretained wire
+                hid hroot wire.retained_clause_ids retained hretained wire predecessors
+                hpredecessors successors hsuccessors hpredWatermarks hsuccWatermarks
                 hterminalLength hterminal
             else throw "CB live queues or high-water marks differ from terminal evidence"
           else throw "CB live and terminal-evidence context counts differ"
+          else throw "CB live successor watermarks differ from successor records"
+          else throw "CB live predecessor watermarks differ from predecessor records"
+          else throw "CB live successors differ from certified outgoing edges"
+          else throw "CB live predecessors differ from certified incoming edges"
         else throw "CB live retained clauses differ from the certified terminal context"
       else throw "CB live context uses the wrong clause-arena domain"
     else throw "CB live context id differs from the certified context"
@@ -228,7 +366,7 @@ def WireProductionBoundGlobalModelDocument.decode
     let root ← wire.live_state.root_clause_arena.mapM
       (WireLiveClause.decode production.bounds wire.live_state.comp_ind_bits)
     let contexts ← wire.live_state.contexts.mapM
-      (WireLiveContext.decode production terminal ordinary root)
+      (WireLiveContext.decode production terminal wire.live_state.comp_ind_bits ordinary root)
     let actual := contexts.map fun context => context.contextIndex.val
     let expected := List.range production.contexts.length
     if hcontexts : actual = expected then
@@ -258,12 +396,19 @@ theorem WireProductionBoundGlobalModelDocument.check_sound
       ∀ context ∈ decoded.contexts,
         context.retained =
           ((rProduction decoded.global.global.rsucc).contexts.get
-            context.contextIndex).retained := by
+            context.contextIndex).retained ∧
+        context.predecessors.map (·.semantic) =
+          expectedIncoming (terminalOfGlobal decoded.global).sendCoverage
+            context.contextIndex.val ∧
+        context.successors.map (·.semantic) =
+          expectedOutgoing (terminalOfGlobal decoded.global).sendCoverage
+            context.contextIndex.val := by
   cases hdecode : wire.decode with
   | error message => simp [WireProductionBoundGlobalModelDocument.check, hdecode] at hcheck
   | ok decoded =>
       exact ⟨decoded, rfl, decoded.context_indices_exact,
-        fun context _ => context.retained_eq⟩
+        fun context _ => ⟨context.retained_eq, context.predecessors_exact,
+          context.successors_exact⟩⟩
 
 #print axioms WireProductionBoundGlobalModelDocument.check_sound
 
