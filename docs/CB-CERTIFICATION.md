@@ -68,8 +68,16 @@ claim that the layer is already complete.
   uses fixed individual constants, source-indexed existential functions, real
   equality, and the complete pairwise equality head for each at-most clause.
   It proves both atomic-subsumption equivalence and satisfiability equivalence
-  under the standard nonempty-domain convention. Role chains, transitivity as
-  a chain, and the production-state refinement remain separate obligations.
+  under the standard nonempty-domain convention. The production-state
+  refinement remains a separate obligation.
+- `CBRoleChainEncoding` adds arbitrary finite role-chain inclusions to that
+  source language. The generated nested-term clause has one universally
+  quantified path position per endpoint, one body role atom per chain member,
+  and the super-role edge as its head. `valid_encodeChain_iff` proves exact
+  equivalence with the path semantics. The combined source has two-way model,
+  atomic-subsumption, and nonempty-domain satisfiability equivalence.
+  `satChain_transitiveChain_iff` separately proves that `R ∘ R ⊑ R` is exactly
+  ordinary role transitivity.
 
 ## Not yet established
 
@@ -94,10 +102,10 @@ countermodels.
 For the normalized ALC slice, `CBALCEncoding` now closes the source-semantics
 side of this gap. `CBEqEncoding` extends that source-to-term refinement through
 role inclusions, inverse roles, nominals, equality, functionality, and
-qualified at-most restrictions. Role chains and transitivity still need a
-corresponding source-to-term theorem. All features still need refinement from
-the Rust context stores and terminal queues to the complete abstract calculus,
-plus mandatory checked publication.
+qualified at-most restrictions. `CBRoleChainEncoding` closes the remaining
+arbitrary role-chain and transitivity source-semantics bridge. All features
+still need refinement from the Rust context stores and terminal queues to the
+complete abstract calculus, plus mandatory checked publication.
 
 Finite countermodels are a sound evidence form, not a complete replacement for
 the production refinement over full SROIQ. SROIQ does not in general have the

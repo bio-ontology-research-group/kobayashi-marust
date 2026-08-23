@@ -800,8 +800,17 @@ nominals, and arbitrary qualified at-most restrictions. It proves model
 restriction and Skolem extension for every constructor, then derives exact
 atomic-subsumption and nonempty-domain satisfiability equivalence. The at-most
 encoding checks all `n + 1` qualified successors and exposes every pairwise
-equality alternative. Role chains and the production context-state refinement
-are not included in this theorem.
+equality alternative. The production context-state refinement is not included
+in this theorem.
+
+`CBRoleChainEncoding.lean` composes arbitrary finite property chains with the
+equational source language. `valid_encodeChain_iff` identifies each generated
+nested-term clause with its full path semantics, while the combined model
+restriction and extension theorems preserve exact subsumption and
+nonempty-domain satisfiability. `satChain_transitiveChain_iff` proves that the
+special chain `R ∘ R ⊑ R` is precisely transitivity. This closes the normalized
+source-to-term semantic layer; production context saturation and publication
+remain to be refined to it.
 
 This is strictly more than the two earlier files (it handles disjunction *and*
 existential witnesses together) and more engine-faithful than the prior moose

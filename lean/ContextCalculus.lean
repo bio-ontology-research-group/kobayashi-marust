@@ -28,6 +28,7 @@ import ContextCalculus.CBTaxonomyWire
 import ContextCalculus.CBCertificationSurface
 import ContextCalculus.CBALCEncoding
 import ContextCalculus.CBEqEncoding
+import ContextCalculus.CBRoleChainEncoding
 import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm

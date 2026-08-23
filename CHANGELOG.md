@@ -16,6 +16,10 @@
   bridges, functionality, nominals, and arbitrary qualified at-most
   restrictions. Prove both atomic-subsumption and nonempty-domain
   satisfiability equivalence for this equational source language.
+- Add arbitrary finite role chains to the same exact model bridge. Prove that
+  their nested-term clauses are equivalent to path semantics, preserve and
+  reflect subsumption and satisfiability when combined with the equational
+  source, and that `R ∘ R ⊑ R` is exactly role transitivity.
 - Keep this as an unreleased CB proof milestone. A CB certification release
   still requires production-state refinement, the remaining SROIQ features,
   mandatory fail-closed checking, and one complete release gate.
