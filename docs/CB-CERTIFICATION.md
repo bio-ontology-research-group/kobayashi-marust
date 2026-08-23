@@ -239,6 +239,16 @@ claim that the layer is already complete.
   suppression cases, and proves exact list membership. Retained-strengthening
   coverage, candidate-level semantic composition, Rust-state emission, and the
   ordered-paramodulation completeness connection remain open.
+- `CBLocalEqClosureWire` turns that specification into an executable nested
+  terminal-state certificate. For every context, Lean reconstructs each
+  provider and target from bounded retained-clause indexes, recomputes both
+  maximality tests, performs the direct rewrite and head normalization, and
+  requires the serialized list to equal the complete candidate enumeration.
+  Every surviving candidate has a retained strengthening witness. The semantic
+  capstone proves every reconstructed normalized conclusion from validity of
+  its two retained premises. The standalone `cb-local-eq-closure-check` exposes
+  this boundary. Rust emission and the ordered-calculus completeness theorem
+  remain open.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

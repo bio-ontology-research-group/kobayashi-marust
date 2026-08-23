@@ -44,6 +44,7 @@ import ContextCalculus.CBLocalFactorClosureWire
 import ContextCalculus.CBFiniteTermOrderWire
 import ContextCalculus.CBFiniteLiteralOrderWire
 import ContextCalculus.CBLocalEqEnumeration
+import ContextCalculus.CBLocalEqClosureWire
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

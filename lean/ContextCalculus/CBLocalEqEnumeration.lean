@@ -48,6 +48,11 @@ def directRewrite (order : DecodedFiniteTermOrderDocument)
   | .ineq source target =>
       if source = left then some (orderedIneq order right target) else none
 
+def productionCase (left right : FTerm) : FLit → Bool
+  | .eq source other => decide ¬(source = left ∧ right = other)
+  | .ineq source other => decide (source = left ∧ right ≠ other)
+  | .P _ => true
+
 theorem eval_orderedEq_iff {D : Type} (model : TModel D) (assignment : Int → D)
     (order : DecodedFiniteTermOrderDocument) (left right : FTerm) :
     model.evalL assignment (orderedEq order left right) ↔
@@ -182,12 +187,7 @@ def eqCandidate? (literalOrder : DecodedFiniteLiteralOrderDocument)
   let target ← targetClause.head[targetHeadIndex]?
   if target = equality then none else pure ()
   let rewritten ← directRewrite literalOrder.termOrder left right target
-  match target with
-  | .eq source other =>
-      if source = left ∧ right = other then none else pure ()
-  | .ineq source other =>
-      if source = left ∧ right ≠ other then pure () else none
-  | .P _ => pure ()
+  if productionCase left right target then pure () else none
   let raw := directParamodulant targetClause equalityClause target equality rewritten
   let head ← CBLocalFactorClosureWire.normalizeGeneratedHead raw.head
   some {

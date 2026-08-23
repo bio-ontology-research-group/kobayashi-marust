@@ -65,6 +65,10 @@ name = "cb-finite-literal-order-check"
 root = "CBFiniteLiteralOrderCheck"
 
 [[lean_exe]]
+name = "cb-local-eq-closure-check"
+root = "CBLocalEqClosureCheck"
+
+[[lean_exe]]
 name = "ht-cert-check"
 root = "HTCertCheck"
 

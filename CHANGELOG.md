@@ -180,6 +180,12 @@
   maxima, including their equality and inequality suppression cases, with an
   exact membership theorem. Retained closure and the ordered-completeness
   connection remain part of the unreleased CB layer.
+- Add the nested executable Eq-closure document and standalone checker. Lean
+  reconstructs every indexed provider/target pair, maxima, direct rewrite,
+  production suppression condition, normalized conclusion, and retained
+  strengthening, then compares the complete generated list with independent
+  enumeration. Prove each normalized candidate from validity of its retained
+  premises. Rust emission and ordered-calculus completeness remain open.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This
