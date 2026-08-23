@@ -46,6 +46,10 @@
   must prove semantic equivalence for every published answer; Lean then
   transports both source-bound soundness and completeness through the
   translation. Byte hashes and route labels cannot discharge this obligation.
+- Unify the executable ELC, HT, and CB publication documents behind one tagged
+  Lean checker. The worker tag selects a decoder but supplies no theorem
+  premise: every accepted branch recovers its existing source-bound soundness
+  and completeness contract, including the exact published taxonomy payload.
 
 ### Close the executable ELC certification boundary
 
