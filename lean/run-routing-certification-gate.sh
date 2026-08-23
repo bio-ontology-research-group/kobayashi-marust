@@ -33,6 +33,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMAutomaticSupervisor \
         ContextCalculus.KMWorkerPublication \
         ContextCalculus.ELCheckerTermEmbedding \
+        ContextCalculus.HTRoutingSource \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
 
@@ -47,6 +48,7 @@ for theorem in \
     SourceBoundWorker.liftTranslation_completeAt \
     WirePublication.check_sound \
     models_encode_iff \
+    Source.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \
     WireSelection.check_sound \
     automatic_specialist_decline_has_coverage \

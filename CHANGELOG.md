@@ -55,6 +55,11 @@
   clause and ontology, including individuals, auxiliary names, and arbitrarily
   nested Skolem functions. This establishes a semantic common-source boundary
   for ELC and CB without relying on byte identity or hashes.
+- Package HT's retained direct clauses and complete, uniquely keyed Skolem-pair
+  family as a routing source. Lean proves both model-existence equivalence and
+  taxonomy-entailment equivalence with the exact existential HT ontology. This
+  makes existential projection a checked source translation rather than an
+  assumed preprocessing step.
 
 ### Close the executable ELC certification boundary
 
