@@ -38,6 +38,14 @@
   of the exact source ontology that satisfies the event's exact context core.
   It supplies the base case for induction over the chronological insertion
   stream without assuming the validity of any derived event.
+  Add the chronological insertion-derivation theorem. A local derived event may
+  cite only explicitly indexed earlier events from the identical context and
+  then append a checked production-trace fragment. The fragment may contain
+  source instantiations and intermediate Resolution, Paramodulation, Factor,
+  reflexive-Inequality, or Join-3 steps that KM did not retain as live clauses.
+  Lean proves by induction that a certified history makes every inserted clause
+  valid under its exact context core. Inter-context arrivals are intentionally
+  excluded until their evidence is bound to the checked Pred/r-Pred transfer.
 
 - Add a bounds-checked executable CB Nom-allocation certificate. It records the
   complete grounded Hyper firing key and accepts only positive-width,

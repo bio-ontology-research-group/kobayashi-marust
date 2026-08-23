@@ -107,6 +107,15 @@ claim that the layer is already complete.
   have semantic soundness theorems and rejecting examples. The live rule audit
   and remaining production bindings are tracked in
   `docs/CB-RULE-CERTIFICATION.tsv`.
+- `CBLiveInsertionDerivation` supplies the well-founded production-history
+  induction. Each local derived insertion selects only earlier events from the
+  same exact context, then appends a checked `CBProductionTrace` fragment whose
+  checked terminal contains the inserted clause. Hidden source instantiations
+  and intermediate local inferences therefore need not have been retained by
+  KM. Accepted seed events use the independently checked core/fact origin. Lean
+  proves every event in a certified chronological history valid under its
+  context core. The executable history wire, Rust evidence producer, and the
+  distinct inter-context evidence constructor remain open.
 - `CBInterContext.predTransfer_sound` proves the semantic sender half shared by
   ordinary Pred and nominal r-Pred. A clause valid under its context core
   becomes an ordinarily valid payload after the edge substitution when the

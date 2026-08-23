@@ -1,4 +1,4 @@
-import ContextCalculus.CBLiveStateWire
+import ContextCalculus.CBLiveInsertionDerivation
 
 open Lean
 open ContextCalculus.CBLiveStateWire
