@@ -34,6 +34,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMWorkerPublication \
         ContextCalculus.ELCheckerTermEmbedding \
         ContextCalculus.HTCheckerTermEmbedding \
+        ContextCalculus.HTDirectCommonSourceWire \
         ContextCalculus.HTRoutingSource \
         km-automatic-routing-check 2>&1 | tee "$surface_log"
 )
@@ -51,6 +52,7 @@ for theorem in \
     WireJointNativeABoxClassification.check_sound \
     models_encode_iff \
     entailsSub_encode_iff \
+    WireDirectCommonSource.check_sound \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

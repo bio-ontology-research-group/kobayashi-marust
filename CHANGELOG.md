@@ -75,6 +75,11 @@
   equivalence: negative body concepts move to heads, negative head concepts
   move to bodies, and existential atoms are explicitly excluded because their
   separate Skolem-pair and bundle projections carry that obligation.
+- Bind that signed normalization theorem to an executable, versioned direct-HT
+  source document. Its decoder reruns exact name-to-finite-ID projection,
+  rejects residual existential atoms, maps the finite source into the common
+  first-order ontology, and proves the complete taxonomy equivalent to the
+  exact HT source carried by the certificate.
 
 ### Close the executable ELC certification boundary
 
