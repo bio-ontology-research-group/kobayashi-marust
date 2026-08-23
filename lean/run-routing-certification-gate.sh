@@ -65,6 +65,10 @@ for theorem in \
     models_minimumClauses_iff \
     valid_maximumClause_iff \
     models_pairClauses_iff \
+    models_cardinalityClauses_fixed_iff \
+    models_cardinalityClauses_implies_projected \
+    projected_implies_exists_cardinalityClauses_model \
+    entailsSub_cardinalityClauses_iff \
     Source.entailsSub_iff_target \
     CardinalitySource.entailsSub_iff_target \
     AutomaticRouter.sound_and_complete \

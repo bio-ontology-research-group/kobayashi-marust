@@ -1,6 +1,7 @@
 import ContextCalculus.HTCheckerTermEmbedding
 import ContextCalculus.HypertableauCardinalityProjection
 import Mathlib.Data.Nat.Pairing
+import Mathlib.Data.List.Enum
 
 /-!
 # Cardinality frontend clauses in the common proper-term source
@@ -26,6 +27,11 @@ def sourceTerm : FTerm := .var 0
 
 def minimumFunctionCode (definitionSlot witnessSlot : Nat) : Nat :=
   Nat.pair definitionSlot witnessSlot
+
+@[simp] theorem unpair_minimumFunctionCode (definitionSlot witnessSlot : Nat) :
+    Nat.unpair (minimumFunctionCode definitionSlot witnessSlot) =
+      (definitionSlot, witnessSlot) :=
+  Nat.unpair_pair definitionSlot witnessSlot
 
 def minimumWitnessTerm (definitionSlot : Nat) (witnessSlot : Nat) : FTerm :=
   .app (minimumFunctionCode definitionSlot witnessSlot) sourceTerm
@@ -448,8 +454,296 @@ theorem models_pairClauses_iff (model : TModel Domain)
     · exact (valid_clashClause_iff model pair.maximum pair.minimum).2
         fun source => (hsplit source).2
 
+def definitionClauses (entry : CardinalityDef Nat Nat × Nat) : List FCL :=
+  match entry.1.kind with
+  | .maximum => [maximumClause entry.1]
+  | .minimum => minimumClauses entry.2 entry.1
+
+def definitionsClauses (definitions : List (CardinalityDef Nat Nat)) : List FCL :=
+  definitions.zipIdx.flatMap definitionClauses
+
+def pairsClauses (pairs : List (PairedCardinality Nat Nat)) : List FCL :=
+  pairs.flatMap pairClauses
+
+def cardinalityClauses (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat)) : List FCL :=
+  definitionsClauses definitions ++ pairsClauses pairs
+
+def FixedDefinitionModels (model : TModel Domain)
+    (entry : CardinalityDef Nat Nat × Nat) : Prop :=
+  match entry.1.kind with
+  | .maximum =>
+      (HTCheckerTermEmbedding.htInterp model).modelsClause
+        (maximumProjectionClause entry.1)
+  | .minimum =>
+      ModelsMinimumExpansion (HTCheckerTermEmbedding.htInterp model) entry.1
+        (minimumFunctions model entry.2 entry.1)
+
+theorem models_definitionClauses_iff (model : TModel Domain)
+    (entry : CardinalityDef Nat Nat × Nat) :
+    (∀ clause ∈ definitionClauses entry, valid model clause) ↔
+      FixedDefinitionModels model entry := by
+  cases hkind : entry.1.kind with
+  | maximum =>
+      simp only [definitionClauses, hkind, List.mem_singleton, forall_eq]
+      simpa [FixedDefinitionModels, hkind] using
+        (valid_maximumClause_iff model entry.1)
+  | minimum =>
+      simp only [definitionClauses, hkind]
+      simpa [FixedDefinitionModels, hkind] using
+        (models_minimumClauses_iff model entry.2 entry.1)
+
+/-- Whole-list clause validity is equivalent to the fixed Skolem expansion of
+every indexed definition plus every checked pair theory.  This theorem retains
+the definition slot used to derive each function namespace. -/
+theorem models_cardinalityClauses_fixed_iff (model : TModel Domain)
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat)) :
+    (∀ clause ∈ cardinalityClauses definitions pairs, valid model clause) ↔
+      (∀ entry ∈ definitions.zipIdx, FixedDefinitionModels model entry) ∧
+        ∀ pair ∈ pairs,
+          (HTCheckerTermEmbedding.htInterp model).models
+            (cardinalitySplitTheory pair.maximum pair.minimum) := by
+  constructor
+  · intro hmodels
+    constructor
+    · intro entry hentry
+      apply (models_definitionClauses_iff model entry).1
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [cardinalityClauses, definitionsClauses, List.mem_append,
+          List.mem_flatMap]
+        exact Or.inl ⟨entry, hentry, hclause⟩)
+    · intro pair hpair
+      apply (models_pairClauses_iff model pair).1
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [cardinalityClauses, pairsClauses, List.mem_append,
+          List.mem_flatMap]
+        exact Or.inr ⟨pair, hpair, hclause⟩)
+  · rintro ⟨hdefinitions, hpairs⟩ clause hclause
+    simp only [cardinalityClauses, List.mem_append] at hclause
+    rcases hclause with hdefinition | hpair
+    · simp only [definitionsClauses, List.mem_flatMap] at hdefinition
+      rcases hdefinition with ⟨entry, hentry, hclause⟩
+      exact (models_definitionClauses_iff model entry).2
+        (hdefinitions entry hentry) clause hclause
+    · simp only [pairsClauses, List.mem_flatMap] at hpair
+      rcases hpair with ⟨pair, hpair, hclause⟩
+      exact (models_pairClauses_iff model pair).2
+        (hpairs pair hpair) clause hclause
+
+/-- Any model of the common clauses yields the exact abstract frontend
+cardinality source.  Completeness constructs the converse common model below. -/
+theorem models_cardinalityClauses_implies_projected (model : TModel Domain)
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat))
+    (hmodels : ∀ clause ∈ cardinalityClauses definitions pairs,
+      valid model clause) :
+    (HTCheckerTermEmbedding.htInterp model).modelsProjectedCardinalityDefs
+      definitions pairs := by
+  have hfixed := (models_cardinalityClauses_fixed_iff model definitions pairs).1 hmodels
+  constructor
+  · intro definition hdefinition
+    rw [List.mem_iff_getElem] at hdefinition
+    rcases hdefinition with ⟨slot, hslot, hequal⟩
+    subst definition
+    have hentry : (definitions[slot], slot) ∈ definitions.zipIdx := by
+      rw [List.mem_iff_getElem]
+      exact ⟨slot, by simpa using hslot, by simp⟩
+    have hmodel := hfixed.1 _ hentry
+    cases hkind : definitions[slot].kind with
+    | maximum =>
+        simp only [FixedDefinitionModels, hkind] at hmodel
+        simp only [Interp.modelsProjectedCardinalityDef, hkind]
+        exact hmodel
+    | minimum =>
+        simp only [FixedDefinitionModels, hkind] at hmodel
+        simp only [Interp.modelsProjectedCardinalityDef, hkind]
+        exact ⟨minimumFunctions model slot definitions[slot], hmodel⟩
+  · exact hfixed.2
+
+structure MinimumAddress (definitions : List (CardinalityDef Nat Nat)) where
+  slot : Nat
+  slot_lt : slot < definitions.length
+  minimum_kind : definitions[slot].kind = .minimum
+  witness : Fin definitions[slot].bound
+
+def MinimumAddress.code (address : MinimumAddress definitions) : Nat :=
+  minimumFunctionCode address.slot address.witness.val
+
+theorem MinimumAddress.code_injective :
+    Function.Injective (@MinimumAddress.code definitions) := by
+  intro left right hequal
+  rcases left with ⟨leftSlot, leftLt, leftKind, leftWitness⟩
+  rcases right with ⟨rightSlot, rightLt, rightKind, rightWitness⟩
+  simp only [MinimumAddress.code, minimumFunctionCode,
+    Nat.pair_eq_pair] at hequal
+  rcases hequal with ⟨rfl, hwitness⟩
+  have : leftWitness = rightWitness := Fin.ext hwitness
+  subst rightWitness
+  rfl
+
+noncomputable def MinimumAddress.value
+    (I : Interp Domain Nat Nat)
+    (definitions : List (CardinalityDef Nat Nat))
+    (hdefinitions : ∀ definition ∈ definitions,
+      I.modelsProjectedCardinalityDef definition)
+    (address : MinimumAddress definitions) (source : Domain) : Domain :=
+  minimumExpansionFunctions I (definitions.get ⟨address.slot, address.slot_lt⟩)
+    address.minimum_kind
+    ((modelsProjectedCardinalityDef_iff I
+      (definitions.get ⟨address.slot, address.slot_lt⟩)).1
+      (hdefinitions (definitions.get ⟨address.slot, address.slot_lt⟩)
+        (List.getElem_mem address.slot_lt))) address.witness source
+
+noncomputable def assembledMinimumFunction
+    (I : Interp Domain Nat Nat)
+    (definitions : List (CardinalityDef Nat Nat))
+    (hdefinitions : ∀ definition ∈ definitions,
+      I.modelsProjectedCardinalityDef definition)
+    (code : Nat) (source : Domain) : Domain := by
+  classical
+  exact if haddress : ∃ address : MinimumAddress definitions,
+        address.code = code then
+      MinimumAddress.value I definitions hdefinitions
+        (Classical.choose haddress) source
+    else source
+
+def assembledModel (I : Interp Domain Nat Nat) (fallback : Domain)
+    (functions : Nat → Domain → Domain) : TModel Domain where
+  conc := I.concept
+  rol := I.role
+  const := fun _ => fallback
+  fn := functions
+
+@[simp] theorem htInterp_assembledModel (I : Interp Domain Nat Nat)
+    (fallback : Domain) (functions : Nat → Domain → Domain) :
+    HTCheckerTermEmbedding.htInterp (assembledModel I fallback functions) = I := by
+  cases I
+  rfl
+
+theorem assembledMinimumFunction_at
+    (I : Interp Domain Nat Nat)
+    (definitions : List (CardinalityDef Nat Nat))
+    (hdefinitions : ∀ definition ∈ definitions,
+      I.modelsProjectedCardinalityDef definition)
+    (slot : Nat) (hslot : slot < definitions.length)
+    (hkind : definitions[slot].kind = .minimum)
+    (witness : Fin definitions[slot].bound) (source : Domain) :
+    assembledMinimumFunction I definitions hdefinitions
+        (minimumFunctionCode slot witness.val) source =
+      minimumExpansionFunctions I definitions[slot] hkind
+        ((modelsProjectedCardinalityDef_iff I definitions[slot]).1
+          (hdefinitions definitions[slot]
+            (List.getElem_mem hslot))) witness source := by
+  let address : MinimumAddress definitions := ⟨slot, hslot, hkind, witness⟩
+  have hexists : ∃ candidate : MinimumAddress definitions,
+      candidate.code = minimumFunctionCode slot witness.val :=
+    ⟨address, rfl⟩
+  rw [assembledMinimumFunction, dif_pos hexists]
+  have hchosen : Classical.choose hexists = address :=
+    MinimumAddress.code_injective
+      ((Classical.choose_spec hexists).trans rfl)
+  rw [hchosen]
+  simp [MinimumAddress.value, address]
+
+/-- Completeness of the clause reconstruction: every abstract frontend
+cardinality-source model expands to one common proper-term model. All minimum
+witness families coexist in a single function table indexed by the checked
+definition and witness slots. -/
+theorem projected_implies_exists_cardinalityClauses_model
+    (I : Interp Domain Nat Nat) (fallback : Domain)
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat))
+    (hprojected : I.modelsProjectedCardinalityDefs definitions pairs) :
+    ∃ model : TModel Domain,
+      HTCheckerTermEmbedding.htInterp model = I ∧
+      ∀ clause ∈ cardinalityClauses definitions pairs, valid model clause := by
+  let functions := assembledMinimumFunction I definitions hprojected.1
+  let model := assembledModel I fallback functions
+  refine ⟨model, htInterp_assembledModel I fallback functions, ?_⟩
+  apply (models_cardinalityClauses_fixed_iff model definitions pairs).2
+  constructor
+  · rw [List.forall_mem_zipIdx']
+    intro slot hslot
+    cases hkind : definitions[slot].kind with
+    | maximum =>
+        simp only [FixedDefinitionModels, hkind, model,
+          htInterp_assembledModel]
+        have hdefinition := hprojected.1 definitions[slot]
+          (List.getElem_mem hslot)
+        simpa [Interp.modelsProjectedCardinalityDef, hkind] using hdefinition
+    | minimum =>
+        simp only [FixedDefinitionModels, hkind, model,
+          htInterp_assembledModel]
+        have hdefinition : I.modelsCardinalityDef definitions[slot] :=
+          (modelsProjectedCardinalityDef_iff I definitions[slot]).1
+            (hprojected.1 definitions[slot]
+              (List.getElem_mem hslot))
+        have hexpansion := minimumExpansionFunctions_models I definitions[slot]
+          hkind hdefinition
+        intro source hmarker
+        have hresult := hexpansion source hmarker
+        constructor
+        · intro witness
+          simpa [minimumFunctions, model, assembledModel, functions,
+            assembledMinimumFunction_at I definitions hprojected.1 slot hslot hkind]
+            using hresult.1 witness
+        · intro left right hequal
+          apply hresult.2
+          simpa [minimumFunctions, model, assembledModel, functions,
+            assembledMinimumFunction_at I definitions hprojected.1 slot hslot hkind]
+            using hequal
+  · intro pair hpair
+    simpa [model] using hprojected.2 pair hpair
+
+def CommonCardinalityEntailsSub
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat)) (sub sup : Nat) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ cardinalityClauses definitions pairs, valid model clause) →
+      ∀ value, model.conc sub value → model.conc sup value
+
+def ProjectedCardinalityEntailsSub
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat)) (sub sup : Nat) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain Nat Nat),
+    I.modelsProjectedCardinalityDefs definitions pairs →
+      ∀ value, I.concept sub value → I.concept sup value
+
+/-- Whole cardinality sources have identical taxonomy consequences before and
+after reconstruction in the common proper-term language. -/
+theorem entailsSub_cardinalityClauses_iff
+    (definitions : List (CardinalityDef Nat Nat))
+    (pairs : List (PairedCardinality Nat Nat)) (sub sup : Nat) :
+    CommonCardinalityEntailsSub definitions pairs sub sup ↔
+      ProjectedCardinalityEntailsSub definitions pairs sub sup := by
+  constructor
+  · intro hcommon Domain I hprojected value hsub
+    rcases projected_implies_exists_cardinalityClauses_model I value definitions
+        pairs hprojected with ⟨model, hinterp, hmodels⟩
+    have hconcept := congrArg (fun interpretation => interpretation.concept) hinterp
+    change model.conc = I.concept at hconcept
+    have hsubModel : model.conc sub value := by
+      rw [hconcept]
+      exact hsub
+    have hsupModel := hcommon Domain model hmodels value hsubModel
+    rw [hconcept] at hsupModel
+    exact hsupModel
+  · intro hprojected Domain model hmodels value hsub
+    exact hprojected Domain (HTCheckerTermEmbedding.htInterp model)
+      (models_cardinalityClauses_implies_projected model definitions pairs hmodels)
+      value hsub
+
+#print axioms assembledMinimumFunction_at
+#print axioms projected_implies_exists_cardinalityClauses_model
+#print axioms entailsSub_cardinalityClauses_iff
+
 #print axioms models_minimumClauses_iff
 #print axioms valid_maximumClause_iff
 #print axioms models_pairClauses_iff
+#print axioms models_cardinalityClauses_fixed_iff
+#print axioms models_cardinalityClauses_implies_projected
 
 end ContextCalculus.HTCardinalityCheckerTermEmbedding

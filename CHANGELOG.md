@@ -98,6 +98,11 @@
   disequality, and complementary-pair split and clash clauses. Function names
   derive from both checked definition and witness slots, preventing accidental
   witness sharing across cardinality definitions.
+- Compose every reconstructed cardinality clause family into one shared source.
+  A typed, injectively coded address assembles all minimum-witness families into
+  one proper-term function interpretation. Lean proves both directions of model
+  construction and complete taxonomy-entailment equivalence for whole
+  definition lists and complementary-pair lists.
 
 ### Close the executable ELC certification boundary
 
