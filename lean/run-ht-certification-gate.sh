@@ -163,6 +163,7 @@ surface_theorems=(
     certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
     certifiedHTExecutableGlobalPublication
     certifiedHTExecutableTaxonomyPublication
+    certifiedHTDirectCommonTaxonomyPublication
 )
 for theorem in "${surface_theorems[@]}"; do
     grep -q "HypertableauCertificationSurface.*$theorem\|'ContextCalculus.Hypertableau.$theorem'" \

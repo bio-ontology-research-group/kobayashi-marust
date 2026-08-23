@@ -37,6 +37,7 @@ trap cleanup_checker EXIT
         ContextCalculus.ELCommonSourceWire \
         ContextCalculus.HTCheckerTermEmbedding \
         ContextCalculus.HTDirectCommonSourceWire \
+        ContextCalculus.HTDirectTaxonomyCommonPublication \
         ContextCalculus.HTSkolemPairCheckerTermEmbedding \
         ContextCalculus.HTMixedCommonSourceWire \
         ContextCalculus.HTSkolemBundleCheckerTermEmbedding \
@@ -71,6 +72,7 @@ for theorem in \
     WireCertificate.check_common_source_sound \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \
+    WireDirectTaxonomyPublication.check_sound \
     entailsSub_mixed_encode_iff \
     WireMixedCommonSource.check_sound \
     entailsSub_bundles_encode_iff \

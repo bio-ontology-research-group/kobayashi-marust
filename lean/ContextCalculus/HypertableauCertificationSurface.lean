@@ -4,6 +4,7 @@ import ContextCalculus.HypertableauCardinalityTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauOrdinaryTaxonomyRunMatrixWire
 import ContextCalculus.HypertableauSourceBoundNativeABoxWire
 import ContextCalculus.HypertableauExecutablePublicationWire
+import ContextCalculus.HTDirectTaxonomyCommonPublication
 
 /-!
 # Current production hypertableau certification surface
@@ -115,6 +116,14 @@ theorem certifiedHTExecutableTaxonomyPublication
     wire.SemanticallyValid :=
   wire.check_sound hcheck
 
+/-- The source-bound ordinary taxonomy publication derives its common routing
+source from the decoded publication source itself. The direct checker rejects
+existential sources rather than accepting an independently supplied adapter. -/
+theorem certifiedHTDirectCommonTaxonomyPublication
+    (wire : HTDirectTaxonomyCommonPublication.WireDirectTaxonomyPublication)
+    (hcheck : wire.check = .ok true) : wire.SemanticallyValid :=
+  wire.check_sound hcheck
+
 #print axioms certifiedHTGlobalPublication
 #print axioms certifiedHTRegularTaxonomyPublication
 #print axioms certifiedHTCardinalityTaxonomyPublication
@@ -128,5 +137,6 @@ theorem certifiedHTExecutableTaxonomyPublication
 #print axioms certifiedHTSourceBoundNativeABoxCardinalityTaxonomyPublication
 #print axioms certifiedHTExecutableGlobalPublication
 #print axioms certifiedHTExecutableTaxonomyPublication
+#print axioms certifiedHTDirectCommonTaxonomyPublication
 
 end ContextCalculus.Hypertableau

@@ -224,25 +224,27 @@ def DecodedDirectCommonSource.CommonEntails
     (sub sup : Fin decoded.projection.concepts.length) : Prop :=
   CommonEntailsSub decoded.commonOntology sub.val sup.val
 
-/-- Accepted executable direct-source evidence has exactly the same taxonomy
-meaning in the common routing source and in the checked HT source. -/
-theorem DecodedDirectCommonSource.entails_iff
-    (decoded : DecodedDirectCommonSource)
-    (sub sup : Fin decoded.projection.concepts.length) :
-    decoded.CommonEntails sub sup ↔
-      EntailsSub decoded.projection.source sub sup := by
-  change CommonEntailsSub decoded.commonOntology sub.val sup.val ↔
-    EntailsSub decoded.projection.source sub sup
-  rw [entailsSub_encode_iff decoded.commonOntology decoded.common_direct sub.val sup.val]
+theorem entails_mapOntology_iff
+    (source : List
+      (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (hdirect : ∀ clause ∈ source, clauseNoExistentials clause = true)
+    (sub sup : Fin concepts) :
+    CommonEntailsSub (mapOntology source) sub.val sup.val ↔
+      EntailsSub source sub sup := by
+  have hcommonDirect : DirectOntology (mapOntology source) := by
+    intro clause hclause
+    rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
+    exact direct_mapClause original (hdirect original horiginal)
+  rw [entailsSub_encode_iff (mapOntology source) hcommonDirect sub.val sup.val]
   constructor
   · intro hnat Domain interpretation hmodels value hsub
     letI : Nonempty Domain := ⟨value⟩
     have hresult := hnat Domain (natInterp interpretation)
       (by
         intro clause hclause
-        rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
-        exact (modelsClause_map_natInterp interpretation source).2
-          (hmodels source hsource)) value (by simpa using hsub)
+        rcases List.mem_map.mp hclause with ⟨original, horiginal, rfl⟩
+        exact (modelsClause_map_natInterp interpretation original).2
+          (hmodels original horiginal)) value (by simpa using hsub)
     simpa using hresult
   · intro hfin Domain interpretation hmodels value hsub
     letI : Nonempty Domain := ⟨value⟩
@@ -250,8 +252,18 @@ theorem DecodedDirectCommonSource.entails_iff
       (by
         intro clause hclause
         exact (modelsClause_map_finInterp interpretation clause).2
-          (hmodels (mapClause clause) (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
+          (hmodels (mapClause clause)
+            (List.mem_map.mpr ⟨clause, hclause, rfl⟩)))
       value (by simpa [finInterp] using hsub)
+
+/-- Accepted executable direct-source evidence has exactly the same taxonomy
+meaning in the common routing source and in the checked HT source. -/
+theorem DecodedDirectCommonSource.entails_iff
+    (decoded : DecodedDirectCommonSource)
+    (sub sup : Fin decoded.projection.concepts.length) :
+    decoded.CommonEntails sub sup ↔
+      EntailsSub decoded.projection.source sub sup := by
+  exact entails_mapOntology_iff decoded.projection.source decoded.direct sub sup
 
 theorem WireDirectCommonSource.check_sound (wire : WireDirectCommonSource)
     (decoded : DecodedDirectCommonSource) (_hdecode : wire.decode = .ok decoded)
@@ -327,5 +339,6 @@ example : rejected existentialExample.check = true := by native_decide
 #print axioms DecodedDirectCommonSource.entails_target_iff
 #print axioms WireDirectCommonSource.check_sound
 #print axioms WireDirectCommonSource.check_target_sound
+#print axioms entails_mapOntology_iff
 
 end ContextCalculus.HTDirectCommonSourceWire
