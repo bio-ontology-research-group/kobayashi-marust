@@ -1,5 +1,6 @@
 import ContextCalculus.CBLiveTaxonomyPublication
 import ContextCalculus.CBFiniteModelWire
+import ContextCalculus.CBBlockedTaxonomyCountermodelWire
 
 /-!
 # Exact production-bound CB taxonomy publication
@@ -11,10 +12,10 @@ bottom rows reuse their checked contradiction; and every remaining negative
 cell carries a checked countermodel. The row-major coordinate and answer lists
 must cover exactly the concepts represented by live query contexts.
 
-The finite countermodel constructor is one sound negative evidence form. Full
-SROIQ does not have the finite-model property, so a regular/infinite blocked
-model constructor must be added before this checker can certify every possible
-production run.
+Explicit finite tables and query-augmented blocked equality quotients are sound
+negative evidence forms. Full SROIQ does not have the finite-model property, so
+a regular/infinite blocked model constructor must still be added before this
+checker can certify every possible production run.
 -/
 
 namespace ContextCalculus.CBLiveExactTaxonomyPublication
@@ -23,6 +24,9 @@ open Lean ContextCalculus ContextCalculus.CheckerTerm
 open ContextCalculus.CBGlobalClosureWire
 open ContextCalculus.CBLiveTaxonomyPublication
 open ContextCalculus.CBFiniteModelWire
+open ContextCalculus.CBBlockedTaxonomyCountermodelWire
+open ContextCalculus.CBBlockedCarrierWire
+open ContextCalculus.CBBlockedGroundSaturationWire
 open ContextCalculus.CBTermWire
 
 inductive WireExactCellEvidence where
@@ -30,6 +34,7 @@ inductive WireExactCellEvidence where
   | positive (live_index : Nat)
   | unsatisfiable (live_index : Nat)
   | negative (witness : Nat) (model : WireFiniteModel)
+  | blocked (countermodel : WireBlockedTaxonomyCountermodel)
   | unresolved
 deriving FromJson, ToJson
 
@@ -201,6 +206,60 @@ def WireExactCell.decode (live : DecodedLiveTaxonomyPublication)
               else throw "decoded CB countermodel names a different superclass"
             else throw "decoded CB countermodel names a different subclass"
           else throw "negative CB taxonomy evidence is paired with a true answer"
+      | .blocked countermodelWire =>
+          if hanswer : wire.answer = false then
+            let countermodel ← countermodelWire.decode
+              live.derivation.live.global.blocked.carrier wire.sub wire.sup
+            if hcounterSub : countermodel.sub.val = wire.sub then
+              if hcounterSup : countermodel.sup.val = wire.sup then
+                have hnot : ¬ExactEntails live wire.sub wire.sup := by
+                  intro hentails
+                  obtain ⟨D, interpretation, element, hsource, hcore, hsuper⟩ :=
+                    countermodel.refutes
+                  let blockedBinding :=
+                    (productionRun live.derivation.live.global.blocked.carrier.admissibility).source
+                  let model := CBRoleChainEncoding.extendModel
+                    (blockedSource live.derivation.live.global.blocked.carrier)
+                    interpretation hsource element
+                  have hblockedValid : ∀ clause ∈ blockedBinding.ontology,
+                      valid model clause := by
+                    rw [blockedBinding.exact_encoding]
+                    exact CBRoleChainEncoding.models_extend
+                      (blockedSource live.derivation.live.global.blocked.carrier)
+                      interpretation hsource element
+                  have hproductionValid : ∀ clause ∈ production.source.ontology,
+                      valid model clause := by
+                    change ∀ clause ∈
+                      (rProduction live.derivation.live.global.global.rsucc).source.ontology,
+                      valid model clause
+                    rw [live.derivation.live.global.source_ontology_eq]
+                    simpa [blockedBinding] using hblockedValid
+                  have hcoreModel : model.conc wire.sub element := by
+                    have hcoreModel' : model.conc countermodel.sub.val element := by
+                      simpa [model, CBRoleChainEncoding.extendModel] using hcore
+                    exact hcounterSub ▸ hcoreModel'
+                  have hsuperModel := hentails D model hproductionValid element hcoreModel
+                  have hsuperModel' : model.conc countermodel.sup.val element :=
+                    hcounterSup.symm ▸ hsuperModel
+                  have hsuperInterpretation : interpretation.c countermodel.sup element := by
+                    simpa [model, CBRoleChainEncoding.extendModel] using hsuperModel'
+                  exact hsuper hsuperInterpretation
+                return {
+                  sub := wire.sub
+                  sub_in_bounds := hsub
+                  sup := wire.sup
+                  sup_in_bounds := hsup
+                  answer := wire.answer
+                  exact := by
+                    constructor
+                    · intro htrue
+                      simp [hanswer] at htrue
+                    · intro hentails
+                      exact (hnot hentails).elim
+                }
+              else throw "blocked CB countermodel names a different superclass"
+            else throw "blocked CB countermodel names a different subclass"
+          else throw "blocked CB taxonomy countermodel is paired with a true answer"
       | .unresolved =>
           throw "exact CB taxonomy cell has unresolved negative evidence"
     else throw "exact CB taxonomy superclass is outside the source signature"

@@ -34,6 +34,19 @@
   interpretations, ground instances, atoms, and DPLL nodes leave expensive
   cells unresolved. Emitted two-element models remain subject to the same
   independent Lean table and source-ontology check.
+  Add the query-augmented blocked-countermodel layer for the remaining finite
+  quotient cases. It inserts exact `A(w)` and `not B(w)` units into the
+  authoritative blocked grounding, checks that a resolution saturation has
+  exactly those premises and remains open, and constructs the existing
+  equality-quotient source model with the failed subsumption witness. The
+  exact taxonomy checker accepts this as a second negative evidence form and
+  transports it through the production normalized-source identity. The native
+  exact-matrix producer now constructs these certificates from the
+  production-bound blocked grounding, computes a complete propositional
+  resolution closure, and fails closed on contradiction or explicit clause and
+  resolution-attempt caps. Focused tests cover both an accepted open closure
+  and rejection of a refuted query. Genuinely infinite regular evidence remains
+  open.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

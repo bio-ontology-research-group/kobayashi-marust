@@ -1992,6 +1992,213 @@ fn cb_one_element_countermodel(
     cb_finite_countermodel(live_state, sub, sup, 1)
 }
 
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+struct CbPropClause {
+    neg: Vec<usize>,
+    pos: Vec<usize>,
+}
+
+fn cb_blocked_taxonomy_countermodel(
+    live_publication: &serde_json::Value,
+    sub: usize,
+    sup: usize,
+) -> Result<Option<serde_json::Value>, String> {
+    let live_state = live_publication
+        .pointer("/derivation/production_bound/live_state")
+        .ok_or_else(|| "live CB publication has no production live state".to_string())?;
+    let count = |field: &str| -> Result<usize, String> {
+        live_state
+            .get(field)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("CB live state has no numeric {field}"))
+    };
+    let concept_count = count("concept_count")?;
+    let role_count = count("role_count")?;
+    let saturation = live_publication
+        .pointer(
+            "/derivation/production_bound/global_model/blocked_saturation/saturation",
+        )
+        .ok_or_else(|| "live CB publication has no blocked saturation".to_string())?;
+    let atom_count = saturation
+        .get("atom_count")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| "blocked CB saturation has no atom_count".to_string())?;
+    let roles_and_equality = role_count
+        .checked_add(1)
+        .ok_or_else(|| "blocked CB role count overflow".to_string())?;
+    let mut carrier_count = 1usize;
+    loop {
+        let represented_atoms = concept_count
+            .checked_mul(carrier_count)
+            .and_then(|concepts| {
+                carrier_count
+                    .checked_mul(carrier_count)
+                    .and_then(|square| roles_and_equality.checked_mul(square))
+                    .and_then(|binary| concepts.checked_add(binary))
+            })
+            .ok_or_else(|| "blocked CB carrier-size calculation overflow".to_string())?;
+        if represented_atoms == atom_count {
+            break;
+        }
+        if represented_atoms > atom_count {
+            return Err("blocked CB atom count has no compatible carrier size".to_string());
+        }
+        carrier_count = carrier_count
+            .checked_add(1)
+            .ok_or_else(|| "blocked CB carrier size overflow".to_string())?;
+    }
+    if sub >= concept_count || sup >= concept_count {
+        return Err("blocked CB taxonomy coordinate exceeds the concept bound".to_string());
+    }
+    let decode_clause = |wire: &serde_json::Value| -> Result<CbPropClause, String> {
+        let decode_side = |field: &str| -> Result<Vec<usize>, String> {
+            let values = wire
+                .get(field)
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| format!("blocked CB clause has no {field} array"))?;
+            let mut side = Vec::with_capacity(values.len());
+            for value in values {
+                let atom = value
+                    .as_u64()
+                    .and_then(|value| usize::try_from(value).ok())
+                    .ok_or_else(|| format!("blocked CB clause has nonnumeric {field} atom"))?;
+                if atom >= atom_count {
+                    return Err("blocked CB clause atom exceeds atom_count".to_string());
+                }
+                side.push(atom);
+            }
+            let before = side.len();
+            side.sort_unstable();
+            side.dedup();
+            if side.len() != before {
+                return Err("blocked CB clause side contains a duplicate atom".to_string());
+            }
+            Ok(side)
+        };
+        Ok(CbPropClause {
+            neg: decode_side("neg")?,
+            pos: decode_side("pos")?,
+        })
+    };
+    let premise_values = saturation
+        .get("premises")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "blocked CB saturation has no premises array".to_string())?;
+    if premise_values.len() > 4094 {
+        return Ok(None);
+    }
+    let mut premises: Vec<CbPropClause> = premise_values
+        .iter()
+        .map(decode_clause)
+        .collect::<Result<_, _>>()?;
+    let witness = 0usize;
+    let sub_atom = sub
+        .checked_mul(carrier_count)
+        .and_then(|base| base.checked_add(witness))
+        .ok_or_else(|| "blocked CB subclass atom overflow".to_string())?;
+    let sup_atom = sup
+        .checked_mul(carrier_count)
+        .and_then(|base| base.checked_add(witness))
+        .ok_or_else(|| "blocked CB superclass atom overflow".to_string())?;
+    premises.push(CbPropClause {
+        neg: Vec::new(),
+        pos: vec![sub_atom],
+    });
+    premises.push(CbPropClause {
+        neg: vec![sup_atom],
+        pos: Vec::new(),
+    });
+
+    let mut clauses = premises.clone();
+    let mut seen: std::collections::BTreeSet<CbPropClause> =
+        clauses.iter().cloned().collect();
+    let mut trace: Vec<serde_json::Value> = premises
+        .iter()
+        .enumerate()
+        .map(|(index, clause)| {
+            serde_json::json!({
+                "clause": {"neg": clause.neg, "pos": clause.pos},
+                "justification": {"premise": {"index": index}},
+            })
+        })
+        .collect();
+    let mut attempts = 0usize;
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let round_len = clauses.len();
+        for positive in 0..round_len {
+            for negative in 0..round_len {
+                let pivots: Vec<usize> = clauses[positive]
+                    .pos
+                    .iter()
+                    .copied()
+                    .filter(|atom| clauses[negative].neg.binary_search(atom).is_ok())
+                    .collect();
+                for atom in pivots {
+                    attempts += 1;
+                    if attempts > 2_000_000 || clauses.len() >= 4096 {
+                        return Ok(None);
+                    }
+                    let mut neg = clauses[positive].neg.clone();
+                    neg.extend(
+                        clauses[negative]
+                            .neg
+                            .iter()
+                            .copied()
+                            .filter(|&candidate| candidate != atom),
+                    );
+                    neg.sort_unstable();
+                    neg.dedup();
+                    let mut pos: Vec<usize> = clauses[positive]
+                        .pos
+                        .iter()
+                        .copied()
+                        .filter(|&candidate| candidate != atom)
+                        .collect();
+                    pos.extend(clauses[negative].pos.iter().copied());
+                    pos.sort_unstable();
+                    pos.dedup();
+                    let resolvent = CbPropClause { neg, pos };
+                    if resolvent.neg.is_empty() && resolvent.pos.is_empty() {
+                        return Ok(None);
+                    }
+                    if seen.insert(resolvent.clone()) {
+                        let clause_index = clauses.len();
+                        clauses.push(resolvent.clone());
+                        trace.push(serde_json::json!({
+                            "clause": {"neg": resolvent.neg, "pos": resolvent.pos},
+                            "justification": {"resolve": {
+                                "positive": positive,
+                                "negative": negative,
+                                "atom": atom,
+                            }},
+                        }));
+                        debug_assert_eq!(clause_index, trace.len() - 1);
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    let premise_json: Vec<serde_json::Value> = premises
+        .iter()
+        .map(|clause| serde_json::json!({"neg": clause.neg, "pos": clause.pos}))
+        .collect();
+    Ok(Some(serde_json::json!({
+        "version": 1,
+        "witness": witness,
+        "saturation": {
+            "version": 1,
+            "atom_count": atom_count,
+            "premises": premise_json,
+            "trace": trace,
+        },
+    })))
+}
+
 /// Build the exact row-major matrix around an already checked live publication.
 /// Positive, reflexive, and bottom-implied cells are complete immediately.
 /// Omitted cells remain explicit `unresolved` evidence and are rejected by the
@@ -2086,6 +2293,10 @@ fn cb_exact_taxonomy_candidate(
                     false,
                     serde_json::json!({"negative": {"witness": 0, "model": model}}),
                 )
+            } else if let Some(countermodel) =
+                cb_blocked_taxonomy_countermodel(live_publication, sub, sup)?
+            {
+                (false, serde_json::json!({"blocked": countermodel}))
             } else {
                 unresolved += 1;
                 (false, serde_json::json!("unresolved"))
@@ -2553,6 +2764,52 @@ mod cb_derivation_candidate_tests {
             .unwrap()
             .expect("a fixed-point-free unary function exists on two elements");
         assert_eq!(model["functions"][1], serde_json::json!([1, 0]));
+    }
+
+    #[test]
+    fn blocked_taxonomy_countermodel_builds_a_closed_resolution_trace() {
+        let publication = serde_json::json!({
+            "derivation": {"production_bound": {
+                "live_state": {"concept_count": 3, "role_count": 0},
+                "global_model": {"blocked_saturation": {"saturation": {
+                    "atom_count": 4,
+                    "premises": [{"neg": [0], "pos": [2]}]
+                }}}
+            }}
+        });
+        let countermodel = cb_blocked_taxonomy_countermodel(&publication, 0, 1)
+            .unwrap()
+            .expect("A implies C remains compatible with A and not-B");
+        assert_eq!(countermodel["witness"], 0);
+        assert_eq!(
+            countermodel["saturation"]["premises"],
+            serde_json::json!([
+                {"neg": [0], "pos": [2]},
+                {"neg": [], "pos": [0]},
+                {"neg": [1], "pos": []}
+            ])
+        );
+        assert!(countermodel["saturation"]["trace"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step["clause"] == serde_json::json!({"neg": [], "pos": [2]})));
+    }
+
+    #[test]
+    fn blocked_taxonomy_countermodel_rejects_a_refuted_query() {
+        let publication = serde_json::json!({
+            "derivation": {"production_bound": {
+                "live_state": {"concept_count": 2, "role_count": 0},
+                "global_model": {"blocked_saturation": {"saturation": {
+                    "atom_count": 3,
+                    "premises": [{"neg": [0], "pos": [1]}]
+                }}}
+            }}
+        });
+        assert!(cb_blocked_taxonomy_countermodel(&publication, 0, 1)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

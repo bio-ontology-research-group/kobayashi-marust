@@ -52,6 +52,8 @@ import ContextCalculus.CBNamedGroundCompleteness
 import ContextCalculus.CBBlockedCarrierWire
 import ContextCalculus.CBFiniteAtomEncoding
 import ContextCalculus.CBBlockedGroundSaturationWire
+import ContextCalculus.CBBlockedTaxonomyCountermodel
+import ContextCalculus.CBBlockedTaxonomyCountermodelWire
 import ContextCalculus.CBHyperClosure
 import ContextCalculus.CBHyperClosureWire
 import ContextCalculus.CBJoin3Closure

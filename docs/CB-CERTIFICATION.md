@@ -510,6 +510,23 @@ nodes. Reaching a bound produces `unresolved`; it never certifies a negative
 cell. The Lean checker still validates every emitted table entry and every
 ground assignment independently, including equality and inequality.
 
+`CBBlockedTaxonomyCountermodel` covers larger finite quotient models without
+requiring an explicit interpretation table. For a proposed negative cell and
+one checked blocked-carrier element, it augments the complete blocked grounding
+with the units `A(w)` and `not B(w)`. The wire requires a resolution certificate
+whose premise set is exactly that augmented grounding and whose saturated
+terminal omits the empty clause. Lean reuses the existing equality-congruence
+quotient and role-chain completeness proof to construct a source model where
+`A` holds and `B` does not, then transports that result to the exact production
+normalized ontology. `WireExactCellEvidence.blocked` exposes this checked form
+to the exact matrix. KM now produces these per-cell certificates by augmenting
+the production-bound blocked premises and computing their full propositional
+resolution closure. The producer stops without publishing if it derives the
+empty clause, exceeds 4,096 clauses, or exceeds 2,000,000 resolution attempts;
+Lean independently checks the exact premise identity, every resolution step,
+closure, and omission of the empty clause. Sources requiring genuinely
+infinite models still need the regular blocked-model evidence form.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the
