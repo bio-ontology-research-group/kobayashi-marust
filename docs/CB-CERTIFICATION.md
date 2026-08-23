@@ -462,6 +462,54 @@ from the production run. Omitted taxonomy cells also remain unproved. Those
 claims require the production global-closure, fairness, and countermodel layer
 below.
 
+`CBLiveExactTaxonomyPublication` now defines the exact-matrix join. Its native
+checker requires a row-major cell for every pair of concepts materialized as
+query contexts. Each true cell must cite reflexivity, an exact live positive
+witness, or the row's exact contradiction witness. Each false cell carries a
+checked countermodel. This reuses production insertion proofs instead of
+duplicating them as standalone traces and gives compact `owl:Nothing` rows
+their full all-superclasses semantic meaning. Lean proves every accepted bit
+exact for the checked normalized ontology. Rust still must generate the
+remaining negative evidence that needs more than one domain element, and full
+SROIQ cases without finite countermodels require a regular/infinite
+blocked-model evidence constructor.
+The capstone transports the cell theorem through the checked source encoding as
+well, so accepted bits denote the typed role-chain, equality, nominal, and
+cardinality semantics rather than only the intermediate clause representation.
+`KM_CB_EXACT_TAXONOMY_CANDIDATE` writes the corresponding row-major artifact
+during certified execution. Rust fills every reflexive, retained-positive, and
+bottom-implied cell with its exact Lean evidence index and marks only the
+remaining negative cells `unresolved`. The exact checker rejects that marker;
+the diagnostic therefore counts the remaining producer obligation without
+weakening certified publication.
+The candidate producer now closes every omitted cell that has a one-element
+model. It reduces the exact nested-term clauses to SAT under the sole-domain
+interpretation, where all terms denote element zero, equality is true, and
+inequality is false. The emitted complete concept, role, constant, and function
+tables are still checked independently by Lean against every source clause and
+the query witness. The diagnostic SAT search has explicit signature and search
+node bounds; exhaustion leaves a cell unresolved rather than publishing a
+negative answer. Larger and regular models remain the open tail.
+
+`KM_CB_EXACT_LEAN_CERT_CHECKER` turns this artifact into a second mandatory
+publication gate. It is valid only together with
+`KM_CB_EXACT_TAXONOMY_CANDIDATE`. KM first writes the live bundle and exact
+matrix, requires the live checker to accept, rejects the matrix locally if any
+cell remains unresolved, and then requires the exact checker to accept. The CB
+answer reaches stdout only after both checkers succeed. This provides an
+end-to-end exact taxonomy boundary for inputs whose negative cells are all
+closed by the current producer, while failing closed on the larger-model tail.
+
+After the one-element reduction, the producer also searches bounded
+two-element interpretations. It enumerates only constant symbols and unary
+function entries referenced by the normalized source, grounds every clause for
+all assignments to the variables that occur in that clause, and uses SAT for
+the concept and role tables. The search refuses more than 256 structural
+interpretations, 5,000 ground instances, 1,024 predicate atoms, or 10,000 DPLL
+nodes. Reaching a bound produces `unresolved`; it never certifies a negative
+cell. The Lean checker still validates every emitted table entry and every
+ground assignment independently, including equality and inequality.
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

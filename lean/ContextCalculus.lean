@@ -64,6 +64,7 @@ import ContextCalculus.CBGlobalClosureWire
 import ContextCalculus.CBGlobalModelWire
 import ContextCalculus.CBLiveInsertionDerivation
 import ContextCalculus.CBLiveTaxonomyPublication
+import ContextCalculus.CBLiveExactTaxonomyPublication
 import ContextCalculus.CBRootPredSendEnumeration
 import ContextCalculus.CBPredCoverageWire
 import ContextCalculus.Checker

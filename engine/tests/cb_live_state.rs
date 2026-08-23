@@ -277,6 +277,108 @@ fn mandatory_lean_rejection_prevents_publication() {
 }
 
 #[test]
+fn exact_lean_mode_requires_a_candidate_path() {
+    let global = snapshot_path("exact-config-global");
+    let bundle = snapshot_path("exact-config-bundle");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_EXACT_LEAN_CERT_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(b"{\"clauses\":[]}")?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("KM_CB_EXACT_TAXONOMY_CANDIDATE is required"));
+    assert!(!bundle.exists());
+    std::fs::remove_file(global).unwrap();
+}
+
+#[test]
+fn exact_lean_rejection_prevents_publication() {
+    let global = snapshot_path("exact-reject-global");
+    let bundle = snapshot_path("exact-reject-bundle");
+    let exact = snapshot_path("exact-reject-candidate");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_EXACT_TAXONOMY_CANDIDATE", &exact)
+        .env("KM_CB_EXACT_LEAN_CERT_CHECKER", "/bin/false")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(
+                br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#,
+            )?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert_eq!(output.status.code(), Some(5));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("exact CB Lean checker rejected"));
+    assert!(bundle.exists());
+    assert!(exact.exists());
+    std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
+    std::fs::remove_file(exact).unwrap();
+}
+
+#[test]
+fn both_lean_checkers_must_accept_before_publication() {
+    let global = snapshot_path("exact-accept-global");
+    let bundle = snapshot_path("exact-accept-bundle");
+    let exact = snapshot_path("exact-accept-candidate");
+    std::fs::write(&global, b"{}\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_kobayashi-marust"))
+        .env("KM_CB_LEAN_REQUIRED", "1")
+        .env("KM_CB_GLOBAL_MODEL_CERT", &global)
+        .env("KM_CB_LEAN_CERT_CHECKER", "/bin/true")
+        .env("KM_CB_CERT_BUNDLE", &bundle)
+        .env("KM_CB_EXACT_TAXONOMY_CANDIDATE", &exact)
+        .env("KM_CB_EXACT_LEAN_CERT_CHECKER", "/bin/true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(
+                br#"{"clauses":[{"body":[],"head":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}]}]}"#,
+            )?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.stdout.is_empty());
+    let matrix: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&exact).unwrap()).unwrap();
+    assert_eq!(matrix["version"], 1);
+    assert_eq!(matrix["cells"].as_array().unwrap().len(), 1);
+    assert_eq!(matrix["cells"][0]["evidence"], "reflexive");
+    std::fs::remove_file(global).unwrap();
+    std::fs::remove_file(bundle).unwrap();
+    std::fs::remove_file(exact).unwrap();
+}
+
+#[test]
 fn provenance_schedule_preserves_the_uncertified_answer() {
     // Exercise the two query optimizations deliberately bypassed by certified
     // mode: A/B form a unit-equivalence SCC and C is promoted to bottom.

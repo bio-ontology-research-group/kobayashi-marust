@@ -4,6 +4,36 @@
 
 ### Advance the CB semantic refinement
 
+- Add `CBLiveExactTaxonomyPublication`, the production-bound exact-matrix
+  capstone for CB. Every row-major cell over the materialized query concepts
+  must cite reflexivity, an exact live positive, an exact unsatisfiable-row
+  contradiction, or a checked countermodel. This reuses the chronological
+  production proof instead of duplicating positive derivations and expands
+  compact bottom rows to their semantic all-superclasses meaning. Lean proves
+  every accepted bit exact for the normalized ontology. The native checker
+  builds without `sorryAx`. KM can now write this matrix through
+  `KM_CB_EXACT_TAXONOMY_CANDIDATE`: reflexive, live-positive, and bottom-implied
+  cells are filled automatically, while omitted cells carry a fail-closed
+  `unresolved` marker and are counted. Automatic negative-evidence generation
+  and a regular/infinite model constructor remain open, so this is local
+  integrated work rather than a release.
+  The producer now fills omitted cells that have a one-element countermodel by
+  solving the exact sole-domain propositional reduction. It emits complete
+  concept, role, constant, and function tables, which Lean independently checks
+  against every normalized clause and the failed subsumption witness. Cells
+  needing larger or regular models remain unresolved. Setting
+  `KM_CB_EXACT_LEAN_CERT_CHECKER` now adds the exact checker to mandatory CB
+  publication: KM requires an exact-candidate path, refuses any unresolved
+  cell, and publishes only after both the live derivation checker and the exact
+  matrix checker accept. Process-level tests cover missing configuration,
+  checker rejection, and successful dual-checker publication.
+  The bounded producer now tries two-element models after the sole-domain
+  reduction. It enumerates referenced constant and unary-function tables,
+  grounds each clause over all values of its actual variables, and solves the
+  remaining concept and role tables propositionally. Explicit caps on table
+  interpretations, ground instances, atoms, and DPLL nodes leave expensive
+  cells unresolved. Emitted two-element models remain subject to the same
+  independent Lean table and source-ontology check.
 - Bind the mandatory CB certificate to the exact grouped taxonomy that the CLI
   serializes. The production document now carries the concept-name interner,
   one unique row per public subject, every positive cell, every unsatisfiable

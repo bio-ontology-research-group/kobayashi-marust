@@ -213,6 +213,10 @@ structure DecodedLiveTaxonomyPublication where
     (rProduction derivation.live.global.global.rsucc).source.bounds.concepts
   concept_names_nodup : conceptNames.Nodup
   row_subjects_nodup : (publicRows.map (·.sub)).Nodup
+  row_subjects_exact : (publicRows.map (·.sub)).toFinset =
+    (derivation.live.contexts.filterMap fun context =>
+      ((rProduction derivation.live.global.global.rsucc).contexts.get
+        context.contextIndex).queryConcept).toFinset
   row_ids_bounded : ∀ row ∈ publicRows,
     row.sub < (rProduction derivation.live.global.global.rsucc).source.bounds.concepts ∧
     ∀ sup ∈ row.supers,
@@ -265,6 +269,11 @@ def WireLiveTaxonomyPublication.decode
   if hnamesLength : wire.concept_names.length = concepts then
     if hnamesNodup : wire.concept_names.Nodup then
       if hsubjects : (wire.public_rows.map (·.sub)).Nodup then
+        let queriedConcepts := derivation.live.contexts.filterMap fun context =>
+          ((rProduction derivation.live.global.global.rsucc).contexts.get
+            context.contextIndex).queryConcept
+        if hsubjectsExact : (wire.public_rows.map (·.sub)).toFinset =
+            queriedConcepts.toFinset then
         if hbounds : ∀ row ∈ wire.public_rows,
             row.sub < concepts ∧ ∀ sup ∈ row.supers, sup < concepts then
           if hpositive :
@@ -285,6 +294,7 @@ def WireLiveTaxonomyPublication.decode
                 concept_names_length := hnamesLength
                 concept_names_nodup := hnamesNodup
                 row_subjects_nodup := hsubjects
+                row_subjects_exact := hsubjectsExact
                 row_ids_bounded := hbounds
                 positive_rows_exact := hpositive
                 unsatisfiable_rows_exact := hunsatisfiable
@@ -292,6 +302,7 @@ def WireLiveTaxonomyPublication.decode
             else throw "live CB unsatisfiable witnesses do not equal the public rows"
           else throw "live CB positive witnesses do not equal the public rows"
         else throw "live CB public row contains an out-of-bounds concept id"
+        else throw "live CB public rows differ from the materialized query contexts"
       else throw "live CB public taxonomy contains duplicate subject rows"
     else throw "live CB concept-name table contains duplicates"
   else throw "live CB concept-name table has the wrong length"

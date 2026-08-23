@@ -1327,6 +1327,14 @@ fn verify_cb_lean_publication(
     let bundle_path = std::env::var_os("KM_CB_CERT_BUNDLE")
         .ok_or_else(|| "KM_CB_CERT_BUNDLE is required".to_string())?;
     let derivation_candidate_path = std::env::var_os("KM_CB_DERIVATION_CANDIDATE");
+    let exact_candidate_path = std::env::var_os("KM_CB_EXACT_TAXONOMY_CANDIDATE");
+    let exact_checker = std::env::var_os("KM_CB_EXACT_LEAN_CERT_CHECKER");
+    if exact_checker.is_some() && exact_candidate_path.is_none() {
+        return Err(
+            "KM_CB_EXACT_TAXONOMY_CANDIDATE is required with KM_CB_EXACT_LEAN_CERT_CHECKER"
+                .to_string(),
+        );
+    }
 
     let global_bytes = std::fs::read(&global_path).map_err(|error| {
         format!(
@@ -1476,6 +1484,28 @@ fn verify_cb_lean_publication(
             .map_err(|error| format!("cannot flush CB derivation candidate: {error}"))?;
     }
 
+    let mut exact_unresolved = None;
+    if let Some(candidate_path) = exact_candidate_path.as_ref() {
+        let (candidate, unresolved) = cb_exact_taxonomy_candidate(&certificate)?;
+        let file = std::fs::File::create(&candidate_path).map_err(|error| {
+            format!(
+                "cannot create exact CB taxonomy candidate {}: {error}",
+                std::path::Path::new(&candidate_path).display()
+            )
+        })?;
+        let mut writer = std::io::BufWriter::new(file);
+        serde_json::to_writer(&mut writer, &candidate)
+            .map_err(|error| format!("cannot serialize exact CB taxonomy candidate: {error}"))?;
+        writer
+            .write_all(b"\n")
+            .map_err(|error| format!("cannot finish exact CB taxonomy candidate: {error}"))?;
+        writer
+            .flush()
+            .map_err(|error| format!("cannot flush exact CB taxonomy candidate: {error}"))?;
+        eprintln!("KM_CB_CERT exact taxonomy unresolved_negative_cells={unresolved}");
+        exact_unresolved = Some(unresolved);
+    }
+
     let status = std::process::Command::new(&checker)
         .arg(&bundle_path)
         .stdout(std::process::Stdio::null())
@@ -1486,11 +1516,37 @@ fn verify_cb_lean_publication(
                 std::path::Path::new(&checker).display()
             )
         })?;
-    if status.success() {
-        Ok(public_answer)
-    } else {
-        Err(format!("CB Lean checker rejected the bundle with {status}"))
+    if !status.success() {
+        return Err(format!("CB Lean checker rejected the bundle with {status}"));
     }
+    if let Some(exact_checker) = exact_checker {
+        let unresolved = exact_unresolved
+            .ok_or_else(|| "exact CB checker has no generated matrix".to_string())?;
+        if unresolved != 0 {
+            return Err(format!(
+                "exact CB taxonomy has {unresolved} unresolved negative cells"
+            ));
+        }
+        let exact_path = exact_candidate_path
+            .as_ref()
+            .ok_or_else(|| "exact CB checker has no candidate path".to_string())?;
+        let status = std::process::Command::new(&exact_checker)
+            .arg(exact_path)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|error| {
+                format!(
+                    "cannot run exact CB Lean checker {}: {error}",
+                    std::path::Path::new(&exact_checker).display()
+                )
+            })?;
+        if !status.success() {
+            return Err(format!(
+                "exact CB Lean checker rejected the matrix with {status}"
+            ));
+        }
+    }
+    Ok(public_answer)
 }
 
 fn cb_live_inconsistency_witness(
@@ -1514,6 +1570,546 @@ fn cb_live_inconsistency_witness(
         }
     }
     Err("published CB inconsistency has no empty-core retained contradiction".to_string())
+}
+
+fn cb_dpll(clauses: &[Vec<i32>], atom_count: usize) -> Option<Vec<i8>> {
+    fn search(clauses: &[Vec<i32>], assignment: &mut [i8], nodes: &mut usize) -> bool {
+        *nodes += 1;
+        if *nodes > 10_000 {
+            return false;
+        }
+        loop {
+            let mut changed = false;
+            for clause in clauses {
+                let mut satisfied = false;
+                let mut open = 0usize;
+                let mut unit = 0i32;
+                for &literal in clause {
+                    let atom = literal.unsigned_abs() as usize - 1;
+                    let value = assignment[atom];
+                    if value == 0 {
+                        open += 1;
+                        unit = literal;
+                    } else if (literal > 0 && value > 0) || (literal < 0 && value < 0) {
+                        satisfied = true;
+                        break;
+                    }
+                }
+                if satisfied {
+                    continue;
+                }
+                if open == 0 {
+                    return false;
+                }
+                if open == 1 {
+                    let atom = unit.unsigned_abs() as usize - 1;
+                    let value = if unit > 0 { 1 } else { -1 };
+                    if assignment[atom] == -value {
+                        return false;
+                    }
+                    if assignment[atom] == 0 {
+                        assignment[atom] = value;
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let Some(atom) = assignment.iter().position(|&value| value == 0) else {
+            return true;
+        };
+        let checkpoint = assignment.to_vec();
+        assignment[atom] = -1;
+        if search(clauses, assignment, nodes) {
+            return true;
+        }
+        assignment.copy_from_slice(&checkpoint);
+        assignment[atom] = 1;
+        if search(clauses, assignment, nodes) {
+            return true;
+        }
+        assignment.copy_from_slice(&checkpoint);
+        false
+    }
+
+    // Keep the diagnostic producer stack-safe on signatures that need a more
+    // capable SAT/model backend. Such cells remain explicitly unresolved.
+    if atom_count > 1024 {
+        return None;
+    }
+    let mut assignment = vec![0i8; atom_count];
+    let mut nodes = 0usize;
+    search(clauses, &mut assignment, &mut nodes).then_some(assignment)
+}
+
+fn cb_finite_countermodel(
+    live_state: &serde_json::Value,
+    sub: usize,
+    sup: usize,
+    domain_size: usize,
+) -> Result<Option<serde_json::Value>, String> {
+    if domain_size == 0 {
+        return Err("CB finite countermodel domain must be nonempty".to_string());
+    }
+    let count = |field: &str| -> Result<usize, String> {
+        live_state
+            .get(field)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| format!("CB live state has no numeric {field}"))
+    };
+    let concept_count = count("concept_count")?;
+    let role_count = count("role_count")?;
+    let function_count = count("function_count")?;
+    let individual_count = count("source_individual_count")?;
+    if sub >= concept_count || sup >= concept_count {
+        return Err("CB exact query coordinate exceeds the live concept bound".to_string());
+    }
+    let concept_atoms = concept_count
+        .checked_mul(domain_size)
+        .ok_or_else(|| "CB finite concept atom count overflow".to_string())?;
+    let role_width = domain_size
+        .checked_mul(domain_size)
+        .ok_or_else(|| "CB finite role width overflow".to_string())?;
+    let atom_count = role_count
+        .checked_mul(role_width)
+        .and_then(|roles| concept_atoms.checked_add(roles))
+        .ok_or_else(|| "CB finite atom count overflow".to_string())?;
+    let ontology = live_state
+        .get("source_ontology")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "CB live state has no source_ontology array".to_string())?;
+    let bits = live_state
+        .get("comp_ind_bits")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(crate::calc::COMP_IND_BITS);
+    if !(1..32).contains(&bits) {
+        return Err("CB live packed-individual width is outside 1..31".to_string());
+    }
+
+    let decode_term = |raw: u32| -> Result<(Option<usize>, Option<usize>), String> {
+        if raw <= crate::calc::X {
+            return Ok((None, None));
+        }
+        if raw < crate::calc::FTERM_BASE {
+            let individual = usize::try_from(raw - crate::calc::X)
+                .map_err(|_| "CB individual id exceeds usize".to_string())?;
+            if individual >= individual_count {
+                return Err("CB live individual term exceeds its bound".to_string());
+            }
+            return Ok((Some(individual), None));
+        }
+        let function = if raw < crate::calc::COMP_BASE {
+            usize::try_from(raw - crate::calc::FTERM_BASE)
+                .map_err(|_| "CB function id exceeds usize".to_string())?
+        } else {
+            usize::try_from((raw - crate::calc::COMP_BASE) >> bits)
+                .map_err(|_| "CB composite function id exceeds usize".to_string())?
+        };
+        if function >= function_count {
+            return Err("CB live function term exceeds its bound".to_string());
+        }
+        Ok((None, Some(function)))
+    };
+
+    let mut referenced_constants = std::collections::BTreeSet::new();
+    let mut referenced_functions = std::collections::BTreeSet::new();
+    for source in ontology {
+        for literal in source
+            .get("body")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .chain(
+                source
+                    .get("head")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten(),
+            )
+        {
+            for field in ["first", "second"] {
+                let Some(raw) = literal
+                    .get(field)
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok())
+                else {
+                    continue;
+                };
+                let (constant, function) = decode_term(raw)?;
+                if let Some(constant) = constant {
+                    referenced_constants.insert(constant);
+                }
+                if let Some(function) = function {
+                    referenced_functions.insert(function);
+                }
+                if raw >= crate::calc::COMP_BASE {
+                    let radix = 1u32 << bits;
+                    let individual = usize::try_from((raw - crate::calc::COMP_BASE) % radix)
+                        .map_err(|_| "CB composite individual id exceeds usize".to_string())?;
+                    if individual >= individual_count {
+                        return Err("CB live composite individual exceeds its bound".to_string());
+                    }
+                    referenced_constants.insert(individual);
+                }
+            }
+        }
+    }
+    let mut structural_slots = Vec::new();
+    structural_slots.extend(referenced_constants.into_iter().map(|id| (false, id, 0)));
+    for function in referenced_functions {
+        for argument in 0..domain_size {
+            structural_slots.push((true, function, argument));
+        }
+    }
+    let structural_count = domain_size
+        .checked_pow(
+            u32::try_from(structural_slots.len())
+                .map_err(|_| "CB structural slot count exceeds u32".to_string())?,
+        )
+        .unwrap_or(usize::MAX)
+        .min(257);
+    if structural_count > 256 {
+        return Ok(None);
+    }
+
+    for structural_index in 0..structural_count {
+        let mut constants = vec![0usize; individual_count];
+        let mut functions = vec![vec![0usize; domain_size]; function_count];
+        let mut digits = structural_index;
+        for &(is_function, symbol, argument) in &structural_slots {
+            let value = digits % domain_size;
+            digits /= domain_size;
+            if is_function {
+                functions[symbol][argument] = value;
+            } else {
+                constants[symbol] = value;
+            }
+        }
+
+        let eval_term = |raw: u32, variables: &std::collections::HashMap<u32, usize>| {
+            if raw <= crate::calc::X {
+                return variables
+                    .get(&raw)
+                    .copied()
+                    .ok_or_else(|| "CB finite grounding omits a variable".to_string());
+            }
+            if raw < crate::calc::FTERM_BASE {
+                return Ok(constants[(raw - crate::calc::X) as usize]);
+            }
+            if raw < crate::calc::COMP_BASE {
+                let function = (raw - crate::calc::FTERM_BASE) as usize;
+                let argument = variables
+                    .get(&crate::calc::X)
+                    .copied()
+                    .ok_or_else(|| "CB function term has no central-variable value".to_string())?;
+                return Ok(functions[function][argument]);
+            }
+            let packed = raw - crate::calc::COMP_BASE;
+            let radix = 1u32 << bits;
+            let function = (packed / radix) as usize;
+            let individual = (packed % radix) as usize;
+            Ok(functions[function][constants[individual]])
+        };
+
+        let mut clauses = Vec::with_capacity(ontology.len() + 2);
+        let mut ground_instances = 0usize;
+        for source in ontology {
+            let body = source
+                .get("body")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB live source clause has no body array".to_string())?;
+            let head = source
+                .get("head")
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| "CB live source clause has no head array".to_string())?;
+            let mut variable_ids = std::collections::BTreeSet::new();
+            for literal in body.iter().chain(head) {
+                for field in ["first", "second"] {
+                    if let Some(raw) = literal
+                        .get(field)
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|value| u32::try_from(value).ok())
+                        .filter(|&raw| raw <= crate::calc::X)
+                    {
+                        variable_ids.insert(raw);
+                    }
+                }
+            }
+            let variable_ids: Vec<u32> = variable_ids.into_iter().collect();
+            let valuation_count = domain_size
+                .checked_pow(
+                    u32::try_from(variable_ids.len())
+                        .map_err(|_| "CB variable count exceeds u32".to_string())?,
+                )
+                .unwrap_or(usize::MAX);
+            ground_instances = ground_instances.saturating_add(valuation_count);
+            if ground_instances > 5_000 {
+                return Ok(None);
+            }
+            for valuation_index in 0..valuation_count {
+                let mut values = valuation_index;
+                let variables: std::collections::HashMap<u32, usize> = variable_ids
+                    .iter()
+                    .map(|&raw| {
+                        let value = values % domain_size;
+                        values /= domain_size;
+                        (raw, value)
+                    })
+                    .collect();
+                let mut clause = Vec::with_capacity(body.len() + head.len());
+                let mut tautology = false;
+                let mut push_literal =
+                    |literal: &serde_json::Value, positive: bool| -> Result<(), String> {
+                        let kind = literal
+                            .get("kind")
+                            .and_then(serde_json::Value::as_str)
+                            .ok_or_else(|| "CB live literal has no kind".to_string())?;
+                        let first = literal
+                            .get("first")
+                            .and_then(serde_json::Value::as_u64)
+                            .and_then(|value| u32::try_from(value).ok())
+                            .ok_or_else(|| "CB live literal has no first term".to_string())?;
+                        let first = eval_term(first, &variables)?;
+                        let truth_atom = match kind {
+                            "concept" => {
+                                let iri = literal
+                                    .get("iri")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .and_then(|value| usize::try_from(value).ok())
+                                    .ok_or_else(|| "CB concept literal has no iri".to_string())?;
+                                if iri >= concept_count {
+                                    return Err("CB live concept literal exceeds its bound".to_string());
+                                }
+                                Some(iri * domain_size + first)
+                            }
+                            "role" => {
+                                let iri = literal
+                                    .get("iri")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .and_then(|value| usize::try_from(value).ok())
+                                    .ok_or_else(|| "CB role literal has no iri".to_string())?;
+                                if iri >= role_count {
+                                    return Err("CB live role literal exceeds its bound".to_string());
+                                }
+                                let second = literal
+                                    .get("second")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .and_then(|value| u32::try_from(value).ok())
+                                    .ok_or_else(|| "CB role literal has no second term".to_string())?;
+                                let second = eval_term(second, &variables)?;
+                                Some(concept_atoms + iri * role_width + first * domain_size + second)
+                            }
+                            "equality" | "inequality" => {
+                                let second = literal
+                                    .get("second")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .and_then(|value| u32::try_from(value).ok())
+                                    .ok_or_else(|| format!("CB {kind} literal has no second term"))?;
+                                let equal = first == eval_term(second, &variables)?;
+                                let true_now = if kind == "equality" { equal } else { !equal };
+                                if true_now == positive {
+                                    tautology = true;
+                                }
+                                None
+                            }
+                            other => return Err(format!("unsupported CB live literal kind {other}")),
+                        };
+                        if let Some(atom) = truth_atom {
+                            let encoded = i32::try_from(atom + 1)
+                                .map_err(|_| "CB finite atom id exceeds i32".to_string())?;
+                            clause.push(if positive { encoded } else { -encoded });
+                        }
+                        Ok(())
+                    };
+                for literal in body {
+                    push_literal(literal, false)?;
+                }
+                for literal in head {
+                    push_literal(literal, true)?;
+                }
+                if tautology {
+                    continue;
+                }
+                clause.sort_unstable();
+                clause.dedup();
+                if clause.windows(2).any(|pair| pair[0] == -pair[1]) {
+                    continue;
+                }
+                clauses.push(clause);
+            }
+        }
+        clauses.push(vec![i32::try_from(sub * domain_size + 1)
+            .map_err(|_| "CB query concept atom exceeds i32".to_string())?]);
+        clauses.push(vec![-i32::try_from(sup * domain_size + 1)
+            .map_err(|_| "CB query superclass atom exceeds i32".to_string())?]);
+        let Some(assignment) = cb_dpll(&clauses, atom_count) else {
+            continue;
+        };
+        let concepts: Vec<Vec<bool>> = (0..concept_count)
+            .map(|concept| {
+                (0..domain_size)
+                    .map(|element| assignment[concept * domain_size + element] > 0)
+                    .collect()
+            })
+            .collect();
+        let roles: Vec<Vec<Vec<bool>>> = (0..role_count)
+            .map(|role| {
+                (0..domain_size)
+                    .map(|source| {
+                        (0..domain_size)
+                            .map(|target| {
+                                assignment[concept_atoms
+                                    + role * role_width
+                                    + source * domain_size
+                                    + target]
+                                    > 0
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect();
+        return Ok(Some(serde_json::json!({
+            "domain_size": domain_size,
+            "concepts": concepts,
+            "roles": roles,
+            "constants": constants,
+            "functions": functions,
+        })));
+    }
+    Ok(None)
+}
+
+fn cb_one_element_countermodel(
+    live_state: &serde_json::Value,
+    sub: usize,
+    sup: usize,
+) -> Result<Option<serde_json::Value>, String> {
+    cb_finite_countermodel(live_state, sub, sup, 1)
+}
+
+/// Build the exact row-major matrix around an already checked live publication.
+/// Positive, reflexive, and bottom-implied cells are complete immediately.
+/// Omitted cells remain explicit `unresolved` evidence and are rejected by the
+/// Lean exact checker until a finite or regular countermodel producer fills
+/// them. This diagnostic artifact measures the real remaining obligation.
+fn cb_exact_taxonomy_candidate(
+    live_publication: &serde_json::Value,
+) -> Result<(serde_json::Value, usize), String> {
+    let live_state = live_publication
+        .pointer("/derivation/production_bound/live_state")
+        .ok_or_else(|| "live CB publication has no production live state".to_string())?;
+    let rows = live_publication
+        .get("public_rows")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no public_rows array".to_string())?;
+    let positives = live_publication
+        .get("public_subsumptions")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no public_subsumptions array".to_string())?;
+    let unsatisfiable = live_publication
+        .get("unsatisfiable")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "live CB publication has no unsatisfiable array".to_string())?;
+
+    let mut named = Vec::with_capacity(rows.len());
+    for row in rows {
+        let sub = row
+            .get("sub")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "live CB public row has no numeric subject".to_string())?;
+        let sub = usize::try_from(sub)
+            .map_err(|_| "live CB public row subject exceeds usize".to_string())?;
+        if named.contains(&sub) {
+            return Err("live CB public rows contain a duplicate subject".to_string());
+        }
+        named.push(sub);
+    }
+
+    let mut positive_index = std::collections::HashMap::new();
+    for (index, cell) in positives.iter().enumerate() {
+        let sub = cell
+            .get("sub")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live CB positive cell has no numeric subclass".to_string())?;
+        let sup = cell
+            .get("sup")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live CB positive cell has no numeric superclass".to_string())?;
+        if positive_index.insert((sub, sup), index).is_some() {
+            return Err("live CB positive cells contain a duplicate coordinate".to_string());
+        }
+    }
+
+    let mut unsatisfiable_index = std::collections::HashMap::new();
+    for (index, row) in unsatisfiable.iter().enumerate() {
+        let sub = row
+            .get("sub")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| "live CB unsatisfiable row has no numeric subject".to_string())?;
+        if unsatisfiable_index.insert(sub, index).is_some() {
+            return Err("live CB unsatisfiable rows contain a duplicate subject".to_string());
+        }
+    }
+
+    let mut published = Vec::with_capacity(named.len().saturating_mul(named.len()));
+    let mut cells = Vec::with_capacity(named.len().saturating_mul(named.len()));
+    let mut unresolved = 0usize;
+    for &sub in &named {
+        for &sup in &named {
+            let (answer, evidence) = if sub == sup {
+                (true, serde_json::json!("reflexive"))
+            } else if let Some(&index) = unsatisfiable_index.get(&sub) {
+                (
+                    true,
+                    serde_json::json!({"unsatisfiable": {"live_index": index}}),
+                )
+            } else if let Some(&index) = positive_index.get(&(sub, sup)) {
+                (
+                    true,
+                    serde_json::json!({"positive": {"live_index": index}}),
+                )
+            } else if let Some(model) = cb_one_element_countermodel(live_state, sub, sup)? {
+                (
+                    false,
+                    serde_json::json!({"negative": {"witness": 0, "model": model}}),
+                )
+            } else if let Some(model) = cb_finite_countermodel(live_state, sub, sup, 2)? {
+                (
+                    false,
+                    serde_json::json!({"negative": {"witness": 0, "model": model}}),
+                )
+            } else {
+                unresolved += 1;
+                (false, serde_json::json!("unresolved"))
+            };
+            published.push(answer);
+            cells.push(serde_json::json!({
+                "sub": sub,
+                "sup": sup,
+                "answer": answer,
+                "evidence": evidence,
+            }));
+        }
+    }
+
+    Ok((
+        serde_json::json!({
+            "version": 1,
+            "live": live_publication,
+            "named_concepts": named,
+            "published": published,
+            "cells": cells,
+        }),
+        unresolved,
+    ))
 }
 
 /// Translate the exact grouped answer into the semantic ids and live-context
@@ -1805,6 +2401,158 @@ mod cb_derivation_candidate_tests {
         );
         live.contexts[0].retained_clause_ids.clear();
         assert!(cb_live_inconsistency_witness(&live).is_err());
+    }
+
+    #[test]
+    fn exact_taxonomy_candidate_reuses_live_evidence_and_marks_only_negatives() {
+        let live = serde_json::json!({
+            "version": 1,
+            "derivation": {"production_bound": {"live_state": {
+                "concept_count": 3,
+                "role_count": 0,
+                "function_count": 0,
+                "source_individual_count": 0,
+                "source_ontology": [{
+                    "body": [{"kind": "concept", "iri": 0,
+                        "first": crate::calc::X, "second": null}],
+                    "head": [{"kind": "concept", "iri": 1,
+                        "first": crate::calc::X, "second": null}]
+                }]
+            }}},
+            "public_rows": [
+                {"sub": 0, "supers": [1], "unsatisfiable": false},
+                {"sub": 1, "supers": [], "unsatisfiable": false},
+                {"sub": 2, "supers": [], "unsatisfiable": true}
+            ],
+            "public_subsumptions": [
+                {"sub": 0, "sup": 1, "context_index": 0}
+            ],
+            "unsatisfiable": [
+                {"sub": 2, "context_index": 2}
+            ]
+        });
+        let (candidate, unresolved) = cb_exact_taxonomy_candidate(&live).unwrap();
+        assert_eq!(candidate["named_concepts"], serde_json::json!([0, 1, 2]));
+        assert_eq!(candidate["cells"].as_array().unwrap().len(), 9);
+        assert_eq!(unresolved, 0, "all three omitted cells have one-element models");
+        assert_eq!(candidate["cells"][0]["evidence"], "reflexive");
+        assert_eq!(
+            candidate["cells"][1]["evidence"],
+            serde_json::json!({"positive": {"live_index": 0}})
+        );
+        assert!(candidate["cells"][2]["evidence"]["negative"]["model"]
+            .is_object());
+        assert_eq!(
+            candidate["cells"][6]["evidence"],
+            serde_json::json!({"unsatisfiable": {"live_index": 0}})
+        );
+        assert_eq!(candidate["cells"][8]["evidence"], "reflexive");
+
+        let duplicate = serde_json::json!({
+            "derivation": {"production_bound": {"live_state": {}}},
+            "public_rows": [{"sub": 0}, {"sub": 0}],
+            "public_subsumptions": [],
+            "unsatisfiable": []
+        });
+        assert!(cb_exact_taxonomy_candidate(&duplicate)
+            .unwrap_err()
+            .contains("duplicate subject"));
+    }
+
+    #[test]
+    fn one_element_countermodel_respects_equality_and_inequality_truth() {
+        let state = serde_json::json!({
+            "concept_count": 2,
+            "role_count": 1,
+            "function_count": 1,
+            "source_individual_count": 1,
+            "source_ontology": [
+                {"body": [{"kind": "equality", "iri": null,
+                    "first": crate::calc::X, "second": crate::calc::X}],
+                 "head": [{"kind": "concept", "iri": 0,
+                    "first": crate::calc::X, "second": null}]},
+                {"body": [{"kind": "inequality", "iri": null,
+                    "first": crate::calc::X, "second": crate::calc::X}],
+                 "head": []},
+                {"body": [],
+                 "head": [{"kind": "equality", "iri": null,
+                    "first": crate::calc::X, "second": crate::calc::FTERM_BASE}]}
+            ]
+        });
+        let model = cb_one_element_countermodel(&state, 0, 1)
+            .unwrap()
+            .expect("A and not-B have a one-element model");
+        assert_eq!(model["domain_size"], 1);
+        assert_eq!(model["concepts"], serde_json::json!([[true], [false]]));
+        assert_eq!(model["roles"], serde_json::json!([[[false]]]));
+        assert_eq!(model["constants"], serde_json::json!([0]));
+        assert_eq!(model["functions"], serde_json::json!([[0]]));
+
+        let impossible = serde_json::json!({
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "source_individual_count": 0,
+            "source_ontology": [{
+                "body": [{"kind": "concept", "iri": 0,
+                    "first": crate::calc::X, "second": null}],
+                "head": [{"kind": "inequality", "iri": null,
+                    "first": crate::calc::X, "second": crate::calc::X}]
+            }]
+        });
+        assert!(cb_one_element_countermodel(&impossible, 0, 1)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn two_element_countermodel_closes_a_genuine_inequality_model() {
+        let first = crate::calc::X + 1;
+        let second = crate::calc::X + 2;
+        let state = serde_json::json!({
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 0,
+            "source_individual_count": 3,
+            "source_ontology": [{
+                "body": [],
+                "head": [{"kind": "inequality", "iri": null,
+                    "first": first, "second": second}]
+            }]
+        });
+        assert!(cb_finite_countermodel(&state, 0, 1, 1)
+            .unwrap()
+            .is_none());
+        let model = cb_finite_countermodel(&state, 0, 1, 2)
+            .unwrap()
+            .expect("two distinct constants need and admit two elements");
+        assert_eq!(model["domain_size"], 2);
+        assert_ne!(model["constants"][1], model["constants"][2]);
+        assert_eq!(model["concepts"][0][0], true);
+        assert_eq!(model["concepts"][1][0], false);
+    }
+
+    #[test]
+    fn two_element_countermodel_grounds_functions_over_every_value() {
+        let state = serde_json::json!({
+            "concept_count": 2,
+            "role_count": 0,
+            "function_count": 2,
+            "source_individual_count": 0,
+            "source_ontology": [{
+                "body": [],
+                "head": [{"kind": "inequality", "iri": null,
+                    "first": crate::calc::X,
+                    "second": crate::calc::FTERM_BASE + 1}]
+            }]
+        });
+        assert!(cb_finite_countermodel(&state, 0, 1, 1)
+            .unwrap()
+            .is_none());
+        let model = cb_finite_countermodel(&state, 0, 1, 2)
+            .unwrap()
+            .expect("a fixed-point-free unary function exists on two elements");
+        assert_eq!(model["functions"][1], serde_json::json!([1, 0]));
     }
 
     #[test]
