@@ -276,6 +276,14 @@ claim that the layer is already complete.
   transitivity as the two-edge special case. This removes the role-chain gap in
   the source-level CB completeness theorem. Connecting the production terminal
   state to this concrete ground set remains a refinement obligation.
+- `CBNamedGroundCompleteness` separates the source individual-name type from
+  the finite blocked carrier used by grounding. It maps source names into the
+  carrier, proves every source constructor and role chain is invariant under
+  that relabelling, applies the complete quotient construction, and restricts
+  the resulting naming interpretation back to the original source table. The
+  production term universe now includes every declared source constant even
+  when it is absent from all clauses, so this name embedding is total. This
+  corrects the former type-level conflation between names and blocked terms.
 - `CBRootPredSendEnumeration` specifies the x-free nominal r-Pred sender scan.
   It allows different individual-labelled edges of one receiving source to
   discharge different body predicates, checks that every non-fresh individual

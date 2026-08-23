@@ -201,6 +201,10 @@
   theorem through arbitrary role chains. Ground every finite path assignment,
   prove the quotient model satisfies each chain, and derive model existence for
   the complete typed CB source when its combined grounding is clash-free.
+- Separate source individual names from the finite blocked grounding carrier.
+  Prove semantic preservation under a name embedding and transport the quotient
+  model back to the original source signature. Include every declared source
+  constant in the checked production term universe, including unused names.
 - Lift the Nom covering theorem from one firing to a finite family with
   disjoint fresh-name blocks. Prove by a finite Boolean counterexample that
   independent one-firing witnesses cannot generally share one block. This

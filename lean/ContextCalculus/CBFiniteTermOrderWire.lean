@@ -38,8 +38,18 @@ def productionTerms (factor : DecodedLocalFactorClosureDocument) : List FTerm :=
   let production :=
     factor.localResolution.terminal.sendCoverage.interContext.base.production
   ((production.source.ontology.flatMap clauseTerms) ++
-    production.contexts.flatMap fun context =>
-      context.retained.flatMap clauseTerms).eraseDups
+    (production.contexts.flatMap fun context =>
+      context.retained.flatMap clauseTerms) ++
+    (List.range production.source.bounds.individuals).map FTerm.const).eraseDups
+
+theorem sourceIndividual_mem_productionTerms
+    (factor : DecodedLocalFactorClosureDocument)
+    (individual : Fin (factor.localResolution.terminal.sendCoverage.interContext.base.production.source.bounds.individuals)) :
+    FTerm.const individual.val ∈ productionTerms factor := by
+  unfold productionTerms
+  apply List.mem_eraseDups.mpr
+  simp only [List.mem_append, List.mem_map, List.mem_range]
+  exact Or.inr ⟨individual.val, individual.isLt, rfl⟩
 
 structure WireFiniteTermOrderDocument where
   version : Nat
