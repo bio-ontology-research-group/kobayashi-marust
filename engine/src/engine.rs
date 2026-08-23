@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 use thin_vec::ThinVec;
+use serde::Serialize;
 
 use crate::calc::*;
 use crate::clause::*;
@@ -3161,6 +3162,128 @@ pub struct Engine {
     /// context arises (and gets the same seed) across the fresh-engine-per-branch
     /// runs. Empty in the default (non-split) path.
     branch_decisions: HashMap<Vec<Pred>, Vec<Iri>>,
+}
+
+/// Stable, deterministic production snapshot used to construct the nested CB
+/// certificate.  These are live engine values, not counters reconstructed by
+/// the certificate producer.  Predicate and term ids remain in KM's compact
+/// runtime representation here; the wire adapter performs the checked
+/// conversion to Lean's nested terms.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLivePred {
+    pub kind: &'static str,
+    pub iri: Iri,
+    pub first: Term,
+    pub second: Option<Term>,
+}
+
+impl From<Pred> for CbLivePred {
+    fn from(predicate: Pred) -> Self {
+        match predicate {
+            Pred::Concept { iri, t } => Self {
+                kind: "concept",
+                iri,
+                first: t,
+                second: None,
+            },
+            Pred::Role { iri, s, t } => Self {
+                kind: "role",
+                iri,
+                first: s,
+                second: Some(t),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLivePredecessorEdge {
+    pub predecessor_context: usize,
+    pub label: Term,
+    pub pushed: Vec<CbLivePred>,
+    pub pred_pool_seen: Vec<u32>,
+    pub edge_seen: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveSuccessorEdge {
+    pub label: Term,
+    pub target_context: usize,
+    pub rsucc_reach_hwm: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveContextSnapshot {
+    pub context_index: usize,
+    pub context_id: usize,
+    pub root: bool,
+    pub retained_clause_ids: Vec<u32>,
+    pub todo_clause_ids: Vec<u32>,
+    pub dirty: bool,
+    pub pred_pool_ids: Vec<u32>,
+    pub pred_hwm: usize,
+    pub succ_pool_ids: Vec<u32>,
+    pub succ_hwm: usize,
+    pub rsucc_pool_ids: Vec<u32>,
+    pub rsucc_hwm: usize,
+    pub rsucc_reach: Vec<CbLivePred>,
+    pub rsucc_offered: usize,
+    pub rsucc_edges_grew: bool,
+    pub predecessors: Vec<CbLivePredecessorEdge>,
+    pub successors: Vec<CbLiveSuccessorEdge>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct CbLiveTerminalSnapshot {
+    pub version: u32,
+    pub rsucc_enabled: bool,
+    pub reach_concept_ids: Vec<Iri>,
+    pub pending_messages: usize,
+    pub message_truncated: bool,
+    pub nominal_truncated: bool,
+    pub contexts: Vec<CbLiveContextSnapshot>,
+}
+
+#[cfg(test)]
+mod cb_live_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_snapshot_is_exact_stable_and_complete() {
+        let mut sig = Sig::default();
+        let query = sig.concept("A");
+        let reach = sig.concept("__trans__r__A");
+        let clauses = vec![OntologyClause::new(
+            vec![Pred::Concept { iri: query, t: X }],
+            vec![Lit::P(Pred::Concept { iri: reach, t: X })],
+        )];
+        let mut engine = Engine::new(sig, clauses, 0);
+        Arc::make_mut(&mut engine.sig).rsucc = true;
+        engine.run_for(&[query]);
+
+        let first = engine.live_terminal_snapshot();
+        let second = engine.live_terminal_snapshot();
+        assert_eq!(first, second);
+        assert_eq!(serde_json::to_vec(&first).unwrap(), serde_json::to_vec(&second).unwrap());
+        assert!(first.rsucc_enabled);
+        assert!(first.pending_messages == 0);
+        assert!(!first.message_truncated && !first.nominal_truncated);
+        assert!(first.contexts.iter().all(|context| {
+            context.context_index == context.context_id
+                && context.todo_clause_ids.is_empty()
+                && !context.dirty
+                && context.pred_hwm == context.pred_pool_ids.len()
+                && context.succ_hwm == context.succ_pool_ids.len()
+                && context.rsucc_hwm == context.rsucc_pool_ids.len()
+                && context.rsucc_offered == context.rsucc_reach.len()
+                && !context.rsucc_edges_grew
+                && context
+                    .successors
+                    .iter()
+                    .all(|edge| edge.rsucc_reach_hwm == context.rsucc_reach.len())
+        }));
+    }
+
 }
 
 /// Direction B (`KM_SPLIT`): the consequences of one query context's closure,
@@ -7391,6 +7514,105 @@ impl Engine {
     /// decline this run instead of serializing its sound but partial closure.
     pub fn incomplete(&self) -> bool {
         self.message_truncated || self.nom_truncated.get()
+    }
+
+    /// Capture the exact terminal state consumed by the CB certificate
+    /// producer.  All hash-backed collections are sorted here so repeated
+    /// serialization of an unchanged engine is byte-stable.
+    pub fn live_terminal_snapshot(&self) -> CbLiveTerminalSnapshot {
+        let mut reach_concept_ids: Vec<Iri> = self
+            .sig
+            .concept_reach
+            .iter()
+            .enumerate()
+            .filter_map(|(iri, &reach)| reach.then_some(iri as Iri))
+            .collect();
+        reach_concept_ids.sort_unstable();
+
+        let contexts = self
+            .contexts
+            .iter()
+            .enumerate()
+            .map(|(context_index, context)| {
+                let mut predecessors: Vec<CbLivePredecessorEdge> = context
+                    .predecessors
+                    .iter()
+                    .map(|(&(predecessor_context, label), pushed)| {
+                        let mut pushed: Vec<Pred> = pushed.iter().copied().collect();
+                        pushed.sort_unstable();
+                        let mut pred_pool_seen: Vec<u32> = context
+                            .pushed_pred
+                            .get(&(predecessor_context, label))
+                            .into_iter()
+                            .flat_map(|seen| seen.iter().copied())
+                            .collect();
+                        pred_pool_seen.sort_unstable();
+                        CbLivePredecessorEdge {
+                            predecessor_context,
+                            label,
+                            pushed: pushed.into_iter().map(Into::into).collect(),
+                            pred_pool_seen,
+                            edge_seen: context
+                                .edge_seen
+                                .get(&(predecessor_context, label))
+                                .copied()
+                                .unwrap_or(0),
+                        }
+                    })
+                    .collect();
+                predecessors.sort_by_key(|edge| (edge.predecessor_context, edge.label));
+
+                let mut successors: Vec<CbLiveSuccessorEdge> = context
+                    .successors
+                    .iter()
+                    .map(|(&label, &target_context)| CbLiveSuccessorEdge {
+                        label,
+                        target_context,
+                        rsucc_reach_hwm: context
+                            .rsucc_pair_reach_hwm
+                            .get(&(label, target_context))
+                            .copied()
+                            .unwrap_or(0),
+                    })
+                    .collect();
+                successors.sort_by_key(|edge| (edge.label, edge.target_context));
+
+                CbLiveContextSnapshot {
+                    context_index,
+                    context_id: context.id,
+                    root: context.root,
+                    retained_clause_ids: context.worked_off().iter().collect(),
+                    todo_clause_ids: context.todo.iter().copied().collect(),
+                    dirty: context.dirty,
+                    pred_pool_ids: context.pred_pool_iter().collect(),
+                    pred_hwm: context.pred_hwm,
+                    succ_pool_ids: context.succ_pool_from(0).collect(),
+                    succ_hwm: context.succ_hwm,
+                    rsucc_pool_ids: context.rsucc_pool.clone(),
+                    rsucc_hwm: context.rsucc_hwm,
+                    rsucc_reach: context
+                        .rsucc_reach
+                        .iter()
+                        .copied()
+                        .map(Into::into)
+                        .collect(),
+                    rsucc_offered: context.rsucc_offered,
+                    rsucc_edges_grew: context.rsucc_edges_grew,
+                    predecessors,
+                    successors,
+                }
+            })
+            .collect();
+
+        CbLiveTerminalSnapshot {
+            version: 1,
+            rsucc_enabled: self.sig.rsucc,
+            reach_concept_ids,
+            pending_messages: self.msgs.len(),
+            message_truncated: self.message_truncated,
+            nominal_truncated: self.nom_truncated.get(),
+            contexts,
+        }
     }
 
     /// Direction B (`KM_SPLIT`): run the ordered (tame) closure of query `Q`
