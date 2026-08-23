@@ -56,7 +56,7 @@ theorem modelsCardinalityDefsExact_pairedExactDefinitions_iff
         I.modelsCardinalityDefExact pair.maximum ∧
           I.modelsCardinalityDefExact pair.minimum := by
   simp only [Interp.modelsCardinalityDefsExact, pairedExactDefinitions,
-    List.mem_flatMap, List.mem_cons, List.mem_singleton]
+    List.mem_flatMap, List.mem_cons]
   aesop
 
 @[simp] theorem cardinalitySuccessor_map_natInterp [Nonempty Domain]
@@ -358,6 +358,45 @@ theorem entailsWithExact_mapOntology_iff
       (by simpa [natInterp] using hsub)
     simpa [natInterp] using hresult
 
+theorem unsatisfiableWithExact_mapOntology_iff
+    (ontology : List (Hypertableau.Clause (Fin nvars) (Fin concepts) (Fin roles)))
+    (definitions exactDefinitions :
+      List (CardinalityDef (Fin concepts) (Fin roles)))
+    (concept : Fin concepts) :
+    UnsatisfiableConceptWithExactCardinality ontology definitions exactDefinitions concept ↔
+      UnsatisfiableConceptWithExactCardinality (mapOntology ontology)
+        (definitions.map mapCardinalityDef)
+        (exactDefinitions.map mapCardinalityDef) concept.val := by
+  constructor
+  · intro hfinite Domain I hontology hdefinitions hexact value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hontologyFin : (finInterp I).models ontology := by
+      intro clause hclause
+      exact (modelsClause_map_finInterp I clause).2
+        (hontology (mapClause clause)
+          (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+    have hdefinitionsFin : (finInterp I).modelsCardinalityDefs definitions :=
+      (modelsCardinalityDefs_map_finInterp I definitions).2 hdefinitions
+    have hexactFin : (finInterp I).modelsCardinalityDefsExact exactDefinitions :=
+      (modelsCardinalityDefsExact_map_finInterp I exactDefinitions).2 hexact
+    exact hfinite Domain (finInterp I) hontologyFin hdefinitionsFin hexactFin value
+      (by simpa [finInterp] using hconcept)
+  · intro hnat Domain I hontology hdefinitions hexact value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hontologyNat : (natInterp I).models (mapOntology ontology) := by
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+      exact (modelsClause_map_natInterp I source).2 (hontology source hsource)
+    have hdefinitionsNat : (natInterp I).modelsCardinalityDefs
+        (definitions.map mapCardinalityDef) :=
+      (modelsCardinalityDefs_map_natInterp I definitions).2 hdefinitions
+    have hexactNat : (natInterp I).modelsCardinalityDefsExact
+        (exactDefinitions.map mapCardinalityDef) :=
+      (modelsCardinalityDefsExact_map_natInterp I exactDefinitions).2 hexact
+    have hresult := hnat Domain (natInterp I) hontologyNat hdefinitionsNat hexactNat
+      value (by simpa [natInterp] using hconcept)
+    exact hresult
+
 structure WireDirectCardinalityCommonSource where
   version : Nat
   projection : WireDirectCardinalityProjection
@@ -437,6 +476,35 @@ def DecodedDirectCardinalityCommonSource.TargetEntails
         decoded.projection.semanticPairs) →
       ∀ value, I.concept sub value → I.concept sup value
 
+def DecodedDirectCardinalityCommonSource.CommonUnsatisfiable
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  ∀ (Domain : Type) (model : TModel Domain),
+    (∀ clause ∈ decoded.commonOntology, valid model clause) →
+      ∀ value, ¬model.conc concept.val value
+
+def DecodedDirectCardinalityCommonSource.FiniteSourceUnsatisfiable
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (I : Interp Domain (Fin decoded.projection.concepts.length)
+      (Fin decoded.projection.roles.length)),
+    (I.models decoded.projection.source ∧
+      I.modelsProjectedCardinalityDefs decoded.projection.definitions
+        decoded.projection.semanticPairs) →
+      ∀ value, ¬I.concept concept value
+
+def DecodedDirectCardinalityCommonSource.TargetUnsatisfiable
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) : Prop :=
+  ∀ (Domain : Type)
+    (I : Interp Domain (Fin decoded.projection.concepts.length)
+      (Fin decoded.projection.roles.length)),
+    (I.models decoded.projection.target ∧
+      I.modelsProjectedCardinalityTargets decoded.projection.definitions
+        decoded.projection.semanticPairs) →
+      ∀ value, ¬I.concept concept value
+
 theorem DecodedDirectCardinalityCommonSource.finiteSource_entails_iff_target
     (decoded : DecodedDirectCardinalityCommonSource)
     (sub sup : Fin decoded.projection.concepts.length) :
@@ -448,6 +516,17 @@ theorem DecodedDirectCardinalityCommonSource.finiteSource_entails_iff_target
   · intro htarget Domain I hsource
     exact htarget Domain I
       ((decoded.projection.models_source_iff_target I).1 hsource)
+
+theorem DecodedDirectCardinalityCommonSource.finiteSource_unsatisfiable_iff_target
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.FiniteSourceUnsatisfiable concept ↔
+      decoded.TargetUnsatisfiable concept := by
+  constructor
+  · intro hsource Domain I htarget
+    exact hsource Domain I ((decoded.projection.models_source_iff_target I).2 htarget)
+  · intro htarget Domain I hsource
+    exact htarget Domain I ((decoded.projection.models_source_iff_target I).1 hsource)
 
 theorem DecodedDirectCardinalityCommonSource.common_entails_iff_finiteSource
     (decoded : DecodedDirectCardinalityCommonSource)
@@ -540,6 +619,95 @@ theorem DecodedDirectCardinalityCommonSource.entails_target_iff
   (decoded.common_entails_iff_finiteSource sub sup).trans
     (decoded.finiteSource_entails_iff_target sub sup)
 
+theorem DecodedDirectCardinalityCommonSource.common_unsatisfiable_iff_finiteSource
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔
+      decoded.FiniteSourceUnsatisfiable concept := by
+  constructor
+  · intro hcommon Domain I hsource value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hcardNat : (natInterp I).modelsProjectedCardinalityDefs
+        decoded.natDefinitions decoded.natPairs :=
+      (modelsProjectedDefs_map_natInterp I decoded.projection.definitions
+        decoded.projection.semanticPairs).2 hsource.2
+    rcases projected_implies_exists_cardinalityClauses_model (natInterp I) value
+        decoded.natDefinitions decoded.natPairs hcardNat with
+      ⟨model, hinterp, hcardCommon⟩
+    have hdirectNat : (natInterp I).models decoded.natDirect := by
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsourceClause, rfl⟩
+      exact (modelsClause_map_natInterp I source).2
+        (hsource.1 source hsourceClause)
+    have hdirectModel : ∀ clause ∈ decoded.natDirect.map
+        HTCheckerTermEmbedding.encodeClause, valid model clause := by
+      have hmodelsMapped : (HTCheckerTermEmbedding.htInterp model).models
+          decoded.natDirect := by simpa [hinterp] using hdirectNat
+      have hencoded := (HTCheckerTermEmbedding.models_encode_iff model
+        decoded.natDirect decoded.directOntology).2 hmodelsMapped
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsourceClause, rfl⟩
+      exact hencoded source hsourceClause
+    have hmodels : ∀ clause ∈ decoded.commonOntology, valid model clause := by
+      intro clause hclause
+      simp only [DecodedDirectCardinalityCommonSource.commonOntology,
+        List.mem_append] at hclause
+      rcases hclause with hclause | hclause
+      · exact hdirectModel clause hclause
+      · exact hcardCommon clause hclause
+    have hconcepts := congrArg (fun interpretation => interpretation.concept) hinterp
+    change model.conc = (natInterp I).concept at hconcepts
+    apply hcommon Domain model hmodels value
+    rw [hconcepts]
+    simpa [natInterp] using hconcept
+  · intro hfinite Domain model hmodels value hconcept
+    letI : Nonempty Domain := ⟨value⟩
+    have hdirectCommon : ∀ clause ∈ decoded.natDirect.map
+        HTCheckerTermEmbedding.encodeClause, valid model clause := by
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [DecodedDirectCardinalityCommonSource.commonOntology,
+          List.mem_append]
+        exact Or.inl hclause)
+    have hdirectNat : (HTCheckerTermEmbedding.htInterp model).models
+        decoded.natDirect := by
+      apply (HTCheckerTermEmbedding.models_encode_iff model decoded.natDirect
+        decoded.directOntology).1
+      intro source hsourceClause
+      exact hdirectCommon (HTCheckerTermEmbedding.encodeClause source)
+        (List.mem_map.mpr ⟨source, hsourceClause, rfl⟩)
+    have hdirectFin : (finInterp (HTCheckerTermEmbedding.htInterp model)).models
+        decoded.projection.source := by
+      intro clause hclause
+      exact (modelsClause_map_finInterp
+        (HTCheckerTermEmbedding.htInterp model) clause).2
+        (hdirectNat (mapClause clause)
+          (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+    have hcardCommon : ∀ clause ∈
+        cardinalityClauses decoded.natDefinitions decoded.natPairs,
+        valid model clause := by
+      intro clause hclause
+      exact hmodels clause (by
+        simp only [DecodedDirectCardinalityCommonSource.commonOntology,
+          List.mem_append]
+        exact Or.inr hclause)
+    have hcardNat := models_cardinalityClauses_implies_projected model
+      decoded.natDefinitions decoded.natPairs hcardCommon
+    have hcardFin :
+        (finInterp (HTCheckerTermEmbedding.htInterp model)).modelsProjectedCardinalityDefs
+          decoded.projection.definitions decoded.projection.semanticPairs :=
+      (modelsProjectedDefs_map_finInterp (HTCheckerTermEmbedding.htInterp model)
+        decoded.projection.definitions decoded.projection.semanticPairs).2 hcardNat
+    exact hfinite Domain (finInterp (HTCheckerTermEmbedding.htInterp model))
+      ⟨hdirectFin, hcardFin⟩ value (by simpa [finInterp] using hconcept)
+
+theorem DecodedDirectCardinalityCommonSource.unsatisfiable_target_iff
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    decoded.CommonUnsatisfiable concept ↔ decoded.TargetUnsatisfiable concept :=
+  (decoded.common_unsatisfiable_iff_finiteSource concept).trans
+    (decoded.finiteSource_unsatisfiable_iff_target concept)
+
 theorem DecodedDirectCardinalityCommonSource.exact_entails_iff_target
     (decoded : DecodedDirectCardinalityCommonSource)
     (sub sup : Fin decoded.projection.concepts.length) :
@@ -570,6 +738,37 @@ theorem DecodedDirectCardinalityCommonSource.exact_entails_iff_target
       exact ⟨hdefinitions, (modelsCardinalityDefsExact_pairedExactDefinitions_iff I
         decoded.projection.semanticPairs).1 hexact⟩
     exact hentails Domain I ⟨hontology, htargets⟩ value hsub
+
+theorem DecodedDirectCardinalityCommonSource.exact_unsatisfiable_iff_target
+    (decoded : DecodedDirectCardinalityCommonSource)
+    (concept : Fin decoded.projection.concepts.length) :
+    UnsatisfiableConceptWithExactCardinality decoded.projection.target
+        decoded.projection.definitions
+        (pairedExactDefinitions decoded.projection.semanticPairs) concept ↔
+      decoded.TargetUnsatisfiable concept := by
+  constructor
+  · intro hunsat Domain I hmodels value hconcept
+    exact hunsat Domain I hmodels.1
+      (fun definition hdefinition =>
+        (modelsProjectedCardinalityTargets_iff_paired I
+          decoded.projection.definitions decoded.projection.semanticPairs
+          (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).1
+          hmodels.2 |>.1 definition hdefinition)
+      ((modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).2
+        ((modelsProjectedCardinalityTargets_iff_paired I
+          decoded.projection.definitions decoded.projection.semanticPairs
+          (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).1
+          hmodels.2 |>.2)) value hconcept
+  · intro hunsat Domain I hontology hdefinitions hexact value hconcept
+    have htargets : I.modelsProjectedCardinalityTargets
+        decoded.projection.definitions decoded.projection.semanticPairs := by
+      apply (modelsProjectedCardinalityTargets_iff_paired I
+        decoded.projection.definitions decoded.projection.semanticPairs
+        (fun pair hpair => decoded.projection.semanticPairs_mem pair hpair)).2
+      exact ⟨hdefinitions, (modelsCardinalityDefsExact_pairedExactDefinitions_iff I
+        decoded.projection.semanticPairs).1 hexact⟩
+    exact hunsat Domain I ⟨hontology, htargets⟩ value hconcept
 
 theorem WireDirectCardinalityCommonSource.check_sound
     (wire : WireDirectCardinalityCommonSource)
