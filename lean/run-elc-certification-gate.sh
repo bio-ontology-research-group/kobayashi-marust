@@ -28,7 +28,10 @@ trap cleanup_native_checker EXIT
     cd "$lean_root"
     LEAN_NUM_THREADS=4 lake build
     LEAN_NUM_THREADS=4 lake build elc-cert-check
-    LEAN_NUM_THREADS=4 lake build ContextCalculus.ELCompletionExecutablePublication \
+    LEAN_NUM_THREADS=4 lake build \
+        ContextCalculus.ELCompletionExecutablePublication \
+        ContextCalculus.ELNormalCheckerTermEmbedding \
+        ContextCalculus.ELCommonSourceWire \
         2>&1 | tee "$surface_log"
 )
 
@@ -48,6 +51,19 @@ grep -q "ELCompletionExecutablePublication.*check_publication_semantics\|'Contex
     echo "missing executable ELC wire-publication axiom audit" >&2
     exit 1
 }
+
+for theorem in \
+    models_encodeNormalOntology_modelOfNormalAndRaw \
+    commonCombinedEntails_iff_elcSource \
+    commonMappedCombinedEntails_iff_finite \
+    finiteELCSourceEntails_iff_publicationSource \
+    WireCertificate.check_common_source_sound
+do
+    grep -q "$theorem" "$surface_log" || {
+        echo "missing ELC common-source axiom audit: $theorem" >&2
+        exit 1
+    }
+done
 
 [[ -x "$checker" ]] || {
     echo "missing Lean checker: $checker" >&2

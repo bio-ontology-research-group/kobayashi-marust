@@ -1,4 +1,4 @@
-import ContextCalculus.ELCheckerTermEmbedding
+import ContextCalculus.ELNormalCheckerTermEmbedding
 import ContextCalculus.ELCompletionExecutablePublication
 
 /-!
@@ -16,6 +16,22 @@ open ContextCalculus
 open ContextCalculus.CheckerTerm
 open ContextCalculus.ELCompletion
 open ContextCalculus.ELCheckerTermEmbedding
+open ContextCalculus.ELNormalCheckerTermEmbedding
+
+def mapNormalClause : ELCompletion.Clause (Fin n) (Fin n) →
+    ELCompletion.Clause Nat Nat
+  | .nf1 sub sup => .nf1 sub.val sup.val
+  | .nf2 left right sup => .nf2 left.val right.val sup.val
+  | .nf3 sub role filler => .nf3 sub.val role.val filler.val
+  | .nf4 role filler sup => .nf4 role.val filler.val sup.val
+  | .nf5 sub => .nf5 sub.val
+  | .nf6 sub sup => .nf6 sub.val sup.val
+  | .nf7 first second sup => .nf7 first.val second.val sup.val
+  | .reflexive role => .reflexive role.val
+
+def mapNormalOntology (ontology : ELCompletion.Ontology (Fin n) (Fin n)) :
+    ELCompletion.Ontology Nat Nat :=
+  ontology.map mapNormalClause
 
 def mapResidualAtom : RawResidualAtom (Fin n) (Fin n) →
     RawResidualAtom Nat Nat
@@ -49,6 +65,50 @@ def finInterp {top bottom : Fin n}
   role role := I.role role.val
   top_true := I.top_true
   bottom_false := I.bottom_false
+
+@[simp] theorem sat_mapNormalClause_nat_iff
+    (I : Interp Domain (Fin n) (Fin n) top bottom)
+    (clause : ELCompletion.Clause (Fin n) (Fin n)) :
+    ELCompletion.satClause (natInterp I) (mapNormalClause clause) ↔
+      ELCompletion.satClause I clause := by
+  cases clause <;> simp [mapNormalClause, ELCompletion.satClause, natInterp]
+
+@[simp] theorem sat_mapNormalClause_fin_iff
+    {top bottom : Fin n}
+    (I : Interp Domain Nat Nat top.val bottom.val)
+    (clause : ELCompletion.Clause (Fin n) (Fin n)) :
+    ELCompletion.satClause (finInterp I) clause ↔
+      ELCompletion.satClause I (mapNormalClause clause) := by
+  cases clause <;> simp [mapNormalClause, ELCompletion.satClause, finInterp]
+
+theorem models_mapNormalOntology_nat_iff
+    (I : Interp Domain (Fin n) (Fin n) top bottom)
+    (ontology : ELCompletion.Ontology (Fin n) (Fin n)) :
+    ELCompletion.models (natInterp I) (mapNormalOntology ontology) ↔
+      ELCompletion.models I ontology := by
+  constructor <;> intro hmodels clause hclause
+  · exact (sat_mapNormalClause_nat_iff I clause).1
+      (hmodels (mapNormalClause clause)
+        (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+  · rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+    exact (sat_mapNormalClause_nat_iff I source).2
+      (hmodels source hsource)
+
+theorem models_mapNormalOntology_fin_iff
+    {top bottom : Fin n}
+    (I : Interp Domain Nat Nat top.val bottom.val)
+    (ontology : ELCompletion.Ontology (Fin n) (Fin n)) :
+    ELCompletion.models (finInterp I) ontology ↔
+      ELCompletion.models I (mapNormalOntology ontology) := by
+  constructor
+  · intro hmodels clause hclause
+    rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+    exact (sat_mapNormalClause_fin_iff I source).1
+      (hmodels source hsource)
+  · intro hmodels clause hclause
+    exact (sat_mapNormalClause_fin_iff I clause).2
+      (hmodels (mapNormalClause clause)
+        (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
 
 @[simp] theorem sat_mapResidualAtom_nat_iff
     (I : Interp Domain (Fin n) (Fin n) top bottom)
@@ -128,6 +188,73 @@ def FiniteResidualEntails (top bottom : Fin n)
     modelsRawResidual I T ontology →
       ∀ value, I.concept sub value → I.concept sup value
 
+def FiniteELCSourceEntails (top bottom : Fin n)
+    (ontology : ELCompletion.Ontology (Fin n) (Fin n))
+    (residual : List (RawResidualClause (Fin n) (Fin n)))
+    (sub sup : Fin n) : Prop :=
+  ∀ (Domain : Type) (I : Interp Domain (Fin n) (Fin n) top bottom)
+    (terms : RawTermInterp Domain),
+    ELCompletion.models I ontology →
+    modelsRawResidual I terms residual →
+    ∀ value, I.concept sub value → I.concept sup value
+
+theorem mappedELCSourceEntails_iff_finite (top bottom : Fin n)
+    (ontology : ELCompletion.Ontology (Fin n) (Fin n))
+    (residual : List (RawResidualClause (Fin n) (Fin n)))
+    (sub sup : Fin n) :
+    ELCSourceEntails top.val bottom.val (mapNormalOntology ontology)
+        (mapResidualOntology residual) sub.val sup.val ↔
+      FiniteELCSourceEntails top bottom ontology residual sub sup := by
+  constructor
+  · intro hnat Domain I terms hnormal hresidual value hsub
+    have hnormalMapped : ELCompletion.models (natInterp I)
+        (mapNormalOntology ontology) :=
+      (models_mapNormalOntology_nat_iff I ontology).2 hnormal
+    have hresidualMapped : modelsRawResidual (natInterp I) terms
+        (mapResidualOntology residual) := by
+      intro clause hclause
+      rcases List.mem_map.mp hclause with ⟨source, hsource, rfl⟩
+      exact (sat_mapResidualClause_nat_iff I terms source).2
+        (hresidual source hsource)
+    have hresult := hnat Domain (natInterp I) terms hnormalMapped
+      hresidualMapped value (by simpa [natInterp] using hsub)
+    simpa [natInterp] using hresult
+  · intro hfin Domain I terms hnormal hresidual value hsub
+    have hnormalFinite : ELCompletion.models (finInterp I) ontology :=
+      (models_mapNormalOntology_fin_iff I ontology).2 hnormal
+    have hresidualFinite : modelsRawResidual (finInterp I) terms residual := by
+      intro clause hclause
+      exact (sat_mapResidualClause_fin_iff I terms clause).2
+        (hresidual (mapResidualClause clause)
+          (List.mem_map.mpr ⟨clause, hclause, rfl⟩))
+    have hresult := hfin Domain (finInterp I) terms hnormalFinite
+      hresidualFinite value (by simpa [finInterp] using hsub)
+    simpa [finInterp] using hresult
+
+theorem commonMappedCombinedEntails_iff_finite (top bottom : Fin n)
+    (ontology : ELCompletion.Ontology (Fin n) (Fin n))
+    (residual : List (RawResidualClause (Fin n) (Fin n)))
+    (sub sup : Fin n) :
+    CommonCombinedEntails top.val bottom.val (mapNormalOntology ontology)
+        (mapResidualOntology residual) sub.val sup.val ↔
+      FiniteELCSourceEntails top bottom ontology residual sub sup :=
+  (commonCombinedEntails_iff_elcSource top.val bottom.val
+    (mapNormalOntology ontology) (mapResidualOntology residual)
+    sub.val sup.val).trans
+      (mappedELCSourceEntails_iff_finite top bottom ontology residual sub sup)
+
+theorem finiteELCSourceEntails_iff_publicationSource
+    (doc : DecodedCertificate n) (sub sup : Fin n) :
+    FiniteELCSourceEntails doc.top doc.bottom doc.ontology
+        doc.source_ontology sub sup ↔
+      EntailsSubWithResidual doc.ontology doc.sourceResidualTheory sub sup := by
+  constructor
+  · intro hfinite Domain I hmodels value hsub
+    rcases hmodels.2 with ⟨terms, hresidual⟩
+    exact hfinite Domain I terms hmodels.1 hresidual value hsub
+  · intro hsource Domain I terms hnormal hresidual value hsub
+    exact hsource I ⟨hnormal, ⟨terms, hresidual⟩⟩ value hsub
+
 theorem rawMappedEntails_iff_finite (top bottom : Fin n)
     (ontology : List (RawResidualClause (Fin n) (Fin n)))
     (sub sup : Fin n) :
@@ -166,25 +293,30 @@ theorem commonMappedEntails_iff_finite (top bottom : Fin n)
       (rawMappedEntails_iff_finite top bottom ontology sub sup)
 
 /-- Acceptance by the actual V5 wire yields both its complete publication
-contract and a source translation theorem for every finite taxonomy query. -/
+contract and exact equivalence between every published finite taxonomy query
+and the combined normalized-plus-residual common proper-term source. -/
 theorem WireCertificate.check_common_source_sound
     (wire : WireCertificate) (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedCertificate wire.symbol_count,
       wire.decode = .ok decoded ∧ PublicationSemantics decoded ∧
         ∀ sub sup : Fin wire.symbol_count,
-          CommonResidualEntails decoded.top.val decoded.bottom.val
+          CommonCombinedEntails decoded.top.val decoded.bottom.val
+              (mapNormalOntology decoded.ontology)
               (mapResidualOntology decoded.source_ontology) sub.val sup.val ↔
-            FiniteResidualEntails decoded.top decoded.bottom
-              decoded.source_ontology sub sup := by
+            EntailsSubWithResidual decoded.ontology
+              decoded.sourceResidualTheory sub sup := by
   rcases wire.check_publication_semantics hcheck with
     ⟨decoded, hdecode, hpublication⟩
-  exact ⟨decoded, hdecode, hpublication,
-    fun sub sup => commonMappedEntails_iff_finite decoded.top decoded.bottom
-      decoded.source_ontology sub sup⟩
+  exact ⟨decoded, hdecode, hpublication, fun sub sup =>
+    (commonMappedCombinedEntails_iff_finite decoded.top decoded.bottom
+      decoded.ontology decoded.source_ontology sub sup).trans
+        (finiteELCSourceEntails_iff_publicationSource decoded sub sup)⟩
 
 #print axioms sat_mapResidualClause_nat_iff
 #print axioms sat_mapResidualClause_fin_iff
 #print axioms commonMappedEntails_iff_finite
+#print axioms commonMappedCombinedEntails_iff_finite
+#print axioms finiteELCSourceEntails_iff_publicationSource
 #print axioms WireCertificate.check_common_source_sound
 
 end ContextCalculus.ELCommonSourceWire

@@ -33,6 +33,7 @@ trap cleanup_checker EXIT
         ContextCalculus.KMAutomaticSupervisor \
         ContextCalculus.KMWorkerPublication \
         ContextCalculus.ELCheckerTermEmbedding \
+        ContextCalculus.ELNormalCheckerTermEmbedding \
         ContextCalculus.ELCommonSourceWire \
         ContextCalculus.HTCheckerTermEmbedding \
         ContextCalculus.HTDirectCommonSourceWire \
@@ -63,6 +64,10 @@ for theorem in \
     models_encode_iff \
     models_encodeResidual_iff \
     commonResidualEntails_iff_raw \
+    models_encodeNormalOntology_modelOfNormalAndRaw \
+    commonCombinedEntails_iff_elcSource \
+    commonMappedCombinedEntails_iff_finite \
+    finiteELCSourceEntails_iff_publicationSource \
     WireCertificate.check_common_source_sound \
     entailsSub_encode_iff \
     WireDirectCommonSource.check_sound \

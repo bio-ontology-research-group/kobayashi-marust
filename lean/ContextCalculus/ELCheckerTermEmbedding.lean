@@ -77,6 +77,26 @@ def individualCode (individual : Nat) : Nat := Nat.pair 0 individual
 def auxiliaryCode (root : Nat) (label : List (Nat × Int)) : Nat :=
   Nat.pair 1 (Nat.pair root (labelCode label))
 
+def residualFunctionCode (function : Nat) : Nat := Nat.pair 0 function
+
+def normalFunctionCode (slot : Nat) : Nat := Nat.pair 1 slot
+
+theorem residualFunctionCode_injective :
+    Function.Injective residualFunctionCode := by
+  intro left right heq
+  exact (Nat.pair_eq_pair.mp heq).2
+
+theorem normalFunctionCode_injective :
+    Function.Injective normalFunctionCode := by
+  intro left right heq
+  exact (Nat.pair_eq_pair.mp heq).2
+
+theorem residualFunctionCode_ne_normalFunctionCode (function slot : Nat) :
+    residualFunctionCode function ≠ normalFunctionCode slot := by
+  intro heq
+  have htag := (Nat.pair_eq_pair.mp heq).1
+  omega
+
 theorem individualCode_injective : Function.Injective individualCode := by
   intro left right heq
   exact (Nat.pair_eq_pair.mp heq).2
@@ -144,7 +164,8 @@ def encodeTerm : RawTerm → FTerm
   | .var index => .var (Int.ofNat index)
   | .ind individual => .const (individualCode individual)
   | .aux root label => .const (auxiliaryCode root label)
-  | .fun function argument => .app function (encodeTerm argument)
+  | .fun function argument =>
+      .app (residualFunctionCode function) (encodeTerm argument)
 
 def encodeAtom : RawAtom Nat Nat → FLit
   | .concept concept term => .P (.concept concept (encodeTerm term))
@@ -166,7 +187,7 @@ def encodeResidualClause (clause : RawResidualClause Nat Nat) : FCL :=
 def rawTermInterp (model : TModel Domain) : RawTermInterp Domain where
   individual individual := model.const (individualCode individual)
   auxiliary root label := model.const (auxiliaryCode root label)
-  function := model.fn
+  function function := model.fn (residualFunctionCode function)
 
 def elInterp (model : TModel Domain) (top bottom : Nat)
     (topTrue : ∀ value, model.conc top value)
@@ -183,14 +204,23 @@ noncomputable def modelOfRaw
   conc := I.concept
   rol := I.role
   const := decodedConstant T fallback
-  fn := T.function
+  fn function :=
+    if (Nat.unpair function).1 = 0 then T.function (Nat.unpair function).2
+    else fun _ => fallback
 
 @[simp] theorem rawTermInterp_modelOfRaw
     (I : Interp Domain Nat Nat top bottom) (T : RawTermInterp Domain)
     (fallback : Domain) :
     rawTermInterp (modelOfRaw I T fallback) = T := by
   rcases T with ⟨individuals, auxiliaries, functions⟩
-  simp [rawTermInterp, modelOfRaw]
+  have hfunctions :
+      (fun function =>
+        if (Nat.unpair (residualFunctionCode function)).1 = 0 then
+          functions (Nat.unpair (residualFunctionCode function)).2
+        else fun _ => fallback) = functions := by
+    funext function source
+    simp [residualFunctionCode]
+  simp [rawTermInterp, modelOfRaw, hfunctions]
 
 @[simp] theorem elInterp_modelOfRaw
     (I : Interp Domain Nat Nat top bottom) (T : RawTermInterp Domain)
